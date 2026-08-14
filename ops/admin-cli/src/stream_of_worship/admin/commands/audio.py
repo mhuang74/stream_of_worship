@@ -53,6 +53,7 @@ from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.structured_lyrics import (
     flatten_structured_lyrics,
     parse_structured_lyrics,
+    parse_structured_lyrics_smart,
 )
 from stream_of_worship.admin.services.youtube import (
     DURATION_WARNING_THRESHOLD,
@@ -832,6 +833,7 @@ def import_youtube_audio_for_song(
     analyze: bool = False,
     lrc: bool = False,
     components: bool = False,
+    use_llm: bool = True,
 ) -> Recording | None:
     """Import a YouTube-backed recording for an existing song."""
     song = db_client.get_song(song_id)
@@ -1086,9 +1088,224 @@ def import_youtube_audio_for_song(
     return recording
 
 
+def _backfill_lyrics_batch(
+    *,
+    db_client: DatabaseClient,
+    console: Console,
+    url: Optional[str] = None,
+    skip_confirm: bool = False,
+) -> None:
+    """Backfill structured lyrics from YouTube for multiple songs from stdin.
+
+    Reads song IDs from stdin (one per line). For each song, looks up the
+    existing recording and fetches structured lyrics from the YouTube video
+    description. Per-song failures are reported but do not abort the batch.
+    """
+    song_ids = _read_song_ids_from_stdin()
+
+    if not song_ids:
+        console.print("[yellow]No song IDs provided via stdin[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[cyan]Batch backfill structured lyrics for {len(song_ids)} song(s)...[/cyan]")
+
+    # Batch-level confirmation so each per-song call doesn't prompt.
+    if not skip_confirm:
+        confirmed = _prompt_confirmation(f"Backfill lyrics for {len(song_ids)} song(s)?")
+        if not confirmed:
+            console.print("[yellow]Batch backfill cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    success = 0
+    failed = 0
+    for idx, sid in enumerate(song_ids, 1):
+        console.rule(f"[bold cyan][{idx}/{len(song_ids)}] {sid}")
+        try:
+            ok = _backfill_lyrics_for_song(
+                song_id=sid,
+                db_client=db_client,
+                console=console,
+                url=url,
+            )
+            if ok:
+                success += 1
+        except typer.Exit as e:
+            if e.exit_code == 0:
+                console.print(f"[yellow]~ Skipped: {sid}[/yellow]")
+            else:
+                failed += 1
+        except Exception as e:
+            failed += 1
+            console.print(f"[red]✗ Failed: {sid}: {e}[/red]")
+
+    console.print()
+    console.print(f"[bold]Summary:[/bold] {success} backfilled, {failed} failed")
+
+
+def _download_audio_batch(
+    *,
+    config: AdminConfig,
+    db_client: DatabaseClient,
+    console: Console,
+    dry_run: bool,
+    force: bool,
+    skip_confirm: bool,
+    analyze: bool,
+    lrc: bool,
+    components: bool,
+) -> None:
+    """Download audio from YouTube for multiple songs read from stdin.
+
+    Resolves songs and existing recordings up-front so the dry-run preview
+    and batch confirmation can summarize the work before any network calls.
+    Per-song video preview confirmations are bypassed; the batch-level
+    confirmation (gated by --yes) is authoritative.
+    """
+    song_ids = _read_song_ids_from_stdin()
+
+    if not song_ids:
+        console.print("[yellow]No song IDs provided via stdin[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[cyan]Batch download for {len(song_ids)} song(s)...[/cyan]")
+
+    eligible: list[tuple[str, Song, Optional[Recording]]] = []
+    not_found: list[str] = []
+    for sid in song_ids:
+        song = db_client.get_song(sid)
+        if not song:
+            not_found.append(sid)
+            continue
+        try:
+            existing = _get_single_active_recording_for_song(db_client, sid, console)
+        except typer.Exit:
+            # Ambiguous active recordings — treat as not eligible for batch.
+            not_found.append(sid)
+            continue
+        eligible.append((sid, song, existing))
+
+    if not_found:
+        preview = ", ".join(not_found[:5])
+        suffix = "..." if len(not_found) > 5 else ""
+        console.print(
+            f"[yellow]Song not found (or ambiguous recording) for {len(not_found)} id(s): "
+            f"{preview}{suffix}[/yellow]"
+        )
+
+    if not eligible:
+        console.print("[yellow]No valid songs to download.[/yellow]")
+        raise typer.Exit(0)
+
+    already_present: list[tuple[str, Song]] = []
+    to_download: list[tuple[str, Song]] = []
+    for sid, song, existing in eligible:
+        if existing and not force:
+            already_present.append((sid, song))
+        else:
+            to_download.append((sid, song))
+
+    if already_present:
+        console.print(
+            f"[yellow]Recording already exists for {len(already_present)} song(s); "
+            "use --force to replace. Skipping:[/yellow]"
+        )
+        for sid, song in already_present[:10]:
+            console.print(f"  • {sid}: {song.title}")
+        if len(already_present) > 10:
+            console.print(f"  ... and {len(already_present) - 10} more")
+
+    if dry_run:
+        if to_download:
+            console.print()
+            console.print(f"[cyan]Dry-run preview ({len(to_download)} to download):[/cyan]")
+            for sid, song in to_download[:10]:
+                console.print(f"  • {sid}: {song.title}")
+            if len(to_download) > 10:
+                console.print(f"  ... and {len(to_download) - 10} more")
+        else:
+            console.print("[yellow]No songs would be downloaded (recordings already present).[/yellow]")
+        console.print(
+            f"\n[bold]Summary:[/bold] {len(to_download)} to download, "
+            f"{len(already_present)} skipped (already present), "
+            f"{len(not_found)} not found"
+        )
+        return
+
+    if not to_download:
+        console.print("[yellow]No songs to download (recordings already present).[/yellow]")
+        raise typer.Exit(0)
+
+    info_lines = [
+        f"[cyan]Count:[/cyan] {len(to_download)} song(s) to download",
+        f"[cyan]Already present (skipped):[/cyan] {len(already_present)}",
+        f"[cyan]Not found:[/cyan] {len(not_found)}",
+    ]
+    if force:
+        info_lines.append("[yellow]--force: existing recordings will be replaced.[/yellow]")
+    post_flags = []
+    if analyze:
+        post_flags.append("analyze")
+    if lrc:
+        post_flags.append("lrc")
+    if components:
+        post_flags.append("components")
+    if post_flags:
+        info_lines.append(f"[cyan]Post-download submit:[/cyan] {', '.join(post_flags)}")
+
+    console.print(Panel.fit("\n".join(info_lines), title="Batch Download", border_style="cyan"))
+
+    if not skip_confirm:
+        confirmed = _prompt_confirmation(f"Download {len(to_download)} song(s)?")
+        if not confirmed:
+            console.print("[yellow]Batch download cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    success = 0
+    failed = 0
+    for idx, (sid, song) in enumerate(to_download, 1):
+        console.rule(f"[bold cyan][{idx}/{len(to_download)}] {sid}: {song.title}")
+        try:
+            import_youtube_audio_for_song(
+                song_id=sid,
+                youtube_url=None,
+                config=config,
+                db_client=db_client,
+                console=console,
+                force=force,
+                # Bypass per-song video confirmation; the batch-level
+                # confirmation above is authoritative.
+                skip_video_confirm=True,
+                analyze=analyze,
+                lrc=lrc,
+                components=components,
+            )
+            success += 1
+            console.print(f"[green]✓ Downloaded: {sid} ({song.title})[/green]")
+        except typer.Exit as e:
+            if e.exit_code == 0:
+                console.print(f"[yellow]~ Skipped: {sid} ({song.title})[/yellow]")
+            else:
+                failed += 1
+                console.print(f"[red]✗ Failed: {sid} ({song.title})[/red]")
+        except Exception as e:
+            failed += 1
+            console.print(f"[red]✗ Failed: {sid} ({song.title}): {e}[/red]")
+
+    console.print()
+    summary_parts = [
+        f"[bold]Summary:[/bold] {success} downloaded",
+        f"{failed} failed",
+    ]
+    if already_present:
+        summary_parts.append(f"{len(already_present)} skipped (already present)")
+    if not_found:
+        summary_parts.append(f"{len(not_found)} not found")
+    console.print(", ".join(summary_parts))
+
+
 @app.command("download")
 def download_audio(
-    song_id: str = typer.Argument(..., help="Song ID to download audio for"),
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to download audio for"),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview without downloading"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="Direct YouTube URL (skip search)"),
     skip_confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
@@ -1110,6 +1327,9 @@ def download_audio(
         "--backfill-lyrics",
         help="Only fetch structured lyrics from YouTube for an existing recording (no audio download)",
     ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read song IDs from stdin (one per line) for batch download"
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Download audio from YouTube for a song.
@@ -1123,7 +1343,27 @@ def download_audio(
 
     Use --backfill-lyrics to fetch structured lyrics from the YouTube
     description for an existing recording without re-downloading audio.
+
+    For batch downloads, pipe song IDs via stdin:
+
+        sow-admin audio list --album album1 --format ids | sow-admin audio download --stdin
+
+    For batch structured-lyrics backfill, combine --stdin with --backfill-lyrics:
+
+        sow-admin audio list --format ids | sow-admin audio download --stdin --backfill-lyrics --yes
     """
+    if not song_id and not stdin:
+        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if song_id and stdin:
+        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if stdin and url:
+        console.print("[red]Error: --url is not supported with --stdin (batch mode).[/red]")
+        raise typer.Exit(1)
+
     # --backfill-lyrics short-circuit
     if backfill_lyrics:
         if analyze or lrc or components or all:
@@ -1145,6 +1385,20 @@ def download_audio(
             raise typer.Exit(1)
 
         db_client = get_db_client(config)
+
+        if stdin:
+            if url:
+                console.print(
+                    "[red]--url is not supported with --stdin (batch mode).[/red]"
+                )
+                raise typer.Exit(1)
+            _backfill_lyrics_batch(
+                db_client=db_client,
+                console=console,
+                skip_confirm=skip_confirm,
+            )
+            return
+
         _backfill_lyrics_for_song(
             song_id=song_id,
             db_client=db_client,
@@ -1166,6 +1420,20 @@ def download_audio(
         raise typer.Exit(1)
 
     db_client = get_db_client(config)
+
+    if stdin:
+        _download_audio_batch(
+            config=config,
+            db_client=db_client,
+            console=console,
+            dry_run=dry_run,
+            force=force,
+            skip_confirm=skip_confirm,
+            analyze=analyze,
+            lrc=lrc,
+            components=components,
+        )
+        return
 
     if dry_run:
         song = db_client.get_song(song_id)

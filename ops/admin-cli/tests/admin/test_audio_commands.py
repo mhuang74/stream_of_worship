@@ -4,6 +4,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from stream_of_worship.admin.db.client import DatabaseClient
@@ -3066,6 +3067,482 @@ region = "auto"
         assert "Submitting for analysis" not in result.output
         assert "Submitting for LRC" not in result.output
         assert "Recording saved" in result.output
+
+
+class TestAudioDownloadStdinBatch:
+    """Tests for 'audio download --stdin' batch mode."""
+
+    def test_no_args_no_stdin_errors(self):
+        """No song_id and no --stdin → validation error before DB access."""
+        result = runner.invoke(app, ["audio", "download"])
+        assert result.exit_code == 1
+        assert "Either provide a song_id argument or use --stdin flag" in result.output
+
+    def test_song_id_and_stdin_mutually_exclusive(self):
+        """Cannot pass both a positional song_id and --stdin."""
+        result = runner.invoke(app, ["audio", "download", "song_001", "--stdin"])
+        assert result.exit_code == 1
+        assert "Cannot use both song_id argument and --stdin flag" in result.output
+
+    def test_stdin_with_url_errors(self):
+        """--url is not supported with --stdin (batch mode)."""
+        result = runner.invoke(
+            app,
+            ["audio", "download", "--stdin", "--url", "https://youtube.com/watch?v=x"],
+        )
+        assert result.exit_code == 1
+        assert "--url is not supported with --stdin" in result.output
+
+    def test_stdin_backfill_lyrics_with_url_errors(self):
+        """--url is rejected with --stdin --backfill-lyrics (single URL can't drive batch)."""
+        result = runner.invoke(
+            app,
+            [
+                "audio", "download", "--stdin", "--backfill-lyrics",
+                "--url", "https://youtube.com/watch?v=x",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "--url is not supported with --stdin (batch mode)" in result.output
+
+    def test_stdin_empty_input_exits_zero(self):
+        """Empty stdin → informative message and exit 0."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+        ):
+            result = runner.invoke(
+                app, ["audio", "download", "--stdin", "--yes"], input=""
+            )
+        assert result.exit_code == 0
+        assert "No song IDs provided via stdin" in result.output
+
+    def test_stdin_dry_run_shows_preview(self):
+        """--dry-run prints preview summary without invoking downloads."""
+        fake_config = MagicMock()
+        song1 = MagicMock(title="Song One")
+        song2 = MagicMock(title="Song Two")
+        fake_db = MagicMock()
+        fake_db.get_song.side_effect = lambda sid: {
+            "song_001": song1,
+            "song_002": song2,
+        }.get(sid)
+        fake_db.list_active_recordings_by_song.return_value = []
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--dry-run"],
+                input="song_001\nsong_002\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert "2 to download" in result.output
+        assert "0 skipped (already present)" in result.output
+        assert "Song One" in result.output
+        assert "Song Two" in result.output
+
+    def test_stdin_dry_run_songs_not_found_reported(self):
+        """--dry-run reports unknown song IDs in the summary."""
+        fake_config = MagicMock()
+        song1 = MagicMock(title="Song One")
+        fake_db = MagicMock()
+        fake_db.get_song.side_effect = lambda sid: {"song_001": song1}.get(sid)
+        fake_db.list_active_recordings_by_song.return_value = []
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--dry-run"],
+                input="song_001\nunknown_id\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert "1 to download" in result.output
+        assert "1 not found" in result.output
+        assert "unknown_id" in result.output
+
+    def test_stdin_skips_already_present_without_force(self):
+        """Songs with existing recordings are skipped (no --force)."""
+        fake_config = MagicMock()
+        song1 = MagicMock(title="Song One")
+        song2 = MagicMock(title="Song Two")
+        existing_recording = MagicMock(hash_prefix="abcabcabcabc")
+        fake_db = MagicMock()
+        fake_db.get_song.side_effect = lambda sid: {
+            "song_001": song1,
+            "song_002": song2,
+        }.get(sid)
+        fake_db.list_active_recordings_by_song.side_effect = (
+            lambda sid: [existing_recording] if sid == "song_001" else []
+        )
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
+            ) as mock_import,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--yes"],
+                input="song_001\nsong_002\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_import.assert_called_once()
+        assert mock_import.call_args.kwargs.get("song_id") == "song_002"
+        assert "Recording already exists" in result.output
+        assert "1 downloaded" in result.output
+        assert "1 skipped (already present)" in result.output
+
+    def test_stdin_force_replaces_already_present(self):
+        """--force in batch mode queues existing recordings for replacement."""
+        fake_config = MagicMock()
+        song1 = MagicMock(title="Song One")
+        existing_recording = MagicMock(hash_prefix="abcabcabcabc")
+        fake_db = MagicMock()
+        fake_db.get_song.return_value = song1
+        fake_db.list_active_recordings_by_song.return_value = [existing_recording]
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
+            ) as mock_import,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--yes", "--force"],
+                input="song_001\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_import.assert_called_once()
+        assert mock_import.call_args.kwargs.get("force") is True
+        assert "existing recordings will be replaced" in result.output
+        assert "1 downloaded" in result.output
+
+    def test_stdin_continues_after_failure(self):
+        """A per-song typer.Exit(1) does not abort the remainder of the batch."""
+        fake_config = MagicMock()
+        song1 = MagicMock(title="Song One")
+        song2 = MagicMock(title="Song Two")
+        fake_db = MagicMock()
+        fake_db.get_song.side_effect = lambda sid: {
+            "song_001": song1,
+            "song_002": song2,
+        }.get(sid)
+        fake_db.list_active_recordings_by_song.return_value = []
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
+            ) as mock_import,
+        ):
+            mock_import.side_effect = [typer.Exit(1), None]
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--yes"],
+                input="song_001\nsong_002\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert mock_import.call_count == 2
+        assert "1 downloaded" in result.output
+        assert "1 failed" in result.output
+
+    def test_stdin_bypasses_per_song_video_confirmation(self):
+        """Batch mode always passes skip_video_confirm=True to import helper."""
+        fake_config = MagicMock()
+        song1 = MagicMock(title="Song One")
+        fake_db = MagicMock()
+        fake_db.get_song.return_value = song1
+        fake_db.list_active_recordings_by_song.return_value = []
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
+            ) as mock_import,
+            patch(
+                "stream_of_worship.admin.commands.audio._prompt_confirmation",
+                return_value=True,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin"],  # no --yes — batch-level confirm still needed
+                input="song_001\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_import.assert_called_once()
+        assert mock_import.call_args.kwargs.get("skip_video_confirm") is True
+
+    def test_stdin_batch_confirmation_rejection_cancels(self):
+        """Rejecting the batch confirmation prompt cancels the run."""
+        fake_config = MagicMock()
+        song1 = MagicMock(title="Song One")
+        fake_db = MagicMock()
+        fake_db.get_song.return_value = song1
+        fake_db.list_active_recordings_by_song.return_value = []
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
+            ) as mock_import,
+            patch(
+                "stream_of_worship.admin.commands.audio._prompt_confirmation",
+                return_value=False,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin"],
+                input="song_001\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert "Batch download cancelled" in result.output
+        mock_import.assert_not_called()
+
+    def test_stdin_backfill_lyrics_routes_to_batch_helper(self):
+        """--stdin --backfill-lyrics invokes _backfill_lyrics_batch (not the download path)."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_batch"
+            ) as mock_batch,
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
+            ) as mock_single,
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
+            ) as mock_import,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--backfill-lyrics", "--yes"],
+                input="song_001\nsong_002\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_batch.assert_called_once()
+        assert mock_batch.call_args.kwargs.get("skip_confirm") is True
+        mock_single.assert_not_called()
+        mock_import.assert_not_called()
+
+    def test_stdin_backfill_lyrics_empty_input_exits_zero(self):
+        """Empty stdin with --backfill-lyrics → informative message and exit 0."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
+            ) as mock_single,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--backfill-lyrics", "--yes"],
+                input="",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert "No song IDs provided via stdin" in result.output
+        mock_single.assert_not_called()
+
+    def test_backfill_lyrics_single_song_ignored_stdin_flag(self):
+        """Single-song --backfill-lyrics (no --stdin) ignores batch helper."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_batch"
+            ) as mock_batch,
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
+            ) as mock_single,
+        ):
+            runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--backfill-lyrics", "--yes"],
+                env=WIDE_ENV,
+            )
+        mock_single.assert_called_once()
+        assert mock_single.call_args.kwargs.get("song_id") == "song_001"
+        mock_batch.assert_not_called()
+
+    def test_stdin_backfill_lyrics_confirmed_runs_per_song(self):
+        """With --yes, _backfill_lyrics_batch calls _backfill_lyrics_for_song per id."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song",
+                return_value=True,
+            ) as mock_single,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--backfill-lyrics", "--yes"],
+                input="song_001\nsong_002\nsong_003\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert mock_single.call_count == 3
+        called_ids = [c.kwargs.get("song_id") for c in mock_single.call_args_list]
+        assert called_ids == ["song_001", "song_002", "song_003"]
+        assert "3 backfilled" in result.output
+
+    def test_stdin_backfill_lyrics_continues_after_failure(self):
+        """A per-song typer.Exit(1) is caught; batch continues with summary."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
+            ) as mock_single,
+        ):
+            mock_single.side_effect = [typer.Exit(1), True]
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--backfill-lyrics", "--yes"],
+                input="song_001\nsong_002\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert mock_single.call_count == 2
+        assert "1 backfilled" in result.output
+        assert "1 failed" in result.output
+
+    def test_stdin_backfill_lyrics_confirmation_rejection_cancels(self):
+        """Rejecting the batch backfill prompt cancels the run before any work."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
+            ) as mock_single,
+            patch(
+                "stream_of_worship.admin.commands.audio._prompt_confirmation",
+                return_value=False,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "--stdin", "--backfill-lyrics"],
+                input="song_001\n",
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        assert "Batch backfill cancelled" in result.output
+        mock_single.assert_not_called()
 
 
 @pytest.mark.integration
