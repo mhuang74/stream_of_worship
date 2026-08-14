@@ -857,6 +857,8 @@ def test_list_soft_deleted_recordings_with_counts_uses_schema_column_count():
         "2024-01-01T00:00:00",
         "2024-01-02T00:00:00",
         "https://youtu.be/example",
+        None,
+        None,
         "published",
         "completed",
         "2024-01-03T00:00:00",

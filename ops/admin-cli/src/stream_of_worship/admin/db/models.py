@@ -198,6 +198,8 @@ class Recording:
     r2_stems_url: Optional[str] = None
     r2_lrc_url: Optional[str] = None
     youtube_url: Optional[str] = None
+    structured_lyrics_raw: Optional[str] = None
+    structured_lyrics: Optional[str] = None
     duration_seconds: Optional[float] = None
     tempo_bpm: Optional[float] = None
     musical_key: Optional[str] = None
@@ -243,7 +245,7 @@ class Recording:
         """
         row_len = len(row)
 
-        if row_len >= 34:
+        if row_len >= 36:
             key_algorithm_version = row[14]
             key_score_margin = row[15]
             key_window_agreement = row[16]
@@ -253,6 +255,23 @@ class Recording:
             created_at = row[28]
             updated_at = row[29]
             youtube_url = row[30]
+            structured_lyrics_raw = row[31]
+            structured_lyrics = row[32]
+            visibility_status = row[33]
+            download_status = row[34]
+            deleted_at = row[35]
+        elif row_len >= 34:
+            key_algorithm_version = row[14]
+            key_score_margin = row[15]
+            key_window_agreement = row[16]
+            key_candidates = row[17]
+            key_detected_at = row[18]
+            loudness_index = 19
+            created_at = row[28]
+            updated_at = row[29]
+            youtube_url = row[30]
+            structured_lyrics_raw = None
+            structured_lyrics = None
             visibility_status = row[31]
             download_status = row[32]
             deleted_at = row[33]
@@ -263,6 +282,8 @@ class Recording:
             key_candidates = None
             key_detected_at = None
             loudness_index = 14
+            structured_lyrics_raw = None
+            structured_lyrics = None
 
         if row_len >= 34:
             pass
@@ -316,6 +337,8 @@ class Recording:
             r2_stems_url=row[7],
             r2_lrc_url=row[8],
             youtube_url=youtube_url,
+            structured_lyrics_raw=structured_lyrics_raw,
+            structured_lyrics=structured_lyrics,
             duration_seconds=row[9],
             tempo_bpm=row[10],
             musical_key=row[11],
@@ -359,6 +382,8 @@ class Recording:
             "r2_stems_url": self.r2_stems_url,
             "r2_lrc_url": self.r2_lrc_url,
             "youtube_url": self.youtube_url,
+            "structured_lyrics_raw": self.structured_lyrics_raw,
+            "structured_lyrics": self.structured_lyrics,
             "duration_seconds": self.duration_seconds,
             "tempo_bpm": self.tempo_bpm,
             "musical_key": self.musical_key,

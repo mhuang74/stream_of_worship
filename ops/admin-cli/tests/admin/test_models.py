@@ -536,16 +536,117 @@ class TestRecording:
 
     def test_recording_columns_select_order_matches_from_row(self):
         """Verify RECORDING_COLUMNS_SELECT column count and order matches
-        what from_row expects (34 columns in canonical order).
+        what from_row expects (36 columns in canonical order).
         """
         columns = [c.strip() for c in RECORDING_COLUMNS_SELECT.split(",") if c.strip()]
-        assert len(columns) == 34
+        assert len(columns) == 36
         assert columns[0] == "content_hash"
         assert columns[13] == "key_confidence"
         assert columns[14] == "key_algorithm_version"
         assert columns[18] == "key_detected_at"
         assert columns[19] == "loudness_db"
-        assert columns[33] == "deleted_at"
+        assert columns[30] == "youtube_url"
+        assert columns[31] == "structured_lyrics_raw"
+        assert columns[32] == "structured_lyrics"
+        assert columns[33] == "visibility_status"
+        assert columns[34] == "download_status"
+        assert columns[35] == "deleted_at"
+
+    def test_from_row_36_column_canonical_order(self):
+        """Test from_row with 36-column schema including structured lyrics."""
+        row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # 0  content_hash
+            "c6de4449928d",  # 1  hash_prefix
+            "song_0001",  # 2  song_id
+            "original.mp3",  # 3  original_filename
+            5242880,  # 4  file_size_bytes
+            "2024-01-15T10:30:00",  # 5  imported_at
+            "s3://bucket/audio.mp3",  # 6  r2_audio_url
+            "s3://bucket/stems/",  # 7  r2_stems_url
+            "s3://bucket/lyrics.lrc",  # 8  r2_lrc_url
+            245.3,  # 9  duration_seconds
+            128.5,  # 10 tempo_bpm
+            "G",  # 11 musical_key
+            "major",  # 12 musical_mode
+            0.87,  # 13 key_confidence
+            "v2",  # 14 key_algorithm_version
+            0.5,  # 15 key_score_margin
+            0.9,  # 16 key_window_agreement
+            '["G","D"]',  # 17 key_candidates
+            "2024-01-15T10:30:00",  # 18 key_detected_at
+            -8.2,  # 19 loudness_db
+            "[0.23, 0.70]",  # 20 beats
+            "[0.23, 2.10]",  # 21 downbeats
+            '[{"label": "intro"}]',  # 22 sections
+            "[4, 512, 24]",  # 23 embeddings_shape
+            "completed",  # 24 analysis_status
+            "job_abc123",  # 25 analysis_job_id
+            "completed",  # 26 lrc_status
+            "job_lrc123",  # 27 lrc_job_id
+            "2024-01-15T10:30:00",  # 28 created_at
+            "2024-01-15T10:30:00",  # 29 updated_at
+            "https://youtube.com/watch?v=x",  # 30 youtube_url
+            "raw description text",  # 31 structured_lyrics_raw
+            '{"sections": []}',  # 32 structured_lyrics
+            "published",  # 33 visibility_status
+            "completed",  # 34 download_status
+            None,  # 35 deleted_at
+        )
+        assert len(row) == 36
+        recording = Recording.from_row(row)
+
+        assert recording.structured_lyrics_raw == "raw description text"
+        assert recording.structured_lyrics == '{"sections": []}'
+        assert recording.youtube_url == "https://youtube.com/watch?v=x"
+        assert recording.visibility_status == "published"
+        assert recording.download_status == "completed"
+        assert recording.deleted_at is None
+
+    def test_from_row_34_column_legacy_still_works(self):
+        """34-column legacy row still deserialises (new fields → None)."""
+        row = (
+            "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # 0  content_hash
+            "c6de4449928d",  # 1  hash_prefix
+            "song_0001",  # 2  song_id
+            "original.mp3",  # 3  original_filename
+            5242880,  # 4  file_size_bytes
+            "2024-01-15T10:30:00",  # 5  imported_at
+            "s3://bucket/audio.mp3",  # 6  r2_audio_url
+            "s3://bucket/stems/",  # 7  r2_stems_url
+            "s3://bucket/lyrics.lrc",  # 8  r2_lrc_url
+            245.3,  # 9  duration_seconds
+            128.5,  # 10 tempo_bpm
+            "G",  # 11 musical_key
+            "major",  # 12 musical_mode
+            0.87,  # 13 key_confidence
+            "v2",  # 14 key_algorithm_version
+            0.5,  # 15 key_score_margin
+            0.9,  # 16 key_window_agreement
+            '["G","D"]',  # 17 key_candidates
+            "2024-01-15T10:30:00",  # 18 key_detected_at
+            -8.2,  # 19 loudness_db
+            "[0.23, 0.70]",  # 20 beats
+            "[0.23, 2.10]",  # 21 downbeats
+            '[{"label": "intro"}]',  # 22 sections
+            "[4, 512, 24]",  # 23 embeddings_shape
+            "completed",  # 24 analysis_status
+            "job_abc123",  # 25 analysis_job_id
+            "completed",  # 26 lrc_status
+            "job_lrc123",  # 27 lrc_job_id
+            "2024-01-15T10:30:00",  # 28 created_at
+            "2024-01-15T10:30:00",  # 29 updated_at
+            "https://youtube.com/watch?v=x",  # 30 youtube_url
+            "published",  # 31 visibility_status
+            "completed",  # 32 download_status
+            None,  # 33 deleted_at
+        )
+        assert len(row) == 34
+        recording = Recording.from_row(row)
+
+        assert recording.structured_lyrics_raw is None
+        assert recording.structured_lyrics is None
+        assert recording.youtube_url == "https://youtube.com/watch?v=x"
+        assert recording.visibility_status == "published"
 
     def test_from_row_physical_order_mismatch_regression(self):
         """Regression test: a row in PHYSICAL DB order (key_* columns appended
