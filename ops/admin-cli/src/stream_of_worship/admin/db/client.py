@@ -565,8 +565,9 @@ class DatabaseClient:
                 musical_mode, key_confidence, loudness_db, beats,
                 downbeats, sections, embeddings_shape, analysis_status,
                 analysis_job_id, lrc_status, lrc_job_id, visibility_status,
-                download_status, created_at, updated_at, youtube_url
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                download_status, created_at, updated_at, youtube_url,
+                structured_lyrics_raw, structured_lyrics
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (content_hash) DO UPDATE SET
                 hash_prefix = EXCLUDED.hash_prefix,
                 song_id = CASE WHEN recordings.song_id IS NOT NULL THEN recordings.song_id ELSE EXCLUDED.song_id END,
@@ -594,6 +595,8 @@ class DatabaseClient:
                 download_status = EXCLUDED.download_status,
                 updated_at = EXCLUDED.updated_at,
                 youtube_url = EXCLUDED.youtube_url,
+                structured_lyrics_raw = EXCLUDED.structured_lyrics_raw,
+                structured_lyrics = EXCLUDED.structured_lyrics,
                 deleted_at = NULL
             """,
             (
@@ -625,6 +628,8 @@ class DatabaseClient:
                 recording.created_at or datetime.now().isoformat(),
                 recording.updated_at or datetime.now().isoformat(),
                 recording.youtube_url,
+                recording.structured_lyrics_raw,
+                recording.structured_lyrics,
             ),
         )
 
@@ -927,6 +932,35 @@ class DatabaseClient:
                 WHERE hash_prefix = %s
             """
             cursor.execute(sql, params)
+
+    def update_recording_structured_lyrics(
+        self,
+        hash_prefix: str,
+        structured_lyrics_raw: Optional[str],
+        structured_lyrics: Optional[str],
+    ) -> None:
+        """Update the structured-lyrics columns on an existing recording.
+
+        Used by the --backfill-lyrics flow to persist YouTube-description-
+        derived structured lyrics without re-inserting the recording row.
+
+        Args:
+            hash_prefix: The hash prefix of the recording.
+            structured_lyrics_raw: Raw YouTube description text (or None).
+            structured_lyrics: Parsed structured-lyrics JSON string (or None).
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings
+                SET structured_lyrics_raw = %s,
+                    structured_lyrics = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
+                """,
+                (structured_lyrics_raw, structured_lyrics, hash_prefix),
+            )
 
     def get_recording_by_job_id(
         self, job_id: str, job_type: str = "analysis"

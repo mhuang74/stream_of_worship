@@ -78,6 +78,10 @@ CREATE TABLE IF NOT EXISTS recordings (
     -- YouTube URL (for transcript-based LRC generation)
     youtube_url TEXT,
 
+    -- YouTube structured lyrics (parsed from video description)
+    structured_lyrics_raw TEXT,
+    structured_lyrics TEXT,
+
     -- Visibility status for User App (published, review, hold)
     visibility_status TEXT DEFAULT NULL,
 
@@ -284,6 +288,12 @@ ALTER TABLE song_components ADD COLUMN IF NOT EXISTS theme_reasoning TEXT;
 ALTER TABLE song_components ADD COLUMN IF NOT EXISTS posture_reasoning TEXT;
 """
 
+# Idempotent ALTER for recordings structured-lyrics columns (safe on existing tables).
+ALTER_RECORDINGS_STRUCTURED_LYRICS_COLUMNS = """
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS structured_lyrics_raw TEXT;
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS structured_lyrics TEXT;
+"""
+
 # All schema creation statements in order
 ALL_SCHEMA_STATEMENTS = [
     CREATE_EXTENSION_VECTOR,
@@ -298,6 +308,7 @@ ALL_SCHEMA_STATEMENTS = [
     CREATE_UPDATE_TIMESTAMP_FUNCTION,
     CREATE_SONGS_UPDATE_TRIGGER,
     CREATE_RECORDINGS_UPDATE_TRIGGER,
+    ALTER_RECORDINGS_STRUCTURED_LYRICS_COLUMNS,
     CREATE_SONG_COMPONENTS_TABLE,
     *CREATE_SONG_COMPONENTS_INDEXES,
     CREATE_SONG_COMPONENTS_UPDATE_TRIGGER,
@@ -362,7 +373,8 @@ RECORDING_COLUMNS_SELECT = """
     key_detected_at, loudness_db, beats, downbeats, sections,
     embeddings_shape, analysis_status, analysis_job_id, lrc_status,
     lrc_job_id, created_at, updated_at, youtube_url,
-    visibility_status, download_status, deleted_at
+    structured_lyrics_raw, structured_lyrics, visibility_status,
+    download_status, deleted_at
 """
 
 # Column lists for JOIN queries (used by catalog service and other query builders)
@@ -372,7 +384,7 @@ RECORDING_COLUMNS_FOR_JOIN = ", ".join(
 )
 
 SONG_COLUMN_COUNT = 24
-RECORDING_COLUMN_COUNT = 34
+RECORDING_COLUMN_COUNT = 36
 
 # SQL for listing active (non-deleted) songs
 ACTIVE_SONGS_QUERY = f"""

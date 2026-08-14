@@ -50,12 +50,17 @@ from stream_of_worship.admin.services.lrc_parser import (
     serialize_lrc,
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
+from stream_of_worship.admin.services.structured_lyrics import (
+    flatten_structured_lyrics,
+    parse_structured_lyrics,
+)
 from stream_of_worship.admin.services.youtube import (
     DURATION_WARNING_THRESHOLD,
     OFFICIAL_LYRICS_SUFFIX,
     YouTubeDownloader,
     _extract_bracket_content,
     _titles_match,
+    extract_video_metadata,
 )
 from stream_of_worship.music.key import parse_musical_key
 
@@ -369,7 +374,8 @@ def _submit_lrc_single(
 
     # Look up song for lyrics
     song = db_client.get_song(song_id)
-    if not song or not song.lyrics_raw:
+    lyrics_text = _resolve_lyrics_text(song, recording) if song else None
+    if not song or not lyrics_text:
         console.print(f"[red]No lyrics found for song {song_id}.[/red]")
         raise typer.Exit(1)
 
@@ -406,7 +412,7 @@ def _submit_lrc_single(
             job = analysis_client.submit_lrc(
                 audio_url=recording.r2_audio_url,
                 content_hash=recording.content_hash,
-                lyrics_text=song.lyrics_raw,
+                lyrics_text=lyrics_text,
                 song_title=song.title,
                 whisper_model=whisper_model,
                 language=language,
@@ -518,7 +524,8 @@ def _submit_lrc_batch(
 
         # Look up song for lyrics
         song = db_client.get_song(song_id)
-        if not song or not song.lyrics_raw:
+        lyrics_text = _resolve_lyrics_text(song, recording) if song else None
+        if not song or not lyrics_text:
             console.print("  [red]No lyrics found[/red]")
             errors += 1
             continue
@@ -547,7 +554,7 @@ def _submit_lrc_batch(
             job = analysis_client.submit_lrc(
                 audio_url=recording.r2_audio_url,
                 content_hash=recording.content_hash,
-                lyrics_text=song.lyrics_raw,
+                lyrics_text=lyrics_text,
                 song_title=song.title,
                 whisper_model=whisper_model,
                 language=language,
@@ -635,6 +642,23 @@ def _submit_analysis_job(
         return None
 
 
+def _resolve_lyrics_text(song: Song, recording: Recording) -> str | None:
+    """Pick the best lyrics payload for an LRC job.
+
+    Prefers structured lyrics (flattened, tags preserved) from the
+    recording; falls back to ``songs.lyrics_raw``. Returns ``None`` if
+    neither is available.
+    """
+    if recording.structured_lyrics:
+        try:
+            structured = json.loads(recording.structured_lyrics)
+            if structured and structured.get("sections"):
+                return flatten_structured_lyrics(structured)
+        except json.JSONDecodeError:
+            pass
+    return song.lyrics_raw
+
+
 def _submit_lrc_job(
     song_id: str,
     recording: Recording,
@@ -672,7 +696,8 @@ def _submit_lrc_job(
     """
     # Look up song for lyrics
     song = db_client.get_song(song_id)
-    if not song or not song.lyrics_raw:
+    lyrics_text = _resolve_lyrics_text(song, recording) if song else None
+    if not song or not lyrics_text:
         console.print(
             f"[yellow]⚠ No lyrics found for song {song_id}, skipping LRC generation[/yellow]"
         )
@@ -685,7 +710,7 @@ def _submit_lrc_job(
         job = client.submit_lrc(
             audio_url=recording.r2_audio_url,
             content_hash=recording.content_hash,
-            lyrics_text=song.lyrics_raw,
+            lyrics_text=lyrics_text,
             song_title=song.title,
             whisper_model=whisper_model,
             language=language,
@@ -712,6 +737,87 @@ def _submit_lrc_job(
     except ValueError as e:
         console.print(f"[yellow]⚠ Analysis service not configured for LRC: {e}[/yellow]")
         return None
+
+
+def _backfill_lyrics_for_song(
+    *,
+    song_id: str,
+    db_client: DatabaseClient,
+    console: Console,
+    url: Optional[str] = None,
+) -> bool:
+    """Backfill structured lyrics from YouTube for an existing recording.
+
+    Fetches the YouTube video description via ``extract_video_metadata()``,
+    parses it with ``parse_structured_lyrics()``, and persists the result
+    via ``update_recording_structured_lyrics()``. Does NOT download audio
+    or touch R2.
+
+    Args:
+        song_id: Song ID whose recording to backfill.
+        db_client: Database client.
+        console: Rich console for output.
+        url: Optional YouTube URL override. Falls back to
+            ``recording.youtube_url``.
+
+    Returns:
+        True if structured lyrics were persisted, False on error/skip.
+    """
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    yt_url = url or recording.youtube_url
+    if not yt_url:
+        console.print(
+            f"[red]No YouTube URL available for {song_id}. "
+            f"Use --url to specify one.[/red]"
+        )
+        raise typer.Exit(1)
+
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else song_id
+    console.print(f"[cyan]Song:[/cyan] {song_title}")
+    console.print(f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}")
+    console.print(f"[cyan]YouTube URL:[/cyan] {yt_url}")
+
+    try:
+        metadata = extract_video_metadata(yt_url)
+    except RuntimeError as e:
+        console.print(f"[red]Failed to fetch video metadata: {e}[/red]")
+        raise typer.Exit(1)
+
+    structured_raw = metadata.description
+    structured_json = parse_structured_lyrics(metadata.description)
+    structured_json_str = (
+        json.dumps(structured_json, ensure_ascii=False) if structured_json else None
+    )
+
+    db_client.update_recording_structured_lyrics(
+        hash_prefix=recording.hash_prefix,
+        structured_lyrics_raw=structured_raw,
+        structured_lyrics=structured_json_str,
+    )
+
+    if structured_json and structured_json.get("sections"):
+        num_sections = len(structured_json["sections"])
+        console.print(
+            f"[green]Backfilled structured lyrics: {num_sections} section(s).[/green]"
+        )
+    else:
+        console.print(
+            f"[yellow]No section tags found in description — stored raw only.[/yellow]"
+        )
+
+    console.print(
+        f"[dim]Run 'sow-admin audio show {song_id}' to verify or "
+        f"'sow-admin audio lrc {song_id}' to re-generate LRC.[/dim]"
+    )
+    return True
 
 
 def import_youtube_audio_for_song(
@@ -853,6 +959,21 @@ def import_youtube_audio_for_song(
         search_or_url = manual_url
         is_direct_url = True
 
+    # Fetch structured lyrics from the YouTube description (D4, D5).
+    # Non-fatal: failures here must not block the download.
+    structured_raw: Optional[str] = None
+    structured_json_str: Optional[str] = None
+    try:
+        metadata = extract_video_metadata(search_or_url)
+        structured_raw = metadata.description
+        structured_json = parse_structured_lyrics(metadata.description)
+        if structured_json:
+            structured_json_str = json.dumps(structured_json, ensure_ascii=False)
+    except RuntimeError as e:
+        console.print(
+            f"[yellow]Could not fetch video metadata for structured lyrics: {e}[/yellow]"
+        )
+
     console.print("[cyan]Downloading audio from YouTube...[/cyan]")
     try:
         if search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
@@ -897,6 +1018,8 @@ def import_youtube_audio_for_song(
         r2_audio_url=r2_url,
         download_status="completed",
         youtube_url=video_info.get("webpage_url"),
+        structured_lyrics_raw=structured_raw,
+        structured_lyrics=structured_json_str,
         duration_seconds=duration,
     )
     if existing and force:
@@ -982,6 +1105,11 @@ def download_audio(
     all: bool = typer.Option(
         False, "--all", "-A", help="Submit for analysis, LRC, and components after download"
     ),
+    backfill_lyrics: bool = typer.Option(
+        False,
+        "--backfill-lyrics",
+        help="Only fetch structured lyrics from YouTube for an existing recording (no audio download)",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Download audio from YouTube for a song.
@@ -992,7 +1120,39 @@ def download_audio(
 
     Use --analyze, --lrc, --components, or --all to automatically submit for
     processing after successful download.
+
+    Use --backfill-lyrics to fetch structured lyrics from the YouTube
+    description for an existing recording without re-downloading audio.
     """
+    # --backfill-lyrics short-circuit
+    if backfill_lyrics:
+        if analyze or lrc or components or all:
+            console.print(
+                "[red]--backfill-lyrics is mutually exclusive with "
+                "--analyze, --lrc, --components, --all.[/red]"
+            )
+            raise typer.Exit(1)
+        if dry_run:
+            console.print(
+                "[red]--backfill-lyrics is mutually exclusive with --dry-run.[/red]"
+            )
+            raise typer.Exit(1)
+
+        try:
+            config = AdminConfig.load(config_path)
+        except FileNotFoundError:
+            console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+            raise typer.Exit(1)
+
+        db_client = get_db_client(config)
+        _backfill_lyrics_for_song(
+            song_id=song_id,
+            db_client=db_client,
+            console=console,
+            url=url,
+        )
+        return
+
     # If --all is set, enable analyze, lrc, and components
     if all:
         analyze = True
@@ -1492,6 +1652,67 @@ def show_recording(
             border_style="green",
         )
     )
+
+    # Structured Lyrics panel (from YouTube description)
+    if recording.structured_lyrics:
+        try:
+            structured = json.loads(recording.structured_lyrics)
+            if structured and structured.get("sections"):
+                flattened = flatten_structured_lyrics(structured)
+                console.print(
+                    Panel(
+                        flattened,
+                        title="Structured Lyrics (YouTube)",
+                        border_style="cyan",
+                    )
+                )
+        except json.JSONDecodeError:
+            if recording.structured_lyrics_raw:
+                raw_lines = recording.structured_lyrics_raw.split("\n")
+                truncated = "\n".join(raw_lines[:40])
+                if len(raw_lines) > 40:
+                    truncated += (
+                        "\n[dim](… truncated, run 'sow-admin audio view-lrc "
+                        f"{song_id}' for full)[/dim]"
+                    )
+                console.print(
+                    Panel(
+                        truncated,
+                        title="Structured Lyrics (YouTube, raw)",
+                        border_style="cyan",
+                    )
+                )
+    elif recording.structured_lyrics_raw:
+        raw_lines = recording.structured_lyrics_raw.split("\n")
+        truncated = "\n".join(raw_lines[:40])
+        if len(raw_lines) > 40:
+            truncated += (
+                "\n[dim](… truncated, run 'sow-admin audio view-lrc "
+                f"{song_id}' for full)[/dim]"
+            )
+        console.print(
+            Panel(
+                truncated,
+                title="Structured Lyrics (YouTube, raw)",
+                border_style="cyan",
+            )
+        )
+
+    # Synchronized LRC contents
+    if recording.has_lrc:
+        console.print("")
+        _display_lrc(
+            console=console,
+            song=song,
+            recording=recording,
+            song_id=song_id,
+            raw=False,
+            no_timestamps=False,
+        )
+    else:
+        console.print(
+            f"\n[dim]LRC not yet generated (run 'sow-admin audio lrc {song_id}')[/dim]"
+        )
 
     # Display component metadata if available.
     components = db_client.get_song_components(song_id)
@@ -5227,6 +5448,9 @@ def batch(
     lrc: bool = typer.Option(False, "--lrc", help="Run the LRC step"),
     analyze: bool = typer.Option(False, "--analyze", help="Run the analysis step"),
     embedding: bool = typer.Option(False, "--embedding", help="Run the embedding step"),
+    backfill_lyrics: bool = typer.Option(
+        False, "--backfill-lyrics", help="Backfill structured lyrics from YouTube for existing recordings"
+    ),
     all_steps: bool = typer.Option(False, "--all-steps", help="Run all steps in order"),
     analysis_tier: str = typer.Option(
         "fast", "--analysis-tier", help="Analysis tier: fast (default) or full"
@@ -5333,6 +5557,7 @@ def batch(
         "lrc": lrc,
         "analyze": analyze,
         "embedding": embedding,
+        "backfill_lyrics": backfill_lyrics,
     }
     selected_steps: List[str] = [s for s, v in step_flags.items() if v]
 
@@ -5341,9 +5566,21 @@ def batch(
     elif not selected_steps and resume is None:
         console.print(
             "[red]No step flags selected. Specify at least one of "
-            "--download, --lrc, --analyze, --embedding, or --all-steps.[/red]"
+            "--download, --lrc, --analyze, --embedding, --backfill-lyrics, "
+            "or --all-steps.[/red]"
         )
         raise typer.Exit(1)
+
+    # --backfill-lyrics mutual exclusivity: only allowed with --lrc
+    if "backfill_lyrics" in selected_steps:
+        conflicting = {"download", "analyze", "embedding"} & set(selected_steps)
+        if conflicting:
+            console.print(
+                f"[red]--backfill-lyrics cannot be combined with "
+                f"{', '.join(sorted(conflicting))}. "
+                f"Only --lrc is allowed alongside --backfill-lyrics.[/red]"
+            )
+            raise typer.Exit(1)
 
     # Force scoping
     if force:
@@ -5354,13 +5591,15 @@ def batch(
                 "one step flag alongside --force.[/red]"
             )
             raise typer.Exit(1)
-        if len(selected_steps) != 1:
+        # --backfill-lyrics always overwrites (B7); --force is accepted silently
+        non_backfill_steps = [s for s in selected_steps if s != "backfill_lyrics"]
+        if non_backfill_steps and len(selected_steps) != 1:
             console.print(
                 "[red]--force requires exactly one step flag "
                 "(--download, --lrc, --analyze, or --embedding).[/red]"
             )
             raise typer.Exit(1)
-        if "download" in selected_steps:
+        if len(non_backfill_steps) == 1 and "download" in non_backfill_steps:
             console.print(
                 "[red]--force --download is not supported. Re-download changes "
                 "content_hash/hash_prefix and orphans downstream R2 artifacts. "
@@ -5448,6 +5687,65 @@ def batch(
         )
         return
 
+    # --backfill-lyrics step: fetch structured lyrics for existing recordings.
+    # Runs before any LRC step so the freshly-backfilled structured lyrics
+    # are available to _resolve_lyrics_text.
+    if "backfill_lyrics" in selected_steps:
+        console.print(
+            f"[cyan]Backfilling structured lyrics for {len(song_ids)} song(s)...[/cyan]"
+        )
+        backfill_results: Dict[str, dict] = {sid: {} for sid in song_ids}
+        for i, sid in enumerate(song_ids, 1):
+            console.print(f"[{i}/{len(song_ids)}] Backfilling {sid}...")
+            recording = db_client.get_recording_by_song_id(sid)
+            if not recording:
+                console.print(f"  [yellow]→ {sid} (skipped: no recording)[/yellow]")
+                backfill_results[sid]["backfill_lyrics"] = "skipped"
+                continue
+            if not recording.youtube_url:
+                console.print(f"  [yellow]→ {sid} (skipped: no YouTube URL)[/yellow]")
+                backfill_results[sid]["backfill_lyrics"] = "skipped"
+                continue
+            try:
+                _backfill_lyrics_for_song(
+                    song_id=sid,
+                    db_client=db_client,
+                    console=console,
+                    url=recording.youtube_url,
+                )
+                backfill_results[sid]["backfill_lyrics"] = "completed"
+            except typer.Exit:
+                backfill_results[sid]["backfill_lyrics"] = "failed"
+            except Exception as e:
+                console.print(f"  [red]✗ {sid} failed: {e}[/red]")
+                backfill_results[sid]["backfill_lyrics"] = "failed"
+
+        # If backfill_lyrics is the only step, print stats and return
+        if selected_steps == ["backfill_lyrics"]:
+            backfill_completed = sum(
+                1 for r in backfill_results.values() if r.get("backfill_lyrics") == "completed"
+            )
+            backfill_skipped = sum(
+                1 for r in backfill_results.values() if r.get("backfill_lyrics") == "skipped"
+            )
+            backfill_failed = sum(
+                1 for r in backfill_results.values() if r.get("backfill_lyrics") == "failed"
+            )
+            console.print()
+            console.print("[cyan]Backfill Summary:[/cyan]")
+            console.print(f"  Completed: {backfill_completed}")
+            console.print(f"  Skipped:   {backfill_skipped}")
+            console.print(f"  Failed:    {backfill_failed}")
+            console.print(f"  Total:     {len(song_ids)}")
+            if backfill_failed:
+                raise typer.Exit(1)
+            return
+
+        # If combined with --lrc, merge results and fall through to LRC processing
+        results = backfill_results
+    else:
+        results = {}
+
     # Initialize R2 and Analysis clients
     try:
         r2_client = R2Client(
@@ -5478,6 +5776,7 @@ def batch(
         console=console,
         database_url=config.get_connection_url(),
         download_concurrency=download_concurrency,
+        initial_results=results if results else None,
     )
 
     # Print final stats
@@ -5979,7 +6278,8 @@ def _submit_lrc_for_song(
         return "skipped_no_recording"
 
     song = db_client.get_song(song_id)
-    if not song or not song.lyrics_raw:
+    lyrics_text = _resolve_lyrics_text(song, recording) if song else None
+    if not song or not lyrics_text:
         console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
         return "skipped_no_lyrics"
 
@@ -6026,7 +6326,7 @@ def _submit_lrc_for_song(
         job = analysis_client.submit_lrc(
             audio_url=recording.r2_audio_url,
             content_hash=recording.content_hash,
-            lyrics_text=song.lyrics_raw,
+            lyrics_text=lyrics_text,
             song_title=song.title,
             whisper_model="large-v3",
             language="auto",
@@ -7312,6 +7612,7 @@ def _process_batch(
     console: Console,
     database_url: str,
     download_concurrency: int,
+    initial_results: Optional[Dict[str, dict]] = None,
 ) -> dict:
     """Process all songs in batch with an interleaved unified poll loop.
 
@@ -7334,11 +7635,17 @@ def _process_batch(
         console: Rich console
         database_url: Database URL for per-thread connections
         download_concurrency: Max parallel downloads
+        initial_results: Pre-existing results dict (e.g. from backfill step)
+            to merge into. Keys for each song are preserved.
 
     Returns:
         Dict with results for each song
     """
     results: Dict[str, dict] = {sid: {} for sid in song_ids}
+    if initial_results:
+        for sid, r in initial_results.items():
+            if sid in results:
+                results[sid].update(r)
     active_jobs: Dict[Tuple[str, str], str] = {}
     lrc_attempted: set = set()
     resubmit_counts: dict = {}
