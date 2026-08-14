@@ -2710,14 +2710,14 @@ class TestDownloadCommandNewFeatures:
         client.insert_song(song)
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text(f'''[database]
+        config_path.write_text(f"""[database]
 url = "{postgres_url}"
 
 [r2]
 bucket = "test-bucket"
 endpoint_url = "https://test.r2.dev"
 region = "auto"
-''')
+""")
 
         yield {
             "db_client": client,
@@ -3098,8 +3098,12 @@ class TestAudioDownloadStdinBatch:
         result = runner.invoke(
             app,
             [
-                "audio", "download", "--stdin", "--backfill-lyrics",
-                "--url", "https://youtube.com/watch?v=x",
+                "audio",
+                "download",
+                "--stdin",
+                "--backfill-lyrics",
+                "--url",
+                "https://youtube.com/watch?v=x",
             ],
         )
         assert result.exit_code == 1
@@ -3119,9 +3123,7 @@ class TestAudioDownloadStdinBatch:
                 return_value=fake_db,
             ),
         ):
-            result = runner.invoke(
-                app, ["audio", "download", "--stdin", "--yes"], input=""
-            )
+            result = runner.invoke(app, ["audio", "download", "--stdin", "--yes"], input="")
         assert result.exit_code == 0
         assert "No song IDs provided via stdin" in result.output
 
@@ -3197,8 +3199,8 @@ class TestAudioDownloadStdinBatch:
             "song_001": song1,
             "song_002": song2,
         }.get(sid)
-        fake_db.list_active_recordings_by_song.side_effect = (
-            lambda sid: [existing_recording] if sid == "song_001" else []
+        fake_db.list_active_recordings_by_song.side_effect = lambda sid: (
+            [existing_recording] if sid == "song_001" else []
         )
         with (
             patch(
@@ -3376,9 +3378,7 @@ class TestAudioDownloadStdinBatch:
                 "stream_of_worship.admin.commands.audio.get_db_client",
                 return_value=fake_db,
             ),
-            patch(
-                "stream_of_worship.admin.commands.audio._backfill_lyrics_batch"
-            ) as mock_batch,
+            patch("stream_of_worship.admin.commands.audio._backfill_lyrics_batch") as mock_batch,
             patch(
                 "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
             ) as mock_single,
@@ -3438,9 +3438,7 @@ class TestAudioDownloadStdinBatch:
                 "stream_of_worship.admin.commands.audio.get_db_client",
                 return_value=fake_db,
             ),
-            patch(
-                "stream_of_worship.admin.commands.audio._backfill_lyrics_batch"
-            ) as mock_batch,
+            patch("stream_of_worship.admin.commands.audio._backfill_lyrics_batch") as mock_batch,
             patch(
                 "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
             ) as mock_single,
@@ -3579,14 +3577,14 @@ class TestDeleteCommand:
         client.insert_recording(recording)
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text(f'''[database]
+        config_path.write_text(f"""[database]
 url = "{postgres_url}"
 
 [r2]
 bucket = "test-bucket"
 endpoint_url = "https://test.r2.dev"
 region = "auto"
-''')
+""")
 
         yield {
             "db_client": client,
@@ -3662,14 +3660,14 @@ region = "auto"
         client.insert_song(song)
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text(f'''[database]
+        config_path.write_text(f"""[database]
 url = "{postgres_url}"
 
 [r2]
 bucket = "test-bucket"
 endpoint_url = "https://test.r2.dev"
 region = "auto"
-''')
+""")
 
         result = runner.invoke(
             app,
@@ -3803,8 +3801,11 @@ class TestSegmentationModeFlag:
         result = runner.invoke(
             app,
             [
-                "audio", "components", "song_001",
-                "--segmentation-mode", "invalid",
+                "audio",
+                "components",
+                "song_001",
+                "--segmentation-mode",
+                "invalid",
                 "--force",
             ],
             env=WIDE_ENV,
@@ -3848,8 +3849,11 @@ class TestSegmentationModeFlag:
             result = runner.invoke(
                 app,
                 [
-                    "audio", "components", "song_001",
-                    "--segmentation-mode", "llm",
+                    "audio",
+                    "components",
+                    "song_001",
+                    "--segmentation-mode",
+                    "llm",
                     "--force",
                 ],
                 env=WIDE_ENV,
@@ -4023,7 +4027,9 @@ class TestSegmentationModeEchoVerification:
     @patch("stream_of_worship.admin.commands.audio.R2Client")
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
-    def test_no_segmentation_mode_skips_echo_check(self, mock_config_load, mock_client_cls, mock_r2_cls):
+    def test_no_segmentation_mode_skips_echo_check(
+        self, mock_config_load, mock_client_cls, mock_r2_cls
+    ):
         """When segmentation_mode=None, echo check is skipped entirely."""
         from stream_of_worship.admin.commands.audio import _submit_component_analysis_job
 
@@ -4105,8 +4111,11 @@ class TestSegmentationModeBatchBanner:
             result = runner.invoke(
                 app,
                 [
-                    "audio", "components", "--stdin",
-                    "--segmentation-mode", "repetition",
+                    "audio",
+                    "components",
+                    "--stdin",
+                    "--segmentation-mode",
+                    "repetition",
                     "--force",
                 ],
                 input="song_001\n",
@@ -4295,3 +4304,265 @@ def test_compute_all_fields_does_not_set_all_components():
     assert captured["classify_vocal_posture"] is True
     assert captured["snap_to_downbeat"] is True
     assert captured["energy_aware_roles"] is True
+
+
+class TestLlmLyricsFlags:
+    """Tests for --llm/--no-llm flag wiring on audio download and backfill."""
+
+    def test_backfill_lyrics_no_llm_passes_use_llm_false(self):
+        """--backfill-lyrics --no-llm forwards use_llm=False to _backfill_lyrics_for_song."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song",
+                return_value=True,
+            ) as mock_single,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--backfill-lyrics", "--no-llm", "--yes"],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_single.assert_called_once()
+        assert mock_single.call_args.kwargs.get("use_llm") is False
+
+    def test_backfill_lyrics_llm_default_passes_use_llm_true(self):
+        """--backfill-lyrics (default) forwards use_llm=True to _backfill_lyrics_for_song."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song",
+                return_value=True,
+            ) as mock_single,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--backfill-lyrics", "--yes"],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_single.assert_called_once()
+        assert mock_single.call_args.kwargs.get("use_llm") is True
+
+    def test_backfill_lyrics_explicit_llm_passes_use_llm_true(self):
+        """--backfill-lyrics --llm forwards use_llm=True to _backfill_lyrics_for_song."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song",
+                return_value=True,
+            ) as mock_single,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--backfill-lyrics", "--llm", "--yes"],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_single.assert_called_once()
+        assert mock_single.call_args.kwargs.get("use_llm") is True
+
+    def test_download_no_llm_passes_use_llm_false_to_import(self):
+        """audio download --no-llm forwards use_llm=False to import_youtube_audio_for_song."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song",
+                return_value=MagicMock(),
+            ) as mock_import,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--no-llm", "--yes"],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_import.assert_called_once()
+        assert mock_import.call_args.kwargs.get("use_llm") is False
+
+    def test_download_llm_default_passes_use_llm_true_to_import(self):
+        """audio download (default) forwards use_llm=True to import_youtube_audio_for_song."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song",
+                return_value=MagicMock(),
+            ) as mock_import,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--yes"],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_import.assert_called_once()
+        assert mock_import.call_args.kwargs.get("use_llm") is True
+
+    def test_backfill_lyrics_llm_no_api_key_hard_fails(self, monkeypatch):
+        """--backfill-lyrics (default) with SOW_LLM_API_KEY unset → exit 1, red error."""
+        monkeypatch.delenv("SOW_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("SOW_LLM_MODEL", raising=False)
+
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        fake_recording = MagicMock()
+        fake_recording.youtube_url = "https://youtube.com/watch?v=test"
+        fake_recording.hash_prefix = "testhash"
+        fake_db.get_recording_by_song_id.return_value = fake_recording
+        fake_db.get_song.return_value = MagicMock(title="Test Song")
+
+        fake_metadata = MagicMock()
+        fake_metadata.description = "[Verse]\nLine 1\nLine 2"
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.extract_video_metadata",
+                return_value=fake_metadata,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--backfill-lyrics", "--yes"],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 1
+        assert "LLM lyrics extraction failed" in result.output
+        assert "--no-llm" in result.output
+
+    def test_backfill_lyrics_no_llm_does_not_hard_fail(self, monkeypatch):
+        """--backfill-lyrics --no-llm with no API key → heuristic path, exit 0."""
+        monkeypatch.delenv("SOW_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("SOW_LLM_MODEL", raising=False)
+
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        fake_recording = MagicMock()
+        fake_recording.youtube_url = "https://youtube.com/watch?v=test"
+        fake_recording.hash_prefix = "testhash"
+        fake_db.get_recording_by_song_id.return_value = fake_recording
+        fake_db.get_song.return_value = MagicMock(title="Test Song")
+
+        fake_metadata = MagicMock()
+        fake_metadata.description = "[Verse]\nLine 1\nLine 2"
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.extract_video_metadata",
+                return_value=fake_metadata,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--backfill-lyrics", "--no-llm", "--yes"],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0
+        assert "Backfilled structured lyrics" in result.output
+
+    def test_backfill_lyrics_llm_invoke_failure_hard_fails(self, monkeypatch):
+        """--backfill-lyrics --llm with API key set but LLM .invoke() raises → exit 1."""
+        monkeypatch.setenv("SOW_LLM_API_KEY", "fake-key")
+        monkeypatch.setenv("SOW_LLM_MODEL", "fake-model")
+
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        fake_recording = MagicMock()
+        fake_recording.youtube_url = "https://youtube.com/watch?v=test"
+        fake_recording.hash_prefix = "testhash"
+        fake_db.get_recording_by_song_id.return_value = fake_recording
+        fake_db.get_song.return_value = MagicMock(title="Test Song")
+
+        fake_metadata = MagicMock()
+        fake_metadata.description = "[Verse]\nLine 1\nLine 2"
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.extract_video_metadata",
+                return_value=fake_metadata,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.parse_structured_lyrics_smart"
+            ) as mock_smart,
+        ):
+            mock_smart.side_effect = RuntimeError("LLM network error")
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--backfill-lyrics", "--yes"],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 1
+        assert "LLM lyrics extraction failed" in result.output
+        assert "--no-llm" in result.output
