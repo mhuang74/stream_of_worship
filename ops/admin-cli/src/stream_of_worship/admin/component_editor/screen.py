@@ -706,10 +706,29 @@ class ComponentEditorScreen(Screen[None]):
         async def _update_loop():
             while True:
                 await asyncio.sleep(0.2)
+                self._check_component_playback_end()
                 self._update_playback_bar()
                 self._update_lyrics_highlight()
 
         self._position_update_timer = asyncio.ensure_future(_update_loop())
+
+    def _check_component_playback_end(self) -> None:
+        """Pause playback if the position has reached the selected component's end_time.
+
+        Called from the position update loop and the on_position_changed callback.
+        Uses the working (edited) end_time value so edits take effect immediately.
+        """
+        if not self.playback.is_playing:
+            return
+        comp = self.state.get_selected_component()
+        if comp is None:
+            return
+        role = self._selected_editor_role()
+        end_time = self.state.get_value(role, "end_time")
+        if end_time is None:
+            return
+        if self.playback.position_seconds >= end_time:
+            self.playback.pause()
 
     def _update_playback_bar(self) -> None:
         try:
@@ -721,6 +740,7 @@ class ComponentEditorScreen(Screen[None]):
         bar.update_playback(pos, dur, self.playback.state)
 
     def _on_playback_position(self, position) -> None:
+        self._check_component_playback_end()
         self._update_playback_bar()
         self._update_lyrics_highlight()
 
@@ -886,6 +906,26 @@ class ComponentEditorScreen(Screen[None]):
             field == "groove_density" and not (GROOVE_DENSITY_MIN <= val <= GROOVE_DENSITY_MAX)
         ) or (field == "energy_level" and not (ENERGY_LEVEL_MIN <= val <= ENERGY_LEVEL_MAX)):
             return None
+
+        if field in ("start_time", "end_time"):
+            session = self.state.current
+            audio_duration = session.audio_duration
+            if audio_duration is not None:
+                if val < 0 or val > audio_duration:
+                    return None
+            elif val < 0:
+                return None
+            # Cross-field validation: start_time < end_time
+            role = self._selected_editor_role()
+            if field == "start_time":
+                end = self.state.get_value(role, "end_time")
+                if end is not None and val >= end:
+                    return None
+            elif field == "end_time":
+                start = self.state.get_value(role, "start_time")
+                if start is not None and val <= start:
+                    return None
+
         return val
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -1189,7 +1229,12 @@ class ComponentEditorScreen(Screen[None]):
             self.playback.pause()
             return
         comp = self.state.get_selected_component()
-        start = comp.start_time if (comp is not None and comp.start_time is not None) else 0.0
+        role = self._selected_editor_role()
+        start = self.state.get_value(role, "start_time")
+        if start is None and comp is not None:
+            start = comp.start_time
+        if start is None:
+            start = 0.0
         self.playback.play(start_seconds=start)
         self._update_lyrics_highlight()
 
@@ -1206,11 +1251,12 @@ class ComponentEditorScreen(Screen[None]):
     def action_jump_to_component(self) -> None:
         if self._guard_active_edit():
             return
-        comp = self.state.get_selected_component()
-        if comp is None or comp.start_time is None:
+        role = self._selected_editor_role()
+        start = self.state.get_value(role, "start_time")
+        if start is None:
             self.app.bell()
             return
-        self.playback.seek(comp.start_time)
+        self.playback.seek(start)
         self._update_playback_bar()
         self._update_lyrics_highlight()
 
@@ -1290,12 +1336,15 @@ class ComponentEditorScreen(Screen[None]):
 
         panel = self.query_one("#detail-panel", ComponentDetailPanel)
         field = panel.focused_field
-        if field not in ("groove_density", "energy_level"):
+        if field not in ("groove_density", "energy_level", "start_time", "end_time"):
             return
 
         role = self._selected_editor_role()
         current = self.state.get_value(role, field)
-        initial = "" if current is None else f"{current:.4g}"
+        if field in ("start_time", "end_time"):
+            initial = "" if current is None else f"{current:.2f}"
+        else:
+            initial = "" if current is None else f"{current:.4g}"
         self._show_value_edit_input(role=role, field=field, initial_text=initial)
 
     def action_undo(self) -> None:

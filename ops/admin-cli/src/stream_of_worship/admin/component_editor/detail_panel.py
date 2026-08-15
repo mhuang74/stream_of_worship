@@ -6,8 +6,12 @@ editable field navigation.
 
 from datetime import UTC, datetime
 
+from rich.segment import Segment
 from rich.text import Text
-from textual.widgets import Static
+from textual import events
+from textual.geometry import Size
+from textual.scroll_view import ScrollView
+from textual.strip import Strip
 
 from stream_of_worship.admin.component_editor.constants import EDITABLE_FIELDS, ROLE_LABELS
 from stream_of_worship.admin.component_editor.state import ComponentEditorState
@@ -27,23 +31,26 @@ def _format_timestamp(value: str | None) -> str:
         return value
 
 
-class ComponentDetailPanel(Static):
+class ComponentDetailPanel(ScrollView, can_focus=True):
     """Right panel (details mode) showing all component metadata + song info.
 
     Displays:
     - Song-level info (title, artist, album, series, musical_key)
     - Component metadata for the selected role (entry/exit)
     - Confidence breakdown sub-section
-    - Editable fields (theme, vocal_posture, groove_density, energy_level)
-      with navigation highlight
+    - Editable fields (theme, vocal_posture, groove_density, energy_level,
+      start_time, end_time) with navigation highlight
     - Reasoning fields
     - Component lifecycle dates (created_at, updated_at) at the bottom
 
     Navigation: up/down arrows move focus among editable fields.
     Editing: 'e' for numeric fields, '['/']' for enum cycling.
-    """
 
-    can_focus = True
+    Implemented as a proper ``ScrollView`` subclass using the Line-API
+    pattern (same as ``LyricsPanel``/``RichLog``/``Log``/``Tree``): content
+    is rendered into ``Strip`` objects once on every ``update_detail``, then
+    served line-by-line from ``render_line`` with ``scroll_offset.y`` applied.
+    """
 
     DEFAULT_CSS = """
     ComponentDetailPanel {
@@ -60,6 +67,47 @@ class ComponentDetailPanel(Static):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._focus_idx: int = 0
+        self._content_strips: list[Strip] = []
+        self._render_width: int = 0
+        self._last_text: Text | None = None
+
+    # ------------------------------------------------------------------
+    # Line-API rendering (the scroll fix)
+    # ------------------------------------------------------------------
+
+    def render_line(self, y: int) -> Strip:
+        """Render a single visible line, applying scroll offset.
+
+        Translates the viewport y coordinate to the content y coordinate by
+        adding scroll_offset.y, then returns the matching content strip (or
+        blank). This is the canonical Line-API pattern that makes scrolling
+        actually work for a non-container widget.
+        """
+        width = self.scrollable_content_region.width or self.size.width
+        scroll_x, scroll_y = self.scroll_offset
+        line_index = scroll_y + y
+
+        if line_index < 0 or line_index >= len(self._content_strips):
+            return Strip.blank(width, self.rich_style)
+
+        strip = self._content_strips[line_index]
+        return strip.crop_extend(scroll_x, scroll_x + width, self.rich_style)
+
+    def _rebuild_strips(self, text: Text) -> None:
+        """Render Rich Text into Strip objects at the current content width."""
+        width = self.scrollable_content_region.width or self.size.width or 1
+        if width != self._render_width:
+            self._render_width = width
+        segments = self.app.console.render(text, self.app.console.options.update_width(width))
+        lines = list(Segment.split_lines(segments))
+        self._content_strips = [Strip(line).adjust_cell_length(width) for line in lines]
+        self.virtual_size = Size(width, max(1, len(self._content_strips)))
+
+    def on_resize(self, event: events.Resize) -> None:
+        new_width = self.scrollable_content_region.width or self.size.width
+        if new_width != self._render_width and self._last_text is not None:
+            self._rebuild_strips(self._last_text)
+            self.refresh()
 
     def update_detail(self, state: ComponentEditorState) -> None:
         """Render full component detail for the current song + selected role."""
@@ -92,8 +140,10 @@ class ComponentDetailPanel(Static):
         if comp is None:
             label = ROLE_LABELS.get(role, role.upper())
             text.append(f"\n[No {label} component]\n", style="red italic")
-            self.update(text)
-            self.scroll_home(animate=False)
+            self._last_text = text
+            self._rebuild_strips(text)
+            self.scroll_to(y=0, animate=False, immediate=True, force=True)
+            self.refresh()
             return
 
         text.append("\n")
@@ -104,11 +154,6 @@ class ComponentDetailPanel(Static):
         detail_fields = [
             ("Type", comp.component_type),
             ("Occurrence", str(comp.occurrence_index)),
-            (
-                "Start",
-                format_duration(comp.start_time) if comp.start_time is not None else None,
-            ),
-            ("End", format_duration(comp.end_time) if comp.end_time is not None else None),
             ("BPM", f"{comp.bpm:.4g}" if comp.bpm is not None else None),
             ("Key", comp.key),
             ("Confidence", f"{comp.confidence:.4g}" if comp.confidence is not None else None),
@@ -132,6 +177,14 @@ class ComponentDetailPanel(Static):
             if field_name in ("theme", "vocal_posture"):
                 hint = " [◄ ►]"
                 value_str = str(value) if value else "—"
+            elif field_name in ("start_time", "end_time"):
+                hint = " [e]"
+                if isinstance(value, (int, float)):
+                    value_str = format_duration(float(value))
+                elif value:
+                    value_str = str(value)
+                else:
+                    value_str = "—"
             else:
                 hint = " [e]"
                 if isinstance(value, (int, float)):
@@ -188,8 +241,10 @@ class ComponentDetailPanel(Static):
         text.append(f"  {'Updated':12s}: ", style="dim")
         text.append(f"{_format_timestamp(comp.updated_at)}\n")
 
-        self.update(text)
-        self.scroll_home(animate=False)
+        self._last_text = text
+        self._rebuild_strips(text)
+        self.scroll_to(y=0, animate=False, immediate=True, force=True)
+        self.refresh()
 
     def move_focus_up(self) -> None:
         if self._focus_idx > 0:
@@ -207,16 +262,17 @@ class ComponentDetailPanel(Static):
         """Return the 0-based line index of the given editable field's value
         within the rendered text. Used by the screen to position the Input overlay.
 
-        New layout (v2):
+        Layout (with start_time/end_time added to EDITABLE_FIELDS and removed
+        from base metadata):
         - 1 (Song header) + 6 (song fields) = 7
         - 1 (blank) = 8
-        - 1 (Component header) + 8 (base-metadata fields) = 17
-        - 1 (blank) = 18
-        - 1 (Editable sub-header) = 19
+        - 1 (Component header) + 6 (base-metadata fields) = 15
+        - 1 (blank) = 16
+        - 1 (Editable sub-header) = 17
         - + index of field in EDITABLE_FIELDS = target line
         """
         try:
             field_idx = EDITABLE_FIELDS.index(field)
         except ValueError:
             return 0
-        return 19 + field_idx
+        return 17 + field_idx

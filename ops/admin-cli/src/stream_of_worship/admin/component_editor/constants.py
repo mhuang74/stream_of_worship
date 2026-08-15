@@ -23,14 +23,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from stream_of_worship.admin.db.models import SongComponent
 
-# 4 user-editable columns (subset of song_components). Order matters:
+# User-editable columns (subset of song_components). Order matters:
 # theme / vocal_posture are enums (cycle with [ / ]).
-# groove_density / energy_level are floats (numeric input overlay).
+# groove_density / energy_level / start_time / end_time are numeric (input overlay).
 EDITABLE_FIELDS: tuple[str, ...] = (
     "theme",
     "vocal_posture",
     "groove_density",
     "energy_level",
+    "start_time",
+    "end_time",
 )
 
 # The 12-theme vocabulary (must match db/schema.py CHECK constraint).

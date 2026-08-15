@@ -35,7 +35,14 @@ _VALID_VISIBILITY_STATUSES = {"published", "review", "hold"}
 # Whitelist of song_components columns that the Component Metadata editor TUI
 # is allowed to UPDATE. Enforced by update_song_component_fields[_txn].
 ALLOWED_COMPONENT_FIELDS: frozenset[str] = frozenset(
-    {"theme", "vocal_posture", "groove_density", "energy_level"}
+    {
+        "theme",
+        "vocal_posture",
+        "groove_density",
+        "energy_level",
+        "start_time",
+        "end_time",
+    }
 )
 
 

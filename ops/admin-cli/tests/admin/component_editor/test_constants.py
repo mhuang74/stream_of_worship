@@ -41,9 +41,13 @@ class TestDataTableColumns:
                 ), f"Editable field '{key}' must be in transition-cluster, got '{cluster}'"
 
     def test_editable_fields_at_positions_7_to_10(self):
-        """The 4 editable fields should be at positions 7-10 (0-indexed)."""
+        """The 4 table-editable fields should be at positions 7-10 (0-indexed).
+
+        EDITABLE_FIELDS is a superset of the table's editable columns: it also
+        includes start_time/end_time (editable only in the Detail Panel).
+        """
         editable_keys = [key for key, _, editable, _ in DATA_TABLE_COLUMNS if editable]
-        assert set(editable_keys) == set(EDITABLE_FIELDS)
+        assert set(editable_keys).issubset(set(EDITABLE_FIELDS))
         assert len(editable_keys) == 4
 
     def test_no_confidence_column_before_editable_fields(self):

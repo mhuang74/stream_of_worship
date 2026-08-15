@@ -152,14 +152,9 @@ def _make_app(
 
 
 def _detail_text(app: ComponentEditorApp) -> str:
-    """Extract plain text from the detail panel."""
+    """Extract plain text from the detail panel (strip-based rendering)."""
     panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
-    content = panel.content
-    if content is None:
-        return ""
-    if hasattr(content, "plain"):
-        return content.plain
-    return str(content)
+    return "\n".join(strip.text for strip in panel._content_strips)
 
 
 # =============================================================================
@@ -282,24 +277,166 @@ async def test_lifecycle_timestamps_none_shows_dash(tmp_path):
 
 def test_get_editable_field_line_offset_theme():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("theme") == 19
+    assert panel.get_editable_field_line_offset("theme") == 17
 
 
 def test_get_editable_field_line_offset_vocal_posture():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("vocal_posture") == 20
+    assert panel.get_editable_field_line_offset("vocal_posture") == 18
 
 
 def test_get_editable_field_line_offset_groove_density():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("groove_density") == 21
+    assert panel.get_editable_field_line_offset("groove_density") == 19
 
 
 def test_get_editable_field_line_offset_energy_level():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("energy_level") == 22
+    assert panel.get_editable_field_line_offset("energy_level") == 20
+
+
+def test_get_editable_field_line_offset_start_time():
+    panel = ComponentDetailPanel()
+    assert panel.get_editable_field_line_offset("start_time") == 21
+
+
+def test_get_editable_field_line_offset_end_time():
+    panel = ComponentDetailPanel()
+    assert panel.get_editable_field_line_offset("end_time") == 22
 
 
 def test_get_editable_field_line_offset_unknown_field():
     panel = ComponentDetailPanel()
     assert panel.get_editable_field_line_offset("nonexistent") == 0
+
+
+# =============================================================================
+# Editable start_time / end_time rendering
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_start_end_time_in_editable_section(tmp_path):
+    """start_time / end_time appear in the Editable sub-section."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        app.screen._right_panel_mode = "details"
+        app.screen._active_panel = "right"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        rendered = _detail_text(app)
+        editable_idx = rendered.find("-- Editable --")
+        editable_section = rendered[editable_idx:]
+        assert "start_time" in editable_section
+        assert "end_time" in editable_section
+
+
+@pytest.mark.asyncio
+async def test_start_end_time_formatted_as_duration(tmp_path):
+    """start_time / end_time values render as MM:SS durations."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        app.screen._right_panel_mode = "details"
+        app.screen._active_panel = "right"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        rendered = _detail_text(app)
+        # _make_component default start_time=10.0 -> 0:10, end_time=20.0 -> 0:20
+        assert "0:10" in rendered
+        assert "0:20" in rendered
+
+
+@pytest.mark.asyncio
+async def test_base_metadata_no_longer_has_start_end(tmp_path):
+    """Base metadata section no longer contains 'Start:' and 'End:' lines."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        app.screen._right_panel_mode = "details"
+        app.screen._active_panel = "right"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        rendered = _detail_text(app)
+        comp_idx = rendered.find("-- Component")
+        editable_idx = rendered.find("-- Editable --")
+        base_section = rendered[comp_idx:editable_idx]
+        assert "Start:" not in base_section
+        assert "End:" not in base_section
+
+
+# =============================================================================
+# ScrollView (strip-based) rendering
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_is_scrollview():
+    """ComponentDetailPanel is a ScrollView subclass."""
+    from textual.scroll_view import ScrollView
+
+    assert issubclass(ComponentDetailPanel, ScrollView)
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_content_strips_populated(tmp_path):
+    """content_strips are populated after update_detail."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        app.screen._right_panel_mode = "details"
+        app.screen._active_panel = "right"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        assert len(panel._content_strips) > 0
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_virtual_size_exceeds_viewport(tmp_path):
+    """virtual_size.height exceeds viewport when content is long."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        app.screen._right_panel_mode = "details"
+        app.screen._active_panel = "right"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        assert panel.virtual_size.height > 0
+        assert panel.virtual_size.height > panel.size.height
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_render_line_returns_strip(tmp_path):
+    """render_line returns a Strip for a valid y coordinate."""
+    from textual.strip import Strip
+
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        app.screen._right_panel_mode = "details"
+        app.screen._active_panel = "right"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        strip = panel.render_line(0)
+        assert isinstance(strip, Strip)
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_scrolls_when_content_exceeds_viewport(tmp_path):
+    """Scrolling down shifts the visible content."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        app.screen._right_panel_mode = "details"
+        app.screen._active_panel = "right"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        assert panel.scroll_y == 0
+        panel.scroll_down(animate=False, immediate=True, force=True)
+        await pilot.pause()
+        assert panel.scroll_y == 1
