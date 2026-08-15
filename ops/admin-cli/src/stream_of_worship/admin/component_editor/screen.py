@@ -62,8 +62,10 @@ from stream_of_worship.admin.component_editor.constants import (
     HERO_PRIMARY_FIELDS,
     HERO_REASONING_FIELDS,
     HERO_SONG_INFO_FIELDS,
+    ROLE_LABELS,
     THEME_VALUES,
     VOCAL_POSTURE_VALUES,
+    identify_editor_role,
 )
 from stream_of_worship.admin.component_editor.detail_panel import ComponentDetailPanel
 from stream_of_worship.admin.component_editor.lrc_fetch import (
@@ -77,6 +79,7 @@ from stream_of_worship.admin.component_editor.state import (
     SongSession,
 )
 from stream_of_worship.admin.db.client import DatabaseClient
+from stream_of_worship.admin.db.models import SongComponent
 from stream_of_worship.admin.editor.footer import GroupedFooter, format_key_display
 from stream_of_worship.admin.services.lrc_parser import format_duration, parse_lrc_full
 from stream_of_worship.admin.services.playback import PlaybackService, PlaybackState
@@ -191,12 +194,18 @@ class ComponentHeroPanel(Static):
     def render_panel(self, state: ComponentEditorState) -> None:
         session = state.current
         comp = state.get_selected_component()
-        role = "entry" if state.selected_row == 0 else "exit"
+        roles = session.ordered_component_roles
+        if roles:
+            idx = max(0, min(state.selected_row, len(roles) - 1))
+            editor_role = roles[idx]
+        else:
+            editor_role = "entry"
+        label = ROLE_LABELS.get(editor_role, editor_role.upper())
 
         if comp is None:
             self.update(
                 Text(
-                    f"No {role} Chorus component — run `sow-admin audio "
+                    f"No {label} component — run `sow-admin audio "
                     f"components {session.song_id}` first",
                     style="dim italic",
                 )
@@ -205,8 +214,8 @@ class ComponentHeroPanel(Static):
 
         t = Text()
         # Row 1: header.
-        header_style = "bold cyan" if role == "entry" else "bold magenta"
-        t.append(f"▶ {role.upper()} CHORUS", style=header_style)
+        header_style = "bold cyan" if editor_role == "entry" else "bold magenta"
+        t.append(f"▶ {label}", style=header_style)
         t.append(
             f"  —  Occurrence {comp.occurrence_index}  —  "
             f"[{_fmt_time(comp.start_time)} → {_fmt_time(comp.end_time)}]",
@@ -230,7 +239,7 @@ class ComponentHeroPanel(Static):
         # Row 3: primary transition metrics.
         primary_parts = []
         for field_name, label, fmt in HERO_PRIMARY_FIELDS:
-            v = state.get_value(role, field_name)
+            v = state.get_value(editor_role, field_name)
             if v is None:
                 txt = "—"
             elif fmt:
@@ -245,8 +254,8 @@ class ComponentHeroPanel(Static):
         t.append("\n")
 
         # Row 4: editable theme + vocal_posture (accent).
-        theme_v = state.get_value(role, "theme") or "—"
-        posture_v = state.get_value(role, "vocal_posture") or "—"
+        theme_v = state.get_value(editor_role, "theme") or "—"
+        posture_v = state.get_value(editor_role, "vocal_posture") or "—"
         t.append(
             f"    Theme: {theme_v}    Vocal posture: {posture_v}",
             style="bold yellow",
@@ -422,8 +431,8 @@ class ComponentEditorScreen(Screen[None]):
         # Right panel cycle (v6 NEW)
         Binding("v", "cycle_right_panel", "View"),
         # Panel navigation
-        Binding("tab", "cycle_panel_next", "Panel →"),
-        Binding("shift+tab", "cycle_panel_prev", "Panel ←"),
+        Binding("tab", "cycle_panel_next", "Panel →", priority=True),
+        Binding("shift+tab", "cycle_panel_prev", "Panel ←", priority=True),
         # Edit (only when right panel in details mode AND focused)
         Binding("bracketleft", "cycle_field_prev", "Cycle −"),
         Binding("bracketright", "cycle_field_next", "Cycle +"),
@@ -565,10 +574,11 @@ class ComponentEditorScreen(Screen[None]):
     def _refresh_table(self) -> None:
         table = self.query_one("#component-table", DataTable)
         table.clear()
-        for role in ("entry", "exit"):
-            row_values = [self._cell_value(role, key) for key, _ in COMPACT_TABLE_COLUMNS]
-            table.add_row(*row_values, key=role)
-        row = max(0, min(self.state.selected_row, 1))
+        session = self.state.current
+        for editor_role in session.ordered_component_roles:
+            row_values = [self._cell_value(editor_role, key) for key, _ in COMPACT_TABLE_COLUMNS]
+            table.add_row(*row_values, key=editor_role)
+        row = max(0, min(self.state.selected_row, max(0, len(session.ordered_component_roles) - 1)))
         try:
             table.move_cursor(row=row, scroll=True)
         except Exception:  # noqa: BLE001 S110
@@ -586,8 +596,13 @@ class ComponentEditorScreen(Screen[None]):
         except StopIteration:
             return
         value = self._cell_value(role, field_name)
+        roles = self.state.current.ordered_component_roles
         try:
-            table.update_cell_at(Coordinate(0 if role == "entry" else 1, col_idx), value)
+            row_idx = roles.index(role)
+        except ValueError:
+            return
+        try:
+            table.update_cell_at(Coordinate(row_idx, col_idx), value)
         except Exception:  # noqa: BLE001 S110
             pass
 
@@ -738,8 +753,13 @@ class ComponentEditorScreen(Screen[None]):
 
     # --- Selection helpers ---
 
-    def _selected_role(self) -> str:
-        return "entry" if self.state.selected_row == 0 else "exit"
+    def _selected_editor_role(self) -> str:
+        """Return the editor-level role key for the currently highlighted table row."""
+        roles = self.state.current.ordered_component_roles
+        if not roles:
+            return "entry"
+        idx = max(0, min(self.state.selected_row, len(roles) - 1))
+        return roles[idx]
 
     def _selected_field_key(self) -> str:
         """Return the field key for the current cursor column (retained for
@@ -756,7 +776,8 @@ class ComponentEditorScreen(Screen[None]):
         cursor_row = table.cursor_row
         if cursor_row is None:
             return
-        if 0 <= cursor_row <= 1:
+        max_row = max(0, len(self.state.current.ordered_component_roles) - 1)
+        if 0 <= cursor_row <= max_row:
             self.state.selected_row = cursor_row
         # Also trigger detail panel + hero refresh
         self._refresh_detail_panel()
@@ -795,7 +816,7 @@ class ComponentEditorScreen(Screen[None]):
 
     def _guard_no_component(self) -> bool:
         """Return True (and bell) if the selected role has no component row."""
-        role = self._selected_role()
+        role = self._selected_editor_role()
         comp = self.state.current.component_for_role(role)
         if comp is None:
             self.app.bell()
@@ -1036,13 +1057,17 @@ class ComponentEditorScreen(Screen[None]):
             right_panel.display = True
             lyrics.display = True
             details.display = False
+            self._active_panel = "right"
             self._refresh_lyrics_panel()
+            lyrics.focus()
         elif self._right_panel_mode == "details":
             left_panel.remove_class("dismissed-right")
             right_panel.display = True
             lyrics.display = False
             details.display = True
+            self._active_panel = "right"
             self._refresh_detail_panel()
+            details.focus()
 
     # --- Panel navigation (v6) ---
 
@@ -1212,7 +1237,7 @@ class ComponentEditorScreen(Screen[None]):
         if field not in ("theme", "vocal_posture"):
             return
 
-        role = self._selected_role()
+        role = self._selected_editor_role()
         values = THEME_VALUES if field == "theme" else VOCAL_POSTURE_VALUES
         current = self.state.get_value(role, field)
         try:
@@ -1240,7 +1265,7 @@ class ComponentEditorScreen(Screen[None]):
         if field not in ("theme", "vocal_posture"):
             return
 
-        role = self._selected_role()
+        role = self._selected_editor_role()
         values = THEME_VALUES if field == "theme" else VOCAL_POSTURE_VALUES
         current = self.state.get_value(role, field)
         try:
@@ -1268,7 +1293,7 @@ class ComponentEditorScreen(Screen[None]):
         if field not in ("groove_density", "energy_level"):
             return
 
-        role = self._selected_role()
+        role = self._selected_editor_role()
         current = self.state.get_value(role, field)
         initial = "" if current is None else f"{current:.4g}"
         self._show_value_edit_input(role=role, field=field, initial_text=initial)
@@ -1309,10 +1334,10 @@ class ComponentEditorScreen(Screen[None]):
             self.app.bell()
             return
 
-        # 1. Collect dirty edits grouped by component (entry / exit).
-        updates_by_role: dict[str, dict[str, Any]] = {"entry": {}, "exit": {}}
+        # 1. Collect dirty edits grouped by component (entry / exit / verse1 / bridge).
+        updates_by_role: dict[str, dict[str, Any]] = {}
         for (role, field), value in session.working.items():
-            updates_by_role[role][field] = value
+            updates_by_role.setdefault(role, {})[field] = value
 
         # 2. Write DB (targeted UPDATE per component, single transaction).
         try:
@@ -1372,11 +1397,10 @@ class ComponentEditorScreen(Screen[None]):
                 "component_source": "user_review_components",
                 "components": [],
             }
-            for role in ("entry", "exit"):
-                comp = session.component_for_role(role)
-                if comp is None:
-                    continue
-                payload["components"].append(comp.to_dict())
+            for editor_role in session.ordered_component_roles:
+                comp = session.component_for_role(editor_role)
+                if comp is not None:
+                    payload["components"].append(comp.to_dict())
 
         # C5 fix (soft): stale-revision guard.
         existing_hash = payload.get("content_hash") if isinstance(payload, dict) else None
@@ -1392,12 +1416,16 @@ class ComponentEditorScreen(Screen[None]):
 
         components = payload.get("components", [])
         for comp_dict in components:
-            role = comp_dict.get("role")
-            if role not in ("entry", "exit"):
-                continue
-            fields = updates_by_role.get(role, {})
-            for field, value in fields.items():
-                comp_dict[field] = value
+            temp_comp = SongComponent(
+                component_type=comp_dict.get("component_type", ""),
+                occurrence_index=comp_dict.get("occurrence_index", 1),
+                role=comp_dict.get("role", "none"),
+            )
+            editor_role = identify_editor_role(temp_comp)
+            if editor_role and editor_role in updates_by_role:
+                fields = updates_by_role[editor_role]
+                for field, value in fields.items():
+                    comp_dict[field] = value
 
         try:
             self.r2_client.upload_component_result(hash_prefix, payload)
@@ -1408,12 +1436,17 @@ class ComponentEditorScreen(Screen[None]):
         return True
 
     def _reload_components_from_db(self, session: SongSession) -> None:
-        """Replace session.entry_component / exit_component with refreshed
-        SongComponent objects reflecting the just-persisted DB values.
+        """Replace session components with refreshed SongComponent objects
+        reflecting the just-persisted DB values.
         """
-        entry, exit_comp = self.db_client.get_song_components_entry_exit(session.song_id)
-        session.entry_component = entry
-        session.exit_component = exit_comp
+        all_components = self.db_client.get_song_components(session.song_id)
+        for comp in all_components:
+            editor_role = identify_editor_role(comp)
+            if editor_role:
+                session.components[editor_role] = comp
+        # Update legacy fields
+        session.entry_component = session.components.get("entry")
+        session.exit_component = session.components.get("exit")
 
     def action_show_keymap(self) -> None:
         if self._is_edit_active():

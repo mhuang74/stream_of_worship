@@ -93,6 +93,7 @@ def _make_session(
         hash_prefix="abc123def456",
         audio_path="/tmp/audio.mp3",
         audio_duration=180.0,
+        components={"entry": entry, "exit": exit_comp},
         entry_component=entry,
         exit_component=exit_comp,
     )
@@ -151,23 +152,23 @@ class TestComponentHeroPanel:
 
     @pytest.mark.asyncio
     async def test_none_component_shows_missing_message(self, tmp_path):
-        entry = _make_component("entry", cid=1)
         session = SongSession(
             song_id="song_001",
             song_title="Test Song",
             hash_prefix="abc123def456",
             audio_path="/tmp/audio.mp3",
             audio_duration=180.0,
-            entry_component=entry,
+            components={},
+            entry_component=None,
             exit_component=None,
         )
         app, state = _make_app(sessions=[session], cache_dir=tmp_path)
         async with app.run_test(size=(160, 30)) as pilot:
             await pilot.pause()
-            state.selected_row = 1  # exit is None
+            state.selected_row = 0
             app.screen._refresh_hero()
             await pilot.pause()
-            assert "No exit Chorus component" in _hero_text(app)
+            assert "No ENTRY CHORUS component" in _hero_text(app)
 
     @pytest.mark.asyncio
     async def test_primary_row_contains_bpm(self, tmp_path):

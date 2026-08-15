@@ -35,13 +35,16 @@ class SongSession:
     hash_prefix: str
     audio_path: str
     audio_duration: float | None
-    entry_component: SongComponent | None
-    exit_component: SongComponent | None
+    # v7: all essential components (entry, exit, verse1, bridge)
+    components: dict[str, SongComponent | None] = field(default_factory=dict)
+    # Legacy accessors for backward compat (first_content_hash, R2 payload synthesis)
+    entry_component: SongComponent | None = None
+    exit_component: SongComponent | None = None
     # Full Song object for the detail panel (title, artist, album, etc.).
     # None when the song was not loaded (e.g. legacy callers).
     song: Song | None = None
     # Working copy of editable field values: keyed by (role, field) -> value
-    # role in {"entry", "exit"}; field in EDITABLE_FIELDS
+    # role in {"entry", "exit", "verse1", "bridge"}; field in EDITABLE_FIELDS
     working: dict[tuple[str, str], Any] = field(default_factory=dict)
     dirty: bool = False
     # Indicates the last save partially failed (DB committed, R2 did not).
@@ -50,8 +53,37 @@ class SongSession:
     # retrying 's'.
     r2_save_pending: bool = False
 
-    def component_for_role(self, role: str) -> SongComponent | None:
-        return self.entry_component if role == "entry" else self.exit_component
+    def __post_init__(self) -> None:
+        """Sync legacy fields from components dict if not explicitly set."""
+        if self.components:
+            if self.entry_component is None and "entry" in self.components:
+                self.entry_component = self.components["entry"]
+            if self.exit_component is None and "exit" in self.components:
+                self.exit_component = self.components["exit"]
+        else:
+            # Backward compat: if components is empty but legacy fields are set,
+            # populate components from them.
+            if self.entry_component is not None:
+                self.components["entry"] = self.entry_component
+            if self.exit_component is not None:
+                self.components["exit"] = self.exit_component
+
+    def component_for_role(self, editor_role: str) -> SongComponent | None:
+        """Return the component for an editor-level role key."""
+        return self.components.get(editor_role)
+
+    @property
+    def ordered_component_roles(self) -> list[str]:
+        """Roles that have a non-None component, in canonical display order."""
+        from stream_of_worship.admin.component_editor.constants import (
+            ESSENTIAL_COMPONENT_SLOTS,
+        )
+
+        return [
+            role
+            for role, _, _ in ESSENTIAL_COMPONENT_SLOTS
+            if self.components.get(role) is not None
+        ]
 
 
 @dataclass
@@ -157,7 +189,11 @@ class ComponentEditorState:
 
     def get_selected_component(self) -> SongComponent | None:
         """Return the SongComponent that the currently-highlighted table row
-        points at (entry if selected_row == 0 else exit).
+        points at, using dynamic role lookup based on the session's component
+        list.
         """
-        role = "entry" if self.selected_row == 0 else "exit"
-        return self.current.component_for_role(role)
+        roles = self.current.ordered_component_roles
+        if not roles:
+            return None
+        idx = max(0, min(self.selected_row, len(roles) - 1))
+        return self.current.component_for_role(roles[idx])
