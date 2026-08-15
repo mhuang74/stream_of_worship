@@ -345,7 +345,13 @@ async def test_up_down_noop_in_hidden_mode():
 
 @pytest.mark.asyncio
 async def test_up_down_scrolls_lyrics_in_lyrics_mode():
-    """Up/Down actions scroll lyrics panel when right panel is in lyrics mode."""
+    """Up/Down keys scroll lyrics panel when right panel is in lyrics mode.
+
+    LyricsPanel inherits ScrollableContainer's up/down bindings
+    (scroll_up/scroll_down) for line-by-line scroll. The screen-level
+    action_detail_focus_up/down are now no-ops (field navigation is handled
+    by ComponentDetailPanel's own bindings).
+    """
     app, _state = _make_app()
     async with app.run_test(size=(80, 20)) as pilot:
         await pilot.pause()
@@ -355,9 +361,13 @@ async def test_up_down_scrolls_lyrics_in_lyrics_mode():
         # Set to lyrics mode + right panel focused
         app.screen._active_panel = "right"
         app.screen._right_panel_mode = "lyrics"
-        app.screen.action_detail_focus_down()
+        panel.focus()
+        await pilot.pause()
+        await pilot.press("down")
+        await pilot.pause()
         assert panel.scroll_y == initial_scroll + 1
-        app.screen.action_detail_focus_up()
+        await pilot.press("up")
+        await pilot.pause()
         assert panel.scroll_y == initial_scroll
 
 

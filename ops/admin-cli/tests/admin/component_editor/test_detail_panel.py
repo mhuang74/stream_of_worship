@@ -440,3 +440,220 @@ async def test_detail_panel_scrolls_when_content_exceeds_viewport(tmp_path):
         panel.scroll_down(animate=False, immediate=True, force=True)
         await pilot.pause()
         assert panel.scroll_y == 1
+
+
+# =============================================================================
+# Field navigation (Up/Down) + scroll-into-view (v1 spec)
+# =============================================================================
+
+
+def _focus_detail_panel(app) -> None:
+    app.screen._right_panel_mode = "details"
+    app.screen._active_panel = "right"
+    app.screen._apply_right_panel_mode()
+    app.screen.query_one("#detail-panel", ComponentDetailPanel).focus()
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_down_arrow_moves_focus(tmp_path):
+    """Pressing Down on focused ComponentDetailPanel increments _focus_idx
+    and re-renders with the marker on the next field."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        assert panel._focus_idx == 0
+        await pilot.press("down")
+        await pilot.pause()
+        assert panel._focus_idx == 1
+        assert panel.focused_field == "vocal_posture"
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_up_arrow_moves_focus(tmp_path):
+    """Pressing Up on focused ComponentDetailPanel decrements _focus_idx
+    and re-renders with the marker on the previous field."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        panel._focus_idx = 2
+        await pilot.press("up")
+        await pilot.pause()
+        assert panel._focus_idx == 1
+        assert panel.focused_field == "vocal_posture"
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_focus_clamps_at_bounds(tmp_path):
+    """Down past the last field stays at the last field; Up before the first
+    does nothing."""
+    from stream_of_worship.admin.component_editor.constants import EDITABLE_FIELDS
+
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        # Down past last field
+        panel._focus_idx = len(EDITABLE_FIELDS) - 1
+        await pilot.press("down")
+        await pilot.pause()
+        assert panel._focus_idx == len(EDITABLE_FIELDS) - 1
+        # Up before first field
+        panel._focus_idx = 0
+        await pilot.press("up")
+        await pilot.pause()
+        assert panel._focus_idx == 0
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_update_detail_default_resets_scroll(tmp_path):
+    """Calling update_detail(state) with defaults scrolls to top."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        panel.scroll_to(y=5, animate=False, immediate=True, force=True)
+        await pilot.pause()
+        assert panel.scroll_y == 5
+        panel.update_detail(_state)
+        await pilot.pause()
+        assert panel.scroll_y == 0
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_update_detail_preserve_scroll(tmp_path):
+    """Calling update_detail(state, reset_scroll=False) preserves current
+    scroll_y value."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        panel.scroll_to(y=5, animate=False, immediate=True, force=True)
+        await pilot.pause()
+        assert panel.scroll_y == 5
+        panel.update_detail(_state, reset_scroll=False)
+        await pilot.pause()
+        assert panel.scroll_y == 5
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_scroll_into_view_when_field_below(tmp_path):
+    """When _focus_idx moves to a field whose content-line offset is below
+    the viewport, scroll_y advances so the field is visible."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        # Move focus to end_time (line offset 22), well below a 10-line viewport.
+        panel._focus_idx = 5
+        panel._rebuild_after_focus_change()
+        await pilot.pause()
+        target = panel.get_editable_field_line_offset("end_time")
+        assert panel.scroll_y <= target < panel.scroll_y + panel.size.height
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_scroll_into_view_when_field_above(tmp_path):
+    """When _focus_idx moves to a field whose content-line offset is above
+    the viewport, scroll_y retreats so the field is visible."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        # Scroll far down, then focus the first field (line offset 17).
+        panel.scroll_to(y=30, animate=False, immediate=True, force=True)
+        await pilot.pause()
+        panel._focus_idx = 0
+        panel._rebuild_after_focus_change()
+        await pilot.pause()
+        target = panel.get_editable_field_line_offset("theme")
+        assert panel.scroll_y <= target < panel.scroll_y + panel.size.height
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_scroll_into_view_noop_when_visible(tmp_path):
+    """When _focus_idx moves to a field already within the viewport,
+    scroll_y is unchanged."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        panel.scroll_to(y=0, animate=False, immediate=True, force=True)
+        await pilot.pause()
+        before = panel.scroll_y
+        panel._focus_idx = 1
+        panel._rebuild_after_focus_change()
+        await pilot.pause()
+        assert panel.scroll_y == before
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_pageup_pagedown_scroll_without_focus_change(tmp_path):
+    """PgUp/PgDown change scroll_y without mutating _focus_idx."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        panel._focus_idx = 2
+        await pilot.press("pagedown")
+        await pilot.pause()
+        assert panel.scroll_y > 0
+        assert panel._focus_idx == 2
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_inherited_home_end_scroll(tmp_path):
+    """Home scrolls to top; End scrolls to bottom. _focus_idx unchanged."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        panel._focus_idx = 3
+        panel.scroll_to(y=5, animate=False, immediate=True, force=True)
+        await pilot.pause()
+        await pilot.press("home")
+        await pilot.pause()
+        assert panel.scroll_y == 0
+        assert panel._focus_idx == 3
+        await pilot.press("end")
+        await pilot.pause()
+        assert panel.scroll_y > 0
+        assert panel._focus_idx == 3
+
+
+@pytest.mark.asyncio
+async def test_action_detail_focus_up_is_noop_now(tmp_path):
+    """Screen-level action_detail_focus_up does not raise when invoked;
+    field navigation is handled by the panel's own bindings."""
+    app, _state = _make_app(cache_dir=tmp_path)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        _focus_detail_panel(app)
+        await pilot.pause()
+        panel = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        panel._focus_idx = 2
+        app.screen.action_detail_focus_up()
+        await pilot.pause()
+        # No-op: focus index unchanged
+        assert panel._focus_idx == 2

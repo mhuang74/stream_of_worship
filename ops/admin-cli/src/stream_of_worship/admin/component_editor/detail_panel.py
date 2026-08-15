@@ -5,10 +5,12 @@ editable field navigation.
 """
 
 from datetime import UTC, datetime
+from typing import ClassVar
 
 from rich.segment import Segment
 from rich.text import Text
 from textual import events
+from textual.binding import Binding
 from textual.geometry import Size
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
@@ -64,12 +66,22 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
     }
     """
 
+    # Reclaim Up/Down for editable-field focus navigation. This overrides the
+    # inherited ScrollableContainer up/down (scroll_up/scroll_down) bindings.
+    # Other inherited keys (pageup, pagedown, home, end, ctrl+pageup,
+    # ctrl+pagedown, left, right) remain and provide free-scroll navigation.
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("up", "focus_up", "Field ↑", show=False),
+        Binding("down", "focus_down", "Field ↓", show=False),
+    ]
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._focus_idx: int = 0
         self._content_strips: list[Strip] = []
         self._render_width: int = 0
         self._last_text: Text | None = None
+        self._last_state: ComponentEditorState | None = None
 
     # ------------------------------------------------------------------
     # Line-API rendering (the scroll fix)
@@ -109,8 +121,16 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
             self._rebuild_strips(self._last_text)
             self.refresh()
 
-    def update_detail(self, state: ComponentEditorState) -> None:
-        """Render full component detail for the current song + selected role."""
+    def update_detail(self, state: ComponentEditorState, reset_scroll: bool = True) -> None:
+        """Render full component detail for the current song + selected role.
+
+        Args:
+            state: The current editor state snapshot.
+            reset_scroll: When True (default), reset scroll to the top after
+                rendering. When False, preserve the current scroll position
+                (used by focus-move navigation so the viewport doesn't jump).
+        """
+        self._last_state = state
         session = state.current
         roles = session.ordered_component_roles
         if roles:
@@ -142,7 +162,8 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
             text.append(f"\n[No {label} component]\n", style="red italic")
             self._last_text = text
             self._rebuild_strips(text)
-            self.scroll_to(y=0, animate=False, immediate=True, force=True)
+            if reset_scroll:
+                self.scroll_to(y=0, animate=False, immediate=True, force=True)
             self.refresh()
             return
 
@@ -243,7 +264,8 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
 
         self._last_text = text
         self._rebuild_strips(text)
-        self.scroll_to(y=0, animate=False, immediate=True, force=True)
+        if reset_scroll:
+            self.scroll_to(y=0, animate=False, immediate=True, force=True)
         self.refresh()
 
     def move_focus_up(self) -> None:
@@ -257,6 +279,45 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
     @property
     def focused_field(self) -> str:
         return EDITABLE_FIELDS[self._focus_idx]
+
+    def action_focus_up(self) -> None:
+        """Handle Up arrow: move focus to previous editable field, re-render
+        with new highlight, and bring focused field into view."""
+        self.move_focus_up()
+        self._rebuild_after_focus_change()
+
+    def action_focus_down(self) -> None:
+        """Handle Down arrow: move focus to next editable field, re-render
+        with new highlight, and bring focused field into view."""
+        self.move_focus_down()
+        self._rebuild_after_focus_change()
+
+    def _rebuild_after_focus_change(self) -> None:
+        """Rebuild strips with current _focus_idx (new highlight marker) without
+        changing scroll position; then bring the focused field into view."""
+        if self._last_state is None:
+            return
+        self.update_detail(self._last_state, reset_scroll=False)
+        self._scroll_focused_into_view()
+
+    def _scroll_focused_into_view(self) -> None:
+        """Bring the focused editable field line into view (minimum scroll).
+
+        Mirrors Textual's scroll-into-view semantics for focused widgets: only
+        scroll if the target is outside the current viewport; never re-center.
+        """
+        field = self.focused_field
+        target_y = self.get_editable_field_line_offset(field)
+        viewport_h = self.size.height
+        if viewport_h <= 0:
+            return
+        scroll_y = self.scroll_y
+        if target_y < scroll_y:
+            self.scroll_to(y=target_y, animate=False, immediate=True, force=True)
+        elif target_y >= scroll_y + viewport_h:
+            new_y = target_y - viewport_h + 1
+            max_y = max(0, self.virtual_size.height - viewport_h)
+            self.scroll_to(y=min(new_y, max_y), animate=False, immediate=True, force=True)
 
     def get_editable_field_line_offset(self, field: str) -> int:
         """Return the 0-based line index of the given editable field's value
