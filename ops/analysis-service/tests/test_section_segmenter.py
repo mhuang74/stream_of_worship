@@ -86,7 +86,7 @@ class TestParseSegmenterJson:
                 {"label": "chorus", "line_start": 3, "line_end": 4, "confidence": 0.95},
             ]
         })
-        sections = _parse_segmenter_json(response, n_lines=4)
+        sections, breakdown = _parse_segmenter_json(response, n_lines=4)
         assert sections is not None
         assert len(sections) == 2
         assert sections[0].label == "verse"
@@ -102,7 +102,9 @@ class TestParseSegmenterJson:
                 {"label": "chorus", "line_start": 3, "line_end": 4},
             ]
         })
-        assert _parse_segmenter_json(response, n_lines=4) is None
+        sections, breakdown = _parse_segmenter_json(response, n_lines=4)
+        assert sections is None
+        assert "overlap" in breakdown
 
     def test_rejects_oob(self):
         response = json.dumps({
@@ -110,7 +112,9 @@ class TestParseSegmenterJson:
                 {"label": "chorus", "line_start": 1, "line_end": 10},
             ]
         })
-        assert _parse_segmenter_json(response, n_lines=5) is None
+        sections, breakdown = _parse_segmenter_json(response, n_lines=5)
+        assert sections is None
+        assert "out of range" in breakdown
 
     def test_rejects_bad_label(self):
         response = json.dumps({
@@ -118,7 +122,9 @@ class TestParseSegmenterJson:
                 {"label": "refrain", "line_start": 1, "line_end": 2},
             ]
         })
-        assert _parse_segmenter_json(response, n_lines=2) is None
+        sections, breakdown = _parse_segmenter_json(response, n_lines=2)
+        assert sections is None
+        assert "invalid label" in breakdown
 
     def test_rejects_gap(self):
         response = json.dumps({
@@ -127,13 +133,19 @@ class TestParseSegmenterJson:
                 {"label": "chorus", "line_start": 4, "line_end": 5},
             ]
         })
-        assert _parse_segmenter_json(response, n_lines=5) is None
+        sections, breakdown = _parse_segmenter_json(response, n_lines=5)
+        assert sections is None
+        assert "gap" in breakdown
 
     def test_rejects_malformed_toplevel(self):
-        assert _parse_segmenter_json("not json", n_lines=5) is None
-        assert _parse_segmenter_json("[]", n_lines=5) is None
-        assert _parse_segmenter_json('{"wrong_key": []}', n_lines=5) is None
-        assert _parse_segmenter_json('{"sections": []}', n_lines=5) is None
+        sections, _ = _parse_segmenter_json("not json", n_lines=5)
+        assert sections is None
+        sections, _ = _parse_segmenter_json("[]", n_lines=5)
+        assert sections is None
+        sections, _ = _parse_segmenter_json('{"wrong_key": []}', n_lines=5)
+        assert sections is None
+        sections, _ = _parse_segmenter_json('{"sections": []}', n_lines=5)
+        assert sections is None
 
     def test_confidence_clamped(self):
         response = json.dumps({
@@ -141,9 +153,88 @@ class TestParseSegmenterJson:
                 {"label": "chorus", "line_start": 1, "line_end": 2, "confidence": 1.5},
             ]
         })
-        sections = _parse_segmenter_json(response, n_lines=2)
+        sections, breakdown = _parse_segmenter_json(response, n_lines=2)
         assert sections is not None
         assert sections[0].confidence == 1.0
+
+
+# ── Unit tests for _parse_segmenter_json() breakdown ──────────────────────────
+
+
+class TestParseSegmenterJsonBreakdown:
+    def test_json_decode_failure_returns_breakdown(self):
+        sections, breakdown = _parse_segmenter_json("not json", 10)
+        assert sections is None
+        assert "JSON decode failed" in breakdown
+
+    def test_strict_mode_returns_on_first_failure(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 3},
+            {"label": "solo", "line_start": 4, "line_end": 8},  # invalid label
+            {"label": "chorus", "line_start": 9, "line_end": 10},
+        ]})
+        sections, breakdown = _parse_segmenter_json(resp, 10)
+        assert sections is None
+        assert "section[1]" in breakdown
+        assert "invalid label" in breakdown
+
+    def test_gap_rejected_with_reason(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 3},
+            {"label": "chorus", "line_start": 6, "line_end": 8},  # gap at 4-5
+        ]})
+        sections, breakdown = _parse_segmenter_json(resp, 10)
+        assert sections is None
+        assert "gap" in breakdown
+
+    def test_overlap_rejected_with_reason(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 3},
+            {"label": "chorus", "line_start": 3, "line_end": 5},  # overlaps
+        ]})
+        sections, breakdown = _parse_segmenter_json(resp, 10)
+        assert sections is None
+        assert "overlap" in breakdown
+
+    def test_out_of_range_rejected_with_reason(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 15},
+        ]})
+        sections, breakdown = _parse_segmenter_json(resp, 10)
+        assert sections is None
+        assert "out of range" in breakdown
+        assert "n_lines=10" in breakdown
+
+    def test_duplicate_range_rejected_with_reason(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 3},
+            {"label": "chorus", "line_start": 1, "line_end": 3},
+        ]})
+        sections, breakdown = _parse_segmenter_json(resp, 10)
+        assert sections is None
+        # Identical ranges are caught as overlap (overlap check runs first)
+        assert "overlap" in breakdown
+
+    def test_not_a_dict_returns_breakdown(self):
+        sections, breakdown = _parse_segmenter_json("[]", 10)
+        assert sections is None
+        assert "not a JSON object" in breakdown
+
+    def test_empty_sections_returns_breakdown(self):
+        sections, breakdown = _parse_segmenter_json('{"sections": []}', 10)
+        assert sections is None
+        assert "empty" in breakdown
+
+    def test_successful_parse_returns_breakdown(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 5, "confidence": 0.9},
+            {"label": "chorus", "line_start": 6, "line_end": 10, "confidence": 0.95},
+        ]})
+        sections, breakdown = _parse_segmenter_json(resp, 10)
+        assert sections is not None
+        assert len(sections) == 2
+        assert "Parsed 2 sections" in breakdown
+        assert "strict mode" in breakdown
 
 
 class TestMapSectionsToComponents:

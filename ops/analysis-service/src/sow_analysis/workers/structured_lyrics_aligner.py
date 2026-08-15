@@ -149,7 +149,7 @@ def _build_alignment_prompt(
 
 def _parse_alignment_json(
     response_text: str, n_lines: int
-) -> Optional[list[Section]]:
+) -> tuple[Optional[list[Section]], str]:
     """Relaxed parser for the alignment LLM response.
 
     Unlike ``_parse_segmenter_json``, this parser:
@@ -158,33 +158,59 @@ def _parse_alignment_json(
     - Allows gaps between sections (relaxed contiguity). [H4]
     - Applies ``_LABEL_NORMALIZATION_MAP`` as a fallback before rejecting
       unknown labels. [H5]
+
+    Returns:
+        ``(sections, breakdown)`` where ``sections`` is ``None`` if parsing
+        failed, and ``breakdown`` is a human-readable string explaining the
+        failure or success summary.
     """
     try:
         data = json.loads(response_text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    sections_list = data.get("sections") if isinstance(data, dict) else None
-    if not isinstance(sections_list, list) or not sections_list:
-        return None
+    except (json.JSONDecodeError, TypeError) as e:
+        return None, f"JSON decode failed: {e}"
 
-    # Parse raw sections, normalizing labels and validating ranges.
+    if not isinstance(data, dict):
+        return None, f"Response is not a JSON object (type={type(data).__name__})"
+
+    sections_list = data.get("sections")
+    if not isinstance(sections_list, list):
+        return None, "'sections' key missing or not a list"
+    if not sections_list:
+        return None, "'sections' array is empty"
+
+    # Track rejection reasons
+    rejected_reasons: list[str] = []
     raw_sections: list[Section] = []
-    for raw in sections_list:
+
+    for i, raw in enumerate(sections_list):
         if not isinstance(raw, dict):
+            rejected_reasons.append(f"section[{i}]: not a dict")
             continue
         label = str(raw.get("label", "")).lower().strip()
+        original_label = label
         # [H5] Apply normalization fallback before rejecting.
         if label not in _VALID_LABELS:
             label = _LABEL_NORMALIZATION_MAP.get(label, label)
         if label not in _VALID_LABELS:
+            rejected_reasons.append(
+                f"section[{i}]: invalid label '{original_label}'"
+            )
             continue
         try:
             line_start = int(raw["line_start"])
             line_end = int(raw["line_end"])
             confidence = float(raw.get("confidence", 0.5))
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as e:
+            rejected_reasons.append(
+                f"section[{i}] label='{label}': missing/invalid "
+                f"line_start/line_end/confidence ({e})"
+            )
             continue
         if not (1 <= line_start <= line_end <= n_lines):
+            rejected_reasons.append(
+                f"section[{i}] label='{label}': out of range "
+                f"(line_start={line_start}, line_end={line_end}, n_lines={n_lines})"
+            )
             continue
         raw_sections.append(
             Section(
@@ -197,7 +223,10 @@ def _parse_alignment_json(
         )
 
     if not raw_sections:
-        return None
+        return None, (
+            f"All {len(sections_list)} sections rejected: "
+            f"{'; '.join(rejected_reasons)}"
+        )
 
     # [H4] Sort by line_start before overlap checking.
     raw_sections.sort(key=lambda s: s.line_start)
@@ -205,6 +234,8 @@ def _parse_alignment_json(
     # [H4] Overlap detection against ALL accepted sections (gaps allowed).
     accepted: list[Section] = []
     seen_ranges: set[tuple[int, int]] = set()
+    overlap_rejects = 0
+    dup_rejects = 0
     for sec in raw_sections:
         # Check overlap against all accepted sections.
         overlaps = False
@@ -213,15 +244,36 @@ def _parse_alignment_json(
                 overlaps = True
                 break
         if overlaps:
+            overlap_rejects += 1
+            rejected_reasons.append(
+                f"section label='{sec.label}' lines={sec.line_start}-{sec.line_end}: "
+                f"overlaps existing"
+            )
             continue
         if (sec.line_start, sec.line_end) in seen_ranges:
+            dup_rejects += 1
+            rejected_reasons.append(
+                f"section label='{sec.label}' lines={sec.line_start}-{sec.line_end}: "
+                f"duplicate range"
+            )
             continue
         accepted.append(sec)
         seen_ranges.add((sec.line_start, sec.line_end))
 
     if not accepted:
-        return None
-    return accepted
+        return None, (
+            f"All {len(raw_sections)} post-sort sections rejected "
+            f"(overlaps={overlap_rejects}, duplicates={dup_rejects}): "
+            f"{'; '.join(rejected_reasons)}"
+        )
+
+    breakdown = (
+        f"Parsed {len(accepted)} sections from {len(sections_list)} raw "
+        f"({len(rejected_reasons)} rejected"
+        + (f": {'; '.join(rejected_reasons)}" if rejected_reasons else "")
+        + ")"
+    )
+    return accepted, breakdown
 
 
 def _load_alignment_few_shot_examples() -> list[dict]:
@@ -284,6 +336,32 @@ async def align_structured_lyrics(
     few_shot = _load_alignment_few_shot_examples()
     messages = _build_alignment_prompt(lrc_content, structured_lyrics_json, few_shot)
 
+    system_prompt = messages[0]["content"]
+    user_message = messages[1]["content"]
+    _numbered, n_lines = _render_numbered_lrc(lrc_content)
+    structured_text = _render_structured_sections(structured_lyrics_json)
+    few_shot_chars = sum(
+        len(json.dumps(ex, ensure_ascii=False)) for ex in few_shot
+    )
+    logger.debug(
+        "LLM request [LLM structured lyrics alignment]: model=%s, "
+        "system_prompt=%d chars, user_message=%d chars "
+        "(few_shot: %d examples, ~%d chars; numbered_lrc: %d lines, %d chars; "
+        "structured_sections: %d chars)",
+        model,
+        len(system_prompt),
+        len(user_message),
+        len(few_shot),
+        few_shot_chars,
+        n_lines,
+        len(_numbered),
+        len(structured_text),
+    )
+    logger.debug(
+        "LLM request [LLM structured lyrics alignment] user message:\n%s",
+        user_message,
+    )
+
     def _call() -> str:
         resp = client.chat.completions.create(
             model=model,
@@ -292,15 +370,37 @@ async def align_structured_lyrics(
             response_format={"type": "json_object"},
             max_tokens=settings.SOW_LLM_SEGMENTATION_MAX_TOKENS,
         )
+        usage = resp.usage
+        logger.debug(
+            "LLM response [LLM structured lyrics alignment]: model=%s, "
+            "finish_reason=%s, prompt_tokens=%s, completion_tokens=%s, "
+            "total_tokens=%s, response_id=%s, content_length=%d chars",
+            resp.model,
+            resp.choices[0].finish_reason,
+            usage.prompt_tokens if usage else "N/A",
+            usage.completion_tokens if usage else "N/A",
+            usage.total_tokens if usage else "N/A",
+            resp.id,
+            len(resp.choices[0].message.content or ""),
+        )
+        logger.debug(
+            "LLM response [LLM structured lyrics alignment] content:\n%s",
+            resp.choices[0].message.content or "",
+        )
         return resp.choices[0].message.content or ""
 
     text = await call_llm_with_retry(
         _call, description="LLM structured lyrics alignment"
     )
-    _numbered, n_lines = _render_numbered_lrc(lrc_content)
-    sections = _parse_alignment_json(text, n_lines)
+    sections, parse_breakdown = _parse_alignment_json(text, n_lines)
     if sections is None:
+        logger.warning(
+            "Structured lyrics alignment parse failed: %s", parse_breakdown
+        )
         return []
+    logger.debug(
+        "Structured lyrics alignment parse: %s", parse_breakdown
+    )
     # Defensive post-processing: chorus repetition cross-check.
     sections = _validate_chorus_repetition(sections, lrc_content, weights=weights)
     lines = list(parse_lrc(lrc_content).lines)
