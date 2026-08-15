@@ -1002,6 +1002,7 @@ class JobQueue:
                         r2_client=self.r2_client,
                         sections=sections_dicts,
                         lrc_content=request.lrc_content,
+                        structured_lyrics=request.structured_lyrics,
                         beats=request.beats,
                         downbeats=downbeats,
                         force=request.options.force,

@@ -171,8 +171,14 @@ def _is_essential(component: ComponentInstance) -> bool:
 
     Mirrors components._is_essential; defined locally to keep the
     classifier module decoupled from the components module's internals.
+    v8: Also includes the first bridge occurrence (component_type='bridge'
+    AND occurrence_index=1). MUST stay in sync with components._is_essential.
     """
-    return component.role in ESSENTIAL_ROLES
+    if component.role in ESSENTIAL_ROLES:
+        return True
+    if component.component_type == "bridge" and component.occurrence_index == 1:
+        return True
+    return False
 
 
 def has_cached_llm_fields(
