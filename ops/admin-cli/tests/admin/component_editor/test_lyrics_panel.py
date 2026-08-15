@@ -428,3 +428,105 @@ async def test_lyrics_max_scroll_y_matches_virtual_size():
         panel.scroll_to(y=panel.max_scroll_y, animate=False, immediate=True)
         await pilot.pause()
         assert panel.scroll_y == panel.max_scroll_y
+
+
+# =============================================================================
+# v2 Regression tests: rendered content must shift on scroll (not just scroll_y state)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_lyrics_rendered_content_shifts_on_scroll_down():
+    """Regression v2: rendered strips must shift when scroll_y changes.
+
+    v1 bug: `panel.scroll_y` was being incremented correctly (so the scrollbar
+    thumb visibly moved and `scroll_y == X` assertions passed), but
+    `Widget.render_line(y)` returned `self._render_cache.lines[y]` verbatim
+    with no `scroll_offset.y` offset, so the first visible line of the panel
+    stayed pinned to lyric line 0 regardless of scroll_y. Long songs could
+    never be visually scrolled past the first viewport.
+    """
+    app, _state = _make_app()
+    async with app.run_test(size=(80, 20)) as pilot:
+        await pilot.pause()
+        parsed = _make_parsed(num_lines=40)
+        panel = await _setup_lyrics(pilot, parsed, highlighted_index=-1)
+        assert panel.scroll_y == 0
+
+        pre_strips = panel.render_lines(panel.outer_size.region)
+        pre_text = "\n".join(strip.text for strip in pre_strips)
+        assert "Line 0" in pre_text
+
+        for _ in range(5):
+            panel.scroll_line_down()
+        await pilot.pause()
+        assert panel.scroll_y == 5
+
+        post_strips = panel.render_lines(panel.outer_size.region)
+        post_text = "\n".join(strip.text for strip in post_strips)
+        assert "Line 5" in post_text
+        assert "Line 0" not in post_text
+
+
+@pytest.mark.asyncio
+async def test_lyrics_rendered_content_shifts_on_scroll_up():
+    """Counterpart: scrolling back up returns visible strips to lyric line 0."""
+    app, _state = _make_app()
+    async with app.run_test(size=(80, 20)) as pilot:
+        await pilot.pause()
+        parsed = _make_parsed(num_lines=40)
+        panel = await _setup_lyrics(pilot, parsed, highlighted_index=-1)
+
+        for _ in range(5):
+            panel.scroll_line_down()
+        await pilot.pause()
+        for _ in range(5):
+            panel.scroll_line_up()
+        await pilot.pause()
+        assert panel.scroll_y == 0
+
+        stripped = panel.render_lines(panel.outer_size.region)
+        text = "\n".join(strip.text for strip in stripped)
+        assert "Line 0" in text
+
+
+@pytest.mark.asyncio
+async def test_lyrics_keyboard_scroll_shifts_rendered_content():
+    """v1 regression: pressing Down arrow shifts the visible strips,
+    not just the scroll_y state.
+    """
+    app, _state = _make_app()
+    async with app.run_test(size=(80, 20)) as pilot:
+        await pilot.pause()
+        parsed = _make_parsed(num_lines=40)
+        panel = await _setup_lyrics(pilot, parsed, highlighted_index=20)
+        await pilot.pause()
+        initial_strips = panel.render_lines(panel.outer_size.region)
+        initial_first = initial_strips[0].text
+
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "lyrics"
+        panel.focus()
+        for _ in range(3):
+            await pilot.press("down")
+        await pilot.pause()
+
+        new_strips = panel.render_lines(panel.outer_size.region)
+        new_first = new_strips[0].text
+        assert new_first != initial_first
+
+
+@pytest.mark.asyncio
+async def test_lyrics_render_line_blank_beyond_content():
+    """render_line(y) for y beyond content returns blank, not crashed."""
+    app, _state = _make_app()
+    async with app.run_test(size=(80, 30)) as pilot:
+        await pilot.pause()
+        parsed = _make_parsed(num_lines=5)
+        panel = await _setup_lyrics(pilot, parsed, highlighted_index=-1)
+        content_h = len(panel._content_strips)
+        empty = panel.render_line(content_h)
+        from textual.strip import Strip
+
+        assert isinstance(empty, Strip)
+        assert empty.cell_length == panel.scrollable_content_region.width or empty.cell_length == 0
