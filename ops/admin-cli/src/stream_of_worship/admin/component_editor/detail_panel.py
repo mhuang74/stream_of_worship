@@ -1,6 +1,6 @@
-"""Component Detail Panel widget for the Component Metadata editor (v5).
+"""Component Detail Panel widget for the Component Metadata editor (v6).
 
-Bottom-right panel showing all component metadata + song info, with
+Right panel (details mode) showing all component metadata + song info, with
 editable field navigation.
 """
 
@@ -13,7 +13,7 @@ from stream_of_worship.admin.services.lrc_parser import format_duration
 
 
 class ComponentDetailPanel(Static):
-    """Bottom-right panel showing all component metadata + song info.
+    """Right panel (details mode) showing all component metadata + song info.
 
     Displays:
     - Song-level info (title, artist, album, series, musical_key)
@@ -31,7 +31,6 @@ class ComponentDetailPanel(Static):
     DEFAULT_CSS = """
     ComponentDetailPanel {
         height: 1fr;
-        border-left: solid $primary;
         padding: 0 1;
         overflow-y: auto;
         background: $surface;

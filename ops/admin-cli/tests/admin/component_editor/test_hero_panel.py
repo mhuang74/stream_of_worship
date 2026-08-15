@@ -235,3 +235,64 @@ class TestComponentHeroPanel:
             text = _hero_text(app)
             assert "00:23" in text
             assert "02:15" in text
+
+    # -- v6: Song Info row tests --
+
+    @pytest.mark.asyncio
+    async def test_hero_contains_song_title(self, tmp_path):
+        from stream_of_worship.admin.db.models import Song
+
+        song = Song(
+            id="song_001",
+            title="Amazing Grace",
+            source_url="http://example.com",
+            scraped_at="2024-01-01",
+        )
+        session = _make_session()
+        session.song = song
+        app, _state = _make_app(sessions=[session], cache_dir=tmp_path)
+        async with app.run_test(size=(160, 30)) as pilot:
+            await pilot.pause()
+            app.screen._refresh_hero()
+            await pilot.pause()
+            assert "Title: Amazing Grace" in _hero_text(app)
+
+    @pytest.mark.asyncio
+    async def test_hero_contains_artist(self, tmp_path):
+        from stream_of_worship.admin.db.models import Song
+
+        song = Song(
+            id="song_001",
+            title="Test Song",
+            source_url="http://example.com",
+            scraped_at="2024-01-01",
+            composer="John Newton",
+        )
+        session = _make_session()
+        session.song = song
+        app, _state = _make_app(sessions=[session], cache_dir=tmp_path)
+        async with app.run_test(size=(160, 30)) as pilot:
+            await pilot.pause()
+            app.screen._refresh_hero()
+            await pilot.pause()
+            assert "Artist: John Newton" in _hero_text(app)
+
+    @pytest.mark.asyncio
+    async def test_hero_contains_album(self, tmp_path):
+        from stream_of_worship.admin.db.models import Song
+
+        song = Song(
+            id="song_001",
+            title="Test Song",
+            source_url="http://example.com",
+            scraped_at="2024-01-01",
+            album_name="Hymns Vol 1",
+        )
+        session = _make_session()
+        session.song = song
+        app, _state = _make_app(sessions=[session], cache_dir=tmp_path)
+        async with app.run_test(size=(160, 30)) as pilot:
+            await pilot.pause()
+            app.screen._refresh_hero()
+            await pilot.pause()
+            assert "Album: Hymns Vol 1" in _hero_text(app)

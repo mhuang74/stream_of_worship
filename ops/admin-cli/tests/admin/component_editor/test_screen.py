@@ -1,8 +1,8 @@
-"""Textual screen tests for the admin Component Metadata editor (v5).
+"""Textual screen tests for the admin Component Metadata editor (v6).
 
-Covers the v5 layout (T-shape: Hero panel + compact table on top; lyrics +
-detail panel on bottom), D1-D4 regression tests (adapted for v5), and the
-v2 regression suite (B1-B3, C1-C5).
+Covers the v6 layout (vertical split: Hero panel + compact table on left;
+toggleable lyrics/detail panel on right), D1-D4 regression tests (adapted
+for v6), and the v2 regression suite (B1-B3, C1-C5).
 """
 
 from pathlib import Path
@@ -221,7 +221,8 @@ async def test_cycle_theme_next_changes_value(tmp_path):
         await pilot.pause()
         state.selected_row = 0
         # Switch to detail panel and focus the theme field
-        app.screen._active_panel = "details"
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
         detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
         detail._focus_idx = EDITABLE_FIELDS.index("theme")
         app.screen._refresh_detail_panel()
@@ -240,7 +241,8 @@ async def test_cycle_theme_prev_changes_value(tmp_path):
         await pilot.pause()
         state.selected_row = 0
         # Switch to detail panel and focus the theme field
-        app.screen._active_panel = "details"
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
         detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
         detail._focus_idx = EDITABLE_FIELDS.index("theme")
         app.screen._refresh_detail_panel()
@@ -257,7 +259,8 @@ async def test_cycle_ignored_on_non_enum_cell(tmp_path):
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         # On details panel but focused on groove_density (not an enum field)
-        app.screen._active_panel = "details"
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
         detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
         detail._focus_idx = EDITABLE_FIELDS.index("groove_density")
         app.screen._refresh_detail_panel()
@@ -530,7 +533,10 @@ async def test_edit_numeric_opens_overlay(tmp_path):
         await pilot.pause()
         state.selected_row = 0
         # Switch to detail panel and focus the groove_density field
-        app.screen._active_panel = "details"
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
         detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
         detail._focus_idx = EDITABLE_FIELDS.index("groove_density")
         app.screen._refresh_detail_panel()
@@ -548,7 +554,8 @@ async def test_edit_numeric_ignored_on_non_numeric_cell():
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         # On details panel but focused on theme (not a numeric field)
-        app.screen._active_panel = "details"
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
         detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
         detail._focus_idx = EDITABLE_FIELDS.index("theme")
         app.screen._refresh_detail_panel()
@@ -625,14 +632,15 @@ async def test_d2_hero_refreshes_on_cursor_move():
 
 @pytest.mark.asyncio
 async def test_d2_hero_shows_edited_theme(tmp_path):
-    """v5 regression: after cycle_field_next changes theme, hero shows new value."""
+    """v6 regression: after cycle_field_next changes theme, hero shows new value."""
     app, state = _make_app()
     app.cache_dir = tmp_path
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         state.selected_row = 0
         # Switch to detail panel and focus the theme field
-        app.screen._active_panel = "details"
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
         detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
         detail._focus_idx = EDITABLE_FIELDS.index("theme")
         app.screen._refresh_detail_panel()
@@ -759,3 +767,120 @@ async def test_d2_hero_updates_on_arrow_key_navigation():
         content = hero.content
         text = content.plain if hasattr(content, "plain") else str(content)
         assert "EXIT" in text
+
+
+# =============================================================================
+# v6: Right panel state management tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_right_panel_default_is_lyrics():
+    """v6: right panel defaults to lyrics mode on launch."""
+    app, _state = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        assert app.screen._right_panel_mode == "lyrics"
+
+
+@pytest.mark.asyncio
+async def test_cycle_right_panel_hidden_to_lyrics_to_details():
+    """v6: pressing 'v' cycles hidden → lyrics → details → hidden."""
+    app, _state = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Default is lyrics
+        assert app.screen._right_panel_mode == "lyrics"
+        # Press v → details
+        await pilot.press("v")
+        await pilot.pause()
+        assert app.screen._right_panel_mode == "details"
+        # Press v → hidden
+        await pilot.press("v")
+        await pilot.pause()
+        assert app.screen._right_panel_mode == "hidden"
+        # Press v → lyrics
+        await pilot.press("v")
+        await pilot.pause()
+        assert app.screen._right_panel_mode == "lyrics"
+
+
+@pytest.mark.asyncio
+async def test_right_panel_hidden_left_full_width():
+    """v6: when right panel is hidden, left panel has dismissed-right class."""
+    app, _state = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Cycle to hidden
+        app.screen._right_panel_mode = "hidden"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        left_panel = app.screen.query_one("#left-panel")
+        assert left_panel.has_class("dismissed-right")
+        right_panel = app.screen.query_one("#right-panel")
+        assert right_panel.display is False
+
+
+@pytest.mark.asyncio
+async def test_tab_noop_when_right_dismissed():
+    """v6: Tab is a no-op when right panel is dismissed."""
+    app, _state = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Cycle to hidden
+        app.screen._right_panel_mode = "hidden"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        assert app.screen._active_panel == "left"
+        await pilot.press("tab")
+        await pilot.pause()
+        assert app.screen._active_panel == "left"
+
+
+@pytest.mark.asyncio
+async def test_edit_ignored_when_not_in_details_mode(tmp_path):
+    """v6: edit actions are ignored when right panel is in lyrics mode."""
+    app, state = _make_app()
+    app.cache_dir = tmp_path
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.selected_row = 0
+        # Right panel is in lyrics mode (default)
+        assert app.screen._right_panel_mode == "lyrics"
+        app.screen._active_panel = "right"
+        # Try edit actions — should be no-ops
+        app.screen.action_edit_numeric()
+        app.screen.action_cycle_field_next()
+        app.screen.action_cycle_field_prev()
+        assert app.screen._edit_mode is None
+        assert state.current.dirty is False
+
+
+@pytest.mark.asyncio
+async def test_hero_shows_song_info():
+    """v6: Hero panel renders Song Info row with title/artist/album."""
+    from stream_of_worship.admin.db.models import Song
+
+    song = Song(
+        id="song_001",
+        title="Test Song",
+        source_url="http://example.com",
+        scraped_at="2024-01-01",
+        composer="Test Artist",
+        album_name="Test Album",
+        album_series="Test Series",
+        musical_key="G",
+    )
+    session = _make_session()
+    session.song = song
+    app, _state = _make_app(sessions=[session])
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        app.screen._refresh_hero()
+        await pilot.pause()
+        hero = app.screen.query_one("ComponentHeroPanel")
+        content = hero.content
+        text = content.plain if hasattr(content, "plain") else str(content)
+        assert "Title: Test Song" in text
+        assert "Artist: Test Artist" in text
+        assert "Album: Test Album" in text

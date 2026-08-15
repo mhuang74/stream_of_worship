@@ -1,9 +1,8 @@
-"""Lyrics Panel widget for the Component Metadata editor (v5).
+"""Lyrics Panel widget for the Component Metadata editor (v6).
 
-Bottom-left panel showing timestamped LRC lyrics for the current song,
+Right panel (lyrics mode) showing timestamped LRC lyrics for the current song,
 with playback-synced current-line highlight.
 """
-
 
 from rich.text import Text
 from textual.widgets import Static
@@ -15,7 +14,7 @@ from stream_of_worship.admin.services.lrc_parser import (
 
 
 class LyricsPanel(Static):
-    """Bottom-left panel showing timestamped LRC lyrics for the current song.
+    """Right panel (lyrics mode) showing timestamped LRC lyrics for the current song.
 
     Features:
     - Renders LRC metadata header (ti, ar, al, etc.) in dim italic
@@ -33,7 +32,7 @@ class LyricsPanel(Static):
         background: $surface;
     }
     LyricsPanel:focus {
-        border-right: double $accent;
+        border-left: double $accent;
     }
     LyricsPanel.empty {
         color: $text-muted;

@@ -1,27 +1,27 @@
-"""Main editor screen for the admin Component Metadata editor (v5).
+"""Main editor screen for the admin Component Metadata editor (v6).
 
-v5 layout (T-shape, 3 panels):
+v6 layout (vertically split 2-panel):
     Header
     SongBreadcrumb
     PlaybackBar
-    #top-panel (full-width):
-        ComponentHeroPanel       (v4, retained)
-        ComponentMetadataTable   (compact, read-only, 9 numerical columns)
-    #bottom-split (50/50 horizontal):
-        LyricsPanel              (bottom-left, LRC + playback highlight)
-        ComponentDetailPanel     (bottom-right, all metadata + editable fields)
+    #main-split (40/60 horizontal):
+        #left-panel (40%):
+            ComponentHeroPanel       (v6, expanded with Song Info row)
+            ComponentMetadataTable   (compact, read-only, 9 numerical columns)
+        #right-panel (60%, toggleable):
+            LyricsPanel              (LRC + playback highlight)
+            ComponentDetailPanel     (all metadata + editable fields)
     Input(#row-edit-input, hidden overlay)
     StatusIndicator
     GroupedFooter
 
-v5 changes from v4:
-- T-shaped 3-panel layout: Hero Panel + compact table on top; bottom split =
-  lyrics (left) + detail panel (right).
-- Compact table with 9 numerical columns (COMPACT_TABLE_COLUMNS), read-only.
-- New LyricsPanel with playback-synced current-line highlight.
-- New ComponentDetailPanel with all component metadata + editable field nav.
-- Tab/shift+tab cycles panel focus (top → lyrics → details).
-- Edit actions (e, [, ]) operate on the detail panel's focused field.
+v6 changes from v5:
+- Vertically split 2-panel layout: left (40%) = Hero + table; right (60%) =
+  toggleable lyrics/details panel.
+- Right panel cycles: hidden → lyrics → details → hidden (key: 'v').
+- Hero Panel expanded with Song Info row (title/artist/album/series/musical_key).
+- Tab toggles focus between left and right panels (no-op when right dismissed).
+- Edit actions (e, [, ]) operate only when right panel is in details mode AND focused.
 """
 
 import asyncio
@@ -61,6 +61,7 @@ from stream_of_worship.admin.component_editor.constants import (
     GROOVE_DENSITY_MIN,
     HERO_PRIMARY_FIELDS,
     HERO_REASONING_FIELDS,
+    HERO_SONG_INFO_FIELDS,
     THEME_VALUES,
     VOCAL_POSTURE_VALUES,
 )
@@ -169,9 +170,12 @@ class PlaybackBar(Static):
 
 
 class ComponentHeroPanel(Static):
-    """v4 NEW. Always-visible summary of the highlighted component's
+    """v6. Always-visible summary of the highlighted component's
     transition-critical fields + LLM reasoning. Renders Rich Text refreshed
     on cursor move, song switch, edit, undo/redo, and save.
+
+    v6: Expanded with a Song Info row (title/artist/album/series/musical_key)
+    between the header line and the primary metrics line.
     """
 
     DEFAULT_CSS = """
@@ -179,6 +183,7 @@ class ComponentHeroPanel(Static):
         border: round $accent;
         padding: 0 1;
         height: auto;
+        max-height: 24;
         margin: 0 0 0 0;
     }
     """
@@ -209,7 +214,20 @@ class ComponentHeroPanel(Static):
         )
         t.append("\n")
 
-        # Row 2: primary transition metrics.
+        # Row 2 (v6 NEW): Song Info row.
+        song = session.song
+        song_info_parts = []
+        for field_name, label in HERO_SONG_INFO_FIELDS:
+            if field_name == "song_title":
+                value = song.title if song else session.song_title
+            else:
+                value = getattr(song, field_name, None) if song else None
+            value_str = str(value) if value else "—"
+            song_info_parts.append(f"{label}: {value_str}")
+        t.append("    " + "  |  ".join(song_info_parts), style="dim")
+        t.append("\n")
+
+        # Row 3: primary transition metrics.
         primary_parts = []
         for field_name, label, fmt in HERO_PRIMARY_FIELDS:
             v = state.get_value(role, field_name)
@@ -226,7 +244,7 @@ class ComponentHeroPanel(Static):
         t.append("    " + "    ".join(primary_parts), style="")
         t.append("\n")
 
-        # Row 3: editable theme + vocal_posture (accent).
+        # Row 4: editable theme + vocal_posture (accent).
         theme_v = state.get_value(role, "theme") or "—"
         posture_v = state.get_value(role, "vocal_posture") or "—"
         t.append(
@@ -235,7 +253,7 @@ class ComponentHeroPanel(Static):
         )
         t.append("\n\n")
 
-        # Rows 4-5: reasoning (italic, dimmed, full text — no truncation).
+        # Rows 5-6: reasoning (italic, dimmed, full text — no truncation).
         for field_name, label in HERO_REASONING_FIELDS:
             v = getattr(comp, field_name, None)
             if not v:
@@ -335,35 +353,54 @@ class ComponentEditorScreen(Screen[None]):
         overflow: hidden;
     }
 
-    /* Top panel: Hero Panel (auto height) + compact table (fixed mini-height) */
-    #top-panel {
-        height: auto;
-        max-height: 20;
+    /* Left panel: Hero Panel (auto height) + compact table (fill remainder) */
+    #left-panel {
+        width: 40%;
         overflow: hidden;
-        border-bottom: solid $primary;
-    }
-
-    #component-table {
-        height: 6;
-    }
-
-    /* Bottom split: 50/50 horizontal */
-    #bottom-split {
-        height: 1fr;
-        overflow: hidden;
-    }
-
-    #lyrics-panel {
-        width: 1fr;
-        overflow-y: auto;
-        background: $surface;
         border-right: solid $primary;
     }
+    #left-panel:focus-within {
+        border-right: double $accent;
+    }
 
-    #detail-panel {
-        width: 1fr;
+    #left-panel ComponentHeroPanel {
+        height: auto;
+        max-height: 24;
+        border: round $accent;
+        padding: 0 1;
+        margin: 0;
+    }
+
+    #left-panel #component-table {
+        height: 1fr;
+    }
+
+    #right-panel {
+        width: 60%;
+        overflow: hidden;
+    }
+    #right-panel:focus-within {
+        border-left: double $accent;
+    }
+
+    /* Right panel internal views */
+    #right-panel LyricsPanel {
+        height: 1fr;
         overflow-y: auto;
         background: $surface;
+        padding: 0 1;
+    }
+    #right-panel ComponentDetailPanel {
+        height: 1fr;
+        overflow-y: auto;
+        background: $surface;
+        padding: 0 1;
+    }
+
+    /* When right panel is dismissed, left panel takes full width */
+    #left-panel.dismissed-right {
+        width: 100%;
+        border-right: none;
     }
 
     #row-edit-input {
@@ -382,14 +419,16 @@ class ComponentEditorScreen(Screen[None]):
         # Song switch (global)
         Binding("n", "next_song", "Next Song"),
         Binding("p", "prev_song", "Prev Song"),
-        # Panel navigation (replaces column nav)
+        # Right panel cycle (v6 NEW)
+        Binding("v", "cycle_right_panel", "View"),
+        # Panel navigation
         Binding("tab", "cycle_panel_next", "Panel →"),
         Binding("shift+tab", "cycle_panel_prev", "Panel ←"),
-        # Edit (only active when detail panel is focused)
+        # Edit (only when right panel in details mode AND focused)
         Binding("bracketleft", "cycle_field_prev", "Cycle −"),
         Binding("bracketright", "cycle_field_next", "Cycle +"),
         Binding("e", "edit_numeric", "Edit Num"),
-        # Detail panel field navigation (only when detail panel is focused)
+        # Detail panel field navigation (only details mode + focused)
         Binding("up", "detail_focus_up", "Field ↑"),
         Binding("down", "detail_focus_down", "Field ↓"),
         # General (global)
@@ -410,6 +449,7 @@ class ComponentEditorScreen(Screen[None]):
         ],
         "Songs": ["next_song", "prev_song"],
         "Panels": [
+            "cycle_right_panel",
             "cycle_panel_next",
             "cycle_panel_prev",
             "detail_focus_up",
@@ -438,7 +478,8 @@ class ComponentEditorScreen(Screen[None]):
         self._edit_target_role: str | None = None
         self._edit_target_field: str | None = None
         self._position_update_timer: asyncio.Task | None = None
-        self._active_panel: str = "top"  # "top" | "lyrics" | "details"
+        self._right_panel_mode: str = "lyrics"  # "hidden" | "lyrics" | "details"
+        self._active_panel: str = "left"  # "left" | "right"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -446,17 +487,14 @@ class ComponentEditorScreen(Screen[None]):
             yield SongBreadcrumb()
             yield PlaybackBar()
 
-            # Top panel: Hero Panel + compact read-only table
-            with Vertical(id="top-panel"):
-                yield ComponentHeroPanel()
-                yield ComponentMetadataTable(id="component-table")
+            with Horizontal(id="main-split"):
+                with Vertical(id="left-panel"):
+                    yield ComponentHeroPanel()
+                    yield ComponentMetadataTable(id="component-table")
+                with Vertical(id="right-panel"):
+                    yield LyricsPanel(id="lyrics-panel")
+                    yield ComponentDetailPanel(id="detail-panel")
 
-            # Bottom split: lyrics (left) + details (right)
-            with Horizontal(id="bottom-split"):
-                yield LyricsPanel(id="lyrics-panel")
-                yield ComponentDetailPanel(id="detail-panel")
-
-            # Hidden Input overlay (for numeric editing in detail panel)
             yield Input(
                 id="row-edit-input",
                 placeholder="Edit numeric value",
@@ -469,12 +507,17 @@ class ComponentEditorScreen(Screen[None]):
     def on_mount(self) -> None:
         self._setup_table()
         self._refresh_table()
-        self._refresh_detail_panel()
         self._refresh_hero()
-        self.query_one("#component-table", ComponentMetadataTable).focus()
-        self._active_panel = "top"
         self._update_breadcrumb()
         self._update_status()
+
+        # LRC pre-fetch (v5) — set flag before _apply_right_panel_mode so the
+        # initial lyrics refresh shows "Loading..." instead of "No LRC found".
+        self.state.lrc_prefetch_in_progress = True
+
+        self._apply_right_panel_mode()
+        self.query_one("#component-table", ComponentMetadataTable).focus()
+        self._active_panel = "left"
         self._start_position_updates()
 
         self.playback.set_callbacks(
@@ -485,10 +528,6 @@ class ComponentEditorScreen(Screen[None]):
 
         self._load_audio_for_current_song()
         self._maybe_apply_autosave()
-
-        # LRC pre-fetch (v5)
-        self.state.lrc_prefetch_in_progress = True
-        self._refresh_lyrics_panel()
         self._prefetch_lrc()
 
     def on_unmount(self) -> None:
@@ -593,7 +632,11 @@ class ComponentEditorScreen(Screen[None]):
         panel.render_panel(self.state)
 
     def _refresh_detail_panel(self) -> None:
-        """v5 NEW. Re-renders the ComponentDetailPanel against the current state."""
+        """v6. Re-renders the ComponentDetailPanel against the current state.
+        Skips if right panel is not in details mode.
+        """
+        if self._right_panel_mode != "details":
+            return
         try:
             panel = self.query_one("#detail-panel", ComponentDetailPanel)
         except NoMatches:
@@ -601,7 +644,11 @@ class ComponentEditorScreen(Screen[None]):
         panel.update_detail(self.state)
 
     def _refresh_lyrics_panel(self) -> None:
-        """v5 NEW. Re-renders the LyricsPanel for the current song."""
+        """v6. Re-renders the LyricsPanel for the current song.
+        Skips if right panel is not in lyrics mode.
+        """
+        if self._right_panel_mode != "lyrics":
+            return
         try:
             panel = self.query_one("#lyrics-panel", LyricsPanel)
         except NoMatches:
@@ -663,9 +710,12 @@ class ComponentEditorScreen(Screen[None]):
         self._update_lyrics_highlight()
 
     def _update_lyrics_highlight(self) -> None:
-        """v5 NEW. Update the lyrics panel's current-line highlight based on
+        """v6. Update the lyrics panel's current-line highlight based on
         playback position. Called at 5Hz from the position update timer.
+        Skips if right panel is not in lyrics mode.
         """
+        if self._right_panel_mode != "lyrics":
+            return
         try:
             panel = self.query_one("#lyrics-panel", LyricsPanel)
         except NoMatches:
@@ -774,6 +824,8 @@ class ComponentEditorScreen(Screen[None]):
             pass
 
     def _show_value_edit_input(self, role: str, field: str, initial_text: str) -> None:
+        if self._right_panel_mode != "details":
+            return
         detail_panel = self.query_one("#detail-panel", ComponentDetailPanel)
 
         def do_show() -> None:
@@ -918,8 +970,10 @@ class ComponentEditorScreen(Screen[None]):
         else:
             self._notify("[yellow]Recovered unsaved edits from autosave.[/]")
         self._refresh_table()
-        self._refresh_detail_panel()
-        self._refresh_lyrics_panel()
+        if self._right_panel_mode == "lyrics":
+            self._refresh_lyrics_panel()
+        elif self._right_panel_mode == "details":
+            self._refresh_detail_panel()
         self._refresh_hero()
         self._update_status()
 
@@ -936,41 +990,92 @@ class ComponentEditorScreen(Screen[None]):
         self.playback.stop()
         self._load_audio_for_current_song()
         self._refresh_table()
-        self._refresh_detail_panel()
-        self._refresh_lyrics_panel()
+        if self._right_panel_mode == "lyrics":
+            self._refresh_lyrics_panel()
+        elif self._right_panel_mode == "details":
+            self._refresh_detail_panel()
         self._refresh_hero()
         self._update_breadcrumb()
         self._update_status()
 
-    # --- Panel navigation (v5) ---
+    # --- Right panel state management (v6) ---
 
-    _PANEL_ORDER = ("top", "lyrics", "details")
+    _RIGHT_PANEL_MODES = ("hidden", "lyrics", "details")
+    _PANELS = ("left", "right")
+
+    def action_cycle_right_panel(self) -> None:
+        """Cycle: hidden → lyrics → details → hidden."""
+        if self._guard_active_edit():
+            return
+        idx = self._RIGHT_PANEL_MODES.index(self._right_panel_mode)
+        self._right_panel_mode = self._RIGHT_PANEL_MODES[(idx + 1) % len(self._RIGHT_PANEL_MODES)]
+        self._apply_right_panel_mode()
+
+    def _apply_right_panel_mode(self) -> None:
+        """Update CSS classes and widget visibility based on _right_panel_mode."""
+        try:
+            left_panel = self.query_one("#left-panel")
+            right_panel = self.query_one("#right-panel")
+            lyrics = self.query_one("#lyrics-panel", LyricsPanel)
+            details = self.query_one("#detail-panel", ComponentDetailPanel)
+        except NoMatches:
+            return
+
+        if self._right_panel_mode == "hidden":
+            left_panel.add_class("dismissed-right")
+            right_panel.display = False
+            lyrics.display = False
+            details.display = False
+            self._active_panel = "left"
+            try:
+                self.query_one("#component-table", ComponentMetadataTable).focus()
+            except NoMatches:
+                pass
+        elif self._right_panel_mode == "lyrics":
+            left_panel.remove_class("dismissed-right")
+            right_panel.display = True
+            lyrics.display = True
+            details.display = False
+            self._refresh_lyrics_panel()
+        elif self._right_panel_mode == "details":
+            left_panel.remove_class("dismissed-right")
+            right_panel.display = True
+            lyrics.display = False
+            details.display = True
+            self._refresh_detail_panel()
+
+    # --- Panel navigation (v6) ---
 
     def action_cycle_panel_next(self) -> None:
         if self._guard_active_edit():
             return
-        idx = self._PANEL_ORDER.index(self._active_panel)
-        self._active_panel = self._PANEL_ORDER[(idx + 1) % len(self._PANEL_ORDER)]
+        if self._right_panel_mode == "hidden":
+            return  # no-op when right panel dismissed
+        idx = self._PANELS.index(self._active_panel)
+        self._active_panel = self._PANELS[(idx + 1) % len(self._PANELS)]
         self._focus_active_panel()
 
     def action_cycle_panel_prev(self) -> None:
         if self._guard_active_edit():
             return
-        idx = self._PANEL_ORDER.index(self._active_panel)
-        self._active_panel = self._PANEL_ORDER[(idx - 1) % len(self._PANEL_ORDER)]
+        if self._right_panel_mode == "hidden":
+            return  # no-op when right panel dismissed
+        idx = self._PANELS.index(self._active_panel)
+        self._active_panel = self._PANELS[(idx - 1) % len(self._PANELS)]
         self._focus_active_panel()
 
     def _focus_active_panel(self) -> None:
-        if self._active_panel == "top":
+        if self._active_panel == "left":
             self.query_one("#component-table", ComponentMetadataTable).focus()
-        elif self._active_panel == "lyrics":
-            self.query_one("#lyrics-panel", LyricsPanel).focus()
-        elif self._active_panel == "details":
-            self.query_one("#detail-panel", ComponentDetailPanel).focus()
-            self._refresh_detail_panel()
+        elif self._active_panel == "right":
+            if self._right_panel_mode == "lyrics":
+                self.query_one("#lyrics-panel", LyricsPanel).focus()
+            elif self._right_panel_mode == "details":
+                self.query_one("#detail-panel", ComponentDetailPanel).focus()
+                self._refresh_detail_panel()
 
     def action_detail_focus_up(self) -> None:
-        if self._active_panel != "details":
+        if self._active_panel != "right" or self._right_panel_mode != "details":
             return
         if self._guard_active_edit():
             return
@@ -979,7 +1084,7 @@ class ComponentEditorScreen(Screen[None]):
         self._refresh_detail_panel()
 
     def action_detail_focus_down(self) -> None:
-        if self._active_panel != "details":
+        if self._active_panel != "right" or self._right_panel_mode != "details":
             return
         if self._guard_active_edit():
             return
@@ -1009,14 +1114,15 @@ class ComponentEditorScreen(Screen[None]):
             self._refresh_lyrics_panel()
 
     @work(exclusive=False, group="lrc-fetch-on-demand")
-    async def _fetch_lrc_on_demand(
-        self, song_id: str, hash_prefix: str, song_title: str
-    ) -> None:
+    async def _fetch_lrc_on_demand(self, song_id: str, hash_prefix: str, song_title: str) -> None:
         if song_id in self.state.lrc_parsed:
             return
         try:
             fetch = await fetch_lrc_for_song(
-                song_id, hash_prefix, self.r2_client, self.cache_dir,
+                song_id,
+                hash_prefix,
+                self.r2_client,
+                self.cache_dir,
             )
             self.state.lrc_fetches[song_id] = fetch
             self.state.lrc_parsed[song_id] = (
@@ -1024,7 +1130,10 @@ class ComponentEditorScreen(Screen[None]):
             )
         except Exception as exc:  # noqa: BLE001
             self.state.lrc_fetches[song_id] = LRCFetch(
-                song_id=song_id, content=None, cached_path=None, error=str(exc),
+                song_id=song_id,
+                content=None,
+                cached_path=None,
+                error=str(exc),
             )
             self.state.lrc_parsed[song_id] = None
         current = self.state.current
@@ -1093,7 +1202,7 @@ class ComponentEditorScreen(Screen[None]):
     def action_cycle_field_next(self) -> None:
         if self._guard_active_edit():
             return
-        if self._active_panel != "details":
+        if self._active_panel != "right" or self._right_panel_mode != "details":
             return
         if self._guard_no_component():
             return
@@ -1121,7 +1230,7 @@ class ComponentEditorScreen(Screen[None]):
     def action_cycle_field_prev(self) -> None:
         if self._guard_active_edit():
             return
-        if self._active_panel != "details":
+        if self._active_panel != "right" or self._right_panel_mode != "details":
             return
         if self._guard_no_component():
             return
@@ -1149,7 +1258,7 @@ class ComponentEditorScreen(Screen[None]):
     def action_edit_numeric(self) -> None:
         if self._guard_active_edit():
             return
-        if self._active_panel != "details":
+        if self._active_panel != "right" or self._right_panel_mode != "details":
             return
         if self._guard_no_component():
             return
