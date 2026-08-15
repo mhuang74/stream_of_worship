@@ -1249,3 +1249,214 @@ async def test_v_to_details_focuses_detail_panel():
         assert app.screen._right_panel_mode == "details"
         detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
         assert app.screen.focused is detail
+
+
+# =============================================================================
+# Component-scoped playback: pause at end_time
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_check_component_playback_end_pauses_at_end_time():
+    """_check_component_playback_end pauses when position reaches end_time."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.PLAYING
+    playback.position_seconds = 20.0  # == end_time
+    app, _state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state = app.screen.state
+        state.selected_row = 0  # entry component, end_time=20.0
+        app.screen._check_component_playback_end()
+        assert playback.pause_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_check_component_playback_end_no_pause_before_end():
+    """_check_component_playback_end does not pause before end_time."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.PLAYING
+    playback.position_seconds = 15.0  # < end_time
+    app, _state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state = app.screen.state
+        state.selected_row = 0
+        app.screen._check_component_playback_end()
+        assert playback.pause_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_check_component_playback_end_noop_when_not_playing():
+    """_check_component_playback_end is a no-op when not playing."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.PAUSED
+    playback.position_seconds = 20.0
+    app, _state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state = app.screen.state
+        state.selected_row = 0
+        app.screen._check_component_playback_end()
+        assert playback.pause_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_check_component_playback_end_noop_when_end_time_none():
+    """_check_component_playback_end does not pause when end_time is None."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.PLAYING
+    playback.position_seconds = 50.0
+    comp = _make_component("entry", cid=1, end_time=None)
+    session = _make_session(entry=comp, exit_comp=comp)
+    app, _state = _make_app(sessions=[session], playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state = app.screen.state
+        state.selected_row = 0
+        app.screen._check_component_playback_end()
+        assert playback.pause_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_check_component_playback_end_uses_working_end_time():
+    """_check_component_playback_end uses the working (edited) end_time."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.PLAYING
+    playback.position_seconds = 25.0  # > persisted end_time (20.0)
+    app, state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.selected_row = 0
+        # Edit end_time to 30.0 (working value)
+        state.set_value("entry", "end_time", 30.0)
+        # position 25.0 < working end_time 30.0 -> no pause
+        app.screen._check_component_playback_end()
+        assert playback.pause_calls == 0
+        # Now position reaches working end_time
+        playback.position_seconds = 30.0
+        app.screen._check_component_playback_end()
+        assert playback.pause_calls == 1
+
+
+# =============================================================================
+# Editable start_time / end_time
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_edit_numeric_opens_overlay_for_start_time(tmp_path):
+    app, state = _make_app()
+    app.cache_dir = tmp_path
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        state.selected_row = 0
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("start_time")
+        app.screen._refresh_detail_panel()
+        await pilot.pause()
+        app.screen.action_edit_numeric()
+        await pilot.pause()
+        await pilot.pause()
+        await pilot.pause()
+        assert app.screen._edit_mode == "numeric"
+        assert app.screen._edit_target_field == "start_time"
+
+
+@pytest.mark.asyncio
+async def test_edit_numeric_opens_overlay_for_end_time(tmp_path):
+    app, state = _make_app()
+    app.cache_dir = tmp_path
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        state.selected_row = 0
+        app.screen._active_panel = "right"
+        app.screen._right_panel_mode = "details"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("end_time")
+        app.screen._refresh_detail_panel()
+        await pilot.pause()
+        app.screen.action_edit_numeric()
+        await pilot.pause()
+        await pilot.pause()
+        await pilot.pause()
+        assert app.screen._edit_mode == "numeric"
+        assert app.screen._edit_target_field == "end_time"
+
+
+def _make_screen(state: ComponentEditorState, playback=None):
+    """Construct a ComponentEditorScreen directly (no running app)."""
+    from stream_of_worship.admin.component_editor.screen import ComponentEditorScreen
+
+    if playback is None:
+        playback = _PlaybackStub()
+    return ComponentEditorScreen(
+        editor_state=state,
+        playback_service=playback,
+        cache_dir=Path("/tmp/nonexistent_cache_dir_for_tests"),
+        r2_client=MagicMock(),
+        db_client=MagicMock(),
+    )
+
+
+def test_validate_numeric_field_rejects_start_ge_end():
+    """_validate_numeric_field rejects start_time >= end_time."""
+    state = ComponentEditorState(sessions=[_make_session()])
+    screen = _make_screen(state)
+    # entry component: start_time=10.0, end_time=20.0
+    assert screen._validate_numeric_field("start_time", "25.0") is None
+    assert screen._validate_numeric_field("start_time", "15.0") == 15.0
+
+
+def test_validate_numeric_field_rejects_end_le_start():
+    """_validate_numeric_field rejects end_time <= start_time."""
+    state = ComponentEditorState(sessions=[_make_session()])
+    screen = _make_screen(state)
+    assert screen._validate_numeric_field("end_time", "5.0") is None
+    assert screen._validate_numeric_field("end_time", "15.0") == 15.0
+
+
+def test_validate_numeric_field_rejects_end_gt_audio_duration():
+    """_validate_numeric_field rejects end_time > audio_duration."""
+    state = ComponentEditorState(sessions=[_make_session()])
+    screen = _make_screen(state)
+    # audio_duration=180.0
+    assert screen._validate_numeric_field("end_time", "200.0") is None
+    assert screen._validate_numeric_field("end_time", "100.0") == 100.0
+
+
+def test_validate_numeric_field_rejects_negative_start():
+    """_validate_numeric_field rejects negative start_time."""
+    state = ComponentEditorState(sessions=[_make_session()])
+    screen = _make_screen(state)
+    assert screen._validate_numeric_field("start_time", "-5.0") is None
+
+
+def test_validate_numeric_field_accepts_valid_timing():
+    """_validate_numeric_field accepts valid start_time/end_time."""
+    state = ComponentEditorState(sessions=[_make_session()])
+    screen = _make_screen(state)
+    assert screen._validate_numeric_field("start_time", "12.0") == 12.0
+    assert screen._validate_numeric_field("end_time", "30.0") == 30.0
+
+
+@pytest.mark.asyncio
+async def test_toggle_playback_uses_working_start_time():
+    """action_toggle_playback_for_component uses working start_time."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.STOPPED
+    app, state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.selected_row = 0
+        # Edit start_time to 12.5 (working value)
+        state.set_value("entry", "start_time", 12.5)
+        app.screen.action_toggle_playback_for_component()
+        assert playback.play_start_seconds == [12.5]
+        assert playback.position_seconds == 12.5

@@ -203,6 +203,32 @@ class TestComponentEditorState:
         # session2 untouched
         assert len(state._undo_stacks["song_002"]) == 1
 
+    def test_set_get_start_time_round_trip(self):
+        """set_value + get_value works for start_time (undo/redo round-trip)."""
+        session = _make_session()
+        state = ComponentEditorState(sessions=[session])
+        assert state.get_value("entry", "start_time") == 10.0
+        state.set_value("entry", "start_time", 12.5)
+        assert state.get_value("entry", "start_time") == 12.5
+        assert session.dirty is True
+        state.undo()
+        assert state.get_value("entry", "start_time") == 10.0
+        state.redo()
+        assert state.get_value("entry", "start_time") == 12.5
+
+    def test_set_get_end_time_round_trip(self):
+        """set_value + get_value works for end_time (undo/redo round-trip)."""
+        session = _make_session()
+        state = ComponentEditorState(sessions=[session])
+        assert state.get_value("entry", "end_time") == 20.0
+        state.set_value("entry", "end_time", 25.0)
+        assert state.get_value("entry", "end_time") == 25.0
+        assert session.dirty is True
+        state.undo()
+        assert state.get_value("entry", "end_time") == 20.0
+        state.redo()
+        assert state.get_value("entry", "end_time") == 25.0
+
     def test_undo_keyed_by_song_id_survives_session_removal(self):
         """C4 regression: undo stacks keyed by song_id, not id(session)."""
         session1 = _make_session(song_id="song_001")
