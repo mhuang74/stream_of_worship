@@ -201,12 +201,12 @@ def _map_sections_to_components(
     downbeats: Optional[list[float]] = None,
     snap_to_downbeat: bool = False,
     weights: ValidatorWeights = DEFAULT_VALIDATOR_WEIGHTS,
+    source: str = "llm_segmentation",  # [C1]
+    song_total_duration: Optional[float] = None,  # [H2]
 ) -> list[ComponentInstance]:
     if not sections:
         return []
     chorus_sections = [s for s in sections if s.label == "chorus"]
-    if not chorus_sections:
-        return []
 
     n = len(lines)
 
@@ -221,6 +221,10 @@ def _map_sections_to_components(
             ]
             avg = sum(block_durations) / len(block_durations) if block_durations else 4.0
             end = lines[min(s.line_end - 1, n - 1)].time_seconds + avg
+
+        # [H2] Clamp end_time to song duration.
+        if song_total_duration is not None and end > song_total_duration:
+            end = song_total_duration
 
         if snap_to_downbeat and downbeats:
             start = _snap_to_downbeat(start, downbeats)
@@ -238,6 +242,29 @@ def _map_sections_to_components(
         ]
         return "\n".join(lines_in) if lines_in else None
 
+    # [H1] No chorus: emit ALL sections with role assignment by order.
+    if not chorus_sections:
+        components: list[ComponentInstance] = []
+        n_secs = len(sections)
+        for i, sec in enumerate(sections):
+            start, end = _sec_time(sec)
+            role = "entry" if i == 0 else ("exit" if i == n_secs - 1 else "none")
+            components.append(
+                ComponentInstance(
+                    component_type=sec.label,
+                    occurrence_index=1,
+                    role=role,
+                    start_time=start,
+                    end_time=end,
+                    confidence=sec.confidence * weights.mapping_confidence_multiplier,
+                    source=source,
+                    section_label=sec.label,
+                    lyrics_excerpt=_lyrics_excerpt(sec),
+                    llm_rationale=sec.rationale,
+                )
+            )
+        return components
+
     components: list[ComponentInstance] = []
     n_choruses = len(chorus_sections)
     for i, sec in enumerate(chorus_sections):
@@ -253,7 +280,7 @@ def _map_sections_to_components(
                     start_time=start,
                     end_time=end,
                     confidence=conf,
-                    source="llm_segmentation",
+                    source=source,
                     section_label="chorus",
                     lyrics_excerpt=excerpt,
                     llm_rationale=sec.rationale,
@@ -267,7 +294,7 @@ def _map_sections_to_components(
                     start_time=start,
                     end_time=end,
                     confidence=conf,
-                    source="llm_segmentation",
+                    source=source,
                     section_label="chorus",
                     lyrics_excerpt=excerpt,
                     llm_rationale=sec.rationale,
@@ -283,7 +310,7 @@ def _map_sections_to_components(
                     start_time=start,
                     end_time=end,
                     confidence=conf,
-                    source="llm_segmentation",
+                    source=source,
                     section_label="chorus",
                     lyrics_excerpt=excerpt,
                     llm_rationale=sec.rationale,
@@ -308,7 +335,7 @@ def _map_sections_to_components(
                 start_time=start,
                 end_time=end,
                 confidence=verse_before.confidence * weights.mapping_confidence_multiplier,
-                source="llm_segmentation",
+                source=source,
                 section_label="verse",
                 lyrics_excerpt=_lyrics_excerpt(verse_before),
                 llm_rationale=verse_before.rationale,

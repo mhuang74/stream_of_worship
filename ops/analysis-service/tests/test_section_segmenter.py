@@ -215,12 +215,72 @@ class TestMapSectionsToComponents:
         # start_time should be snapped to nearest downbeat
         assert chorus.start_time in downbeats
 
-    def test_no_chorus_returns_empty(self):
+    def test_no_chorus_emits_all_sections_with_roles(self):
+        """[H1] No chorus: emit ALL sections with role assignment by order."""
         lines = self._parse_lines(_LRC_SIMPLE)
         sections = [
-            Section(label="verse", line_start=1, line_end=4, confidence=0.9),
+            Section(label="verse", line_start=1, line_end=2, confidence=0.9),
+            Section(label="bridge", line_start=3, line_end=4, confidence=0.85),
         ]
-        assert _map_sections_to_components(sections, lines) == []
+        components = _map_sections_to_components(sections, lines)
+        assert len(components) == 2
+        assert components[0].role == "entry"
+        assert components[0].component_type == "verse"
+        assert components[1].role == "exit"
+        assert components[1].component_type == "bridge"
+
+    def test_no_chorus_three_sections_middle_role_none(self):
+        """[H1] No chorus with 3 sections: first=entry, middle=none, last=exit."""
+        lrc = """[00:10.00]verse one
+[00:20.00]verse two
+[00:30.00]bridge one
+[00:40.00]bridge two
+[00:50.00]outro one
+[00:60.00]outro two
+"""
+        lines = self._parse_lines(lrc)
+        sections = [
+            Section(label="verse", line_start=1, line_end=2, confidence=0.9),
+            Section(label="bridge", line_start=3, line_end=4, confidence=0.85),
+            Section(label="outro", line_start=5, line_end=6, confidence=0.8),
+        ]
+        components = _map_sections_to_components(sections, lines)
+        assert len(components) == 3
+        assert components[0].role == "entry"
+        assert components[1].role == "none"
+        assert components[2].role == "exit"
+
+    def test_source_param_propagated(self):
+        """[C1] source parameter is propagated to ComponentInstance.source."""
+        lines = self._parse_lines(_LRC_SIMPLE)
+        sections = [
+            Section(label="chorus", line_start=1, line_end=2, confidence=0.9),
+        ]
+        components = _map_sections_to_components(
+            sections, lines, source="structured_lyrics_llm"
+        )
+        assert all(c.source == "structured_lyrics_llm" for c in components)
+
+    def test_duration_clamping(self):
+        """[H2] end_time is clamped to song_total_duration."""
+        lrc = """[00:10.00]verse one
+[00:20.00]verse two
+[00:30.00]chorus one
+[00:40.00]chorus two
+"""
+        lines = self._parse_lines(lrc)
+        sections = [
+            Section(label="verse", line_start=1, line_end=2, confidence=0.9),
+            Section(label="chorus", line_start=3, line_end=4, confidence=0.95),
+        ]
+        # song_total_duration=25.0 — the chorus end_time (estimated from avg
+        # line duration) would exceed 25.0, so it should be clamped.
+        components = _map_sections_to_components(
+            sections, lines, song_total_duration=25.0
+        )
+        chorus_rows = [c for c in components if c.component_type == "chorus"]
+        for c in chorus_rows:
+            assert c.end_time <= 25.0
 
     def test_multiple_choruses_roles(self):
         lrc = """[00:10.00]verse line

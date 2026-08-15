@@ -10,7 +10,9 @@ identification source.
 """
 
 import asyncio
+import json
 import logging
+import math
 import re
 import string
 import time
@@ -21,6 +23,7 @@ from typing import Optional
 
 import librosa
 import numpy as np
+import zhconv
 
 from ..config import settings
 from ..storage.cache import BEAT_GRID_SCHEMA_VERSION, COMPONENT_SCHEMA_VERSION, CacheManager
@@ -216,8 +219,16 @@ def _is_essential(component: "ComponentInstance") -> bool:
     Essential roles: entry, exit, loop_target, entry_exit. Only these
     components get audio-metadata + LLM fields populated by default
     (unless ``all_components=True`` overrides).
+
+    v8: Also includes the first bridge occurrence (component_type='bridge'
+    AND occurrence_index=1) — bridges are useful for transition planning.
+    This applies to ALL identification sources, not just structured_lyrics.
     """
-    return component.role in ESSENTIAL_ROLES
+    if component.role in ESSENTIAL_ROLES:
+        return True
+    if component.component_type == "bridge" and component.occurrence_index == 1:
+        return True
+    return False
 
 
 @dataclass
@@ -1043,6 +1054,9 @@ def identify_from_lyrics_repetition(
                 block_durations.append(lines[k + 1].time_seconds - lines[k].time_seconds)
             avg_dur = sum(block_durations) / len(block_durations) if block_durations else 4.0
             end_time = lines[min(start_idx + w - 1, n - 1)].time_seconds + avg_dur
+            # Clamp to song duration if known.
+            if song_total_duration is not None and end_time > song_total_duration:
+                end_time = song_total_duration
 
         # Snap to beats if provided.
         if snap_to_downbeat and downbeats:
@@ -1121,6 +1135,330 @@ def identify_from_lyrics_repetition(
                     source="lyrics_repetition",
                 )
             )
+
+    return components
+
+
+# v8: Structured lyrics identification helpers.
+
+# Map structured-lyrics section labels to component_type. Mirrors
+# _RECOGNISED_LABELS in admin-cli structured_lyrics.py:25-47.
+_LABEL_TO_COMPONENT_TYPE: dict[str, str] = {
+    "verse": "verse",
+    "verse 1": "verse",
+    "verse 2": "verse",
+    "verse 3": "verse",
+    "verse 4": "verse",
+    "verse 5": "verse",
+    "pre-chorus": "prechorus",
+    "prechorus": "prechorus",
+    "chorus": "chorus",
+    "chorus 1": "chorus",
+    "chorus 2": "chorus",
+    "chorus 3": "chorus",
+    "bridge": "bridge",
+    "intro": "intro",
+    "outro": "outro",
+    "instrumental": "instrumental",
+    "hook": "chorus",
+    "refrain": "chorus",
+    "tag": "chorus",
+}
+
+
+def _to_traditional(text: str) -> str:
+    """Convert text to traditional Chinese via zhconv."""
+    return zhconv.convert(text, "zh-hant")
+
+
+def _normalize_for_matching(text: str) -> str:
+    """Normalize a lyric line for structured-lyrics matching.
+
+    Converts to traditional Chinese first, then applies the existing
+    _normalize_line() (strips punctuation, lowercases, removes whitespace).
+    """
+    return _normalize_line(_to_traditional(text))
+
+
+def _lines_match(a: str, b: str) -> bool:
+    """Exact normalized match OR rapidfuzz ratio > 85.
+
+    Unlike the repetition path (which treats rapidfuzz as optional), the
+    structured_lyrics path REQUIRES rapidfuzz for fuzzy matching. If
+    rapidfuzz is not installed, the ``from rapidfuzz import fuzz`` inside
+    this function raises ImportError on the first non-exact comparison.
+    """
+    if a == b:
+        return True
+    from rapidfuzz import fuzz as rf_fuzz
+
+    return rf_fuzz.ratio(a, b) > 85
+
+
+def identify_from_structured_lyrics(
+    structured_lyrics_json: str,
+    lrc_content: str,
+    beats: Optional[list[float]] = None,
+    downbeats: Optional[list[float]] = None,
+    snap_to_downbeat: bool = False,
+    song_total_duration: Optional[float] = None,
+) -> list[ComponentInstance]:
+    """Identify song components by matching structured lyrics sections to LRC lines.
+
+    Structured lyrics provide authoritative section labels (Verse, Chorus,
+    Bridge, etc.) with their exact lyric lines. This function searches for
+    each section's lyric block in the timestamped LRC to find precise
+    start/end times.
+
+    Algorithm:
+      1. Parse structured lyrics JSON -> sections with label + lines.
+      2. Parse LRC -> timed lines.
+      3. Normalize all lines: convert to traditional Chinese via zhconv, then
+         apply _normalize_line() (strips punctuation, lowercases, removes
+         whitespace).
+      4. For each structured section:
+         a. If section has no lyric lines (e.g. [Intro], [Instrumental]), skip.
+         b. Build the section's normalized line signature.
+         c. Slide through LRC lines, finding all positions where consecutive
+            LRC lines fuzzy-match the section's lines (rapidfuzz.fuzz.ratio > 85
+            per line, or exact normalized match).
+         d. Accept partial matches if >=75% of section lines match consecutively
+            (confidence 0.80 instead of 0.95).
+         e. Each match position gives a time range:
+            - start_time = LRC line at match position
+            - end_time = LRC line immediately after the matched block, or
+              estimated from average line duration if at song end.
+            - end_time is clamped to song_total_duration if provided.
+         f. Create a ComponentInstance per match (occurrence_index = 1..N).
+      5. Assign roles:
+         - Chorus: first occurrence -> 'entry', last -> 'exit', middle -> 'none'.
+           Single chorus -> two rows (entry + exit), matching v3 pattern.
+         - Verse: last verse section before first chorus -> 'loop_target';
+           other verses -> 'none'.
+         - Bridge/other: -> 'none' (kept for metadata).
+      6. Snap start_time/end_time to beats/downbeats if provided.
+
+    Args:
+        structured_lyrics_json: JSON string from recordings.structured_lyrics.
+        lrc_content: Raw LRC file content.
+        beats: Optional beat timestamps for snapping.
+        downbeats: Optional downbeat timestamps for snapping (preferred).
+        snap_to_downbeat: If True, snap to downbeats (requires downbeats param).
+        song_total_duration: Optional total song duration in seconds. Used to
+            clamp the end_time of the last LRC section so it does not exceed
+            the actual song length.
+
+    Returns:
+        List of ComponentInstance objects. Empty if structured lyrics or LRC
+        are unparseable, or if no section blocks can be matched.
+    """
+    # 1. Parse structured lyrics JSON.
+    try:
+        structured = json.loads(structured_lyrics_json)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    sections = structured.get("sections", [])
+    if not sections:
+        return []
+
+    # 2. Parse LRC.
+    try:
+        lrc_file = parse_lrc(lrc_content)
+    except (ValueError, Exception):
+        return []
+    lrc_lines = [ln for ln in lrc_file.lines if ln.text and ln.text.strip()]
+    if len(lrc_lines) < 2:
+        return []
+
+    # 3. Normalize all LRC lines.
+    lrc_norm = [_normalize_for_matching(ln.text) for ln in lrc_lines]
+    n_lrc = len(lrc_lines)
+
+    def _snap(t: float) -> float:
+        if snap_to_downbeat and downbeats:
+            return _snap_to_downbeat(t, downbeats)
+        if beats:
+            return _snap_to_beat(t, beats)
+        return t
+
+    # 4. For each structured section, find all block matches in the LRC.
+    # Collect raw matches: list of (component_type, section_label, occurrence,
+    # start_time, end_time, confidence, lyrics_excerpt).
+    raw_matches: list[dict] = []
+
+    for section in sections:
+        label_raw = str(section.get("label", "")).lower().strip()
+        section_lines = section.get("lines", [])
+        if not section_lines:
+            continue  # Skip sections with no lyric lines (e.g. [Intro]).
+
+        component_type = _LABEL_TO_COMPONENT_TYPE.get(label_raw, label_raw)
+        section_norm = [_normalize_for_matching(line) for line in section_lines]
+        k = len(section_norm)
+        if k == 0:
+            continue
+
+        partial_threshold = math.ceil(k * 0.75)
+
+        # Slide a window of size k through the LRC.
+        matches: list[tuple[int, int, float]] = []  # (start_idx, end_idx, confidence)
+        for i in range(n_lrc - k + 1):
+            window = lrc_norm[i : i + k]
+            match_count = sum(
+                _lines_match(a, b) for a, b in zip(window, section_norm)
+            )
+            if match_count == k:
+                matches.append((i, i + k, 0.95))
+            elif match_count >= partial_threshold:
+                matches.append((i, i + k, 0.80))
+
+        # Deduplicate overlapping matches (keep earliest start, highest confidence).
+        deduped: list[tuple[int, int, float]] = []
+        for start_idx, end_idx, conf in matches:
+            overlapped = False
+            for j, (ds, de, dc) in enumerate(deduped):
+                if start_idx < de and end_idx > ds:
+                    # Overlap — keep the one with higher confidence (or earlier start).
+                    if conf > dc or (conf == dc and start_idx < ds):
+                        deduped[j] = (start_idx, end_idx, conf)
+                    overlapped = True
+                    break
+            if not overlapped:
+                deduped.append((start_idx, end_idx, conf))
+
+        lyrics_excerpt = "\n".join(section_lines)
+
+        for occ, (start_idx, end_idx, conf) in enumerate(deduped, 1):
+            start_time = lrc_lines[start_idx].time_seconds
+            if end_idx < n_lrc:
+                end_time = lrc_lines[end_idx].time_seconds
+            else:
+                # Estimate from average line duration in the block.
+                block_durations = [
+                    lrc_lines[j + 1].time_seconds - lrc_lines[j].time_seconds
+                    for j in range(start_idx, min(end_idx - 1, n_lrc - 1))
+                ]
+                avg_dur = (
+                    sum(block_durations) / len(block_durations)
+                    if block_durations
+                    else 4.0
+                )
+                end_time = (
+                    lrc_lines[min(end_idx - 1, n_lrc - 1)].time_seconds + avg_dur
+                )
+
+            # Clamp to song duration if known.
+            if song_total_duration is not None and end_time > song_total_duration:
+                end_time = song_total_duration
+
+            raw_matches.append(
+                {
+                    "component_type": component_type,
+                    "section_label": label_raw,
+                    "occurrence": occ,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "confidence": conf,
+                    "lyrics_excerpt": lyrics_excerpt,
+                    "start_idx": start_idx,
+                }
+            )
+
+    if not raw_matches:
+        return []
+
+    # 5. Assign roles.
+    components: list[ComponentInstance] = []
+
+    # Group by component_type to assign occurrence indices and roles.
+    by_type: dict[str, list[dict]] = {}
+    for m in raw_matches:
+        by_type.setdefault(m["component_type"], []).append(m)
+
+    # Sort each group by start_time for correct occurrence ordering.
+    for group in by_type.values():
+        group.sort(key=lambda m: m["start_time"])
+
+    # Chorus role assignment: first -> entry, last -> exit, middle -> none.
+    # Single chorus -> two rows (entry + exit).
+    chorus_matches = by_type.get("chorus", [])
+    n_choruses = len(chorus_matches)
+    for i, m in enumerate(chorus_matches):
+        m["occurrence"] = i + 1
+        if n_choruses == 1:
+            m["role"] = "entry"
+            # Will create a second row below.
+        elif i == 0:
+            m["role"] = "entry"
+        elif i == n_choruses - 1:
+            m["role"] = "exit"
+        else:
+            m["role"] = "none"
+
+    # Verse role assignment: last verse before first chorus -> loop_target.
+    # Walk all verse sections before the first chorus occurrence.
+    first_chorus_start = (
+        chorus_matches[0]["start_time"] if chorus_matches else float("inf")
+    )
+    verse_matches = by_type.get("verse", [])
+    # Sort verse matches by start_time (already sorted, but be explicit).
+    verse_matches.sort(key=lambda m: m["start_time"])
+    last_verse_before_chorus_idx: Optional[int] = None
+    for i, m in enumerate(verse_matches):
+        if m["start_time"] < first_chorus_start:
+            last_verse_before_chorus_idx = i
+    for i, m in enumerate(verse_matches):
+        m["occurrence"] = i + 1
+        if i == last_verse_before_chorus_idx:
+            m["role"] = "loop_target"
+        else:
+            m["role"] = "none"
+
+    # All other types: occurrence by start order, role='none'.
+    for ctype, group in by_type.items():
+        if ctype in ("chorus", "verse"):
+            continue
+        group.sort(key=lambda m: m["start_time"])
+        for i, m in enumerate(group):
+            m["occurrence"] = i + 1
+            m["role"] = "none"
+
+    # Build ComponentInstance objects (sorted by start_time for stable output).
+    all_matches = sorted(raw_matches, key=lambda m: m["start_time"])
+    for m in all_matches:
+        components.append(
+            ComponentInstance(
+                component_type=m["component_type"],
+                occurrence_index=m["occurrence"],
+                role=m["role"],
+                start_time=_snap(m["start_time"]),
+                end_time=_snap(m["end_time"]),
+                confidence=m["confidence"],
+                source="structured_lyrics",
+                section_label=m["section_label"],
+                lyrics_excerpt=m["lyrics_excerpt"],
+            )
+        )
+
+    # Single chorus -> duplicate as exit row (v3 pattern).
+    if n_choruses == 1 and components:
+        chorus_comp = next(
+            c for c in components if c.component_type == "chorus" and c.role == "entry"
+        )
+        exit_comp = ComponentInstance(
+            component_type=chorus_comp.component_type,
+            occurrence_index=chorus_comp.occurrence_index,
+            role="exit",
+            start_time=chorus_comp.start_time,
+            end_time=chorus_comp.end_time,
+            confidence=chorus_comp.confidence,
+            source="structured_lyrics",
+            section_label=chorus_comp.section_label,
+            lyrics_excerpt=chorus_comp.lyrics_excerpt,
+        )
+        components.append(exit_comp)
+        # Re-sort by start_time for stable output.
+        components.sort(key=lambda c: c.start_time)
 
     return components
 
@@ -1347,6 +1685,7 @@ async def extract_components(
     r2_client: Optional[R2Client],
     sections: Optional[list[dict]] = None,
     lrc_content: Optional[str] = None,
+    structured_lyrics: Optional[str] = None,
     beats: Optional[list[float]] = None,
     downbeats: Optional[list[float]] = None,
     force: bool = False,
@@ -1373,6 +1712,11 @@ async def extract_components(
         with NULL audio fields. If True, all components get features
         (legacy behavior).
 
+    v8 additions:
+      - `structured_lyrics`: Optional JSON string of parsed structured lyrics.
+        When present (and LRC is available), the structured_lyrics
+        identification path runs first (highest priority, deterministic).
+
     Note: `analyze_audio_fast()` does NOT return beats/downbeats and is never
     called from this function. Downbeats are expected from the caller (queue.py
     populates them via the beat-grid cache when snap_to_downbeat is set); the
@@ -1380,7 +1724,8 @@ async def extract_components(
     defense-in-depth.
 
     Returns (components, source) where source is one of:
-    'allin1_sections', 'lyrics_repetition', 'none'.
+    'structured_lyrics', 'allin1_sections', 'lyrics_repetition',
+    'llm_segmentation', 'none'.
     """
     hash_prefix = content_hash[:12]
 
@@ -1435,7 +1780,47 @@ async def extract_components(
         if cached_grid is not None:
             downbeats = cached_grid.get("downbeats")
 
-    if segmentation_mode in (None, "allin1") and sections:
+    # v9: Structured lyrics identification via LLM alignment.
+    if (
+        not components
+        and structured_lyrics
+        and lrc_content
+        and segmentation_mode in (None, "structured_lyrics")
+    ):
+        sl_start = time.time()
+        if settings.SOW_LLM_API_KEY:
+            try:
+                from .structured_lyrics_aligner import align_structured_lyrics
+
+                components = await align_structured_lyrics(
+                    structured_lyrics,
+                    lrc_content,
+                    beats=beats,
+                    downbeats=downbeats,
+                    snap_to_downbeat=snap_to_downbeat,
+                    song_total_duration=gf.duration if gf is not None else None,  # [H2]
+                )
+                logger.info(
+                    f"Structured lyrics LLM alignment completed in "
+                    f"{time.time() - sl_start:.2f}s ({len(components)} components)"
+                )
+                if components:
+                    source = "structured_lyrics_llm"
+            except Exception as e:
+                logger.warning(f"Structured lyrics LLM alignment failed: {e}")
+                components = []
+        else:
+            logger.warning(
+                "Structured lyrics available but SOW_LLM_API_KEY is unset; "
+                "skipping LLM alignment"
+            )
+        if not components and segmentation_mode == "structured_lyrics":
+            logger.warning(
+                "segmentation_mode='structured_lyrics' requested but no components "
+                "found; returning empty"
+            )
+
+    if not components and segmentation_mode in (None, "allin1") and sections:
         components = identify_from_allin1_sections(
             sections, snap_to_downbeat=snap_to_downbeat, downbeats=downbeats
         )

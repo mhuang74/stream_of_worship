@@ -172,6 +172,11 @@ class Settings(BaseSettings):
     # (mirrors SOW_LLM_CLASSIFICATION_TIMEOUT_SECONDS). call_llm_with_retry's
     # budget is the overall wall-clock ceiling.
 
+    SOW_LLM_STRUCTURED_LYRICS_TIMEOUT_SECONDS: float = 60.0
+    # Per-request SDK-level HTTP timeout for the structured lyrics alignment
+    # OpenAI client (mirrors SOW_LLM_SEGMENTATION_TIMEOUT_SECONDS).
+    # call_llm_with_retry's budget is the overall wall-clock ceiling.
+
     SOW_LLM_SEGMENTATION_SANITY_CHECK: bool = False
     # Opt-in 2nd/3rd LLM call that presents the validated section list back
     # to the LLM for a yes/no sanity check. Default off. Enable only if the
