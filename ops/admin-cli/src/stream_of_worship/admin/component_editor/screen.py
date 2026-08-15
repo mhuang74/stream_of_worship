@@ -438,8 +438,8 @@ class ComponentEditorScreen(Screen[None]):
         Binding("bracketright", "cycle_field_next", "Cycle +"),
         Binding("e", "edit_numeric", "Edit Num"),
         # Detail panel field navigation (only details mode + focused)
-        Binding("up", "detail_focus_up", "Field ↑"),
-        Binding("down", "detail_focus_down", "Field ↓"),
+        Binding("up", "detail_focus_up", "Up"),
+        Binding("down", "detail_focus_down", "Down"),
         # General (global)
         Binding("s", "save", "Save"),
         Binding("ctrl+z", "undo", "Undo"),
@@ -1100,22 +1100,30 @@ class ComponentEditorScreen(Screen[None]):
                 self._refresh_detail_panel()
 
     def action_detail_focus_up(self) -> None:
-        if self._active_panel != "right" or self._right_panel_mode != "details":
-            return
         if self._guard_active_edit():
             return
-        panel = self.query_one("#detail-panel", ComponentDetailPanel)
-        panel.move_focus_up()
-        self._refresh_detail_panel()
+        if self._active_panel != "right":
+            return
+        if self._right_panel_mode == "details":
+            panel = self.query_one("#detail-panel", ComponentDetailPanel)
+            panel.move_focus_up()
+            self._refresh_detail_panel()
+        elif self._right_panel_mode == "lyrics":
+            panel = self.query_one("#lyrics-panel", LyricsPanel)
+            panel.scroll_line_up()
 
     def action_detail_focus_down(self) -> None:
-        if self._active_panel != "right" or self._right_panel_mode != "details":
-            return
         if self._guard_active_edit():
             return
-        panel = self.query_one("#detail-panel", ComponentDetailPanel)
-        panel.move_focus_down()
-        self._refresh_detail_panel()
+        if self._active_panel != "right":
+            return
+        if self._right_panel_mode == "details":
+            panel = self.query_one("#detail-panel", ComponentDetailPanel)
+            panel.move_focus_down()
+            self._refresh_detail_panel()
+        elif self._right_panel_mode == "lyrics":
+            panel = self.query_one("#lyrics-panel", LyricsPanel)
+            panel.scroll_line_down()
 
     # --- LRC pre-fetch + on-demand (v5) ---
 
