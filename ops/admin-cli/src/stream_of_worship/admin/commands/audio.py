@@ -5440,6 +5440,22 @@ def review_components(
             )
             continue
 
+        # v7: Load all essential components (entry, exit, verse1, bridge)
+        from stream_of_worship.admin.component_editor.constants import identify_editor_role
+
+        all_components = db_client.get_song_components(song_id)
+        components: dict[str, SongComponent | None] = {}
+        for comp in all_components:
+            editor_role = identify_editor_role(comp)
+            if editor_role and editor_role not in components:
+                components[editor_role] = comp
+
+        if not components:
+            console.print(
+                f"[yellow]No essential components for {song_id}; skipping.[/yellow]"
+            )
+            continue
+
         # Ensure audio cached under {cache_dir}/{hash_prefix}/audio/audio.mp3
         audio_cache_dir = cache_dir / recording.hash_prefix / "audio"
         audio_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -5460,6 +5476,7 @@ def review_components(
                 hash_prefix=recording.hash_prefix,
                 audio_path=str(audio_path),
                 audio_duration=recording.duration_seconds,
+                components=components,
                 entry_component=entry,
                 exit_component=exit_comp,
                 song=song,

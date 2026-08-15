@@ -16,6 +16,13 @@ v4 changes from v3:
   authoritative full-text rendering lives in the Hero panel).
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from stream_of_worship.admin.db.models import SongComponent
+
 # 4 user-editable columns (subset of song_components). Order matters:
 # theme / vocal_posture are enums (cycle with [ / ]).
 # groove_density / energy_level are floats (numeric input overlay).
@@ -165,3 +172,44 @@ COMPACT_TABLE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("groove_density", "Groove"),
     ("energy_level", "Energy"),
 )
+
+# =============================================================================
+# v7: Essential component slots — editor-level role keys that map to specific
+# DB components. These are editor concepts, not DB ``role`` values.
+# =============================================================================
+
+ESSENTIAL_COMPONENT_SLOTS: tuple[tuple[str, str, int], ...] = (
+    # (editor_role, db_role_or_component_type, occurrence_index)
+    ("entry", "entry", 1),  # role == "entry"
+    ("exit", "exit", 1),  # role == "exit"
+    ("verse1", "verse", 1),  # component_type == "verse", occurrence_index == 1
+    ("bridge", "bridge", 1),  # component_type == "bridge", occurrence_index == 1
+)
+
+# Display labels for each editor role, used in the Hero panel header.
+ROLE_LABELS: dict[str, str] = {
+    "entry": "ENTRY CHORUS",
+    "exit": "EXIT CHORUS",
+    "verse1": "VERSE 1",
+    "bridge": "BRIDGE",
+}
+
+
+def identify_editor_role(comp: SongComponent) -> str | None:
+    """Map a DB SongComponent to its editor-level role key, or None if not essential.
+
+    Args:
+        comp: A SongComponent instance from the database.
+
+    Returns:
+        One of "entry", "exit", "verse1", "bridge", or None.
+    """
+    if comp.role == "entry":
+        return "entry"
+    if comp.role == "exit":
+        return "exit"
+    if comp.component_type == "verse" and comp.occurrence_index == 1:
+        return "verse1"
+    if comp.component_type == "bridge" and comp.occurrence_index == 1:
+        return "bridge"
+    return None

@@ -7,7 +7,7 @@ editable field navigation.
 from rich.text import Text
 from textual.widgets import Static
 
-from stream_of_worship.admin.component_editor.constants import EDITABLE_FIELDS
+from stream_of_worship.admin.component_editor.constants import EDITABLE_FIELDS, ROLE_LABELS
 from stream_of_worship.admin.component_editor.state import ComponentEditorState
 from stream_of_worship.admin.services.lrc_parser import format_duration
 
@@ -47,7 +47,12 @@ class ComponentDetailPanel(Static):
     def update_detail(self, state: ComponentEditorState) -> None:
         """Render full component detail for the current song + selected role."""
         session = state.current
-        role = "entry" if state.selected_row == 0 else "exit"
+        roles = session.ordered_component_roles
+        if roles:
+            idx = max(0, min(state.selected_row, len(roles) - 1))
+            role = roles[idx]
+        else:
+            role = "entry"
         comp = session.component_for_role(role)
         song = session.song
 
@@ -68,7 +73,8 @@ class ComponentDetailPanel(Static):
             text.append(f"{value or '—'}\n")
 
         if comp is None:
-            text.append("\n[No component for this role]\n", style="red italic")
+            label = ROLE_LABELS.get(role, role.upper())
+            text.append(f"\n[No {label} component]\n", style="red italic")
             self.update(text)
             self.scroll_home(animate=False)
             return
@@ -76,7 +82,8 @@ class ComponentDetailPanel(Static):
         text.append("\n")
 
         # -- Section: Component Details --
-        text.append(f"-- Component ({role}) --\n", style="bold cyan")
+        display_label = ROLE_LABELS.get(role, role.upper())
+        text.append(f"-- Component ({display_label}) --\n", style="bold cyan")
         detail_fields = [
             ("Type", comp.component_type),
             ("Occurrence", str(comp.occurrence_index)),

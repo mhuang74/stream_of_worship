@@ -100,13 +100,15 @@ def _make_component(
     key: str = "G",
     theme_reasoning: str | None = "LLM theme reasoning text",
     posture_reasoning: str | None = "LLM posture reasoning text",
+    component_type: str = "chorus",
+    occurrence_index: int = 1,
 ) -> SongComponent:
     return SongComponent(
         id=cid,
         song_id="song_001",
         content_hash=content_hash,
-        component_type="chorus",
-        occurrence_index=1,
+        component_type=component_type,
+        occurrence_index=occurrence_index,
         role=role,
         start_time=start_time,
         end_time=end_time,
@@ -130,7 +132,19 @@ def _make_session(
     entry: SongComponent | None = None,
     exit_comp: SongComponent | None = None,
     content_hash: str = "abc123def4567",
+    components: dict[str, SongComponent | None] | None = None,
 ) -> SongSession:
+    if components is not None:
+        return SongSession(
+            song_id=song_id,
+            song_title=song_title,
+            hash_prefix=hash_prefix,
+            audio_path="/tmp/audio.mp3",
+            audio_duration=180.0,
+            components=components,
+            entry_component=components.get("entry"),
+            exit_component=components.get("exit"),
+        )
     if entry is None:
         entry = _make_component("entry", cid=1, content_hash=content_hash)
     if exit_comp is None:
@@ -141,6 +155,7 @@ def _make_session(
         hash_prefix=hash_prefix,
         audio_path="/tmp/audio.mp3",
         audio_duration=180.0,
+        components={"entry": entry, "exit": exit_comp},
         entry_component=entry,
         exit_component=exit_comp,
     )
@@ -154,12 +169,16 @@ def _make_session_with_none(
 ) -> SongSession:
     if entry is None:
         entry = _make_component("entry", cid=1, content_hash=content_hash)
+    components: dict[str, SongComponent | None] = {"entry": entry}
+    if exit_comp is not None:
+        components["exit"] = exit_comp
     return SongSession(
         song_id=song_id,
         song_title="Test Song",
         hash_prefix="abc123def456",
         audio_path="/tmp/audio.mp3",
         audio_duration=180.0,
+        components=components,
         entry_component=entry,
         exit_component=exit_comp,
     )
@@ -283,6 +302,7 @@ async def test_save_calls_db_and_r2_and_clears_dirty(tmp_path):
     reloaded_entry = _make_component("entry", cid=1, theme="敬拜")
     reloaded_exit = _make_component("exit", cid=2)
     db_client.get_song_components_entry_exit.return_value = (reloaded_entry, reloaded_exit)
+    db_client.get_song_components.return_value = [reloaded_entry, reloaded_exit]
     sessions = [_make_session()]
     app, state = _make_app(sessions=sessions, r2_client=r2_client, db_client=db_client)
     app.cache_dir = tmp_path
@@ -355,6 +375,7 @@ async def test_b2_first_content_hash_with_none_entry(tmp_path):
     exit_comp = _make_component("exit", cid=2, content_hash="deadbeef")
     reloaded_exit = _make_component("exit", cid=2, content_hash="deadbeef", theme="敬拜")
     db_client.get_song_components_entry_exit.return_value = (None, reloaded_exit)
+    db_client.get_song_components.return_value = [reloaded_exit]
     session = _make_session_with_none(entry=None, exit_comp=exit_comp, content_hash="deadbeef")
     app, state = _make_app(sessions=[session], r2_client=r2_client, db_client=db_client)
     app.cache_dir = tmp_path
@@ -409,6 +430,7 @@ async def test_c2_save_calls_txn_helper(tmp_path):
     reloaded_entry = _make_component("entry", cid=1, theme="敬拜")
     reloaded_exit = _make_component("exit", cid=2)
     db_client.get_song_components_entry_exit.return_value = (reloaded_entry, reloaded_exit)
+    db_client.get_song_components.return_value = [reloaded_entry, reloaded_exit]
     app, state = _make_app(r2_client=r2_client, db_client=db_client)
     app.cache_dir = tmp_path
 
@@ -436,6 +458,7 @@ async def test_c3_reload_after_save(tmp_path):
     reloaded_entry = _make_component("entry", cid=1, theme="敬拜")
     reloaded_exit = _make_component("exit", cid=2, theme="讚美")
     db_client.get_song_components_entry_exit.return_value = (reloaded_entry, reloaded_exit)
+    db_client.get_song_components.return_value = [reloaded_entry, reloaded_exit]
     app, state = _make_app(r2_client=r2_client, db_client=db_client)
     app.cache_dir = tmp_path
 
@@ -464,6 +487,7 @@ async def test_b3_undo_stack_cleared_after_save(tmp_path):
     reloaded_entry = _make_component("entry", cid=1, theme="敬拜")
     reloaded_exit = _make_component("exit", cid=2)
     db_client.get_song_components_entry_exit.return_value = (reloaded_entry, reloaded_exit)
+    db_client.get_song_components.return_value = [reloaded_entry, reloaded_exit]
     app, state = _make_app(r2_client=r2_client, db_client=db_client)
     app.cache_dir = tmp_path
 
@@ -714,6 +738,7 @@ async def test_d3_space_both_components_none_plays_without_seek():
         hash_prefix="abc123def456",
         audio_path="/tmp/audio.mp3",
         audio_duration=180.0,
+        components={},
         entry_component=None,
         exit_component=None,
     )
@@ -884,3 +909,244 @@ async def test_hero_shows_song_info():
         assert "Title: Test Song" in text
         assert "Artist: Test Artist" in text
         assert "Album: Test Album" in text
+
+
+# =============================================================================
+# v7: Issue A — auto-focus right panel on 'v' cycle
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_v_cycle_to_details_auto_focuses_right_panel():
+    """Pressing v to switch to details mode auto-sets _active_panel='right'."""
+    app, _ = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Default is lyrics (on_mount focuses the table)
+        assert app.screen._right_panel_mode == "lyrics"
+        # Press v -> details
+        await pilot.press("v")
+        await pilot.pause()
+        assert app.screen._right_panel_mode == "details"
+        assert app.screen._active_panel == "right"  # auto-focused (Issue A fix)
+
+
+@pytest.mark.asyncio
+async def test_v_cycle_to_lyrics_auto_focuses_right_panel():
+    """Pressing v from hidden to lyrics auto-focuses lyrics panel."""
+    app, _ = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Cycle to hidden
+        app.screen._right_panel_mode = "hidden"
+        app.screen._apply_right_panel_mode()
+        await pilot.pause()
+        assert app.screen._active_panel == "left"
+        # Press v -> lyrics
+        await pilot.press("v")
+        await pilot.pause()
+        assert app.screen._right_panel_mode == "lyrics"
+        assert app.screen._active_panel == "right"  # auto-focused (Issue A fix)
+
+
+# =============================================================================
+# v7: Issue B — Tab cycles through panels
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_tab_cycles_left_to_right():
+    """Tab moves focus from left panel to right panel."""
+    app, _ = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # At launch: lyrics mode, focus should be on table (left)
+        await pilot.press("tab")
+        await pilot.pause()
+        assert app.screen._active_panel == "right"
+
+
+@pytest.mark.asyncio
+async def test_tab_cycles_right_to_left():
+    """Tab moves focus from right panel back to left panel."""
+    app, _ = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Cycle to right
+        await pilot.press("tab")
+        await pilot.pause()
+        assert app.screen._active_panel == "right"
+        # Tab again -> back to left
+        await pilot.press("tab")
+        await pilot.pause()
+        assert app.screen._active_panel == "left"
+
+
+# =============================================================================
+# v7: Issue C — Data table shows all essential components
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_table_shows_4_essential_components():
+    """Data table includes entry, exit, verse1, bridge rows when available."""
+    entry = _make_component("entry", cid=1)
+    exit_c = _make_component("exit", cid=2)
+    verse1 = _make_component("none", cid=3, component_type="verse")
+    bridge = _make_component("none", cid=4, component_type="bridge")
+    session = _make_session(
+        components={"entry": entry, "exit": exit_c, "verse1": verse1, "bridge": bridge}
+    )
+    app, _ = _make_app(sessions=[session])
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one("#component-table", DataTable)
+        assert table.row_count == 4
+
+
+@pytest.mark.asyncio
+async def test_table_shows_only_available_components():
+    """Table only shows rows for components that exist (omits None)."""
+    entry = _make_component("entry", cid=1)
+    exit_c = _make_component("exit", cid=2)
+    # No verse1 or bridge
+    session = _make_session(components={"entry": entry, "exit": exit_c})
+    app, _ = _make_app(sessions=[session])
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one("#component-table", DataTable)
+        assert table.row_count == 2
+
+
+@pytest.mark.asyncio
+async def test_hero_shows_verse1_label():
+    """Hero panel shows 'VERSE 1' when verse1 row is selected."""
+    entry = _make_component("entry", cid=1)
+    exit_c = _make_component("exit", cid=2)
+    verse1 = _make_component("none", cid=3, component_type="verse")
+    bridge = _make_component("none", cid=4, component_type="bridge")
+    session = _make_session(
+        components={"entry": entry, "exit": exit_c, "verse1": verse1, "bridge": bridge}
+    )
+    app, state = _make_app(sessions=[session])
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Select verse1 (row index 2)
+        state.selected_row = 2
+        app.screen._refresh_hero()
+        await pilot.pause()
+        hero = app.screen.query_one("ComponentHeroPanel")
+        content = hero.content
+        text = content.plain if hasattr(content, "plain") else str(content)
+        assert "VERSE 1" in text
+
+
+@pytest.mark.asyncio
+async def test_hero_shows_bridge_label():
+    """Hero panel shows 'BRIDGE' when bridge row is selected."""
+    entry = _make_component("entry", cid=1)
+    exit_c = _make_component("exit", cid=2)
+    verse1 = _make_component("none", cid=3, component_type="verse")
+    bridge = _make_component("none", cid=4, component_type="bridge")
+    session = _make_session(
+        components={"entry": entry, "exit": exit_c, "verse1": verse1, "bridge": bridge}
+    )
+    app, state = _make_app(sessions=[session])
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        # Select bridge (row index 3)
+        state.selected_row = 3
+        app.screen._refresh_hero()
+        await pilot.pause()
+        hero = app.screen.query_one("ComponentHeroPanel")
+        content = hero.content
+        text = content.plain if hasattr(content, "plain") else str(content)
+        assert "BRIDGE" in text
+
+
+@pytest.mark.asyncio
+async def test_save_writes_all_4_components(tmp_path):
+    """Save updates DB for entry, exit, verse1, bridge."""
+    entry = _make_component("entry", cid=1)
+    exit_c = _make_component("exit", cid=2)
+    verse1 = _make_component("none", cid=3, component_type="verse")
+    bridge = _make_component("none", cid=4, component_type="bridge")
+    session = _make_session(
+        components={"entry": entry, "exit": exit_c, "verse1": verse1, "bridge": bridge}
+    )
+    r2_client = MagicMock()
+    r2_client.download_component_result.return_value = None
+    db_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_txn = MagicMock()
+    mock_txn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_txn.__exit__ = MagicMock(return_value=False)
+    db_client.transaction.return_value = mock_txn
+    db_client.get_song_components.return_value = [entry, exit_c, verse1, bridge]
+    app, state = _make_app(sessions=[session], r2_client=r2_client, db_client=db_client)
+    app.cache_dir = tmp_path
+
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.set_value("entry", "theme", "敬拜")
+        state.set_value("verse1", "theme", "感恩")
+        state.set_value("bridge", "theme", "信心")
+        await pilot.pause()
+        await pilot.press("s")
+        await pilot.pause()
+        assert db_client.update_song_component_fields_txn.called
+        # Should have been called for at least 3 components
+        assert db_client.update_song_component_fields_txn.call_count >= 3
+        assert r2_client.upload_component_result.called
+        assert state.current.dirty is False
+
+
+@pytest.mark.asyncio
+async def test_r2_merge_updates_verse1_and_bridge(tmp_path):
+    """R2 component.json merge updates verse1/bridge components."""
+    entry = _make_component("entry", cid=1)
+    exit_c = _make_component("exit", cid=2)
+    verse1 = _make_component("none", cid=3, component_type="verse")
+    bridge = _make_component("none", cid=4, component_type="bridge")
+    session = _make_session(
+        components={"entry": entry, "exit": exit_c, "verse1": verse1, "bridge": bridge}
+    )
+    r2_client = MagicMock()
+    # Simulate existing R2 payload with all 4 components
+    r2_client.download_component_result.return_value = {
+        "schema_version": 4,
+        "content_hash": "abc123def4567",
+        "hash_prefix": "abc123def456",
+        "component_source": "user_review_components",
+        "components": [
+            {"component_type": "chorus", "occurrence_index": 1, "role": "entry", "theme": "讚美"},
+            {"component_type": "chorus", "occurrence_index": 1, "role": "exit", "theme": "讚美"},
+            {"component_type": "verse", "occurrence_index": 1, "role": "none", "theme": "讚美"},
+            {"component_type": "bridge", "occurrence_index": 1, "role": "none", "theme": "讚美"},
+        ],
+    }
+    db_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_txn = MagicMock()
+    mock_txn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_txn.__exit__ = MagicMock(return_value=False)
+    db_client.transaction.return_value = mock_txn
+    db_client.get_song_components.return_value = [entry, exit_c, verse1, bridge]
+    app, state = _make_app(sessions=[session], r2_client=r2_client, db_client=db_client)
+    app.cache_dir = tmp_path
+
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.set_value("verse1", "theme", "感恩")
+        state.set_value("bridge", "theme", "信心")
+        await pilot.pause()
+        await pilot.press("s")
+        await pilot.pause()
+        assert r2_client.upload_component_result.called
+        call_args = r2_client.upload_component_result.call_args
+        payload = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("payload")
+        comps = payload["components"]
+        verse_comp = next(c for c in comps if c.get("component_type") == "verse")
+        bridge_comp = next(c for c in comps if c.get("component_type") == "bridge")
+        assert verse_comp["theme"] == "感恩"
+        assert bridge_comp["theme"] == "信心"

@@ -51,6 +51,7 @@ def _make_session(
         hash_prefix="abc123def456",
         audio_path="/tmp/audio.mp3",
         audio_duration=180.0,
+        components={"entry": entry, "exit": exit_comp},
         entry_component=entry,
         exit_component=exit_comp,
     )
@@ -67,12 +68,16 @@ def _make_session_with_none(
         entry = _make_component("entry", cid=1)
     elif entry is None:
         entry = _make_component("entry", cid=1)
+    components: dict[str, SongComponent | None] = {"entry": entry}
+    if exit_comp is not None:
+        components["exit"] = exit_comp
     return SongSession(
         song_id=song_id,
         song_title="Test Song",
         hash_prefix="abc123def456",
         audio_path="/tmp/audio.mp3",
         audio_duration=180.0,
+        components=components,
         entry_component=entry,
         exit_component=exit_comp,
     )
@@ -246,14 +251,24 @@ class TestGetSelectedComponent:
         assert state.get_selected_component() is exit_comp
 
     def test_returns_none_when_exit_missing(self):
-        """Partial analysis: exit component is None."""
+        """Partial analysis: exit component is None — not in ordered list.
+
+        With v7 dynamic role lookup, None components are excluded from
+        ordered_component_roles. selected_row=1 clamps to 0 (entry).
+        """
         session = _make_session_with_none(exit_comp=None)
         state = ComponentEditorState(sessions=[session])
         state.selected_row = 1
-        assert state.get_selected_component() is None
+        # Clamps to row 0 (entry), since exit is not in ordered_component_roles
+        assert state.get_selected_component() is session.entry_component
 
     def test_returns_none_when_entry_missing(self):
-        """Partial analysis: entry component is None."""
+        """Partial analysis: entry component is None — not in ordered list.
+
+        With v7 dynamic role lookup, None components are excluded from
+        ordered_component_roles. selected_row=0 selects exit (the only
+        available component).
+        """
         entry = None
         exit_comp = _make_component("exit", cid=2)
         session = SongSession(
@@ -262,8 +277,26 @@ class TestGetSelectedComponent:
             hash_prefix="abc123def456",
             audio_path="/tmp/audio.mp3",
             audio_duration=180.0,
+            components={"exit": exit_comp},
             entry_component=entry,
             exit_component=exit_comp,
+        )
+        state = ComponentEditorState(sessions=[session])
+        state.selected_row = 0
+        # Entry is not in ordered_component_roles, so row 0 = exit
+        assert state.get_selected_component() is exit_comp
+
+    def test_returns_none_when_no_components(self):
+        """No components at all -> get_selected_component returns None."""
+        session = SongSession(
+            song_id="song_001",
+            song_title="Test Song",
+            hash_prefix="abc123def456",
+            audio_path="/tmp/audio.mp3",
+            audio_duration=180.0,
+            components={},
+            entry_component=None,
+            exit_component=None,
         )
         state = ComponentEditorState(sessions=[session])
         state.selected_row = 0
