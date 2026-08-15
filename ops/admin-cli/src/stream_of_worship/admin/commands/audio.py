@@ -79,7 +79,7 @@ KEY_REVIEW_CAVEAT = (
 )
 
 COMPONENTS_FORMAT_VALUES = {"table", "json"}
-SEGMENTATION_MODE_VALUES = {"llm", "repetition", "allin1"}
+SEGMENTATION_MODE_VALUES = {"llm", "repetition", "allin1", "structured_lyrics"}
 
 
 def _validate_choice(value: str, choices: set[str], name: str) -> None:
@@ -2519,10 +2519,10 @@ def _submit_component_analysis_job(
         all_components: Populate audio + LLM metadata for ALL detected
             components (default: only essential roles).
         segmentation_mode: mutually-exclusive identification source; one of
-            "llm", "repetition", "allin1". The caller MUST also pass
-            force=True (validated in the typer command). When set, the worker
-            runs ONLY that source and returns [] if unavailable — no fallback
-            chain.
+            "structured_lyrics", "llm", "repetition", "allin1". The caller MUST
+            also pass force=True (validated in the typer command). When set,
+            the worker runs ONLY that source and returns [] if unavailable —
+            no fallback chain.
 
     Returns:
         Persisted SongComponent list, or None on failure.
@@ -2559,7 +2559,28 @@ def _submit_component_analysis_job(
         except Exception as e:
             console.print(f"[yellow]Could not fetch LRC from R2: {e}[/yellow]")
 
+    # Fetch structured lyrics from the recording row.
+    structured_lyrics: Optional[str] = None
+    if recording.structured_lyrics:
+        structured_lyrics = recording.structured_lyrics
+
     # Preflight: segmentation_mode requires its data source to be present.
+    if segmentation_mode == "structured_lyrics":
+        if not structured_lyrics:
+            console.print(
+                f"[red]Cannot use --segmentation-mode structured_lyrics: recording "
+                f"{song_id} has no structured_lyrics. Run "
+                f"`sow-admin audio download --youtube ...` or "
+                f"`sow-admin catalog insert --youtube ...` first.[/red]"
+            )
+            return None
+        if not lrc_content:
+            console.print(
+                f"[red]Cannot use --segmentation-mode structured_lyrics: recording "
+                f"{song_id} has no LRC (lrc_status != 'completed'). Run "
+                f"`sow-admin audio analyze lrc {song_id}` first.[/red]"
+            )
+            return None
     if segmentation_mode == "llm" and not lrc_content:
         console.print(
             f"[red]Cannot use --segmentation-mode llm: recording {song_id} has no LRC "
@@ -2639,6 +2660,7 @@ def _submit_component_analysis_job(
             beats=beats,
             downbeats=downbeats,
             lrc_content=lrc_content,
+            structured_lyrics=structured_lyrics,
             force=force,
             snap_to_downbeat=snap_to_downbeat,
             energy_aware_roles=energy_aware_roles,
@@ -2820,10 +2842,13 @@ def components_recording(
         "--segmentation-mode",
         help=(
             "Force a mutually-exclusive component identification source: "
-            "llm | repetition | allin1. Default (omitted) uses current "
-            "best-available priority. REQUIRES --force (validated). "
-            "llm/repetition require LRC; allin1 requires cached sections "
-            "from a prior `audio analyze --analysis-tier full` run."
+            "structured_lyrics | llm | repetition | allin1. Default (omitted) "
+            "uses current best-available priority (structured_lyrics > allin1 "
+            "> llm > repetition). REQUIRES --force (validated). "
+            "structured_lyrics/llm/repetition require LRC; structured_lyrics "
+            "also requires structured_lyrics on the recording; allin1 requires "
+            "cached sections from a prior `audio analyze --analysis-tier full` "
+            "run."
         ),
     ),
     format_: str = typer.Option("table", "--format", help="Output format (table|json)"),

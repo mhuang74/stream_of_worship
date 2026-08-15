@@ -12,7 +12,7 @@ from ..config import settings
 
 # Bump when the components.json payload shape changes. Cached payloads with a
 # mismatched version are treated as cache misses and recomputed.
-COMPONENT_SCHEMA_VERSION = 3
+COMPONENT_SCHEMA_VERSION = 4
 
 # Bump when the beat_grid.json payload shape changes. Cached payloads with a
 # mismatched version are treated as cache misses and re-detected.

@@ -33,12 +33,12 @@ class TestGetCachedComponentResult:
         client = self._client(api_key_env)
         r2_client = MagicMock()
         r2_client.download_component_result.return_value = {
-            "schema_version": 2,
+            "schema_version": 4,
             "components": [],
         }
         result = client.get_cached_component_result("a" * 12, r2_client=r2_client)
         assert result is not None
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 4
 
     def test_get_cached_component_result_rejects_schema_v1(self, api_key_env):
         client = self._client(api_key_env)

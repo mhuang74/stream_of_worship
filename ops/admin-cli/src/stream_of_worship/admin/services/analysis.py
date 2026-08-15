@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 # Keep in sync with analysis-service's
 # sow_analysis.storage.cache.COMPONENT_SCHEMA_VERSION.
 # Bump together when the worker bumps its version.
-COMPONENT_SCHEMA_VERSION = 3
+COMPONENT_SCHEMA_VERSION = 4
 
 
 class AnalysisServiceError(Exception):
@@ -163,7 +163,15 @@ def _cached_components_have_llm_fields(
     """
     essential_roles = {"entry", "exit", "loop_target", "entry_exit"}
     for comp in components:
-        is_candidate = all_components or comp.get("role", "none") in essential_roles
+        is_essential_bridge = (
+            comp.get("component_type") == "bridge"
+            and comp.get("occurrence_index") == 1
+        )
+        is_candidate = (
+            all_components
+            or comp.get("role", "none") in essential_roles
+            or is_essential_bridge
+        )
         if not is_candidate:
             continue
         if classify_theme and not comp.get("theme"):
@@ -618,6 +626,7 @@ class AnalysisClient:
         beats: Optional[list[float]] = None,
         downbeats: Optional[list[float]] = None,
         lrc_content: Optional[str] = None,
+        structured_lyrics: Optional[str] = None,
         force: bool = False,
         snap_to_downbeat: bool = False,
         energy_aware_roles: bool = False,
@@ -656,6 +665,9 @@ class AnalysisClient:
             beats: Cached beat timestamps.
             downbeats: Cached downbeat timestamps.
             lrc_content: Cached LRC text.
+            structured_lyrics: Parsed structured lyrics JSON string (from
+                recordings.structured_lyrics). Used by the structured_lyrics
+                identification path (highest priority when present).
             force: Whether to force re-extraction.
             snap_to_downbeat: Snap component boundaries to downbeats.
             energy_aware_roles: Use energy-based entry/exit role assignment.
@@ -685,6 +697,7 @@ class AnalysisClient:
             "beats": beats,
             "downbeats": downbeats,
             "lrc_content": lrc_content,
+            "structured_lyrics": structured_lyrics,
             "options": {
                 "force": force,
                 "snap_to_downbeat": snap_to_downbeat,
