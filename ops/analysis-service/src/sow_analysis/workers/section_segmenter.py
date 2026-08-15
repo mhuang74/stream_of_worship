@@ -149,35 +149,71 @@ def _build_segmentation_prompt(
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
-def _parse_segmenter_json(response_text: str, n_lines: int) -> Optional[list[Section]]:
+def _parse_segmenter_json(
+    response_text: str, n_lines: int
+) -> tuple[Optional[list[Section]], str]:
+    """Strict parser for the whole-song segmentation LLM response.
+
+    Unlike ``_parse_alignment_json``, this parser is **strict** — it returns
+    ``None`` on the *first* invalid section rather than skipping.
+
+    Returns:
+        ``(sections, breakdown)`` where ``sections`` is ``None`` if parsing
+        failed, and ``breakdown`` is a human-readable string explaining the
+        failure or success summary.
+    """
     try:
         data = json.loads(response_text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    sections_list = data.get("sections") if isinstance(data, dict) else None
-    if not isinstance(sections_list, list) or not sections_list:
-        return None
+    except (json.JSONDecodeError, TypeError) as e:
+        return None, f"JSON decode failed: {e}"
+    if not isinstance(data, dict):
+        return None, f"Response is not a JSON object (type={type(data).__name__})"
+    sections_list = data.get("sections")
+    if not isinstance(sections_list, list):
+        return None, "'sections' key missing or not a list"
+    if not sections_list:
+        return None, "'sections' array is empty"
+
     sections: list[Section] = []
     prev_end = 0
     seen_ranges: set[tuple[int, int]] = set()
-    for raw in sections_list:
+    for i, raw in enumerate(sections_list):
         if not isinstance(raw, dict):
-            return None
+            return None, f"section[{i}]: not a dict"
         label = str(raw.get("label", "")).lower()
         if label not in _VALID_LABELS:
-            return None
+            return None, f"section[{i}]: invalid label '{label}'"
         try:
             line_start = int(raw["line_start"])
             line_end = int(raw["line_end"])
             confidence = float(raw.get("confidence", 0.5))
-        except (KeyError, TypeError, ValueError):
-            return None
+        except (KeyError, TypeError, ValueError) as e:
+            return None, (
+                f"section[{i}] label='{label}': missing/invalid "
+                f"line_start/line_end/confidence ({e})"
+            )
         if not (1 <= line_start <= line_end <= n_lines):
-            return None
+            return None, (
+                f"section[{i}] label='{label}': out of range "
+                f"(line_start={line_start}, line_end={line_end}, n_lines={n_lines})"
+            )
         # Strict contiguity: no overlaps (line_start <= prev_end) and no gaps
         # (line_start > prev_end + 1). Design C treats any gap as invalid.
-        if line_start <= prev_end or line_start > prev_end + 1 or (line_start, line_end) in seen_ranges:
-            return None
+        if line_start <= prev_end:
+            return None, (
+                f"section[{i}] label='{label}': overlap "
+                f"(line_start={line_start} <= prev_end={prev_end})"
+            )
+        if line_start > prev_end + 1:
+            return None, (
+                f"section[{i}] label='{label}': gap "
+                f"(line_start={line_start} > prev_end+1={prev_end + 1})"
+            )
+        if (line_start, line_end) in seen_ranges:
+            return None, (
+                f"section[{i}] label='{label}': duplicate range "
+                f"({line_start}-{line_end})"
+            )
         prev_end = line_end
         seen_ranges.add((line_start, line_end))
         sections.append(
@@ -190,8 +226,8 @@ def _parse_segmenter_json(response_text: str, n_lines: int) -> Optional[list[Sec
             )
         )
     if not sections:
-        return None
-    return sections
+        return None, "No valid sections after parsing"
+    return sections, f"Parsed {len(sections)} sections (strict mode)"
 
 
 def _map_sections_to_components(
@@ -511,30 +547,62 @@ async def _sanity_check_llm(
         "mislabeled or mis-bounded section.\n\n"
         f"{numbered}\n\nProposed sections:\n{proposed}"
     )
+    sanity_system = "You verify song structure segmentations. Return JSON only."
+    logger.debug(
+        "LLM request [LLM segmentation sanity check]: model=%s, "
+        "system_prompt=%d chars, user_message=%d chars",
+        model,
+        len(sanity_system),
+        len(prompt),
+    )
+    logger.debug(
+        "LLM request [LLM segmentation sanity check] user message:\n%s", prompt
+    )
 
     def _call() -> str:
         resp = client.chat.completions.create(
             model=model,
             messages=[
-                {
-                    "role": "system",
-                    "content": "You verify song structure segmentations. Return JSON only.",
-                },
+                {"role": "system", "content": sanity_system},
                 {"role": "user", "content": prompt},
             ],
             temperature=0,
             response_format={"type": "json_object"},
             max_tokens=settings.SOW_LLM_SEGMENTATION_MAX_TOKENS,
         )
+        usage = resp.usage
+        logger.debug(
+            "LLM response [LLM segmentation sanity check]: model=%s, "
+            "finish_reason=%s, prompt_tokens=%s, completion_tokens=%s, "
+            "total_tokens=%s, response_id=%s, content_length=%d chars",
+            resp.model,
+            resp.choices[0].finish_reason,
+            usage.prompt_tokens if usage else "N/A",
+            usage.completion_tokens if usage else "N/A",
+            usage.total_tokens if usage else "N/A",
+            resp.id,
+            len(resp.choices[0].message.content or ""),
+        )
+        logger.debug(
+            "LLM response [LLM segmentation sanity check] content:\n%s",
+            resp.choices[0].message.content or "",
+        )
         return resp.choices[0].message.content or ""
 
     text = await call_llm_with_retry(_call, description="LLM segmentation sanity check")
     try:
         verdict = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.warning(
+            "Sanity check JSON parse failed: JSON decode failed: %s", e
+        )
         return None
     if verdict.get("correct") is True:
         return sections
+    logger.debug(
+        "Sanity check rejected segmentation: %s",
+        verdict.get("rationale", "(no rationale provided)"),
+    )
     return None
 
 
@@ -581,6 +649,21 @@ async def _corrective_segmentation_call(
     user_parts.append("Output JSON only:")
     user = "\n".join(user_parts)
 
+    logger.debug(
+        "LLM request [LLM segmentation corrective call]: model=%s, "
+        "system_prompt=%d chars, user_message=%d chars "
+        "(numbered_lrc: %d lines, %d chars; rejected_sections: %d chars)",
+        model,
+        len(system),
+        len(user),
+        n_lines,
+        len(numbered),
+        len(rejected_json),
+    )
+    logger.debug(
+        "LLM request [LLM segmentation corrective call] user message:\n%s", user
+    )
+
     def _call() -> str:
         resp = client.chat.completions.create(
             model=model,
@@ -592,12 +675,36 @@ async def _corrective_segmentation_call(
             response_format={"type": "json_object"},
             max_tokens=settings.SOW_LLM_SEGMENTATION_MAX_TOKENS,
         )
+        usage = resp.usage
+        logger.debug(
+            "LLM response [LLM segmentation corrective call]: model=%s, "
+            "finish_reason=%s, prompt_tokens=%s, completion_tokens=%s, "
+            "total_tokens=%s, response_id=%s, content_length=%d chars",
+            resp.model,
+            resp.choices[0].finish_reason,
+            usage.prompt_tokens if usage else "N/A",
+            usage.completion_tokens if usage else "N/A",
+            usage.total_tokens if usage else "N/A",
+            resp.id,
+            len(resp.choices[0].message.content or ""),
+        )
+        logger.debug(
+            "LLM response [LLM segmentation corrective call] content:\n%s",
+            resp.choices[0].message.content or "",
+        )
         return resp.choices[0].message.content or ""
 
     text = await call_llm_with_retry(
         _call, description="LLM segmentation corrective call"
     )
-    return _parse_segmenter_json(text, n_lines)
+    sections, parse_breakdown = _parse_segmenter_json(text, n_lines)
+    if sections is None:
+        logger.warning(
+            "Corrective segmentation parse failed: %s", parse_breakdown
+        )
+        return None
+    logger.debug("Corrective segmentation parse: %s", parse_breakdown)
+    return sections
 
 
 async def segment_song(
@@ -624,6 +731,29 @@ async def segment_song(
         system_prompt_override=system_prompt_override,
     )
 
+    system_prompt = messages[0]["content"]
+    user_message = messages[1]["content"]
+    _numbered, n_lines = _render_numbered_lrc(lrc_content)
+    few_shot_chars = sum(
+        len(json.dumps(ex, ensure_ascii=False)) for ex in few_shot
+    )
+    logger.debug(
+        "LLM request [LLM whole-song segmentation]: model=%s, "
+        "system_prompt=%d chars, user_message=%d chars "
+        "(few_shot: %d examples, ~%d chars; numbered_lrc: %d lines, %d chars)",
+        model,
+        len(system_prompt),
+        len(user_message),
+        len(few_shot),
+        few_shot_chars,
+        n_lines,
+        len(_numbered),
+    )
+    logger.debug(
+        "LLM request [LLM whole-song segmentation] user message:\n%s",
+        user_message,
+    )
+
     def _call() -> str:
         resp = client.chat.completions.create(
             model=model,
@@ -632,13 +762,33 @@ async def segment_song(
             response_format={"type": "json_object"},
             max_tokens=settings.SOW_LLM_SEGMENTATION_MAX_TOKENS,
         )
+        usage = resp.usage
+        logger.debug(
+            "LLM response [LLM whole-song segmentation]: model=%s, "
+            "finish_reason=%s, prompt_tokens=%s, completion_tokens=%s, "
+            "total_tokens=%s, response_id=%s, content_length=%d chars",
+            resp.model,
+            resp.choices[0].finish_reason,
+            usage.prompt_tokens if usage else "N/A",
+            usage.completion_tokens if usage else "N/A",
+            usage.total_tokens if usage else "N/A",
+            resp.id,
+            len(resp.choices[0].message.content or ""),
+        )
+        logger.debug(
+            "LLM response [LLM whole-song segmentation] content:\n%s",
+            resp.choices[0].message.content or "",
+        )
         return resp.choices[0].message.content or ""
 
     text = await call_llm_with_retry(_call, description="LLM whole-song segmentation")
-    _numbered, n_lines = _render_numbered_lrc(lrc_content)
-    sections = _parse_segmenter_json(text, n_lines)
+    sections, parse_breakdown = _parse_segmenter_json(text, n_lines)
     if sections is None:
+        logger.warning(
+            "Whole-song segmentation parse failed: %s", parse_breakdown
+        )
         return []
+    logger.debug("Whole-song segmentation parse: %s", parse_breakdown)
     sections = _validate_chorus_repetition(
         sections, lrc_content, weights=validator_weights,
     )

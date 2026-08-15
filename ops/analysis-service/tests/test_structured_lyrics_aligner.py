@@ -83,7 +83,7 @@ class TestParseAlignmentJson:
                 {"label": "chorus", "line_start": 3, "line_end": 4, "confidence": 0.95},
             ]
         })
-        sections = _parse_alignment_json(response, n_lines=4)
+        sections, breakdown = _parse_alignment_json(response, n_lines=4)
         assert sections is not None
         assert len(sections) == 2
         assert sections[0].label == "verse"
@@ -92,13 +92,19 @@ class TestParseAlignmentJson:
         assert sections[1].line_start == 3
 
     def test_invalid_json_returns_none(self):
-        assert _parse_alignment_json("not json", n_lines=5) is None
+        sections, breakdown = _parse_alignment_json("not json", n_lines=5)
+        assert sections is None
+        assert "JSON decode failed" in breakdown
 
     def test_empty_sections_returns_none(self):
-        assert _parse_alignment_json('{"sections": []}', n_lines=5) is None
+        sections, breakdown = _parse_alignment_json('{"sections": []}', n_lines=5)
+        assert sections is None
+        assert "empty" in breakdown
 
     def test_missing_sections_key_returns_none(self):
-        assert _parse_alignment_json('{"wrong_key": []}', n_lines=5) is None
+        sections, breakdown = _parse_alignment_json('{"wrong_key": []}', n_lines=5)
+        assert sections is None
+        assert "missing" in breakdown or "not a list" in breakdown
 
     def test_rejects_out_of_range(self):
         response = json.dumps({
@@ -106,7 +112,10 @@ class TestParseAlignmentJson:
                 {"label": "chorus", "line_start": 1, "line_end": 10},
             ]
         })
-        assert _parse_alignment_json(response, n_lines=5) is None
+        sections, breakdown = _parse_alignment_json(response, n_lines=5)
+        assert sections is None
+        assert "out of range" in breakdown
+        assert "n_lines=5" in breakdown
 
     def test_rejects_overlap(self):
         response = json.dumps({
@@ -115,11 +124,12 @@ class TestParseAlignmentJson:
                 {"label": "chorus", "line_start": 3, "line_end": 4},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=4)
-        assert result is not None
+        sections, breakdown = _parse_alignment_json(response, n_lines=4)
+        assert sections is not None
         # Overlapping section (line 3) should be rejected; only verse kept.
-        assert len(result) == 1
-        assert result[0].label == "verse"
+        assert len(sections) == 1
+        assert sections[0].label == "verse"
+        assert "overlaps" in breakdown
 
     def test_allows_gaps(self):
         """[H4] Relaxed contiguity: gaps between sections are allowed."""
@@ -129,9 +139,9 @@ class TestParseAlignmentJson:
                 {"label": "chorus", "line_start": 4, "line_end": 5},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=5)
-        assert result is not None
-        assert len(result) == 2
+        sections, breakdown = _parse_alignment_json(response, n_lines=5)
+        assert sections is not None
+        assert len(sections) == 2
 
     def test_sorts_by_line_start(self):
         """[H4] Out-of-order sections are sorted by line_start."""
@@ -141,10 +151,10 @@ class TestParseAlignmentJson:
                 {"label": "verse", "line_start": 1, "line_end": 2},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=4)
-        assert result is not None
-        assert result[0].line_start == 1
-        assert result[1].line_start == 3
+        sections, breakdown = _parse_alignment_json(response, n_lines=4)
+        assert sections is not None
+        assert sections[0].line_start == 1
+        assert sections[1].line_start == 3
 
     def test_repeated_labels_different_ranges(self):
         """[H4] Three chorus sections with different line ranges are valid."""
@@ -155,10 +165,10 @@ class TestParseAlignmentJson:
                 {"label": "chorus", "line_start": 5, "line_end": 6},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=6)
-        assert result is not None
-        assert len(result) == 3
-        assert all(s.label == "chorus" for s in result)
+        sections, breakdown = _parse_alignment_json(response, n_lines=6)
+        assert sections is not None
+        assert len(sections) == 3
+        assert all(s.label == "chorus" for s in sections)
 
     def test_label_normalization_verse_number(self):
         """[H5] 'verse 1' is normalized to 'verse'."""
@@ -167,9 +177,9 @@ class TestParseAlignmentJson:
                 {"label": "verse 1", "line_start": 1, "line_end": 2},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=2)
-        assert result is not None
-        assert result[0].label == "verse"
+        sections, breakdown = _parse_alignment_json(response, n_lines=2)
+        assert sections is not None
+        assert sections[0].label == "verse"
 
     def test_label_normalization_pre_chorus(self):
         """[H5] 'pre-chorus' is normalized to 'prechorus'."""
@@ -178,9 +188,9 @@ class TestParseAlignmentJson:
                 {"label": "pre-chorus", "line_start": 1, "line_end": 2},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=2)
-        assert result is not None
-        assert result[0].label == "prechorus"
+        sections, breakdown = _parse_alignment_json(response, n_lines=2)
+        assert sections is not None
+        assert sections[0].label == "prechorus"
 
     def test_label_normalization_hook(self):
         """[H5] 'hook' is normalized to 'chorus'."""
@@ -189,9 +199,9 @@ class TestParseAlignmentJson:
                 {"label": "hook", "line_start": 1, "line_end": 2},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=2)
-        assert result is not None
-        assert result[0].label == "chorus"
+        sections, breakdown = _parse_alignment_json(response, n_lines=2)
+        assert sections is not None
+        assert sections[0].label == "chorus"
 
     def test_label_normalization_refrain(self):
         """[H5] 'refrain' is normalized to 'chorus'."""
@@ -200,9 +210,9 @@ class TestParseAlignmentJson:
                 {"label": "refrain", "line_start": 1, "line_end": 2},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=2)
-        assert result is not None
-        assert result[0].label == "chorus"
+        sections, breakdown = _parse_alignment_json(response, n_lines=2)
+        assert sections is not None
+        assert sections[0].label == "chorus"
 
     def test_unknown_label_rejected(self):
         """Labels not in _VALID_LABELS or normalization map are rejected."""
@@ -211,8 +221,10 @@ class TestParseAlignmentJson:
                 {"label": "solo", "line_start": 1, "line_end": 2},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=2)
-        assert result is None
+        sections, breakdown = _parse_alignment_json(response, n_lines=2)
+        assert sections is None
+        assert "invalid label" in breakdown
+        assert "solo" in breakdown
 
     def test_confidence_clamped(self):
         response = json.dumps({
@@ -220,9 +232,9 @@ class TestParseAlignmentJson:
                 {"label": "chorus", "line_start": 1, "line_end": 2, "confidence": 1.5},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=2)
-        assert result is not None
-        assert result[0].confidence == 1.0
+        sections, breakdown = _parse_alignment_json(response, n_lines=2)
+        assert sections is not None
+        assert sections[0].confidence == 1.0
 
     def test_overlap_against_all_accepted(self):
         """[H4] Overlap check compares against ALL accepted sections, not just previous."""
@@ -234,15 +246,91 @@ class TestParseAlignmentJson:
                 {"label": "bridge", "line_start": 2, "line_end": 3},
             ]
         })
-        result = _parse_alignment_json(response, n_lines=5)
-        assert result is not None
+        sections, breakdown = _parse_alignment_json(response, n_lines=5)
+        assert sections is not None
         # After sorting: 1-2 (verse), 2-3 (bridge overlaps with verse), 4-5 (chorus)
         # Bridge overlaps with verse (line 2), so it's rejected.
-        assert len(result) == 2
-        labels = [s.label for s in result]
+        assert len(sections) == 2
+        labels = [s.label for s in sections]
         assert "verse" in labels
         assert "chorus" in labels
         assert "bridge" not in labels
+
+
+# ── Unit tests for _parse_alignment_json() breakdown ──────────────────────────
+
+
+class TestParseAlignmentJsonBreakdown:
+    def test_json_decode_failure_returns_breakdown(self):
+        sections, breakdown = _parse_alignment_json("not json", 10)
+        assert sections is None
+        assert "JSON decode failed" in breakdown
+
+    def test_empty_sections_returns_breakdown(self):
+        sections, breakdown = _parse_alignment_json('{"sections": []}', 10)
+        assert sections is None
+        assert "empty" in breakdown
+
+    def test_invalid_label_rejected_with_reason(self):
+        resp = json.dumps({"sections": [{"label": "solo", "line_start": 1, "line_end": 3}]})
+        sections, breakdown = _parse_alignment_json(resp, 10)
+        assert sections is None
+        assert "invalid label" in breakdown
+        assert "solo" in breakdown
+
+    def test_out_of_range_rejected_with_reason(self):
+        resp = json.dumps({"sections": [{"label": "verse", "line_start": 5, "line_end": 15}]})
+        sections, breakdown = _parse_alignment_json(resp, 10)
+        assert sections is None
+        assert "out of range" in breakdown
+        assert "n_lines=10" in breakdown
+
+    def test_overlap_rejected_with_reason(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 5, "confidence": 0.9},
+            {"label": "chorus", "line_start": 3, "line_end": 8, "confidence": 0.9},
+        ]})
+        sections, breakdown = _parse_alignment_json(resp, 10)
+        assert len(sections) == 1  # first accepted, second rejected
+        assert "overlaps" in breakdown
+
+    def test_successful_parse_returns_breakdown(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 3, "confidence": 0.9},
+            {"label": "chorus", "line_start": 4, "line_end": 8, "confidence": 0.9},
+        ]})
+        sections, breakdown = _parse_alignment_json(resp, 10)
+        assert len(sections) == 2
+        assert "Parsed 2 sections" in breakdown
+
+    def test_not_a_dict_returns_breakdown(self):
+        sections, breakdown = _parse_alignment_json("[]", 10)
+        assert sections is None
+        assert "not a JSON object" in breakdown
+
+    def test_sections_missing_returns_breakdown(self):
+        sections, breakdown = _parse_alignment_json("{}", 10)
+        assert sections is None
+        assert "missing" in breakdown or "not a list" in breakdown
+
+    def test_all_sections_invalid_label_returns_breakdown(self):
+        resp = json.dumps({"sections": [
+            {"label": "solo", "line_start": 1, "line_end": 3},
+            {"label": "duet", "line_start": 4, "line_end": 8},
+        ]})
+        sections, breakdown = _parse_alignment_json(resp, 10)
+        assert sections is None
+        assert "All 2 sections rejected" in breakdown
+
+    def test_duplicate_range_rejected_with_reason(self):
+        resp = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 3, "confidence": 0.9},
+            {"label": "chorus", "line_start": 1, "line_end": 3, "confidence": 0.9},
+        ]})
+        sections, breakdown = _parse_alignment_json(resp, 10)
+        assert len(sections) == 1
+        # Identical ranges are caught as overlaps (overlap check runs first)
+        assert "overlaps" in breakdown
 
 
 # ── Unit tests for _build_alignment_prompt() ──────────────────────────────
