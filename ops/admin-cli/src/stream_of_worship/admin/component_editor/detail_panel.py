@@ -4,12 +4,27 @@ Right panel (details mode) showing all component metadata + song info, with
 editable field navigation.
 """
 
+from datetime import UTC, datetime
+
 from rich.text import Text
 from textual.widgets import Static
 
 from stream_of_worship.admin.component_editor.constants import EDITABLE_FIELDS, ROLE_LABELS
 from stream_of_worship.admin.component_editor.state import ComponentEditorState
 from stream_of_worship.admin.services.lrc_parser import format_duration
+
+
+def _format_timestamp(value: str | None) -> str:
+    """Format an ISO-8601 timestamp to nearest second with UTC label."""
+    if value is None:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    except (ValueError, TypeError):
+        return value
 
 
 class ComponentDetailPanel(Static):
@@ -27,6 +42,8 @@ class ComponentDetailPanel(Static):
     Navigation: up/down arrows move focus among editable fields.
     Editing: 'e' for numeric fields, '['/']' for enum cycling.
     """
+
+    can_focus = True
 
     DEFAULT_CSS = """
     ComponentDetailPanel {
@@ -81,7 +98,7 @@ class ComponentDetailPanel(Static):
 
         text.append("\n")
 
-        # -- Section: Component Details --
+        # -- Section: Component (merged: base metadata + editable + reasoning) --
         display_label = ROLE_LABELS.get(role, role.upper())
         text.append(f"-- Component ({display_label}) --\n", style="bold cyan")
         detail_fields = [
@@ -104,28 +121,9 @@ class ComponentDetailPanel(Static):
             text.append(f"  {label:12s}: ", style="dim")
             text.append(f"{value or '—'}\n")
 
+        # 2b. Editable fields (sub-section within Component)
         text.append("\n")
-
-        # -- Section: Confidence Breakdown --
-        text.append("-- Confidence Breakdown --\n", style="bold cyan")
-        conf_fields = [
-            ("BPM", comp.bpm_confidence),
-            ("Key", comp.key_confidence),
-            ("Groove", comp.groove_confidence),
-            ("Backbeat", comp.backbeat_confidence),
-            ("Energy", comp.energy_confidence),
-            ("Theme", comp.theme_confidence),
-            ("Posture", comp.vocal_posture_confidence),
-        ]
-        for label, value in conf_fields:
-            text.append(f"  {label:12s}: ", style="dim")
-            text.append(f"{value:.4g}" if value is not None else "—")
-            text.append("\n")
-
-        text.append("\n")
-
-        # -- Section: Editable Fields --
-        text.append("-- Editable Fields --\n", style="bold yellow")
+        text.append("  -- Editable --\n", style="dim italic")
         for i, field_name in enumerate(EDITABLE_FIELDS):
             value = state.get_value(role, field_name)
             is_focused = i == self._focus_idx
@@ -149,10 +147,9 @@ class ComponentDetailPanel(Static):
             else:
                 text.append(f"{value_str}{hint}\n")
 
+        # 2c. Reasoning (sub-section within Component)
         text.append("\n")
-
-        # -- Section: Reasoning --
-        text.append("-- Reasoning --\n", style="bold cyan")
+        text.append("  -- Reasoning --\n", style="dim italic")
         reasoning_fields = [
             ("Theme", comp.theme_reasoning),
             ("Posture", comp.posture_reasoning),
@@ -166,12 +163,30 @@ class ComponentDetailPanel(Static):
 
         text.append("\n")
 
-        # -- Section: Lifecycle (dates at bottom) --
+        # -- Section: Confidence Breakdown (moved lower, just above Lifecycle) --
+        text.append("-- Confidence Breakdown --\n", style="bold cyan")
+        conf_fields = [
+            ("BPM", comp.bpm_confidence),
+            ("Key", comp.key_confidence),
+            ("Groove", comp.groove_confidence),
+            ("Backbeat", comp.backbeat_confidence),
+            ("Energy", comp.energy_confidence),
+            ("Theme", comp.theme_confidence),
+            ("Posture", comp.vocal_posture_confidence),
+        ]
+        for label, value in conf_fields:
+            text.append(f"  {label:12s}: ", style="dim")
+            text.append(f"{value:.4g}" if value is not None else "—")
+            text.append("\n")
+
+        text.append("\n")
+
+        # -- Section: Lifecycle (timestamps formatted to nearest seconds) --
         text.append("-- Lifecycle --\n", style="bold cyan")
         text.append(f"  {'Created':12s}: ", style="dim")
-        text.append(f"{comp.created_at or '—'}\n")
+        text.append(f"{_format_timestamp(comp.created_at)}\n")
         text.append(f"  {'Updated':12s}: ", style="dim")
-        text.append(f"{comp.updated_at or '—'}\n")
+        text.append(f"{_format_timestamp(comp.updated_at)}\n")
 
         self.update(text)
         self.scroll_home(animate=False)
@@ -192,18 +207,16 @@ class ComponentDetailPanel(Static):
         """Return the 0-based line index of the given editable field's value
         within the rendered text. Used by the screen to position the Input overlay.
 
-        The layout is deterministic:
+        New layout (v2):
         - 1 (Song header) + 6 (song fields) = 7
         - 1 (blank) = 8
-        - 1 (Component header) + 8 (component fields) = 17
+        - 1 (Component header) + 8 (base-metadata fields) = 17
         - 1 (blank) = 18
-        - 1 (Confidence header) + 7 (conf fields) = 26
-        - 1 (blank) = 27
-        - 1 (Editable header) = 28
+        - 1 (Editable sub-header) = 19
         - + index of field in EDITABLE_FIELDS = target line
         """
         try:
             field_idx = EDITABLE_FIELDS.index(field)
         except ValueError:
             return 0
-        return 28 + field_idx
+        return 19 + field_idx
