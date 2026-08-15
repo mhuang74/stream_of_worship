@@ -1,4 +1,8 @@
-"""Constants for the Component Metadata editor TUI (v4).
+"""Constants for the Component Metadata editor TUI (v6).
+
+v6 changes from v5:
+- New ``HERO_SONG_INFO_FIELDS`` drives the expanded Hero panel's Song Info row
+  (title/artist/album/series/musical_key), read from the Song model.
 
 v4 changes from v3:
 - ``DATA_TABLE_COLUMNS`` reordered so transition-critical + editable fields
@@ -123,6 +127,16 @@ HERO_REASONING_FIELDS: tuple[tuple[str, str], ...] = (
     # (field_name, display_label)
     ("theme_reasoning", "Theme reasoning"),
     ("posture_reasoning", "Posture reasoning"),
+)
+
+# v6: Song-level info fields rendered in the Hero panel's Song Info row.
+# These are read from the Song model (session.song), not the component.
+HERO_SONG_INFO_FIELDS: tuple[tuple[str, str], ...] = (
+    ("song_title", "Title"),
+    ("composer", "Artist"),
+    ("album_name", "Album"),
+    ("album_series", "Series"),
+    ("musical_key", "Key"),
 )
 
 # Float editor input attributes (unchanged from v3).
