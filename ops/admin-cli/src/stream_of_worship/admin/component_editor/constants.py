@@ -133,3 +133,21 @@ ENERGY_LEVEL_MAX = 0.0
 
 # Cell-width hint for the truncated reason cells in the DataTable.
 REASONING_CELL_WIDTH = REASONING_TABLE_TRUNC + 1  # +1 for the ellipsis char.
+
+# =============================================================================
+# v5: Compact column set for the top-panel DataTable. Numerical columns only;
+# the full 24-column view is replaced by this 9-column compact table, with all
+# other metadata shown in the ComponentDetailPanel (bottom-right).
+# =============================================================================
+COMPACT_TABLE_COLUMNS: tuple[tuple[str, str], ...] = (
+    # (field_key, header_label) — numerical columns only
+    ("occurrence_index", "Occ"),
+    ("bpm", "BPM"),
+    ("key", "Key"),
+    ("start_time", "Start"),
+    ("end_time", "End"),
+    ("confidence", "Conf"),
+    ("backbeat_strength", "Backbeat"),
+    ("groove_density", "Groove"),
+    ("energy_level", "Energy"),
+)

@@ -1,21 +1,27 @@
-"""Main editor screen for the admin Component Metadata editor (v4).
+"""Main editor screen for the admin Component Metadata editor (v5).
 
-v4 layout (top -> bottom):
+v5 layout (T-shape, 3 panels):
     Header
     SongBreadcrumb
     PlaybackBar
-    ComponentHeroPanel       (v4 NEW -- always-visible summary)
-    ComponentMetadataTable    (single DataTable, reordered columns)
+    #top-panel (full-width):
+        ComponentHeroPanel       (v4, retained)
+        ComponentMetadataTable   (compact, read-only, 9 numerical columns)
+    #bottom-split (50/50 horizontal):
+        LyricsPanel              (bottom-left, LRC + playback highlight)
+        ComponentDetailPanel     (bottom-right, all metadata + editable fields)
+    Input(#row-edit-input, hidden overlay)
     StatusIndicator
     GroupedFooter
 
-v4 changes from v3:
-- D1: DATA_TABLE_COLUMNS reordered so transition-critical + editable fields
-  come first.
-- D2: ComponentHeroPanel widget above the DataTable.
-- D3: ``space`` -> ``action_toggle_playback_for_component`` (seek to
-  highlighted component's start_time, then play).
-- D4: Reasoning columns dimmed + truncated in the table; full text in Hero.
+v5 changes from v4:
+- T-shaped 3-panel layout: Hero Panel + compact table on top; bottom split =
+  lyrics (left) + detail panel (right).
+- Compact table with 9 numerical columns (COMPACT_TABLE_COLUMNS), read-only.
+- New LyricsPanel with playback-synced current-line highlight.
+- New ComponentDetailPanel with all component metadata + editable field nav.
+- Tab/shift+tab cycles panel focus (top → lyrics → details).
+- Edit actions (e, [, ]) operate on the detail panel's focused field.
 """
 
 import asyncio
@@ -24,10 +30,10 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 from rich.text import Text
-from textual import events
+from textual import events, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.coordinate import Coordinate
 from textual.css.query import NoMatches
 from textual.geometry import Offset
@@ -47,25 +53,31 @@ from stream_of_worship.admin.component_editor.autosave import (
     save_autosave,
 )
 from stream_of_worship.admin.component_editor.constants import (
+    COMPACT_TABLE_COLUMNS,
     COMPONENT_SCHEMA_VERSION,
-    DATA_TABLE_COLUMNS,
     ENERGY_LEVEL_MAX,
     ENERGY_LEVEL_MIN,
     GROOVE_DENSITY_MAX,
     GROOVE_DENSITY_MIN,
     HERO_PRIMARY_FIELDS,
     HERO_REASONING_FIELDS,
-    REASONING_TABLE_TRUNC,
     THEME_VALUES,
     VOCAL_POSTURE_VALUES,
 )
+from stream_of_worship.admin.component_editor.detail_panel import ComponentDetailPanel
+from stream_of_worship.admin.component_editor.lrc_fetch import (
+    LRCFetch,
+    fetch_lrc_for_song,
+    prefetch_all_lrc,
+)
+from stream_of_worship.admin.component_editor.lyrics_panel import LyricsPanel
 from stream_of_worship.admin.component_editor.state import (
     ComponentEditorState,
     SongSession,
 )
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.footer import GroupedFooter, format_key_display
-from stream_of_worship.admin.services.lrc_parser import format_duration
+from stream_of_worship.admin.services.lrc_parser import format_duration, parse_lrc_full
 from stream_of_worship.admin.services.playback import PlaybackService, PlaybackState
 from stream_of_worship.admin.services.r2 import R2Client
 
@@ -91,15 +103,6 @@ def _fmt_time(seconds: float | None) -> str:
     m = int(seconds) // 60
     s = int(seconds) % 60
     return f"{m:02d}:{s:02d}"
-
-
-def _truncate_reasoning(text: str | None) -> str:
-    """Truncate reasoning text for the DataTable cell (D4)."""
-    if not text:
-        return "—"
-    if len(text) <= REASONING_TABLE_TRUNC:
-        return text
-    return text[:REASONING_TABLE_TRUNC] + "…"
 
 
 class SongBreadcrumb(Static):
@@ -332,8 +335,35 @@ class ComponentEditorScreen(Screen[None]):
         overflow: hidden;
     }
 
+    /* Top panel: Hero Panel (auto height) + compact table (fixed mini-height) */
+    #top-panel {
+        height: auto;
+        max-height: 20;
+        overflow: hidden;
+        border-bottom: solid $primary;
+    }
+
     #component-table {
+        height: 6;
+    }
+
+    /* Bottom split: 50/50 horizontal */
+    #bottom-split {
         height: 1fr;
+        overflow: hidden;
+    }
+
+    #lyrics-panel {
+        width: 1fr;
+        overflow-y: auto;
+        background: $surface;
+        border-right: solid $primary;
+    }
+
+    #detail-panel {
+        width: 1fr;
+        overflow-y: auto;
+        background: $surface;
     }
 
     #row-edit-input {
@@ -344,22 +374,25 @@ class ComponentEditorScreen(Screen[None]):
     """
 
     BINDINGS: ClassVar[list[Binding]] = [
-        # Playback / Nav
+        # Playback / Nav (global — work on any panel)
         Binding("space", "toggle_playback_for_component", "Play/Pause"),
         Binding("left", "seek_backward", "Seek -5s"),
         Binding("right", "seek_forward", "Seek +5s"),
         Binding("j", "jump_to_component", "Jump"),
-        # Song switch
+        # Song switch (global)
         Binding("n", "next_song", "Next Song"),
         Binding("p", "prev_song", "Prev Song"),
-        # Column navigation (replaces panel nav)
-        Binding("tab", "cursor_right", "Col →"),
-        Binding("shift+tab", "cursor_left", "Col ←"),
-        # Edit
+        # Panel navigation (replaces column nav)
+        Binding("tab", "cycle_panel_next", "Panel →"),
+        Binding("shift+tab", "cycle_panel_prev", "Panel ←"),
+        # Edit (only active when detail panel is focused)
         Binding("bracketleft", "cycle_field_prev", "Cycle −"),
         Binding("bracketright", "cycle_field_next", "Cycle +"),
         Binding("e", "edit_numeric", "Edit Num"),
-        # General
+        # Detail panel field navigation (only when detail panel is focused)
+        Binding("up", "detail_focus_up", "Field ↑"),
+        Binding("down", "detail_focus_down", "Field ↓"),
+        # General (global)
         Binding("s", "save", "Save"),
         Binding("ctrl+z", "undo", "Undo"),
         Binding("ctrl+y", "redo", "Redo"),
@@ -376,6 +409,12 @@ class ComponentEditorScreen(Screen[None]):
             "jump_to_component",
         ],
         "Songs": ["next_song", "prev_song"],
+        "Panels": [
+            "cycle_panel_next",
+            "cycle_panel_prev",
+            "detail_focus_up",
+            "detail_focus_down",
+        ],
         "Edit": ["cycle_field_prev", "cycle_field_next", "edit_numeric"],
         "General": ["save", "undo", "redo", "quit_editor", "show_keymap"],
     }
@@ -399,14 +438,25 @@ class ComponentEditorScreen(Screen[None]):
         self._edit_target_role: str | None = None
         self._edit_target_field: str | None = None
         self._position_update_timer: asyncio.Task | None = None
+        self._active_panel: str = "top"  # "top" | "lyrics" | "details"
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="editor-body"):
             yield SongBreadcrumb()
             yield PlaybackBar()
-            yield ComponentHeroPanel()
-            yield ComponentMetadataTable(id="component-table")
+
+            # Top panel: Hero Panel + compact read-only table
+            with Vertical(id="top-panel"):
+                yield ComponentHeroPanel()
+                yield ComponentMetadataTable(id="component-table")
+
+            # Bottom split: lyrics (left) + details (right)
+            with Horizontal(id="bottom-split"):
+                yield LyricsPanel(id="lyrics-panel")
+                yield ComponentDetailPanel(id="detail-panel")
+
+            # Hidden Input overlay (for numeric editing in detail panel)
             yield Input(
                 id="row-edit-input",
                 placeholder="Edit numeric value",
@@ -419,7 +469,10 @@ class ComponentEditorScreen(Screen[None]):
     def on_mount(self) -> None:
         self._setup_table()
         self._refresh_table()
+        self._refresh_detail_panel()
+        self._refresh_hero()
         self.query_one("#component-table", ComponentMetadataTable).focus()
+        self._active_panel = "top"
         self._update_breadcrumb()
         self._update_status()
         self._start_position_updates()
@@ -432,7 +485,11 @@ class ComponentEditorScreen(Screen[None]):
 
         self._load_audio_for_current_song()
         self._maybe_apply_autosave()
-        self._refresh_hero()  # v4 NEW
+
+        # LRC pre-fetch (v5)
+        self.state.lrc_prefetch_in_progress = True
+        self._refresh_lyrics_panel()
+        self._prefetch_lrc()
 
     def on_unmount(self) -> None:
         self.playback.stop()
@@ -444,8 +501,8 @@ class ComponentEditorScreen(Screen[None]):
 
     def _setup_table(self) -> None:
         table = self.query_one("#component-table", DataTable)
-        table.add_columns(*(header for _, header, _, _ in DATA_TABLE_COLUMNS))
-        table.cursor_type = "cell"
+        table.add_columns(*(header for _, header in COMPACT_TABLE_COLUMNS))
+        table.cursor_type = "row"
         table.show_cursor = True
         table.zebra_stripes = True
 
@@ -462,8 +519,6 @@ class ComponentEditorScreen(Screen[None]):
             return "—"
         if field_key in ("start_time", "end_time") and isinstance(value, (int, float)):
             return format_duration(float(value))
-        if field_key in ("theme_reasoning", "posture_reasoning"):
-            return _truncate_reasoning(value if isinstance(value, str) else str(value))
         if isinstance(value, float):
             return f"{value:.4g}"
         return str(value)
@@ -472,7 +527,7 @@ class ComponentEditorScreen(Screen[None]):
         table = self.query_one("#component-table", DataTable)
         table.clear()
         for role in ("entry", "exit"):
-            row_values = [self._cell_value(role, key) for key, _, _, _ in DATA_TABLE_COLUMNS]
+            row_values = [self._cell_value(role, key) for key, _ in COMPACT_TABLE_COLUMNS]
             table.add_row(*row_values, key=role)
         row = max(0, min(self.state.selected_row, 1))
         try:
@@ -487,7 +542,7 @@ class ComponentEditorScreen(Screen[None]):
             return
         try:
             col_idx = next(
-                i for i, (key, _, _, _) in enumerate(DATA_TABLE_COLUMNS) if key == field_name
+                i for i, (key, _) in enumerate(COMPACT_TABLE_COLUMNS) if key == field_name
             )
         except StopIteration:
             return
@@ -537,6 +592,46 @@ class ComponentEditorScreen(Screen[None]):
             return
         panel.render_panel(self.state)
 
+    def _refresh_detail_panel(self) -> None:
+        """v5 NEW. Re-renders the ComponentDetailPanel against the current state."""
+        try:
+            panel = self.query_one("#detail-panel", ComponentDetailPanel)
+        except NoMatches:
+            return
+        panel.update_detail(self.state)
+
+    def _refresh_lyrics_panel(self) -> None:
+        """v5 NEW. Re-renders the LyricsPanel for the current song."""
+        try:
+            panel = self.query_one("#lyrics-panel", LyricsPanel)
+        except NoMatches:
+            return
+        session = self.state.current
+        if session is None:
+            panel.update_lrc(None, "")
+            return
+
+        song_id = session.song_id
+        song_title = session.song_title
+
+        if song_id in self.state.lrc_parsed:
+            fetch = self.state.lrc_fetches.get(song_id)
+            if fetch and fetch.error:
+                panel.update_error(fetch.error, song_title)
+            else:
+                parsed = self.state.lrc_parsed[song_id]
+                pos = self.playback.position_seconds or 0.0
+                idx = LyricsPanel.compute_highlighted_index(parsed, pos)
+                panel.update_lrc(parsed, song_title, highlighted_index=idx)
+            return
+
+        if self.state.lrc_prefetch_in_progress:
+            panel.update_fetching(song_title)
+            self._fetch_lrc_on_demand(song_id, session.hash_prefix, song_title)
+            return
+
+        panel.update_lrc(None, song_title)
+
     # --- Playback ---
 
     def _load_audio_for_current_song(self) -> None:
@@ -550,6 +645,7 @@ class ComponentEditorScreen(Screen[None]):
             while True:
                 await asyncio.sleep(0.2)
                 self._update_playback_bar()
+                self._update_lyrics_highlight()
 
         self._position_update_timer = asyncio.ensure_future(_update_loop())
 
@@ -564,6 +660,25 @@ class ComponentEditorScreen(Screen[None]):
 
     def _on_playback_position(self, position) -> None:
         self._update_playback_bar()
+        self._update_lyrics_highlight()
+
+    def _update_lyrics_highlight(self) -> None:
+        """v5 NEW. Update the lyrics panel's current-line highlight based on
+        playback position. Called at 5Hz from the position update timer.
+        """
+        try:
+            panel = self.query_one("#lyrics-panel", LyricsPanel)
+        except NoMatches:
+            return
+        session = self.state.current
+        if session is None:
+            return
+        parsed = self.state.lrc_parsed.get(session.song_id)
+        if parsed is None:
+            return
+        pos = self.playback.position_seconds or 0.0
+        idx = LyricsPanel.compute_highlighted_index(parsed, pos)
+        panel.set_highlighted_index(idx)
 
     def _on_playback_state(self, new_state: PlaybackState) -> None:
         self._update_playback_bar()
@@ -577,17 +692,11 @@ class ComponentEditorScreen(Screen[None]):
         return "entry" if self.state.selected_row == 0 else "exit"
 
     def _selected_field_key(self) -> str:
-        """Return the field key for the current cursor column."""
-        try:
-            table = self.query_one("#component-table", DataTable)
-        except NoMatches:
-            return self.state.selected_column_key
-        col = table.cursor_column
-        if col is None or col < 0 or col >= len(DATA_TABLE_COLUMNS):
-            return self.state.selected_column_key
-        key = DATA_TABLE_COLUMNS[col][0]
-        self.state.selected_column_key = key
-        return key
+        """Return the field key for the current cursor column (retained for
+        autosave compat). In v5 the table is read-only with row-only cursor,
+        so this always returns the stored selected_column_key.
+        """
+        return self.state.selected_column_key
 
     def _sync_selection_from_table_cursor(self) -> None:
         try:
@@ -599,7 +708,9 @@ class ComponentEditorScreen(Screen[None]):
             return
         if 0 <= cursor_row <= 1:
             self.state.selected_row = cursor_row
-        self._selected_field_key()
+        # Also trigger detail panel + hero refresh
+        self._refresh_detail_panel()
+        self._refresh_hero()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id != "component-table":
@@ -658,45 +769,26 @@ class ComponentEditorScreen(Screen[None]):
     def _cancel_row_edit(self) -> None:
         self._hide_row_edit_input()
         try:
-            self.query_one("#component-table", ComponentMetadataTable).focus()
+            self.query_one("#detail-panel", ComponentDetailPanel).focus()
         except NoMatches:
             pass
 
-    def _cell_screen_region(self, table: DataTable, row: int, column: int):
-        cell_region = table._get_cell_region(Coordinate(row, column))
-        if cell_region.width <= 0 or cell_region.height <= 0:
-            return None
-        x = table.region.x + cell_region.x - table.scroll_x
-        y = table.region.y + cell_region.y - table.scroll_y
-        if y < table.region.y or y >= table.region.y + table.region.height:
-            return None
-        visible_left = max(x, table.region.x)
-        visible_right = min(x + cell_region.width, table.region.x + table.region.width)
-        width = visible_right - visible_left
-        if width <= 0:
-            return None
-        return visible_left, y, width
-
     def _show_value_edit_input(self, role: str, field: str, initial_text: str) -> None:
-        table = self.query_one("#component-table", DataTable)
-        row = 0 if role == "entry" else 1
-        col_idx = next(
-            (i for i, (key, _, _, _) in enumerate(DATA_TABLE_COLUMNS) if key == field),
-            None,
-        )
-        if col_idx is None:
-            return
-        table.move_cursor(row=row, column=col_idx, scroll=True)
-        table.refresh(layout=True)
+        detail_panel = self.query_one("#detail-panel", ComponentDetailPanel)
 
         def do_show() -> None:
-            resolved = self._cell_screen_region(table, row, col_idx)
-            if resolved is None:
-                self.notify("Cannot start editing this cell", severity="warning", timeout=2)
-                table.focus()
+            panel_region = detail_panel.region
+            scroll_y = detail_panel.scroll_y
+
+            editable_section_line = detail_panel.get_editable_field_line_offset(field)
+            y = panel_region.y + editable_section_line - scroll_y
+            x = panel_region.x + 2  # left padding
+            width = panel_region.width - 4  # padding on both sides
+
+            if y < panel_region.y or y >= panel_region.y + panel_region.height:
+                self.notify("Scroll to the field to edit", severity="warning", timeout=2)
                 return
 
-            x, y, width = resolved
             edit_input = self.query_one("#row-edit-input", Input)
             edit_input.value = initial_text
             edit_input.cursor_position = 0
@@ -749,39 +841,32 @@ class ComponentEditorScreen(Screen[None]):
         self.state.set_value(role, field, val)
         self._hide_row_edit_input()
         self._refresh_table()
+        self._refresh_detail_panel()
+        self._refresh_hero()
         self._do_autosave()
         self._update_status()
-        self._refresh_hero()  # v4 NEW
-        try:
-            self.query_one("#component-table", ComponentMetadataTable).focus()
-        except NoMatches:
-            pass
+        # Refocus the detail panel (not the table)
+        self.query_one("#detail-panel", ComponentDetailPanel).focus()
 
     def on_resize(self, event: events.Resize) -> None:
         if self._edit_mode is None:
             return
         if self._edit_target_role is None or self._edit_target_field is None:
             return
+        # Reposition the Input overlay over the detail panel's focused field
         try:
-            table = self.query_one("#component-table", DataTable)
+            detail_panel = self.query_one("#detail-panel", ComponentDetailPanel)
         except NoMatches:
             return
-        row = 0 if self._edit_target_role == "entry" else 1
-        col_idx = next(
-            (
-                i
-                for i, (key, _, _, _) in enumerate(DATA_TABLE_COLUMNS)
-                if key == self._edit_target_field
-            ),
-            None,
-        )
-        if col_idx is None:
-            return
-        resolved = self._cell_screen_region(table, row, col_idx)
-        if resolved is None:
+        panel_region = detail_panel.region
+        scroll_y = detail_panel.scroll_y
+        line_offset = detail_panel.get_editable_field_line_offset(self._edit_target_field)
+        y = panel_region.y + line_offset - scroll_y
+        x = panel_region.x + 2
+        width = panel_region.width - 4
+        if y < panel_region.y or y >= panel_region.y + panel_region.height:
             self._cancel_row_edit()
             return
-        x, y, width = resolved
         edit_input = self.query_one("#row-edit-input", Input)
         edit_input.styles.offset = Offset(x, y)
         edit_input.styles.width = max(1, width)
@@ -833,8 +918,10 @@ class ComponentEditorScreen(Screen[None]):
         else:
             self._notify("[yellow]Recovered unsaved edits from autosave.[/]")
         self._refresh_table()
+        self._refresh_detail_panel()
+        self._refresh_lyrics_panel()
+        self._refresh_hero()
         self._update_status()
-        self._refresh_hero()  # v4 NEW
 
     # --- Song switch ---
 
@@ -849,31 +936,100 @@ class ComponentEditorScreen(Screen[None]):
         self.playback.stop()
         self._load_audio_for_current_song()
         self._refresh_table()
-        self._refresh_hero()  # v4 NEW
+        self._refresh_detail_panel()
+        self._refresh_lyrics_panel()
+        self._refresh_hero()
         self._update_breadcrumb()
         self._update_status()
 
-    # --- Column navigation (screen-level forwarding to DataTable) ---
+    # --- Panel navigation (v5) ---
 
-    def action_cursor_right(self) -> None:
+    _PANEL_ORDER = ("top", "lyrics", "details")
+
+    def action_cycle_panel_next(self) -> None:
         if self._guard_active_edit():
             return
-        try:
-            table = self.query_one("#component-table", ComponentMetadataTable)
-            table.action_cursor_right()
-        except NoMatches:
-            pass
-        self._selected_field_key()
+        idx = self._PANEL_ORDER.index(self._active_panel)
+        self._active_panel = self._PANEL_ORDER[(idx + 1) % len(self._PANEL_ORDER)]
+        self._focus_active_panel()
 
-    def action_cursor_left(self) -> None:
+    def action_cycle_panel_prev(self) -> None:
         if self._guard_active_edit():
             return
+        idx = self._PANEL_ORDER.index(self._active_panel)
+        self._active_panel = self._PANEL_ORDER[(idx - 1) % len(self._PANEL_ORDER)]
+        self._focus_active_panel()
+
+    def _focus_active_panel(self) -> None:
+        if self._active_panel == "top":
+            self.query_one("#component-table", ComponentMetadataTable).focus()
+        elif self._active_panel == "lyrics":
+            self.query_one("#lyrics-panel", LyricsPanel).focus()
+        elif self._active_panel == "details":
+            self.query_one("#detail-panel", ComponentDetailPanel).focus()
+            self._refresh_detail_panel()
+
+    def action_detail_focus_up(self) -> None:
+        if self._active_panel != "details":
+            return
+        if self._guard_active_edit():
+            return
+        panel = self.query_one("#detail-panel", ComponentDetailPanel)
+        panel.move_focus_up()
+        self._refresh_detail_panel()
+
+    def action_detail_focus_down(self) -> None:
+        if self._active_panel != "details":
+            return
+        if self._guard_active_edit():
+            return
+        panel = self.query_one("#detail-panel", ComponentDetailPanel)
+        panel.move_focus_down()
+        self._refresh_detail_panel()
+
+    # --- LRC pre-fetch + on-demand (v5) ---
+
+    @work(exclusive=True, group="lrc-fetch")
+    async def _prefetch_lrc(self) -> None:
         try:
-            table = self.query_one("#component-table", ComponentMetadataTable)
-            table.action_cursor_left()
-        except NoMatches:
-            pass
-        self._selected_field_key()
+            fetches = await prefetch_all_lrc(
+                self.state.sessions,
+                self.r2_client,
+                self.cache_dir,
+            )
+            for song_id, fetch in fetches.items():
+                self.state.lrc_fetches[song_id] = fetch
+                self.state.lrc_parsed[song_id] = (
+                    parse_lrc_full(fetch.content) if fetch.content else None
+                )
+        except Exception as exc:  # noqa: BLE001
+            self.state.lrc_fetch_error = str(exc)
+        finally:
+            self.state.lrc_prefetch_in_progress = False
+            self._refresh_lyrics_panel()
+
+    @work(exclusive=False, group="lrc-fetch-on-demand")
+    async def _fetch_lrc_on_demand(
+        self, song_id: str, hash_prefix: str, song_title: str
+    ) -> None:
+        if song_id in self.state.lrc_parsed:
+            return
+        try:
+            fetch = await fetch_lrc_for_song(
+                song_id, hash_prefix, self.r2_client, self.cache_dir,
+            )
+            self.state.lrc_fetches[song_id] = fetch
+            self.state.lrc_parsed[song_id] = (
+                parse_lrc_full(fetch.content) if fetch.content else None
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.state.lrc_fetches[song_id] = LRCFetch(
+                song_id=song_id, content=None, cached_path=None, error=str(exc),
+            )
+            self.state.lrc_parsed[song_id] = None
+        current = self.state.current
+        if current and current.song_id == song_id:
+            self._refresh_lyrics_panel()
 
     # --- Action handlers ---
 
@@ -900,6 +1056,7 @@ class ComponentEditorScreen(Screen[None]):
             inside = start <= pos <= end
             if not inside:
                 self.playback.seek(comp.start_time or 0.0)
+                self._update_lyrics_highlight()
         self.playback.play()
 
     def action_seek_forward(self) -> None:
@@ -921,6 +1078,7 @@ class ComponentEditorScreen(Screen[None]):
             return
         self.playback.seek(comp.start_time)
         self._update_playback_bar()
+        self._update_lyrics_highlight()
 
     def action_next_song(self) -> None:
         if self._guard_active_edit():
@@ -935,10 +1093,14 @@ class ComponentEditorScreen(Screen[None]):
     def action_cycle_field_next(self) -> None:
         if self._guard_active_edit():
             return
-        field = self._selected_field_key()
-        if field not in ("theme", "vocal_posture"):
+        if self._active_panel != "details":
             return
         if self._guard_no_component():
+            return
+
+        panel = self.query_one("#detail-panel", ComponentDetailPanel)
+        field = panel.focused_field
+        if field not in ("theme", "vocal_posture"):
             return
 
         role = self._selected_role()
@@ -952,16 +1114,21 @@ class ComponentEditorScreen(Screen[None]):
         self.state.set_value(role, field, new_value)
         self._do_autosave()
         self._refresh_table()
-        self._refresh_hero()  # v4 NEW
+        self._refresh_detail_panel()
+        self._refresh_hero()
         self._update_status()
 
     def action_cycle_field_prev(self) -> None:
         if self._guard_active_edit():
             return
-        field = self._selected_field_key()
-        if field not in ("theme", "vocal_posture"):
+        if self._active_panel != "details":
             return
         if self._guard_no_component():
+            return
+
+        panel = self.query_one("#detail-panel", ComponentDetailPanel)
+        field = panel.focused_field
+        if field not in ("theme", "vocal_posture"):
             return
 
         role = self._selected_role()
@@ -975,16 +1142,21 @@ class ComponentEditorScreen(Screen[None]):
         self.state.set_value(role, field, new_value)
         self._do_autosave()
         self._refresh_table()
-        self._refresh_hero()  # v4 NEW
+        self._refresh_detail_panel()
+        self._refresh_hero()
         self._update_status()
 
     def action_edit_numeric(self) -> None:
         if self._guard_active_edit():
             return
-        field = self._selected_field_key()
-        if field not in ("groove_density", "energy_level"):
+        if self._active_panel != "details":
             return
         if self._guard_no_component():
+            return
+
+        panel = self.query_one("#detail-panel", ComponentDetailPanel)
+        field = panel.focused_field
+        if field not in ("groove_density", "energy_level"):
             return
 
         role = self._selected_role()
@@ -1001,7 +1173,8 @@ class ComponentEditorScreen(Screen[None]):
             return
         self._do_autosave()
         self._refresh_table()
-        self._refresh_hero()  # v4 NEW
+        self._refresh_detail_panel()
+        self._refresh_hero()
         self._update_status()
         self.notify("Undo", timeout=2)
 
@@ -1014,7 +1187,8 @@ class ComponentEditorScreen(Screen[None]):
             return
         self._do_autosave()
         self._refresh_table()
-        self._refresh_hero()  # v4 NEW
+        self._refresh_detail_panel()
+        self._refresh_hero()
         self._update_status()
         self.notify("Redo", timeout=2)
 
@@ -1051,7 +1225,8 @@ class ComponentEditorScreen(Screen[None]):
             self._do_autosave()
             self._update_status()
             self._refresh_table()
-            self._refresh_hero()  # v4 NEW
+            self._refresh_detail_panel()
+            self._refresh_hero()
             self._notify("[yellow]Saved DB only — R2 failed — press s to retry.[/]")
             return
 
@@ -1065,7 +1240,8 @@ class ComponentEditorScreen(Screen[None]):
         self._autosave_ok = True
         self._update_status()
         self._refresh_table()
-        self._refresh_hero()  # v4 NEW
+        self._refresh_detail_panel()
+        self._refresh_hero()
         self._notify("[green]Saved (DB + R2).[/]")
 
     def _save_r2_component_result(
