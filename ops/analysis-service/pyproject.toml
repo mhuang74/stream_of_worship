@@ -48,7 +48,10 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-sow_analysis = ["workers/segmentation_few_shot.json"]
+sow_analysis = [
+    "workers/segmentation_few_shot.json",
+    "workers/structured_lyrics_alignment_few_shot.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

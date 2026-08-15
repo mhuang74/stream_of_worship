@@ -1,0 +1,31 @@
+[
+  {
+    "source_song_id": "ni_de_en_dian_gou_wo_yong_5f3a1b2c",
+    "input": "Numbered LRC:\n1  [00:12.00] 祢的恩典夠我用\n2  [00:20.00] 祢的能力在軟弱人身上顯得完全\n3  [00:32.00] 所以我誇我的軟弱\n4  [00:40.00] 好叫基督的能力覆庇我\n5  [00:52.00] 主耶穌 祢的恩典夠我用\n6  [01:00.00] 祢的應許永不改變\n7  [01:12.00] 我要仰望祢的憐憫\n8  [01:20.00] 我要稱頌祢的聖名\n9  [01:32.00] 祢的恩典夠我用\n10  [01:40.00] 祢的能力在軟弱人身上顯得完全\n11  [01:52.00] 所以我誇我的軟弱\n12  [02:00.00] 好叫基督的能力覆庇我\n\nStructured lyrics sections:\n[Verse]\n祢的恩典夠我用\n祢的能力在軟弱人身上顯得完全\n所以我誇我的軟弱\n好叫基督的能力覆庇我\n\n[Chorus]\n主耶穌 祢的恩典夠我用\n祢的應許永不改變\n我要仰望祢的憐憫\n我要稱頌祢的聖名\n\n[Chorus]\n祢的恩典夠我用\n祢的能力在軟弱人身上顯得完全\n所以我誇我的軟弱\n好叫基督的能力覆庇我",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 4, "confidence": 0.95, "rationale": "first verse matches structured lyrics verse"},
+      {"label": "chorus", "line_start": 5, "line_end": 8, "confidence": 0.95, "rationale": "first chorus occurrence"},
+      {"label": "chorus", "line_start": 9, "line_end": 12, "confidence": 0.95, "rationale": "second chorus occurrence, repeated lyrics"}
+    ]
+  },
+  {
+    "source_song_id": "shen_shi_a_7c9e3d1f",
+    "input": "Numbered LRC:\n1  [00:08.00] 神是愛 祂愛我\n2  [00:16.00] 祂用慈愛吸引我\n3  [00:24.00] 我要永遠跟隨祂\n4  [00:32.00] 我要永遠讚美祂\n5  [00:42.00] 哈利路亞 哈利路亞\n6  [00:50.00] 神的慈愛永遠長存\n7  [01:00.00] 哈利路亞 哈利路亞\n8  [01:08.00] 祂的信實直到萬代\n9  [01:20.00] 神是愛 祂愛我\n10  [01:28.00] 祂用慈愛吸引我\n11  [01:36.00] 我要永遠跟隨祂\n12  [01:44.00] 我要永遠讚美祂\n\nStructured lyrics sections:\n[Verse]\n神是愛 祂愛我\n\n祂用慈愛吸引我\n\n我要永遠跟隨祂\n\n我要永遠讚美祂\n\n[Chorus]\n哈利路亞 哈利路亞\n神的慈愛永遠長存\n哈利路亞 哈利路亞\n祂的信實直到萬代\n\n[Verse]\n神是愛 祂愛我\n祂用慈愛吸引我\n我要永遠跟隨祂\n我要永遠讚美祂",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 4, "confidence": 0.95, "rationale": "first verse, structured lyrics have empty lines between content but LRC does not"},
+      {"label": "chorus", "line_start": 5, "line_end": 8, "confidence": 0.95, "rationale": "chorus block"},
+      {"label": "verse", "line_start": 9, "line_end": 12, "confidence": 0.95, "rationale": "second verse, same lyrics repeated"}
+    ]
+  },
+  {
+    "source_song_id": "ye_su_wo_ai_mi_4b8f2e0a",
+    "input": "Numbered LRC:\n1  [00:10.00] 耶穌我愛祢 耶穌我愛祢\n2  [00:18.00] 祢是我生命中唯一的盼望\n3  [00:26.00] 耶穌我愛祢 耶穌我愛祢\n4  [00:34.00] 祢是我心中唯一的滿足\n5  [00:44.00] 我要高舉祢的聖名\n6  [00:52.00] 我要傳揚祢的作為\n7  [01:00.00] 因祢受的刑罰我得平安\n8  [01:08.00] 因祢受的鞭傷我得醫治\n9  [01:20.00] 耶穌我愛祢 耶穌我愛祢\n10  [01:28.00] 祢是我生命中唯一的盼望\n11  [01:36.00] 耶穌我愛祢 耶穌我愛祢\n12  [01:44.00] 祢是我心中唯一的滿足\n13  [01:54.00] 耶穌我愛祢 耶穌我愛祢\n14  [02:02.00] 祢是我生命中唯一的盼望\n15  [02:10.00] 耶穌我愛祢 耶穌我愛祢\n16  [02:18.00] 祢是我心中唯一的滿足\n\nStructured lyrics sections:\n[Verse]\n耶穌我愛祢 耶穌我愛祢\n祢是我生命中唯一的盼望\n耶穌我愛祢 耶穌我愛祢\n祢是我心中唯一的滿足\n\n[Prechorus]\n我要高舉祢的聖名\n我要傳揚祢的作為\n\n[Chorus]\n因祢受的刑罰我得平安\n因祢受的鞭傷我得醫治\n\n[Chorus]\n耶穌我愛祢 耶穌我愛祢\n祢是我生命中唯一的盼望\n耶穌我愛祢 耶穌我愛祢\n祢是我心中唯一的滿足\n\n[Chorus]\n耶穌我愛祢 耶穌我愛祢\n祢是我生命中唯一的盼望\n耶穌我愛祢 耶穌我愛祢\n祢是我心中唯一的滿足",
+    "sections": [
+      {"label": "verse", "line_start": 1, "line_end": 4, "confidence": 0.95, "rationale": "opening verse"},
+      {"label": "prechorus", "line_start": 5, "line_end": 6, "confidence": 0.90, "rationale": "prechorus build-up before chorus"},
+      {"label": "chorus", "line_start": 7, "line_end": 8, "confidence": 0.95, "rationale": "first chorus occurrence"},
+      {"label": "chorus", "line_start": 9, "line_end": 12, "confidence": 0.95, "rationale": "second chorus occurrence, repeated lyrics"},
+      {"label": "chorus", "line_start": 13, "line_end": 16, "confidence": 0.95, "rationale": "third chorus occurrence, repeated lyrics"}
+    ]
+  }
+]
