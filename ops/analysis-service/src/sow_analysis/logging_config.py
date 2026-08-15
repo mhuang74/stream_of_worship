@@ -75,9 +75,16 @@ def configure_logging(
     # Create formatter with job_id support
     formatter = JobIdFormatter(format_string)
 
-    # Configure root handler
+    # Configure root handler. Cap the root logger at INFO so dependency
+    # libraries never emit DEBUG even when SOW_LOG_LEVEL=DEBUG; the requested
+    # level is applied to the sow_analysis namespace below.
     root_logger = logging.getLogger()
-    root_logger.setLevel(level)
+    root_logger.setLevel(max(level, logging.INFO))
+
+    # Apply the requested level to the application namespace only. Child
+    # loggers (sow_analysis.workers.*, etc.) are NOTSET and inherit this level,
+    # so DEBUG records from the service surface while external libs stay quiet.
+    logging.getLogger("sow_analysis").setLevel(level)
 
     # Remove existing handlers to avoid duplicates
     for handler in root_logger.handlers[:]:

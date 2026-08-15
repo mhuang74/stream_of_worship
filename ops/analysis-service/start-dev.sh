@@ -16,20 +16,28 @@ MODEL_DIR="${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-$HOME/.cache/audio-separator}"
 HF_CACHE_DIR="${SOW_FORCED_ALIGNER_MODEL_ROOT:-$HOME/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B}"
 NO_START=false
 REBUILD=false
+LOG_LEVEL=""
 COMPOSE_UP_ARGS=()
 
-for arg in "$@"; do
-    case "$arg" in
+args=("$@")
+i=0
+while [[ $i -lt ${#args[@]} ]]; do
+    case "${args[$i]}" in
         --no-start)
             NO_START=true
             ;;
         --build|--rebuild)
             REBUILD=true
             ;;
+        --log-level)
+            LOG_LEVEL="${args[$((i + 1))]}"
+            i=$((i + 1))  # skip the value
+            ;;
         *)
-            COMPOSE_UP_ARGS+=("$arg")
+            COMPOSE_UP_ARGS+=("${args[$i]}")
             ;;
     esac
+    i=$((i + 1))
 done
 
 echo -e "${GREEN}=== Analysis Service Development Startup ===${NC}"
@@ -148,6 +156,19 @@ fi
 export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$MODEL_DIR"
 export SOW_FORCED_ALIGNER_MODEL_ROOT="$HF_CACHE_DIR"
 
+# Validate and export the log level (mirrors config.py SOW_LOG_LEVEL validation)
+if [[ -n "$LOG_LEVEL" ]]; then
+    case "${LOG_LEVEL^^}" in
+        DEBUG|INFO|WARNING|ERROR)
+            export SOW_LOG_LEVEL="${LOG_LEVEL^^}"
+            ;;
+        *)
+            echo -e "${RED}Error: invalid --log-level '${LOG_LEVEL}' (allowed: DEBUG, INFO, WARNING, ERROR)${NC}"
+            exit 1
+            ;;
+    esac
+fi
+
 # If we found a snapshot, set the model path to use the local mount
 if [[ -n "${QWEN3_SNAPSHOT:-}" ]]; then
     export SOW_FORCED_ALIGNER_MODEL_PATH="/models/hf-model/snapshots/$QWEN3_SNAPSHOT"
@@ -176,6 +197,7 @@ echo ""
 echo -e "${GREEN}Starting Analysis Service in development mode...${NC}"
 echo "  Audio-separator model directory: $MODEL_DIR"
 echo "  Forced aligner model directory: $HF_CACHE_DIR"
+echo "  Log level: ${SOW_LOG_LEVEL:-INFO}"
 
 # Determine the bind IP for display (matches docker-compose SOW_BIND_IP logic)
 BIND_IP="0.0.0.0"
