@@ -1,7 +1,8 @@
-"""Textual screen tests for the admin Component Metadata editor (v4).
+"""Textual screen tests for the admin Component Metadata editor (v5).
 
-Covers the v4 layout (Hero panel + single DataTable), D1-D4 regression tests,
-and the v2 regression suite (B1-B3, C1-C5).
+Covers the v5 layout (T-shape: Hero panel + compact table on top; lyrics +
+detail panel on bottom), D1-D4 regression tests (adapted for v5), and the
+v2 regression suite (B1-B3, C1-C5).
 """
 
 from pathlib import Path
@@ -12,9 +13,11 @@ from textual.widgets import DataTable
 
 from stream_of_worship.admin.component_editor.app import ComponentEditorApp
 from stream_of_worship.admin.component_editor.constants import (
-    DATA_TABLE_COLUMNS,
+    COMPACT_TABLE_COLUMNS,
+    EDITABLE_FIELDS,
     THEME_VALUES,
 )
+from stream_of_worship.admin.component_editor.detail_panel import ComponentDetailPanel
 from stream_of_worship.admin.component_editor.state import (
     ComponentEditorState,
     SongSession,
@@ -188,8 +191,8 @@ def _make_app(
 
 
 def _col_idx(field_key: str) -> int:
-    """Return the column index for a field key in DATA_TABLE_COLUMNS."""
-    return next(i for i, (k, _, _, _) in enumerate(DATA_TABLE_COLUMNS) if k == field_key)
+    """Return the column index for a field key in COMPACT_TABLE_COLUMNS."""
+    return next(i for i, (k, _) in enumerate(COMPACT_TABLE_COLUMNS) if k == field_key)
 
 
 @pytest.mark.asyncio
@@ -217,8 +220,11 @@ async def test_cycle_theme_next_changes_value(tmp_path):
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         state.selected_row = 0
-        table = app.screen.query_one("#component-table", DataTable)
-        table.move_cursor(row=0, column=_col_idx("theme"))
+        # Switch to detail panel and focus the theme field
+        app.screen._active_panel = "details"
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("theme")
+        app.screen._refresh_detail_panel()
         await pilot.pause()
         app.screen.action_cycle_field_next()
         await pilot.pause()
@@ -233,8 +239,11 @@ async def test_cycle_theme_prev_changes_value(tmp_path):
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         state.selected_row = 0
-        table = app.screen.query_one("#component-table", DataTable)
-        table.move_cursor(row=0, column=_col_idx("theme"))
+        # Switch to detail panel and focus the theme field
+        app.screen._active_panel = "details"
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("theme")
+        app.screen._refresh_detail_panel()
         await pilot.pause()
         app.screen.action_cycle_field_prev()
         await pilot.pause()
@@ -247,9 +256,11 @@ async def test_cycle_ignored_on_non_enum_cell(tmp_path):
     app.cache_dir = tmp_path
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
-        # Cursor at column 0 (role) — not an enum cell
-        table = app.screen.query_one("#component-table", DataTable)
-        table.move_cursor(row=0, column=0)
+        # On details panel but focused on groove_density (not an enum field)
+        app.screen._active_panel = "details"
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("groove_density")
+        app.screen._refresh_detail_panel()
         await pilot.pause()
         app.screen.action_cycle_field_next()
         await pilot.pause()
@@ -515,13 +526,17 @@ async def test_quit_without_dirty_exits():
 async def test_edit_numeric_opens_overlay(tmp_path):
     app, state = _make_app()
     app.cache_dir = tmp_path
-    async with app.run_test(size=(160, 40)) as pilot:
+    async with app.run_test(size=(160, 60)) as pilot:
         await pilot.pause()
         state.selected_row = 0
-        table = app.screen.query_one("#component-table", DataTable)
-        table.move_cursor(row=0, column=_col_idx("groove_density"))
+        # Switch to detail panel and focus the groove_density field
+        app.screen._active_panel = "details"
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("groove_density")
+        app.screen._refresh_detail_panel()
         await pilot.pause()
         app.screen.action_edit_numeric()
+        await pilot.pause()
         await pilot.pause()
         await pilot.pause()
         assert app.screen._edit_mode == "numeric"
@@ -532,8 +547,11 @@ async def test_edit_numeric_ignored_on_non_numeric_cell():
     app, _state = _make_app()
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
-        table = app.screen.query_one("#component-table", DataTable)
-        table.move_cursor(row=0, column=0)  # role column
+        # On details panel but focused on theme (not a numeric field)
+        app.screen._active_panel = "details"
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("theme")
+        app.screen._refresh_detail_panel()
         await pilot.pause()
         await pilot.press("e")
         await pilot.pause()
@@ -551,36 +569,32 @@ async def test_jump_to_component_seeks():
 
 
 # =============================================================================
-# v4 D1 regression: column ordering
+# v5 D1 regression: compact table column ordering
 # =============================================================================
 
 
 @pytest.mark.asyncio
-async def test_d1_column_order_first_is_role():
-    """D1 regression: first column label = Role."""
+async def test_d1_column_order_first_is_occ():
+    """v5 regression: first column label = Occ (compact table)."""
     app, _state = _make_app()
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         table = app.screen.query_one("#component-table", DataTable)
         cols = table.ordered_columns
-        assert cols[0].label.plain == "Role"
+        assert cols[0].label.plain == "Occ"
 
 
 @pytest.mark.asyncio
-async def test_d1_editable_fields_before_confidence():
-    """D1 regression: no confidence column appears before any editable column."""
+async def test_d1_compact_table_has_9_columns():
+    """v5 regression: compact table has exactly 9 numerical columns."""
     app, _state = _make_app()
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         table = app.screen.query_one("#component-table", DataTable)
+        assert len(table.ordered_columns) == len(COMPACT_TABLE_COLUMNS)
         col_labels = [c.label.plain for c in table.ordered_columns]
-        first_editable_idx = next(
-            i for i, (k, _, editable, _) in enumerate(DATA_TABLE_COLUMNS) if editable
-        )
-        for i in range(first_editable_idx):
-            assert (
-                "conf" not in col_labels[i].lower()
-            ), f"Confidence column at position {i} ({col_labels[i]}) before editable fields"
+        expected = [header for _, header in COMPACT_TABLE_COLUMNS]
+        assert col_labels == expected
 
 
 # =============================================================================
@@ -611,14 +625,17 @@ async def test_d2_hero_refreshes_on_cursor_move():
 
 @pytest.mark.asyncio
 async def test_d2_hero_shows_edited_theme(tmp_path):
-    """D2 regression: after cycle_field_next changes theme, hero shows new value."""
+    """v5 regression: after cycle_field_next changes theme, hero shows new value."""
     app, state = _make_app()
     app.cache_dir = tmp_path
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
         state.selected_row = 0
-        table = app.screen.query_one("#component-table", DataTable)
-        table.move_cursor(row=0, column=_col_idx("theme"))
+        # Switch to detail panel and focus the theme field
+        app.screen._active_panel = "details"
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        detail._focus_idx = EDITABLE_FIELDS.index("theme")
+        app.screen._refresh_detail_panel()
         await pilot.pause()
         app.screen.action_cycle_field_next()
         await pilot.pause()
@@ -702,7 +719,7 @@ async def test_d3_space_both_components_none_plays_without_seek():
 
 
 # =============================================================================
-# v4 D4 regression: reasoning in Hero panel (full text) + table (truncated)
+# v4 D4 regression: reasoning in Hero panel (full text)
 # =============================================================================
 
 

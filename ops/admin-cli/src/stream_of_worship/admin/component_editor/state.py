@@ -8,7 +8,9 @@ undo / redo state, and autosave snapshot helpers.
 from dataclasses import dataclass, field
 from typing import Any
 
+from stream_of_worship.admin.component_editor.lrc_fetch import LRCFetch
 from stream_of_worship.admin.db.models import Song, SongComponent
+from stream_of_worship.admin.services.lrc_parser import LRCParsedContent
 
 _MAX_UNDO = 100
 
@@ -63,6 +65,12 @@ class ComponentEditorState:
     _redo_stacks: dict[str, list[ComponentUndoEntry]] = field(default_factory=dict)
     selected_row: int = 0  # 0 = entry, 1 = exit
     selected_column_key: str = "role"
+
+    # v5: LRC fetch + parsed content per song
+    lrc_fetches: dict[str, LRCFetch] = field(default_factory=dict)
+    lrc_parsed: dict[str, LRCParsedContent | None] = field(default_factory=dict)
+    lrc_prefetch_in_progress: bool = False
+    lrc_fetch_error: str | None = None  # global pre-fetch error, if any
 
     @property
     def current(self) -> SongSession:
