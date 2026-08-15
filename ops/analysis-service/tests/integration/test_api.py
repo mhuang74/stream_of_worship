@@ -334,6 +334,79 @@ class TestJobsEndpoints:
         assert job_type == JobType.COMPONENT_ANALYSIS
         assert request.options.all_components is True
 
+    def test_get_job_status_includes_segmentation_mode_resolved(
+        self, client, mock_job_queue
+    ):
+        """job_to_response() must propagate segmentation_mode_resolved.
+
+        Regression: the manual JobResult reconstruction in job_to_response()
+        dropped segmentation_mode_resolved, causing the admin CLI to always
+        see None and emit a spurious version-skew warning.
+        """
+        from sow_analysis.models import JobResult
+
+        async def mock_get_job_with_result(job_id):
+            now = datetime.now(timezone.utc)
+            return Job(
+                id=job_id,
+                type=JobType.COMPONENT_ANALYSIS,
+                status=JobStatus.COMPLETED,
+                request=MagicMock(),
+                created_at=now,
+                updated_at=now,
+                progress=1.0,
+                stage="done",
+                result=JobResult(
+                    duration_seconds=180.0,
+                    segmentation_mode_resolved="structured_lyrics",
+                ),
+            )
+
+        mock_job_queue.get_job = mock_get_job_with_result
+
+        response = client.get(
+            "/api/v1/jobs/job_comp1",
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["result"] is not None
+        assert data["result"]["segmentation_mode_resolved"] == "structured_lyrics"
+
+    def test_get_job_status_segmentation_mode_resolved_none_for_non_component(
+        self, client, mock_job_queue
+    ):
+        """segmentation_mode_resolved is None for non-component jobs."""
+        from sow_analysis.models import JobResult
+
+        async def mock_get_job_analyze(job_id):
+            now = datetime.now(timezone.utc)
+            return Job(
+                id=job_id,
+                type=JobType.ANALYZE,
+                status=JobStatus.COMPLETED,
+                request=MagicMock(),
+                created_at=now,
+                updated_at=now,
+                progress=1.0,
+                stage="done",
+                result=JobResult(duration_seconds=180.0),
+            )
+
+        mock_job_queue.get_job = mock_get_job_analyze
+
+        response = client.get(
+            "/api/v1/jobs/job_analyze1",
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"] is not None
+        assert data["result"]["segmentation_mode_resolved"] is None
+
     def test_submit_component_analysis_all_components_defaults_false(
         self, client, mock_job_queue
     ):

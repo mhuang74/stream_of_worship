@@ -142,6 +142,11 @@ def job_to_response(job, warning: Optional[str] = None) -> JobResponse:
                     if job.type == JobType.COMPONENT_ANALYSIS
                     else None
                 ),
+                segmentation_mode_resolved=(
+                    job.result.segmentation_mode_resolved
+                    if job.type == JobType.COMPONENT_ANALYSIS
+                    else None
+                ),
             )
 
     return JobResponse(
