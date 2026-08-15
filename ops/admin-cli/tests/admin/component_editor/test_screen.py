@@ -36,6 +36,8 @@ class _PlaybackStub:
         self.seek_calls: list[float] = []
         self.play_calls: int = 0
         self.pause_calls: int = 0
+        self.play_start_seconds: list[float] = []
+        self.set_state_on_play: PlaybackState | None = PlaybackState.PLAYING
 
     @property
     def state(self):
@@ -81,9 +83,15 @@ class _PlaybackStub:
 
     def pause(self):
         self.pause_calls += 1
+        self._state = PlaybackState.PAUSED
 
-    def play(self, *args, **kwargs):
+    def play(self, start_seconds: float = 0.0, file_path=None) -> bool:
         self.play_calls += 1
+        self.play_start_seconds.append(start_seconds)
+        self._position_seconds = start_seconds
+        if self.set_state_on_play is not None:
+            self._state = self.set_state_on_play
+        return True
 
 
 def _make_component(
@@ -683,8 +691,8 @@ async def test_d2_hero_shows_edited_theme(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_d3_space_seeks_to_component_start_then_plays():
-    """D3 regression 1: paused, position outside [start,end] -> seek then play."""
+async def test_space_seeks_to_component_start_then_plays():
+    """Stopped outside [start,end] -> play(start_seconds=start_time)."""
     playback = _PlaybackStub()
     playback.state = PlaybackState.STOPPED
     playback.position_seconds = 0.0  # outside [10.0, 20.0]
@@ -693,14 +701,16 @@ async def test_d3_space_seeks_to_component_start_then_plays():
         await pilot.pause()
         state.selected_row = 0  # entry component, start_time=10.0
         app.screen.action_toggle_playback_for_component()
-        assert playback.seek_calls == [10.0]
         assert playback.play_calls == 1
         assert playback.pause_calls == 0
+        assert playback.play_start_seconds == [10.0]
+        assert playback.position_seconds == 10.0
 
 
 @pytest.mark.asyncio
-async def test_d3_space_inside_component_no_seek_just_plays():
-    """D3 regression 2: paused, position inside [start,end] -> play without seek."""
+async def test_space_inside_component_still_seeks_to_start():
+    """Stopped inside [start,end] -> still play(start_seconds=start_time)
+    (SPACE reliably restarts the highlighted component)."""
     playback = _PlaybackStub()
     playback.state = PlaybackState.STOPPED
     playback.position_seconds = 15.0  # inside [10.0, 20.0]
@@ -709,13 +719,14 @@ async def test_d3_space_inside_component_no_seek_just_plays():
         await pilot.pause()
         state.selected_row = 0
         app.screen.action_toggle_playback_for_component()
-        assert playback.seek_calls == []
         assert playback.play_calls == 1
+        assert playback.play_start_seconds == [10.0]
+        assert playback.position_seconds == 10.0
 
 
 @pytest.mark.asyncio
-async def test_d3_space_when_playing_pauses():
-    """D3 regression 3: playing -> pause, no play()."""
+async def test_space_when_playing_pauses():
+    """Playing -> pause, no play()."""
     playback = _PlaybackStub()
     playback.state = PlaybackState.PLAYING
     app, state = _make_app(playback=playback)
@@ -725,11 +736,12 @@ async def test_d3_space_when_playing_pauses():
         app.screen.action_toggle_playback_for_component()
         assert playback.pause_calls == 1
         assert playback.play_calls == 0
+        assert playback.play_start_seconds == []
 
 
 @pytest.mark.asyncio
-async def test_d3_space_both_components_none_plays_without_seek():
-    """D3 regression 4: both components None -> play() without seek."""
+async def test_space_no_component_plays_from_zero():
+    """No component highlighted -> play(start_seconds=0.0)."""
     playback = _PlaybackStub()
     playback.state = PlaybackState.STOPPED
     session = SongSession(
@@ -748,7 +760,60 @@ async def test_d3_space_both_components_none_plays_without_seek():
         state.selected_row = 0
         app.screen.action_toggle_playback_for_component()
         assert playback.play_calls == 1
+        assert playback.play_start_seconds == [0.0]
+        assert playback.position_seconds == 0.0
+
+
+@pytest.mark.asyncio
+async def test_space_paused_then_space_plays_from_component_start():
+    """Lifecycle: PAUSED -> SPACE -> play from start; PLAYING -> SPACE -> pause."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.PAUSED
+    playback.position_seconds = 15.0  # inside [10.0, 20.0]
+    app, state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.selected_row = 0
+        # First SPACE: PAUSED -> play(start_seconds=10.0)
+        app.screen.action_toggle_playback_for_component()
+        assert playback.play_calls == 1
+        assert playback.play_start_seconds == [10.0]
+        assert playback.is_playing  # stub now mutates state
+        # Second SPACE: PLAYING -> pause
+        app.screen.action_toggle_playback_for_component()
+        assert playback.pause_calls == 1
+        assert playback.play_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_space_with_edit_active_is_noop():
+    """Edit overlay active -> SPACE is a no-op."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.STOPPED
+    app, state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.selected_row = 0
+        # Simulate active edit guard returning True
+        app.screen._guard_active_edit = lambda: True
+        app.screen.action_toggle_playback_for_component()
+        assert playback.play_calls == 0
+        assert playback.pause_calls == 0
         assert playback.seek_calls == []
+
+
+@pytest.mark.asyncio
+async def test_space_uses_exit_component_start_time():
+    """Highlight exit component -> play from its start_time."""
+    playback = _PlaybackStub()
+    playback.state = PlaybackState.STOPPED
+    app, state = _make_app(playback=playback)
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        state.selected_row = 1  # exit component
+        app.screen.action_toggle_playback_for_component()
+        assert playback.play_start_seconds == [10.0]  # _make_component default
+        assert playback.position_seconds == 10.0
 
 
 # =============================================================================
@@ -1150,3 +1215,37 @@ async def test_r2_merge_updates_verse1_and_bridge(tmp_path):
         bridge_comp = next(c for c in comps if c.get("component_type") == "bridge")
         assert verse_comp["theme"] == "感恩"
         assert bridge_comp["theme"] == "信心"
+
+
+# =============================================================================
+# v2 fixes: Issue A — can_focus on detail/lyrics panels
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_can_focus_true():
+    """Issue A: ComponentDetailPanel.can_focus must be True."""
+    from stream_of_worship.admin.component_editor.detail_panel import ComponentDetailPanel
+
+    assert ComponentDetailPanel.can_focus is True
+
+
+@pytest.mark.asyncio
+async def test_lyrics_panel_can_focus_true():
+    """Issue A: LyricsPanel.can_focus must be True."""
+    from stream_of_worship.admin.component_editor.lyrics_panel import LyricsPanel
+
+    assert LyricsPanel.can_focus is True
+
+
+@pytest.mark.asyncio
+async def test_v_to_details_focuses_detail_panel():
+    """Issue A: pressing 'v' to details mode moves keyboard focus to the detail panel."""
+    app, _ = _make_app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("v")
+        await pilot.pause()
+        assert app.screen._right_panel_mode == "details"
+        detail = app.screen.query_one("#detail-panel", ComponentDetailPanel)
+        assert app.screen.focused is detail
