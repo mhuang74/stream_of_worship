@@ -1168,30 +1168,22 @@ class ComponentEditorScreen(Screen[None]):
     # --- Action handlers ---
 
     def action_toggle_playback_for_component(self) -> None:
-        """v4 (D3). Play or pause the song, anchored to the highlighted component.
+        """Play or pause the song, anchored to the highlighted component.
 
         - If playing: pause.
-        - If paused/stopped: seek to the highlighted component's start_time
-          (unless already inside its [start, end] range), then play.
-        - If no component is highlighted: best-effort play() without seeking.
+        - If paused/stopped: start playback from the highlighted component's
+          start_time (so SPACE reliably restarts the component).
+        - If no component: best-effort play() from the beginning.
         """
         if self._guard_active_edit():
             return
-
         if self.playback.is_playing:
             self.playback.pause()
             return
-
         comp = self.state.get_selected_component()
-        if comp is not None:
-            pos = self.playback.position_seconds or 0.0
-            start = comp.start_time or 0.0
-            end = comp.end_time if comp.end_time is not None else float("inf")
-            inside = start <= pos <= end
-            if not inside:
-                self.playback.seek(comp.start_time or 0.0)
-                self._update_lyrics_highlight()
-        self.playback.play()
+        start = comp.start_time if (comp is not None and comp.start_time is not None) else 0.0
+        self.playback.play(start_seconds=start)
+        self._update_lyrics_highlight()
 
     def action_seek_forward(self) -> None:
         if self._guard_active_edit():
