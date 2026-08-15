@@ -1142,28 +1142,15 @@ class ComponentEditorScreen(Screen[None]):
     def action_detail_focus_up(self) -> None:
         if self._guard_active_edit():
             return
-        if self._active_panel != "right":
-            return
-        if self._right_panel_mode == "details":
-            panel = self.query_one("#detail-panel", ComponentDetailPanel)
-            panel.move_focus_up()
-            self._refresh_detail_panel()
-        elif self._right_panel_mode == "lyrics":
-            panel = self.query_one("#lyrics-panel", LyricsPanel)
-            panel.scroll_line_up()
+        # Field navigation in details mode is handled by ComponentDetailPanel's
+        # own bindings (overrides inherited ScrollView up/down). LyricsPanel
+        # uses inherited ScrollableContainer up/down for line scroll.
+        # Kept for the footer keymap display only.
 
     def action_detail_focus_down(self) -> None:
         if self._guard_active_edit():
             return
-        if self._active_panel != "right":
-            return
-        if self._right_panel_mode == "details":
-            panel = self.query_one("#detail-panel", ComponentDetailPanel)
-            panel.move_focus_down()
-            self._refresh_detail_panel()
-        elif self._right_panel_mode == "lyrics":
-            panel = self.query_one("#lyrics-panel", LyricsPanel)
-            panel.scroll_line_down()
+        # See action_detail_focus_up above.
 
     # --- LRC pre-fetch + on-demand (v5) ---
 
