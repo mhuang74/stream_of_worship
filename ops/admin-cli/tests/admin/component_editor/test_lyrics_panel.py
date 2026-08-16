@@ -526,6 +526,94 @@ async def test_lyrics_keyboard_scroll_shifts_rendered_content():
         assert new_first != initial_first
 
 
+# =============================================================================
+# Structured lyrics rendering
+# =============================================================================
+
+
+def _make_structured() -> dict:
+    return {
+        "sections": [
+            {"label": "Verse", "raw_label": "Verse", "lines": ["Verse line 1", "Verse line 2"]},
+            {"label": "Chorus", "raw_label": "Chorus", "lines": ["Chorus line 1"]},
+        ],
+        "preamble_lines": [],
+    }
+
+
+def test_build_lyrics_text_appends_structured_after_lrc():
+    panel = LyricsPanel()
+    parsed = _make_parsed(num_lines=2, preserved=[])
+    text = panel._build_lyrics_text(parsed, -1, _make_structured())
+    rendered = text.plain
+    assert "Line 0" in rendered
+    assert "Line 1" in rendered
+    assert "-- Structured Lyrics --" in rendered
+    assert "[Verse]" in rendered
+    assert "Verse line 1" in rendered
+    assert "Verse line 2" in rendered
+    assert "[Chorus]" in rendered
+    assert "Chorus line 1" in rendered
+    # Structured lyrics come after the LRC timed lines
+    assert rendered.index("Line 1") < rendered.index("-- Structured Lyrics --")
+
+
+def test_build_lyrics_text_structured_only_when_no_lrc():
+    panel = LyricsPanel()
+    text = panel._build_lyrics_text(None, -1, _make_structured())
+    rendered = text.plain
+    assert "-- Structured Lyrics --" in rendered
+    assert "[Verse]" in rendered
+    assert "Verse line 1" in rendered
+
+
+def test_build_lyrics_text_empty_sections_returns_lrc_only():
+    panel = LyricsPanel()
+    parsed = _make_parsed(num_lines=2, preserved=[])
+    text = panel._build_lyrics_text(parsed, -1, {"sections": []})
+    rendered = text.plain
+    assert "Line 0" in rendered
+    assert "-- Structured Lyrics --" not in rendered
+
+
+def test_build_lyrics_text_no_structured_no_separator():
+    panel = LyricsPanel()
+    parsed = _make_parsed(num_lines=2, preserved=[])
+    text = panel._build_lyrics_text(parsed, -1, None)
+    rendered = text.plain
+    assert "Line 0" in rendered
+    assert "-- Structured Lyrics --" not in rendered
+
+
+def test_build_lyrics_text_section_with_empty_lines_no_crash():
+    panel = LyricsPanel()
+    structured = {"sections": [{"label": "Bridge", "raw_label": "Bridge", "lines": []}]}
+    text = panel._build_lyrics_text(None, -1, structured)
+    assert "[Bridge]" in text.plain
+
+
+@pytest.mark.asyncio
+async def test_lyrics_panel_renders_structured_lyrics_in_strips():
+    """Structured lyrics appear in the rendered strips below the LRC lines."""
+    app, _state = _make_app()
+    async with app.run_test(size=(80, 40)) as pilot:
+        await pilot.pause()
+        parsed = _make_parsed(num_lines=2, preserved=[])
+        panel = pilot.app.screen.query_one("#lyrics-panel", LyricsPanel)
+        panel.update_lrc(
+            parsed,
+            "Test Song",
+            highlighted_index=-1,
+            structured_lyrics=_make_structured(),
+        )
+        await pilot.pause()
+        rendered = "\n".join(strip.text for strip in panel._content_strips)
+        assert "Line 0" in rendered
+        assert "-- Structured Lyrics --" in rendered
+        assert "[Verse]" in rendered
+        assert "Verse line 1" in rendered
+
+
 @pytest.mark.asyncio
 async def test_lyrics_render_line_blank_beyond_content():
     """render_line(y) for y beyond content returns blank, not crashed."""

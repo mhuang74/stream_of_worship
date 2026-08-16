@@ -152,6 +152,7 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
             ("Album", song.album_name if song else None),
             ("Series", song.album_series if song else None),
             ("Song Key", song.musical_key if song else None),
+            ("ID", session.song_id),
         ]
         for label, value in song_fields:
             text.append(f"  {label:12s}: ", style="dim")
@@ -325,15 +326,15 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
 
         Layout (with start_time/end_time added to EDITABLE_FIELDS and removed
         from base metadata):
-        - 1 (Song header) + 6 (song fields) = 7
-        - 1 (blank) = 8
-        - 1 (Component header) + 6 (base-metadata fields) = 15
-        - 1 (blank) = 16
-        - 1 (Editable sub-header) = 17
+        - 1 (Song header) + 7 (song fields) = 8
+        - 1 (blank) = 9
+        - 1 (Component header) + 6 (base-metadata fields) = 16
+        - 1 (blank) = 17
+        - 1 (Editable sub-header) = 18
         - + index of field in EDITABLE_FIELDS = target line
         """
         try:
             field_idx = EDITABLE_FIELDS.index(field)
         except ValueError:
             return 0
-        return 17 + field_idx
+        return 18 + field_idx
