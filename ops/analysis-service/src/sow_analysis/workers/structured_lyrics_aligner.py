@@ -21,7 +21,12 @@ from typing import Optional
 from openai import OpenAI
 
 from ..config import settings
-from .components import ComponentInstance, parse_lrc
+from .components import (
+    ComponentInstance,
+    _lines_match,
+    _normalize_for_matching,
+    parse_lrc,
+)
 from .llm_rate_limit import call_llm_with_retry
 from .section_segmenter import (
     _EXPECTED_HELD_OUT_IDS,
@@ -128,7 +133,17 @@ def _build_alignment_prompt(
         "chorus). Sections may repeat (e.g. a Chorus appearing 3 times -> 3 "
         "sections with different line ranges). Sections must be non-overlapping. "
         "It is OK to skip LRC lines that belong to interludes or sections not in "
-        "the structured lyrics. Respond with JSON only."
+        "the structured lyrics. "
+        "**Line-count mismatch is expected.** The LRC may merge two short structured "
+        "lines into one LRC line, or split one long structured line into two LRC "
+        "lines. Do NOT preserve line-count equality between structured sections and "
+        "LRC ranges. Instead, match by lyric CONTENT: a section's line_start must "
+        "point to the LRC line whose text matches (fuzzy) the section's FIRST "
+        "structured line, and line_end must point to the LRC line whose text matches "
+        "(fuzzy) the section's LAST structured line. If the structured section has 5 "
+        "lines but the LRC only has 4 lines covering that content, line_end must "
+        "still equal the 4th LRC line — not the 5th. "
+        "Respond with JSON only."
     )
 
     user_parts: list[str] = []
@@ -276,6 +291,215 @@ def _parse_alignment_json(
     return accepted, breakdown
 
 
+def _fuzzy_ratio(a: str, b: str) -> float:
+    """Rapidfuzz ratio between two normalized strings (0.0-100.0)."""
+    from rapidfuzz import fuzz as rf_fuzz
+
+    return rf_fuzz.ratio(a, b)
+
+
+def _match_structured_sections(
+    aligned: list[Section],
+    structured: list[dict],
+    lrc_normalized: list[str],
+) -> list[tuple[Section, Optional[dict]]]:
+    """Pair each aligned Section with its structured-lyrics section.
+
+    When counts are equal, pairs by order (both are in song order). When counts
+    differ (LLM merged/split sections), pairs by best fuzzy alignment of the
+    structured section's first line against the LRC line at each Section's
+    line_start. Returns ``(aligned_section, structured_section_or_None)`` pairs.
+    """
+    if len(aligned) == len(structured):
+        return list(zip(aligned, structured))
+
+    pairs: list[tuple[Section, Optional[dict]]] = []
+    used: set[int] = set()
+    for sec in aligned:
+        lrc_at_start = (
+            lrc_normalized[sec.line_start - 1]
+            if 0 <= sec.line_start - 1 < len(lrc_normalized)
+            else ""
+        )
+        best_idx: Optional[int] = None
+        best_score = -1.0
+        for i, ssec in enumerate(structured):
+            if i in used:
+                continue
+            lines = ssec.get("lines") or []
+            if not lines:
+                continue
+            first = _normalize_for_matching(lines[0])
+            score = _fuzzy_ratio(first, lrc_at_start)
+            if score > best_score:
+                best_score = score
+                best_idx = i
+        if best_idx is not None:
+            used.add(best_idx)
+            pairs.append((sec, structured[best_idx]))
+        else:
+            pairs.append((sec, None))
+    return pairs
+
+
+def _validate_section_content_alignment(
+    sections: list[Section],
+    structured_lyrics_json: str,
+    lrc_content: str,
+    fuzzy_threshold: int = 85,
+) -> tuple[list[Section], list[str]]:
+    """Validate that each aligned section's line_start matches its structured first line.
+
+    For each Section, compares the normalized text of the LRC line at
+    ``(line_start - 1)`` against the structured section's FIRST line. If it
+    doesn't match, attempts a bounded repair: searches ±2 LRC lines around
+    ``line_start`` for a match. If found, adjusts ``line_start`` (and
+    ``line_end`` by the same delta, clamped to valid range). If no repair is
+    possible, the section is flagged with a diagnostic but kept (downstream
+    chorus validation may still catch it).
+
+    After repairs, an overlap re-check resolves any newly-introduced overlaps:
+    if a repaired section overlaps its predecessor, the predecessor's
+    ``line_end`` is trimmed; if it overlaps its successor, the repair is
+    reverted and the section flagged.
+
+    Returns ``(repaired_sections, diagnostics)`` where ``diagnostics`` is a
+    list of human-readable strings describing each repair or flag.
+    """
+    diagnostics: list[str] = []
+    try:
+        structured = json.loads(structured_lyrics_json)
+    except (json.JSONDecodeError, TypeError):
+        return sections, ["structured lyrics JSON invalid"]
+    structured_sections = structured.get("sections", []) if isinstance(structured, dict) else []
+    if not structured_sections:
+        return sections, ["structured lyrics has no sections"]
+
+    try:
+        lrc_lines = parse_lrc(lrc_content).lines
+    except ValueError:
+        return sections, ["LRC parse failed"]
+    n = len(lrc_lines)
+    if n == 0:
+        return sections, ["LRC has no lines"]
+    lrc_normalized = [
+        _normalize_for_matching(ln.text) if ln.text else "" for ln in lrc_lines
+    ]
+
+    # Work on copies so the caller's list is not mutated on failure paths.
+    result = [
+        Section(s.label, s.line_start, s.line_end, s.confidence, s.rationale)
+        for s in sections
+    ]
+    pairs = _match_structured_sections(result, structured_sections, lrc_normalized)
+
+    original: dict[int, tuple[int, int]] = {}
+    repaired: set[int] = set()
+
+    for i, (sec, ssec) in enumerate(pairs):
+        if ssec is None:
+            diagnostics.append(f"section '{sec.label}': no matching structured section")
+            continue
+        lines = ssec.get("lines") or []
+        if not lines:
+            continue
+        first_line = _normalize_for_matching(lines[0])
+        lrc_at_start = (
+            lrc_normalized[sec.line_start - 1]
+            if 0 <= sec.line_start - 1 < n
+            else ""
+        )
+        if _lines_match(first_line, lrc_at_start):
+            continue
+
+        found = False
+        for delta in range(-2, 3):
+            if delta == 0:
+                continue
+            idx = sec.line_start - 1 + delta
+            if 0 <= idx < n and _lines_match(first_line, lrc_normalized[idx]):
+                new_start = max(1, min(sec.line_start + delta, n))
+                new_end = max(1, min(sec.line_end + delta, n))
+                if new_start <= new_end:
+                    old_start = sec.line_start
+                    original[i] = (sec.line_start, sec.line_end)
+                    sec.line_start = new_start
+                    sec.line_end = new_end
+                    repaired.add(i)
+                    diagnostics.append(
+                        f"section '{sec.label}': line_start {old_start}->{new_start} "
+                        f"(repaired: LRC line '{lrc_at_start}' didn't match structured "
+                        f"first line '{first_line}')"
+                    )
+                    found = True
+                    break
+        if not found:
+            diagnostics.append(
+                f"section '{sec.label}': line_start {sec.line_start} may be misaligned "
+                f"(LRC line '{lrc_at_start}' doesn't match structured first line "
+                f"'{first_line}')"
+            )
+
+    _resolve_overlaps(result, repaired, original, diagnostics)
+
+    return result, diagnostics
+
+
+def _resolve_overlaps(
+    sections: list[Section],
+    repaired: set[int],
+    original: dict[int, tuple[int, int]],
+    diagnostics: list[str],
+) -> None:
+    """Resolve overlaps introduced by validator repairs.
+
+    For each adjacent pair that overlaps:
+      - If the LATER section was repaired, trim the EARLIER section's
+        ``line_end`` to ``(later.line_start - 1)`` (the earlier section's
+        boundary was likely wrong, e.g. it absorbed the later section's first
+        line).
+      - If the EARLIER section was repaired (overlapping its successor), revert
+        that repair and flag it, since trimming a successor's ``line_start`` is
+        not safe.
+    """
+    for i in range(1, len(sections)):
+        prev, cur = sections[i - 1], sections[i]
+        if cur.line_start <= prev.line_end:
+            if i in repaired:
+                new_end = cur.line_start - 1
+                if new_end >= prev.line_start:
+                    prev.line_end = new_end
+                    diagnostics.append(
+                        f"section '{prev.label}': line_end trimmed to {new_end} "
+                        f"to resolve overlap with '{cur.label}'"
+                    )
+                else:
+                    _revert(sections, i, original, repaired, diagnostics)
+            elif i - 1 in repaired:
+                _revert(sections, i - 1, original, repaired, diagnostics)
+
+
+def _revert(
+    sections: list[Section],
+    idx: int,
+    original: dict[int, tuple[int, int]],
+    repaired: set[int],
+    diagnostics: list[str],
+) -> None:
+    """Revert a repaired section back to its original bounds and flag it."""
+    if idx not in repaired:
+        return
+    old_start, old_end = original[idx]
+    sec = sections[idx]
+    diagnostics.append(
+        f"section '{sec.label}': repair reverted (line_start {sec.line_start}->"
+        f"{old_start}) due to overlap with a neighbor"
+    )
+    sec.line_start = old_start
+    sec.line_end = old_end
+    repaired.discard(idx)
+
+
 def _load_alignment_few_shot_examples() -> list[dict]:
     """Load alignment few-shot examples from the committed JSON file.
 
@@ -309,6 +533,20 @@ def _load_alignment_few_shot_examples() -> list[dict]:
                 f"leakage."
             )
     return examples
+
+
+def _build_corrective_message(flagged_diagnostics: list[str]) -> str:
+    """Build a corrective user message from flagged alignment diagnostics.
+
+    Appended as a new user message (not replacing the original) so the LLM
+    retains the full numbered-LRC + structured-sections context while receiving
+    targeted feedback about which line_start values were wrong.
+    """
+    parts = ["Your previous alignment had issues:"]
+    for d in flagged_diagnostics:
+        parts.append(f"- {d}")
+    parts.append("Re-align with correct line_start values.")
+    return "\n".join(parts)
 
 
 async def align_structured_lyrics(
@@ -389,18 +627,50 @@ async def align_structured_lyrics(
         )
         return resp.choices[0].message.content or ""
 
-    text = await call_llm_with_retry(
-        _call, description="LLM structured lyrics alignment"
-    )
-    sections, parse_breakdown = _parse_alignment_json(text, n_lines)
-    if sections is None:
-        logger.warning(
-            "Structured lyrics alignment parse failed: %s", parse_breakdown
+    max_attempts = max(1, settings.SOW_LLM_STRUCTURED_LYRICS_MAX_ATTEMPTS)
+
+    sections: Optional[list[Section]] = None
+    diagnostics: list[str] = []
+    for attempt in range(1, max_attempts + 1):
+        text = await call_llm_with_retry(
+            _call, description="LLM structured lyrics alignment"
         )
-        return []
-    logger.debug(
-        "Structured lyrics alignment parse: %s", parse_breakdown
-    )
+        sections, parse_breakdown = _parse_alignment_json(text, n_lines)
+        if sections is None:
+            logger.warning(
+                "Structured lyrics alignment parse failed (attempt %d): %s",
+                attempt,
+                parse_breakdown,
+            )
+            return []
+        logger.debug(
+            "Structured lyrics alignment parse (attempt %d): %s",
+            attempt,
+            parse_breakdown,
+        )
+
+        sections, diagnostics = _validate_section_content_alignment(
+            sections, structured_lyrics_json, lrc_content
+        )
+        for d in diagnostics:
+            if "may be misaligned" in d:
+                logger.warning("Section content alignment issue: %s", d)
+            else:
+                logger.debug("Section content alignment: %s", d)
+
+        flagged = [d for d in diagnostics if "may be misaligned" in d]
+        if not flagged:
+            break
+        if attempt < max_attempts:
+            corrective = _build_corrective_message(flagged)
+            logger.debug(
+                "Structured lyrics alignment retry (attempt %d -> %d) with "
+                "corrective feedback",
+                attempt,
+                attempt + 1,
+            )
+            messages.append({"role": "user", "content": corrective})
+
     # Defensive post-processing: chorus repetition cross-check.
     sections = _validate_chorus_repetition(sections, lrc_content, weights=weights)
     lines = list(parse_lrc(lrc_content).lines)

@@ -177,6 +177,11 @@ class Settings(BaseSettings):
     # OpenAI client (mirrors SOW_LLM_SEGMENTATION_TIMEOUT_SECONDS).
     # call_llm_with_retry's budget is the overall wall-clock ceiling.
 
+    SOW_LLM_STRUCTURED_LYRICS_MAX_ATTEMPTS: int = 2
+    # Maximum LLM calls for structured lyrics alignment with diagnostic feedback.
+    # 1 = single-shot (no retry). 2 = one retry if _validate_section_content_alignment
+    # flags unrepairable misalignments. Each attempt is a full LLM call.
+
     SOW_LLM_SEGMENTATION_SANITY_CHECK: bool = False
     # Opt-in 2nd/3rd LLM call that presents the validated section list back
     # to the LLM for a yes/no sanity check. Default off. Enable only if the

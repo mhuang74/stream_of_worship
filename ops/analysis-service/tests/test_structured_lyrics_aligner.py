@@ -11,11 +11,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from sow_analysis.config import settings
+from sow_analysis.workers.section_segmenter import Section
 from sow_analysis.workers.structured_lyrics_aligner import (
     _build_alignment_prompt,
     _load_alignment_few_shot_examples,
     _parse_alignment_json,
     _render_structured_sections,
+    _validate_section_content_alignment,
     align_structured_lyrics,
 )
 
@@ -31,6 +33,56 @@ _STRUCTURED_LYRICS_SIMPLE = json.dumps({
     "sections": [
         {"label": "Verse", "raw_label": "[Verse]", "lines": ["讚美主", "哈利路亞"]},
         {"label": "Chorus", "raw_label": "[Chorus]", "lines": ["讚美主", "哈利路亞"]},
+    ],
+    "preamble_lines": [],
+})
+
+# The observed off-by-one case: structured Verse has 5 lines but the LRC merges
+# Verse lines 4+5 into a single LRC line (4 LRC lines). The LLM extends the
+# Verse to 5 LRC lines, swallowing Chorus line 1.
+_LRC_OFF_BY_ONE = """[00:10.05] 主袢使卑微 轉為尊貴
+[00:15.15] 使傷心流淚 轉為笑顏
+[00:20.42] 患難生忍耐 忍耐生老練
+[00:25.84] 老練生盼望 盼望不至羞愧 就沒有失望
+[00:33.75] 心中充滿盼望 盼望使眼睛明亮
+[00:40.00] 道路雖崎嶇 袢與我同行
+[00:44.53] 心中充滿盼望 盼望使信心剛強
+[00:50.55] 信靠每一句應許 生命充滿亮光
+[00:58.46] 生命充滿亮光
+"""
+
+_STRUCTURED_LYRICS_OFF_BY_ONE = json.dumps({
+    "sections": [
+        {"label": "Verse", "raw_label": "[Verse]", "lines": [
+            "主 袢使卑微轉為尊貴",
+            "使傷心流淚轉為笑顏",
+            "患難生忍耐 忍耐生老練",
+            "老練生盼望 盼望不至羞愧",
+            "就沒有失望",
+        ]},
+        {"label": "Chorus", "raw_label": "[Chorus]", "lines": [
+            "心中充滿盼望 盼望使眼睛明亮",
+            "道路雖崎嶇 袢與我同行",
+            "心中充滿盼望 盼望使信心剛強",
+            "信靠每一句應許 生命充滿亮光",
+        ]},
+    ],
+    "preamble_lines": [],
+})
+
+# Distinct-line fixture for retry-loop tests (no repeated lines).
+_LRC_RETRY = """[00:10.00] 第一行歌詞甲
+[00:20.00] 第二行歌詞乙
+[00:30.00] 第三行歌詞丙
+[00:40.00] 第四行歌詞丁
+[00:50.00] 第五行歌詞戊
+[01:00.00] 第六行歌詞己
+"""
+
+_STRUCTURED_LYRICS_RETRY = json.dumps({
+    "sections": [
+        {"label": "Verse", "raw_label": "[Verse]", "lines": ["第一行歌詞甲", "第二行歌詞乙"]},
+        {"label": "Chorus", "raw_label": "[Chorus]", "lines": ["第三行歌詞丙", "第四行歌詞丁"]},
     ],
     "preamble_lines": [],
 })
@@ -353,6 +405,15 @@ class TestBuildAlignmentPrompt:
         assert "Normalize all labels" in system
         assert "intro, verse, prechorus, chorus, bridge, outro, instrumental" in system
 
+    def test_system_prompt_contains_line_merging_hint(self):
+        """[Change 1] The system prompt warns that line-count mismatch is expected."""
+        messages = _build_alignment_prompt(
+            _LRC_SIMPLE, _STRUCTURED_LYRICS_SIMPLE, []
+        )
+        system = messages[0]["content"]
+        assert "Line-count mismatch is expected" in system
+        assert "match by lyric CONTENT" in system
+
     def test_user_message_contains_numbered_lrc(self):
         messages = _build_alignment_prompt(
             _LRC_SIMPLE, _STRUCTURED_LYRICS_SIMPLE, []
@@ -645,6 +706,307 @@ class TestAlignStructuredLyrics:
         assert len(components) > 0
         chorus_rows = [c for c in components if c.component_type == "chorus"]
         assert len(chorus_rows) >= 2
+
+
+# ── Unit tests for _validate_section_content_alignment() ───────────────────
+
+
+class TestValidateSectionContentAlignment:
+    def test_all_sections_aligned_correctly(self):
+        """All line_start values match structured first lines -> no repairs/flags."""
+        sections = [
+            Section("verse", 1, 4, 0.9),
+            Section("chorus", 5, 8, 0.95),
+        ]
+        repaired, diagnostics = _validate_section_content_alignment(
+            sections, _STRUCTURED_LYRICS_OFF_BY_ONE, _LRC_OFF_BY_ONE
+        )
+        assert diagnostics == []
+        assert repaired[0].line_start == 1
+        assert repaired[1].line_start == 5
+
+    def test_line_start_off_by_one_repaired(self):
+        """Chorus line_start 6->5 repaired; Verse line_end trimmed to 4 by overlap."""
+        sections = [
+            Section("verse", 1, 5, 0.9),
+            Section("chorus", 6, 9, 0.95),
+        ]
+        repaired, diagnostics = _validate_section_content_alignment(
+            sections, _STRUCTURED_LYRICS_OFF_BY_ONE, _LRC_OFF_BY_ONE
+        )
+        chorus = repaired[1]
+        assert chorus.line_start == 5
+        assert chorus.line_end == 8
+        verse = repaired[0]
+        assert verse.line_end == 4
+        assert any("line_end trimmed" in d for d in diagnostics)
+
+    def test_line_start_mismatch_unrepairable_flagged(self):
+        """line_start points to a line that doesn't match within ±2 -> flagged."""
+        structured = json.dumps({
+            "sections": [
+                {"label": "Verse", "lines": ["完全不同的開頭歌詞", "第二行"]},
+                {"label": "Chorus", "lines": ["心中充滿盼望 盼望使眼睛明亮", "道路雖崎嶇 袢與我同行"]},
+            ]
+        })
+        sections = [
+            Section("verse", 1, 4, 0.9),
+            Section("chorus", 5, 8, 0.95),
+        ]
+        repaired, diagnostics = _validate_section_content_alignment(
+            sections, structured, _LRC_OFF_BY_ONE
+        )
+        assert any("may be misaligned" in d for d in diagnostics)
+        # Unrepairable section is kept (not dropped).
+        assert repaired[0].line_start == 1
+
+    def test_repair_reverted_on_new_overlap(self):
+        """Repairing chorus line_start would overlap bridge -> repair reverted."""
+        structured = json.dumps({
+            "sections": [
+                {"label": "Verse", "lines": ["lineA", "lineB"]},
+                {"label": "Chorus", "lines": ["lineC", "lineD"]},
+                {"label": "Bridge", "lines": ["lineE", "lineF"]},
+            ]
+        })
+        lrc = """[00:10.00] lineA
+[00:20.00] lineB
+[00:30.00] lineX
+[00:40.00] lineC
+[00:50.00] lineE
+[01:00.00] lineF
+"""
+        sections = [
+            Section("verse", 1, 2, 0.9),
+            Section("chorus", 3, 4, 0.9),
+            Section("bridge", 5, 6, 0.9),
+        ]
+        repaired, diagnostics = _validate_section_content_alignment(
+            sections, structured, lrc
+        )
+        chorus = repaired[1]
+        assert chorus.line_start == 3
+        assert chorus.line_end == 4
+        assert any("repair reverted" in d for d in diagnostics)
+
+    def test_simplified_traditional_mismatch_handled(self):
+        """Structured traditional vs LRC simplified -> zhconv normalizes, no flag."""
+        structured = json.dumps({
+            "sections": [
+                {"label": "Verse", "lines": ["讚美主", "哈利路亞"]},
+            ]
+        })
+        lrc = """[00:10.00] 赞美主
+[00:20.00] 哈利路亚
+"""
+        sections = [Section("verse", 1, 2, 0.9)]
+        _repaired, diagnostics = _validate_section_content_alignment(
+            sections, structured, lrc
+        )
+        assert diagnostics == []
+
+    def test_fuzzy_match_minor_wording_variation(self):
+        """Space/whitespace variation handled by normalization + fuzzy match."""
+        structured = json.dumps({
+            "sections": [
+                {"label": "Verse", "lines": ["主 袢使卑微轉為尊貴", "使傷心流淚轉為笑顏"]},
+            ]
+        })
+        lrc = """[00:10.05] 主袢使卑微 轉為尊貴
+[00:15.15] 使傷心流淚 轉為笑顏
+"""
+        sections = [Section("verse", 1, 2, 0.9)]
+        _repaired, diagnostics = _validate_section_content_alignment(
+            sections, structured, lrc
+        )
+        assert diagnostics == []
+
+    def test_structured_section_count_mismatch(self):
+        """Structured has 4 sections, LLM returned 5 -> matches by fuzzy, no crash."""
+        structured = json.dumps({
+            "sections": [
+                {"label": "Verse", "lines": ["第一行歌詞甲", "第二行歌詞乙"]},
+                {"label": "Chorus", "lines": ["第三行歌詞丙", "第四行歌詞丁"]},
+                {"label": "Verse", "lines": ["第五行歌詞戊", "第六行歌詞己"]},
+                {"label": "Chorus", "lines": ["第一行歌詞甲", "第二行歌詞乙"]},
+            ]
+        })
+        sections = [
+            Section("verse", 1, 2, 0.9),
+            Section("chorus", 3, 4, 0.9),
+            Section("verse", 5, 6, 0.9),
+            Section("chorus", 1, 2, 0.9),
+            Section("chorus", 3, 4, 0.9),
+        ]
+        repaired, _diagnostics = _validate_section_content_alignment(
+            sections, structured, _LRC_RETRY
+        )
+        assert len(repaired) == 5
+
+
+# ── Fake OpenAI client for retry-loop tests ────────────────────────────────
+
+
+class _FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, content):
+        self.message = _FakeMessage(content)
+        self.finish_reason = "stop"
+
+
+class _FakeUsage:
+    prompt_tokens = 10
+    completion_tokens = 10
+    total_tokens = 20
+
+
+class _FakeResponse:
+    def __init__(self, content):
+        self.model = "fake-model"
+        self.choices = [_FakeChoice(content)]
+        self.usage = _FakeUsage()
+        self.id = "fake-id"
+
+
+class _FakeCompletions:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeResponse(self.responses.pop(0))
+
+
+class _FakeChat:
+    def __init__(self, responses):
+        self.completions = _FakeCompletions(responses)
+
+
+class _FakeClient:
+    def __init__(self, responses):
+        self.chat = _FakeChat(responses)
+
+
+# ── Unit tests for align_structured_lyrics() retry loop ────────────────────
+
+
+class TestAlignStructuredLyricsRetry:
+    def _patch_llm(self, responses):
+        from unittest.mock import patch as _patch
+
+        fake_client = _FakeClient(responses)
+        return fake_client, _patch(
+            "sow_analysis.workers.structured_lyrics_aligner._build_client",
+            return_value=fake_client,
+        ), _patch(
+            "sow_analysis.workers.structured_lyrics_aligner.call_llm_with_retry",
+            new_callable=AsyncMock,
+            side_effect=lambda fn, **kwargs: fn(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_on_validation_flag(self, monkeypatch):
+        """Wrong alignment on attempt 1 -> corrective message -> attempt 2 used."""
+        monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "fake-key")
+        monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://fake.example/v1")
+        monkeypatch.setattr(settings, "SOW_LLM_MODEL", "fake-model")
+
+        wrong = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 2, "confidence": 0.9},
+            {"label": "chorus", "line_start": 6, "line_end": 6, "confidence": 0.9},
+        ]})
+        correct = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 2, "confidence": 0.9},
+            {"label": "chorus", "line_start": 3, "line_end": 4, "confidence": 0.95},
+        ]})
+        fake_client, p_client, p_retry = self._patch_llm([wrong, correct])
+
+        with p_client, p_retry:
+            components = await align_structured_lyrics(
+                _STRUCTURED_LYRICS_RETRY, _LRC_RETRY
+            )
+
+        assert len(fake_client.chat.completions.calls) == 2
+        second_messages = fake_client.chat.completions.calls[1]["messages"]
+        assert any(
+            m["role"] == "user" and "Your previous alignment had issues" in m["content"]
+            for m in second_messages
+        )
+        chorus = next(c for c in components if c.component_type == "chorus")
+        assert "第三行歌詞丙" in chorus.lyrics_excerpt
+
+    @pytest.mark.asyncio
+    async def test_no_retry_when_all_repaired(self, monkeypatch):
+        """Repairable off-by-one -> validator repairs, only 1 LLM call."""
+        monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "fake-key")
+        monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://fake.example/v1")
+        monkeypatch.setattr(settings, "SOW_LLM_MODEL", "fake-model")
+
+        repairable = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 5, "confidence": 0.9},
+            {"label": "chorus", "line_start": 6, "line_end": 9, "confidence": 0.95},
+        ]})
+        fake_client, p_client, p_retry = self._patch_llm([repairable])
+
+        with p_client, p_retry:
+            components = await align_structured_lyrics(
+                _STRUCTURED_LYRICS_OFF_BY_ONE, _LRC_OFF_BY_ONE
+            )
+
+        assert len(fake_client.chat.completions.calls) == 1
+        chorus = next(c for c in components if c.component_type == "chorus")
+        assert "心中充滿盼望 盼望使眼睛明亮" in chorus.lyrics_excerpt
+
+    @pytest.mark.asyncio
+    async def test_max_attempts_exhausted_uses_best_effort(self, monkeypatch, caplog):
+        """Always-wrong alignment -> 2 calls, best-effort repaired result, warnings."""
+        monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "fake-key")
+        monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://fake.example/v1")
+        monkeypatch.setattr(settings, "SOW_LLM_MODEL", "fake-model")
+
+        wrong = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 2, "confidence": 0.9},
+            {"label": "chorus", "line_start": 6, "line_end": 6, "confidence": 0.9},
+        ]})
+        fake_client, p_client, p_retry = self._patch_llm([wrong, wrong])
+
+        with p_client, p_retry, caplog.at_level("WARNING"):
+            components = await align_structured_lyrics(
+                _STRUCTURED_LYRICS_RETRY, _LRC_RETRY
+            )
+
+        assert len(fake_client.chat.completions.calls) == 2
+        assert any("may be misaligned" in r.message for r in caplog.records)
+        chorus = next(c for c in components if c.component_type == "chorus")
+        assert "第六行歌詞己" in chorus.lyrics_excerpt
+
+    @pytest.mark.asyncio
+    async def test_retry_disabled_when_max_attempts_1(self, monkeypatch):
+        """max_attempts=1 -> 1 call, no retry, validator still repairs."""
+        monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "fake-key")
+        monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://fake.example/v1")
+        monkeypatch.setattr(settings, "SOW_LLM_MODEL", "fake-model")
+        monkeypatch.setattr(settings, "SOW_LLM_STRUCTURED_LYRICS_MAX_ATTEMPTS", 1)
+
+        repairable = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 5, "confidence": 0.9},
+            {"label": "chorus", "line_start": 6, "line_end": 9, "confidence": 0.95},
+        ]})
+        fake_client, p_client, p_retry = self._patch_llm([repairable])
+
+        with p_client, p_retry:
+            components = await align_structured_lyrics(
+                _STRUCTURED_LYRICS_OFF_BY_ONE, _LRC_OFF_BY_ONE
+            )
+
+        assert len(fake_client.chat.completions.calls) == 1
+        chorus = next(c for c in components if c.component_type == "chorus")
+        assert "心中充滿盼望 盼望使眼睛明亮" in chorus.lyrics_excerpt
 
 
 # ── Live LLM test (gated) ──────────────────────────────────────────────────
