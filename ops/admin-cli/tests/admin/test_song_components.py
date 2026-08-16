@@ -9,13 +9,13 @@ integration-excluded set (run with --extra test).
 
 from stream_of_worship.admin.db.models import SongComponent
 from stream_of_worship.admin.db.schema import (
-    ALL_SCHEMA_STATEMENTS,
     CREATE_SONG_COMPONENTS_INDEXES,
     CREATE_SONG_COMPONENTS_TABLE,
     CREATE_SONG_COMPONENTS_UPDATE_TRIGGER,
     SONG_COMPONENT_COLUMN_COUNT,
     SONG_COMPONENT_COLUMNS_SELECT,
 )
+from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
 
 
 class TestSongComponentsSchema:
