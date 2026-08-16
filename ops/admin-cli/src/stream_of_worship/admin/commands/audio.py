@@ -2457,6 +2457,7 @@ def _render_components_table(
         posture_str = c.vocal_posture or "-"
         table.add_row(
             c.component_type,
+            str(c.occurrence_index),
             c.role,
             f"{c.line_start}-{c.line_end}" if c.line_start is not None and c.line_end is not None else "-",
             f"{start_str}-{end_str}",
