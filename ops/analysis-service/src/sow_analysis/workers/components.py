@@ -280,6 +280,9 @@ class ComponentInstance:
     section_label: Optional[str] = None
     lyrics_excerpt: Optional[str] = None
     llm_rationale: Optional[str] = None
+    # v9: LRC line indices (1-based, inclusive into full parse_lrc().lines)
+    line_start: Optional[int] = None
+    line_end: Optional[int] = None
 
 
 @dataclass
@@ -751,6 +754,7 @@ def identify_from_allin1_sections(
     sections: list[dict],
     snap_to_downbeat: bool = False,
     downbeats: Optional[list[float]] = None,
+    lrc_content: Optional[str] = None,
 ) -> list[ComponentInstance]:
     """Identify chorus/verse components from allin1 section labels.
 
@@ -774,10 +778,54 @@ def identify_from_allin1_sections(
         sections: List of section dicts with 'label', 'start', 'end' keys.
         snap_to_downbeat: If True, snap to downbeats (requires downbeats param).
         downbeats: Optional downbeat timestamps for snapping.
+        lrc_content: Optional LRC text. When provided, each component's
+            ``line_start``/``line_end`` (1-based inclusive LRC line indices)
+            are computed by matching section start/end times to LRC timestamps.
 
     Returns:
         List of ComponentInstance objects.
     """
+    if not sections:
+        return []
+
+    # Collect chorus sections in order.
+    chorus_sections = [s for s in sections if str(s.get("label", "")).lower() == "chorus"]
+    if not chorus_sections:
+        return []
+
+    def _snap(t: float) -> float:
+        if snap_to_downbeat and downbeats:
+            return _snap_to_downbeat(t, downbeats)
+        return t
+
+    # v9: Parse LRC once and build a helper to map [start, end) -> 1-based inclusive line range.
+    lrc_lines: list = []
+    if lrc_content:
+        try:
+            lrc_lines = parse_lrc(lrc_content).lines
+        except (ValueError, Exception):
+            lrc_lines = []
+
+    def _lrc_line_range(sec_start: float, sec_end: float) -> tuple[Optional[int], Optional[int]]:
+        if not lrc_lines:
+            return None, None
+        line_start = None
+        line_end = None
+        for idx, ln in enumerate(lrc_lines, start=1):
+            t = getattr(ln, "time_seconds", None)
+            if t is None:
+                continue
+            if t >= sec_end:
+                if line_start is not None and line_end is None:
+                    line_end = idx - 1
+                break
+            if t >= sec_start:
+                if line_start is None:
+                    line_start = idx
+                line_end = idx
+        if line_start is not None and line_end is None:
+            line_end = len(lrc_lines)
+        return line_start, line_end
     if not sections:
         return []
 
@@ -799,6 +847,8 @@ def identify_from_allin1_sections(
         start = _snap(float(chorus.get("start", 0.0)))
         end = _snap(float(chorus.get("end", start)))
 
+        line_s, line_e = _lrc_line_range(start, end)
+
         if n_choruses == 1:
             # v3: single chorus -> two rows (entry + exit), same occurrence_index=1.
             components.append(
@@ -810,6 +860,8 @@ def identify_from_allin1_sections(
                     end_time=end,
                     confidence=0.9,
                     source="allin1_sections",
+                    line_start=line_s,
+                    line_end=line_e,
                 )
             )
             components.append(
@@ -821,6 +873,8 @@ def identify_from_allin1_sections(
                     end_time=end,
                     confidence=0.9,
                     source="allin1_sections",
+                    line_start=line_s,
+                    line_end=line_e,
                 )
             )
         else:
@@ -834,6 +888,8 @@ def identify_from_allin1_sections(
                     end_time=end,
                     confidence=0.9,
                     source="allin1_sections",
+                    line_start=line_s,
+                    line_end=line_e,
                 )
             )
 
@@ -851,6 +907,7 @@ def identify_from_allin1_sections(
     if verse_before_chorus is not None:
         verse_start = _snap(float(verse_before_chorus.get("start", 0.0)))
         verse_end = _snap(float(verse_before_chorus.get("end", first_chorus_start)))
+        verse_line_s, verse_line_e = _lrc_line_range(verse_start, verse_end)
         components.append(
             ComponentInstance(
                 component_type="verse",
@@ -860,6 +917,8 @@ def identify_from_allin1_sections(
                 end_time=verse_end,
                 confidence=0.9,
                 source="allin1_sections",
+                line_start=verse_line_s,
+                line_end=verse_line_e,
             )
         )
 
@@ -911,7 +970,9 @@ def identify_from_lyrics_repetition(
     except (ValueError, Exception):
         return []
 
-    lines = [ln for ln in lrc_file.lines if ln.text and ln.text.strip()]
+    all_lines = lrc_file.lines
+    filtered_map = [i + 1 for i, ln in enumerate(all_lines) if ln.text and ln.text.strip()]
+    lines = [ln for ln in all_lines if ln.text and ln.text.strip()]
     if len(lines) < 4:
         return []
 
@@ -1066,6 +1127,10 @@ def identify_from_lyrics_repetition(
             start_time = _snap_to_beat(start_time, beats)
             end_time = _snap_to_beat(end_time, beats)
 
+        # v9: Map filtered 0-based indices to full 1-based LRC line indices.
+        line_s = filtered_map[start_idx]
+        line_e = filtered_map[min(start_idx + w - 1, len(filtered_map) - 1)]
+
         if n_occurrences == 1:
             # v3: single chorus → two rows (entry + exit).
             components.append(
@@ -1077,6 +1142,8 @@ def identify_from_lyrics_repetition(
                     end_time=end_time,
                     confidence=0.7,
                     source="lyrics_repetition",
+                    line_start=line_s,
+                    line_end=line_e,
                 )
             )
             components.append(
@@ -1086,8 +1153,9 @@ def identify_from_lyrics_repetition(
                     role="exit",
                     start_time=start_time,
                     end_time=end_time,
-                    confidence=0.7,
                     source="lyrics_repetition",
+                    line_start=line_s,
+                    line_end=line_e,
                 )
             )
         else:
@@ -1101,6 +1169,8 @@ def identify_from_lyrics_repetition(
                     end_time=end_time,
                     confidence=0.7,
                     source="lyrics_repetition",
+                    line_start=line_s,
+                    line_end=line_e,
                 )
             )
 
@@ -1124,6 +1194,9 @@ def identify_from_lyrics_repetition(
             elif beats:
                 verse_start_time = _snap_to_beat(verse_start_time, beats)
                 verse_end_time = _snap_to_beat(verse_end_time, beats)
+            # v9: Map filtered indices to full 1-based LRC line indices.
+            verse_line_s = filtered_map[verse_start_idx]
+            verse_line_e = filtered_map[verse_end_idx - 1]
             components.append(
                 ComponentInstance(
                     component_type="verse",
@@ -1133,6 +1206,8 @@ def identify_from_lyrics_repetition(
                     end_time=verse_end_time,
                     confidence=0.7,
                     source="lyrics_repetition",
+                    line_start=verse_line_s,
+                    line_end=verse_line_e,
                 )
             )
 
@@ -1266,7 +1341,9 @@ def identify_from_structured_lyrics(
         lrc_file = parse_lrc(lrc_content)
     except (ValueError, Exception):
         return []
-    lrc_lines = [ln for ln in lrc_file.lines if ln.text and ln.text.strip()]
+    all_lines = lrc_file.lines
+    filtered_map = [i + 1 for i, ln in enumerate(all_lines) if ln.text and ln.text.strip()]
+    lrc_lines = [ln for ln in all_lines if ln.text and ln.text.strip()]
     if len(lrc_lines) < 2:
         return []
 
@@ -1361,6 +1438,9 @@ def identify_from_structured_lyrics(
                     "confidence": conf,
                     "lyrics_excerpt": lyrics_excerpt,
                     "start_idx": start_idx,
+                    "end_idx": end_idx,
+                    "line_start": filtered_map[start_idx],
+                    "line_end": filtered_map[min(end_idx - 1, len(filtered_map) - 1)],
                 }
             )
 
@@ -1437,6 +1517,8 @@ def identify_from_structured_lyrics(
                 source="structured_lyrics",
                 section_label=m["section_label"],
                 lyrics_excerpt=m["lyrics_excerpt"],
+                line_start=m.get("line_start"),
+                line_end=m.get("line_end"),
             )
         )
 
@@ -1453,8 +1535,9 @@ def identify_from_structured_lyrics(
             end_time=chorus_comp.end_time,
             confidence=chorus_comp.confidence,
             source="structured_lyrics",
-            section_label=chorus_comp.section_label,
             lyrics_excerpt=chorus_comp.lyrics_excerpt,
+            line_start=chorus_comp.line_start,
+            line_end=chorus_comp.line_end,
         )
         components.append(exit_comp)
         # Re-sort by start_time for stable output.
@@ -1822,7 +1905,10 @@ async def extract_components(
 
     if not components and segmentation_mode in (None, "allin1") and sections:
         components = identify_from_allin1_sections(
-            sections, snap_to_downbeat=snap_to_downbeat, downbeats=downbeats
+            sections,
+            snap_to_downbeat=snap_to_downbeat,
+            downbeats=downbeats,
+            lrc_content=lrc_content,
         )
         if components:
             source = "allin1_sections"
@@ -2017,6 +2103,8 @@ def _serialize_components(
                 "section_label": c.section_label,
                 "lyrics_excerpt": c.lyrics_excerpt,
                 "llm_rationale": c.llm_rationale,
+                "line_start": c.line_start,
+                "line_end": c.line_end,
             }
             for c in components
         ],
@@ -2058,6 +2146,8 @@ def _deserialize_components(payload: dict) -> list[ComponentInstance]:
                 section_label=c.get("section_label"),
                 lyrics_excerpt=c.get("lyrics_excerpt"),
                 llm_rationale=c.get("llm_rationale"),
+                line_start=c.get("line_start"),
+                line_end=c.get("line_end"),
                 source=payload.get("component_source", ""),
             )
         )

@@ -64,8 +64,8 @@ class TestSongComponentsSchema:
         assert "trg_song_components_updated_at" in CREATE_SONG_COMPONENTS_UPDATE_TRIGGER
 
     def test_column_count(self):
-        """SONG_COMPONENT_COLUMN_COUNT is 27 (v5: 16 original + 11 new)."""
-        assert SONG_COMPONENT_COLUMN_COUNT == 27
+        """SONG_COMPONENT_COLUMN_COUNT is 29 (v9: 27 v5 + 2 line_start/line_end)."""
+        assert SONG_COMPONENT_COLUMN_COUNT == 29
 
     def test_columns_select_includes_all_fields(self):
         """SONG_COMPONENT_COLUMNS_SELECT includes all expected fields."""
@@ -98,7 +98,8 @@ class TestSongComponentsSchema:
             # v5: reasoning
             "theme_reasoning",
             "posture_reasoning",
-            "created_at",
+            "line_start",
+            "line_end",
             "updated_at",
         ):
             assert field in SONG_COMPONENT_COLUMNS_SELECT
@@ -128,7 +129,7 @@ class TestSongComponentModel:
         assert c.updated_at is None
 
     def test_from_row(self):
-        """from_row parses a 27-element tuple correctly (v5 schema)."""
+        """from_row parses a 29-element tuple correctly (v9 schema)."""
         row = (
             1,  # id
             "song_0001",  # song_id
@@ -155,9 +156,10 @@ class TestSongComponentModel:
             "To God",  # vocal_posture
             0.92,  # theme_confidence
             0.95,  # vocal_posture_confidence
-            # v5: reasoning
             "Religious pronoun 祢 + praise language",  # theme_reasoning
             "Direct address to God using 祢",  # posture_reasoning
+            1,  # line_start
+            4,  # line_end
             "2024-01-15T10:30:00",  # created_at
             "2024-01-15T10:30:00",  # updated_at
         )
@@ -188,6 +190,8 @@ class TestSongComponentModel:
         assert c.vocal_posture_confidence == 0.95
         assert c.theme_reasoning == "Religious pronoun 祢 + praise language"
         assert c.posture_reasoning == "Direct address to God using 祢"
+        assert c.line_start == 1
+        assert c.line_end == 4
         assert c.created_at == "2024-01-15T10:30:00"
         assert c.updated_at == "2024-01-15T10:30:00"
 
@@ -220,7 +224,7 @@ class TestSongComponentModel:
         assert d["confidence"] == 0.9
 
     def test_from_row_roundtrip(self):
-        """from_row → to_dict → SongComponent(**dict) roundtrips (v5 schema)."""
+        """from_row → to_dict → SongComponent(**dict) roundtrips (v9 schema)."""
         row = (
             42,
             "song_0002",
@@ -250,8 +254,11 @@ class TestSongComponentModel:
             # v5: reasoning
             "Describes God's character and works",
             "Third-person reference to God",
-            None,
-            None,
+            # v9: LRC line indices
+            5,
+            12,
+            None,  # created_at
+            None,  # updated_at
         )
         c = SongComponent.from_row(row)
         d = c.to_dict()

@@ -277,32 +277,32 @@ async def test_lifecycle_timestamps_none_shows_dash(tmp_path):
 
 def test_get_editable_field_line_offset_theme():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("theme") == 18
+    assert panel.get_editable_field_line_offset("theme") == 19
 
 
 def test_get_editable_field_line_offset_vocal_posture():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("vocal_posture") == 19
+    assert panel.get_editable_field_line_offset("vocal_posture") == 20
 
 
 def test_get_editable_field_line_offset_groove_density():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("groove_density") == 20
+    assert panel.get_editable_field_line_offset("groove_density") == 21
 
 
 def test_get_editable_field_line_offset_energy_level():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("energy_level") == 21
+    assert panel.get_editable_field_line_offset("energy_level") == 22
 
 
 def test_get_editable_field_line_offset_start_time():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("start_time") == 22
+    assert panel.get_editable_field_line_offset("start_time") == 23
 
 
 def test_get_editable_field_line_offset_end_time():
     panel = ComponentDetailPanel()
-    assert panel.get_editable_field_line_offset("end_time") == 23
+    assert panel.get_editable_field_line_offset("end_time") == 24
 
 
 def test_get_editable_field_line_offset_unknown_field():

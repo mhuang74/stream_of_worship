@@ -2433,6 +2433,7 @@ def _render_components_table(
     table.add_column("Type", style="cyan")
     table.add_column("Occ.", justify="right")
     table.add_column("Role")
+    table.add_column("LRC", justify="right")
     table.add_column("Start-End")
     table.add_column("BPM", justify="right")
     table.add_column("Key")
@@ -2456,8 +2457,8 @@ def _render_components_table(
         posture_str = c.vocal_posture or "-"
         table.add_row(
             c.component_type,
-            str(c.occurrence_index),
             c.role,
+            f"{c.line_start}-{c.line_end}" if c.line_start is not None and c.line_end is not None else "-",
             f"{start_str}-{end_str}",
             bpm_str,
             key_str,
@@ -2786,6 +2787,8 @@ def _parse_component_results(
             # v5: reasoning
             theme_reasoning=c.get("theme_reasoning"),
             posture_reasoning=c.get("posture_reasoning"),
+            line_start=c.get("line_start"),
+            line_end=c.get("line_end"),
         )
         for c in raw_components
     ]

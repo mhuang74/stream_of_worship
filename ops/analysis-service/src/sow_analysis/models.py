@@ -262,6 +262,9 @@ class ComponentResult(BaseModel):
     section_label: Optional[str] = None
     lyrics_excerpt: Optional[str] = None
     llm_rationale: Optional[str] = None
+    # v9: LRC line indices (1-based, inclusive)
+    line_start: Optional[int] = None
+    line_end: Optional[int] = None
     source: str = ""  # 'allin1_sections' | 'lyrics_repetition' | 'llm_segmentation' | 'none'
 
 

@@ -614,6 +614,9 @@ class SongComponent:
     # v5: LLM reasoning fields (for debugging/audit)
     theme_reasoning: Optional[str] = None
     posture_reasoning: Optional[str] = None
+    # v9: LRC line indices (1-based, inclusive)
+    line_start: Optional[int] = None
+    line_end: Optional[int] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -645,8 +648,10 @@ class SongComponent:
             vocal_posture_confidence=row[22],
             theme_reasoning=row[23],
             posture_reasoning=row[24],
-            created_at=_to_str(row[25]),
-            updated_at=_to_str(row[26]),
+            line_start=row[25],
+            line_end=row[26],
+            created_at=_to_str(row[27]),
+            updated_at=_to_str(row[28]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -676,6 +681,8 @@ class SongComponent:
             "vocal_posture_confidence": self.vocal_posture_confidence,
             "theme_reasoning": self.theme_reasoning,
             "posture_reasoning": self.posture_reasoning,
+            "line_start": self.line_start,
+            "line_end": self.line_end,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

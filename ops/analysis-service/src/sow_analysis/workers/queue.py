@@ -1096,6 +1096,8 @@ class JobQueue:
                             lyrics_excerpt=c.lyrics_excerpt,
                             llm_rationale=c.llm_rationale,
                             source=c.source,
+                            line_start=c.line_start,
+                            line_end=c.line_end,
                         )
                         for c in components
                     ]

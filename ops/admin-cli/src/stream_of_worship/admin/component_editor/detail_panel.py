@@ -176,6 +176,12 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
         detail_fields = [
             ("Type", comp.component_type),
             ("Occurrence", str(comp.occurrence_index)),
+            (
+                "LRC Lines",
+                f"{comp.line_start}-{comp.line_end}"
+                if comp.line_start is not None and comp.line_end is not None
+                else None,
+            ),
             ("BPM", f"{comp.bpm:.4g}" if comp.bpm is not None else None),
             ("Key", comp.key),
             ("Confidence", f"{comp.confidence:.4g}" if comp.confidence is not None else None),
@@ -328,13 +334,13 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
         from base metadata):
         - 1 (Song header) + 7 (song fields) = 8
         - 1 (blank) = 9
-        - 1 (Component header) + 6 (base-metadata fields) = 16
-        - 1 (blank) = 17
-        - 1 (Editable sub-header) = 18
+        - 1 (Component header) + 7 (base-metadata fields) = 17
+        - 1 (blank) = 18
+        - 1 (Editable sub-header) = 19
         - + index of field in EDITABLE_FIELDS = target line
         """
         try:
             field_idx = EDITABLE_FIELDS.index(field)
         except ValueError:
             return 0
-        return 18 + field_idx
+        return 19 + field_idx

@@ -2067,6 +2067,8 @@ class DatabaseClient:
                     c.vocal_posture_confidence,
                     c.theme_reasoning,
                     c.posture_reasoning,
+                    c.line_start,
+                    c.line_end,
                 )
                 for c in components
             ]
@@ -2078,9 +2080,10 @@ class DatabaseClient:
                     backbeat_strength, energy_level, confidence,
                     bpm_confidence, key_confidence, groove_confidence, backbeat_confidence,
                     energy_confidence, theme, vocal_posture, theme_confidence,
-                    vocal_posture_confidence, theme_reasoning, posture_reasoning
+                    vocal_posture_confidence, theme_reasoning, posture_reasoning,
+                    line_start, line_end
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 values,
             )
