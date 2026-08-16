@@ -64,6 +64,7 @@ class LyricsPanel(ScrollView, can_focus=True):
         self._song_title: str = ""
         self._highlighted_index: int = -1
         self._parsed: LRCParsedContent | None = None
+        self._structured_lyrics: dict | None = None
         self._content_strips: list[Strip] = []
         self._render_width: int = 0
 
@@ -90,8 +91,12 @@ class LyricsPanel(ScrollView, can_focus=True):
 
     def on_resize(self, event: events.Resize) -> None:
         new_width = self.scrollable_content_region.width or self.size.width
-        if new_width != self._render_width and self._parsed is not None:
-            text = self._build_lyrics_text(self._parsed, self._highlighted_index)
+        if new_width != self._render_width and (
+            self._parsed is not None or self._structured_lyrics is not None
+        ):
+            text = self._build_lyrics_text(
+                self._parsed, self._highlighted_index, self._structured_lyrics
+            )
             self._rebuild_strips(text)
             self.refresh()
 
@@ -99,30 +104,56 @@ class LyricsPanel(ScrollView, can_focus=True):
     # Content building
     # ------------------------------------------------------------------
 
-    def _build_lyrics_text(self, parsed: LRCParsedContent, highlighted_index: int) -> Text:
+    def _build_lyrics_text(
+        self,
+        parsed: LRCParsedContent | None,
+        highlighted_index: int,
+        structured_lyrics: dict | None,
+    ) -> Text:
         """Build the Rich Text representation of the lyrics content."""
         text = Text()
 
-        if parsed.preserved_lines:
-            for p in parsed.preserved_lines:
-                if p.tag is not None:
-                    text.append(f"[{p.tag}: {p.value}]\n", style="dim italic")
-                elif p.raw.strip():
-                    text.append(f"{p.raw}\n", style="dim italic")
+        if parsed is not None:
+            if parsed.preserved_lines:
+                for p in parsed.preserved_lines:
+                    if p.tag is not None:
+                        text.append(f"[{p.tag}: {p.value}]\n", style="dim italic")
+                    elif p.raw.strip():
+                        text.append(f"{p.raw}\n", style="dim italic")
+                text.append("\n")
+
+            for i, line in enumerate(parsed.timed_lines):
+                timestamp = (
+                    format_centiseconds(line.time_seconds)
+                    if line.time_seconds is not None
+                    else "--:--.--"
+                )
+                if i == highlighted_index:
+                    text.append(f"[{timestamp}]  ", style="bold cyan reverse")
+                    text.append(line.text + "\n", style="bold reverse")
+                else:
+                    text.append(f"[{timestamp}]  ", style="cyan")
+                    text.append(line.text + "\n")
+
+        if structured_lyrics is not None:
+            sections = structured_lyrics.get("sections", [])
+            if not sections:
+                return text
+
+            text.append("\n")
+            text.append("═" * 60 + "\n", style="dim")
+
+            text.append("-- Structured Lyrics --\n", style="bold cyan")
             text.append("\n")
 
-        for i, line in enumerate(parsed.timed_lines):
-            timestamp = (
-                format_centiseconds(line.time_seconds)
-                if line.time_seconds is not None
-                else "--:--.--"
-            )
-            if i == highlighted_index:
-                text.append(f"[{timestamp}]  ", style="bold cyan reverse")
-                text.append(line.text + "\n", style="bold reverse")
-            else:
-                text.append(f"[{timestamp}]  ", style="cyan")
-                text.append(line.text + "\n")
+            for section in sections:
+                raw_label = section.get("raw_label") or section.get("label", "")
+                lines = section.get("lines", [])
+
+                text.append(f"[{raw_label}]\n", style="bold magenta")
+                for line_text in lines:
+                    text.append(f"{line_text}\n")
+                text.append("\n")
 
         return text
 
@@ -145,17 +176,19 @@ class LyricsPanel(ScrollView, can_focus=True):
         parsed: LRCParsedContent | None,
         song_title: str,
         highlighted_index: int = -1,
+        structured_lyrics: dict | None = None,
     ) -> None:
         self._song_title = song_title
         self._parsed = parsed
         self._highlighted_index = highlighted_index
+        self._structured_lyrics = structured_lyrics
 
-        if parsed is None:
+        if parsed is None and structured_lyrics is None:
             self.add_class("empty")
             text = Text(f'No LRC file found for "{song_title}"')
         else:
             self.remove_class("empty")
-            text = self._build_lyrics_text(parsed, highlighted_index)
+            text = self._build_lyrics_text(parsed, highlighted_index, structured_lyrics)
 
         self._rebuild_strips(text)
 
@@ -225,7 +258,12 @@ class LyricsPanel(ScrollView, can_focus=True):
             return
         if self._parsed is None:
             return
-        self.update_lrc(self._parsed, self._song_title, highlighted_index=index)
+        self.update_lrc(
+            self._parsed,
+            self._song_title,
+            highlighted_index=index,
+            structured_lyrics=self._structured_lyrics,
+        )
 
     def update_fetching(self, song_title: str) -> None:
         self._parsed = None

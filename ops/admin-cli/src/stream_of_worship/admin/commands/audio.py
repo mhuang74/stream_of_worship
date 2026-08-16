@@ -5469,6 +5469,13 @@ def review_components(
                 )
                 continue
 
+        structured_lyrics_dict: dict | None = None
+        if recording.structured_lyrics:
+            try:
+                structured_lyrics_dict = json.loads(recording.structured_lyrics)
+            except (json.JSONDecodeError, TypeError):
+                structured_lyrics_dict = None
+
         sessions.append(
             SongSession(
                 song_id=song_id,
@@ -5480,6 +5487,7 @@ def review_components(
                 entry_component=entry,
                 exit_component=exit_comp,
                 song=song,
+                structured_lyrics=structured_lyrics_dict,
             )
         )
 

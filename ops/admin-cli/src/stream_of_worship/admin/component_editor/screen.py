@@ -684,7 +684,12 @@ class ComponentEditorScreen(Screen[None]):
                 parsed = self.state.lrc_parsed[song_id]
                 pos = self.playback.position_seconds or 0.0
                 idx = LyricsPanel.compute_highlighted_index(parsed, pos)
-                panel.update_lrc(parsed, song_title, highlighted_index=idx)
+                panel.update_lrc(
+                    parsed,
+                    song_title,
+                    highlighted_index=idx,
+                    structured_lyrics=session.structured_lyrics,
+                )
             return
 
         if self.state.lrc_prefetch_in_progress:
@@ -692,7 +697,14 @@ class ComponentEditorScreen(Screen[None]):
             self._fetch_lrc_on_demand(song_id, session.hash_prefix, song_title)
             return
 
-        panel.update_lrc(None, song_title)
+        if session.structured_lyrics is not None:
+            panel.update_lrc(
+                None,
+                song_title,
+                structured_lyrics=session.structured_lyrics,
+            )
+        else:
+            panel.update_lrc(None, song_title)
 
     # --- Playback ---
 

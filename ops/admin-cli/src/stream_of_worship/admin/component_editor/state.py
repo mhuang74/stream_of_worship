@@ -52,6 +52,11 @@ class SongSession:
     # Does NOT block further edits — the user may edit more fields before
     # retrying 's'.
     r2_save_pending: bool = False
+    # Parsed structured lyrics dict (from recordings.structured_lyrics JSON),
+    # or None if not available. Format:
+    #   {"sections": [{"label": str, "raw_label": str, "lines": [str]}],
+    #    "preamble_lines": [str]}
+    structured_lyrics: dict | None = None
 
     def __post_init__(self) -> None:
         """Sync legacy fields from components dict if not explicitly set."""
