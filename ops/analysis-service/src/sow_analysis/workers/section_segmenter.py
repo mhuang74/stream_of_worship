@@ -297,6 +297,8 @@ def _map_sections_to_components(
                     section_label=sec.label,
                     lyrics_excerpt=_lyrics_excerpt(sec),
                     llm_rationale=sec.rationale,
+                    line_start=sec.line_start,
+                    line_end=sec.line_end,
                 )
             )
         return components
@@ -320,6 +322,8 @@ def _map_sections_to_components(
                     section_label="chorus",
                     lyrics_excerpt=excerpt,
                     llm_rationale=sec.rationale,
+                    line_start=sec.line_start,
+                    line_end=sec.line_end,
                 )
             )
             components.append(
@@ -334,6 +338,8 @@ def _map_sections_to_components(
                     section_label="chorus",
                     lyrics_excerpt=excerpt,
                     llm_rationale=sec.rationale,
+                    line_start=sec.line_start,
+                    line_end=sec.line_end,
                 )
             )
         else:
@@ -350,6 +356,8 @@ def _map_sections_to_components(
                     section_label="chorus",
                     lyrics_excerpt=excerpt,
                     llm_rationale=sec.rationale,
+                    line_start=sec.line_start,
+                    line_end=sec.line_end,
                 )
             )
 
@@ -375,6 +383,8 @@ def _map_sections_to_components(
                 section_label="verse",
                 lyrics_excerpt=_lyrics_excerpt(verse_before),
                 llm_rationale=verse_before.rationale,
+                line_start=verse_before.line_start,
+                line_end=verse_before.line_end,
             )
         )
     return components

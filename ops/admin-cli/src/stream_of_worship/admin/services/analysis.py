@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 # Keep in sync with analysis-service's
 # sow_analysis.storage.cache.COMPONENT_SCHEMA_VERSION.
 # Bump together when the worker bumps its version.
-COMPONENT_SCHEMA_VERSION = 4
+COMPONENT_SCHEMA_VERSION = 5
 
 
 class AnalysisServiceError(Exception):

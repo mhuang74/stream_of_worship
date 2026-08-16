@@ -288,6 +288,12 @@ ALTER TABLE song_components ADD COLUMN IF NOT EXISTS theme_reasoning TEXT;
 ALTER TABLE song_components ADD COLUMN IF NOT EXISTS posture_reasoning TEXT;
 """
 
+# v9: LRC line indices (1-based, inclusive into full parse_lrc().lines)
+ALTER_SONG_COMPONENTS_V6_COLUMNS = """
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS line_start INTEGER;
+ALTER TABLE song_components ADD COLUMN IF NOT EXISTS line_end INTEGER;
+"""
+
 # Idempotent ALTER for recordings structured-lyrics columns (safe on existing tables).
 ALTER_RECORDINGS_STRUCTURED_LYRICS_COLUMNS = """
 ALTER TABLE recordings ADD COLUMN IF NOT EXISTS structured_lyrics_raw TEXT;
@@ -311,8 +317,8 @@ ALL_SCHEMA_STATEMENTS = [
     ALTER_RECORDINGS_STRUCTURED_LYRICS_COLUMNS,
     CREATE_SONG_COMPONENTS_TABLE,
     *CREATE_SONG_COMPONENTS_INDEXES,
-    CREATE_SONG_COMPONENTS_UPDATE_TRIGGER,
     ALTER_SONG_COMPONENTS_V5_COLUMNS,
+    ALTER_SONG_COMPONENTS_V6_COLUMNS,
 ]
 
 # Column list for song_components SELECT queries (matches SongComponent.from_row).
@@ -324,11 +330,13 @@ SONG_COMPONENT_COLUMNS_SELECT = """
     bpm_confidence, key_confidence, groove_confidence, backbeat_confidence,
     energy_confidence, theme, vocal_posture, theme_confidence,
     vocal_posture_confidence, theme_reasoning, posture_reasoning,
+    line_start, line_end,
     created_at, updated_at
 """
 
-# v5: 16 original + 11 new = 27 columns.
-SONG_COMPONENT_COLUMN_COUNT = 27
+# v9: 27 (v5) + 2 (line_start/line_end) = 29 columns.
+SONG_COMPONENT_COLUMN_COUNT = 29
+
 
 # SQL to get table statistics (Postgres-compatible)
 TABLE_STATS_QUERY = """
