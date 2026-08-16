@@ -119,6 +119,10 @@ def test_download_force_replaces_after_new_recording_is_uploaded(tmp_path):
         patch("stream_of_worship.admin.commands.audio.YouTubeDownloader", return_value=downloader),
         patch("stream_of_worship.admin.commands.audio.compute_file_hash", return_value="f" * 64),
         patch("stream_of_worship.admin.commands.audio.probe_duration", return_value=180.0),
+        patch(
+            "stream_of_worship.admin.commands.audio.extract_video_metadata",
+            return_value=SimpleNamespace(description=""),
+        ),
     ):
         r2_cls.return_value.upload_audio.return_value = "s3://bucket/ffffffffffff/audio.mp3"
         imported = import_youtube_audio_for_song(

@@ -611,6 +611,12 @@ class TestSegmentationModeIntegration:
                     "sow_analysis.workers.components._precompute_global_features"
                 ) as mock_precompute,
                 patch("sow_analysis.workers.components.settings") as mock_settings,
+                patch(
+                    "sow_analysis.workers.structured_lyrics_aligner.align_structured_lyrics",
+                    new=AsyncMock(
+                        return_value=identify_from_structured_lyrics(_sl_json(), lrc)
+                    ),
+                ),
             ):
                 mock_precompute.return_value = mock_gf
                 mock_settings.SOW_STEP_HEARTBEAT_INTERVAL_SECONDS = 999
@@ -626,7 +632,7 @@ class TestSegmentationModeIntegration:
                     segmentation_mode="structured_lyrics",
                 )
 
-            assert source == "structured_lyrics"
+            assert source == "structured_lyrics_llm"
             assert len(components) == 9
 
 
@@ -725,6 +731,12 @@ class TestAllin1GuardFix:
                     "sow_analysis.workers.components._precompute_global_features"
                 ) as mock_precompute,
                 patch("sow_analysis.workers.components.settings") as mock_settings,
+                patch(
+                    "sow_analysis.workers.structured_lyrics_aligner.align_structured_lyrics",
+                    new=AsyncMock(
+                        return_value=identify_from_structured_lyrics(_sl_json(), lrc)
+                    ),
+                ),
             ):
                 mock_precompute.return_value = mock_gf
                 mock_settings.SOW_STEP_HEARTBEAT_INTERVAL_SECONDS = 999
@@ -740,8 +752,8 @@ class TestAllin1GuardFix:
                     force=True,
                 )
 
-            # structured_lyrics should win over allin1.
-            assert source == "structured_lyrics"
+            # structured_lyrics_llm should win over allin1.
+            assert source == "structured_lyrics_llm"
             assert len(components) == 9
 
 

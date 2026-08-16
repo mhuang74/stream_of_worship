@@ -1807,7 +1807,7 @@ async def extract_components(
     defense-in-depth.
 
     Returns (components, source) where source is one of:
-    'structured_lyrics', 'allin1_sections', 'lyrics_repetition',
+    'structured_lyrics_llm', 'allin1_sections', 'lyrics_repetition',
     'llm_segmentation', 'none'.
     """
     hash_prefix = content_hash[:12]

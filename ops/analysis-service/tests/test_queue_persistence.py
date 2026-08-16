@@ -656,9 +656,17 @@ async def test_log_queue_state_shows_waiting(temp_dir: Path) -> None:
         logger.removeHandler(handler)
         logger.setLevel(old_level)
 
-    # Check that the log output contains "waiting:"
+    # ASCII-table log format (43fe1493): the WAITING count appears in the
+    # "Wait" column, and wait times are reported as queued_wait=[...].
+    import re
+
     log_text = log_stream.getvalue()
-    assert "waiting:" in log_text
-    assert "waiting:1" in log_text
+    assert "Queue state:" in log_text
+    pattern = rf"\|\s+ANALYZE\s*\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|"
+    match = re.search(pattern, log_text)
+    assert match is not None, "ANALYZE row missing from queue state table"
+    # Columns: queued, waiting, processing, completed, failed.
+    assert match.groups()[1].strip() == "1", "Wait column should count the WAITING job"
+    assert "queued_wait=[" in log_text
 
     await queue.stop()

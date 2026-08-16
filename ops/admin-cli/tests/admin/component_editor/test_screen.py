@@ -1323,7 +1323,11 @@ async def test_check_component_playback_end_uses_working_end_time():
     """_check_component_playback_end uses the working (edited) end_time."""
     playback = _PlaybackStub()
     playback.state = PlaybackState.PLAYING
-    playback.position_seconds = 25.0  # > persisted end_time (20.0)
+    # Start BELOW the persisted end_time (20.0): the position-update loop
+    # (0.2s tick) calls _check_component_playback_end() during run_test, so a
+    # starting position above end_time would pause before the working end_time
+    # is applied, making this test order/timing flaky.
+    playback.position_seconds = 15.0
     app, state = _make_app(playback=playback)
     async with app.run_test(size=(160, 30)) as pilot:
         await pilot.pause()
