@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import ClassVar
 
 from rich.segment import Segment
+from rich.style import Style
 from rich.text import Text
 from textual import events
 from textual.binding import Binding
@@ -112,7 +113,31 @@ class ComponentDetailPanel(ScrollView, can_focus=True):
             self._render_width = width
         segments = self.app.console.render(text, self.app.console.options.update_width(width))
         lines = list(Segment.split_lines(segments))
-        self._content_strips = [Strip(line).adjust_cell_length(width) for line in lines]
+        # Unstyled spans (and padding added by adjust_cell_length) render as
+        # style=None; Textual's Monochrome line filter (active under NO_COLOR)
+        # dereferences style.color unconditionally, so a `None` style crashes the
+        # compositor. Normalize to an empty Style (no visual change) to stay
+        # crash-free in no-color terminals.
+        self._content_strips = []
+        for line in lines:
+            strip = Strip(
+                Segment(
+                    seg_text,
+                    seg_style if seg_style is not None else Style(),
+                    control,
+                )
+                for seg_text, seg_style, control in line
+            ).adjust_cell_length(width)
+            self._content_strips.append(
+                Strip(
+                    Segment(
+                        seg_text,
+                        seg_style if seg_style is not None else Style(),
+                        control,
+                    )
+                    for seg_text, seg_style, control in strip
+                )
+            )
         self.virtual_size = Size(width, max(1, len(self._content_strips)))
 
     def on_resize(self, event: events.Resize) -> None:

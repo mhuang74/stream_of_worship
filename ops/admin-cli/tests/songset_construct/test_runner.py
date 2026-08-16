@@ -8,6 +8,22 @@ import pytest
 
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 
+# The runner subpackage requires the `constructor` extra (langgraph, rapidfuzz,
+# pydantic). Skip these tests when it isn't installed so the default
+# `--extra admin --extra test` command doesn't report them as failures —
+# mirroring how integration tests skip when Docker is unavailable.
+try:
+    import stream_of_worship.admin.songset_constructor.runner  # noqa: F401
+
+    _RUNNER_AVAILABLE = True
+except Exception:
+    _RUNNER_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not _RUNNER_AVAILABLE,
+    reason="songset constructor extra not installed (add --extra constructor)",
+)
+
 
 def _verify_thread_id_in_kwargs(mock_graph, config) -> None:
     """Assert invoke was called with config containing thread_id matching RunConfig."""
