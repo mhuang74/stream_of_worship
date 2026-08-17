@@ -66,6 +66,7 @@ class LyricsPanel(ScrollView, can_focus=True):
         self._highlighted_index: int = -1
         self._parsed: LRCParsedContent | None = None
         self._structured_lyrics: dict | None = None
+        self._component_range: tuple[int, int] | None = None
         self._content_strips: list[Strip] = []
         self._render_width: int = 0
 
@@ -96,7 +97,10 @@ class LyricsPanel(ScrollView, can_focus=True):
             self._parsed is not None or self._structured_lyrics is not None
         ):
             text = self._build_lyrics_text(
-                self._parsed, self._highlighted_index, self._structured_lyrics
+                self._parsed,
+                self._highlighted_index,
+                self._structured_lyrics,
+                self._component_range,
             )
             self._rebuild_strips(text)
             self.refresh()
@@ -110,8 +114,16 @@ class LyricsPanel(ScrollView, can_focus=True):
         parsed: LRCParsedContent | None,
         highlighted_index: int,
         structured_lyrics: dict | None,
+        component_range: tuple[int, int] | None = None,
     ) -> Text:
-        """Build the Rich Text representation of the lyrics content."""
+        """Build the Rich Text representation of the lyrics content.
+
+        ``component_range`` is the 1-based inclusive ``(line_start, line_end)``
+        of the currently selected component, applied only to the LRC
+        ``timed_lines`` block. Structured-lyrics ``sections[].lines`` are NOT
+        index-aligned with ``timed_lines``, so range shading is LRC-only and
+        never applied to the structured block below.
+        """
         text = Text()
 
         if parsed is not None:
@@ -123,18 +135,39 @@ class LyricsPanel(ScrollView, can_focus=True):
                         text.append(f"{p.raw}\n", style="dim italic")
                 text.append("\n")
 
+            num_lines = len(parsed.timed_lines)
+            num_width = max(2, len(str(num_lines))) if num_lines else 2
+            in_range = component_range is not None
+            lo = component_range[0] if in_range else 0
+            hi = component_range[1] if in_range else 0
+            # Range shading: a dim slate 256-color background. Legible on
+            # $surface; silently degrades in monochrome terminals (reverse
+            # playback highlight + line numbers remain the only cues there).
+            RANGE_BG = "on color(238)"
+
             for i, line in enumerate(parsed.timed_lines):
                 timestamp = (
                     format_centiseconds(line.time_seconds)
                     if line.time_seconds is not None
                     else "--:--.--"
                 )
+                line_in_range = in_range and lo <= i + 1 <= hi
                 if i == highlighted_index:
+                    # Playback-current: reverse highlight wins; do NOT layer
+                    # the range background on this line (reverse already
+                    # inverts any background within the run).
+                    text.append(f"{i + 1:>{num_width}} ", style="bold cyan reverse")
                     text.append(f"[{timestamp}]  ", style="bold cyan reverse")
                     text.append(line.text + "\n", style="bold reverse")
                 else:
-                    text.append(f"[{timestamp}]  ", style="cyan")
-                    text.append(line.text + "\n")
+                    if line_in_range:
+                        text.append(f"{i + 1:>{num_width}} ", style=f"dim {RANGE_BG}")
+                        text.append(f"[{timestamp}]  ", style=f"cyan {RANGE_BG}")
+                        text.append(line.text + "\n", style=RANGE_BG)
+                    else:
+                        text.append(f"{i + 1:>{num_width}} ", style="dim")
+                        text.append(f"[{timestamp}]  ", style="cyan")
+                        text.append(line.text + "\n")
 
         if structured_lyrics is not None:
             sections = structured_lyrics.get("sections", [])
@@ -202,18 +235,22 @@ class LyricsPanel(ScrollView, can_focus=True):
         song_title: str,
         highlighted_index: int = -1,
         structured_lyrics: dict | None = None,
+        component_range: tuple[int, int] | None = None,
     ) -> None:
         self._song_title = song_title
         self._parsed = parsed
         self._highlighted_index = highlighted_index
         self._structured_lyrics = structured_lyrics
+        self._component_range = component_range
 
         if parsed is None and structured_lyrics is None:
             self.add_class("empty")
             text = Text(f'No LRC file found for "{song_title}"')
         else:
             self.remove_class("empty")
-            text = self._build_lyrics_text(parsed, highlighted_index, structured_lyrics)
+            text = self._build_lyrics_text(
+                parsed, highlighted_index, structured_lyrics, component_range
+            )
 
         self._rebuild_strips(text)
 
@@ -277,7 +314,9 @@ class LyricsPanel(ScrollView, can_focus=True):
 
         Called by the screen's playback position callback. If the index
         hasn't changed, this is a no-op (avoids unnecessary re-renders
-        at 5Hz playback update frequency).
+        at 5Hz playback update frequency). Preserves the current component
+        range shading (``self._component_range``) established by the most
+        recent selection refresh.
         """
         if index == self._highlighted_index:
             return
@@ -288,11 +327,33 @@ class LyricsPanel(ScrollView, can_focus=True):
             self._song_title,
             highlighted_index=index,
             structured_lyrics=self._structured_lyrics,
+            component_range=self._component_range,
+        )
+
+    def set_component_range(self, line_start: int | None, line_end: int | None) -> None:
+        """Set the 1-based inclusive LRC line range to shade in the panel.
+
+        ``None`` for either endpoint (or both) clears the range. No-op when
+        the resolved range is unchanged from the current one.
+        """
+        if line_start is not None and line_end is not None:
+            new_range: tuple[int, int] | None = (int(line_start), int(line_end))
+        else:
+            new_range = None
+        if new_range == self._component_range:
+            return
+        self.update_lrc(
+            self._parsed,
+            self._song_title,
+            highlighted_index=self._highlighted_index,
+            structured_lyrics=self._structured_lyrics,
+            component_range=new_range,
         )
 
     def update_fetching(self, song_title: str) -> None:
         self._parsed = None
         self._highlighted_index = -1
+        self._component_range = None
         self._song_title = song_title
         self.add_class("empty")
         self._content_strips = []
@@ -303,6 +364,7 @@ class LyricsPanel(ScrollView, can_focus=True):
     def update_error(self, msg: str, song_title: str) -> None:
         self._parsed = None
         self._highlighted_index = -1
+        self._component_range = None
         self._song_title = song_title
         self.add_class("empty")
         self._content_strips = []

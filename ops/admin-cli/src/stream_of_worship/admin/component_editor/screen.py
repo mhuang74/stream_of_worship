@@ -673,6 +673,17 @@ class ComponentEditorScreen(Screen[None]):
             panel.update_lrc(None, "")
             return
 
+        # Selected component's LRC line range (1-based inclusive). Applied only
+        # on the parsed-LRC path where timed_lines line numbering aligns with
+        # line_start/line_end; structured-lyrics-only rendering passes None to
+        # avoid misleading shading (structured sections[].lines are not
+        # index-aligned with timed_lines).
+        comp = self.state.get_selected_component()
+        if comp is not None and comp.line_start is not None and comp.line_end is not None:
+            crange: tuple[int, int] | None = (comp.line_start, comp.line_end)
+        else:
+            crange = None
+
         song_id = session.song_id
         song_title = session.song_title
 
@@ -689,6 +700,7 @@ class ComponentEditorScreen(Screen[None]):
                     song_title,
                     highlighted_index=idx,
                     structured_lyrics=session.structured_lyrics,
+                    component_range=crange,
                 )
             return
 
@@ -698,13 +710,16 @@ class ComponentEditorScreen(Screen[None]):
             return
 
         if session.structured_lyrics is not None:
+            # Structured-lyrics-only path: no reliable timed_lines alignment,
+            # so component range is informational only here — pass None.
             panel.update_lrc(
                 None,
                 song_title,
                 structured_lyrics=session.structured_lyrics,
+                component_range=None,
             )
         else:
-            panel.update_lrc(None, song_title)
+            panel.update_lrc(None, song_title, component_range=crange)
 
     # --- Playback ---
 
@@ -811,9 +826,12 @@ class ComponentEditorScreen(Screen[None]):
         max_row = max(0, len(self.state.current.ordered_component_roles) - 1)
         if 0 <= cursor_row <= max_row:
             self.state.selected_row = cursor_row
-        # Also trigger detail panel + hero refresh
+        # Also trigger detail panel + hero refresh, and lyrics range shading
+        # so component selection is reflected live in the lyrics panel.
         self._refresh_detail_panel()
         self._refresh_hero()
+        if self._right_panel_mode == "lyrics":
+            self._refresh_lyrics_panel()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id != "component-table":
