@@ -173,8 +173,17 @@ def build_chat_model_for_lyrics():
     )
 
 
-def _build_lyrics_prompt(description: str, heuristic: dict | None) -> str:
-    """Build the LLM prompt for lyrics cleanup."""
+def _build_lyrics_prompt(
+    description: str,
+    heuristic: dict | None,
+    *,
+    source_desc: str = "a YouTube video description",
+) -> str:
+    """Build the LLM prompt for lyrics cleanup.
+
+    ``source_desc`` names the origin of the text (YouTube description by
+    default, or a lyrics page) so the prompt reads naturally for either.
+    """
     hint = ""
     if heuristic:
         import json
@@ -185,8 +194,8 @@ def _build_lyrics_prompt(description: str, heuristic: dict | None) -> str:
             f"{json.dumps(heuristic, ensure_ascii=False, indent=2)}"
         )
     return (
-        "You are a lyrics parser. Given a YouTube video description, extract "
-        "the structured song lyrics.\n\n"
+        f"You are a lyrics parser. Given {source_desc}, extract the structured "
+        "song lyrics.\n\n"
         "Identify section boundaries (Verse, Pre-Chorus, Chorus, Bridge, Intro, "
         "Outro, Instrumental, Hook, Refrain, Tag) and assign each non-blank "
         "lyric line to the section it belongs to.\n\n"
@@ -212,12 +221,17 @@ def _build_lyrics_prompt(description: str, heuristic: dict | None) -> str:
 
 def extract_structured_lyrics_with_llm(
     description: str | None,
+    *,
+    source_desc: str = "a YouTube video description",
 ) -> StructuredLyricsResult | None:
     """Parse a description into structured lyrics using an LLM for cleanup.
 
     Returns a StructuredLyricsResult or None if the description is empty.
     Raises RuntimeError if LLM env is not configured.
     Raises on LLM call failure (network, malformed JSON) — caller must handle.
+
+    ``source_desc`` names the origin of the text (default: YouTube) so the
+    prompt reads naturally for either source.
     """
     if not description:
         return None
@@ -229,12 +243,17 @@ def extract_structured_lyrics_with_llm(
             StructuredLyricsResult, method="function_calling"
         )
     heuristic = parse_structured_lyrics(description)
-    prompt = _build_lyrics_prompt(description, heuristic)
+    prompt = _build_lyrics_prompt(description, heuristic, source_desc=source_desc)
     result = structured_chat.invoke(prompt)
     return result
 
 
-def parse_structured_lyrics_smart(description: str | None, *, use_llm: bool = True) -> dict | None:
+def parse_structured_lyrics_smart(
+    description: str | None,
+    *,
+    use_llm: bool = True,
+    source_desc: str = "a YouTube video description",
+) -> dict | None:
     """Parse structured lyrics, preferring LLM cleanup when enabled.
 
     - use_llm=True (default): runs heuristic, then LLM cleanup. LLM env misconfig /
@@ -242,11 +261,14 @@ def parse_structured_lyrics_smart(description: str | None, *, use_llm: bool = Tr
       (StructuredLyricsResult.to_dict()) or None if the description is empty.
     - use_llm=False: runs the heuristic only. Non-fatal on parse failure
       (returns None).
+
+    ``source_desc`` names the text origin and is passed through to the LLM
+    prompt (default: YouTube description).
     """
     if not description:
         return None
     if use_llm:
-        result = extract_structured_lyrics_with_llm(description)
+        result = extract_structured_lyrics_with_llm(description, source_desc=source_desc)
         if result is None:
             return None
         return result.to_dict() or None

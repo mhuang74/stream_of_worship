@@ -52,9 +52,9 @@ from stream_of_worship.admin.services.lrc_parser import (
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.structured_lyrics import (
     flatten_structured_lyrics,
-    parse_structured_lyrics,
     parse_structured_lyrics_smart,
 )
+from stream_of_worship.admin.services.zanmei import fetch_structured_lyrics_from_zanmei
 from stream_of_worship.admin.services.youtube import (
     DURATION_WARNING_THRESHOLD,
     OFFICIAL_LYRICS_SUFFIX,
@@ -740,6 +740,98 @@ def _submit_lrc_job(
         return None
 
 
+def _fetch_structured_lyrics(
+    *,
+    youtube_url: str | None,
+    song_title: str,
+    band: str | None,
+    source: str,
+    use_llm: bool,
+    console: Console,
+) -> tuple[str | None, str | None, str]:
+    """Fetch structured lyrics according to the ``source`` preference.
+
+    ``source`` is one of ``youtube`` (YouTube description only), ``zanmei``
+    (zanmei.ai only), or ``auto`` (YouTube first, then zanmei.ai fallback
+    when YouTube yields no section-tagged lyrics).
+
+    Returns ``(structured_raw, structured_json_str, source_used)``.
+    ``structured_raw`` is the raw text harvested from the winning source;
+    ``structured_json_str`` is the parsed structured-lyrics JSON (or None).
+
+    Matching the pre-existing YouTube-only path, a hard failure while parsing
+    YouTube lyrics with the LLM enabled raises ``typer.Exit(1)`` so callers
+    keep their historical error UX. Zanmei is best-effort: a fetch/parse
+    failure is reported and results in ``(None, None, zanmei)`` rather than
+    blocking the download.
+    """
+    if youtube_url:
+        try:
+            metadata = extract_video_metadata(youtube_url)
+        except RuntimeError as e:
+            console.print(
+                f"[yellow]Could not fetch YouTube metadata for structured lyrics: {e}[/yellow]"
+            )
+            yt_raw = None
+            yt_json = None
+        else:
+            yt_raw = metadata.description
+            try:
+                yt_structured = parse_structured_lyrics_smart(
+                    metadata.description,
+                    use_llm=use_llm,
+                    source_desc="a YouTube video description",
+                )
+            except RuntimeError as e:
+                if use_llm:
+                    console.print(f"[red]LLM lyrics extraction failed: {e}[/red]")
+                    console.print(
+                        "[dim]Use --no-llm to fall back to the regex heuristic only.[/dim]"
+                    )
+                    raise typer.Exit(1)
+                yt_structured = None
+            yt_json = (
+                json.dumps(yt_structured, ensure_ascii=False)
+                if yt_structured and yt_structured.get("sections")
+                else None
+            )
+    else:
+        yt_raw = None
+        yt_json = None
+
+    if source == "youtube":
+        return yt_raw, yt_json, "youtube"
+
+    # Zanmei needed (forced or auto-fallback when YouTube gave no sections).
+    if source == "auto" and yt_json is not None:
+        return yt_raw, yt_json, "youtube"
+
+    try:
+        lyrics_text = fetch_structured_lyrics_from_zanmei(song_title, band)
+    except RuntimeError as e:
+        console.print(f"[yellow]Zanmei lyrics fetch failed: {e}[/yellow]")
+        return (yt_raw if source == "auto" else None), yt_json, "zanmei"
+
+    if not lyrics_text:
+        console.print(
+            f"[yellow]No lyrics found on zanmei.ai for {song_title!r} "
+            f"{f'({band!r})' if band else ''}[/yellow]"
+        )
+        return (yt_raw if source == "auto" else None), yt_json, "zanmei"
+
+    try:
+        structured = parse_structured_lyrics_smart(
+            lyrics_text,
+            use_llm=use_llm,
+            source_desc="zanmei.ai song lyrics",
+        )
+    except RuntimeError as e:
+        console.print(f"[yellow]Zanmei lyrics parse failed: {e}[/yellow]")
+        structured = None
+    structured_json = json.dumps(structured, ensure_ascii=False) if structured else None
+    return lyrics_text, structured_json, "zanmei"
+
+
 def _backfill_lyrics_for_song(
     *,
     song_id: str,
@@ -747,21 +839,22 @@ def _backfill_lyrics_for_song(
     console: Console,
     url: Optional[str] = None,
     use_llm: bool = True,
+    structured_lyrics_source: str = "auto",
 ) -> bool:
-    """Backfill structured lyrics from YouTube for an existing recording.
+    """Backfill structured lyrics for an existing recording.
 
-    Fetches the YouTube video description via ``extract_video_metadata()``,
-    parses it with ``parse_structured_lyrics_smart()`` (LLM cleanup by default,
-    or heuristic-only when ``use_llm=False``), and persists the result
-    via ``update_recording_structured_lyrics()``. Does NOT download audio
-    or touch R2.
+    Fetches structured lyrics per ``structured_lyrics_source`` (youtube /
+    zanmei / auto) and persists the result via
+    ``update_recording_structured_lyrics()``. Does NOT download audio or
+    touch R2.
 
     Args:
         song_id: Song ID whose recording to backfill.
         db_client: Database client.
         console: Rich console for output.
         url: Optional YouTube URL override. Falls back to
-            ``recording.youtube_url``.
+            ``recording.youtube_url`` (only used for the youtube source).
+        structured_lyrics_source: 'youtube' | 'zanmei' | 'auto'.
 
     Returns:
         True if structured lyrics were persisted, False on error/skip.
@@ -775,43 +868,30 @@ def _backfill_lyrics_for_song(
         raise typer.Exit(1)
 
     yt_url = url or recording.youtube_url
-    if not yt_url:
+    if structured_lyrics_source != "zanmei" and not yt_url:
         console.print(
             f"[red]No YouTube URL available for {song_id}. "
-            f"Use --url to specify one.[/red]"
+            f"Use --url to specify one or --structured-lyrics-source zanmei.[/red]"
         )
         raise typer.Exit(1)
 
     song = db_client.get_song(song_id)
     song_title = song.title if song else song_id
+    band = song.composer if song else None
     console.print(f"[cyan]Song:[/cyan] {song_title}")
     console.print(f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}")
-    console.print(f"[cyan]YouTube URL:[/cyan] {yt_url}")
+    console.print(f"[cyan]Lyrics source:[/cyan] {structured_lyrics_source}")
+    if yt_url:
+        console.print(f"[cyan]YouTube URL:[/cyan] {yt_url}")
 
-    try:
-        metadata = extract_video_metadata(yt_url)
-    except RuntimeError as e:
-        console.print(f"[red]Failed to fetch video metadata: {e}[/red]")
-        raise typer.Exit(1)
-
-    try:
-        structured_raw = metadata.description
-        structured_json = parse_structured_lyrics_smart(
-            metadata.description, use_llm=use_llm
-        )
-        structured_json_str = (
-            json.dumps(structured_json, ensure_ascii=False) if structured_json else None
-        )
-    except RuntimeError as e:
-        if use_llm:
-            console.print(f"[red]LLM lyrics extraction failed: {e}[/red]")
-            console.print(
-                "[dim]Use --no-llm to fall back to the regex heuristic only.[/dim]"
-            )
-            raise typer.Exit(1)
-        structured_raw = metadata.description
-        structured_json = None
-        structured_json_str = None
+    structured_raw, structured_json_str, source_used = _fetch_structured_lyrics(
+        youtube_url=yt_url,
+        song_title=song_title,
+        band=band,
+        source=structured_lyrics_source,
+        use_llm=use_llm,
+        console=console,
+    )
 
     db_client.update_recording_structured_lyrics(
         hash_prefix=recording.hash_prefix,
@@ -819,14 +899,19 @@ def _backfill_lyrics_for_song(
         structured_lyrics=structured_json_str,
     )
 
+    if structured_json_str:
+        structured_json = json.loads(structured_json_str)
+    else:
+        structured_json = None
     if structured_json and structured_json.get("sections"):
         num_sections = len(structured_json["sections"])
         console.print(
-            f"[green]Backfilled structured lyrics: {num_sections} section(s).[/green]"
+            f"[green]Backfilled structured lyrics ({source_used}): "
+            f"{num_sections} section(s).[/green]"
         )
     else:
         console.print(
-            f"[yellow]No section tags found in description — stored raw only.[/yellow]"
+            f"[yellow]No section tags found from {source_used} — stored raw only.[/yellow]"
         )
 
     console.print(
@@ -849,6 +934,7 @@ def import_youtube_audio_for_song(
     lrc: bool = False,
     components: bool = False,
     use_llm: bool = True,
+    structured_lyrics_source: str = "auto",
 ) -> Recording | None:
     """Import a YouTube-backed recording for an existing song."""
     song = db_client.get_song(song_id)
@@ -976,28 +1062,18 @@ def import_youtube_audio_for_song(
         search_or_url = manual_url
         is_direct_url = True
 
-    # Fetch structured lyrics from the YouTube description (D4, D5).
-    # Non-fatal: failures here must not block the download.
-    structured_raw: Optional[str] = None
-    structured_json_str: Optional[str] = None
-    try:
-        metadata = extract_video_metadata(search_or_url)
-        structured_raw = metadata.description
-        structured_json = parse_structured_lyrics_smart(
-            metadata.description, use_llm=use_llm
-        )
-        if structured_json:
-            structured_json_str = json.dumps(structured_json, ensure_ascii=False)
-    except RuntimeError as e:
-        if use_llm:
-            console.print(f"[red]LLM lyrics extraction failed: {e}[/red]")
-            console.print(
-                "[dim]Use --no-llm to fall back to the regex heuristic only.[/dim]"
-            )
-            raise typer.Exit(1)
-        console.print(
-            f"[yellow]Could not fetch video metadata for structured lyrics: {e}[/yellow]"
-        )
+    # Fetch structured lyrics per source (D4, D5). Non-fatal: failures here
+    # must not block the download. When source is zanmei-only, skip the
+    # YouTube metadata call entirely (search_or_url may be a bare query).
+    youtube_for_lyrics = search_or_url if structured_lyrics_source != "zanmei" else None
+    structured_raw, structured_json_str, _lyrics_source_used = _fetch_structured_lyrics(
+        youtube_url=youtube_for_lyrics,
+        song_title=song.title,
+        band=song.composer,
+        source=structured_lyrics_source,
+        use_llm=use_llm,
+        console=console,
+    )
 
     console.print("[cyan]Downloading audio from YouTube...[/cyan]")
     try:
@@ -1118,12 +1194,14 @@ def _backfill_lyrics_batch(
     url: Optional[str] = None,
     skip_confirm: bool = False,
     use_llm: bool = True,
+    structured_lyrics_source: str = "auto",
 ) -> None:
-    """Backfill structured lyrics from YouTube for multiple songs from stdin.
+    """Backfill structured lyrics for multiple songs from stdin.
 
     Reads song IDs from stdin (one per line). For each song, looks up the
-    existing recording and fetches structured lyrics from the YouTube video
-    description. Per-song failures are reported but do not abort the batch.
+    existing recording and fetches structured lyrics per
+    ``structured_lyrics_source``. Per-song failures are reported but do not
+    abort the batch.
     """
     song_ids = _read_song_ids_from_stdin()
 
@@ -1151,6 +1229,7 @@ def _backfill_lyrics_batch(
                 console=console,
                 url=url,
                 use_llm=use_llm,
+                structured_lyrics_source=structured_lyrics_source,
             )
             if ok:
                 success += 1
@@ -1179,6 +1258,7 @@ def _download_audio_batch(
     lrc: bool,
     components: bool,
     use_llm: bool = True,
+    structured_lyrics_source: str = "auto",
 ) -> None:
     """Download audio from YouTube for multiple songs read from stdin.
 
@@ -1305,6 +1385,7 @@ def _download_audio_batch(
                 lrc=lrc,
                 components=components,
                 use_llm=use_llm,
+                structured_lyrics_source=structured_lyrics_source,
             )
             success += 1
             console.print(f"[green]✓ Downloaded: {sid} ({song.title})[/green]")
@@ -1364,6 +1445,15 @@ def download_audio(
             "exits non-zero."
         ),
     ),
+    structured_lyrics_source: str = typer.Option(
+        "auto",
+        "--structured-lyrics-source",
+        help=(
+            "Source for structured lyrics: 'youtube' (YouTube description), "
+            "'zanmei' (zanmei.ai), or 'auto' (default: YouTube first, then "
+            "zanmei.ai fallback when YouTube has no structured lyrics)."
+        ),
+    ),
     stdin: bool = typer.Option(
         False, "--stdin", help="Read song IDs from stdin (one per line) for batch download"
     ),
@@ -1379,7 +1469,8 @@ def download_audio(
     processing after successful download.
 
     Use --backfill-lyrics to fetch structured lyrics from the YouTube
-    description for an existing recording without re-downloading audio.
+    description (or --structured-lyrics-source to choose zanmei.ai / auto)
+    for an existing recording without re-downloading audio.
 
     For batch downloads, pipe song IDs via stdin:
 
@@ -1399,6 +1490,14 @@ def download_audio(
 
     if stdin and url:
         console.print("[red]Error: --url is not supported with --stdin (batch mode).[/red]")
+        raise typer.Exit(1)
+
+    valid_sources = {"auto", "youtube", "zanmei"}
+    if structured_lyrics_source not in valid_sources:
+        console.print(
+            f"[red]Error: --structured-lyrics-source must be one of: "
+            f"{', '.join(sorted(valid_sources))}[/red]"
+        )
         raise typer.Exit(1)
 
     # --backfill-lyrics short-circuit
@@ -1434,6 +1533,7 @@ def download_audio(
                 console=console,
                 skip_confirm=skip_confirm,
                 use_llm=use_llm,
+                structured_lyrics_source=structured_lyrics_source,
             )
             return
 
@@ -1443,6 +1543,7 @@ def download_audio(
             console=console,
             url=url,
             use_llm=use_llm,
+            structured_lyrics_source=structured_lyrics_source,
         )
         return
 
@@ -1472,6 +1573,7 @@ def download_audio(
             lrc=lrc,
             components=components,
             use_llm=use_llm,
+            structured_lyrics_source=structured_lyrics_source,
         )
         return
 
@@ -1500,6 +1602,7 @@ def download_audio(
         lrc=lrc,
         components=components,
         use_llm=use_llm,
+        structured_lyrics_source=structured_lyrics_source,
     )
 
 
