@@ -402,6 +402,79 @@ ML/LLM-heavy pipeline. Per-flag cost breakdown:
 See `reports/chorus_component_metadata_v5_impl_summary.md` for the full
 implementation details.
 
+#### Batch Processing
+
+The `audio batch` command pipelines the full per-song workflow for many songs at
+once: download audio, generate LRC, run analysis, and embed. Each song advances
+independently through the fixed step chain **download → lrc → analyze →
+embedding**; a slow song never blocks another song's downstream steps.
+
+```bash
+# Run all steps in order
+sow-admin audio batch --all-steps
+
+# Only analyze songs missing analysis (tiered backfill, capped at 500)
+sow-admin audio batch --analysis-status incomplete --analyze \
+    --analysis-tier fast --limit 500
+
+# Only generate LRC for songs without it
+sow-admin audio batch --lrc-status incomplete --lrc
+
+# Resume an interrupted batch from its manifest
+sow-admin audio batch --resume ~/.local/share/sow-admin/batch/<batch_id>_manifest.json
+```
+
+**Step gating is strict.** Each phase runs *only* when its step flag is
+present — no phase runs as a side effect of another. At least one of
+`--download`, `--lrc`, `--analyze`, `--embedding`, `--backfill-lyrics`, or
+`--all-steps` is required.
+
+**Filtering** (`--album`, `--song`, `--lrc-status`, `--download-status`,
+`--analysis-status`, `--stdin`, `--limit`) selects which songs to process.
+Status values:
+
+| Filter | Allowed values |
+|--------|----------------|
+| `--lrc-status` | `pending`, `processing`, `completed`, `failed`, `incomplete` |
+| `--download-status` | `pending`, `processing`, `completed`, `failed` |
+| `--analysis-status` | `pending`, `processing`, `partial`, `completed`, `failed`, `incomplete` |
+
+**Other key flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--analysis-tier fast\|full` | `fast` | Analysis workload; ignored unless `--analyze` is selected |
+| `--force` | off | Force re-run of a single step (see constraints below) |
+| `--dry-run` | off | Show what would be processed without executing |
+| `--stale-after N` | 120 | Minutes after which a `processing` song is treated as lost |
+| `--download-concurrency N` | 3 | Max parallel audio downloads |
+| `--format rich\|json` | `rich` | Output format |
+| `--config` | — | Path to config file |
+
+**`--force` constraints:**
+
+- Requires **exactly one** step flag (`--download`, `--lrc`, `--analyze`, or
+  `--embedding`). Combining with `--all-steps` or multiple steps is rejected.
+- `--force --download` is **not supported** — re-downloading changes
+  `content_hash`/`hash_prefix` and orphans downstream R2 artifacts. Use the
+  two-step soft-delete + purge workflow instead:
+  ```bash
+  sow-admin audio delete --recording --hash-prefix <old>
+  sow-admin maintenance purge-soft-deletes --entity recordings --hash-prefix <old> --confirm
+  sow-admin audio batch --song <song_id> --download
+  ```
+
+**`--backfill-lyrics`** fetches structured lyrics from YouTube for existing
+recordings and may only be combined with `--lrc` (it runs first so the freshly
+backfilled lyrics feed the LRC step). When used alone, it prints a backfill
+summary.
+
+**Resume & crash recovery:** the batch writes a JSON manifest per step
+(`~/.local/share/sow-admin/batch/<batch_id>_manifest.json`). Pass it to
+`--resume` to re-poll in-flight jobs without re-submitting. `--resume` is
+mutually exclusive with the filter and step flags. The CLI exits with a nonzero
+status if any selected step failed.
+
 ### Theme Anchors Commands
 
 ```bash
