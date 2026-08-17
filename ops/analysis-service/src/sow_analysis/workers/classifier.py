@@ -482,11 +482,38 @@ class ThemeClassifier:
         parsed: dict,
         heuristic_posture: Optional[str],
     ) -> None:
-        """Populate component fields from a parsed LLM response and cross-check."""
-        component.theme = parsed.get("theme")
+        """Populate component fields from a parsed LLM response and cross-check.
+
+        LLM-returned ``theme`` / ``vocal_posture`` are validated against
+        ``THEME_CATEGORIES`` / ``VOCAL_POSTURE_CATEGORIES``. Any value not in
+        the canonical enum is dropped to ``None`` (with a warning) so the row
+        still persists with a NULL theme rather than violating the
+        ``song_components_theme_check`` DB constraint at INSERT time. The
+        reasoning/confidence fields are preserved for diagnostics.
+        """
+        raw_theme = parsed.get("theme")
+        if raw_theme in THEME_CATEGORIES:
+            component.theme = raw_theme
+        else:
+            if raw_theme is not None:
+                logger.warning(
+                    f"LLM returned non-canonical theme {raw_theme!r} for "
+                    f"occurrence={component.occurrence_index}; dropping to None"
+                )
+            component.theme = None
         component.theme_confidence = parsed.get("theme_confidence", 0.7)
         component.theme_reasoning = parsed.get("theme_reasoning", "")
-        component.vocal_posture = parsed.get("vocal_posture")
+
+        raw_posture = parsed.get("vocal_posture")
+        if raw_posture in VOCAL_POSTURE_CATEGORIES:
+            component.vocal_posture = raw_posture
+        else:
+            if raw_posture is not None:
+                logger.warning(
+                    f"LLM returned non-canonical vocal_posture {raw_posture!r} for "
+                    f"occurrence={component.occurrence_index}; dropping to None"
+                )
+            component.vocal_posture = None
         component.vocal_posture_confidence = parsed.get(
             "vocal_posture_confidence", 0.7
         )

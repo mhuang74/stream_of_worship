@@ -272,6 +272,19 @@ CREATE TRIGGER trg_song_components_updated_at
 """
 
 # v5: ALTER TABLE statements for new columns (idempotent, safe for existing tables).
+# Canonical enum values for song_components.theme / vocal_posture. These mirror
+# the CHECK constraints below and are the single admin-side source of truth for
+# what may be persisted; producers (analysis service LLM classifier) and the
+# Component Metadata editor must stay within them.
+SONG_COMPONENT_THEMES: tuple[str, ...] = (
+    "讚美", "感恩", "敬拜", "奉獻", "認罪", "差遣",
+    "信心", "祈禱", "復興", "聖靈", "十字架", "跟隨",
+)
+SONG_COMPONENT_VOCAL_POSTURES: tuple[str, ...] = (
+    "To God",
+    "About God",
+    "To Congregation",
+)
 ALTER_SONG_COMPONENTS_V5_COLUMNS = """
 ALTER TABLE song_components ADD COLUMN IF NOT EXISTS bpm_confidence REAL;
 ALTER TABLE song_components ADD COLUMN IF NOT EXISTS key_confidence REAL;
