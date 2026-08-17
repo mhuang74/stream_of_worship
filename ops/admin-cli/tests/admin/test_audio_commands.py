@@ -4566,3 +4566,198 @@ class TestLlmLyricsFlags:
         assert result.exit_code == 1
         assert "LLM lyrics extraction failed" in result.output
         assert "--no-llm" in result.output
+
+
+class TestStructuredLyricsSource:
+    """Tests for --structured-lyrics-source wiring and selection logic."""
+
+    def test_download_default_forwards_auto_source(self):
+        """audio download (default) forwards structured_lyrics_source='auto'."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song",
+                return_value=MagicMock(),
+            ) as mock_import,
+        ):
+            result = runner.invoke(
+                app, ["audio", "download", "song_001", "--yes"], env=WIDE_ENV
+            )
+        assert result.exit_code == 0
+        mock_import.assert_called_once()
+        assert mock_import.call_args.kwargs.get("structured_lyrics_source") == "auto"
+
+    def test_download_forwards_zanmei_source(self):
+        """audio download --structured-lyrics-source zanmei forwards 'zanmei'."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song",
+                return_value=MagicMock(),
+            ) as mock_import,
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--structured-lyrics-source", "zanmei", "--yes"],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_import.assert_called_once()
+        assert mock_import.call_args.kwargs.get("structured_lyrics_source") == "zanmei"
+
+    def test_download_invalid_source_rejected(self):
+        """--structured-lyrics-source bogus → exit 1 with an error message."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--structured-lyrics-source", "bogus", "--yes"],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 1
+        assert "structured-lyrics-source" in result.output
+        assert "auto" in result.output
+
+    def test_backfill_forwards_source_to_single(self):
+        """--backfill-lyrics --structured-lyrics-source zanmei forwards source."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song",
+                return_value=True,
+            ) as mock_single,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio",
+                    "download",
+                    "song_001",
+                    "--backfill-lyrics",
+                    "--structured-lyrics-source",
+                    "zanmei",
+                    "--yes",
+                ],
+                env=WIDE_ENV,
+            )
+        assert result.exit_code == 0
+        mock_single.assert_called_once()
+        assert mock_single.call_args.kwargs.get("structured_lyrics_source") == "zanmei"
+
+
+class TestFetchStructuredLyricsSelect:
+    """Tests for the _fetch_structured_lyrics source-selection helper."""
+
+    def _call(self, *, source, yt_desc=None, zanmei_text=None, use_llm=False):
+        from stream_of_worship.admin.commands import audio as audio_mod
+
+        fake_console = MagicMock()
+        fake_meta = MagicMock()
+        fake_meta.description = yt_desc
+
+        def fake_extract(url):
+            if yt_desc is None:
+                raise RuntimeError("no metadata")
+            return fake_meta
+
+        def fake_zanmei(title, band=None):
+            if zanmei_text is None:
+                raise RuntimeError("zanmei failed")
+            return zanmei_text
+
+        with (
+            patch.object(audio_mod, "extract_video_metadata", side_effect=fake_extract),
+            patch.object(audio_mod, "fetch_structured_lyrics_from_zanmei", side_effect=fake_zanmei),
+        ):
+            return audio_mod._fetch_structured_lyrics(
+                youtube_url="https://youtube.com/watch?v=x",
+                song_title="祢就是唯一",
+                band="赞美之泉",
+                source=source,
+                use_llm=use_llm,  # heuristic-only to avoid LLM env
+                console=fake_console,
+            )
+
+    def test_youtube_only_uses_youtube(self):
+        """source='youtube' returns YouTube sections, never calls zanmei."""
+        raw, _json_str, source = self._call(
+            source="youtube",
+            yt_desc="[Verse]\nLine 1\nLine 2",
+            zanmei_text="[Verse]\nZanmei Line",
+        )
+        assert source == "youtube"
+        assert "[Verse]" in raw
+        assert "Zanmei Line" not in raw
+
+    def test_zanmei_only_uses_zanmei(self):
+        """source='zanmei' returns zanmei lyrics, ignores YouTube."""
+        raw, _json_str, source = self._call(
+            source="zanmei",
+            zanmei_text="[Chorus]\n祢就是唯一",
+        )
+        assert source == "zanmei"
+        assert "[Chorus]" in raw
+
+    def test_auto_prefers_youtube_when_sections_present(self):
+        """source='auto' keeps YouTube when it has section-tagged lyrics."""
+        raw, _json_str, source = self._call(
+            source="auto",
+            yt_desc="[Verse]\nLine 1",
+            zanmei_text="[Chorus]\nZanmei",
+        )
+        assert source == "youtube"
+        assert "Line 1" in raw
+
+    def test_auto_falls_back_to_zanmei_when_youtube_empty(self):
+        """source='auto' falls back to zanmei when YouTube has no sections."""
+        raw, _json_str, source = self._call(
+            source="auto",
+            yt_desc="channel promo, no brackets",
+            zanmei_text="[Verse]\n祢就是唯一",
+        )
+        assert source == "zanmei"
+        assert "[Verse]" in raw
+
+    def test_zanmei_source_failure_returns_none(self):
+        """source='zanmei' with zanmei fetch failure → (None, None, zanmei)."""
+        raw, json_str, source = self._call(source="zanmei", zanmei_text=None)
+        assert source == "zanmei"
+        assert raw is None
+        assert json_str is None
