@@ -24,6 +24,8 @@ from stream_of_worship.admin.db.schema import (
     SONG_COLUMNS_SELECT,
     SONG_COLUMN_COUNT,
     SONG_COMPONENT_COLUMNS_SELECT,
+    SONG_COMPONENT_THEMES,
+    SONG_COMPONENT_VOCAL_POSTURES,
 )
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.helpers import to_str
@@ -31,6 +33,15 @@ from stream_of_worship.db.helpers import to_str
 logger = logging.getLogger("sow_admin.db")
 
 _VALID_VISIBILITY_STATUSES = {"published", "review", "hold"}
+
+# Canonical theme/vocal_posture sets mirrored from db/schema.py CHECK
+# constraints. Producers (analysis service LLM classifier, R2 caches, editor)
+# occasionally yield an out-of-enum value (e.g. a non-canonical theme like
+# '十字架構' instead of '十字架'). Such values would violate the DB CHECK
+# constraint at INSERT time, failing the whole upsert. Coercing them to None
+# (which the CHECK allows) keeps a bad single component from failing the batch.
+_SONG_COMPONENT_THEME_SET = frozenset(SONG_COMPONENT_THEMES)
+_SONG_COMPONENT_POSTURE_SET = frozenset(SONG_COMPONENT_VOCAL_POSTURES)
 
 # Whitelist of song_components columns that the Component Metadata editor TUI
 # is allowed to UPDATE. Enforced by update_song_component_fields[_txn].
@@ -2061,8 +2072,17 @@ class DatabaseClient:
                     c.groove_confidence,
                     c.backbeat_confidence,
                     c.energy_confidence,
-                    c.theme,
-                    c.vocal_posture,
+                    (
+                        c.theme
+                        if c.theme is None or c.theme in _SONG_COMPONENT_THEME_SET
+                        else None
+                    ),
+                    (
+                        c.vocal_posture
+                        if c.vocal_posture is None
+                        or c.vocal_posture in _SONG_COMPONENT_POSTURE_SET
+                        else None
+                    ),
                     c.theme_confidence,
                     c.vocal_posture_confidence,
                     c.theme_reasoning,

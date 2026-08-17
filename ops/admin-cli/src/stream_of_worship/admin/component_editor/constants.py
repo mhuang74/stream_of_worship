@@ -20,6 +20,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from stream_of_worship.admin.db.schema import (
+    SONG_COMPONENT_THEMES,
+    SONG_COMPONENT_VOCAL_POSTURES,
+)
+
 if TYPE_CHECKING:
     from stream_of_worship.admin.db.models import SongComponent
 
@@ -35,28 +40,11 @@ EDITABLE_FIELDS: tuple[str, ...] = (
     "end_time",
 )
 
-# The 12-theme vocabulary (must match db/schema.py CHECK constraint).
-THEME_VALUES: tuple[str, ...] = (
-    "讚美",
-    "感恩",
-    "敬拜",
-    "奉獻",
-    "認罪",
-    "差遣",
-    "信心",
-    "祈禱",
-    "復興",
-    "聖靈",
-    "十字架",
-    "跟隨",
-)
+# The 12-theme vocabulary (source: db/schema.py CHECK constraint).
+THEME_VALUES: tuple[str, ...] = SONG_COMPONENT_THEMES
 
-# The 3-posture vocabulary (must match db/schema.py CHECK constraint).
-VOCAL_POSTURE_VALUES: tuple[str, ...] = (
-    "To God",
-    "About God",
-    "To Congregation",
-)
+# The 3-posture vocabulary (source: db/schema.py CHECK constraint).
+VOCAL_POSTURE_VALUES: tuple[str, ...] = SONG_COMPONENT_VOCAL_POSTURES
 
 # Mirror of sow_analysis.storage.cache.COMPONENT_SCHEMA_VERSION
 COMPONENT_SCHEMA_VERSION = 5

@@ -814,3 +814,87 @@ class TestUpdateSongComponentFields:
         # The theme should NOT have been updated
         entry, _ = admin_client.get_song_components_entry_exit("song_comp_001")
         assert entry.theme == "讚美"
+
+
+@pytest.mark.integration
+class TestUpsertSongComponentsSanitization:
+    """upsert_song_components coerces out-of-enum theme/posture to None.
+
+    Regression: an analysis-service LLM occasionally returns a non-canonical
+    theme (e.g. '十字架構' instead of '十字架'). Persisting it verbatim violates
+    the song_components_theme_check / song_components_vocal_posture_check DB
+    CHECK constraints and fails the whole upsert. The client must drop such
+    values to NULL (which the CHECK allows) so one bad component can't fail
+    the batch.
+    """
+
+    def _seed_song_and_recording(self, client: DatabaseClient) -> tuple[str, str]:
+        from stream_of_worship.admin.db.models import Recording, Song
+
+        song = Song(
+            id="song_comp_sanitize",
+            title="Sanitization Test Song",
+            source_url="http://test",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        client.insert_song(song)
+        recording = Recording(
+            content_hash="d" * 64,
+            hash_prefix="dddddddddddd",
+            song_id=song.id,
+            original_filename="test.mp3",
+            file_size_bytes=1000,
+            imported_at="2024-01-01T00:00:00",
+        )
+        client.insert_recording(recording)
+        return song.id, recording.content_hash
+
+    def test_non_canonical_theme_and_posture_are_nulled(self, admin_client):
+        """Out-of-enum theme/vocal_posture are persisted as NULL, not rejected."""
+        from stream_of_worship.admin.db.models import SongComponent
+
+        song_id, content_hash = self._seed_song_and_recording(admin_client)
+        bad = SongComponent(
+            song_id=song_id,
+            content_hash=content_hash,
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=10.0,
+            end_time=20.0,
+            theme="十字架構",  # not a valid enum value (canonical is 十字架)
+            vocal_posture="To Everyone",  # not a valid posture value
+            groove_density=0.5,
+            energy_level=-18.0,
+        )
+        admin_client.upsert_song_components(song_id, content_hash, [bad])
+
+        rows = admin_client.get_song_components(song_id)
+        assert len(rows) == 1
+        assert rows[0].theme is None
+        assert rows[0].vocal_posture is None
+
+    def test_canonical_theme_and_posture_are_kept(self, admin_client):
+        """Valid enum values pass through unchanged."""
+        from stream_of_worship.admin.db.models import SongComponent
+
+        song_id, content_hash = self._seed_song_and_recording(admin_client)
+        good = SongComponent(
+            song_id=song_id,
+            content_hash=content_hash,
+            component_type="chorus",
+            occurrence_index=1,
+            role="entry",
+            start_time=10.0,
+            end_time=20.0,
+            theme="十字架",
+            vocal_posture="To God",
+            groove_density=0.5,
+            energy_level=-18.0,
+        )
+        admin_client.upsert_song_components(song_id, content_hash, [good])
+
+        rows = admin_client.get_song_components(song_id)
+        assert len(rows) == 1
+        assert rows[0].theme == "十字架"
+        assert rows[0].vocal_posture == "To God"

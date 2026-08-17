@@ -365,6 +365,48 @@ def test_retry_on_parse_failure(classifier):
     assert component.theme == "敬拜"
 
 
+def test_apply_llm_result_drops_non_canonical_theme(classifier):
+    """A theme outside the 12-value enum is dropped to None, not persisted.
+
+    Regression: the LLM sometimes returns a near-miss value (e.g. '十字架構'
+    instead of the canonical '十字架'). Persisting it would violate the
+    song_components_theme_check DB CHECK constraint and fail the whole
+    component upsert. _apply_llm_result must coerce it to None (which the
+    constraint allows) and keep reasoning/confidence for diagnostics.
+    """
+    component = _make_component(occurrence=1, role="entry")
+    parsed = _parsed_result(theme="十字架構", posture="To God")
+    parsed["theme_reasoning"] = "lyrics center on the cross"
+
+    classifier._apply_llm_result(component, parsed, heuristic_posture=None)
+
+    assert component.theme is None
+    assert component.theme_reasoning == "lyrics center on the cross"
+    assert component.vocal_posture == "To God"
+
+
+def test_apply_llm_result_keeps_canonical_theme(classifier):
+    """A valid enum theme is preserved verbatim."""
+    component = _make_component(occurrence=1, role="entry")
+    parsed = _parsed_result(theme="十字架", posture="About God")
+
+    classifier._apply_llm_result(component, parsed, heuristic_posture=None)
+
+    assert component.theme == "十字架"
+    assert component.vocal_posture == "About God"
+
+
+def test_apply_llm_result_drops_non_canonical_posture(classifier):
+    """A vocal_posture outside the 3-value enum is dropped to None."""
+    component = _make_component(occurrence=1, role="entry")
+    parsed = _parsed_result(theme="讚美", posture="To Everyone")
+
+    classifier._apply_llm_result(component, parsed, heuristic_posture=None)
+
+    assert component.theme == "讚美"
+    assert component.vocal_posture is None
+
+
 def test_log_llm_diagnostics(classifier, caplog):
     """_log_llm_diagnostics extracts model/token usage from a mock response."""
     caplog.set_level(logging.DEBUG, logger="sow_analysis.workers.classifier")
