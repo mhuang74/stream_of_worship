@@ -6,7 +6,8 @@ import "@testing-library/jest-dom";
 // (e.g. the Completion gate) is testable in jsdom.
 if (
   typeof window !== "undefined" &&
-  typeof window.localStorage === "undefined"
+  (typeof window.localStorage === "undefined" ||
+    typeof window.localStorage.getItem !== "function")
 ) {
   const store = new Map<string, string>();
   const storage: Storage = {

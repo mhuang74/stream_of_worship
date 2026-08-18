@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SongList, SongListItem } from "./SongList";
+import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { TransitionPanel, TransitionSettings } from "./TransitionPanel";
 import { RenderStatusBadge, RenderState } from "./RenderStatusBadge";
 import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS } from "@/lib/constants";
@@ -112,6 +113,26 @@ export function SongsetEditor({
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavoriteToggle();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/favorites");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.songIds)) {
+          setFavoriteIds(new Set(data.songIds));
+        }
+      } catch {
+        // Ignore; favorites simply stay empty until toggled.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setFavoriteIds]);
 
   // Calculate total marked lines across all songs
   const totalMarkedLines = items.reduce((sum, item) => sum + (item.markedLineCount ?? 0), 0);
@@ -415,6 +436,8 @@ export function SongsetEditor({
           songsetId={songset.id}
           highlightSongId={highlightSongId}
           onHighlightConsumed={onHighlightConsumed}
+          favoriteIds={favoriteIds}
+          onToggleFavorite={(songId) => void toggleFavorite(songId)}
         />
       </main>
 

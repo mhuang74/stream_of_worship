@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,13 +31,11 @@ export function FavoriteButton({
   onToggle,
   className,
 }: FavoriteButtonProps) {
-  const [completed, setCompleted] = useState<boolean>(() =>
-    isSongCompleted(songId)
+  const completed = useSyncExternalStore(
+    subscribeCompletion,
+    () => isSongCompleted(songId),
+    () => false
   );
-
-  useEffect(() => {
-    return subscribeCompletion(() => setCompleted(isSongCompleted(songId)));
-  }, [songId]);
 
   const canFavorite = isFavorite || completed;
   const disabled = !onToggle || !canFavorite;

@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { toast } from "sonner";
+import { FavoriteButton } from "./FavoriteButton";
 
 function escapeCssSelectorValue(value: string): string {
   const globalCss = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
@@ -80,6 +81,8 @@ interface SongListProps {
   songsetId?: string;
   highlightSongId?: string | null;
   onHighlightConsumed?: () => void;
+  favoriteIds?: Set<string>;
+  onToggleFavorite?: (songId: string) => void | Promise<void>;
 }
 
 interface SortableSongItemProps {
@@ -96,6 +99,8 @@ interface SortableSongItemProps {
   onCancelConfirm: () => void;
   isRemoving?: boolean;
   isHighlighted?: boolean;
+  favoriteIds?: Set<string>;
+  onToggleFavorite?: (songId: string) => void | Promise<void>;
 }
 
 function SortableSongItem({
@@ -112,6 +117,8 @@ function SortableSongItem({
   onCancelConfirm,
   isRemoving = false,
   isHighlighted = false,
+  favoriteIds,
+  onToggleFavorite,
 }: SortableSongItemProps) {
   const {
     attributes,
@@ -194,6 +201,14 @@ function SortableSongItem({
                 <Play className="size-4 ml-0.5" />
               )}
             </Button>
+
+            {(!readOnly || (favoriteIds?.has(item.songId) ?? false)) && (
+              <FavoriteButton
+                songId={item.songId}
+                isFavorite={favoriteIds?.has(item.songId) ?? false}
+                onToggle={onToggleFavorite}
+              />
+            )}
 
             {/* Song info */}
             <div className="flex-1 min-w-0">
@@ -288,6 +303,8 @@ export function SongList({
   songsetId,
   highlightSongId,
   onHighlightConsumed,
+  favoriteIds,
+  onToggleFavorite,
 }: SongListProps) {
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
@@ -513,6 +530,8 @@ export function SongList({
               onCancelConfirm={() => setConfirmingItemId(null)}
               isRemoving={isRemoving}
               isHighlighted={highlightedSongId === item.songId}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={onToggleFavorite}
             />
           ))}
         </div>
