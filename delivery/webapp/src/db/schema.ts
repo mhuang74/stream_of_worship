@@ -373,6 +373,23 @@ export const userSettings = pgTable("user_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// user_favorites: per-user favorite songs (table: user_favorite_songs)
+// Favorites are durable account data (cross-device). The Completion gate (heard
+// ≥90%) is client-side soft per ADR-0002, so only the favorite flag lives here.
+export const userFavorites = pgTable(
+  "user_favorite_songs",
+  {
+    userId: bigint("user_id", { mode: "number" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    songId: text("song_id")
+      .notNull()
+      .references(() => songs.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("uq_user_favorite_songs_user_song").on(t.userId, t.songId)]
+);
+
 // user_lrc_overrides: per-user LRC text overrides (table: user_lrc_override)
 export const userLrcOverrides = pgTable(
   "user_lrc_override",
@@ -524,6 +541,11 @@ export const songLineEmbeddingsRelations = relations(
 
 export const userSettingsRelations = relations(userSettings, ({ one }) => ({
   user: one(users, { fields: [userSettings.userId], references: [users.id] }),
+}));
+
+export const userFavoritesRelations = relations(userFavorites, ({ one }) => ({
+  user: one(users, { fields: [userFavorites.userId], references: [users.id] }),
+  song: one(songs, { fields: [userFavorites.songId], references: [songs.id] }),
 }));
 
 export const userLrcOverridesRelations = relations(userLrcOverrides, ({ one }) => ({

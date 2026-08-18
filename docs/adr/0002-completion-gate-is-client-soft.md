@@ -1,0 +1,3 @@
+# Completion (favoriting prerequisite) is a soft client-side gate, not a server rule
+
+Despite the "make sure the user really means it" framing, Favoriting is gated by a client-side soft check: the toggle stays disabled until the user has heard at least 90% of the song's duration, tracked in local browser state (localStorage). The server records Favorites in the database (so they survive browser clears and follow the account across devices), but does not verify completion — completion itself never leaves the client. We accepted a deliberately cosmetic guarantee to keep the build small and avoid a server-side completion pipeline. A future effort to harden the gate would move completion to a server table and enforce it at the API, contradicting this ADR.

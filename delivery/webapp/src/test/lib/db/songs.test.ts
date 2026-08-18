@@ -139,6 +139,57 @@ describe("listSongs", () => {
     expect(query.sql).toContain("NOT (");
     expect(query.params).toContain(9);
   });
+
+  it("pins favorite songs to the top when favoriteSongIds is provided", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { favoriteSongIds: ["fav-1", "fav-2"] });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const orderSql = findManyArgs.orderBy
+      .map((item: unknown) => dialect.sqlToQuery(item).sql)
+      .join(" | ");
+    expect(orderSql).toContain('CASE WHEN "songs"."id" = ANY');
+    // The favorites-first group must precede the secondary ordering.
+    expect(orderSql.indexOf('CASE WHEN')).toBeLessThan(orderSql.indexOf('"songs"."updated_at"'));
+  });
+
+  it("does not alter ordering when no favorites are supplied", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, {});
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const orderSql = findManyArgs.orderBy
+      .map((item: unknown) => dialect.sqlToQuery(item).sql)
+      .join(" | ");
+    expect(orderSql).not.toContain('CASE WHEN "songs"."id"');
+  });
+
+  it("restricts to favorites when favoritesOnly is set", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { favoriteSongIds: ["fav-1"], favoritesOnly: true });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const query = dialect.sqlToQuery(findManyArgs.where);
+    expect(query.sql).toContain('"songs"."id" = ANY');
+  });
 });
 
 describe("rrfRerank", () => {

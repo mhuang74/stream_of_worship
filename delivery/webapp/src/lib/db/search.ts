@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { songs } from "@/db/schema";
 import { sql, and, eq, isNull, or, ilike, inArray } from "drizzle-orm";
 import { mapSongWithRecordings, type SongWithRecordings } from "./songs";
+import { favoritesFirstOrder, favoritesOnlyPredicate } from "./favorites";
 import {
   buildEffectiveKeyPredicate,
   buildBpmPredicates,
@@ -15,6 +16,10 @@ export interface FullTextSearchOptions {
   albumFilters?: AlbumFilter[];
   keys?: string[];
   bpmRange?: BpmBandKey[];
+  /** Pins these songs to the top of results (favorites-first search). */
+  favoriteSongIds?: string[];
+  /** When true and favoriteSongIds is present, restrict results to favorites. */
+  favoritesOnly?: boolean;
 }
 
 export async function fullTextSearchSongs(
@@ -129,6 +134,11 @@ export async function fullTextSearchSongs(
     );
   }
 
+  const favoritesOnlyClause = options?.favoritesOnly
+    ? favoritesOnlyPredicate(options?.favoriteSongIds)
+    : undefined;
+  if (favoritesOnlyClause) whereConditions.push(favoritesOnlyClause);
+
   const whereClause = and(...whereConditions);
 
   const countResult = await db
@@ -140,9 +150,12 @@ export async function fullTextSearchSongs(
 
   const result = await db.query.songs.findMany({
     where: whereClause,
-    orderBy: query.trim()
-      ? [sql`ts_rank_cd(${songs.searchVector}, ${tsQuery}) DESC`]
-      : [sql`lower(${songs.title}) ASC`],
+    orderBy: [
+      favoritesFirstOrder(options?.favoriteSongIds),
+      query.trim()
+        ? sql`ts_rank_cd(${songs.searchVector}, ${tsQuery}) DESC`
+        : sql`lower(${songs.title}) ASC`,
+    ].filter((o): o is NonNullable<typeof o> => Boolean(o)),
     limit,
     offset,
     with: {

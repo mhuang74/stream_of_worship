@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Music, Clock, Disc, Plus, Check, BadgeCheck, Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { FavoriteButton } from "./FavoriteButton";
 
 export interface SongCardData {
   id: string;
@@ -39,6 +40,8 @@ interface SongCardProps {
   isPlaying?: boolean;
   isPreviewLoading?: boolean;
   disabled?: boolean;
+  isFavorite?: boolean;
+  onToggleFavorite?: (songId: string) => void | Promise<void>;
   className?: string;
 }
 
@@ -51,6 +54,8 @@ export function SongCard({
   isPlaying = false,
   isPreviewLoading = false,
   disabled = false,
+  isFavorite = false,
+  onToggleFavorite,
   className,
 }: SongCardProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -162,28 +167,39 @@ export function SongCard({
             </div>
           </div>
 
-          {/* Add button */}
-          {onAdd && (
-            <Button
-              variant={isAdded ? "ghost" : "outline"}
-              size="icon-sm"
-              className={cn(
-                "shrink-0 transition-opacity",
-                !isHovered && !isAdded && "opacity-0 sm:opacity-100"
+          {/* Favorite + Add buttons */}
+          {(onToggleFavorite || onAdd) && (
+            <div className="flex items-center gap-1 shrink-0">
+              {onToggleFavorite && (
+                <FavoriteButton
+                  songId={song.id}
+                  isFavorite={isFavorite}
+                  onToggle={onToggleFavorite}
+                />
               )}
-              onClick={handleAdd}
-              disabled={isAdded || isAdding || disabled}
-              aria-label={isAdded ? "Already added" : disabled ? "Songset full" : "Add to songset"}
-              data-testid="add-song-button"
-            >
-              {isAdding ? (
-                <span className="size-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
-              ) : isAdded ? (
-                <Check className="size-4 text-green-500" />
-              ) : (
-                <Plus className="size-4" />
+              {onAdd && (
+                <Button
+                  variant={isAdded ? "ghost" : "outline"}
+                  size="icon-sm"
+                  className={cn(
+                    "shrink-0 transition-opacity",
+                    !isHovered && !isAdded && "opacity-0 sm:opacity-100"
+                  )}
+                  onClick={handleAdd}
+                  disabled={isAdded || isAdding || disabled}
+                  aria-label={isAdded ? "Already added" : disabled ? "Songset full" : "Add to songset"}
+                  data-testid="add-song-button"
+                >
+                  {isAdding ? (
+                    <span className="size-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                  ) : isAdded ? (
+                    <Check className="size-4 text-green-500" />
+                  ) : (
+                    <Plus className="size-4" />
+                  )}
+                </Button>
               )}
-            </Button>
+            </div>
           )}
         </div>
       </CardContent>
