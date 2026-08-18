@@ -9,6 +9,7 @@ import {
   useEffect,
 } from "react";
 import { markSongCompleted } from "@/lib/audio/completion";
+import { COMPLETION_THRESHOLD } from "@/lib/constants";
 
 export type AudioTrackType = "song" | "transition" | "lyrics-loop";
 
@@ -117,7 +118,7 @@ export function AudioPlayerProvider({
       const track = currentTrackRef.current;
       if (track?.type === "song" && track.songId) {
         const duration = audio.duration;
-        if (duration > 0 && audio.currentTime / duration >= 0.9) {
+        if (duration > 0 && audio.currentTime / duration >= COMPLETION_THRESHOLD) {
           markSongCompleted(track.songId);
         }
       }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { listSongs } from "@/lib/db/songs";
-import { getFavoriteSongIds } from "@/lib/db/favorites";
+import { loadFavoriteContext } from "@/lib/db/favorites-context";
 import {
   parseAlbumFilterParams,
   parseKeysParam,
@@ -21,9 +21,12 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = Number(session.user.id);
-    const favoriteSongIds = await getFavoriteSongIds(userId);
 
     const searchParams = request.nextUrl.searchParams;
+    const { favoriteSongIds, favoritesOnly } = await loadFavoriteContext(
+      userId,
+      searchParams
+    );
     const limit = Math.min(
       parseInt(searchParams.get("limit") ?? "50"),
       100
@@ -75,8 +78,7 @@ export async function GET(request: NextRequest) {
     if (favoriteSongIds.length > 0) {
       filters.favoriteSongIds = favoriteSongIds;
     }
-    const favoritesOnlyParam = searchParams.get("favoritesOnly");
-    if (favoritesOnlyParam === "1" || favoritesOnlyParam === "true") {
+    if (favoritesOnly) {
       filters.favoritesOnly = true;
     }
 

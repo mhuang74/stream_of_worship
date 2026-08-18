@@ -3,46 +3,40 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getFavoriteSongIds } from "@/lib/db/favorites";
 import { listSongs } from "@/lib/db/songs";
-import type { SongCardData } from "@/components/songset/SongCard";
+import { toSongCardData } from "@/lib/song-card-data";
 import { FavoritesClient } from "./FavoritesClient";
 
-export default async function FavoritesPage() {
+export default async function FavoritesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
     redirect("/login");
   }
 
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page ?? "1") || 1);
+  const pageSize = 20;
+  const offset = (page - 1) * pageSize;
+
   const userId = Number(session.user.id);
   const favoriteSongIds = await getFavoriteSongIds(userId);
-  const { songs } = await listSongs(100, 0, {
+  const { songs, total } = await listSongs(pageSize, offset, {
     favoriteSongIds,
     favoritesOnly: true,
     visibilityStatus: ["published", "review"],
   });
 
-  // Serialize to the SongCard data shape; avoid crossing Date objects.
-  const initialSongs: SongCardData[] = songs.map((song) => ({
-    id: song.id,
-    title: song.title,
-    composer: song.composer,
-    lyricist: song.lyricist,
-    albumName: song.albumName,
-    musicalKey: song.musicalKey,
-    effectiveKey: song.effectiveKey,
-    effectiveKeyStartRoot: song.effectiveKeyStartRoot,
-    effectiveKeyEndRoot: song.effectiveKeyEndRoot,
-    recordings: song.recordings.map((r) => ({
-      contentHash: r.contentHash,
-      hashPrefix: r.hashPrefix,
-      durationSeconds: r.durationSeconds,
-      tempoBpm: r.tempoBpm,
-      musicalKey: r.musicalKey,
-      effectiveKey: r.effectiveKey,
-      effectiveKeyStartRoot: r.effectiveKeyStartRoot,
-      effectiveKeyEndRoot: r.effectiveKeyEndRoot,
-      visibilityStatus: r.visibilityStatus,
-    })),
-  }));
+  const initialSongs = toSongCardData(songs);
 
-  return <FavoritesClient initialSongs={initialSongs} />;
+  return (
+    <FavoritesClient
+      initialSongs={initialSongs}
+      initialTotal={total}
+      currentPage={page}
+      pageSize={pageSize}
+    />
+  );
 }

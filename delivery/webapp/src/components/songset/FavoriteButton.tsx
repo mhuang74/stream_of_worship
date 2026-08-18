@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { isSongCompleted, subscribeCompletion } from "@/lib/audio/completion";
+import { COMPLETION_THRESHOLD } from "@/lib/constants";
 
 interface FavoriteButtonProps {
   songId: string;
@@ -21,7 +22,7 @@ interface FavoriteButtonProps {
 
 /**
  * Heart toggle for a song. Favoriting requires the song to be Completed (heard
- * ≥90% of a full play, tracked client-side per ADR-0002); unfavoriting is
+ * ≥90% (COMPLETION_THRESHOLD) of a full play, tracked client-side per ADR-0002); unfavoriting is
  * always allowed. Flips live the moment a song crosses the threshold.
  */
 export function FavoriteButton({
@@ -77,7 +78,7 @@ export function FavoriteButton({
             <span className="inline-flex">{button}</span>
           </TooltipTrigger>
           <TooltipContent side="top">
-            Listen to 90% of the song to favorite
+            {`Listen to ${Math.round(COMPLETION_THRESHOLD * 100)}% of the song to favorite`}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

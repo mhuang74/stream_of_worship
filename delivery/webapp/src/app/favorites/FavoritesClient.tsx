@@ -1,38 +1,130 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
-import { Heart } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Heart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
+import { toSongCardData } from "@/lib/song-card-data";
+import { COMPLETION_THRESHOLD } from "@/lib/constants";
 
-export function FavoritesClient({ initialSongs }: { initialSongs: SongCardData[] }) {
+interface FavoritesClientProps {
+  initialSongs: SongCardData[];
+  initialTotal: number;
+  currentPage: number;
+  pageSize: number;
+}
+
+export function FavoritesClient({
+  initialSongs,
+  initialTotal,
+  currentPage,
+  pageSize,
+}: FavoritesClientProps) {
+  const router = useRouter();
   const [songs, setSongs] = useState<SongCardData[]>(initialSongs);
+  const [total, setTotal] = useState(initialTotal);
+  const [page, setPage] = useState(currentPage);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toggleFavorite } = useFavoriteToggle(
+    new Set(initialSongs.map((s) => s.id))
+  );
 
-  const handleToggleFavorite = async (songId: string) => {
-    try {
-      const response = await fetch(
-        `/api/favorites/${encodeURIComponent(songId)}`,
-        { method: "DELETE" }
-      );
-      if (!response.ok) throw new Error("Failed to remove favorite");
-      setSongs((prev) => prev.filter((song) => song.id !== songId));
-    } catch (err) {
-      toast.error("Failed to remove favorite");
-      console.error("Error removing favorite:", err);
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPage() {
+      // Skip the initial SSR load; only fetch when the page has changed.
+      if (page === currentPage && initialSongs.length > 0) return;
+      setIsLoading(true);
+      try {
+        const offset = (page - 1) * pageSize;
+        const params = new URLSearchParams({
+          limit: String(pageSize),
+          offset: String(offset),
+          favoritesOnly: "1",
+          visibilityStatus: "published,review",
+        });
+        const res = await fetch(`/api/songs?${params.toString()}`);
+        if (!res.ok) throw new Error("Failed to load favorites");
+        const data = await res.json();
+        if (cancelled) return;
+        setSongs(toSongCardData(data.songs));
+        setTotal(data.total);
+      } catch {
+        if (!cancelled) toast.error("Failed to load favorites");
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     }
-  };
 
-  if (songs.length === 0) {
+    loadPage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, pageSize, currentPage, initialSongs.length]);
+
+  // Keep the URL in sync with the current page.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `/favorites?${qs}` : "/favorites");
+  }, [page, router]);
+
+  const handleToggleFavorite = useCallback(
+    async (songId: string) => {
+      const ok = await toggleFavorite(songId);
+      if (ok) {
+        setSongs((prev) => prev.filter((s) => s.id !== songId));
+        setTotal((prev) => Math.max(0, prev - 1));
+      }
+    },
+    [toggleFavorite]
+  );
+
+  // If the current page empties out after unfavoriting, fall back to page 1.
+  useEffect(() => {
+    if (!isLoading && songs.length === 0 && total > 0 && page > 1) {
+      const timer = setTimeout(() => handlePageChange(1), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, songs.length, total, page, handlePageChange]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageNumbers = useMemo(() => {
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const half = Math.floor(maxVisible / 2);
+    let start = Math.max(1, page - half);
+    const end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [page, totalPages]);
+
+  if (songs.length === 0 && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <Heart className="size-8 text-muted-foreground mb-2" />
         <p className="font-medium">No favorites yet</p>
         <p className="text-sm text-muted-foreground mt-1 max-w-md">
-          Listen to at least 90% of a song in the songset builder, then tap the
-          heart to favorite it. Your favorites are pinned to the top.
+          Listen to at least {Math.round(COMPLETION_THRESHOLD * 100)}% of a
+          song in the songset builder, then tap the heart to favorite it. Your
+          favorites are pinned to the top.
         </p>
         <Link href="/songsets" className={cn(buttonVariants(), "mt-6")}>
           Go to Songsets
@@ -45,18 +137,74 @@ export function FavoritesClient({ initialSongs }: { initialSongs: SongCardData[]
     <div className="mx-auto max-w-5xl px-4 py-6">
       <h1 className="text-2xl font-bold">Favorites</h1>
       <p className="text-sm text-muted-foreground mb-4">
-        {songs.length} favorite {songs.length === 1 ? "song" : "songs"}
+        {total} favorite {total === 1 ? "song" : "songs"}
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2" data-testid="favorites-list">
-        {songs.map((song) => (
-          <SongCard
-            key={song.id}
-            song={song}
-            isFavorite
-            onToggleFavorite={handleToggleFavorite}
-          />
-        ))}
-      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 gap-2"
+          data-testid="favorites-list"
+        >
+          {songs.map((song) => (
+            <SongCard
+              key={song.id}
+              song={song}
+              isFavorite
+              onToggleFavorite={handleToggleFavorite}
+            />
+          ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <nav
+          aria-label="Favorites pagination"
+          className="flex items-center justify-center gap-2 mt-6"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(page - 1)}
+            disabled={page <= 1 || isLoading}
+            aria-label="Previous page"
+            data-testid="pagination-prev"
+          >
+            <ChevronLeft className="size-4" />
+            Prev
+          </Button>
+
+          {pageNumbers.map((pageNum) => (
+            <Button
+              key={pageNum}
+              variant={pageNum === page ? "default" : "outline"}
+              size="icon-sm"
+              onClick={() => handlePageChange(pageNum)}
+              disabled={isLoading}
+              aria-current={pageNum === page ? "page" : undefined}
+              aria-label={`Page ${pageNum}`}
+              data-testid={`pagination-page-${pageNum}`}
+            >
+              {pageNum}
+            </Button>
+          ))}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(page + 1)}
+            disabled={page >= totalPages || isLoading}
+            aria-label="Next page"
+            data-testid="pagination-next"
+          >
+            Next
+            <ChevronRight className="size-4" />
+          </Button>
+        </nav>
+      )}
     </div>
   );
 }
