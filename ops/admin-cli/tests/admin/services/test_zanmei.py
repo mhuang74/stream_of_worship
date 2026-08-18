@@ -135,7 +135,9 @@ class TestFetchZanmeiLyrics:
         text = fetch_zanmei_lyrics("45335")
         assert text is not None
         assert "[Verse]" in text
-        assert "禰就是唯一" in text
+        # 祢 (the honorific "You" for God) is preserved, not mapped to 禰.
+        assert "祢就是唯一" in text
+        assert "禰" not in text
         # zanmei.ai lyrics are Simplified; we canonicalise to Traditional.
         assert text.startswith("詞：恆恩 Brook")
         assert "有時候會迷惘　找不到前路方向" in text
@@ -174,6 +176,11 @@ class TestToTraditional:
 
     def test_converts_simplified_to_traditional(self):
         assert zanmei._to_traditional("词曲：恒恩 点亮奇迹") == "詞曲：恆恩 點亮奇蹟"
+
+    def test_preserves_god_you_ni(self):
+        # 祢 ("You", for God) must not become 禰 under S2T.
+        assert zanmei._to_traditional("祢就是唯一") == "祢就是唯一"
+        assert zanmei._to_traditional("词曲：恒恩 祢就是唯一") == "詞曲：恆恩 祢就是唯一"
 
     def test_idempotent_on_traditional(self):
         assert zanmei._to_traditional("詞曲：恆恩 點亮奇蹟") == "詞曲：恆恩 點亮奇蹟"
