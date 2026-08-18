@@ -22,6 +22,21 @@ from pypinyin import lazy_pinyin
 
 from stream_of_worship.admin.db.models import Song
 
+# The worship honorific 祢/禰 ("You", for God) is pronounced "ni" (like 你),
+# but pypinyin's lazy_pinyin reads 祢 as "mi". Substitute 你 before romanizing
+# so derived pinyin / song slugs use "ni".
+_HONORIFIC_YOU = re.compile(r"[祢禰]")
+
+
+def title_to_pinyin(text: str) -> str:
+    """Romanize Chinese ``text`` (underscore-joined pinyin).
+
+    Reads the worship honorific 祢/禰 as "ni" (its pronunciation as the
+    honorific "You" for God) instead of pypinyin's default "mi".
+    """
+    return "_".join(lazy_pinyin(_HONORIFIC_YOU.sub("你", text)))
+
+
 REQUIRED_REVIEW_FIELDS = ("title", "source_url")
 EDITABLE_REVIEW_FIELDS = (
     "title",
@@ -68,7 +83,7 @@ def compute_song_id(title: str, composer: str | None, lyricist: str | None) -> s
     def _norm(value: str | None) -> str:
         return unicodedata.normalize("NFKC", (value or "").strip())
 
-    slug = re.sub(r"[^a-z0-9_]", "", "_".join(lazy_pinyin(_norm(title))).lower())
+    slug = re.sub(r"[^a-z0-9_]", "", title_to_pinyin(_norm(title)).lower())
     payload = f"{_norm(title)}|{_norm(composer)}|{_norm(lyricist)}"
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
     song_id = f"{slug}_{digest}"
@@ -161,7 +176,7 @@ def build_song_from_review(
     return Song(
         id=final_song_id,
         title=reviewed.title,
-        title_pinyin="_".join(lazy_pinyin(reviewed.title)),
+        title_pinyin=title_to_pinyin(reviewed.title),
         composer=reviewed.composer,
         lyricist=reviewed.lyricist,
         album_name=reviewed.album_name,
