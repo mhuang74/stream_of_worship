@@ -110,7 +110,8 @@ def _extract_lyrics_for_component(
     """Extract lyric lines within a component's time range from LRC content.
 
     Parses the LRC content using the existing parse_lrc() from lrc_parser.py,
-    then filters lines whose timestamps fall within [start_time, end_time].
+    then filters lines whose timestamps fall within [start_time, end_time).
+    Half-open on end_time: end_time is the next section's first-line timestamp
 
     Args:
         lrc_content: Raw LRC file content.
@@ -129,7 +130,7 @@ def _extract_lyrics_for_component(
         ln.text
         for ln in lrc_file.lines
         if ln.text and ln.text.strip()
-        and start_time <= ln.time_seconds <= end_time
+        and start_time <= ln.time_seconds < end_time
     ]
 
 

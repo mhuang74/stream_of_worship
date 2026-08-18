@@ -2022,7 +2022,12 @@ async def extract_components(
     # 4. Energy-aware role assignment + per-component feature computation.
     if gf is not None:
         try:
-            if energy_aware_roles:
+            # Skip energy reassignment for structured_lyrics_llm: the LLM
+            # already chose section boundaries and positional entry/exit roles
+            # intentionally; RMS-only energy scoring can demote the
+            # structurally-last chorus to role='none' (see GH issue on
+            # --compute-all-fields + structured_lyrics_llm).
+            if energy_aware_roles and source != "structured_lyrics_llm":
                 components = _assign_roles_by_energy(
                     components, gf.y, gf.sr, stems_dir=stems_dir
                 )
