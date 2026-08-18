@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { LyricsErrorBoundary } from "@/components/audio/LyricsErrorBoundary";
 
 function ThrowingChild() {
@@ -61,5 +62,20 @@ describe("LyricsErrorBoundary", () => {
 
     expect(screen.getByTestId("normal-child")).toBeInTheDocument();
     expect(screen.queryByTestId("fallback")).not.toBeInTheDocument();
+  });
+
+  it("(d) zh-Hant: renders the provided localized fallback when a child throws", () => {
+    function ZhFallback() {
+      return <div data-testid="fallback">歌詞無法使用</div>;
+    }
+
+    render(
+      <LyricsErrorBoundary fallback={<ZhFallback />}>
+        <ThrowingChild />
+      </LyricsErrorBoundary>,
+      "zh-Hant"
+    );
+
+    expect(screen.getByTestId("fallback")).toHaveTextContent("歌詞無法使用");
   });
 });

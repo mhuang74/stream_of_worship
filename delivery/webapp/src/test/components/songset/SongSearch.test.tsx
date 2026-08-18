@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { SongSearch } from "@/components/songset/SongSearch";
 
 describe("SongSearch", () => {
@@ -38,6 +39,11 @@ describe("SongSearch", () => {
     it("renders search icon", () => {
       renderSearch();
       expect(screen.getByLabelText(/search songs/i)).toBeInTheDocument();
+    });
+
+    it("localizes the search button label in zh-Hant", () => {
+      render(<SongSearch {...defaultProps} />, "zh-Hant");
+      expect(screen.getByTestId("search-button")).toHaveTextContent("搜尋");
     });
   });
 

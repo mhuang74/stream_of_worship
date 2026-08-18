@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale, renderWithLocale as render } from "@/test/render";
 import { SongsetList } from "@/components/songset/SongsetList";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 
@@ -462,6 +463,16 @@ describe("SongsetList", () => {
       expect(emptySearchContainer).toHaveClass("flex", "items-center", "gap-2");
 
       expect(emptySearchContainer?.className).not.toContain("max-w-md");
+    });
+  });
+
+  describe("localization", () => {
+    it("renders Traditional Chinese labels in zh-Hant locale", () => {
+      renderWithLocale(<SongsetList {...defaultProps} />, "zh-Hant");
+      // Search input aria-label is localized
+      expect(screen.getByLabelText(/搜尋詩歌集/i)).toBeInTheDocument();
+      // Search button label is localized
+      expect(screen.getByRole("button", { name: /搜尋/i })).toBeInTheDocument();
     });
   });
 });

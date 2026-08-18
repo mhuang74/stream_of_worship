@@ -23,6 +23,7 @@ import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 import type { BpmBandKey } from "@/lib/constants";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
+import { useLocale } from "@/hooks/useLocale";
 
 type SearchMode = "keyword" | "describe";
 
@@ -72,6 +73,7 @@ export function BrowseSheet({
   itemCount = 0,
   className,
 }: BrowseSheetProps) {
+  const { t } = useLocale();
   const [mode, setMode] = useState<SearchMode>("keyword");
   const [keywordQuery, setKeywordQuery] = useState("");
   const [selectedAlbums, setSelectedAlbums] = useState<AlbumFilter[]>([]);
@@ -156,7 +158,7 @@ export function BrowseSheet({
 
         const response = await fetch(url);
         if (!response.ok) {
-          throw new Error("Failed to search songs");
+          throw new Error(t("browse.search.failed"));
         }
 
         const data: SearchResult = await response.json();
@@ -165,7 +167,7 @@ export function BrowseSheet({
         setTotalCount(data.total ?? 0);
       } catch (err) {
         if (searchId !== latestSearchIdRef.current) return;
-        setError(err instanceof Error ? err.message : "Failed to search songs");
+        setError(err instanceof Error ? err.message : t("browse.search.failed"));
         setResults([]);
         setTotalCount(0);
       } finally {
@@ -174,7 +176,7 @@ export function BrowseSheet({
         }
       }
     },
-    []
+    [t]
   );
 
   const handleAddSong = useCallback(
@@ -186,7 +188,7 @@ export function BrowseSheet({
         ? results.find((result) => result.id === songId)
         : songOrId;
       if (!song) {
-        toast.error("Song not found");
+        toast.error(t("browse.songNotFound"));
         return;
       }
 
@@ -195,9 +197,9 @@ export function BrowseSheet({
       try {
         await onAddSong(song);
         setAddedSongIds((prev) => new Set(prev).add(songId));
-        toast.success("Song added to songset");
+        toast.success(t("browse.songAddedToSongset"));
       } catch (err) {
-        toast.error("Failed to add song");
+        toast.error(t("browse.failedToAddSong"));
         console.error("Error adding song:", err);
       } finally {
         setAddingSongIds((prev) => {
@@ -207,7 +209,7 @@ export function BrowseSheet({
         });
       }
     },
-    [onAddSong, addingSongIds, addedSongIds, results]
+    [onAddSong, addingSongIds, addedSongIds, results, t]
   );
 
   const isSongAdded = useCallback(
@@ -266,7 +268,7 @@ export function BrowseSheet({
     async (songId: string) => {
       const song = results.find((r) => r.id === songId);
       if (!song || song.recordings.length === 0) {
-        toast.error("No audio available for this song");
+        toast.error(t("browse.noAudioAvailable"));
         return;
       }
 
@@ -279,7 +281,7 @@ export function BrowseSheet({
       }
 
       const recording = song.recordings[0];
-      const artist = song.composer || song.lyricist || "Unknown Artist";
+      const artist = song.composer || song.lyricist || t("browse.unknownArtist");
       const publicUrl = getPublicAudioUrl(recording.hashPrefix);
 
       if (publicUrl) {
@@ -328,12 +330,12 @@ export function BrowseSheet({
 
         setPlayingSongId(songId);
       } catch {
-        toast.error("Failed to load audio preview");
+        toast.error(t("browse.failedToLoadPreview"));
       } finally {
         setPreviewLoadingSongId(null);
       }
     },
-    [results, playingSongId, currentTrack, playerState.isPlaying, play, pause]
+    [results, playingSongId, currentTrack, playerState.isPlaying, play, pause, t]
   );
 
   useEffect(() => {
@@ -442,8 +444,8 @@ export function BrowseSheet({
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className={cn("data-[side=bottom]:!h-[85vh] sm:data-[side=bottom]:!h-[90vh] overflow-hidden", className)}>
         <SheetHeader className="pb-2">
-          <SheetTitle>Search Songs</SheetTitle>
-          <SheetDescription>Search the catalog and add songs to your songset</SheetDescription>
+          <SheetTitle>{t("browse.sheet.title")}</SheetTitle>
+          <SheetDescription>{t("browse.sheet.description")}</SheetDescription>
         </SheetHeader>
 
         <div className={cn("flex flex-col h-full min-h-0", currentTrack ? "pb-28 sm:pb-20" : "pb-8")}>
@@ -451,7 +453,7 @@ export function BrowseSheet({
           <div
             className="mb-4 flex w-fit gap-1 rounded-lg border bg-muted/50 p-1"
             role="tablist"
-            aria-label="Search mode"
+            aria-label={t("browse.sheet.modeAriaLabel")}
           >
             <Button
               role="tab"
@@ -467,7 +469,7 @@ export function BrowseSheet({
               data-testid="keyword-mode-tab"
             >
               <Search className="size-3.5" />
-              Keyword
+              {t("browse.sheet.keywordTab")}
             </Button>
             <Button
               role="tab"
@@ -483,7 +485,7 @@ export function BrowseSheet({
               data-testid="describe-mode-tab"
             >
               <Sparkles className="size-3.5" />
-              Describe
+              {t("browse.sheet.describeTab")}
             </Button>
           </div>
 
@@ -492,7 +494,7 @@ export function BrowseSheet({
             data-testid="search-controls-region"
           >
             {mode === "keyword" ? (
-              <div role="tabpanel" aria-label="Keyword song search controls" className="px-1">
+              <div role="tabpanel" aria-label={t("browse.sheet.keywordControls")} className="px-1">
                 <SongSearch
                   onSearch={handleSearch}
                   onAdvancedSearch={(criteria) =>
@@ -508,7 +510,7 @@ export function BrowseSheet({
                 />
               </div>
             ) : (
-              <div role="tabpanel" aria-label="Describe song search controls" className="px-1">
+              <div role="tabpanel" aria-label={t("browse.sheet.describeControls")} className="px-1">
                 {semanticControls}
               </div>
             )}
@@ -526,14 +528,14 @@ export function BrowseSheet({
                 disabled={isLoading || isLoadingAlbums}
                 className={sharedSearchButtonClassName}
                 data-testid="search-button"
-                aria-label={isLoading ? "Searching songs" : "Run song search"}
+                aria-label={isLoading ? t("browse.search.searchingSongs") : t("browse.search.runSearch")}
               >
                 {isLoading || isLoadingAlbums ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <Search className="size-4" />
                 )}
-                Search
+                {t("browse.search.searchButton")}
               </Button>
             ) : (
               <Button
@@ -542,14 +544,14 @@ export function BrowseSheet({
                 disabled={isSemanticLoading}
                 className={sharedSearchButtonClassName}
                 data-testid="semantic-search-button"
-                aria-label={isSemanticLoading ? "Searching..." : "Search songs by description"}
+                aria-label={isSemanticLoading ? t("browse.search.searching") : t("browse.search.searchByDescription")}
               >
                 {isSemanticLoading ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Search
+                {t("browse.search.searchButton")}
               </Button>
             )}
           </div>
@@ -558,7 +560,7 @@ export function BrowseSheet({
             className="flex-1 overflow-y-auto px-1 -mx-1"
             data-testid="search-results-region"
             role="region"
-            aria-label={mode === "keyword" ? "Keyword song search results" : "Describe song search results"}
+            aria-label={mode === "keyword" ? t("browse.sheet.keywordResults") : t("browse.sheet.describeResults")}
           >
             {mode === "keyword" ? (
               <>
@@ -572,7 +574,7 @@ export function BrowseSheet({
                       className="mt-4"
                       onClick={() => handleSearch(keywordQuery, selectedAlbums, activeFilters)}
                     >
-                      Retry
+                      {t("browse.retry")}
                     </Button>
                   </div>
                 )}
@@ -580,7 +582,7 @@ export function BrowseSheet({
                 {!error && isLoading && results.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-12" role="status" aria-live="polite">
                     <Loader2 className="size-8 animate-spin text-muted-foreground mb-2" aria-hidden="true" />
-                    <p className="text-muted-foreground text-sm">Searching songs...</p>
+                    <p className="text-muted-foreground text-sm">{t("browse.search.searchingStatus")}</p>
                   </div>
                 )}
 
@@ -588,12 +590,12 @@ export function BrowseSheet({
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Music className="size-8 text-muted-foreground mb-2" />
                     <p className="text-muted-foreground">
-                      No songs found for &quot;{keywordQuery}&quot;
+                      {`${t("browse.empty.noSongsFoundPrefix")}${keywordQuery}${t("browse.empty.noSongsFoundSuffix")}`}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {activeFilters?.keys?.length || activeFilters?.bpmRange
-                        ? "Try adjusting your filters or search term"
-                        : "Try a different search term"}
+                        ? t("browse.empty.tryAdjustFilters")
+                        : t("browse.empty.tryDifferentTerm")}
                     </p>
                   </div>
                 )}
@@ -601,9 +603,9 @@ export function BrowseSheet({
                 {!error && !isLoading && hasKeywordSearched && results.length === 0 && !keywordQuery && (activeFilters?.albums?.length || activeFilters?.keys?.length || activeFilters?.bpmRange) && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Music className="size-8 text-muted-foreground mb-2" />
-                    <p className="text-muted-foreground">No songs match your filters</p>
+                    <p className="text-muted-foreground">{t("browse.empty.noMatchFilters")}</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Try removing some filters to see more results
+                      {t("browse.empty.tryRemoveFilters")}
                     </p>
                   </div>
                 )}
@@ -611,9 +613,9 @@ export function BrowseSheet({
                 {!error && !isLoading && hasKeywordSearched && results.length === 0 && !keywordQuery && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Music className="size-8 text-muted-foreground mb-2" />
-                    <p className="text-muted-foreground">No songs available</p>
+                    <p className="text-muted-foreground">{t("browse.empty.noSongsAvailable")}</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Start typing to search for songs
+                      {t("browse.empty.startTyping")}
                     </p>
                   </div>
                 )}
@@ -623,7 +625,7 @@ export function BrowseSheet({
                     {favoriteResults.length > 0 && (
                       <div data-testid="favorites-section">
                         <h3 className="px-1 pb-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Favorites
+                          {t("browse.favorites")}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pb-4">
                           {favoriteResults.map(renderSongCard)}
@@ -634,7 +636,7 @@ export function BrowseSheet({
                       <div data-testid="all-songs-section">
                         {favoriteResults.length > 0 && (
                           <h3 className="px-1 pb-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            All Songs
+                            {t("browse.allSongs")}
                           </h3>
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pb-4">
@@ -655,13 +657,13 @@ export function BrowseSheet({
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {isSongsetFull
-                  ? "Songset full"
+                  ? t("browse.songsetFull")
                   : mode === "keyword" && totalCount > 0
-                    ? `${totalCount} songs`
+                    ? `${totalCount} ${t("browse.songsUnit")}`
                     : ""}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Done
+                {t("browse.done")}
               </Button>
             </div>
           </div>

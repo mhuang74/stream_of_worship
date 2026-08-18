@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { LyricJumpList } from "@/components/play/LyricJumpList";
 
 describe("LyricJumpList", () => {
@@ -63,6 +64,13 @@ describe("LyricJumpList", () => {
       render(<LyricJumpList {...defaultProps} />);
 
       expect(screen.getByText(/lyrics/i)).toBeInTheDocument();
+    });
+
+    it("renders translated handle label in zh-Hant", () => {
+      render(<LyricJumpList {...defaultProps} />, "zh-Hant");
+
+      expect(screen.getByRole("button", { name: /開啟歌詞跳轉列表/i })).toBeInTheDocument();
+      expect(screen.getByText(/歌詞/i)).toBeInTheDocument();
     });
 
     it("renders chapter list when opened", async () => {

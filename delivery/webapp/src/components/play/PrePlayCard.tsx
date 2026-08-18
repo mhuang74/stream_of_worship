@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useLocale } from "@/hooks/useLocale";
 import { OfflineStatus } from "./OfflineStatus";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -70,6 +71,7 @@ export function PrePlayCard({
   onShare,
   className,
 }: PrePlayCardProps) {
+  const { t } = useLocale();
   const [isStartingWorship, setIsStartingWorship] = useState(false);
 
   // Calculate total duration
@@ -84,9 +86,9 @@ export function PrePlayCard({
     const minutes = Math.floor((seconds % 3600) / 60);
 
     if (hours > 0) {
-      return `${hours}h ${minutes}m`;
+      return `${hours}${t("preplay.hourShort")} ${minutes}${t("preplay.minShort")}`;
     }
-    return `${minutes} min`;
+    return `${minutes} ${t("preplay.minLong")}`;
   };
 
   // Format individual song duration
@@ -104,7 +106,7 @@ export function PrePlayCard({
 
   const handleStartWorship = useCallback(async () => {
     if (!hasRenderArtifacts) {
-      toast.error("Please render this songset first");
+      toast.error(t("preplay.toastRenderFirst"));
       return;
     }
 
@@ -114,7 +116,7 @@ export function PrePlayCard({
     } finally {
       setIsStartingWorship(false);
     }
-  }, [hasRenderArtifacts, onStartWorship]);
+  }, [hasRenderArtifacts, onStartWorship, t]);
 
   const handleShare = useCallback(async () => {
     onShare();
@@ -135,7 +137,7 @@ export function PrePlayCard({
           <div className="flex items-center gap-2 shrink-0">
             <Badge variant="outline" className="gap-1">
               <Music className="size-3" />
-              {items.length} {items.length === 1 ? "song" : "songs"}
+              {items.length} {items.length === 1 ? t("preplay.song") : t("preplay.songs")}
             </Badge>
           </div>
         </div>
@@ -147,11 +149,11 @@ export function PrePlayCard({
           <Alert variant="default" className="bg-amber-50 dark:bg-amber-950/20 border-amber-200">
             <AlertTriangle className="size-4 text-amber-600" />
             <AlertTitle className="text-amber-800 dark:text-amber-200">
-              Artifacts out of date
+              {t("preplay.stale.title")}
             </AlertTitle>
             <AlertDescription className="text-amber-700 dark:text-amber-300">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <span>Songs have been modified since the last render.</span>
+                <span>{t("preplay.stale.desc")}</span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -159,7 +161,7 @@ export function PrePlayCard({
                   className="shrink-0 gap-1 border-amber-500/50 hover:bg-amber-100"
                 >
                   <RefreshCw className="size-3" />
-                  Re-render
+                  {t("preplay.stale.button")}
                 </Button>
               </div>
             </AlertDescription>
@@ -169,10 +171,10 @@ export function PrePlayCard({
         {isFailed && (
           <Alert variant="destructive">
             <AlertTriangle className="size-4" />
-            <AlertTitle>Render failed</AlertTitle>
+            <AlertTitle>{t("preplay.failed.title")}</AlertTitle>
             <AlertDescription>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <span>The last render attempt failed.</span>
+                <span>{t("preplay.failed.desc")}</span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -180,7 +182,7 @@ export function PrePlayCard({
                   className="shrink-0 gap-1"
                 >
                   <RefreshCw className="size-3" />
-                  Retry render
+                  {t("preplay.failed.button")}
                 </Button>
               </div>
             </AlertDescription>
@@ -190,17 +192,17 @@ export function PrePlayCard({
         {isUnrendered && (
           <Alert>
             <AlertTriangle className="size-4" />
-            <AlertTitle>Not rendered yet</AlertTitle>
+            <AlertTitle>{t("preplay.unrendered.title")}</AlertTitle>
             <AlertDescription>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <span>This songset needs to be rendered before playback.</span>
+                <span>{t("preplay.unrendered.desc")}</span>
                 <Button
                   size="sm"
                   onClick={onReRender}
                   className="shrink-0 gap-1"
                 >
                   <RefreshCw className="size-3" />
-                  Render now
+                  {t("preplay.unrendered.button")}
                 </Button>
               </div>
             </AlertDescription>
@@ -210,10 +212,10 @@ export function PrePlayCard({
         {/* Song List */}
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span className="font-medium">Song List</span>
+            <span className="font-medium">{t("preplay.songList")}</span>
             <span className="flex items-center gap-1">
               <Clock className="size-3" />
-              Total: {formatDuration(totalDurationSeconds)}
+              {t("preplay.total")}: {formatDuration(totalDurationSeconds)}
             </span>
           </div>
 
@@ -228,14 +230,14 @@ export function PrePlayCard({
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">
-                    {item.song?.title || "Unknown Song"}
+                    {item.song?.title || t("preplay.unknownSong")}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
                     {item.song?.composer || item.song?.lyricist
                       ? [item.song.composer, item.song.lyricist]
                           .filter(Boolean)
                           .join(" • ")
-                      : item.song?.albumName || "Unknown Artist"}
+                      : item.song?.albumName || t("preplay.unknownArtist")}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 text-sm text-muted-foreground">
@@ -271,12 +273,12 @@ export function PrePlayCard({
             {isStartingWorship ? (
               <>
                 <Loader2 className="size-5 animate-spin" />
-                Starting...
+                {t("preplay.starting")}
               </>
             ) : (
               <>
                 <Play className="size-5" />
-                Start Worship
+                {t("preplay.startWorship")}
               </>
             )}
           </Button>
@@ -290,14 +292,14 @@ export function PrePlayCard({
               onClick={handleShare}
             >
               <Share2 className="size-4" />
-              Share
+              {t("preplay.share")}
             </Button>
           </div>
 
           {/* Show message if no render artifacts */}
           {!hasRenderArtifacts && (
             <p className="text-sm text-center text-muted-foreground">
-              Render this songset to enable playback
+              {t("preplay.renderToEnable")}
             </p>
           )}
         </div>

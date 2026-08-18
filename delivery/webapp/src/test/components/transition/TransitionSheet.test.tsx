@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { TransitionSheet } from "@/components/transition/TransitionSheet";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 
@@ -192,5 +193,21 @@ describe("TransitionSheet", () => {
   it("shows fallback title when songs not provided", () => {
     renderSheet({ fromSong: undefined, toSong: undefined });
     expect(screen.getByText("Transition Settings")).toBeInTheDocument();
+  });
+
+  it("renders translated labels in zh-Hant", () => {
+    const defaultProps = {
+      isOpen: true,
+      onOpenChange: vi.fn(),
+      fromSong: { title: "Song A", key: "G", tempoBpm: 120 },
+      toSong: { title: "Song B", key: "A", tempoBpm: 100 },
+      fromRecordingHash: "hash-a",
+      toRecordingHash: "hash-b",
+      settings: defaultSettings,
+      onSave: vi.fn().mockResolvedValue(undefined),
+    };
+    render(<TransitionSheet {...defaultProps} />, "zh-Hant");
+    expect(screen.getByRole("button", { name: /儲存轉場設定/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /取消/i })).toBeInTheDocument();
   });
 });

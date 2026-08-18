@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { ProjectionPlayer } from "@/components/play/ProjectionPlayer";
+import { useLocale } from "@/hooks/useLocale";
 
 export default function ShareProjectionPage() {
   const params = useParams();
+  const { t } = useLocale();
   const token = params.token as string;
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -42,21 +44,21 @@ export default function ShareProjectionPage() {
 
         if (!res.ok) {
           const data = await res.json();
-          throw new Error(data.error ?? "This link is no longer available");
+          throw new Error(data.error ?? t("control.linkNoLongerAvailable"));
         }
 
         const data = await res.json();
         if (cancelled) return;
 
         if (!data.playback?.mp4Url) {
-          throw new Error("No video available for this share");
+          throw new Error(t("control.noVideoForShare"));
         }
 
         setSongTitle(data.songset?.name ?? undefined);
         setVideoUrl(data.playback.mp4Url);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load projection");
+          setError(err instanceof Error ? err.message : t("control.failedToLoadProjection"));
         }
       } finally {
         if (!cancelled) {
@@ -72,14 +74,14 @@ export default function ShareProjectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, t]);
 
   if (isLoading) {
     return (
       <div
         className="fixed inset-0 bg-black flex items-center justify-center"
         role="status"
-        aria-label="Loading projection"
+        aria-label={t("control.loadingProjection")}
       >
         <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
       </div>
@@ -90,7 +92,7 @@ export default function ShareProjectionPage() {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <p className="text-white/70 text-sm text-center">
-          {error ?? "Failed to load projection"}
+          {error ?? t("control.failedToLoadProjection")}
         </p>
       </div>
     );

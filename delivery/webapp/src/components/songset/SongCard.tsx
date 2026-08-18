@@ -7,6 +7,7 @@ import { Music, Clock, Disc, Plus, Check, BadgeCheck, Play, Pause, Loader2 } fro
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { FavoriteButton } from "./FavoriteButton";
+import { useLocale } from "@/hooks/useLocale";
 
 export interface SongCardData {
   id: string;
@@ -58,6 +59,7 @@ export function SongCard({
   onToggleFavorite,
   className,
 }: SongCardProps) {
+  const { t } = useLocale();
   const [isHovered, setIsHovered] = useState(false);
 
   const formatDuration = (seconds?: number | null) => {
@@ -81,7 +83,7 @@ export function SongCard({
       ? `${primaryRecording?.effectiveKeyStartRoot} → ${primaryRecording?.effectiveKeyEndRoot}`
       : primaryRecording?.effectiveKey ?? song.effectiveKey;
   const recordingKey = effectiveKeyDisplay || primaryRecording?.musicalKey || song.musicalKey;
-  const artist = song.composer || song.lyricist || "Unknown Artist";
+  const artist = song.composer || song.lyricist || t("browse.unknownArtist");
   const isVerified = song.recordings?.some(
     (r) => r.visibilityStatus === "published"
   ) ?? false;
@@ -112,7 +114,7 @@ export function SongCard({
             )}
             onClick={onPlay ? () => onPlay(song.id) : undefined}
             data-testid={onPlay ? "song-play-button" : "song-art-placeholder"}
-            aria-label={isPlaying ? "Pause preview" : "Play preview"}
+            aria-label={isPlaying ? t("browse.pausePreview") : t("browse.playPreview")}
             role={onPlay ? "button" : undefined}
           >
             {isPreviewLoading ? (
@@ -134,7 +136,7 @@ export function SongCard({
                 <BadgeCheck
                   className="size-3.5 text-emerald-600 shrink-0"
                   data-testid="verified-badge"
-                  aria-label="Verified"
+                  aria-label={t("browse.verified")}
                 />
               )}
             </h4>
@@ -157,7 +159,7 @@ export function SongCard({
                 </Badge>
               )}
               {tempo && (
-                <span data-testid="song-tempo">{Math.round(tempo)} BPM</span>
+                <span data-testid="song-tempo">{Math.round(tempo)} {t("browse.bpm")}</span>
               )}
               {song.albumName && (
                 <span className="truncate hidden sm:inline" data-testid="song-album">
@@ -187,7 +189,7 @@ export function SongCard({
                   )}
                   onClick={handleAdd}
                   disabled={isAdded || isAdding || disabled}
-                  aria-label={isAdded ? "Already added" : disabled ? "Songset full" : "Add to songset"}
+                  aria-label={isAdded ? t("browse.alreadyAdded") : disabled ? t("browse.songsetFull") : t("browse.addToSongset")}
                   data-testid="add-song-button"
                 >
                   {isAdding ? (

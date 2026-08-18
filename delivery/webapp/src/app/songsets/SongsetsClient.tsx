@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { SongsetList, Songset } from "@/components/songset/SongsetList";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { toast } from "sonner";
+import { useLocale } from "@/hooks/useLocale";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 
 const ShareDialog = dynamic(
@@ -66,6 +67,7 @@ export function SongsetsClient({
   initialSearch,
 }: SongsetsClientProps) {
   const router = useRouter();
+  const { t } = useLocale();
   const [songsets, setSongsets] = useState<Songset[]>(() => transformSongsets(initialData.songsets));
   const [total, setTotal] = useState(initialData.total);
   const [isLoading, setIsLoading] = useState(false);
@@ -100,9 +102,9 @@ export function SongsetsClient({
 
         if (!response.ok) {
           if (response.status === 401) {
-            throw new Error("Please sign in to view your songsets");
+            throw new Error(t("songsets.error.signIn"));
           }
-          throw new Error("Failed to load songsets");
+          throw new Error(t("songsets.error.loadFailed"));
         }
 
         const data: ApiResponse = await response.json();
@@ -113,7 +115,7 @@ export function SongsetsClient({
         setTotal(data.total);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load songsets");
+          setError(err instanceof Error ? err.message : t("songsets.error.loadFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -127,7 +129,7 @@ export function SongsetsClient({
     return () => {
       cancelled = true;
     };
-  }, [page, committedSearch, pageSize, refreshKey]);
+  }, [page, committedSearch, pageSize, refreshKey, t]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -165,7 +167,7 @@ export function SongsetsClient({
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to create songset");
+        throw new Error(data.error || t("songsets.error.createFailed"));
       }
 
       let songset: { id?: string };
@@ -173,23 +175,23 @@ export function SongsetsClient({
         songset = await response.json();
       } catch {
         refreshSongsets();
-        toast.error("Songset created but could not open editor");
+        toast.error(t("songsets.toast.createdButEditorFailed"));
         router.push("/songsets");
         return;
       }
 
       if (!songset?.id) {
         refreshSongsets();
-        toast.error("Songset created but could not open editor");
+        toast.error(t("songsets.toast.createdButEditorFailed"));
         router.push("/songsets");
         return;
       }
 
       refreshSongsets();
-      toast.success("Songset created successfully");
+      toast.success(t("songsets.toast.created"));
       router.push(`/songsets/${songset.id}?new=true`);
     },
-    [refreshSongsets, router]
+    [refreshSongsets, router, t]
   );
 
   const handleRender = useCallback((id: string) => {
@@ -214,13 +216,13 @@ export function SongsetsClient({
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to rename songset");
+        throw new Error(data.error || t("songsets.error.renameFailed"));
       }
 
       refreshSongsets();
-      toast.success("Songset renamed successfully");
+      toast.success(t("songsets.toast.renamed"));
     },
-    [refreshSongsets]
+    [refreshSongsets, t]
   );
 
   const handleDuplicate = useCallback(
@@ -229,20 +231,20 @@ export function SongsetsClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Copy of Songset",
+          name: t("songsets.defaultDuplicateName"),
           description: null,
         }),
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to duplicate songset");
+        throw new Error(data.error || t("songsets.error.duplicateFailed"));
       }
 
       refreshSongsets();
-      toast.success("Songset duplicated successfully");
+      toast.success(t("songsets.toast.duplicated"));
     },
-    [refreshSongsets]
+    [refreshSongsets, t]
   );
 
   const handleShare = useCallback((id: string) => {
@@ -256,7 +258,7 @@ export function SongsetsClient({
   const handleDownloadAudio = useCallback(async (id: string) => {
     const songset = songsets.find((s) => s.id === id);
     if (!songset?.lastCompletedRenderJobId) return;
-    const toastId = toast.loading("Preparing download...");
+    const toastId = toast.loading(t("songsets.toast.preparingDownload"));
     try {
       await fetchSignedUrlAndDownload(
         songset.lastCompletedRenderJobId,
@@ -264,16 +266,16 @@ export function SongsetsClient({
         sanitizeFilename(songset.name),
         "mp3"
       );
-      toast.success("Download started", { id: toastId });
+      toast.success(t("songsets.toast.downloadStarted"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to download audio", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("songsets.error.downloadAudioFailed"), { id: toastId });
     }
-  }, [songsets]);
+  }, [songsets, t]);
 
   const handleDownloadVideo = useCallback(async (id: string) => {
     const songset = songsets.find((s) => s.id === id);
     if (!songset?.lastCompletedRenderJobId) return;
-    const toastId = toast.loading("Preparing download...");
+    const toastId = toast.loading(t("songsets.toast.preparingDownload"));
     try {
       await fetchSignedUrlAndDownload(
         songset.lastCompletedRenderJobId,
@@ -281,11 +283,11 @@ export function SongsetsClient({
         sanitizeFilename(songset.name),
         "mp4"
       );
-      toast.success("Download started", { id: toastId });
+      toast.success(t("songsets.toast.downloadStarted"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to download video", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("songsets.error.downloadVideoFailed"), { id: toastId });
     }
-  }, [songsets]);
+  }, [songsets, t]);
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -295,21 +297,21 @@ export function SongsetsClient({
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to delete songset");
+        throw new Error(data.error || t("songsets.error.deleteFailed"));
       }
 
       refreshSongsets();
-      toast.success("Songset deleted successfully");
+      toast.success(t("songsets.toast.deleted"));
     },
-    [refreshSongsets]
+    [refreshSongsets, t]
   );
 
   return (
     <div className="px-4 py-6 pb-24 lg:pb-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Songsets</h1>
+        <h1 className="text-2xl font-bold">{t("songsets.page.title")}</h1>
         <p className="text-muted-foreground mt-1">
-          Manage your worship song collections
+          {t("songsets.page.subtitle")}
         </p>
       </div>
 

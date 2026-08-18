@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronUp, Music } from "lucide-react";
+import { useLocale } from "@/hooks/useLocale";
 import type { Chapter } from "@/lib/render/chapters";
 import { isIOS } from "@/lib/platform";
 
@@ -23,6 +24,7 @@ export function LyricJumpList({
   onJumpToLine,
   className,
 }: LyricJumpListProps) {
+  const { t } = useLocale();
   const [isOpen, setIsOpen] = useState(false);
   const [explicitExpandedChapterIndex, setExplicitExpandedChapterIndex] = useState<number | null>(
     null
@@ -169,7 +171,7 @@ export function LyricJumpList({
           onMouseLeave={isSwipeEnabled ? handleTouchEnd : undefined}
           role="button"
           tabIndex={0}
-          aria-label={isOpen ? "Close lyric jump list" : "Open lyric jump list"}
+          aria-label={isOpen ? t("lyrics.closeAriaLabel") : t("lyrics.openAriaLabel")}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -188,9 +190,9 @@ export function LyricJumpList({
             <span>
               {isOpen
                 ? isSwipeEnabled
-                  ? "Swipe down to close"
-                  : "Tap to close"
-                : "Lyrics"}
+                  ? t("lyrics.swipeDownToClose")
+                  : t("lyrics.tapToClose")
+                : t("lyrics.lyrics")}
             </span>
           </div>
         </div>
@@ -301,7 +303,7 @@ export function LyricJumpList({
           }}
           role="button"
           tabIndex={0}
-          aria-label="Close lyric jump list"
+          aria-label={t("lyrics.closeAriaLabel")}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === "Escape") {
               setContentInteractive(false);

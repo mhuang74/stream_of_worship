@@ -7,6 +7,7 @@ import { AlbumMultiSelect } from "./AlbumMultiSelect";
 import { MusicalKeyMultiSelect } from "./MusicalKeyMultiSelect";
 import { BpmRangeMultiSelect } from "./BpmRangeMultiSelect";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
+import { useLocale } from "@/hooks/useLocale";
 
 interface SharedFiltersProps {
   albums: AlbumOption[];
@@ -33,6 +34,7 @@ export function SharedFilters({
   isLoading = false,
   className,
 }: SharedFiltersProps) {
+  const { t } = useLocale();
   const hasAnyFilters =
     selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm.length > 0;
 
@@ -69,7 +71,7 @@ export function SharedFilters({
             disabled={!hasAnyFilters}
             data-testid="clear-all-filters"
           >
-            Clear all
+            {t("browse.clearAll")}
           </Button>
         )}
       </div>

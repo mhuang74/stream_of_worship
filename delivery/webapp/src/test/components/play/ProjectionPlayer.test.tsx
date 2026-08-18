@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { screen, act } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { ProjectionPlayer } from "@/components/play/ProjectionPlayer";
 
 // Mock hooks
@@ -129,6 +130,17 @@ describe("ProjectionPlayer", () => {
       // No buttons, no nav, no header
       expect(screen.queryByRole("button")).not.toBeInTheDocument();
       expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("zh-Hant localization", () => {
+    it("renders translated video aria-label in zh-Hant", async () => {
+      await act(async () => {
+        render(<ProjectionPlayer {...defaultProps} />, "zh-Hant");
+      });
+
+      const video = document.querySelector("video") as HTMLVideoElement;
+      expect(video).toHaveAttribute("aria-label", "投影影片");
     });
   });
 

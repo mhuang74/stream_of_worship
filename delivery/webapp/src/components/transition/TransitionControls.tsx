@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Volume2, Play, Loader2, ArrowRightLeft, Piano, Gauge } from "lucide-react";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
+import { useLocale } from "@/hooks/useLocale";
 
 // Deterministic waveform bars using sine waves (avoids hydration mismatch)
 const WAVEFORM_BARS = Array.from({ length: 40 }, (_, i) => {
@@ -20,19 +21,19 @@ const WAVEFORM_BARS = Array.from({ length: 40 }, (_, i) => {
 });
 
 const KEY_SHIFT_OPTIONS = [
-  { value: -6, label: "-6 (tritone down)" },
-  { value: -5, label: "-5" },
-  { value: -4, label: "-4" },
-  { value: -3, label: "-3 (minor third down)" },
-  { value: -2, label: "-2" },
-  { value: -1, label: "-1" },
-  { value: 0, label: "No shift" },
-  { value: 1, label: "+1" },
-  { value: 2, label: "+2" },
-  { value: 3, label: "+3 (minor third up)" },
-  { value: 4, label: "+4" },
-  { value: 5, label: "+5" },
-  { value: 6, label: "+6 (tritone up)" },
+  { value: -6, labelKey: "control.keyShift.tritoneDown" },
+  { value: -5, labelKey: "control.keyShift.minus5" },
+  { value: -4, labelKey: "control.keyShift.minus4" },
+  { value: -3, labelKey: "control.keyShift.minorThirdDown" },
+  { value: -2, labelKey: "control.keyShift.minus2" },
+  { value: -1, labelKey: "control.keyShift.minus1" },
+  { value: 0, labelKey: "control.keyShift.noShift" },
+  { value: 1, labelKey: "control.keyShift.plus1" },
+  { value: 2, labelKey: "control.keyShift.plus2" },
+  { value: 3, labelKey: "control.keyShift.minorThirdUp" },
+  { value: 4, labelKey: "control.keyShift.plus4" },
+  { value: 5, labelKey: "control.keyShift.plus5" },
+  { value: 6, labelKey: "control.keyShift.tritoneUp" },
 ];
 
 function gapToSeconds(beats: number, tempoBpm?: number | null): number {
@@ -57,6 +58,7 @@ export function TransitionControls({
   onPreview,
   isPreviewLoading = false,
 }: TransitionControlsProps) {
+  const { t } = useLocale();
   const update = (patch: Partial<TransitionSettings>) => onChange({ ...settings, ...patch });
 
   const refBpm = fromSong?.tempoBpm || toSong?.tempoBpm;
@@ -77,10 +79,10 @@ export function TransitionControls({
         <div className="flex items-center justify-between">
           <Label className="flex items-center gap-2 text-sm">
             <ArrowRightLeft className="size-4" />
-            Gap
+            {t("control.gap")}
           </Label>
-          <span className="text-sm font-medium tabular-nums" aria-label="gap value">
-            {settings.gapBeats} beats ({gapSeconds.toFixed(1)}s)
+          <span className="text-sm font-medium tabular-nums" aria-label={t("control.gapValue")}>
+            {settings.gapBeats} {t("control.beats")} ({gapSeconds.toFixed(1)}s)
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -88,7 +90,7 @@ export function TransitionControls({
             variant="outline"
             size="icon-sm"
             onClick={() => update({ gapBeats: Math.max(0, settings.gapBeats - 0.5) })}
-            aria-label="Decrease gap by 0.5 beats"
+            aria-label={t("control.decreaseGap")}
             disabled={settings.gapBeats <= 0}
           >
             -
@@ -107,7 +109,7 @@ export function TransitionControls({
             variant="outline"
             size="icon-sm"
             onClick={() => update({ gapBeats: Math.min(8, settings.gapBeats + 0.5) })}
-            aria-label="Increase gap by 0.5 beats"
+            aria-label={t("control.increaseGap")}
             disabled={settings.gapBeats >= 8}
           >
             +
@@ -119,7 +121,7 @@ export function TransitionControls({
       <div className="flex items-center justify-between">
         <Label htmlFor="crossfade-ctrl" className="flex items-center gap-2 text-sm">
           <Volume2 className="size-4" />
-          Crossfade
+          {t("control.crossfade")}
         </Label>
         <Switch
           id="crossfade-ctrl"
@@ -135,14 +137,14 @@ export function TransitionControls({
           variant="outline"
           className="w-full"
           disabled={isPreviewLoading}
-          aria-label="Preview transition audio"
+          aria-label={t("control.previewTransitionAudio")}
         >
           {isPreviewLoading ? (
             <Loader2 className="size-4 mr-2 animate-spin" />
           ) : (
             <Play className="size-4 mr-2" />
           )}
-          Preview Transition
+          {t("control.previewTransition")}
         </Button>
       )}
 
@@ -152,19 +154,19 @@ export function TransitionControls({
         <div className="space-y-2">
           <Label className="flex items-center gap-2 text-sm">
             <Piano className="size-4" />
-            Key Shift
+            {t("control.keyShift")}
           </Label>
           <Select
             value={settings.keyShiftSemitones.toString()}
             onValueChange={(v) => update({ keyShiftSemitones: parseInt(v ?? "0", 10) })}
           >
-            <SelectTrigger aria-label="Key shift selector">
+            <SelectTrigger aria-label={t("control.keyShiftSelector")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {KEY_SHIFT_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value.toString()}>
-                  {opt.label}
+                  {t(opt.labelKey as "control.keyShift.noShift")}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -176,14 +178,14 @@ export function TransitionControls({
           <div className="flex items-center justify-between">
             <Label className="flex items-center gap-2 text-sm">
               <Gauge className="size-4" />
-              Tempo
+              {t("control.tempo")}
               {currentBpm && (
                 <span className="text-muted-foreground font-normal">
-                  {currentBpm} BPM
+                  {currentBpm} {t("control.bpm")}
                   {bpmDelta !== 0 && (
                     <span
                       className={bpmDelta > 0 ? "text-blue-500" : "text-orange-500"}
-                      aria-label={`tempo delta ${bpmDelta > 0 ? "+" : ""}${bpmDelta} BPM`}
+                      aria-label={`${t("control.tempoDelta")} ${bpmDelta > 0 ? "+" : ""}${bpmDelta} ${t("control.bpm")}`}
                     >
                       {" "}
                       ({bpmDelta > 0 ? "+" : ""}
@@ -197,9 +199,9 @@ export function TransitionControls({
               <button
                 onClick={() => update({ tempoRatio: 1.0 })}
                 className="text-xs text-muted-foreground hover:text-foreground underline"
-                aria-label="Reset tempo to original"
+                aria-label={t("control.resetTempo")}
               >
-                Reset
+                {t("control.reset")}
               </button>
             )}
           </div>
@@ -208,19 +210,19 @@ export function TransitionControls({
               variant="outline"
               size="icon-sm"
               onClick={() => nudgeTempo(-1)}
-              aria-label="Decrease tempo by 1 BPM"
+              aria-label={t("control.decreaseTempo")}
               disabled={!refBpm}
             >
               -
             </Button>
             <div className="flex-1 text-center text-xs text-muted-foreground">
-              {refBpm ? `${Math.round(settings.tempoRatio * 100)}%` : "No BPM data"}
+              {refBpm ? `${Math.round(settings.tempoRatio * 100)}%` : t("control.noBpmData")}
             </div>
             <Button
               variant="outline"
               size="icon-sm"
               onClick={() => nudgeTempo(1)}
-              aria-label="Increase tempo by 1 BPM"
+              aria-label={t("control.increaseTempo")}
               disabled={!refBpm}
             >
               +
@@ -230,10 +232,10 @@ export function TransitionControls({
 
         {/* Waveform preview panel */}
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Waveform</Label>
+          <Label className="text-xs text-muted-foreground">{t("control.waveform")}</Label>
           <div
             className="flex items-center gap-[2px] h-12 px-2 bg-muted/50 rounded-md overflow-hidden"
-            aria-label="Waveform preview"
+            aria-label={t("control.waveformPreview")}
             role="img"
           >
             {WAVEFORM_BARS.map((h, i) => (

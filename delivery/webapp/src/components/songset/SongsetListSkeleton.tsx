@@ -1,6 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLocale } from "@/hooks/useLocale";
 
 function SongsetRowSkeleton() {
   return (
@@ -15,9 +16,10 @@ function SongsetRowSkeleton() {
 }
 
 export function SongsetListSkeleton() {
+  const { t } = useLocale();
   return (
-    <div className="space-y-3" aria-label="Loading songsets" role="status">
-      <span className="sr-only">Loading songsets…</span>
+    <div className="space-y-3" aria-label={t("songsets.loading.songsets")} role="status">
+      <span className="sr-only">{t("songsets.loading.songsetsSr")}</span>
       {Array.from({ length: 4 }).map((_, i) => (
         <SongsetRowSkeleton key={i} />
       ))}

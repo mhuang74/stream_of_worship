@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Clock } from "lucide-react"
+import { useLocale } from "@/hooks/useLocale"
 
 interface RenderSubmittedProps {
   estimatedMinutes: number
@@ -17,22 +18,26 @@ export function RenderSubmitted({
   isCancelling = false,
   submittedAt,
 }: RenderSubmittedProps) {
+  const { t } = useLocale()
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>Render Started</CardTitle>
+        <CardTitle>{t("render.submitted.title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Clock className="size-4" />
-          <span>Estimated time: ~{estimatedMinutes} minutes</span>
+          <span>
+            {t("render.submitted.estimatedTime")}: {t("render.submitted.estimatedPrefix")}
+            {estimatedMinutes} {t("render.submitted.estimatedMinutes")}
+          </span>
         </div>
         <p className="text-sm text-muted-foreground">
-          You can leave this page. Check your songset later for the result.
+          {t("render.submitted.leavePage")}
         </p>
         {submittedAt && (
           <p className="text-sm text-muted-foreground">
-            Submitted at{" "}
+            {t("render.submitted.submittedAt")}{" "}
             {new Intl.DateTimeFormat(undefined, {
               dateStyle: "medium",
               timeStyle: "short",
@@ -45,7 +50,7 @@ export function RenderSubmitted({
           onClick={onCancel}
           disabled={isCancelling}
         >
-          Cancel Render
+          {t("render.submitted.cancel")}
         </Button>
       </CardContent>
     </Card>

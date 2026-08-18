@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { useLocale } from "@/hooks/useLocale";
 import { ProjectionPlayer } from "@/components/play/ProjectionPlayer";
 
 export default function ProjectionPage() {
   const params = useParams();
+  const { t } = useLocale();
   const songsetId = params.id as string;
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -43,10 +45,10 @@ export default function ProjectionPage() {
         const songsetResponse = await fetch(`/api/songsets/${songsetId}`);
         if (!songsetResponse.ok) {
           if (songsetResponse.status === 401) {
-            setError("Authentication required");
+            setError(t("projection.errorAuthRequired"));
             return;
           }
-          throw new Error("Failed to load songset");
+          throw new Error(t("projection.errorLoadSongset"));
         }
 
         const songsetData = await songsetResponse.json();
@@ -55,28 +57,28 @@ export default function ProjectionPage() {
         setInitialTitle(songsetData.name as string);
 
         if (!songsetData.latestRenderJobId) {
-          throw new Error("No render artifacts available");
+          throw new Error(t("projection.errorNoArtifacts"));
         }
 
         const jobResponse = await fetch(
           `/api/render-jobs/${songsetData.latestRenderJobId}`
         );
         if (!jobResponse.ok) {
-          throw new Error("Failed to load render job");
+          throw new Error(t("projection.errorLoadRenderJob"));
         }
 
         const jobData = await jobResponse.json();
         if (cancelled) return;
 
         if (!jobData.mp4R2Key) {
-          throw new Error("No video available for this songset");
+          throw new Error(t("projection.errorNoVideo"));
         }
 
         const signedUrlResponse = await fetch(
           `/api/signed-url?renderJobId=${encodeURIComponent(songsetData.latestRenderJobId)}&fileType=video`
         );
         if (!signedUrlResponse.ok) {
-          throw new Error("Failed to get video URL");
+          throw new Error(t("projection.errorGetVideoUrl"));
         }
 
         const { url } = await signedUrlResponse.json();
@@ -85,7 +87,7 @@ export default function ProjectionPage() {
         setVideoUrl(url as string);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load projection");
+          setError(err instanceof Error ? err.message : t("projection.errorLoadFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -101,11 +103,11 @@ export default function ProjectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [songsetId]);
+  }, [songsetId, t]);
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center" role="status" aria-label="Loading projection">
+      <div className="fixed inset-0 bg-black flex items-center justify-center" role="status" aria-label={t("projection.loadingAriaLabel")}>
         <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
       </div>
     );
@@ -115,7 +117,7 @@ export default function ProjectionPage() {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <p className="text-white/70 text-sm text-center">
-          {error ?? "Failed to load projection"}
+          {error ?? t("projection.errorLoadFailed")}
         </p>
       </div>
     );

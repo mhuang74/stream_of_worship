@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale, renderWithLocale as render } from "@/test/render";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { SongListItem } from "@/components/songset/SongList";
@@ -434,6 +435,16 @@ describe("SongsetEditor", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: /render again/i }));
       expect(onRender).toHaveBeenCalled();
+    });
+  });
+
+  describe("localization", () => {
+    it("renders Traditional Chinese labels in zh-Hant locale", () => {
+      renderWithLocale(<SongsetEditor {...defaultProps} />, "zh-Hant");
+      // Overflow menu aria-label is localized
+      expect(screen.getByRole("button", { name: /更多選項/i })).toBeInTheDocument();
+      // Song count label is localized
+      expect(screen.getByText(/首詩歌/)).toBeInTheDocument();
     });
   });
 });

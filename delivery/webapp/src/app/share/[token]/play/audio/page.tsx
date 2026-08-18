@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { useLocale } from "@/hooks/useLocale";
 
 interface ShareData {
   songsetName: string | null;
@@ -11,6 +12,7 @@ interface ShareData {
 
 export default function ShareAudioPage() {
   const params = useParams();
+  const { t } = useLocale();
   const token = params.token as string;
 
   const [shareData, setShareData] = useState<ShareData | null>(null);
@@ -28,23 +30,23 @@ export default function ShareAudioPage() {
         const res = await fetch(`/api/share/${token}`);
         if (!res.ok) {
           const data = await res.json();
-          throw new Error(data.error ?? "This link is no longer available");
+          throw new Error(data.error ?? t("control.linkNoLongerAvailable"));
         }
 
         const data = await res.json();
         if (cancelled) return;
 
         if (!data.playback?.mp3Url) {
-          throw new Error("No audio available for this share");
+          throw new Error(t("control.noAudioForShare"));
         }
 
         setShareData({
-          songsetName: data.songset?.name ?? "Worship Set",
+          songsetName: data.songset?.name ?? t("control.worshipSet"),
           mp3Url: data.playback.mp3Url,
         });
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load audio");
+          setError(err instanceof Error ? err.message : t("control.failedToLoadAudio"));
         }
       } finally {
         if (!cancelled) {
@@ -60,7 +62,7 @@ export default function ShareAudioPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, t]);
 
   if (isLoading) {
     return (
@@ -75,7 +77,7 @@ export default function ShareAudioPage() {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 bg-background">
         <AlertTriangle className="size-12 text-muted-foreground" />
         <p className="max-w-sm text-center text-muted-foreground">
-          {error ?? "Failed to load audio"}
+          {error ?? t("control.failedToLoadAudio")}
         </p>
       </div>
     );

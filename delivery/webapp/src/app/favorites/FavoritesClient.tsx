@@ -8,6 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Heart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useLocale } from "@/hooks/useLocale";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { toSongCardData } from "@/lib/song-card-data";
 import { COMPLETION_THRESHOLD } from "@/lib/constants";
@@ -26,6 +27,7 @@ export function FavoritesClient({
   pageSize,
 }: FavoritesClientProps) {
   const router = useRouter();
+  const { t } = useLocale();
   const [songs, setSongs] = useState<SongCardData[]>(initialSongs);
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(currentPage);
@@ -65,7 +67,7 @@ export function FavoritesClient({
         setTotal(data.total);
       } catch {
         if (!cancelled) {
-          toast.error("Failed to load favorites");
+          toast.error(t("favorites.loadFailed"));
           setSongs(initialSongs); // fall back to SSR-provided data
           setTotal(initialTotal);
         }
@@ -77,7 +79,7 @@ export function FavoritesClient({
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize]);
+  }, [page, pageSize, currentPage, initialSongs.length, t]);
 
   // Reconcile client page state with the RSC-provided currentPage after a
   // browser back/forward navigation (RSC restores currentPage, but client
@@ -135,14 +137,15 @@ export function FavoritesClient({
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <Heart className="size-8 text-muted-foreground mb-2" />
-        <p className="font-medium">No favorites yet</p>
+        <p className="font-medium">{t("favorites.empty.title")}</p>
         <p className="text-sm text-muted-foreground mt-1 max-w-md">
-          Listen to at least {Math.round(COMPLETION_THRESHOLD * 100)}% of a
-          song in the songset builder, then tap the heart to favorite it. Your
-          favorites are pinned to the top.
+          {t("favorites.empty.description").replace(
+            "${percent}",
+            String(Math.round(COMPLETION_THRESHOLD * 100))
+          )}
         </p>
         <Link href="/songsets" className={cn(buttonVariants(), "mt-6")}>
-          Go to Songsets
+          {t("favorites.empty.action")}
         </Link>
       </div>
     );
@@ -150,9 +153,10 @@ export function FavoritesClient({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
-      <h1 className="text-2xl font-bold">Favorites</h1>
+      <h1 className="text-2xl font-bold">{t("favorites.title")}</h1>
       <p className="text-sm text-muted-foreground mb-4">
-        {total} favorite {total === 1 ? "song" : "songs"}
+        {total}{" "}
+        {t(total === 1 ? "favorites.count.singular" : "favorites.count.plural")}
       </p>
 
       {isLoading ? (
@@ -177,7 +181,7 @@ export function FavoritesClient({
 
       {totalPages > 1 && (
         <nav
-          aria-label="Favorites pagination"
+          aria-label={t("favorites.pagination.ariaLabel")}
           className="flex items-center justify-center gap-2 mt-6"
         >
           <Button
@@ -185,11 +189,11 @@ export function FavoritesClient({
             size="sm"
             onClick={() => handlePageChange(page - 1)}
             disabled={page <= 1 || isLoading}
-            aria-label="Previous page"
+            aria-label={t("favorites.pagination.previous")}
             data-testid="pagination-prev"
           >
             <ChevronLeft className="size-4" />
-            Prev
+            {t("favorites.pagination.prevLabel")}
           </Button>
 
           {pageNumbers.map((pageNum) => (
@@ -200,7 +204,10 @@ export function FavoritesClient({
               onClick={() => handlePageChange(pageNum)}
               disabled={isLoading}
               aria-current={pageNum === page ? "page" : undefined}
-              aria-label={`Page ${pageNum}`}
+              aria-label={t("favorites.pagination.page").replace(
+                "${n}",
+                String(pageNum)
+              )}
               data-testid={`pagination-page-${pageNum}`}
             >
               {pageNum}
@@ -212,10 +219,10 @@ export function FavoritesClient({
             size="sm"
             onClick={() => handlePageChange(page + 1)}
             disabled={page >= totalPages || isLoading}
-            aria-label="Next page"
+            aria-label={t("favorites.pagination.next")}
             data-testid="pagination-next"
           >
-            Next
+            {t("favorites.pagination.nextLabel")}
             <ChevronRight className="size-4" />
           </Button>
         </nav>

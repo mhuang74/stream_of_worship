@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { screen, fireEvent } from "@testing-library/react"
+import { renderWithLocale as render } from "@/test/render"
 import { RenderSubmitted } from "@/components/render/RenderSubmitted"
 
 describe("RenderSubmitted", () => {
@@ -53,6 +54,15 @@ describe("RenderSubmitted", () => {
     it("renders different estimated minutes", () => {
       render(<RenderSubmitted estimatedMinutes={10} onCancel={mockCancel} />)
       expect(screen.getByText(/~10 minutes/i)).toBeInTheDocument()
+    })
+  })
+
+  describe("zh-Hant", () => {
+    it("renders zh-Hant title, estimate and cancel button", () => {
+      render(<RenderSubmitted {...defaultProps} />, "zh-Hant")
+      expect(screen.getByText("渲染已開始")).toBeInTheDocument()
+      expect(screen.getByText(/約 5 分鐘/)).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "取消渲染" })).toBeInTheDocument()
     })
   })
 })

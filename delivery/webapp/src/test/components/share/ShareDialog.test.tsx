@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { ShareDialog } from "@/components/share/ShareDialog";
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -89,6 +90,21 @@ describe("ShareDialog rendering", () => {
     renderDialog({ renderJobId: "job-123" });
     await waitFor(() => {
       expect(screen.getByRole("tab", { name: /send file/i })).toBeInTheDocument();
+    });
+  });
+
+  it("renders translated labels in zh-Hant", async () => {
+    mockFetch.mockResolvedValueOnce(mockEmptyShares());
+
+    render(<ShareDialog
+      open
+      onOpenChange={vi.fn()}
+      songsetId="songset-1"
+      songsetName="Sunday Worship"
+      durationSeconds={1080}
+    />, "zh-Hant");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /建立分享連結/i })).toBeInTheDocument();
     });
   });
 });

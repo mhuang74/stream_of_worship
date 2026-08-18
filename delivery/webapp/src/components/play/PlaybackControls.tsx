@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import {
   Play,
   Pause,
@@ -47,6 +48,7 @@ export function PlaybackControls({
   onToggleMute,
   className,
 }: PlaybackControlsProps) {
+  const { t } = useLocale();
   const formatTime = (seconds: number): string => {
     if (!isFinite(seconds) || seconds < 0) return "0:00";
     const mins = Math.floor(seconds / 60);
@@ -85,7 +87,7 @@ export function PlaybackControls({
           className="hidden md:block relative h-2 bg-white/20 rounded-full cursor-pointer touch-none group"
           onClick={handleScrubClick}
           role="slider"
-          aria-label="Seek"
+          aria-label={t("controls.seek")}
           aria-valuemin={0}
           aria-valuemax={duration}
           aria-valuenow={currentTime}
@@ -125,7 +127,7 @@ export function PlaybackControls({
             className="size-10 sm:size-12 text-white hover:bg-white/20"
             onClick={onPrevSong}
             disabled={currentSongIndex <= 0}
-            aria-label="Previous song"
+            aria-label={t("controls.prevSong")}
           >
             <SkipBack className="size-5 sm:size-6" />
           </Button>
@@ -138,7 +140,7 @@ export function PlaybackControls({
             className="size-10 sm:size-12 text-white hover:bg-white/20"
             onClick={onNextSong}
             disabled={currentSongIndex >= totalSongs - 1}
-            aria-label="Next song"
+            aria-label={t("controls.nextSong")}
           >
             <SkipForward className="size-5 sm:size-6" />
           </Button>
@@ -151,7 +153,7 @@ export function PlaybackControls({
             size="icon"
             className="size-14 sm:size-16 rounded-full bg-white text-black hover:bg-white/90"
             onClick={onPlayPause}
-            aria-label={isPlaying ? "Pause" : "Play"}
+            aria-label={isPlaying ? t("controls.pause") : t("controls.play")}
           >
             {isPlaying ? (
               <Pause className="size-7 sm:size-8" />
@@ -168,7 +170,7 @@ export function PlaybackControls({
             size="icon"
             className="hidden md:flex size-10 text-white hover:bg-white/20"
             onClick={onToggleMute}
-            aria-label={isMuted ? "Unmute" : "Mute"}
+            aria-label={isMuted ? t("controls.unmute") : t("controls.mute")}
           >
             {isMuted || volume === 0 ? (
               <VolumeX className="size-5" />
@@ -187,7 +189,7 @@ export function PlaybackControls({
               value={isMuted ? 0 : volume}
               onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
               className="w-full h-1 bg-white/30 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
-              aria-label="Volume"
+              aria-label={t("controls.volume")}
             />
           </div>
 
@@ -195,7 +197,7 @@ export function PlaybackControls({
           {isPresentationActive && (
             <div className="flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs">
               <Monitor className="size-3" />
-              <span className="hidden sm:inline">Connected</span>
+              <span className="hidden sm:inline">{t("controls.connected")}</span>
             </div>
           )}
         </div>

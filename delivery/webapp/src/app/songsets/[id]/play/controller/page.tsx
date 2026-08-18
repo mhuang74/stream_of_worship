@@ -11,6 +11,7 @@ import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useLocale } from "@/hooks/useLocale";
 
 interface SongsetData {
   id: string;
@@ -22,6 +23,7 @@ interface SongsetData {
 export default function ControllerPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useLocale();
   const songsetId = params.id as string;
 
   const [songset, setSongset] = useState<SongsetData | null>(null);
@@ -49,9 +51,9 @@ export default function ControllerPage() {
             return;
           }
           if (songsetResponse.status === 404) {
-            throw new Error("Songset not found");
+            throw new Error(t("control.songsetNotFound"));
           }
-          throw new Error("Failed to load songset");
+          throw new Error(t("control.failedToLoadSongset"));
         }
 
         const songsetData = await songsetResponse.json();
@@ -66,7 +68,7 @@ export default function ControllerPage() {
 
         // Check if render artifacts exist
         if (!songsetData.latestRenderJobId) {
-          throw new Error("Songset has not been rendered yet");
+          throw new Error(t("control.notRenderedYet"));
         }
 
         // Load render job
@@ -74,14 +76,14 @@ export default function ControllerPage() {
           `/api/render-jobs/${songsetData.latestRenderJobId}`
         );
         if (!jobResponse.ok) {
-          throw new Error("Failed to load render job");
+          throw new Error(t("control.failedToLoadRenderJob"));
         }
 
         const jobData = await jobResponse.json();
         if (cancelled) return;
 
         if (!jobData.mp4R2Key) {
-          throw new Error("No video available for this songset");
+          throw new Error(t("control.noVideoForSongset"));
         }
 
         // Get signed URL for video. The logged-in phone mints the presigned
@@ -92,7 +94,7 @@ export default function ControllerPage() {
           `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=video&cast=true`
         );
         if (!signedUrlResponse.ok) {
-          throw new Error("Failed to get video URL");
+          throw new Error(t("control.failedToGetVideoUrl"));
         }
 
         const { url } = await signedUrlResponse.json();
@@ -117,7 +119,7 @@ export default function ControllerPage() {
       } catch (err) {
         if (!cancelled) {
           const message =
-            err instanceof Error ? err.message : "Failed to load player";
+            err instanceof Error ? err.message : t("control.failedToLoadPlayer");
           setError(message);
           toast.error(message);
         }
@@ -135,7 +137,7 @@ export default function ControllerPage() {
     return () => {
       cancelled = true;
     };
-  }, [songsetId, router]);
+  }, [songsetId, router, t]);
 
   // Cast + Presentation transport wiring.
   //
@@ -198,12 +200,14 @@ export default function ControllerPage() {
   useEffect(() => {
     const wasConnected = prevCastConnectedRef.current;
     if (cast.isConnected && !wasConnected) {
-      toast.success(`Connected to ${cast.deviceName || "TV"}`);
+      toast.success(
+        `${t("control.connectedTo")} ${cast.deviceName || t("control.tv")}`
+      );
     } else if (!cast.isConnected && wasConnected) {
-      toast.info("Disconnected from TV");
+      toast.info(t("control.disconnectedFromTV"));
     }
     prevCastConnectedRef.current = cast.isConnected;
-  }, [cast.isConnected, cast.deviceName]);
+  }, [cast.isConnected, cast.deviceName, t]);
 
   const isPresentationActive =
     cast.isConnected || (!cast.isSupported && sender.isConnected);
@@ -242,7 +246,7 @@ export default function ControllerPage() {
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-8 animate-spin text-white" />
-          <p className="text-white/70">Loading player...</p>
+          <p className="text-white/70">{t("control.loadingPlayer")}</p>
         </div>
       </div>
     );
@@ -253,13 +257,13 @@ export default function ControllerPage() {
       <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-white mb-4">
-            {error || "Failed to load player"}
+            {error || t("control.failedToLoadPlayer")}
           </p>
           <button
             onClick={() => router.push(`/songsets/${songsetId}/play`)}
             className="px-4 py-2 bg-primary text-white rounded-lg"
           >
-            Go Back
+            {t("control.goBack")}
           </button>
         </div>
       </div>

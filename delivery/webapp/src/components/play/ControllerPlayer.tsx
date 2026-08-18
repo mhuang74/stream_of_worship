@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlaybackControls } from "./PlaybackControls";
 import { LyricJumpList } from "./LyricJumpList";
+import { useLocale } from "@/hooks/useLocale";
 import type { Chapter } from "@/lib/render/chapters";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -106,6 +107,7 @@ export function ControllerPlayer({
   className,
 }: ControllerPlayerProps) {
   const router = useRouter();
+  const { t } = useLocale();
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -387,10 +389,10 @@ export function ControllerPlayer({
       video.play().catch((err) => {
         setIsPlaying(false);
         console.error("Play failed:", err);
-        toast.error("Failed to start playback");
+        toast.error(t("controller.toastPlaybackFailed"));
       });
     }
-  }, [isPresentationActive, effectiveIsPlaying, isPlaying]);
+  }, [isPresentationActive, effectiveIsPlaying, isPlaying, t]);
 
   const handleSeek = useCallback(
     (time: number) => {
@@ -588,10 +590,10 @@ export function ControllerPlayer({
         ? {
             title: currentChapter.songTitle,
             artist: "Stream of Worship",
-            album: "Worship Set",
+            album: t("controller.mediaAlbum"),
           }
         : null,
-    [currentChapter]
+    [currentChapter, t]
   );
 
   const { updatePlaybackState, updatePositionState } = useMediaSession(
@@ -899,7 +901,7 @@ export function ControllerPlayer({
                 size="icon"
                 className="size-10 text-white hover:bg-white/20"
                 onClick={handleExit}
-                aria-label="Back"
+                aria-label={t("controller.backAriaLabel")}
               >
                 <ArrowLeft className="size-5" />
               </Button>
@@ -910,7 +912,7 @@ export function ControllerPlayer({
                   size="icon"
                   className="size-10 text-white hover:bg-white/20"
                   onClick={handleReenterFullscreen}
-                  aria-label="Re-enter fullscreen"
+                  aria-label={t("controller.reenterFullscreen")}
                 >
                   <Maximize className="size-5" />
                 </Button>
@@ -923,7 +925,7 @@ export function ControllerPlayer({
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-full text-sm">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   <span>
-                    Connected to {transport?.deviceName ? transport.deviceName : "TV"}
+                    {t("controller.connectedTo")} {transport?.deviceName ? transport.deviceName : t("controller.tv")}
                   </span>
                 </div>
               )}
@@ -934,7 +936,7 @@ export function ControllerPlayer({
                   size="icon"
                   className="size-10 text-white hover:bg-white/20"
                   onClick={handleStopPresentation}
-                  aria-label="Close TV view"
+                  aria-label={t("controller.closeTvView")}
                   data-testid="presentation-close-button"
                 >
                   <MonitorOff className="size-5" />
@@ -950,8 +952,8 @@ export function ControllerPlayer({
                   <Loader2 className="size-3 animate-spin" />
                   <span>
                     {showActionableBuffering
-                      ? "TV is still loading — check Wi-Fi / MP4 reachability / retry Cast."
-                      : "TV is loading…"}
+                      ? t("controller.bufferingActionable")
+                      : t("controller.buffering")}
                   </span>
                 </div>
               )}
@@ -966,7 +968,7 @@ export function ControllerPlayer({
                     castUnavailable && "opacity-60"
                   )}
                   onClick={handleCastButtonClick}
-                  aria-label={castUnavailable ? "Cast unavailable" : "Send to TV"}
+                  aria-label={castUnavailable ? t("controller.castUnavailable") : t("controller.sendToTV")}
                   data-testid="cast-button"
                 >
                   {isCastConnecting ? (
@@ -986,7 +988,7 @@ export function ControllerPlayer({
                   size="icon"
                   className="size-10 text-white hover:bg-white/20"
                   onClick={() => onSendToTVRef.current?.()}
-                  aria-label="Send to TV"
+                  aria-label={t("controller.sendToTV")}
                   data-testid="presentation-send-to-tv-button"
                 >
                   <Monitor className="size-5" />
@@ -1002,7 +1004,7 @@ export function ControllerPlayer({
                 >
                   <Monitor className="size-3" />
                   <span>
-                    Use AirPlay to an Apple TV — native iOS app pending
+                    {t("controller.airplayFallback")}
                   </span>
                 </a>
               )}
@@ -1011,7 +1013,7 @@ export function ControllerPlayer({
             {/* Wake lock indicator */}
             {wakeLockSupported && (
               <div className="text-white/50 text-xs">
-                Screen stays on
+                {t("controller.screenStaysOn")}
               </div>
             )}
           </div>
@@ -1028,10 +1030,10 @@ export function ControllerPlayer({
             <Info className="size-4 shrink-0" />
             <span>
               {pendingResume.isStale
-                ? `Resume from TV position may be stale — tap to resume at ${formatTime(
+                ? `${t("controller.resumeStale")} ${formatTime(
                     pendingResume.time
                   )}`
-                : `Tap to resume at ${formatTime(pendingResume.time)}`}
+                : `${t("controller.tapToResume")} ${formatTime(pendingResume.time)}`}
             </span>
           </button>
         )}
@@ -1042,10 +1044,9 @@ export function ControllerPlayer({
             <div className="flex items-start gap-3">
               <Info className="size-5 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-medium">iOS Playback Tips</p>
+                <p className="font-medium">{t("controller.iosTitle")}</p>
                 <p className="text-sm text-white/80 mt-1">
-                  Tap the screen to show controls. Open the lyric list and tap
-                  a line to jump to that moment.
+                  {t("controller.iosDesc")}
                 </p>
               </div>
               <Button
@@ -1053,7 +1054,7 @@ export function ControllerPlayer({
                 size="icon"
                 className="size-8 text-white hover:bg-white/20 shrink-0"
                 onClick={() => setShowIosInfo(false)}
-                aria-label="Dismiss info"
+                aria-label={t("controller.dismissInfo")}
               >
                 <X className="size-4" />
               </Button>
@@ -1067,15 +1068,15 @@ export function ControllerPlayer({
             "hidden lg:block absolute bottom-4 right-4 transition-opacity duration-300",
             controlsVisible || isPresentationActive ? "opacity-100" : "opacity-0"
           )}
-          aria-label="Keyboard shortcuts"
+          aria-label={t("controller.keyboardShortcuts")}
           data-testid="keyboard-shortcuts-hint"
         >
           <div className="bg-black/60 text-white/75 rounded-lg px-3 py-2 text-xs">
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-              <span><kbd className="font-mono text-white/90">Space</kbd> Play/Pause</span>
-              <span><kbd className="font-mono text-white/90">←</kbd>/<kbd className="font-mono text-white/90">→</kbd> Seek 10s</span>
-              <span><kbd className="font-mono text-white/90">[</kbd> Prev song</span>
-              <span><kbd className="font-mono text-white/90">]</kbd> Next song</span>
+              <span><kbd className="font-mono text-white/90">Space</kbd> {t("controller.kbSpacePlayPause")}</span>
+              <span><kbd className="font-mono text-white/90">←</kbd>/<kbd className="font-mono text-white/90">→</kbd> {t("controller.kbSeek10s")}</span>
+              <span><kbd className="font-mono text-white/90">[</kbd> {t("controller.kbPrevSong")}</span>
+              <span><kbd className="font-mono text-white/90">]</kbd> {t("controller.kbNextSong")}</span>
             </div>
           </div>
         </div>
@@ -1129,16 +1130,16 @@ export function ControllerPlayer({
       >
         <SheetContent side="bottom" data-testid="diagnostic-sheet">
           <SheetHeader>
-            <SheetTitle>Cast unavailable</SheetTitle>
+            <SheetTitle>{t("controller.diagTitle")}</SheetTitle>
             <SheetDescription>
-              Chromecast couldn&apos;t be reached. Check the following:
+              {t("controller.diagDesc")}
             </SheetDescription>
           </SheetHeader>
           <ol className="list-decimal space-y-2 px-4 pb-6 text-sm text-muted-foreground">
-            <li>Use Android Chrome over HTTPS (the Cast Web Sender SDK requires it).</li>
-            <li>Phone and TV must be on the same Wi-Fi / VLAN (guest and captive-portal networks block discovery).</li>
-            <li>Receiver must be powered on, and dev/staging devices must be whitelisted in the Google Cast SDK Developer Console.</li>
-            <li>Try opening the MP4 URL from this network in a laptop browser to confirm R2 reachability and range-seek.</li>
+            <li>{t("controller.diag.1")}</li>
+            <li>{t("controller.diag.2")}</li>
+            <li>{t("controller.diag.3")}</li>
+            <li>{t("controller.diag.4")}</li>
           </ol>
         </SheetContent>
       </Sheet>

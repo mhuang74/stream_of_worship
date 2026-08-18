@@ -3,15 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { isProjectionRoute } from "@/lib/routes";
+import { useLocale } from "@/hooks/useLocale";
 
 const navItems = [
-  { href: "/songsets", label: "Songsets" },
-  { href: "/favorites", label: "Favorites" },
-  { href: "/settings", label: "Settings" },
+  { href: "/songsets", key: "nav.songsets" as const },
+  { href: "/favorites", key: "nav.favorites" as const },
+  { href: "/settings", key: "nav.settings" as const },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { t } = useLocale();
 
   if (
     pathname?.includes("/play/controller") ||
@@ -24,7 +26,7 @@ export function BottomNav() {
   return (
     <nav
       className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background"
-      aria-label="Main navigation"
+      aria-label={t("nav.main.ariaLabel")}
     >
       <div className="flex h-16">
         {navItems.map((item) => {
@@ -40,7 +42,7 @@ export function BottomNav() {
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {item.label}
+              {t(item.key)}
             </Link>
           );
         })}

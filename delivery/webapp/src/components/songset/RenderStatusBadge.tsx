@@ -10,6 +10,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { getRenderFailureText } from "@/lib/render/error-message"
+import { useLocale } from "@/hooks/useLocale"
+import type { TranslationKey } from "@/lib/i18n/messages"
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed"
 
@@ -21,37 +23,37 @@ interface RenderStatusBadgeProps {
 }
 
 const STATE_CONFIG: Record<RenderState, {
-  label: string
+  labelKey: TranslationKey
   variant: "default" | "secondary" | "destructive" | "outline"
   icon: React.ComponentType<{ className?: string }>
   iconClass: string
 }> = {
   unrendered: {
-    label: "Not rendered",
+    labelKey: "render.badge.unrendered",
     variant: "outline",
     icon: RefreshCw,
     iconClass: "",
   },
   rendering: {
-    label: "Rendering",
+    labelKey: "render.badge.rendering",
     variant: "secondary",
     icon: Loader2,
     iconClass: "animate-spin",
   },
   fresh: {
-    label: "Rendered",
+    labelKey: "render.badge.fresh",
     variant: "default",
     icon: CheckCircle2,
     iconClass: "",
   },
   stale: {
-    label: "Needs re-render",
+    labelKey: "render.badge.stale",
     variant: "outline",
     icon: RefreshCw,
     iconClass: "",
   },
   failed: {
-    label: "Render failed",
+    labelKey: "render.badge.failed",
     variant: "destructive",
     icon: AlertCircle,
     iconClass: "",
@@ -64,13 +66,14 @@ export function RenderStatusBadge({
   failedAt,
   className,
 }: RenderStatusBadgeProps) {
+  const { t } = useLocale()
   const config = STATE_CONFIG[state] || STATE_CONFIG.unrendered
   const Icon = config.icon
 
   const badge = (
     <Badge variant={config.variant} className={cn("gap-1", className)}>
       <Icon className={cn("size-3", config.iconClass)} />
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   )
 

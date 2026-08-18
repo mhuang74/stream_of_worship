@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale, renderWithLocale as render } from "@/test/render";
 import { SongsetRow } from "@/components/songset/SongsetRow";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 
@@ -275,6 +276,16 @@ describe("SongsetRow", () => {
       expect(menuButton.className).toContain("[@media(hover:hover)]:opacity-0");
       expect(menuButton.className).toContain("[@media(hover:hover)]:group-hover:opacity-100");
       expect(menuButton.className).toContain("data-[state=open]:opacity-100");
+    });
+  });
+
+  describe("localization", () => {
+    it("renders Traditional Chinese labels in zh-Hant locale", () => {
+      renderWithLocale(<SongsetRow {...defaultProps} />, "zh-Hant");
+      // Song count label and offline badge are localized
+      expect(screen.getByText(/首詩歌/)).toBeInTheDocument();
+      // Kebab aria-label is localized
+      expect(screen.getByRole("button", { name: /開啟選單/i })).toBeInTheDocument();
     });
   });
 });

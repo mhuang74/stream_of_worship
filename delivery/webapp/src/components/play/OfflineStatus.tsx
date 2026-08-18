@@ -12,6 +12,7 @@ import {
 import { Download, Check, WifiOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import {
   ARTIFACT_CACHE_NAME,
   cacheArtifacts,
@@ -36,6 +37,7 @@ export function OfflineStatus({
   chaptersR2Key,
   className,
 }: OfflineStatusProps) {
+  const { t } = useLocale();
   const [isCached, setIsCached] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [cacheProgress, setCacheProgress] = useState(0);
@@ -82,7 +84,7 @@ export function OfflineStatus({
 
   const handleDownloadOffline = useCallback(async () => {
     if (!renderJobId || !("caches" in window)) {
-      toast.error("Offline caching not available");
+      toast.error(t("audio.offline.cachingNotAvailable"));
       return;
     }
 
@@ -108,7 +110,7 @@ export function OfflineStatus({
       };
 
       if (!artifacts.mp3Url && !artifacts.mp4Url && !artifacts.chaptersUrl) {
-        toast.error("No artifacts available to cache");
+        toast.error(t("audio.offline.noArtifacts"));
         setIsDownloading(false);
         return;
       }
@@ -118,15 +120,15 @@ export function OfflineStatus({
       });
 
       setIsCached(true);
-      toast.success("Downloaded for offline playback");
+      toast.success(t("audio.offline.downloaded"));
     } catch (error) {
       console.error("Cache error:", error);
-      toast.error("Failed to download for offline");
+      toast.error(t("audio.offline.downloadFailed"));
     } finally {
       setIsDownloading(false);
       setCacheProgress(0);
     }
-  }, [renderJobId]);
+  }, [renderJobId, t]);
 
   const hasArtifacts = !!(mp3R2Key || mp4R2Key);
 
@@ -146,11 +148,11 @@ export function OfflineStatus({
               )}
             >
               <WifiOff className="size-4" />
-              <span>Update iOS for offline</span>
+              <span>{t("audio.offline.updateIos")}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Offline caching requires iOS 17.4 or later</p>
+            <p>{t("audio.offline.iosTooltip")}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -162,7 +164,7 @@ export function OfflineStatus({
       {isCached ? (
         <Badge variant="secondary" className="gap-1">
           <Check className="size-3" />
-          Offline ready
+          {t("audio.offline.ready")}
         </Badge>
       ) : (
         <Button
@@ -175,12 +177,12 @@ export function OfflineStatus({
           {isDownloading ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              {cacheProgress > 0 ? `${cacheProgress}%` : "Downloading..."}
+              {cacheProgress > 0 ? `${cacheProgress}%` : t("audio.offline.downloading")}
             </>
           ) : (
             <>
               <Download className="size-4" />
-              Download for offline
+              {t("audio.offline.downloadForOffline")}
             </>
           )}
         </Button>

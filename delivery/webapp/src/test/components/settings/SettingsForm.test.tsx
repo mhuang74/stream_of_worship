@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SettingsForm, UserSettingsData } from "@/components/settings/SettingsForm";
+import { LocaleProvider } from "@/contexts/LocaleContext";
 
 const defaultSettings: UserSettingsData = {
   offlineAutoCache: true,
@@ -12,17 +13,23 @@ const defaultSettings: UserSettingsData = {
   defaultFontFamily: "noto_serif_tc",
   defaultKeyShiftSemitones: 0,
   timingReviewFont: "sans",
+  locale: "en",
 };
 
 function renderForm(
-  props?: Partial<React.ComponentProps<typeof SettingsForm>>
+  props?: Partial<React.ComponentProps<typeof SettingsForm>>,
+  initialLocale: "en" | "zh-Hant" = "en"
 ) {
   const defaults = {
     initialSettings: defaultSettings,
     onSave: vi.fn().mockResolvedValue(undefined),
     ...props,
   };
-  return render(<SettingsForm {...defaults} />);
+  return render(
+    <LocaleProvider initialLocale={initialLocale}>
+      <SettingsForm {...defaults} />
+    </LocaleProvider>
+  );
 }
 
 describe("SettingsForm rendering", () => {
@@ -36,6 +43,17 @@ describe("SettingsForm rendering", () => {
     expect(screen.getByText("Video")).toBeInTheDocument();
     expect(screen.getByText("Playback")).toBeInTheDocument();
     expect(screen.getByText("Offline")).toBeInTheDocument();
+  });
+
+  it("renders a language selector", () => {
+    renderForm();
+    expect(screen.getByLabelText("Language")).toBeInTheDocument();
+  });
+
+  it("renders Traditional Chinese labels in zh-Hant", () => {
+    renderForm({}, "zh-Hant");
+    expect(screen.getByText("轉場")).toBeInTheDocument();
+    expect(screen.getByLabelText("預設間隔拍數")).toBeInTheDocument();
   });
 
   it("renders default gap beats label", () => {

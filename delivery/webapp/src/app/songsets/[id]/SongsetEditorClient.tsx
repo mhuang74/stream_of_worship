@@ -9,6 +9,7 @@ import { SongListItem } from "@/components/songset/SongList";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
+import { useLocale } from "@/hooks/useLocale";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 
 const BrowseSheet = dynamic(
@@ -111,6 +112,7 @@ function transformItems(items: ApiSongsetItem[]): SongListItem[] {
 
 export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorClientProps) {
   const router = useRouter();
+  const { t } = useLocale();
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
   const highlightSongParam = searchParams.get("highlightSong");
@@ -202,17 +204,17 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         clearTimeout(timeoutId);
         if (!response.ok) {
           setItems(previousItems);
-          toast.error("Failed to reorder items");
+          toast.error(t("songsets.error.reorderFailed"));
           return;
         }
         markStale();
       }).catch(() => {
         clearTimeout(timeoutId);
         setItems(previousItems);
-        toast.error("Failed to reorder items");
+        toast.error(t("songsets.error.reorderFailed"));
       });
     },
-    [songsetId, items, markStale]
+    [songsetId, items, markStale, t]
   );
 
   // Handle item removal
@@ -251,7 +253,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         );
 
         if (!response.ok) {
-          throw new Error("Failed to remove item");
+          throw new Error(t("songsets.error.removeItemFailed"));
         }
       } catch {
         if (removedItem && removedIndex >= 0) {
@@ -273,12 +275,12 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
               : prev
           );
         }
-        throw new Error("Failed to remove item");
+        throw new Error(t("songsets.error.removeItemFailed"));
       } finally {
         setIsRemoving(false);
       }
     },
-    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState, songset?.renderErrorMessage, songset?.failedAt]
+    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState, songset?.renderErrorMessage, songset?.failedAt, t]
   );
 
   // Handle transition update
@@ -298,7 +300,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update transition");
+        throw new Error(t("songsets.error.updateTransitionFailed"));
       }
 
       // Update local state
@@ -318,7 +320,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       );
       markStale();
     },
-    [songsetId, markStale]
+    [songsetId, markStale, t]
   );
 
   // Handle render
@@ -346,7 +348,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update description");
+        throw new Error(t("songsets.error.updateDescriptionFailed"));
       }
 
       // Update local state
@@ -354,7 +356,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         prev ? { ...prev, description } : null
       );
     },
-    [songsetId]
+    [songsetId, t]
   );
 
   // Handle duplicate
@@ -363,21 +365,21 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: `Copy of ${songset?.name ?? ""}`,
+        name: `${t("songsets.copyOfPrefix")}${songset?.name ?? ""}`,
         description: songset?.description,
       }),
     });
 
     if (!response.ok) {
       const data = await response.json();
-      throw new Error(data.error || "Failed to duplicate songset");
+      throw new Error(data.error || t("songsets.error.duplicateFailed"));
     }
 
     const newSongset = await response.json();
 
     // Navigate to the new songset
     router.push(`/songsets/${newSongset.id}`);
-  }, [songsetId, router, songset]);
+  }, [songsetId, router, songset, t]);
 
   // Handle delete
   const handleDelete = useCallback(async () => {
@@ -386,9 +388,9 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     });
 
     if (!response.ok) {
-      throw new Error("Failed to delete songset");
+      throw new Error(t("songsets.error.deleteFailed"));
     }
-  }, [songsetId]);
+  }, [songsetId, t]);
 
   // Handle share
   const handleShare = useCallback(() => {
@@ -405,7 +407,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   // Handle download audio
   const handleDownloadAudio = useCallback(async () => {
     if (!songset?.lastCompletedRenderJobId) return;
-    const toastId = toast.loading("Preparing download...");
+    const toastId = toast.loading(t("songsets.toast.preparingDownload"));
     try {
       await fetchSignedUrlAndDownload(
         songset.lastCompletedRenderJobId,
@@ -413,16 +415,16 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         sanitizeFilename(songset.name),
         "mp3"
       );
-      toast.success("Download started", { id: toastId });
+      toast.success(t("songsets.toast.downloadStarted"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to download audio", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("songsets.error.downloadAudioFailed"), { id: toastId });
     }
-  }, [songset]);
+  }, [songset, t]);
 
   // Handle download video
   const handleDownloadVideo = useCallback(async () => {
     if (!songset?.lastCompletedRenderJobId) return;
-    const toastId = toast.loading("Preparing download...");
+    const toastId = toast.loading(t("songsets.toast.preparingDownload"));
     try {
       await fetchSignedUrlAndDownload(
         songset.lastCompletedRenderJobId,
@@ -430,11 +432,11 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         sanitizeFilename(songset.name),
         "mp4"
       );
-      toast.success("Download started", { id: toastId });
+      toast.success(t("songsets.toast.downloadStarted"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to download video", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("songsets.error.downloadVideoFailed"), { id: toastId });
     }
-  }, [songset]);
+  }, [songset, t]);
 
   // Handle add songs
   const handleAddSongs = useCallback(() => {
@@ -457,7 +459,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       });
 
       if (!response.ok) {
-        throw new Error("Failed to add song to songset");
+        throw new Error(t("songsets.error.addSongFailed"));
       }
 
       const item: ApiSongsetItem = await response.json();
@@ -497,7 +499,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           : prev
       );
     },
-    [items.length, songsetId]
+    [items.length, songsetId, t]
   );
 
   if (isLoading) {
@@ -511,12 +513,12 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   if (error || !songset) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <p className="text-destructive text-center">{error || "Songset not found"}</p>
+        <p className="text-destructive text-center">{error || t("songsets.error.notFound")}</p>
         <button
           onClick={() => router.push("/songsets")}
           className="mt-4 text-primary hover:underline"
         >
-          Back to songsets
+          {t("songsets.backToSongsets")}
         </button>
       </div>
     );

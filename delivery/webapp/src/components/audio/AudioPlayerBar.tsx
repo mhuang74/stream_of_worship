@@ -18,19 +18,22 @@ import {
   AlignLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import { PlayerLyricsPanel } from "./PlayerLyricsPanel";
 import { LyricsErrorBoundary } from "./LyricsErrorBoundary";
 import { LocateSongsetsPopover } from "./LocateSongsetsPopover";
 
 function LyricsErrorFallback() {
+  const { t } = useLocale();
   return (
     <div className="px-3 lg:px-4 py-2">
-      <p className="text-sm text-muted-foreground">Lyrics unavailable</p>
+      <p className="text-sm text-muted-foreground">{t("audio.lyrics.unavailable")}</p>
     </div>
   );
 }
 
 export function AudioPlayerBar() {
+  const { t } = useLocale();
   const {
     currentTrack,
     isPlaying,
@@ -176,7 +179,7 @@ export function AudioPlayerBar() {
           <div
             id="player-lyrics-panel"
             role="region"
-            aria-label={`Lyrics for ${currentTrack.title}`}
+            aria-label={`${t("audio.lyricsFor")} ${currentTrack.title}`}
             className="overflow-y-auto overscroll-y-contain h-full"
           >
             <LyricsErrorBoundary fallback={<LyricsErrorFallback />}>
@@ -220,10 +223,10 @@ export function AudioPlayerBar() {
             >
               {currentTrack.artist}
               {currentTrack.type === "transition" && (
-                <span className="ml-1 text-xs text-primary">(Preview)</span>
+                <span className="ml-1 text-xs text-primary">{t("audio.trackPreview")}</span>
               )}
               {currentTrack.type === "lyrics-loop" && (
-                <span className="ml-1 text-xs text-primary">(Loop)</span>
+                <span className="ml-1 text-xs text-primary">{t("audio.trackLoop")}</span>
               )}
             </p>
           </div>
@@ -238,7 +241,7 @@ export function AudioPlayerBar() {
             size="icon"
             className="size-8 lg:size-10 shrink-0"
             onClick={() => seekRelative(-10)}
-            aria-label="Skip back 10 seconds"
+            aria-label={t("audio.skipBack")}
             data-testid="skip-back-button"
           >
             <SkipBack className="size-4 lg:size-5" />
@@ -250,7 +253,7 @@ export function AudioPlayerBar() {
             size="icon"
             className="size-10 lg:size-12 shrink-0 rounded-full"
             onClick={togglePlay}
-            aria-label={isPlaying ? "Pause" : "Play"}
+            aria-label={isPlaying ? t("audio.pause") : t("audio.play")}
             data-testid="play-pause-button"
           >
             {isPlaying ? (
@@ -266,7 +269,7 @@ export function AudioPlayerBar() {
             size="icon"
             className="size-8 lg:size-10 shrink-0"
             onClick={() => seekRelative(10)}
-            aria-label="Skip forward 10 seconds"
+            aria-label={t("audio.skipForward")}
             data-testid="skip-forward-button"
           >
             <SkipForward className="size-4 lg:size-5" />
@@ -279,7 +282,7 @@ export function AudioPlayerBar() {
               size="icon"
               className="size-8 lg:size-10 shrink-0"
               onClick={toggleLoop}
-              aria-label={isLooping ? "Disable loop" : "Enable loop"}
+              aria-label={isLooping ? t("audio.disableLoop") : t("audio.enableLoop")}
               data-testid="loop-toggle-button"
             >
               <Repeat
@@ -308,7 +311,7 @@ export function AudioPlayerBar() {
             size="icon"
             className="size-8 shrink-0 lg:hidden"
             onClick={toggleMute}
-            aria-label={isMuted ? "Unmute" : "Mute"}
+            aria-label={isMuted ? t("audio.unmute") : t("audio.mute")}
             data-testid="mute-button-mobile"
           >
             {isMuted || volume === 0 ? (
@@ -325,7 +328,7 @@ export function AudioPlayerBar() {
               size="icon"
               className="size-8 shrink-0"
               onClick={toggleMute}
-              aria-label={isMuted ? "Unmute" : "Mute"}
+              aria-label={isMuted ? t("audio.unmute") : t("audio.mute")}
               data-testid="mute-button"
             >
               {isMuted || volume === 0 ? (
@@ -355,9 +358,9 @@ export function AudioPlayerBar() {
             onClick={() => setShowLyrics((prev) => !prev)}
             aria-expanded={showLyrics}
             aria-controls="player-lyrics-panel"
-            aria-label={showLyrics ? "Hide lyrics" : "Show lyrics"}
+            aria-label={showLyrics ? t("audio.hideLyrics") : t("audio.showLyrics")}
             data-testid="lyrics-toggle-button"
-            title="Lyrics (L)"
+            title={t("audio.lyricsTitle")}
           >
             <AlignLeft className="size-4 lg:size-5" />
           </Button>
@@ -369,7 +372,7 @@ export function AudioPlayerBar() {
           size="icon"
           className="size-8 lg:size-10 shrink-0"
           onClick={stop}
-          aria-label="Close player"
+          aria-label={t("audio.closePlayer")}
           data-testid="close-player-button"
         >
           <X className="size-4 lg:size-5" />

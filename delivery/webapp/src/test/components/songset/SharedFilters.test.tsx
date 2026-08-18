@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { SharedFilters } from "@/components/songset/SharedFilters";
 import { albumFilterKey } from "@/lib/search/album-filter";
 
@@ -226,6 +227,11 @@ describe("SharedFilters", () => {
       renderFilters({ selectedAlbums: [hymns], selectedKeys: ["D"] });
       fireEvent.click(screen.getByTestId("clear-all-filters"));
       expect(defaultProps.onClearFilters).toHaveBeenCalled();
+    });
+
+    it("localizes the clear-all button in zh-Hant", () => {
+      render(<SharedFilters {...defaultProps} selectedKeys={["D"]} />, "zh-Hant");
+      expect(screen.getByTestId("clear-all-filters")).toHaveTextContent("清除全部");
     });
   });
 });

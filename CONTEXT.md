@@ -4,6 +4,10 @@ A seamless Chinese worship music transition system: songs are analyzed (tempo, k
 
 ## Language
 
+### Locale
+The display language of the webapp's UI — one of `English` or `繁體中文` (Traditional Chinese) — chosen per user account. The Locale affects **UI text only**: the song catalog, lyrics, and rendered audio/video output are always Traditional Chinese regardless of the Locale, because that is how the catalog and lyrics are stored.
+_Avoid_: language, display language, translation
+
 ### Catalog
 
 **Song**:

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { FavoritesClient } from "@/app/favorites/FavoritesClient";
 import type { SongCardData } from "@/components/songset/SongCard";
 
@@ -51,6 +52,29 @@ describe("FavoritesClient pagination", () => {
     );
     expect(screen.getByTestId("pagination-page-2")).toBeInTheDocument();
     expect(screen.getByTestId("pagination-page-3")).toBeInTheDocument();
+  });
+
+  it("renders Traditional Chinese UI chrome in zh-Hant", () => {
+    render(
+      <FavoritesClient
+        initialSongs={makeSongs(20)}
+        initialTotal={45}
+        currentPage={1}
+        pageSize={20}
+      />,
+      "zh-Hant"
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "我的最愛" })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/45 首最愛詩歌/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "我的最愛分頁" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "下一頁" })
+    ).toHaveAttribute("data-testid", "pagination-next");
   });
 
   it("fetches the next page and syncs the URL when page 2 is clicked", async () => {

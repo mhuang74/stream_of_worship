@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { RenderStatusBadge, RenderState } from "@/components/songset/RenderStatusBadge";
 
 describe("RenderStatusBadge", () => {
@@ -119,6 +120,13 @@ describe("RenderStatusBadge", () => {
     it("does not create a tooltip for stale state", () => {
       renderBadge("stale");
       expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("zh-Hant", () => {
+    it("renders zh-Hant state labels", () => {
+      render(<RenderStatusBadge state="rendering" />, "zh-Hant");
+      expect(screen.getByText("渲染中")).toBeInTheDocument();
     });
   });
 });

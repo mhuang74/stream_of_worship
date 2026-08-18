@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
+import { screen, fireEvent, waitFor, act } from "@testing-library/react"
+import { renderWithLocale as render } from "@/test/render"
 import { RenderComplete } from "@/components/render/RenderComplete"
 import { fetchSignedUrlAndDownload } from "@/lib/download"
 
@@ -51,6 +52,14 @@ describe("RenderComplete", () => {
     it("renders checkmark icon", () => {
       render(<RenderComplete {...defaultProps} />)
       expect(screen.getByText(/Render Complete!/)).toBeInTheDocument()
+    })
+
+    it("renders zh-Hant labels and download buttons", () => {
+      render(<RenderComplete {...defaultProps} hasAudio={true} hasVideo={true} />, "zh-Hant")
+      expect(screen.getByText("渲染完成！")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "下載音訊（MP3）" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "分享詩歌集" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument()
     })
 
     it("renders done button", () => {

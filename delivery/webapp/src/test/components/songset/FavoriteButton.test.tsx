@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderWithLocale as render } from "@/test/render";
 import { FavoriteButton } from "@/components/songset/FavoriteButton";
 import {
   markSongCompleted,
@@ -57,5 +58,12 @@ describe("FavoriteButton (completion-gated heart)", () => {
     expect(button).toBeEnabled();
     await user.click(button);
     expect(onToggle).toHaveBeenCalledWith("s1");
+  });
+
+  it("localizes the favorite aria-label in zh-Hant", () => {
+    resetCompletionForTests();
+    render(<FavoriteButton songId="s1" isFavorite onToggle={vi.fn()} />, "zh-Hant");
+    const button = screen.getByTestId("favorite-button");
+    expect(button).toHaveAttribute("aria-label", "移除最愛");
   });
 });

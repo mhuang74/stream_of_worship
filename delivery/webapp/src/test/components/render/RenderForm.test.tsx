@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { screen, fireEvent, waitFor } from "@testing-library/react"
+import { renderWithLocale as render } from "@/test/render"
 import { RenderForm, RenderFormData } from "@/components/render/RenderForm"
 import type { PreviousRenderJobData } from "@/components/render/RenderForm"
 
@@ -62,6 +63,14 @@ describe("RenderForm", () => {
       render(<RenderForm {...defaultProps} />)
       expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
       expect(screen.getByRole("button", { name: /start render/i })).toBeInTheDocument()
+    })
+
+    it("renders zh-Hant labels", () => {
+      render(<RenderForm {...defaultProps} />, "zh-Hant")
+      expect(screen.getByText("輸出選項")).toBeInTheDocument()
+      expect(screen.getByText("音訊（MP3）")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "開始渲染" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument()
     })
   })
 

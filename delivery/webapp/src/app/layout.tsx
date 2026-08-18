@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
 import { Toaster } from "@/components/ui/sonner";
+import { LocaleProvider } from "@/contexts/LocaleContext";
+import { resolveUserLocale } from "@/lib/i18n/server";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -25,23 +28,27 @@ export const metadata: Metadata = {
   description: "Worship music transition and playback system",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await resolveUserLocale(await headers());
+
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <GlobalAudioPlayer>
-          <Header />
-          <main className="flex-1 pb-16 lg:pb-0">{children}</main>
-          <BottomNav />
-        </GlobalAudioPlayer>
-        <Toaster />
+        <LocaleProvider initialLocale={locale}>
+          <GlobalAudioPlayer>
+            <Header />
+            <main className="flex-1 pb-16 lg:pb-0">{children}</main>
+            <BottomNav />
+          </GlobalAudioPlayer>
+          <Toaster />
+        </LocaleProvider>
       </body>
     </html>
   );

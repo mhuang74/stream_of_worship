@@ -32,6 +32,7 @@ const storedSettings = {
   defaultFontFamily: "lxgw_wenkai_tc",
   defaultKeyShiftSemitones: 2,
   timingReviewFont: "mono",
+  locale: "zh-Hant",
 };
 
 function makeRequest(method: string, body?: unknown): NextRequest {
@@ -84,6 +85,7 @@ describe("GET /api/settings", () => {
     expect(data.settings.offlineAutoCache).toBe(true);
     expect(data.settings.defaultKeyShiftSemitones).toBe(0);
     expect(data.settings.timingReviewFont).toBe("sans");
+    expect(data.settings.locale).toBe("en");
   });
 
   it("returns stored settings when record exists", async () => {
@@ -102,6 +104,7 @@ describe("GET /api/settings", () => {
     expect(data.settings.defaultFontSizePreset).toBe("L");
     expect(data.settings.defaultFontFamily).toBe("lxgw_wenkai_tc");
     expect(data.settings.timingReviewFont).toBe("mono");
+    expect(data.settings.locale).toBe("zh-Hant");
   });
 
   it("returns 500 on database error", async () => {
@@ -208,6 +211,24 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toMatch(/timingReviewFont/);
+  });
+
+  it("saves locale successfully", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockUpsert();
+
+    const res = await PUT(makeRequest("PUT", { locale: "zh-Hant" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.settings.locale).toBe("zh-Hant");
+  });
+
+  it("returns 400 for invalid locale", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    const res = await PUT(makeRequest("PUT", { locale: "fr" }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/locale/);
   });
 
   it("returns 400 for invalid defaultFontFamily", async () => {

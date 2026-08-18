@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { userSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { VALID_FONT_FAMILIES } from "@/lib/constants";
+import { isLocale } from "@/lib/i18n/messages";
 
 const DEFAULTS = {
   offlineAutoCache: true,
@@ -15,6 +16,7 @@ const DEFAULTS = {
   defaultFontFamily: "noto_serif_tc",
   defaultKeyShiftSemitones: 0,
   timingReviewFont: "sans",
+  locale: "en",
 } as const;
 
 const VALID_TEMPLATES = ["dark", "gradient_warm", "gradient_blue"] as const;
@@ -57,6 +59,7 @@ export async function GET(request: NextRequest) {
         defaultFontFamily: row.defaultFontFamily,
         defaultKeyShiftSemitones: row.defaultKeyShiftSemitones,
         timingReviewFont: row.timingReviewFont,
+        locale: row.locale,
       },
     });
   } catch (error) {
@@ -128,6 +131,13 @@ export async function PUT(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: `timingReviewFont must be one of: ${VALID_FONTS.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    if (b.locale !== undefined && !isLocale(b.locale)) {
+      return NextResponse.json(
+        { error: 'locale must be one of: "en", "zh-Hant"' },
         { status: 400 }
       );
     }
@@ -209,6 +219,7 @@ export async function PUT(request: NextRequest) {
           : DEFAULTS.defaultKeyShiftSemitones,
       timingReviewFont:
         typeof b.timingReviewFont === "string" ? b.timingReviewFont : DEFAULTS.timingReviewFont,
+      locale: isLocale(b.locale) ? b.locale : DEFAULTS.locale,
       updatedAt: now,
     };
 
