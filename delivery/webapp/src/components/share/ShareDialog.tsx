@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Copy, Trash2, Link, MessageCircle, Mail, Loader2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
+import { formatTotalDuration } from "@/lib/i18n/format";
 
 const SIZE_LIMITS = {
   whatsapp: 2 * 1024 * 1024 * 1024,
@@ -79,15 +80,6 @@ export function ShareDialog({
   const [isLoadingSizes, setIsLoadingSizes] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
 
-  const formatShareDuration = (seconds: number | null): string => {
-    if (!seconds) return t("control.notAvailable");
-    const totalMinutes = Math.round(seconds / 60);
-    if (totalMinutes < 60) return `${totalMinutes} ${t("control.min")}`;
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = totalMinutes % 60;
-    return `${hours}${t("control.hours")} ${String(mins).padStart(2, "0")}${t("control.mins")}`;
-  };
-
   useEffect(() => {
     if (!open) return;
 
@@ -131,7 +123,7 @@ export function ShareDialog({
   }, [open, songsetId, renderJobId]);
 
   const formattedMessage = shareInfo
-    ? `${t("control.shareMessageIntro")}\n\n${songsetName}\n${t("control.shareMessageDuration")} ${formatShareDuration(durationSeconds)}\n\n${t("control.shareMessageOutro")}\n${shareInfo.shareUrl}`
+    ? `${t("control.shareMessageIntro")}\n\n${songsetName}\n${t("control.shareMessageDuration")} ${formatTotalDuration(t, durationSeconds)}\n\n${t("control.shareMessageOutro")}\n${shareInfo.shareUrl}`
     : "";
 
   const handleCreateShareLink = useCallback(async () => {

@@ -45,6 +45,15 @@ export function mergeMessages<const B extends readonly MessageBundle<string>[]>(
   ...bundles: B
 ): MessageBundle<BundleKeys<B>> {
   type K = BundleKeys<B>;
+  const seen = new Set<string>();
+  for (const bundle of bundles) {
+    for (const key of Object.keys(bundle.en)) {
+      if (seen.has(key)) {
+        throw new Error(`i18n: duplicate message key "${key}" across bundles`);
+      }
+      seen.add(key);
+    }
+  }
   const en = Object.assign({}, ...bundles.map((b) => b.en)) as Record<K, string>;
   const zhHant = Object.assign({}, ...bundles.map((b) => b["zh-Hant"])) as Record<K, string>;
   return { en, "zh-Hant": zhHant };
@@ -77,3 +86,12 @@ export type TranslationKey = keyof typeof messages.en;
 export function t(locale: Locale, key: TranslationKey): string {
   return messages[locale][key];
 }
+
+/** Build translation keys for dynamic option values (settings/render forms). */
+export const optionKey = {
+  template: (v: string) => `settings.option.template.${v}` as TranslationKey,
+  resolution: (v: string) => `settings.option.resolution.${v}` as TranslationKey,
+  fontFamily: (v: string) => `settings.option.fontFamily.${v}` as TranslationKey,
+  fontPreset: (v: string) => `settings.option.fontPreset.${v}` as TranslationKey,
+  titleCardDuration: (v: number) => `render.titleCard.duration.${v}` as TranslationKey,
+};

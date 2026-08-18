@@ -33,7 +33,7 @@ import Link from "next/link"
 import { FONT_FAMILIES, FONT_SIZES, TEMPLATES, RESOLUTIONS, type FontFamilyValue } from "@/lib/constants"
 import { formatDuration } from "@/lib/format"
 import { useLocale } from "@/hooks/useLocale"
-import type { TranslationKey } from "@/lib/i18n/messages"
+import { optionKey } from "@/lib/i18n/messages"
 
 export interface RenderFormData {
   audioEnabled: boolean
@@ -111,26 +111,6 @@ function isDifferent(prev: unknown, curr: unknown): boolean {
     return Math.round(p) !== Math.round(c)
   }
   return String(p) !== String(c)
-}
-
-function templateLabelKey(value: string): TranslationKey {
-  return `settings.option.template.${value}` as TranslationKey
-}
-
-function resolutionLabelKey(value: string): TranslationKey {
-  return `settings.option.resolution.${value}` as TranslationKey
-}
-
-function fontFamilyLabelKey(value: string): TranslationKey {
-  return `settings.option.fontFamily.${value}` as TranslationKey
-}
-
-function fontSizeLabelKey(value: string): TranslationKey {
-  return `settings.option.fontPreset.${value}` as TranslationKey
-}
-
-function titleCardDurationKey(value: number): TranslationKey {
-  return `render.titleCard.duration.${value}` as TranslationKey
 }
 
 export function RenderForm({
@@ -264,7 +244,7 @@ export function RenderForm({
                   <SelectContent>
                     {TEMPLATES.map((tmpl) => (
                       <SelectItem key={tmpl.value} value={tmpl.value}>
-                        {t(templateLabelKey(tmpl.value))}
+                        {t(optionKey.template(tmpl.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -285,7 +265,7 @@ export function RenderForm({
                   <SelectContent>
                     {RESOLUTIONS.map((r) => (
                       <SelectItem key={r.value} value={r.value}>
-                        {t(resolutionLabelKey(r.value))}
+                        {t(optionKey.resolution(r.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -306,7 +286,7 @@ export function RenderForm({
                   <SelectContent>
                     {FONT_SIZES.map((f) => (
                       <SelectItem key={f.value} value={f.value}>
-                        {t(fontSizeLabelKey(f.value))}
+                        {t(optionKey.fontPreset(f.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -327,7 +307,7 @@ export function RenderForm({
                   <SelectContent>
                     {FONT_FAMILIES.map((f) => (
                       <SelectItem key={f.value} value={f.value}>
-                        {t(fontFamilyLabelKey(f.value))}
+                        {t(optionKey.fontFamily(f.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -380,7 +360,7 @@ export function RenderForm({
                     <SelectContent>
                       {TITLE_CARD_DURATIONS.map((d) => (
                         <SelectItem key={d} value={d.toString()}>
-                          {t(titleCardDurationKey(d))}
+                          {t(optionKey.titleCardDuration(d))}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -522,10 +502,10 @@ export function RenderForm({
                 </thead>
                 <tbody>
                   {(() => {
-                    const fontLabel = (v: string) => FONT_FAMILIES.some((f) => f.value === v) ? t(fontFamilyLabelKey(v)) : v
-                    const fontSizeLabel = (v: string) => FONT_SIZES.some((f) => f.value === v) ? t(fontSizeLabelKey(v)) : v
-                    const templateLabel = (v: string) => TEMPLATES.some((tmpl) => tmpl.value === v) ? t(templateLabelKey(v)) : v
-                    const resolutionLabel = (v?: string) => v && RESOLUTIONS.some((r) => r.value === v) ? t(resolutionLabelKey(v)) : v ?? "—"
+                    const fontLabel = (v: string) => FONT_FAMILIES.some((f) => f.value === v) ? t(optionKey.fontFamily(v)) : v
+                    const fontSizeLabel = (v: string) => FONT_SIZES.some((f) => f.value === v) ? t(optionKey.fontPreset(v)) : v
+                    const templateLabel = (v: string) => TEMPLATES.some((tmpl) => tmpl.value === v) ? t(optionKey.template(v)) : v
+                    const resolutionLabel = (v?: string) => v && RESOLUTIONS.some((r) => r.value === v) ? t(optionKey.resolution(v)) : v ?? "—"
                     const prevTitleCard = previousRenderJob.includeTitleCard
                       ? `${t("render.compare.titleCardOn")} (${previousRenderJob.titleCardDurationSeconds ?? 10}s)`
                       : t("render.compare.titleCardOff")

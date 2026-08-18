@@ -11,14 +11,18 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
+vi.mock("@/lib/i18n/server", () => ({
+  resolveUserLocale: vi.fn().mockResolvedValue("en"),
+}));
+
 describe("HomePage", () => {
-  it("renders title", () => {
-    render(<HomePage />);
+  it("renders title", async () => {
+    render(await HomePage());
     expect(screen.getByRole("heading", { name: /stream of worship/i })).toBeInTheDocument();
   });
 
-  it("has link to songsets", () => {
-    render(<HomePage />);
+  it("has link to songsets", async () => {
+    render(await HomePage());
     expect(screen.getByRole("link", { name: /view songsets/i })).toHaveAttribute("href", "/songsets");
   });
 });

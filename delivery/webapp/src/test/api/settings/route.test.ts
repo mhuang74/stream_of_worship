@@ -213,7 +213,7 @@ describe("PUT /api/settings", () => {
     expect(data.error).toMatch(/timingReviewFont/);
   });
 
-  it("saves locale successfully", async () => {
+  it("saves locale successfully and sets the sow_locale cookie", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     mockUpsert();
 
@@ -221,6 +221,10 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.settings.locale).toBe("zh-Hant");
+
+    const cookie = res.cookies.get("sow_locale");
+    expect(cookie?.value).toBe("zh-Hant");
+    expect(cookie?.path).toBe("/");
   });
 
   it("returns 400 for invalid locale", async () => {
