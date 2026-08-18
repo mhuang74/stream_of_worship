@@ -75,9 +75,7 @@ export async function GET(request: NextRequest) {
 
     // Always pin the user's favorites to the top; the dedicated Favorites page
     // narrows to favorites-only via the favoritesOnly param.
-    if (favoriteSongIds.length > 0) {
-      filters.favoriteSongIds = favoriteSongIds;
-    }
+    filters.favoriteSongIds = favoriteSongIds;
     if (favoritesOnly) {
       filters.favoritesOnly = true;
     }

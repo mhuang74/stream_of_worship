@@ -54,6 +54,7 @@ export function favoritesFirstOrder(
 export function favoritesOnlyPredicate(
   favoriteSongIds: string[] | undefined
 ): SQL | undefined {
-  if (!favoriteSongIds || favoriteSongIds.length === 0) return undefined;
+  if (!favoriteSongIds) return undefined; // context not loaded → no-op
+  if (favoriteSongIds.length === 0) return sql`false`; // favorites-only, no favorites → match nothing
   return sql`${songs.id} = ANY(${favoriteSongIds})`;
 }

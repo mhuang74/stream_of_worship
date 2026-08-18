@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
@@ -39,12 +39,15 @@ export function FavoritesClient({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const skipInitialFetchRef = useRef(true);
 
+  useEffect(() => {
+    if (skipInitialFetchRef.current) {
+      skipInitialFetchRef.current = false;
+      return; // don't refetch SSR page 1 on mount
+    }
+    let cancelled = false;
     async function loadPage() {
-      // Skip the initial SSR load; only fetch when the page has changed.
-      if (page === currentPage && initialSongs.length > 0) return;
       setIsLoading(true);
       try {
         const offset = (page - 1) * pageSize;
@@ -61,18 +64,30 @@ export function FavoritesClient({
         setSongs(toSongCardData(data.songs));
         setTotal(data.total);
       } catch {
-        if (!cancelled) toast.error("Failed to load favorites");
+        if (!cancelled) {
+          toast.error("Failed to load favorites");
+          setSongs(initialSongs); // fall back to SSR-provided data
+          setTotal(initialTotal);
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     }
-
     loadPage();
-
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize, currentPage, initialSongs.length]);
+  }, [page, pageSize]);
+
+  // Reconcile client page state with the RSC-provided currentPage after a
+  // browser back/forward navigation (RSC restores currentPage, but client
+  // page state may be stale).
+  useEffect(() => {
+    if (page !== currentPage) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPage(currentPage);
+    }
+  }, [currentPage]);
 
   // Keep the URL in sync with the current page.
   useEffect(() => {

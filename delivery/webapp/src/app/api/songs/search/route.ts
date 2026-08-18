@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       albumFilters,
       keys,
       bpmRange,
-      ...(favoriteSongIds.length > 0 ? { favoriteSongIds } : {}),
+      favoriteSongIds,
       favoritesOnly,
     });
 
