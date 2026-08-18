@@ -43,13 +43,22 @@ _USER_AGENT = (
 _converter_cache: dict[str, object] = {}
 
 
+# OpenCC's S2T dictionary maps the worship honorific 祢 ("You", for God) to
+# 禰, but the app keeps 祢 for God across both Simplified and Traditional.
+# Sentinel-protect it through conversion so it is preserved verbatim instead
+# of becoming 禰. The private-use sentinel is not in any OpenCC dictionary, so
+# it passes through untouched.
+_GOD_YOU_PROTECT = "\ue000"
+
+
 def _to_traditional(text: str) -> str:
     """Convert Simplified Chinese ``text`` to Traditional Chinese.
 
     The OpenCC S2T conversion is idempotent on already-Traditional input, so
-    this is safe to run unconditionally. If the converter is unavailable or
-    fails, logs a warning and falls back to the original ``text`` so that a
-    conversion problem never blocks lyrics persistence.
+    this is safe to run unconditionally. ``祢`` (the honorific "You" for God)
+    is preserved as-is rather than mapped to ``禰``. If the converter is
+    unavailable or fails, logs a warning and falls back to the original
+    ``text`` so that a conversion problem never blocks lyrics persistence.
     """
     converter = _converter_cache.get("s2t")
     if converter is None:
@@ -59,7 +68,9 @@ def _to_traditional(text: str) -> str:
         converter = OpenCC("s2t")
         _converter_cache["s2t"] = converter
     try:
-        return converter.convert(text)
+        protected = text.replace("祢", _GOD_YOU_PROTECT)
+        converted = converter.convert(protected)
+        return converted.replace(_GOD_YOU_PROTECT, "祢")
     except Exception:
         # Never block persistence on a conversion failure; keep the original.
         logger.warning("S2T lyrics conversion failed; storing original text", exc_info=True)
