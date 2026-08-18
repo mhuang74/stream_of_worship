@@ -2541,6 +2541,8 @@ requires-dist = [
     { name = "miniaudio", marker = "extra == 'admin'", specifier = ">=1.59" },
     { name = "numpy", marker = "extra == 'admin'", specifier = ">=1.24.0" },
     { name = "numpy", marker = "extra == 'constructor'", specifier = ">=1.26.0" },
+    { name = "opencc-python-reimplemented", marker = "extra == 'admin'", specifier = ">=0.1.7" },
+    { name = "opencc-python-reimplemented", marker = "extra == 'scraper'", specifier = ">=0.1.7" },
     { name = "pathlib", specifier = ">=1.0.0" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'admin'", specifier = ">=3.2.0" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2.0" },
