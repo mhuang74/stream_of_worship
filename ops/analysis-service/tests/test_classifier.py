@@ -326,6 +326,32 @@ def test_lyric_hash_empty_inputs():
     assert _lyric_hash(["   ", "\t"]) == "EMPTY"
 
 
+def test_extract_lyrics_for_component_half_open_end():
+    """end_time is half-open: a line whose timestamp exactly equals end_time
+    is excluded (it belongs to the next section).
+
+    Regression for the off-by-one where the classifier pulled in the first
+    line of the following chorus because _sec_time sets end_time to the
+    next line's timestamp.
+    """
+    from sow_analysis.workers.classifier import _extract_lyrics_for_component
+
+    lrc_content = (
+        "[00:00.00]讚美主\n"
+        "[00:05.00]哈利路亞\n"
+        "[00:10.00]恩典滿溢\n"
+        "[00:15.00]讚美主\n"
+    )
+    # Component spans [0, 10): should include lines at t=0 and t=5, exclude t=10.
+    result = _extract_lyrics_for_component(lrc_content, 0.0, 10.0)
+    assert result == ["讚美主", "哈利路亞"]
+
+    # end_time exactly on a line timestamp excludes that line.
+    result_exact = _extract_lyrics_for_component(lrc_content, 0.0, 15.0)
+    assert result_exact == ["讚美主", "哈利路亞", "恩典滿溢"]
+    assert "讚美主" == result_exact[-1] or "讚美主" not in result_exact[3:]
+
+
 def test_call_llm_with_retry_description(classifier):
     """call_llm_with_retry is invoked with a component-specific description."""
     component = _make_component(occurrence=3, ctype="bridge")

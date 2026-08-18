@@ -780,6 +780,98 @@ class TestExtractComponents:
             # compute_component_features was called for ALL components.
             assert mock_compute.call_count == len(components)
 
+    @pytest.mark.asyncio
+    async def test_energy_aware_roles_skipped_for_structured_lyrics_llm(self):
+        """energy_aware_roles=True must NOT reassign roles when source is
+        structured_lyrics_llm — the LLM already chose boundaries and roles.
+
+        Regression: --compute-all-fields enables energy_aware_roles, which
+        previously overwrote the positional exit role on the last chorus
+        with RMS-only scoring, demoting it to role='none'.
+        """
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("sow_analysis.workers.components.settings.SOW_LLM_API_KEY", "test-key"):
+            audio_path = Path(tmp) / "audio.mp3"
+            audio_path.write_text("dummy")
+            cache_manager = CacheManager(Path(tmp))
+
+            lrc_content = (
+                "[00:00.00]讚美主\n"
+                "[00:05.00]哈利路亞\n"
+                "[00:10.00]讚美主\n"
+                "[00:15.00]哈利路亞\n"
+                "[00:20.00]讚美主\n"
+                "[00:25.00]哈利路亞\n"
+            )
+
+            # Build 3 chorus components with positional roles (entry/none/exit).
+            pre_built = [
+                ComponentInstance(
+                    component_type="chorus",
+                    occurrence_index=1,
+                    role="entry",
+                    start_time=0.0,
+                    end_time=10.0,
+                    confidence=0.95,
+                    source="structured_lyrics_llm",
+                ),
+                ComponentInstance(
+                    component_type="chorus",
+                    occurrence_index=2,
+                    role="none",
+                    start_time=10.0,
+                    end_time=20.0,
+                    confidence=0.95,
+                    source="structured_lyrics_llm",
+                ),
+                ComponentInstance(
+                    component_type="chorus",
+                    occurrence_index=3,
+                    role="exit",
+                    start_time=20.0,
+                    end_time=30.0,
+                    confidence=0.95,
+                    source="structured_lyrics_llm",
+                ),
+            ]
+
+            mock_gf = _make_mock_global_features(sr=22050, duration=30.0)
+            with (
+                patch(
+                    "sow_analysis.workers.components._precompute_global_features"
+                ) as mock_precompute,
+                patch(
+                    "sow_analysis.workers.structured_lyrics_aligner.align_structured_lyrics",
+                    new_callable=AsyncMock,
+                ) as mock_align,
+                patch(
+                    "sow_analysis.workers.components._assign_roles_by_energy"
+                ) as mock_energy,
+                patch(
+                    "sow_analysis.workers.components.compute_component_features"
+                ),
+            ):
+                mock_precompute.return_value = mock_gf
+                mock_align.return_value = list(pre_built)
+
+                components, source = await extract_components(
+                    audio_path=audio_path,
+                    content_hash="abc123",
+                    cache_manager=cache_manager,
+                    r2_client=None,
+                    lrc_content=lrc_content,
+                    structured_lyrics="{}",
+                    energy_aware_roles=True,
+                )
+
+            assert source == "structured_lyrics_llm"
+            # _assign_roles_by_energy must NOT have been called.
+            mock_energy.assert_not_called()
+            # The positional exit role on the last chorus is preserved.
+            exit_comps = [c for c in components if c.role == "exit"]
+            assert len(exit_comps) == 1
+            assert exit_comps[0].occurrence_index == 3
+
 
 class TestSerializeDeserialize:
     """Tests for _serialize_components."""
