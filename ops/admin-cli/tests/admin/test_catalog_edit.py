@@ -16,6 +16,21 @@ def test_compute_song_id_matches_scraper_helper():
     assert compute_song_id("將天敞開", "游智婷", "鄭懋柔") == expected
 
 
+def test_compute_song_id_romanizes_god_you_as_ni():
+    # The worship honorific 祢 ("You", for God) reads "ni", not pypinyin's "mi".
+    song_id = compute_song_id("主啊，我要跟隨祢", "慕義", None)
+    slug = song_id.rsplit("_", 1)[0]
+    # honorific 祢 must romanize as "ni", never pypinyin's "mi"
+    assert slug.endswith("_ni")
+    assert "mi" not in slug
+
+
+def test_compute_song_id_romanizes_legacy_mei_as_ni():
+    # 禰 (Traditional variant) is the same honorific and also reads "ni".
+    song_id = compute_song_id("祢是唯一", None, None)
+    assert song_id.rsplit("_", 1)[0] == "ni_shi_wei_yi"
+
+
 def test_build_song_from_review_populates_lyrics_fields():
     reviewed = normalize_reviewed_data(
         {

@@ -11,11 +11,10 @@ from typing import Dict, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
-from pypinyin import lazy_pinyin
 
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Song
-from stream_of_worship.admin.services.catalog_edit import compute_song_id
+from stream_of_worship.admin.services.catalog_edit import compute_song_id, title_to_pinyin
 from stream_of_worship.music.key import parse_musical_key
 
 logger = logging.getLogger(__name__)
@@ -279,8 +278,8 @@ class CatalogScraper:
         # Generate stable song ID
         song_id = self._compute_song_id(title, composer, lyricist)
 
-        # Generate pinyin for title
-        title_pinyin = "_".join(lazy_pinyin(title))
+        # Generate pinyin for title (honorific 祢 reads as "ni", not "mi")
+        title_pinyin = title_to_pinyin(title)
 
         # Create Song object
         parsed_key = parse_musical_key(key)
