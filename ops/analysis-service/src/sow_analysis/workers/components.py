@@ -1241,9 +1241,22 @@ _LABEL_TO_COMPONENT_TYPE: dict[str, str] = {
 }
 
 
+# The worship honorific 祢 ("You", for God) must be rendered as 祢 in
+# Traditional Chinese, never 禰 (zhconv's zh-hant maps 祢 -> 禰). Normalise
+# both 祢 and any historical 禰 to 祢 so new 祢 records and legacy 禰 records
+# still match. The private-use sentinel survives zhconv untouched.
+_GOD_YOU_PROTECT = "\ue000"
+
+
 def _to_traditional(text: str) -> str:
-    """Convert text to traditional Chinese via zhconv."""
-    return zhconv.convert(text, "zh-hant")
+    """Convert text to traditional Chinese via zhconv.
+
+    ``祢`` (honorific "You" for God) is preserved as ``祢``; any ``禰`` is
+    normalised to ``祢`` too, so legacy records rendered as ``禰`` still match.
+    """
+    protected = text.replace("祢", _GOD_YOU_PROTECT).replace("禰", _GOD_YOU_PROTECT)
+    converted = zhconv.convert(protected, "zh-hant")
+    return converted.replace(_GOD_YOU_PROTECT, "祢")
 
 
 def _normalize_for_matching(text: str) -> str:
