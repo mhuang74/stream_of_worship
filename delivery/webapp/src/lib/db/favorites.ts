@@ -1,4 +1,4 @@
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { songs, userFavorites } from "@/db/schema";
 
@@ -43,7 +43,7 @@ export function favoritesFirstOrder(
   favoriteSongIds: string[] | undefined
 ): SQL | undefined {
   if (!favoriteSongIds || favoriteSongIds.length === 0) return undefined;
-  return sql`CASE WHEN ${songs.id} = ANY(${favoriteSongIds}) THEN 0 ELSE 1 END`;
+  return sql`CASE WHEN ${inArray(songs.id, favoriteSongIds)} THEN 0 ELSE 1 END`;
 }
 
 /**
@@ -56,5 +56,5 @@ export function favoritesOnlyPredicate(
 ): SQL | undefined {
   if (!favoriteSongIds) return undefined; // context not loaded → no-op
   if (favoriteSongIds.length === 0) return sql`false`; // favorites-only, no favorites → match nothing
-  return sql`${songs.id} = ANY(${favoriteSongIds})`;
+  return inArray(songs.id, favoriteSongIds);
 }
