@@ -141,7 +141,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 10, 5, ["published", "review"], { keys: undefined, bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 10, 5, ["published", "review"], { keys: undefined, bpmRange: undefined, favoritesOnly: false });
   });
 
   it("caps limit at 100", async () => {
@@ -159,7 +159,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 100, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 100, 0, ["published", "review"], { keys: undefined, bpmRange: undefined, favoritesOnly: false });
   });
 
   it("defaults to published + review visibility status", async () => {
@@ -175,7 +175,7 @@ describe("GET /api/songs/search", () => {
     const request = createMockRequest("http://localhost:3000/api/songs/search?q=test");
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined, favoritesOnly: false });
   });
 
   it("allows overriding visibility status", async () => {
@@ -193,7 +193,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "all", { keys: undefined, bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, "all", { keys: undefined, bpmRange: undefined, favoritesOnly: false });
   });
 
   it("parses comma-separated visibility statuses", async () => {
@@ -211,7 +211,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined, favoritesOnly: false });
   });
 
   it("parses keys filter param", async () => {
@@ -229,7 +229,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: undefined, favoritesOnly: false });
   });
 
   it("parses bpmRange filter param", async () => {
@@ -247,7 +247,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: ["slow"] });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: ["slow"], favoritesOnly: false });
   });
 
   it("parses combined keys + bpmRange filters (AND semantics)", async () => {
@@ -265,7 +265,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: ["fast"] });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D", "A"], bpmRange: ["fast"], favoritesOnly: false });
   });
 
   it("parses repeated albumName filters with keys and bpmRange", async () => {
@@ -288,7 +288,7 @@ describe("GET /api/songs/search", () => {
       50,
       0,
       ["published", "review"],
-      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: ["slow"] }
+      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: ["slow"], favoritesOnly: false }
     );
   });
 
@@ -320,6 +320,7 @@ describe("GET /api/songs/search", () => {
         ],
         keys: ["D"],
         bpmRange: ["slow"],
+        favoritesOnly: false,
       }
     );
   });
@@ -339,7 +340,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D"], bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: ["D"], bpmRange: undefined, favoritesOnly: false });
   });
 
   it("ignores invalid bpmRange value", async () => {
@@ -357,7 +358,7 @@ describe("GET /api/songs/search", () => {
     );
     await GET(request);
 
-    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined });
+    expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { keys: undefined, bpmRange: undefined, favoritesOnly: false });
   });
 
   it("returns 500 on error", async () => {
@@ -388,7 +389,7 @@ describe("GET /api/songs/search", () => {
       50,
       0,
       ["published", "review"],
-      { favoriteSongIds: ["fav-1", "fav-2"], keys: undefined, bpmRange: undefined }
+      { favoriteSongIds: ["fav-1", "fav-2"], keys: undefined, bpmRange: undefined, favoritesOnly: false }
     );
   });
 });

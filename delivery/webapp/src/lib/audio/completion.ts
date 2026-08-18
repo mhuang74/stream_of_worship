@@ -2,7 +2,7 @@
 
 /**
  * Client-side Completion tracking (CONTEXT.md: Completion): the set of song ids
- * the current user has heard to ≥90% of a full-song play. Soft gate per
+ * the current user has heard to ≥90% (COMPLETION_THRESHOLD) of a full-song play. Soft gate per
  * ADR-0002 — lives entirely in localStorage, never sent to the server.
  * A tiny subscription lets UI flip live when a song crosses the threshold.
  */

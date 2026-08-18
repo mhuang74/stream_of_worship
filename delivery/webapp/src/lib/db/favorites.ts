@@ -5,7 +5,7 @@ import { songs, userFavorites } from "@/db/schema";
 /**
  * Per-user favorite songs (table: user_favorite_songs). Favorites are durable
  * account data, persisted in the DB for cross-device (see CONTEXT.md: Favorite).
- * The Completion gate (heard ≥90%) that unlocks favoriting is client-side per
+ * The Completion gate (heard ≥90% (COMPLETION_THRESHOLD)) that unlocks favoriting is client-side per
  * ADR-0002 and never reaches this module.
  */
 

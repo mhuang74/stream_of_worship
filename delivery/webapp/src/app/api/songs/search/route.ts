@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fullTextSearchSongs } from "@/lib/db/search";
-import { getFavoriteSongIds } from "@/lib/db/favorites";
+import { loadFavoriteContext } from "@/lib/db/favorites-context";
 import {
   parseAlbumFilterParams,
   parseKeysParam,
@@ -18,10 +18,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const favoriteSongIds = await getFavoriteSongIds(Number(session.user.id));
-
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get("q");
+
+    const { favoriteSongIds, favoritesOnly } = await loadFavoriteContext(
+      Number(session.user.id),
+      searchParams
+    );
 
     if (!query || query.trim().length === 0) {
       return NextResponse.json(
@@ -52,6 +55,7 @@ export async function GET(request: NextRequest) {
       keys,
       bpmRange,
       ...(favoriteSongIds.length > 0 ? { favoriteSongIds } : {}),
+      favoritesOnly,
     });
 
     return NextResponse.json(result);

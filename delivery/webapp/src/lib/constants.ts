@@ -55,6 +55,10 @@ export function normalizeFontFamily(value: unknown): FontFamilyValue {
     : "noto_serif_tc";
 }
 
+/** Completion gate (ADR-0002): fraction of a full-song play that marks a
+ * song Completed client-side. Heard ≥90% unlocks favoriting. */
+export const COMPLETION_THRESHOLD = 0.9;
+
 export const PITCH_CLASSES = [
   "C",
   "C#",

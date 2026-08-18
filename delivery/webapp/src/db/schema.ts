@@ -375,7 +375,7 @@ export const userSettings = pgTable("user_settings", {
 
 // user_favorites: per-user favorite songs (table: user_favorite_songs)
 // Favorites are durable account data (cross-device). The Completion gate (heard
-// ≥90%) is client-side soft per ADR-0002, so only the favorite flag lives here.
+// ≥90% (COMPLETION_THRESHOLD)) is client-side soft per ADR-0002, so only the favorite flag lives here.
 export const userFavorites = pgTable(
   "user_favorite_songs",
   {
