@@ -27,6 +27,7 @@ import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { toast } from "sonner";
 import { FavoriteButton } from "./FavoriteButton";
+import { useLocale } from "@/hooks/useLocale";
 
 function escapeCssSelectorValue(value: string): string {
   const globalCss = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
@@ -120,6 +121,7 @@ function SortableSongItem({
   favoriteIds,
   onToggleFavorite,
 }: SortableSongItemProps) {
+  const { t } = useLocale();
   const {
     attributes,
     listeners,
@@ -176,7 +178,7 @@ function SortableSongItem({
                 className="cursor-grab active:cursor-grabbing shrink-0 touch-none"
                 {...attributes}
                 {...listeners}
-                aria-label={`Drag to reorder song ${index + 1}`}
+                aria-label={`${t("browse.dragReorder")}${index + 1}`}
               >
                 <GripVertical className="size-4 text-muted-foreground" />
               </Button>
@@ -190,7 +192,7 @@ function SortableSongItem({
                 isPlaying && "bg-primary/10 text-primary"
               )}
               onClick={() => onPlaySong?.(item.songId)}
-              aria-label={isPlaying ? `Pause ${item.song?.title || "song"}` : `Play ${item.song?.title || "song"}`}
+              aria-label={`${isPlaying ? t("browse.pause") : t("browse.play")}${item.song?.title || t("browse.song")}`}
               disabled={!item.recording}
             >
               {isPreviewLoading ? (
@@ -214,18 +216,18 @@ function SortableSongItem({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h4 className="font-medium text-sm truncate">
-                  {item.song?.title || "Unknown Song"}
+                  {item.song?.title || t("browse.unknownSong")}
                 </h4>
                 {hasMarkedLines && (
                   <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-500/50">
-                    {item.markedLineCount} marked
+                    {item.markedLineCount} {t("browse.marked")}
                   </Badge>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
                 <span className="flex items-center gap-1">
                   <Music className="size-3" />
-                  {item.song?.composer || item.song?.lyricist || "Unknown Artist"}
+                  {item.song?.composer || item.song?.lyricist || t("browse.unknownArtist")}
                 </span>
                 {item.recording?.durationSeconds && (
                   <span className="flex items-center gap-1">
@@ -237,7 +239,7 @@ function SortableSongItem({
                   <span>• {item.song?.effectiveKey ?? item.song?.musicalKey}</span>
                 )}
                 {item.recording?.tempoBpm && (
-                  <span>• {Math.round(item.recording.tempoBpm)} BPM</span>
+                  <span>• {Math.round(item.recording.tempoBpm)} {t("browse.bpm")}</span>
                 )}
               </div>
             </div>
@@ -249,10 +251,10 @@ function SortableSongItem({
                 size="sm"
                 className="shrink-0 text-xs text-muted-foreground hidden md:flex"
                 onClick={() => onEditTransition?.(item.id)}
-                aria-label={`Edit transition before ${item.song?.title || "song"}: gap ${item.gapBeats} beats${item.crossfadeEnabled ? ", crossfade" : ""}`}
+                aria-label={`${t("browse.transition.editBefore")}${item.song?.title || t("browse.song")}${t("browse.transition.ariaGap")}${item.gapBeats} ${t("browse.unit.beats")}${item.crossfadeEnabled ? t("browse.transition.ariaCrossfade") : ""}`}
               >
-                Gap: {item.gapBeats} beats
-                {item.crossfadeEnabled ? " + crossfade" : ""}
+                {t("browse.transition.gapLabel")}{item.gapBeats} {t("browse.unit.beats")}
+                {item.crossfadeEnabled ? t("browse.transition.crossfadeSuffix") : ""}
                 <ChevronRight className="size-3 ml-1" />
               </Button>
             )}
@@ -267,7 +269,7 @@ function SortableSongItem({
                     className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                     onClick={onRequestConfirm}
                     disabled={isRemoving}
-                    aria-label={`Remove ${item.song?.title || "song"}`}
+                    aria-label={`${t("browse.remove")}${item.song?.title || t("browse.song")}`}
                   >
                     <Trash2 className="size-4 text-destructive" />
                   </Button>
@@ -278,9 +280,9 @@ function SortableSongItem({
                     className="h-7 px-2 text-xs"
                     onClick={() => onRemove(item.id)}
                     disabled={isRemoving}
-                    aria-label={`Confirm delete ${item.song?.title || "song"}`}
+                    aria-label={`${t("browse.confirmDelete")}${item.song?.title || t("browse.song")}`}
                   >
-                    Delete
+                    {t("browse.delete")}
                   </Button>
                 )}
               </div>
@@ -306,6 +308,7 @@ export function SongList({
   favoriteIds,
   onToggleFavorite,
 }: SongListProps) {
+  const { t } = useLocale();
   const [localItems, setLocalItems] = useState(items);
   const prevItemIdsRef = useRef<string | null>(null);
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
@@ -326,7 +329,7 @@ export function SongList({
     async (songId: string) => {
       const item = localItems.find((i) => i.songId === songId);
       if (!item?.recording) {
-        toast.error("No audio available for this song");
+        toast.error(t("browse.noAudioAvailable"));
         return;
       }
 
@@ -339,13 +342,13 @@ export function SongList({
       }
 
       const recording = item.recording;
-      const artist = item.song?.composer || item.song?.lyricist || "Unknown Artist";
+      const artist = item.song?.composer || item.song?.lyricist || t("browse.unknownArtist");
       const publicUrl = getPublicAudioUrl(recording.hashPrefix);
 
       if (publicUrl) {
         play({
           id: `song-${songId}`,
-          title: item.song?.title || "Unknown Song",
+          title: item.song?.title || t("browse.unknownSong"),
           artist,
           src: publicUrl,
           type: "song",
@@ -376,7 +379,7 @@ export function SongList({
 
         play({
           id: `song-${songId}`,
-          title: item.song?.title || "Unknown Song",
+          title: item.song?.title || t("browse.unknownSong"),
           artist,
           src: data.url,
           type: "song",
@@ -388,12 +391,12 @@ export function SongList({
 
         setPlayingSongId(songId);
       } catch {
-        toast.error("Failed to load audio preview");
+        toast.error(t("browse.failedToLoadPreview"));
       } finally {
         setPreviewLoadingSongId(null);
       }
     },
-    [localItems, playingSongId, currentTrack, playerState.isPlaying, play, pause, songsetId]
+    [localItems, playingSongId, currentTrack, playerState.isPlaying, play, pause, songsetId, t]
   );
 
   useEffect(() => {
@@ -494,9 +497,9 @@ export function SongList({
     return (
       <div className={cn("text-center py-12 border-2 border-dashed rounded-lg", className)}>
         <Music className="size-8 mx-auto text-muted-foreground mb-3" />
-        <p className="text-muted-foreground">No songs in this songset</p>
+        <p className="text-muted-foreground">{t("browse.empty.noSongs")}</p>
         <p className="text-sm text-muted-foreground mt-1">
-          Tap the + button to add songs
+          {t("browse.empty.tapToAdd")}
         </p>
       </div>
     );
@@ -513,7 +516,7 @@ export function SongList({
         items={localItems.map((item) => item.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className={cn("space-y-2", className)} role="list" aria-label="Songs">
+        <div className={cn("space-y-2", className)} role="list" aria-label={t("browse.songs")}>
           {localItems.map((item, index) => (
             <SortableSongItem
               key={item.id}

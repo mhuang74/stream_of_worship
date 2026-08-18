@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { PrePlayCard } from "@/components/play/PrePlayCard";
 
 // Mock sonner toast
@@ -129,6 +130,14 @@ describe("PrePlayCard", () => {
       render(<PrePlayCard {...defaultProps} />);
 
       expect(screen.getByRole("button", { name: /share/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("zh-Hant localization", () => {
+    it("renders translated Start Worship button in zh-Hant", () => {
+      render(<PrePlayCard {...defaultProps} />, "zh-Hant");
+
+      expect(screen.getByRole("button", { name: /開始敬拜/i })).toBeInTheDocument();
     });
   });
 

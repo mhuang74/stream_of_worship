@@ -13,6 +13,7 @@ import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import type { StructuredSearchCriteria } from "@/components/songset/search/types";
 import type { BpmBandKey } from "@/lib/constants";
 import type { AlbumFilter } from "@/lib/search/album-filter";
+import { useLocale } from "@/hooks/useLocale";
 
 interface SemanticSearchResult extends SongCardData {
   similarity?: number;
@@ -61,6 +62,7 @@ export function useSemanticSearch({
   searchButtonClassName,
   showSearchButton = true,
 }: UseSemanticSearchOptions) {
+  const { t } = useLocale();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SemanticSearchResult[]>([]);
   const [resultMode, setResultMode] = useState<ResultMode | null>(null);
@@ -140,9 +142,9 @@ export function useSemanticSearch({
 
       if (response.status === 503) {
         const data = await response.json().catch(() => ({}));
-        const errorMsg = (data as { error?: string }).error ?? "Semantic search unavailable";
+        const errorMsg = (data as { error?: string }).error ?? t("audio.search.semanticUnavailable");
         if (onSwitchToSearchTab) {
-          toast.info("Semantic search unavailable, switching to text search");
+          toast.info(t("audio.search.semanticUnavailableSwitch"));
           onSwitchToSearchTab(trimmed);
           return;
         }
@@ -151,7 +153,7 @@ export function useSemanticSearch({
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Search failed");
+        throw new Error((data as { error?: string }).error ?? t("audio.search.searchFailed"));
       }
 
       const data = await response.json();
@@ -160,7 +162,7 @@ export function useSemanticSearch({
       setResultMode(nextResultMode);
     } catch (err) {
       if (searchId !== latestSearchIdRef.current) return;
-      setError(err instanceof Error ? err.message : "Search failed");
+      setError(err instanceof Error ? err.message : t("audio.search.searchFailed"));
       setResults([]);
       setResultMode(null);
     } finally {
@@ -168,7 +170,7 @@ export function useSemanticSearch({
         setIsLoading(false);
       }
     }
-  }, [query, albums, keys, bpmRange, onSwitchToSearchTab]);
+  }, [query, albums, keys, bpmRange, onSwitchToSearchTab, t]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -194,7 +196,7 @@ export function useSemanticSearch({
     async (songId: string) => {
       const song = results.find((r) => r.id === songId);
       if (!song || song.recordings.length === 0) {
-        toast.error("No audio available for this song");
+        toast.error(t("audio.search.noAudioForSong"));
         return;
       }
 
@@ -206,7 +208,7 @@ export function useSemanticSearch({
       }
 
       const recording = song.recordings[0];
-      const artist = song.composer || song.lyricist || "Unknown Artist";
+      const artist = song.composer || song.lyricist || t("audio.search.unknownArtist");
       const publicUrl = getPublicAudioUrl(recording.hashPrefix);
 
       if (publicUrl) {
@@ -237,7 +239,7 @@ export function useSemanticSearch({
         });
 
         if (!res.ok) {
-          throw new Error("Failed to get audio URL");
+          throw new Error(t("audio.search.failedAudioUrl"));
         }
 
         const data = await res.json();
@@ -255,12 +257,12 @@ export function useSemanticSearch({
 
         setPlayingSongId(songId);
       } catch {
-        toast.error("Failed to load audio preview");
+        toast.error(t("audio.search.failedLoadPreview"));
       } finally {
         setPreviewLoadingSongId(null);
       }
     },
-    [results, playingSongId, currentTrack, playerState.isPlaying, play]
+    [results, playingSongId, currentTrack, playerState.isPlaying, play, t]
   );
 
   useEffect(() => {
@@ -275,7 +277,7 @@ export function useSemanticSearch({
   }, [currentTrack, playerState.isPlaying]);
 
   const formatSimilarity = (score: number) =>
-    `${Math.round(score * 100)}% match`;
+    `${Math.round(score * 100)}% ${t("audio.search.matchSuffix")}`;
 
   const toggleExpand = (songId: string) => {
     setExpandedSongId(expandedSongId === songId ? null : songId);
@@ -287,13 +289,13 @@ export function useSemanticSearch({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe songs by theme or feeling..."
-          aria-label="Describe songs to search for"
+          placeholder={t("audio.search.placeholder")}
+          aria-label={t("audio.search.ariaLabel")}
           data-testid="semantic-search-input"
         />
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground" aria-hidden="true" data-testid="describe-help-text">
-            Tip: describe by theme or feeling — e.g. &lsquo;在神寶座前&rsquo;, &lsquo;standing before God&apos;s throne&rsquo; · Press Enter to search
+            {t("audio.search.helpTip")}
           </p>
           {showSearchButton && (
             <Button
@@ -301,14 +303,14 @@ export function useSemanticSearch({
               disabled={isLoading}
               className={cn("gap-1.5", searchButtonClassName)}
               data-testid="semantic-search-button"
-              aria-label={isLoading ? "Searching..." : "Search songs by description"}
+              aria-label={isLoading ? t("audio.search.searching") : t("audio.search.searchSongsByDescription")}
             >
               {isLoading ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Sparkles className="size-4" />
               )}
-              Search
+              {t("audio.search.searchButton")}
             </Button>
           )}
         </div>
@@ -331,7 +333,7 @@ export function useSemanticSearch({
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Loader2 className="size-8 animate-spin text-muted-foreground mb-2" />
           <p className="text-sm text-muted-foreground">
-            {query.trim() ? "Searching by meaning..." : "Loading songs..."}
+            {query.trim() ? t("audio.search.searchingByMeaning") : t("audio.search.loadingSongs")}
           </p>
         </div>
       )}
@@ -340,19 +342,19 @@ export function useSemanticSearch({
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Music className="size-8 text-muted-foreground mb-2" />
           <p className="text-muted-foreground text-sm">
-            {resultMode === "browse" ? "No songs match your filters" : "No matching songs found"}
+            {resultMode === "browse" ? t("audio.search.noSongsMatchFilters") : t("audio.search.noMatchingSongs")}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {resultMode === "browse"
-              ? "Try removing some filters to see more results"
-              : "Try a different description, or songs may not have embeddings yet"}
+              ? t("audio.search.tryRemovingFilters")
+              : t("audio.search.tryDifferentDescription")}
           </p>
         </div>
       )}
 
       {!error && !isLoading && results.length > 0 && (
         <div className="space-y-2" data-testid="semantic-search-results" aria-live="polite" aria-atomic="true">
-          <p className="text-xs text-muted-foreground" role="status">{results.length} songs found</p>
+          <p className="text-xs text-muted-foreground" role="status">{results.length} {t("audio.search.songsFoundLabel")}</p>
           {results.map((song) => (
             <div key={song.id} className="relative">
               <SongCard
@@ -387,21 +389,21 @@ export function useSemanticSearch({
                   onClick={() => toggleExpand(song.id)}
                   data-testid="why-this-match-toggle"
                   aria-expanded={expandedSongId === song.id}
-                  aria-label="Why this match?"
+                  aria-label={t("audio.search.whyThisMatch")}
                 >
                   {expandedSongId === song.id ? (
                     <ChevronDown className="size-3" />
                   ) : (
                     <ChevronRight className="size-3" />
                   )}
-                  Why this match?
+                  {t("audio.search.whyThisMatch")}
                 </button>
               )}
               {expandedSongId === song.id && (song.whyThisMatch?.length ?? 0) > 0 && (
                 <div className="pl-6 space-y-0.5" data-testid="why-this-match-content">
                   {song.whyThisMatch?.map((line, i) => (
                     <p key={i} className="text-xs text-muted-foreground">
-                      Lyric {i + 1}: {line}
+                      {t("audio.search.lyric")} {i + 1}: {line}
                     </p>
                   ))}
                 </div>

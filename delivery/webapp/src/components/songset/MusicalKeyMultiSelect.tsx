@@ -14,6 +14,7 @@ import {
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PITCH_CLASSES } from "@/lib/constants";
+import { useLocale } from "@/hooks/useLocale";
 
 interface MusicalKeyMultiSelectProps {
   selectedKeys: string[];
@@ -28,6 +29,7 @@ export function MusicalKeyMultiSelect({
   disabled = false,
   className,
 }: MusicalKeyMultiSelectProps) {
+  const { t } = useLocale();
   const selectedSet = new Set(selectedKeys);
 
   const toggleKey = (key: string) => {
@@ -48,7 +50,7 @@ export function MusicalKeyMultiSelect({
 
   let triggerText: string;
   if (sortedKeys.length === 0) {
-    triggerText = "All";
+    triggerText = t("browse.keys.all");
   } else if (sortedKeys.length === 1) {
     triggerText = sortedKeys[0];
   } else if (sortedKeys.length === 2) {
@@ -70,7 +72,7 @@ export function MusicalKeyMultiSelect({
             data-testid="key-filter"
           >
             <span className="max-w-[18rem] truncate whitespace-nowrap">
-              <span className="font-medium">Keys:</span>{" "}
+              <span className="font-medium">{t("browse.keys.label")}</span>{" "}
               <span className="text-muted-foreground">{triggerText}</span>
             </span>
             <ChevronDown className="size-3 text-muted-foreground/60" />
@@ -78,12 +80,12 @@ export function MusicalKeyMultiSelect({
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-72 max-h-80">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>Musical Key</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("browse.keys.dropdownLabel")}</DropdownMenuLabel>
             {selectedKeys.length > 0 && (
               <>
                 <DropdownMenuItem onClick={clearKeys} data-testid="key-clear-all">
                   <X className="size-3.5" />
-                  Clear all
+                  {t("browse.keys.clearAll")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>

@@ -9,6 +9,7 @@ import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 
 export interface TransitionSheetProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ export function TransitionSheet({
   onSave,
   className,
 }: TransitionSheetProps) {
+  const { t } = useLocale();
   const [settings, setSettings] = useState<TransitionSettings>(initialSettings);
   const [isSaving, setIsSaving] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -62,13 +64,13 @@ export function TransitionSheet({
 
       play({
         id: `transition-${fromRecordingHash ?? ""}-${toRecordingHash ?? ""}`,
-        title: `${fromSong?.title ?? "Song"} → ${toSong?.title ?? "Song"}`,
-        artist: "Transition Preview",
+        title: `${fromSong?.title ?? t("control.songFallback")} → ${toSong?.title ?? t("control.songFallback")}`,
+        artist: t("control.transitionPreview"),
         src: data.url,
         type: "transition",
       });
     } catch {
-      toast.error("Failed to load preview audio");
+      toast.error(t("control.failedToLoadPreviewAudio"));
     } finally {
       setIsPreviewLoading(false);
     }
@@ -80,7 +82,7 @@ export function TransitionSheet({
       await onSave(settings);
       onOpenChange(false);
     } catch {
-      toast.error("Failed to save transition settings");
+      toast.error(t("control.failedToSaveTransition"));
     } finally {
       setIsSaving(false);
     }
@@ -109,7 +111,7 @@ export function TransitionSheet({
               </span>
             </span>
           ) : (
-            "Transition Settings"
+            t("control.transitionSettings")
           )}
         </CardTitle>
       </CardHeader>
@@ -132,21 +134,21 @@ export function TransitionSheet({
             onClick={handleCancel}
             disabled={isSaving}
           >
-            Cancel
+            {t("control.cancel")}
           </Button>
           <Button
             size="sm"
             className="flex-1"
             onClick={handleSave}
             disabled={isSaving || !hasChanges}
-            aria-label="Save transition settings"
+            aria-label={t("control.saveTransitionSettings")}
           >
             {isSaving ? (
               <Loader2 className="size-4 mr-2 animate-spin" />
             ) : (
               <Save className="size-4 mr-2" />
             )}
-            Save
+            {t("control.saveSheet")}
           </Button>
         </div>
       </CardContent>

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { SemanticSearch } from "@/components/search/SemanticSearch";
+import type { Locale } from "@/lib/i18n/messages";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -109,8 +111,8 @@ describe("SemanticSearch", () => {
     vi.restoreAllMocks();
   });
 
-  const renderComponent = (props = {}) =>
-    render(<SemanticSearch {...defaultProps} {...props} />);
+  const renderComponent = (props = {}, initialLocale: Locale = "en") =>
+    render(<SemanticSearch {...defaultProps} {...props} />, initialLocale);
 
   describe("rendering", () => {
     it("renders the textarea", () => {
@@ -145,6 +147,15 @@ describe("SemanticSearch", () => {
       expect(screen.getByTestId("describe-help-text")).toBeInTheDocument();
       expect(screen.getByTestId("describe-help-text").textContent).toContain("在神寶座前");
       expect(screen.getByTestId("describe-help-text").textContent).toContain("Enter");
+    });
+
+    it("renders Traditional Chinese search button and placeholder in zh-Hant", () => {
+      renderComponent({}, "zh-Hant");
+      expect(screen.getByTestId("semantic-search-button")).toHaveTextContent("搜尋");
+      expect(screen.getByTestId("semantic-search-input")).toHaveAttribute(
+        "placeholder",
+        "以主題或感受描述詩歌..."
+      );
     });
   });
 

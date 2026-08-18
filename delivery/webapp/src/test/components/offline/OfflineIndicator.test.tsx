@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { screen, act } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
 
 describe("OfflineIndicator", () => {
@@ -53,6 +54,12 @@ describe("OfflineIndicator", () => {
     it("has accessible aria-label", () => {
       render(<OfflineIndicator />);
       expect(screen.getByRole("status", { name: /you are offline/i })).toBeInTheDocument();
+    });
+
+    it("shows Traditional Chinese message in zh-Hant", () => {
+      render(<OfflineIndicator />, "zh-Hant");
+      expect(screen.getByText("您目前離線")).toBeInTheDocument();
+      expect(screen.getByRole("status", { name: "您目前離線" })).toBeInTheDocument();
     });
   });
 

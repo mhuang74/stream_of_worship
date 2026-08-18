@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Loader2, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import { SongsetListSkeleton } from "./SongsetListSkeleton";
 
 export interface Songset {
@@ -81,6 +82,7 @@ export function SongsetList({
   isSearching = false,
   className,
 }: SongsetListProps) {
+  const { t } = useLocale();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newSongsetName, setNewSongsetName] = useState("");
   const [newSongsetDescription, setNewSongsetDescription] = useState("");
@@ -127,9 +129,9 @@ export function SongsetList({
               onSearch?.();
             }
           }}
-          placeholder="Search songsets by name or description..."
+          placeholder={t("songsets.searchPlaceholder")}
           className="pl-9 pr-10"
-          aria-label="Search songsets"
+          aria-label={t("songsets.aria.searchSongsets")}
           data-testid="songset-search-input"
         />
         {search.length > 0 && (
@@ -141,7 +143,7 @@ export function SongsetList({
               onSearchChange?.("");
               onSearch?.();
             }}
-            aria-label="Clear search"
+            aria-label={t("songsets.aria.clearSearch")}
             data-testid="songset-clear-search-button"
           >
             <X className="size-4" />
@@ -154,18 +156,18 @@ export function SongsetList({
           />
         )}
         {isSearching && (
-          <span className="sr-only" role="status" aria-live="polite">Searching songsets...</span>
+          <span className="sr-only" role="status" aria-live="polite">{t("songsets.loading.searching")}</span>
         )}
       </div>
       <Button
         variant="default"
         size="default"
         onClick={() => onSearch?.()}
-        aria-label="Search"
+        aria-label={t("songsets.aria.search")}
         data-testid="songset-search-button"
       >
         <Search className="size-4 mr-2" />
-        Search
+        {t("songsets.action.search")}
       </Button>
     </div>
   );
@@ -182,11 +184,11 @@ export function SongsetList({
       setNewSongsetName("");
       setNewSongsetDescription("");
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create songset");
+      setCreateError(err instanceof Error ? err.message : t("songsets.error.createFailed"));
     } finally {
       setIsCreating(false);
     }
-  }, [newSongsetName, newSongsetDescription, onCreateSongset]);
+  }, [newSongsetName, newSongsetDescription, onCreateSongset, t]);
 
   const handleDelete = useCallback(async () => {
     if (!songsetToDelete) return;
@@ -247,7 +249,7 @@ export function SongsetList({
           className="mt-4"
           onClick={() => window.location.reload()}
         >
-          Retry
+          {t("songsets.action.retry")}
         </Button>
       </div>
     );
@@ -260,13 +262,13 @@ export function SongsetList({
         {renderSearchBar("mb-4")}
         <p className="text-muted-foreground mb-4">
           {isSearchActive
-            ? "No songsets match your search."
-            : "No songsets yet. Create one to get started."}
+            ? t("songsets.empty.searchNoMatch")
+            : t("songsets.empty.noSongsets")}
         </p>
         {!isSearchActive && (
           <Button onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="size-4 mr-2" />
-            Create Songset
+            {t("songsets.action.createSongset")}
           </Button>
         )}
 
@@ -274,29 +276,29 @@ export function SongsetList({
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Songset</DialogTitle>
+              <DialogTitle>{t("songsets.dialog.createTitle")}</DialogTitle>
               <DialogDescription>
-                Enter a name for your new songset.
+                {t("songsets.dialog.createDescription")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="name">{t("songsets.label.name")}</Label>
                 <Input
                   id="name"
                   value={newSongsetName}
                   onChange={(e) => setNewSongsetName(e.target.value)}
-                  placeholder="e.g., Sunday Worship"
+                  placeholder={t("songsets.placeholder.name")}
                   disabled={isCreating}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description">Description (optional)</Label>
+                <Label htmlFor="description">{t("songsets.label.descriptionOptional")}</Label>
                 <Input
                   id="description"
                   value={newSongsetDescription}
                   onChange={(e) => setNewSongsetDescription(e.target.value)}
-                  placeholder="e.g., Easter service songs"
+                  placeholder={t("songsets.placeholder.description")}
                   disabled={isCreating}
                 />
               </div>
@@ -310,7 +312,7 @@ export function SongsetList({
                 onClick={() => setIsCreateDialogOpen(false)}
                 disabled={isCreating}
               >
-                Cancel
+                {t("songsets.action.cancel")}
               </Button>
               <Button
                 onClick={handleCreate}
@@ -319,10 +321,10 @@ export function SongsetList({
                 {isCreating ? (
                   <>
                     <Loader2 className="size-4 mr-2 animate-spin" />
-                    Creating...
+                    {t("songsets.loading.creating")}
                   </>
                 ) : (
-                  "Create"
+                  t("songsets.action.create")
                 )}
               </Button>
             </DialogFooter>
@@ -356,7 +358,7 @@ export function SongsetList({
 
       {totalPages > 1 && (
         <nav
-          aria-label="Songset pagination"
+          aria-label={t("songsets.aria.pagination")}
           className="flex items-center justify-center gap-2 mt-6"
         >
           <Button
@@ -364,11 +366,11 @@ export function SongsetList({
             size="sm"
             onClick={() => onPageChange?.(currentPage - 1)}
             disabled={currentPage <= 1}
-            aria-label="Previous page"
+            aria-label={t("songsets.aria.previousPage")}
             data-testid="pagination-prev"
           >
             <ChevronLeft className="size-4" />
-            Prev
+            {t("songsets.action.prev")}
           </Button>
 
           {pageNumbers.map((pageNum) => (
@@ -378,7 +380,7 @@ export function SongsetList({
               size="icon-sm"
               onClick={() => onPageChange?.(pageNum)}
               aria-current={pageNum === currentPage ? "page" : undefined}
-              aria-label={`Page ${pageNum}`}
+              aria-label={`${t("songsets.aria.page")} ${pageNum}`}
               data-testid={`pagination-page-${pageNum}`}
             >
               {pageNum}
@@ -390,10 +392,10 @@ export function SongsetList({
             size="sm"
             onClick={() => onPageChange?.(currentPage + 1)}
             disabled={currentPage >= totalPages}
-            aria-label="Next page"
+            aria-label={t("songsets.aria.nextPage")}
             data-testid="pagination-next"
           >
-            Next
+            {t("songsets.action.next")}
             <ChevronRight className="size-4" />
           </Button>
         </nav>
@@ -404,7 +406,7 @@ export function SongsetList({
         size="icon-lg"
         className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 shadow-lg"
         onClick={() => setIsCreateDialogOpen(true)}
-        aria-label="Create new songset"
+        aria-label={t("songsets.aria.createNewSongset")}
       >
         <Plus className="size-6" />
       </Button>
@@ -413,29 +415,29 @@ export function SongsetList({
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Songset</DialogTitle>
+            <DialogTitle>{t("songsets.dialog.createTitle")}</DialogTitle>
             <DialogDescription>
-              Enter a name for your new songset.
+              {t("songsets.dialog.createDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{t("songsets.label.name")}</Label>
               <Input
                 id="name"
                 value={newSongsetName}
                 onChange={(e) => setNewSongsetName(e.target.value)}
-                placeholder="e.g., Sunday Worship"
+                placeholder={t("songsets.placeholder.name")}
                 disabled={isCreating}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description (optional)</Label>
+              <Label htmlFor="description">{t("songsets.label.descriptionOptional")}</Label>
               <Input
                 id="description"
                 value={newSongsetDescription}
                 onChange={(e) => setNewSongsetDescription(e.target.value)}
-                placeholder="e.g., Easter service songs"
+                placeholder={t("songsets.placeholder.description")}
                 disabled={isCreating}
               />
             </div>
@@ -449,7 +451,7 @@ export function SongsetList({
               onClick={() => setIsCreateDialogOpen(false)}
               disabled={isCreating}
             >
-              Cancel
+              {t("songsets.action.cancel")}
             </Button>
             <Button
               onClick={handleCreate}
@@ -458,10 +460,10 @@ export function SongsetList({
               {isCreating ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
-                  Creating...
+                  {t("songsets.loading.creating")}
                 </>
               ) : (
-                "Create"
+                t("songsets.action.create")
               )}
             </Button>
           </DialogFooter>
@@ -472,9 +474,9 @@ export function SongsetList({
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Songset</DialogTitle>
+            <DialogTitle>{t("songsets.dialog.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this songset? This action cannot be undone.
+              {t("songsets.dialog.deleteDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -483,7 +485,7 @@ export function SongsetList({
               onClick={() => setIsDeleteDialogOpen(false)}
               disabled={isDeleting}
             >
-              Cancel
+              {t("songsets.action.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -493,10 +495,10 @@ export function SongsetList({
               {isDeleting ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
-                  Deleting...
+                  {t("songsets.loading.deleting")}
                 </>
               ) : (
-                "Delete"
+                t("songsets.action.delete")
               )}
             </Button>
           </DialogFooter>
@@ -507,19 +509,19 @@ export function SongsetList({
       <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Songset</DialogTitle>
+            <DialogTitle>{t("songsets.dialog.renameTitle")}</DialogTitle>
             <DialogDescription>
-              Enter a new name for this songset.
+              {t("songsets.dialog.renameDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="rename">Name</Label>
+              <Label htmlFor="rename">{t("songsets.label.name")}</Label>
               <Input
                 id="rename"
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
-                placeholder="Songset name"
+                placeholder={t("songsets.placeholder.songsetName")}
                 disabled={isRenaming}
               />
             </div>
@@ -530,7 +532,7 @@ export function SongsetList({
               onClick={() => setIsRenameDialogOpen(false)}
               disabled={isRenaming}
             >
-              Cancel
+              {t("songsets.action.cancel")}
             </Button>
             <Button
               onClick={handleRename}
@@ -539,10 +541,10 @@ export function SongsetList({
               {isRenaming ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
-                  Saving...
+                  {t("songsets.loading.saving")}
                 </>
               ) : (
-                "Save"
+                t("songsets.action.save")
               )}
             </Button>
           </DialogFooter>

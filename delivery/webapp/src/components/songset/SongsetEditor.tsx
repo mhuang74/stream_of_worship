@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle, AlertAction } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import { toast } from "sonner";
 import { getRenderFailureText } from "@/lib/render/error-message";
 import {
@@ -104,6 +105,7 @@ export function SongsetEditor({
   onHighlightConsumed,
 }: SongsetEditorProps) {
   const router = useRouter();
+  const { t } = useLocale();
   const [isStaleBannerDismissed, setIsStaleBannerDismissed] = useState(false);
   const [isEditDescriptionOpen, setIsEditDescriptionOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -160,12 +162,12 @@ export function SongsetEditor({
     async (itemId: string) => {
       try {
         await onRemoveItem(itemId);
-        toast.success("Song removed");
+        toast.success(t("songsets.toast.songRemoved"));
       } catch {
-        toast.error("Failed to remove song");
+        toast.error(t("songsets.error.removeSongFailed"));
       }
     },
-    [onRemoveItem]
+    [onRemoveItem, t]
   );
 
   // Handle transition edit
@@ -183,14 +185,14 @@ export function SongsetEditor({
       if (!selectedTransitionItem) return;
       try {
         await onUpdateTransition(selectedTransitionItem.id, settings);
-        toast.success("Transition updated");
+        toast.success(t("songsets.toast.transitionUpdated"));
         setIsTransitionSheetOpen(false);
         setSelectedTransitionItem(null);
       } catch {
-        toast.error("Failed to update transition");
+        toast.error(t("songsets.error.updateTransitionFailed"));
       }
     },
-    [selectedTransitionItem, onUpdateTransition]
+    [selectedTransitionItem, onUpdateTransition, t]
   );
 
   // Handle description save
@@ -199,9 +201,9 @@ export function SongsetEditor({
     try {
       await onUpdateDescription(descriptionValue);
       setIsEditDescriptionOpen(false);
-      toast.success("Description updated");
+      toast.success(t("songsets.toast.descriptionUpdated"));
     } catch {
-      toast.error("Failed to update description");
+      toast.error(t("songsets.error.updateDescriptionFailed"));
     } finally {
       setIsSavingDescription(false);
     }
@@ -213,9 +215,9 @@ export function SongsetEditor({
     try {
       await onDelete();
       router.push("/songsets");
-      toast.success("Songset deleted");
+      toast.success(t("songsets.toast.songsetDeleted"));
     } catch {
-      toast.error("Failed to delete songset");
+      toast.error(t("songsets.error.deleteFailed"));
       setIsDeleting(false);
       setIsDeleteDialogOpen(false);
     }
@@ -226,9 +228,9 @@ export function SongsetEditor({
     setIsDuplicating(true);
     try {
       await onDuplicate();
-      toast.success("Songset duplicated");
+      toast.success(t("songsets.toast.songsetDuplicated"));
     } catch {
-      toast.error("Failed to duplicate songset");
+      toast.error(t("songsets.error.duplicateFailed"));
     } finally {
       setIsDuplicating(false);
     }
@@ -249,7 +251,7 @@ export function SongsetEditor({
     if (index > 0) {
       const prevItem = items[index - 1];
       return {
-        title: prevItem.song?.title || "Unknown",
+        title: prevItem.song?.title || t("songsets.unknown"),
         key: prevItem.song?.effectiveKey ?? prevItem.song?.musicalKey,
         tempoBpm: prevItem.recording?.tempoBpm,
         exitPitchClass:
@@ -269,7 +271,7 @@ export function SongsetEditor({
             variant="ghost"
             size="icon"
             onClick={handleBack}
-            aria-label="Go back"
+            aria-label={t("songsets.aria.goBack")}
           >
             <ArrowLeft className="size-5" />
           </Button>
@@ -277,10 +279,10 @@ export function SongsetEditor({
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-lg truncate">{songset.name}</h1>
             <p className="text-xs text-muted-foreground">
-              {items.length} {items.length === 1 ? "song" : "songs"}
+              {items.length} {t(items.length === 1 ? "songsets.unit.song" : "songsets.unit.songs")}
               {isDurationOverLimit && (
                 <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500/50 text-xs">
-                  Over 25 min
+                  {t("songsets.overDurationLimit")}
                 </Badge>
               )}
             </p>
@@ -296,23 +298,23 @@ export function SongsetEditor({
           {/* Overflow menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="More options">
+              <Button variant="ghost" size="icon" aria-label={t("songsets.aria.moreOptions")}>
                 <MoreVertical className="size-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem onClick={onRender}>
                 <RefreshCw className="size-4 mr-2" />
-                Render
+                {t("songsets.action.render")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onPlay}>
                 <Play className="size-4 mr-2" />
-                Play
+                {t("songsets.action.play")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setIsEditDescriptionOpen(true)}>
                 <Edit className="size-4 mr-2" />
-                Edit description
+                {t("songsets.action.editDescription")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleDuplicate} disabled={isDuplicating}>
                 {isDuplicating ? (
@@ -320,25 +322,25 @@ export function SongsetEditor({
                 ) : (
                   <Copy className="size-4 mr-2" />
                 )}
-                Duplicate
+                {t("songsets.action.duplicate")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onShare}>
                 <Share2 className="size-4 mr-2" />
-                Share
+                {t("songsets.action.share")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={onDownloadAudio}
                 disabled={!songset.lastCompletedRenderJobId}
               >
                 <FileAudio className="size-4 mr-2" />
-                Download Audio
+                {t("songsets.action.downloadAudio")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={onDownloadVideo}
                 disabled={!songset.lastCompletedRenderJobId}
               >
                 <FileVideo className="size-4 mr-2" />
-                Download Video
+                {t("songsets.action.downloadVideo")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -346,7 +348,7 @@ export function SongsetEditor({
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="size-4 mr-2" />
-                Delete
+                {t("songsets.action.delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -357,7 +359,7 @@ export function SongsetEditor({
       {songset.renderState === "failed" && (
         <Alert variant="destructive" className="rounded-none border-x-0">
           <AlertCircle className="size-4" />
-          <AlertTitle>Render failed</AlertTitle>
+          <AlertTitle>{t("songsets.alert.renderFailed")}</AlertTitle>
           <AlertDescription>
             {getRenderFailureText(
               songset.renderErrorMessage,
@@ -366,7 +368,7 @@ export function SongsetEditor({
           </AlertDescription>
           <AlertAction>
             <Button size="sm" variant="outline" onClick={onRender}>
-              Render again
+              {t("songsets.action.renderAgain")}
             </Button>
           </AlertAction>
         </Alert>
@@ -376,21 +378,21 @@ export function SongsetEditor({
       {songset.isArtifactsStale && !isStaleBannerDismissed && (
         <Alert variant="destructive" className="rounded-none border-x-0">
           <AlertTriangle className="size-4" />
-          <AlertTitle>Artifacts out of date</AlertTitle>
+          <AlertTitle>{t("songsets.alert.artifactsStale")}</AlertTitle>
           <AlertDescription className="flex items-center gap-2 flex-wrap">
-            <span>Songs have been modified since the last render.</span>
+            <span>{t("songsets.alert.staleDescription")}</span>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" onClick={onRender}>
-                Re-render
+                {t("songsets.action.reRender")}
               </Button>
               <Button size="sm" variant="ghost" onClick={onPlay}>
-                Play anyway
+                {t("songsets.action.playAnyway")}
               </Button>
               <Button
                 size="icon-sm"
                 variant="ghost"
                 onClick={() => setIsStaleBannerDismissed(true)}
-                aria-label="Dismiss"
+                aria-label={t("songsets.aria.dismiss")}
               >
                 <X className="size-4" />
               </Button>
@@ -406,11 +408,11 @@ export function SongsetEditor({
             <AlertTriangle className="size-4 text-amber-600" />
             <AlertDescription className="flex items-center gap-2">
               <Badge variant="outline" className="text-amber-600 border-amber-500/50">
-                {totalMarkedLines} marked lines
+                {totalMarkedLines} {t("songsets.markedLines")}
               </Badge>
               <span className="text-sm text-muted-foreground flex items-center gap-1">
                 <Monitor className="size-3" />
-                Open on desktop for text edit
+                {t("songsets.markedLinesHint")}
               </span>
             </AlertDescription>
           </Alert>
@@ -447,13 +449,13 @@ export function SongsetEditor({
           size="icon-lg"
           className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 shadow-lg"
           onClick={onAddSongs}
-          aria-label="Add songs"
+          aria-label={t("songsets.aria.addSongs")}
         >
           <Plus className="size-6" />
         </Button>
       ) : (
         <div className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 bg-muted text-muted-foreground text-sm px-4 py-2 rounded-full">
-          Maximum {SONGSET_MAX_SONGS} songs reached
+          {SONGSET_MAX_SONGS} {t("songsets.maxSongsReached")}
         </div>
       )}
 
@@ -464,7 +466,7 @@ export function SongsetEditor({
           onOpenChange={setIsTransitionSheetOpen}
           fromSong={getPreviousSong(selectedTransitionItem)}
           toSong={{
-            title: selectedTransitionItem.song?.title || "Unknown",
+            title: selectedTransitionItem.song?.title || t("songsets.unknown"),
             key: selectedTransitionItem.song?.effectiveKey ?? selectedTransitionItem.song?.musicalKey,
             tempoBpm: selectedTransitionItem.recording?.tempoBpm,
             entryPitchClass:
@@ -480,19 +482,19 @@ export function SongsetEditor({
       <Dialog open={isEditDescriptionOpen} onOpenChange={setIsEditDescriptionOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Description</DialogTitle>
+            <DialogTitle>{t("songsets.dialog.editDescriptionTitle")}</DialogTitle>
             <DialogDescription>
-              Update the description for this songset.
+              {t("songsets.dialog.editDescriptionDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t("songsets.label.description")}</Label>
               <Textarea
                 id="description"
                 value={descriptionValue}
                 onChange={(e) => setDescriptionValue(e.target.value)}
-                placeholder="e.g., Easter service songs"
+                placeholder={t("songsets.placeholder.description")}
                 rows={3}
                 disabled={isSavingDescription}
               />
@@ -504,7 +506,7 @@ export function SongsetEditor({
               onClick={() => setIsEditDescriptionOpen(false)}
               disabled={isSavingDescription}
             >
-              Cancel
+              {t("songsets.action.cancel")}
             </Button>
             <Button
               onClick={handleSaveDescription}
@@ -513,10 +515,10 @@ export function SongsetEditor({
               {isSavingDescription ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
-                  Saving...
+                  {t("songsets.loading.saving")}
                 </>
               ) : (
-                "Save"
+                t("songsets.action.save")
               )}
             </Button>
           </DialogFooter>
@@ -527,9 +529,12 @@ export function SongsetEditor({
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Songset</DialogTitle>
+            <DialogTitle>{t("songsets.dialog.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &quot;{songset.name}&quot;? This action cannot be undone.
+              {t("songsets.dialog.deleteNamedDescription").replace(
+                "{name}",
+                songset.name
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -538,7 +543,7 @@ export function SongsetEditor({
               onClick={() => setIsDeleteDialogOpen(false)}
               disabled={isDeleting}
             >
-              Cancel
+              {t("songsets.action.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -548,10 +553,10 @@ export function SongsetEditor({
               {isDeleting ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
-                  Deleting...
+                  {t("songsets.loading.deleting")}
                 </>
               ) : (
-                "Delete"
+                t("songsets.action.delete")
               )}
             </Button>
           </DialogFooter>

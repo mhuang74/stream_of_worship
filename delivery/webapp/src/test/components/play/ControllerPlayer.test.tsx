@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import type { CastTransportResult } from "@/hooks/useCast";
 
@@ -202,6 +203,17 @@ describe("ControllerPlayer", () => {
       });
 
       expect(screen.getByText(/lyrics/i)).toBeInTheDocument();
+    });
+  });
+
+  // ── zh-Hant localization ────────────────────────────────────────────────
+  describe("zh-Hant localization", () => {
+    it("renders translated Back button in zh-Hant", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />, "zh-Hant");
+      });
+
+      expect(screen.getByRole("button", { name: /^返回$/i })).toBeInTheDocument();
     });
   });
 

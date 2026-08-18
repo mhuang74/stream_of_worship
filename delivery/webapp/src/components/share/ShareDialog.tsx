@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { Copy, Trash2, Link, MessageCircle, Mail, Loader2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 
 const SIZE_LIMITS = {
   whatsapp: 2 * 1024 * 1024 * 1024,
@@ -39,15 +40,6 @@ function formatLimit(bytes: number): string {
     return `${bytes / (1024 * 1024 * 1024)} GB`;
   }
   return `${bytes / (1024 * 1024)} MB`;
-}
-
-function formatShareDuration(seconds: number | null): string {
-  if (!seconds) return "Not available";
-  const totalMinutes = Math.round(seconds / 60);
-  if (totalMinutes < 60) return `${totalMinutes} min`;
-  const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
-  return `${hours}h ${String(mins).padStart(2, "0")}m`;
 }
 
 export interface ShareDialogProps {
@@ -79,12 +71,22 @@ export function ShareDialog({
   durationSeconds,
   renderJobId,
 }: ShareDialogProps) {
+  const { t } = useLocale();
   const [activeTab, setActiveTab] = useState<Tab>("share-link");
   const [shareInfo, setShareInfo] = useState<ShareInfo | null>(null);
   const [artifactSizes, setArtifactSizes] = useState<ArtifactSizes | null>(null);
   const [isLoadingShare, setIsLoadingShare] = useState(false);
   const [isLoadingSizes, setIsLoadingSizes] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
+
+  const formatShareDuration = (seconds: number | null): string => {
+    if (!seconds) return t("control.notAvailable");
+    const totalMinutes = Math.round(seconds / 60);
+    if (totalMinutes < 60) return `${totalMinutes} ${t("control.min")}`;
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    return `${hours}${t("control.hours")} ${String(mins).padStart(2, "0")}${t("control.mins")}`;
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -129,7 +131,7 @@ export function ShareDialog({
   }, [open, songsetId, renderJobId]);
 
   const formattedMessage = shareInfo
-    ? `I shared a Stream of Worship songset with you:\n\n${songsetName}\nDuration: ${formatShareDuration(durationSeconds)}\n\nOpen this link to view the song list in read-only mode and start Worship Playback:\n${shareInfo.shareUrl}`
+    ? `${t("control.shareMessageIntro")}\n\n${songsetName}\n${t("control.shareMessageDuration")} ${formatShareDuration(durationSeconds)}\n\n${t("control.shareMessageOutro")}\n${shareInfo.shareUrl}`
     : "";
 
   const handleCreateShareLink = useCallback(async () => {
@@ -143,25 +145,25 @@ export function ShareDialog({
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error ?? "Failed to create share link");
+        throw new Error(data.error ?? t("control.failedToCreateShareLink"));
       }
 
       const data = await res.json();
       setShareInfo({ token: data.token, shareUrl: data.shareUrl });
-      toast.success("Share link created");
+      toast.success(t("control.shareLinkCreated"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create share link");
+      toast.error(err instanceof Error ? err.message : t("control.failedToCreateShareLink"));
     } finally {
       setIsLoadingShare(false);
     }
-  }, [songsetId]);
+  }, [songsetId, t]);
 
   const handleCopyMessage = useCallback(() => {
     if (!formattedMessage) return;
     navigator.clipboard.writeText(formattedMessage).then(() => {
-      toast.success("Share message copied to clipboard");
+      toast.success(t("control.shareMessageCopied"));
     });
-  }, [formattedMessage]);
+  }, [formattedMessage, t]);
 
   const handleRevoke = useCallback(async () => {
     if (!shareInfo?.token) return;
@@ -171,21 +173,21 @@ export function ShareDialog({
       const res = await fetch(`/api/share/${shareInfo.token}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error ?? "Failed to revoke share");
+        throw new Error(data.error ?? t("control.failedToRevokeShare"));
       }
       setShareInfo(null);
-      toast.success("Share link revoked");
+      toast.success(t("control.shareLinkRevokedToast"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to revoke share");
+      toast.error(err instanceof Error ? err.message : t("control.failedToRevokeShare"));
     } finally {
       setIsRevoking(false);
     }
-  }, [shareInfo]);
+  }, [shareInfo, t]);
 
   const handleSendFile = useCallback(
     async (app: "whatsapp" | "line" | "email") => {
       if (!shareInfo?.shareUrl) {
-        toast.error("Create a share link first");
+        toast.error(t("control.createShareLinkFirst"));
         return;
       }
 
@@ -204,7 +206,7 @@ export function ShareDialog({
         window.open(`https://line.me/R/msg/text/?${msg}`);
       }
     },
-    [shareInfo, songsetName]
+    [shareInfo, songsetName, t]
   );
 
   const isAboveLimit = (app: keyof typeof SIZE_LIMITS): boolean => {
@@ -230,7 +232,7 @@ export function ShareDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Share</DialogTitle>
+          <DialogTitle>{t("control.share")}</DialogTitle>
         </DialogHeader>
 
         <div className="flex border-b" role="tablist">
@@ -246,7 +248,7 @@ export function ShareDialog({
             onClick={() => setActiveTab("share-link")}
           >
             <Link className="size-4 inline mr-1.5 mb-0.5" />
-            Share link
+            {t("control.shareLinkTab")}
           </button>
           {renderJobId && (
             <button
@@ -260,7 +262,7 @@ export function ShareDialog({
               )}
               onClick={() => setActiveTab("send-file")}
             >
-              Send file
+              {t("control.sendFileTab")}
             </button>
           )}
         </div>
@@ -277,23 +279,23 @@ export function ShareDialog({
                   value={formattedMessage}
                   readOnly
                   className="text-sm min-h-[120px] resize-none"
-                  aria-label="Share message"
+                  aria-label={t("control.shareMessage")}
                 />
 
                 <Button
                   variant="outline"
                   className="w-full gap-2"
                   onClick={handleCopyMessage}
-                  aria-label="Copy share message"
+                  aria-label={t("control.copyShareMessage")}
                 >
                   <Copy className="size-4" />
-                  Copy message
+                  {t("control.copyMessage")}
                 </Button>
 
                 <div className="flex items-start gap-2 text-xs text-muted-foreground">
                   <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                   <span>
-                    This link stays live. Future edits to this songset will be visible to anyone with the link until you revoke it.
+                    {t("control.linkStaysLiveWarning")}
                   </span>
                 </div>
 
@@ -303,33 +305,33 @@ export function ShareDialog({
                   className="w-full gap-2"
                   onClick={handleRevoke}
                   disabled={isRevoking}
-                  aria-label="Revoke share link"
+                  aria-label={t("control.revokeShareLink")}
                 >
                   {isRevoking ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
                     <Trash2 className="size-4" />
                   )}
-                  Revoke link
+                  {t("control.revokeLink")}
                 </Button>
               </>
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Create a link to share this songset. Anyone with the link can view the song list and start Worship Playback.
+                  {t("control.createShareLinkDescription")}
                 </p>
                 <Button
                   className="w-full gap-2"
                   onClick={handleCreateShareLink}
                   disabled={isLoadingShare}
-                  aria-label="Create share link"
+                  aria-label={t("control.createShareLink")}
                 >
                   {isLoadingShare ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
                     <Link className="size-4" />
                   )}
-                  Create share link
+                  {t("control.createShareLink")}
                 </Button>
               </>
             )}
@@ -346,7 +348,7 @@ export function ShareDialog({
               <>
                 {artifactSizes && getFileSizeDisplay() && (
                   <p className="text-xs text-muted-foreground">
-                    File size: {getFileSizeDisplay()}
+                    {t("control.fileSize")}: {getFileSizeDisplay()}
                   </p>
                 )}
 
@@ -359,20 +361,20 @@ export function ShareDialog({
                           className="w-full gap-3 justify-start"
                           onClick={() => handleSendFile("whatsapp")}
                           disabled={isAboveLimit("whatsapp")}
-                          aria-label="Send via WhatsApp"
+                          aria-label={t("control.sendViaWhatsApp")}
                           aria-disabled={isAboveLimit("whatsapp")}
                         >
                           <MessageCircle className="size-5 text-green-500 shrink-0" />
                           <span>WhatsApp</span>
                           <span className="ml-auto text-xs text-muted-foreground">
-                            up to {formatLimit(SIZE_LIMITS.whatsapp)}
+                            {t("control.upTo")} {formatLimit(SIZE_LIMITS.whatsapp)}
                           </span>
                         </Button>
                       </span>
                     </TooltipTrigger>
                     {isAboveLimit("whatsapp") && (
                       <TooltipContent>
-                        File exceeds WhatsApp&apos;s {formatLimit(SIZE_LIMITS.whatsapp)} limit
+                        {t("control.exceedsWhatsApp")} {formatLimit(SIZE_LIMITS.whatsapp)} {t("control.limit")}
                       </TooltipContent>
                     )}
                   </Tooltip>
@@ -385,20 +387,20 @@ export function ShareDialog({
                           className="w-full gap-3 justify-start"
                           onClick={() => handleSendFile("line")}
                           disabled={isAboveLimit("line")}
-                          aria-label="Send via Line"
+                          aria-label={t("control.sendViaLine")}
                           aria-disabled={isAboveLimit("line")}
                         >
                           <MessageCircle className="size-5 text-green-400 shrink-0" />
                           <span>Line</span>
                           <span className="ml-auto text-xs text-muted-foreground">
-                            up to {formatLimit(SIZE_LIMITS.line)}
+                            {t("control.upTo")} {formatLimit(SIZE_LIMITS.line)}
                           </span>
                         </Button>
                       </span>
                     </TooltipTrigger>
                     {isAboveLimit("line") && (
                       <TooltipContent>
-                        File exceeds Line&apos;s {formatLimit(SIZE_LIMITS.line)} limit
+                        {t("control.exceedsLine")} {formatLimit(SIZE_LIMITS.line)} {t("control.limit")}
                       </TooltipContent>
                     )}
                   </Tooltip>
@@ -411,27 +413,27 @@ export function ShareDialog({
                           className="w-full gap-3 justify-start"
                           onClick={() => handleSendFile("email")}
                           disabled={isAboveLimit("email")}
-                          aria-label="Send via Email"
+                          aria-label={t("control.sendViaEmail")}
                           aria-disabled={isAboveLimit("email")}
                         >
                           <Mail className="size-5 text-blue-500 shrink-0" />
                           <span>Email</span>
                           <span className="ml-auto text-xs text-muted-foreground">
-                            up to {formatLimit(SIZE_LIMITS.email)}
+                            {t("control.upTo")} {formatLimit(SIZE_LIMITS.email)}
                           </span>
                         </Button>
                       </span>
                     </TooltipTrigger>
                     {isAboveLimit("email") && (
                       <TooltipContent>
-                        File exceeds Email&apos;s {formatLimit(SIZE_LIMITS.email)} limit
+                        {t("control.exceedsEmail")} {formatLimit(SIZE_LIMITS.email)} {t("control.limit")}
                       </TooltipContent>
                     )}
                   </Tooltip>
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  Opens your chosen app with a link to the hosted player page.
+                  {t("control.opensChosenApp")}
                 </p>
               </>
             )}

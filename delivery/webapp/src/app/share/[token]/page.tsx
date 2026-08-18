@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2, Monitor, AlertTriangle, Music, Clock } from "lucide-react";
+import { useLocale } from "@/hooks/useLocale";
 
 interface PublicSongsetItem {
   id: string;
@@ -54,18 +55,10 @@ function formatDuration(seconds: number | null): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function formatTotalDuration(seconds: number | null): string {
-  if (!seconds) return "N/A";
-  const totalMinutes = Math.round(seconds / 60);
-  if (totalMinutes < 60) return `${totalMinutes} min`;
-  const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
-  return `${hours}h ${String(mins).padStart(2, "0")}m`;
-}
-
 export default function SharePage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useLocale();
   const token = params.token as string;
 
   const [shareData, setShareData] = useState<ShareData | null>(null);
@@ -73,6 +66,15 @@ export default function SharePage() {
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
+
+  const formatTotalDuration = (seconds: number | null): string => {
+    if (!seconds) return t("control.notApplicable");
+    const totalMinutes = Math.round(seconds / 60);
+    if (totalMinutes < 60) return `${totalMinutes} ${t("control.min")}`;
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    return `${hours}${t("control.hours")} ${String(mins).padStart(2, "0")}${t("control.mins")}`;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +89,7 @@ export default function SharePage() {
         if (!res.ok) {
           const data = await res.json();
           setErrorStatus(res.status);
-          throw new Error(data.error ?? "This link is no longer available");
+          throw new Error(data.error ?? t("control.linkNoLongerAvailable"));
         }
 
         const data = await res.json();
@@ -95,7 +97,7 @@ export default function SharePage() {
         setShareData(data);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load share");
+          setError(err instanceof Error ? err.message : t("control.failedToLoadShare"));
         }
       } finally {
         if (!cancelled) {
@@ -111,7 +113,7 @@ export default function SharePage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, t]);
 
   const handlePlay = () => {
     if (!shareData?.playback.mp4Url && !shareData?.playback.mp3Url) return;
@@ -126,7 +128,7 @@ export default function SharePage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" role="status" aria-label="Loading" />
+        <Loader2 className="size-8 animate-spin text-muted-foreground" role="status" aria-label={t("control.loading")} />
       </div>
     );
   }
@@ -140,9 +142,9 @@ export default function SharePage() {
         <AlertTriangle className="size-12 text-muted-foreground" />
         <p className="text-center text-muted-foreground max-w-sm" role="alert">
           {isRevoked
-            ? "This share link has been revoked."
+            ? t("control.shareLinkRevoked")
             : isExpired
-              ? "This share link has expired."
+              ? t("control.shareLinkExpired")
               : error}
         </p>
       </div>
@@ -158,16 +160,16 @@ export default function SharePage() {
 
   const renderUnavailableMessage = () => {
     if (songset.renderState === "unrendered") {
-      return "This songset hasn't been rendered yet. Worship Playback is not available.";
+      return t("control.songsetNotRendered");
     }
     if (songset.renderState === "rendering") {
-      return "This songset is currently being rendered. Check back soon.";
+      return t("control.songsetRendering");
     }
     if (songset.renderState === "failed") {
-      return "Rendering failed. Worship Playback is not available.";
+      return t("control.renderingFailed");
     }
     if (!hasArtifacts) {
-      return "No playback artifacts available yet.";
+      return t("control.noPlaybackArtifacts");
     }
     return null;
   };
@@ -192,16 +194,16 @@ export default function SharePage() {
           )}
           <div className="flex items-center gap-1 text-sm text-muted-foreground">
             <Clock className="size-3.5" />
-            Total: {formatTotalDuration(songset.totalDurationSeconds)}
+            {t("control.total")}: {formatTotalDuration(songset.totalDurationSeconds)}
           </div>
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span className="font-medium">Song List</span>
+            <span className="font-medium">{t("control.songList")}</span>
             <span className="flex items-center gap-1">
               <Music className="size-3" />
-              {items.length} {items.length === 1 ? "song" : "songs"}
+              {items.length} {items.length === 1 ? t("control.song") : t("control.songs")}
             </span>
           </div>
 
@@ -216,7 +218,7 @@ export default function SharePage() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">
-                    {item.songTitle || "Unknown Song"}
+                    {item.songTitle || t("control.unknownSong")}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
                     {[item.composer, item.lyricist].filter(Boolean).join(" • ") || item.albumName || ""}
@@ -242,7 +244,7 @@ export default function SharePage() {
           <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
             <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              The song list above is current, but the playback may reflect an earlier render.
+              {t("control.playbackStaleWarning")}
             </p>
           </div>
         )}
@@ -259,7 +261,7 @@ export default function SharePage() {
                 className="w-full h-14 gap-3 text-lg"
                 onClick={handlePlay}
                 disabled={isStarting}
-                aria-label="Play worship video"
+                aria-label={t("control.playWorshipVideo")}
                 data-testid="play-button"
               >
                 {isStarting ? (
@@ -267,7 +269,7 @@ export default function SharePage() {
                 ) : (
                   <Monitor className="size-5" />
                 )}
-                Start Worship
+                {t("control.startWorship")}
               </Button>
             )}
 
@@ -277,14 +279,14 @@ export default function SharePage() {
                 className="w-full h-14 gap-3 text-lg"
                 onClick={handlePlay}
                 disabled={isStarting}
-                aria-label="Play audio"
+                aria-label={t("control.playAudio")}
               >
                 {isStarting ? (
                   <Loader2 className="size-5 animate-spin" />
                 ) : (
                   <Play className="size-5" />
                 )}
-                Start Worship
+                {t("control.startWorship")}
               </Button>
             )}
           </div>

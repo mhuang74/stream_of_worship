@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
 
 describe("SongCard", () => {
@@ -250,6 +251,14 @@ describe("SongCard", () => {
       expect(screen.getByTestId("add-song-button")).toHaveAttribute(
         "aria-label",
         "Already added"
+      );
+    });
+
+    it("localizes the add button aria-label in zh-Hant", () => {
+      render(<SongCard {...defaultProps} />, "zh-Hant");
+      expect(screen.getByTestId("add-song-button")).toHaveAttribute(
+        "aria-label",
+        "加入詩歌集"
       );
     });
   });

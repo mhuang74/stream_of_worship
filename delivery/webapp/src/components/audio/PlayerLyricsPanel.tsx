@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useSongLyrics } from "@/hooks/useSongLyrics";
 import { parseLRC, isValidLRC, type LRCLine } from "@/lib/render/lrc-parser";
 import { formatTimestamp } from "@/lib/render/lyrics-display";
+import { useLocale } from "@/hooks/useLocale";
 
 interface PlayerLyricsPanelProps {
   recordingContentHash: string;
@@ -11,17 +12,18 @@ interface PlayerLyricsPanelProps {
 
 export function PlayerLyricsPanel({ recordingContentHash }: PlayerLyricsPanelProps) {
   const { lrcContent, lines, loading, error } = useSongLyrics(recordingContentHash);
+  const { t } = useLocale();
 
   let content: React.ReactNode;
   if (loading) {
     content = (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
-        Loading lyrics…
+        {t("audio.lyrics.loading")}
       </div>
     );
   } else if (error) {
-    content = <p className="text-sm text-muted-foreground">Lyrics unavailable</p>;
+    content = <p className="text-sm text-muted-foreground">{t("audio.lyrics.unavailable")}</p>;
   } else if (lrcContent !== null && isValidLRC(lrcContent)) {
     const parsed: LRCLine[] = parseLRC(lrcContent);
     content = (
@@ -46,7 +48,7 @@ export function PlayerLyricsPanel({ recordingContentHash }: PlayerLyricsPanelPro
     );
   } else {
     content = (
-      <p className="text-sm text-muted-foreground">No lyrics available for this recording.</p>
+      <p className="text-sm text-muted-foreground">{t("audio.lyrics.noLyrics")}</p>
     );
   }
 

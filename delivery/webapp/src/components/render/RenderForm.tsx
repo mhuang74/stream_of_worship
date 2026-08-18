@@ -32,6 +32,8 @@ import { AlertCircle, Info } from "lucide-react"
 import Link from "next/link"
 import { FONT_FAMILIES, FONT_SIZES, TEMPLATES, RESOLUTIONS, type FontFamilyValue } from "@/lib/constants"
 import { formatDuration } from "@/lib/format"
+import { useLocale } from "@/hooks/useLocale"
+import type { TranslationKey } from "@/lib/i18n/messages"
 
 export interface RenderFormData {
   audioEnabled: boolean
@@ -74,14 +76,7 @@ export interface PreviousRenderJobData {
   songsetDurationSeconds?: number | null
 }
 
-const TITLE_CARD_DURATIONS = [
-  { value: 5, label: "5 seconds" },
-  { value: 10, label: "10 seconds" },
-  { value: 15, label: "15 seconds" },
-  { value: 20, label: "20 seconds" },
-  { value: 25, label: "25 seconds" },
-  { value: 30, label: "30 seconds" },
-] as const
+const TITLE_CARD_DURATIONS = [5, 10, 15, 20, 25, 30] as const
 
 function isIOS174OrLater(): boolean {
   if (typeof navigator === "undefined") return false
@@ -118,6 +113,26 @@ function isDifferent(prev: unknown, curr: unknown): boolean {
   return String(p) !== String(c)
 }
 
+function templateLabelKey(value: string): TranslationKey {
+  return `settings.option.template.${value}` as TranslationKey
+}
+
+function resolutionLabelKey(value: string): TranslationKey {
+  return `settings.option.resolution.${value}` as TranslationKey
+}
+
+function fontFamilyLabelKey(value: string): TranslationKey {
+  return `settings.option.fontFamily.${value}` as TranslationKey
+}
+
+function fontSizeLabelKey(value: string): TranslationKey {
+  return `settings.option.fontPreset.${value}` as TranslationKey
+}
+
+function titleCardDurationKey(value: number): TranslationKey {
+  return `render.titleCard.duration.${value}` as TranslationKey
+}
+
 export function RenderForm({
   songsetId,
   initialData,
@@ -131,6 +146,7 @@ export function RenderForm({
   currentSongCount,
   currentSongsetDurationSeconds,
 }: RenderFormProps) {
+  const { t } = useLocale()
   const [formData, setFormData] = useState<RenderFormData>({
     audioEnabled: initialData?.audioEnabled ?? true,
     videoEnabled: initialData?.videoEnabled ?? true,
@@ -176,7 +192,7 @@ export function RenderForm({
           <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2.5">
             <Info className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
             <span className="text-sm text-blue-900 dark:text-blue-100">
-              Previously rendered at{" "}
+              {t("render.previousRender.notice")}{" "}
               {new Intl.DateTimeFormat(undefined, {
                 dateStyle: "medium",
                 timeStyle: "short",
@@ -188,15 +204,15 @@ export function RenderForm({
         {/* Output Options */}
         <Card>
           <CardHeader>
-            <CardTitle>Output Options</CardTitle>
-            <CardDescription>Choose what to render</CardDescription>
+            <CardTitle>{t("render.output.title")}</CardTitle>
+            <CardDescription>{t("render.output.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="audio">Audio (MP3)</Label>
+                <Label htmlFor="audio">{t("render.output.audioLabel")}</Label>
                 <p className="text-sm text-muted-foreground">
-                  Mixed audio with transitions
+                  {t("render.output.audioDescription")}
                 </p>
               </div>
               <Switch
@@ -210,9 +226,9 @@ export function RenderForm({
 
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="video">Video (MP4)</Label>
+                <Label htmlFor="video">{t("render.output.videoLabel")}</Label>
                 <p className="text-sm text-muted-foreground">
-                  Lyrics video with audio
+                  {t("render.output.videoDescription")}
                 </p>
               </div>
               <Switch
@@ -230,12 +246,12 @@ export function RenderForm({
         {formData.videoEnabled && (
           <Card>
             <CardHeader>
-              <CardTitle>Video Settings</CardTitle>
-              <CardDescription>Customize the lyrics video</CardDescription>
+              <CardTitle>{t("render.video.title")}</CardTitle>
+              <CardDescription>{t("render.video.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="template">Template</Label>
+                <Label htmlFor="template">{t("render.video.template")}</Label>
                 <Select
                   value={formData.template}
                   onValueChange={(value) =>
@@ -246,9 +262,9 @@ export function RenderForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TEMPLATES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
+                    {TEMPLATES.map((tmpl) => (
+                      <SelectItem key={tmpl.value} value={tmpl.value}>
+                        {t(templateLabelKey(tmpl.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -256,7 +272,7 @@ export function RenderForm({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="resolution">Resolution</Label>
+                <Label htmlFor="resolution">{t("render.video.resolution")}</Label>
                 <Select
                   value={formData.resolution}
                   onValueChange={(value) =>
@@ -269,7 +285,7 @@ export function RenderForm({
                   <SelectContent>
                     {RESOLUTIONS.map((r) => (
                       <SelectItem key={r.value} value={r.value}>
-                        {r.label}
+                        {t(resolutionLabelKey(r.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -277,7 +293,7 @@ export function RenderForm({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fontSize">Font Size</Label>
+                <Label htmlFor="fontSize">{t("render.video.fontSize")}</Label>
                 <Select
                   value={formData.fontSizePreset}
                   onValueChange={(value) =>
@@ -290,7 +306,7 @@ export function RenderForm({
                   <SelectContent>
                     {FONT_SIZES.map((f) => (
                       <SelectItem key={f.value} value={f.value}>
-                        {f.label}
+                        {t(fontSizeLabelKey(f.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -298,7 +314,7 @@ export function RenderForm({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fontFamily">Font Family</Label>
+                <Label htmlFor="fontFamily">{t("render.video.fontFamily")}</Label>
                 <Select
                   value={formData.fontFamily}
                   onValueChange={(value) =>
@@ -311,7 +327,7 @@ export function RenderForm({
                   <SelectContent>
                     {FONT_FAMILIES.map((f) => (
                       <SelectItem key={f.value} value={f.value}>
-                        {f.label}
+                        {t(fontFamilyLabelKey(f.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -333,8 +349,8 @@ export function RenderForm({
         {/* Title Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Title Card</CardTitle>
-            <CardDescription>Add an opening title card</CardDescription>
+            <CardTitle>{t("render.titleCard.title")}</CardTitle>
+            <CardDescription>{t("render.titleCard.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-2">
@@ -345,13 +361,13 @@ export function RenderForm({
                   updateField("includeTitleCard", checked as boolean)
                 }
               />
-              <Label htmlFor="includeTitleCard">Include title card</Label>
+              <Label htmlFor="includeTitleCard">{t("render.titleCard.include")}</Label>
             </div>
 
             {formData.includeTitleCard && (
               <div className="space-y-4 pl-6">
                 <div className="space-y-2">
-                  <Label htmlFor="titleCardDuration">Duration</Label>
+                  <Label htmlFor="titleCardDuration">{t("render.titleCard.duration")}</Label>
                   <Select
                     value={(formData.titleCardDurationSeconds ?? 10).toString()}
                     onValueChange={(value) =>
@@ -363,8 +379,8 @@ export function RenderForm({
                     </SelectTrigger>
                     <SelectContent>
                       {TITLE_CARD_DURATIONS.map((d) => (
-                        <SelectItem key={d.value} value={d.value.toString()}>
-                          {d.label}
+                        <SelectItem key={d} value={d.toString()}>
+                          {t(titleCardDurationKey(d))}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -372,14 +388,14 @@ export function RenderForm({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="titleCardLines">Custom title card text</Label>
+                  <Label htmlFor="titleCardLines">{t("render.titleCard.customText")}</Label>
                   <p className="text-sm text-muted-foreground">
-                    One line per entry. Leave empty to use songset name and song titles.
+                    {t("render.titleCard.customTextHint")}
                   </p>
                   <textarea
                     id="titleCardLines"
                     className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    placeholder={"Sunday Morning Worship\nAmazing Grace\nHow Great Thou Art"}
+                    placeholder={t("render.titleCard.placeholder")}
                     value={formData.titleCardLines.join("\n")}
                     onChange={(e) => {
                       const lines = e.target.value.split("\n").filter((line) => line.trim() !== "")
@@ -390,9 +406,9 @@ export function RenderForm({
 
                 {formData.titleCardLines.length === 0 && songTitles && songTitles.length > 0 && (
                   <div className="rounded-md border border-dashed border-muted-foreground/25 bg-muted/50 p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Default title card lines:</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t("render.titleCard.defaultLines")}</p>
                     <p className="text-sm text-muted-foreground whitespace-pre-line">
-                      {songsetName || "Worship Set"}{"\n"}
+                      {songsetName || t("render.titleCard.worshipSet")}{"\n"}
                       {songTitles.join("\n")}
                     </p>
                   </div>
@@ -405,8 +421,8 @@ export function RenderForm({
         {/* Offline Availability */}
         <Card>
           <CardHeader>
-            <CardTitle>Offline Availability</CardTitle>
-            <CardDescription>Cache for offline playback</CardDescription>
+            <CardTitle>{t("render.offline.title")}</CardTitle>
+            <CardDescription>{t("render.offline.description")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-start space-x-2">
@@ -424,7 +440,7 @@ export function RenderForm({
                     htmlFor="offlineEnabled"
                     className={!iosSupportsOffline ? "text-muted-foreground" : ""}
                   >
-                    Make available offline
+                    {t("render.offline.makeAvailable")}
                   </Label>
                   {!iosSupportsOffline && (
                     <Tooltip>
@@ -432,13 +448,13 @@ export function RenderForm({
                         <Info className="size-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Requires iOS 17.4 or later</p>
+                        <p>{t("render.offline.requiresIOS")}</p>
                       </TooltipContent>
                     </Tooltip>
                   )}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Cache rendered files for offline playback
+                  {t("render.offline.cacheHint")}
                 </p>
               </div>
             </div>
@@ -451,17 +467,17 @@ export function RenderForm({
             <AlertCircle className="size-5 shrink-0 text-yellow-600" />
             <div className="flex-1 space-y-1">
               <p className="font-medium text-yellow-900 dark:text-yellow-100">
-                {markedLineCount} marked line{markedLineCount !== 1 ? "s" : ""} need attention
+                {markedLineCount} {t(markedLineCount !== 1 ? "render.markedLines.plural" : "render.markedLines.singular")}
               </p>
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                Some lyrics have been marked for review. Please verify before rendering.
+                {t("render.markedLines.hint")}
               </p>
             </div>
             <Link
               href={`/songsets/${songsetId}`}
               className="text-sm font-medium text-yellow-900 underline underline-offset-4 hover:text-yellow-800 dark:text-yellow-100 dark:hover:text-yellow-200"
             >
-              Review
+              {t("render.markedLines.review")}
             </Link>
           </div>
         )}
@@ -474,14 +490,14 @@ export function RenderForm({
             disabled={isSubmitting}
             className="flex-1 rounded-lg border border-input bg-background px-4 py-3 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
           >
-            Cancel
+            {t("render.action.cancel")}
           </button>
           <button
             type="submit"
             disabled={isSubmitting || (!formData.audioEnabled && !formData.videoEnabled)}
             className="flex-1 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            {isSubmitting ? "Starting..." : "Start Render"}
+            {isSubmitting ? t("render.action.starting") : t("render.action.start")}
           </button>
         </div>
       </form>
@@ -489,9 +505,9 @@ export function RenderForm({
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Start New Render?</AlertDialogTitle>
+            <AlertDialogTitle>{t("render.confirm.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              A previous render exists for this songset. Compare the parameters below before starting a new render.
+              {t("render.confirm.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {previousRenderJob && (
@@ -499,44 +515,44 @@ export function RenderForm({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="py-1.5 pr-3 text-left font-medium text-muted-foreground">Parameter</th>
-                    <th className="py-1.5 px-3 text-left font-medium text-muted-foreground">Previous Render</th>
-                    <th className="py-1.5 pl-3 text-left font-medium text-muted-foreground">Current Request</th>
+                    <th className="py-1.5 pr-3 text-left font-medium text-muted-foreground">{t("render.confirm.parameter")}</th>
+                    <th className="py-1.5 px-3 text-left font-medium text-muted-foreground">{t("render.confirm.previous")}</th>
+                    <th className="py-1.5 pl-3 text-left font-medium text-muted-foreground">{t("render.confirm.current")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(() => {
-                    const prevFont = FONT_FAMILIES.find((f) => f.value === previousRenderJob.fontFamily)?.label ?? previousRenderJob.fontFamily
-                    const currFont = FONT_FAMILIES.find((f) => f.value === formData.fontFamily)?.label ?? formData.fontFamily
-                    const prevFontSize = FONT_SIZES.find((f) => f.value === previousRenderJob.fontSizePreset)?.label ?? previousRenderJob.fontSizePreset
-                    const currFontSize = FONT_SIZES.find((f) => f.value === formData.fontSizePreset)?.label ?? formData.fontSizePreset
-                    const prevTemplate = TEMPLATES.find((t) => t.value === previousRenderJob.template)?.label ?? previousRenderJob.template
-                    const currTemplate = TEMPLATES.find((t) => t.value === formData.template)?.label ?? formData.template
-                    const prevResolution = RESOLUTIONS.find((r) => r.value === previousRenderJob.resolution)?.label ?? previousRenderJob.resolution ?? "—"
-                    const currResolution = RESOLUTIONS.find((r) => r.value === formData.resolution)?.label ?? formData.resolution
-                    const prevTitleCard = previousRenderJob.includeTitleCard ? `On (${previousRenderJob.titleCardDurationSeconds ?? 10}s)` : "Off"
-                    const currTitleCard = formData.includeTitleCard ? `On (${formData.titleCardDurationSeconds ?? 10}s)` : "Off"
+                    const fontLabel = (v: string) => FONT_FAMILIES.some((f) => f.value === v) ? t(fontFamilyLabelKey(v)) : v
+                    const fontSizeLabel = (v: string) => FONT_SIZES.some((f) => f.value === v) ? t(fontSizeLabelKey(v)) : v
+                    const templateLabel = (v: string) => TEMPLATES.some((tmpl) => tmpl.value === v) ? t(templateLabelKey(v)) : v
+                    const resolutionLabel = (v?: string) => v && RESOLUTIONS.some((r) => r.value === v) ? t(resolutionLabelKey(v)) : v ?? "—"
+                    const prevTitleCard = previousRenderJob.includeTitleCard
+                      ? `${t("render.compare.titleCardOn")} (${previousRenderJob.titleCardDurationSeconds ?? 10}s)`
+                      : t("render.compare.titleCardOff")
+                    const currTitleCard = formData.includeTitleCard
+                      ? `${t("render.compare.titleCardOn")} (${formData.titleCardDurationSeconds ?? 10}s)`
+                      : t("render.compare.titleCardOff")
                     const prevSongCount = previousRenderJob.songCount != null ? String(previousRenderJob.songCount) : "—"
                     const currSongCount = currentSongCount != null ? String(currentSongCount) : "—"
                     const prevSongsetDuration = formatDurationSafe(previousRenderJob.songsetDurationSeconds)
                     const currSongsetDuration = formatDurationSafe(currentSongsetDurationSeconds)
                     const prevTotalDuration = formatDurationSafe(previousRenderJob.totalDurationSeconds)
                     const estimatedTotalDuration = (currentSongsetDurationSeconds ?? 0) + (formData.includeTitleCard ? (formData.titleCardDurationSeconds ?? 0) : 0)
-                    const currTotalDuration = estimatedTotalDuration > 0 ? `~${formatDuration(estimatedTotalDuration)}` : "—"
+                    const currTotalDuration = estimatedTotalDuration > 0 ? `${t("render.compare.estimatedPrefix")}${formatDuration(estimatedTotalDuration)}` : "—"
 
-                    const rows: { label: string; prev: string; curr: string; diff: boolean }[] = [
-                      { label: "Font", prev: prevFont, curr: currFont, diff: isDifferent(previousRenderJob.fontFamily, formData.fontFamily) },
-                      { label: "Font Size", prev: prevFontSize, curr: currFontSize, diff: isDifferent(previousRenderJob.fontSizePreset, formData.fontSizePreset) },
-                      { label: "Background", prev: prevTemplate, curr: currTemplate, diff: isDifferent(previousRenderJob.template, formData.template) },
-                      { label: "Resolution", prev: prevResolution, curr: currResolution, diff: isDifferent(previousRenderJob.resolution, formData.resolution) },
-                      { label: "Title Card", prev: prevTitleCard, curr: currTitleCard, diff: isDifferent(previousRenderJob.includeTitleCard, formData.includeTitleCard) || (formData.includeTitleCard && isDifferent(previousRenderJob.titleCardDurationSeconds ?? 10, formData.titleCardDurationSeconds)) },
-                      { label: "Songs", prev: prevSongCount, curr: currSongCount, diff: isDifferent(previousRenderJob.songCount, currentSongCount) },
-                      { label: "Songset Duration", prev: prevSongsetDuration, curr: currSongsetDuration, diff: isDifferent(previousRenderJob.songsetDurationSeconds || null, currentSongsetDurationSeconds || null) },
-                      { label: "Total Duration", prev: prevTotalDuration, curr: currTotalDuration, diff: isDifferent(previousRenderJob.totalDurationSeconds || null, estimatedTotalDuration || null) },
+                    const rows: { id: string; label: string; prev: string; curr: string; diff: boolean }[] = [
+                      { id: "font", label: t("render.compare.font"), prev: fontLabel(previousRenderJob.fontFamily), curr: fontLabel(formData.fontFamily), diff: isDifferent(previousRenderJob.fontFamily, formData.fontFamily) },
+                      { id: "fontSize", label: t("render.compare.fontSize"), prev: fontSizeLabel(previousRenderJob.fontSizePreset), curr: fontSizeLabel(formData.fontSizePreset), diff: isDifferent(previousRenderJob.fontSizePreset, formData.fontSizePreset) },
+                      { id: "background", label: t("render.compare.background"), prev: templateLabel(previousRenderJob.template), curr: templateLabel(formData.template), diff: isDifferent(previousRenderJob.template, formData.template) },
+                      { id: "resolution", label: t("render.compare.resolution"), prev: resolutionLabel(previousRenderJob.resolution), curr: resolutionLabel(formData.resolution), diff: isDifferent(previousRenderJob.resolution, formData.resolution) },
+                      { id: "titleCard", label: t("render.compare.titleCard"), prev: prevTitleCard, curr: currTitleCard, diff: isDifferent(previousRenderJob.includeTitleCard, formData.includeTitleCard) || (formData.includeTitleCard && isDifferent(previousRenderJob.titleCardDurationSeconds ?? 10, formData.titleCardDurationSeconds)) },
+                      { id: "songs", label: t("render.compare.songs"), prev: prevSongCount, curr: currSongCount, diff: isDifferent(previousRenderJob.songCount, currentSongCount) },
+                      { id: "songsetDuration", label: t("render.compare.songsetDuration"), prev: prevSongsetDuration, curr: currSongsetDuration, diff: isDifferent(previousRenderJob.songsetDurationSeconds || null, currentSongsetDurationSeconds || null) },
+                      { id: "totalDuration", label: t("render.compare.totalDuration"), prev: prevTotalDuration, curr: currTotalDuration, diff: isDifferent(previousRenderJob.totalDurationSeconds || null, estimatedTotalDuration || null) },
                     ]
 
                     return rows.map((row) => (
-                      <tr key={row.label} className="border-b last:border-0">
+                      <tr key={row.id} className="border-b last:border-0">
                         <td className="py-1.5 pr-3 font-medium">{row.label}</td>
                         <td className="py-1.5 px-3">{row.prev}</td>
                         <td className={`py-1.5 pl-3${row.diff ? " text-amber-600 dark:text-amber-400" : ""}`}>
@@ -551,9 +567,9 @@ export function RenderForm({
             </div>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("render.confirm.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmRender}>
-              Start Render
+              {t("render.action.start")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

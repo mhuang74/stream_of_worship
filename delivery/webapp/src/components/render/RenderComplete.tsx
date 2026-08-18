@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner"
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download"
 import { formatDuration } from "@/lib/format"
+import { useLocale } from "@/hooks/useLocale"
 
 interface RenderCompleteProps {
   jobId: string
@@ -39,25 +40,26 @@ export function RenderComplete({
   onDone,
   onShare,
 }: RenderCompleteProps) {
+  const { t } = useLocale()
   const handleDownloadFile = useCallback(async (
     fileType: "audio" | "video" | "json",
     extension: string,
   ) => {
-    const toastId = toast.loading("Preparing download...");
+    const toastId = toast.loading(t("render.download.preparing"));
     try {
       await fetchSignedUrlAndDownload(jobId, fileType, sanitizeFilename(songsetName), extension);
-      toast.success("Download started", { id: toastId });
+      toast.success(t("render.download.started"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Download failed", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("render.download.failed"), { id: toastId });
     }
-  }, [jobId, songsetName]);
+  }, [jobId, songsetName, t]);
 
   const handleShare = async () => {
     if (navigator.share) {
       try {
         await navigator.share({
           title: songsetName,
-          text: `Check out "${songsetName}" on Stream of Worship`,
+          text: `${t("render.complete.shareText")}${songsetName}${t("render.complete.shareTextSuffix")}`,
           url: `${window.location.origin}/songsets/${songsetId}`,
         });
       } catch (error) {
@@ -77,14 +79,14 @@ export function RenderComplete({
         <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
           <CheckCircle2 className="size-8 text-green-600 dark:text-green-400" />
         </div>
-        <CardTitle className="text-xl">Render Complete!</CardTitle>
+        <CardTitle className="text-xl">{t("render.complete.title")}</CardTitle>
         <CardDescription>
-          &ldquo;{songsetName}&rdquo; is ready for playback
+          &ldquo;{songsetName}&rdquo; {t("render.complete.description")}
         </CardDescription>
         {elapsedSeconds != null && elapsedSeconds > 0 && (
           <div className="mt-2 flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
             <Timer className="size-3.5" />
-            <span>Total time: {formatDuration(elapsedSeconds)}</span>
+            <span>{t("render.complete.totalTime")} {formatDuration(elapsedSeconds)}</span>
           </div>
         )}
       </CardHeader>
@@ -92,7 +94,7 @@ export function RenderComplete({
         {/* Download Options */}
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-muted-foreground">
-            Download Files
+            {t("render.complete.downloadFiles")}
           </h3>
 
           {hasAudio && (
@@ -102,7 +104,7 @@ export function RenderComplete({
               onClick={() => handleDownloadFile("audio", "mp3")}
             >
               <Music className="size-4" />
-              <span className="flex-1 text-left">Download Audio (MP3)</span>
+              <span className="flex-1 text-left">{t("render.complete.downloadAudio")}</span>
             </Button>
           )}
 
@@ -113,7 +115,7 @@ export function RenderComplete({
               onClick={() => handleDownloadFile("video", "mp4")}
             >
               <Video className="size-4" />
-              <span className="flex-1 text-left">Download Video (MP4)</span>
+              <span className="flex-1 text-left">{t("render.complete.downloadVideo")}</span>
             </Button>
           )}
 
@@ -124,7 +126,7 @@ export function RenderComplete({
               onClick={() => handleDownloadFile("json", "json")}
             >
               <FileJson className="size-4" />
-              <span className="flex-1 text-left">Download Chapters (JSON)</span>
+              <span className="flex-1 text-left">{t("render.complete.downloadChapters")}</span>
             </Button>
           )}
         </div>
@@ -138,7 +140,7 @@ export function RenderComplete({
             onClick={handleShare}
           >
             <Share2 className="size-4" />
-            Share Songset
+            {t("render.complete.share")}
           </Button>
 
           <Button
@@ -146,7 +148,7 @@ export function RenderComplete({
             className="w-full"
             onClick={onDone}
           >
-            Done
+            {t("render.complete.done")}
           </Button>
         </div>
       </CardContent>

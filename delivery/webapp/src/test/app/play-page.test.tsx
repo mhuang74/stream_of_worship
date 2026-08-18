@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import PlayPage from "@/app/songsets/[id]/play/page";
 
 // Mock next/navigation
@@ -67,6 +68,18 @@ describe("PlayPage", () => {
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /back to songsets/i })).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("zh-Hant localization", () => {
+    it("renders translated Back to songsets button", async () => {
+      global.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
+
+      render(<PlayPage />, "zh-Hant");
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /返回詩歌集/i })).toBeInTheDocument();
       });
     });
   });

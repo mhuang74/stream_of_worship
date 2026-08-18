@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { PlayerLyricsPanel } from "@/components/audio/PlayerLyricsPanel";
 
 const mockUseSongLyrics = vi.fn();
@@ -112,5 +113,18 @@ describe("PlayerLyricsPanel", () => {
     expect(pre).toBeInTheDocument();
     expect(pre?.textContent).toContain("Only one timestamped line");
     expect(pre?.textContent).toContain("This is plain text");
+  });
+
+  it("(h) zh-Hant: error state renders Traditional Chinese message", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: null,
+      lines: null,
+      loading: false,
+      error: "Network error",
+    });
+
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />, "zh-Hant");
+
+    expect(screen.getByText("歌詞無法使用")).toBeInTheDocument();
   });
 });

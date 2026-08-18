@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import userEvent from "@testing-library/user-event";
 import { AudioPlayerBar } from "@/components/audio/AudioPlayerBar";
 import { AudioPlayerProvider, AudioTrack } from "@/contexts/AudioPlayerContext";
@@ -249,6 +250,28 @@ describe("AudioPlayerBar", () => {
     // Since we can't test responsive behavior in jsdom easily,
     // we just verify the player renders
     expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+  });
+
+  it("renders transport buttons with Traditional Chinese aria-labels in zh-Hant", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AudioPlayerProvider>
+        <TestPlayerWithTrack track={testTrack} />
+      </AudioPlayerProvider>,
+      "zh-Hant"
+    );
+
+    await user.click(screen.getByTestId("load-track"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+    });
+
+    const playPauseLabel = screen.getByTestId("play-pause-button").getAttribute("aria-label");
+    expect(["播放", "暫停"]).toContain(playPauseLabel);
+    expect(screen.getByTestId("close-player-button")).toHaveAttribute("aria-label", "關閉播放器");
+    expect(screen.getByTestId("skip-back-button")).toHaveAttribute("aria-label", "倒轉 10 秒");
   });
 
   describe("lyrics button visibility", () => {

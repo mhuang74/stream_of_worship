@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { SongList, SongListItem } from "@/components/songset/SongList";
 
 // Captured DndContext id values across renders, for hydration-stability assertions.
@@ -184,6 +185,11 @@ describe("SongList", () => {
       renderList({ items: [] });
       expect(screen.getByText(/No songs in this songset/i)).toBeInTheDocument();
       expect(screen.getByText(/Tap the \+ button to add songs/i)).toBeInTheDocument();
+    });
+
+    it("localizes the empty state in zh-Hant", () => {
+      render(<SongList {...defaultProps} items={[]} />, "zh-Hant");
+      expect(screen.getByText("此詩歌集中沒有詩歌")).toBeInTheDocument();
     });
   });
 

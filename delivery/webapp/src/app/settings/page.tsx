@@ -6,6 +6,7 @@ import { SettingsForm, UserSettingsData } from "@/components/settings/SettingsFo
 import { SettingsSkeleton } from "@/components/settings/SettingsSkeleton";
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets";
 import { toast } from "sonner";
+import { useLocale } from "@/hooks/useLocale";
 
 const DEFAULT_SETTINGS: UserSettingsData = {
   offlineAutoCache: true,
@@ -17,6 +18,7 @@ const DEFAULT_SETTINGS: UserSettingsData = {
   defaultFontFamily: "noto_serif_tc",
   defaultKeyShiftSemitones: 0,
   timingReviewFont: "sans",
+  locale: "en",
 };
 
 async function fetchSettings(): Promise<UserSettingsData> {
@@ -28,6 +30,7 @@ async function fetchSettings(): Promise<UserSettingsData> {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { t, setLocale } = useLocale();
   const [settings, setSettings] = useState<UserSettingsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -46,9 +49,7 @@ export default function SettingsPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : "Failed to load settings"
-          );
+          setError(err instanceof Error ? err.message : t("settings.failedLoad"));
         }
       } finally {
         if (!cancelled) {
@@ -62,7 +63,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   async function handleSave(updated: UserSettingsData) {
     setIsSaving(true);
@@ -83,9 +84,10 @@ export default function SettingsPage() {
       }
 
       setSettings(updated);
-      toast.success("Settings saved");
+      setLocale(updated.locale);
+      toast.success(t("settings.saved"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save settings");
+      toast.error(err instanceof Error ? err.message : t("settings.failedSave"));
     } finally {
       setIsSaving(false);
     }
@@ -94,7 +96,7 @@ export default function SettingsPage() {
   return (
     <div className="px-4 py-6 max-w-2xl mx-auto">
       <FontPreviewStylesheets />
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      <h1 className="text-2xl font-bold mb-6">{t("settings.title")}</h1>
 
       {isLoading && <SettingsSkeleton />}
 

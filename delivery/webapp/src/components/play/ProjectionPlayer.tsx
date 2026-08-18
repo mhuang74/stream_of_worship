@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useLocale } from "@/hooks/useLocale";
 import { usePresentationReceiver } from "@/hooks/usePresentation";
 import type { PresentationStatus } from "@/types/presentation-api";
 
@@ -11,6 +12,7 @@ export interface ProjectionPlayerProps {
 }
 
 export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlayerProps) {
+  const { t } = useLocale();
   const videoRef = useRef<HTMLVideoElement>(null);
   const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -118,10 +120,10 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
     video.play().then(sendMediaStatus).catch(() => {
       sendStatusRef.current?.({
         type: "error",
-        message: "TV projection failed — check connection",
+        message: t("projection.tvFailed"),
       });
     });
-  }, [sendMediaStatus]);
+  }, [sendMediaStatus, t]);
 
   const handlePause = useCallback(() => {
     videoRef.current?.pause();
@@ -200,7 +202,7 @@ export function ProjectionPlayer({ videoSrc, initialSongTitle }: ProjectionPlaye
         src={videoSrc}
         className="w-full h-full object-cover"
         playsInline
-        aria-label="Projection video"
+        aria-label={t("projection.videoAriaLabel")}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleCanPlay}
         onTimeUpdate={sendMediaStatus}

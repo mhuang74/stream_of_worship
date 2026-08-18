@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { isSongCompleted, subscribeCompletion } from "@/lib/audio/completion";
 import { COMPLETION_THRESHOLD } from "@/lib/constants";
+import { useLocale } from "@/hooks/useLocale";
 
 interface FavoriteButtonProps {
   songId: string;
@@ -39,6 +40,8 @@ export function FavoriteButton({
 
   const canFavorite = isFavorite || completed;
   const disabled = !onToggle || !canFavorite;
+  const { t } = useLocale();
+  const listenThreshold = Math.round(COMPLETION_THRESHOLD * 100);
 
   const handleClick = () => {
     if (!onToggle || disabled) return;
@@ -57,7 +60,7 @@ export function FavoriteButton({
       )}
       onClick={handleClick}
       disabled={disabled}
-      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+      aria-label={isFavorite ? t("browse.favorite.remove") : t("browse.favorite.add")}
       aria-pressed={isFavorite}
       data-testid="favorite-button"
       data-favorite={isFavorite}
@@ -76,7 +79,7 @@ export function FavoriteButton({
             <span className="inline-flex">{button}</span>
           </TooltipTrigger>
           <TooltipContent side="top">
-            {`Listen to ${Math.round(COMPLETION_THRESHOLD * 100)}% of the song to favorite`}
+            {`${t("browse.favorite.listenToPrefix")}${listenThreshold}${t("browse.favorite.listenToSuffix")}`}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

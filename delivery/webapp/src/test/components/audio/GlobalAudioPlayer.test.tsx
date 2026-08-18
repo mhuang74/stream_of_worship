@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { renderWithLocale as render } from "@/test/render";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",

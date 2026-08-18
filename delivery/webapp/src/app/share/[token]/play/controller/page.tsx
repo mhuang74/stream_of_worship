@@ -11,14 +11,16 @@ import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useLocale } from "@/hooks/useLocale";
 
 export default function ShareControllerPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useLocale();
   const token = params.token as string;
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [shareName, setShareName] = useState<string>("Shared Worship Set");
+  const [shareName, setShareName] = useState<string>(t("control.sharedWorshipSet"));
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export default function ShareControllerPage() {
 
         const res = await fetch(`/api/share/${token}`);
         if (!res.ok) {
-          let errorMessage = "This link is no longer available";
+          let errorMessage = t("control.linkNoLongerAvailable");
           try {
             const data = await res.json();
             if (data?.error) {
@@ -51,7 +53,7 @@ export default function ShareControllerPage() {
         if (cancelled) return;
 
         if (!data?.playback?.mp4Url) {
-          throw new Error("No video available for this share");
+          throw new Error(t("control.noVideoForShare"));
         }
 
         // The share-token route mints a presigned R2 URL (no auth on the TV);
@@ -73,7 +75,7 @@ export default function ShareControllerPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          const message = err instanceof Error ? err.message : "Failed to load player";
+          const message = err instanceof Error ? err.message : t("control.failedToLoadPlayer");
           setError(message);
           toast.error(message);
         }
@@ -91,7 +93,7 @@ export default function ShareControllerPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, t]);
 
   // Cast + Presentation transport wiring (same shape as the songset
   // controller). Cast is preferred; the Presentation API fallback runs only
@@ -143,12 +145,14 @@ export default function ShareControllerPage() {
   useEffect(() => {
     const wasConnected = prevCastConnectedRef.current;
     if (cast.isConnected && !wasConnected) {
-      toast.success(`Connected to ${cast.deviceName || "TV"}`);
+      toast.success(
+        `${t("control.connectedTo")} ${cast.deviceName || t("control.tv")}`
+      );
     } else if (!cast.isConnected && wasConnected) {
-      toast.info("Disconnected from TV");
+      toast.info(t("control.disconnectedFromTV"));
     }
     prevCastConnectedRef.current = cast.isConnected;
-  }, [cast.isConnected, cast.deviceName]);
+  }, [cast.isConnected, cast.deviceName, t]);
 
   const isPresentationActive =
     cast.isConnected || (!cast.isSupported && sender.isConnected);
@@ -185,7 +189,7 @@ export default function ShareControllerPage() {
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-8 animate-spin text-white" />
-          <p className="text-white/70">Loading player...</p>
+          <p className="text-white/70">{t("control.loadingPlayer")}</p>
         </div>
       </div>
     );
@@ -196,13 +200,13 @@ export default function ShareControllerPage() {
       <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-white mb-4">
-            {error || "Failed to load player"}
+            {error || t("control.failedToLoadPlayer")}
           </p>
           <button
             onClick={() => router.push(`/share/${token}`)}
             className="px-4 py-2 bg-primary text-white rounded-lg"
           >
-            Go Back
+            {t("control.goBack")}
           </button>
         </div>
       </div>

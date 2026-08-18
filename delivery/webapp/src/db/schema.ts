@@ -369,6 +369,8 @@ export const userSettings = pgTable("user_settings", {
   defaultFontFamily: text("default_font_family").notNull().default("noto_serif_tc"),
   defaultKeyShiftSemitones: integer("default_key_shift_semitones").notNull().default(0),
   timingReviewFont: text("timing_review_font").notNull().default("sans"),
+  // Per-user UI display language (ADR 0004): "en" or "zh-Hant".
+  locale: text("locale").notNull().default("en"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

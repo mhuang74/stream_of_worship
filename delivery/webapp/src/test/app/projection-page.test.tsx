@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import ProjectionPage from "@/app/songsets/[id]/play/projection/page";
 import ShareProjectionPage from "@/app/share/[token]/play/projection/page";
 
@@ -51,6 +52,14 @@ describe("ProjectionPage", () => {
       render(<ProjectionPage />);
 
       expect(screen.getByRole("status", { name: /loading projection/i })).toBeInTheDocument();
+    });
+
+    it("shows translated loading label in zh-Hant", () => {
+      global.fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
+
+      render(<ProjectionPage />, "zh-Hant");
+
+      expect(screen.getByRole("status", { name: /投影載入中/i })).toBeInTheDocument();
     });
   });
 

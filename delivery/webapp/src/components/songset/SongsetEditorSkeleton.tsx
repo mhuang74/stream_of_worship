@@ -1,11 +1,13 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLocale } from "@/hooks/useLocale";
 
 export function SongsetEditorSkeleton() {
+  const { t } = useLocale();
   return (
-    <div className="px-4 py-6" role="status" aria-label="Loading songset">
-      <span className="sr-only">Loading songset…</span>
+    <div className="px-4 py-6" role="status" aria-label={t("songsets.loading.songset")}>
+      <span className="sr-only">{t("songsets.loading.songsetSr")}</span>
       {/* App bar */}
       <div className="flex items-center gap-3 mb-6">
         <Skeleton className="h-9 w-9 rounded-md" />

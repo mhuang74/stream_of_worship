@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
 import { FONT_FAMILIES, TEMPLATES, RESOLUTIONS } from "@/lib/constants";
+import { useLocale } from "@/hooks/useLocale";
+import type { Locale, TranslationKey } from "@/lib/i18n/messages";
 
 export interface UserSettingsData {
   offlineAutoCache: boolean;
@@ -30,6 +32,7 @@ export interface UserSettingsData {
   defaultFontFamily: string;
   defaultKeyShiftSemitones: number;
   timingReviewFont: string;
+  locale: Locale;
 }
 
 interface SettingsFormProps {
@@ -39,17 +42,22 @@ interface SettingsFormProps {
 }
 
 const FONT_PRESETS = [
-  { value: "S", label: "Small (32px)" },
-  { value: "M", label: "Medium (48px)" },
-  { value: "L", label: "Large (64px)" },
-  { value: "XL", label: "Extra Large (80px)" },
+  { value: "S", key: "settings.option.fontPreset.S" as const },
+  { value: "M", key: "settings.option.fontPreset.M" as const },
+  { value: "L", key: "settings.option.fontPreset.L" as const },
+  { value: "XL", key: "settings.option.fontPreset.XL" as const },
 ] as const;
 
 const TIMING_FONTS = [
-  { value: "sans", label: "Sans-serif" },
-  { value: "mono", label: "Monospace" },
-  { value: "serif", label: "Serif" },
+  { value: "sans", key: "settings.option.timingFont.sans" as const },
+  { value: "mono", key: "settings.option.timingFont.mono" as const },
+  { value: "serif", key: "settings.option.timingFont.serif" as const },
 ] as const;
+
+const LOCALE_OPTIONS: { value: Locale; key: TranslationKey }[] = [
+  { value: "en", key: "settings.language.en" },
+  { value: "zh-Hant", key: "settings.language.zhHant" },
+];
 
 const GAP_BEATS_OPTIONS = [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 6, 8];
 const LOOP_WINDOW_OPTIONS = [1, 2, 3, 5, 7, 10, 15, 20, 30];
@@ -66,7 +74,20 @@ function isIOSLessThan174(): boolean {
   return !(major > 17 || (major === 17 && minor >= 4));
 }
 
+function templateLabelKey(value: string): TranslationKey {
+  return `settings.option.template.${value}` as TranslationKey;
+}
+
+function resolutionLabelKey(value: string): TranslationKey {
+  return `settings.option.resolution.${value}` as TranslationKey;
+}
+
+function fontFamilyLabelKey(value: string): TranslationKey {
+  return `settings.option.fontFamily.${value}` as TranslationKey;
+}
+
 export function SettingsForm({ initialSettings, onSave, isSaving = false }: SettingsFormProps) {
+  const { t } = useLocale();
   const [settings, setSettings] = useState<UserSettingsData>(initialSettings);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -95,15 +116,45 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
   return (
     <TooltipProvider>
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Transitions */}
+        {/* Language */}
         <Card>
           <CardHeader>
-            <CardTitle>Transitions</CardTitle>
-            <CardDescription>Default transition parameters for new songs</CardDescription>
+            <CardTitle>{t("settings.language")}</CardTitle>
+            <CardDescription>{t("settings.language.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="defaultGapBeats">Default gap beats</Label>
+              <Label htmlFor="locale">{t("settings.language")}</Label>
+              <Select
+                value={settings.locale}
+                onValueChange={(v) => {
+                  if (v === "en" || v === "zh-Hant") update("locale", v);
+                }}
+              >
+                <SelectTrigger id="locale">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOCALE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {t(opt.key)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Transitions */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("settings.section.transitions")}</CardTitle>
+            <CardDescription>{t("settings.transitions.description")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="defaultGapBeats">{t("settings.defaultGapBeats")}</Label>
               <Select
                 value={settings.defaultGapBeats.toString()}
                 onValueChange={(v) => {
@@ -117,7 +168,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {GAP_BEATS_OPTIONS.map((b) => (
                     <SelectItem key={b} value={b.toString()}>
-                      {b} {b === 1 ? "beat" : "beats"}
+                      {b} {t(b === 1 ? "settings.unit.beat" : "settings.unit.beats")}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -129,12 +180,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
         {/* Video */}
         <Card>
           <CardHeader>
-            <CardTitle>Video</CardTitle>
-            <CardDescription>Default render settings for lyrics videos</CardDescription>
+            <CardTitle>{t("settings.section.video")}</CardTitle>
+            <CardDescription>{t("settings.video.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="defaultVideoTemplate">Default template</Label>
+              <Label htmlFor="defaultVideoTemplate">{t("settings.defaultTemplate")}</Label>
               <Select
                 value={settings.defaultVideoTemplate}
                 onValueChange={(v) => {
@@ -145,9 +196,9 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TEMPLATES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
+                  {TEMPLATES.map((tmpl) => (
+                    <SelectItem key={tmpl.value} value={tmpl.value}>
+                      {t(templateLabelKey(tmpl.value))}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -155,7 +206,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="defaultResolution">Default resolution</Label>
+              <Label htmlFor="defaultResolution">{t("settings.defaultResolution")}</Label>
               <Select
                 value={settings.defaultResolution}
                 onValueChange={(v) => {
@@ -168,7 +219,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {RESOLUTIONS.map((r) => (
                     <SelectItem key={r.value} value={r.value}>
-                      {r.label}
+                      {t(resolutionLabelKey(r.value))}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -176,7 +227,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="defaultFontSizePreset">Default font size</Label>
+              <Label htmlFor="defaultFontSizePreset">{t("settings.defaultFontSize")}</Label>
               <Select
                 value={settings.defaultFontSizePreset}
                 onValueChange={(v) => {
@@ -189,7 +240,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {FONT_PRESETS.map((f) => (
                     <SelectItem key={f.value} value={f.value}>
-                      {f.label}
+                      {t(f.key)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -197,7 +248,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="defaultFontFamily">Default font family</Label>
+              <Label htmlFor="defaultFontFamily">{t("settings.defaultFontFamily")}</Label>
               <Select
                 value={settings.defaultFontFamily}
                 onValueChange={(v) => {
@@ -210,7 +261,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {FONT_FAMILIES.map((f) => (
                     <SelectItem key={f.value} value={f.value}>
-                      {f.label}
+                      {t(fontFamilyLabelKey(f.value))}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -231,12 +282,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
         {/* Playback */}
         <Card>
           <CardHeader>
-            <CardTitle>Playback</CardTitle>
-            <CardDescription>Lyrics display and playback behavior</CardDescription>
+            <CardTitle>{t("settings.section.playback")}</CardTitle>
+            <CardDescription>{t("settings.playback.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="lyricsLoopWindowSeconds">Lyrics loop window</Label>
+              <Label htmlFor="lyricsLoopWindowSeconds">{t("settings.lyricsLoopWindow")}</Label>
               <Select
                 value={settings.lyricsLoopWindowSeconds.toString()}
                 onValueChange={(v) => {
@@ -250,14 +301,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {LOOP_WINDOW_OPTIONS.map((s) => (
                     <SelectItem key={s} value={s.toString()}>
-                      {s} {s === 1 ? "second" : "seconds"}
+                      {s} {t(s === 1 ? "settings.unit.second" : "settings.unit.seconds")}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-sm text-muted-foreground">
-                How many seconds of upcoming lyrics to display
-              </p>
+              <p className="text-sm text-muted-foreground">{t("settings.lyricsLoopWindowHint")}</p>
             </div>
           </CardContent>
         </Card>
@@ -265,34 +314,32 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
         {/* Offline */}
         <Card>
           <CardHeader>
-            <CardTitle>Offline</CardTitle>
-            <CardDescription>Offline caching preferences</CardDescription>
+            <CardTitle>{t("settings.section.offline")}</CardTitle>
+            <CardDescription>{t("settings.offline.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="offlineAutoCache">Auto-cache after render</Label>
+                  <Label htmlFor="offlineAutoCache">{t("settings.autoCacheAfterRender")}</Label>
                   {showIOSNote && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Info className="size-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Offline caching requires iOS 17.4 or later</p>
+                        <p>{t("settings.iosNote")}</p>
                       </TooltipContent>
                     </Tooltip>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Automatically cache rendered files for offline playback
-                </p>
+                <p className="text-sm text-muted-foreground">{t("settings.autoCacheHint")}</p>
                 {showIOSNote && (
                   <p
                     className="text-sm text-yellow-600 dark:text-yellow-400"
                     data-testid="ios-offline-note"
                   >
-                    Offline caching requires iOS 17.4 or later
+                    {t("settings.iosNote")}
                   </p>
                 )}
               </div>
@@ -310,12 +357,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
         <div className="hidden lg:block">
           <Card>
             <CardHeader>
-              <CardTitle>Advanced</CardTitle>
-              <CardDescription>Desktop-only settings</CardDescription>
+              <CardTitle>{t("settings.section.advanced")}</CardTitle>
+              <CardDescription>{t("settings.advanced.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="defaultKeyShiftSemitones">Default key shift</Label>
+                <Label htmlFor="defaultKeyShiftSemitones">{t("settings.defaultKeyShift")}</Label>
                 <Select
                   value={settings.defaultKeyShiftSemitones.toString()}
                   onValueChange={(v) => {
@@ -329,18 +376,16 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                   <SelectContent>
                     {KEY_SHIFT_OPTIONS.map((s) => (
                       <SelectItem key={s} value={s.toString()}>
-                        {s > 0 ? `+${s}` : s === 0 ? "0 (no shift)" : s} semitones
+                        {s > 0 ? `+${s}` : s === 0 ? t("settings.noKeyShift") : s} {t("settings.unit.semitones")}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-muted-foreground">
-                  Default semitone shift applied to each transition
-                </p>
+                <p className="text-sm text-muted-foreground">{t("settings.keyShiftHint")}</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="timingReviewFont">Timing review font</Label>
+                <Label htmlFor="timingReviewFont">{t("settings.timingReviewFont")}</Label>
                 <Select
                   value={settings.timingReviewFont}
                   onValueChange={(v) => {
@@ -353,14 +398,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                   <SelectContent>
                     {TIMING_FONTS.map((f) => (
                       <SelectItem key={f.value} value={f.value}>
-                        {f.label}
+                        {t(f.key)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-muted-foreground">
-                  Font used in the timing editor for LRC review
-                </p>
+                <p className="text-sm text-muted-foreground">{t("settings.timingReviewFontHint")}</p>
               </div>
             </CardContent>
           </Card>
@@ -374,14 +417,14 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
             disabled={isSaving || !isDirty}
             className="flex-1 rounded-lg border border-input bg-background px-4 py-3 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
           >
-            Reset
+            {t("settings.reset")}
           </button>
           <button
             type="submit"
             disabled={isSaving || !isDirty}
             className="flex-1 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? t("settings.saving") : t("settings.save")}
           </button>
         </div>
       </form>

@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 
 export interface OfflineIndicatorProps {
   className?: string;
 }
 
 export function OfflineIndicator({ className }: OfflineIndicatorProps) {
+  const { t } = useLocale();
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
@@ -32,7 +34,7 @@ export function OfflineIndicator({ className }: OfflineIndicatorProps) {
     <div
       role="status"
       aria-live="polite"
-      aria-label="You are offline"
+      aria-label={t("audio.offline.message")}
       className={cn(
         "fixed top-0 inset-x-0 z-50 flex items-center justify-center gap-2",
         "bg-destructive/90 text-destructive-foreground px-4 py-2 text-sm font-medium",
@@ -40,7 +42,7 @@ export function OfflineIndicator({ className }: OfflineIndicatorProps) {
       )}
     >
       <WifiOff className="size-4 shrink-0" aria-hidden="true" />
-      <span>You are offline</span>
+      <span>{t("audio.offline.message")}</span>
     </div>
   );
 }

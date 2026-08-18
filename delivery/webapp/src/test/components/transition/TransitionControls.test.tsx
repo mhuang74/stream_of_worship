@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { TransitionControls } from "@/components/transition/TransitionControls";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 
@@ -169,6 +170,14 @@ describe("TransitionControls", () => {
       renderControls({ settings: { ...defaultSettings, gapBeats: 4 } });
       const bar = screen.getByRole("progressbar");
       expect(bar).toHaveAttribute("aria-valuenow", "4");
+    });
+  });
+
+  describe("localization", () => {
+    it("renders translated labels in zh-Hant", () => {
+      render(<TransitionControls {...defaultProps} />, "zh-Hant");
+      expect(screen.getByText("間隔")).toBeInTheDocument();
+      expect(screen.getByText("交叉淡入淡出")).toBeInTheDocument();
     });
   });
 });

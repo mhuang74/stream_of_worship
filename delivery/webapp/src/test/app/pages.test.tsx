@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import HomePage from "@/app/page";
 import { SongsetsClient } from "@/app/songsets/SongsetsClient";
 import SettingsPage from "@/app/settings/page";
+import { renderWithLocale as render } from "@/test/render";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),

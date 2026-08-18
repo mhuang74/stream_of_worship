@@ -17,6 +17,7 @@ import {
   RenderState,
 } from "./RenderStatusBadge";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import {
   MoreVertical,
   Edit,
@@ -82,6 +83,7 @@ export function SongsetRow({
   className,
 }: SongsetRowProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { t, locale } = useLocale();
 
   const canPlayFreshRender =
     renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onPlay);
@@ -94,7 +96,7 @@ export function SongsetRow({
   };
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
+    return new Intl.DateTimeFormat(locale, {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -138,7 +140,7 @@ export function SongsetRow({
                     onClick={onPlay}
                   >
                     <Play className="size-4" />
-                    Play
+                    {t("songsets.action.play")}
                   </Button>
                 )}
 
@@ -148,7 +150,7 @@ export function SongsetRow({
                       variant="ghost"
                       size="icon-sm"
                       className="shrink-0 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 transition-opacity"
-                      aria-label="Open menu"
+                      aria-label={t("songsets.aria.openMenu")}
                     >
                       <MoreVertical className="size-4" />
                     </Button>
@@ -156,38 +158,38 @@ export function SongsetRow({
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuItem onClick={onRename}>
                       <Edit className="size-4 mr-2" />
-                      Rename
+                      {t("songsets.action.rename")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={onDuplicate}>
                       <Copy className="size-4 mr-2" />
-                      Duplicate
+                      {t("songsets.action.duplicate")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={onRender}>
                       <RefreshCw className="size-4 mr-2" />
-                      Render
+                      {t("songsets.action.render")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={onPlay}>
                       <Play className="size-4 mr-2" />
-                      Play
+                      {t("songsets.action.play")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={onShare}>
                       <Share2 className="size-4 mr-2" />
-                      Share
+                      {t("songsets.action.share")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={onDownloadAudio}
                       disabled={!lastCompletedRenderJobId}
                     >
                       <FileAudio className="size-4 mr-2" />
-                      Download Audio
+                      {t("songsets.action.downloadAudio")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={onDownloadVideo}
                       disabled={!lastCompletedRenderJobId}
                     >
                       <FileVideo className="size-4 mr-2" />
-                      Download Video
+                      {t("songsets.action.downloadVideo")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -195,7 +197,7 @@ export function SongsetRow({
                       className="text-destructive focus:text-destructive"
                     >
                       <Trash2 className="size-4 mr-2" />
-                      Delete
+                      {t("songsets.action.delete")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -209,14 +211,15 @@ export function SongsetRow({
               <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Music className="size-3.5" />
-                  {itemCount} {itemCount === 1 ? "song" : "songs"}
+                  {itemCount} {t(itemCount === 1 ? "songsets.unit.song" : "songsets.unit.songs")}
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="size-3.5" />
                   {formatDuration(durationSeconds)}
                 </span>
                 <span className="text-xs">
-                  Updated {formatDate(updatedAt)}
+                  {t("songsets.updatedPrefix")}
+                  {formatDate(updatedAt)}
                 </span>
               </div>
             </Link>
@@ -230,13 +233,13 @@ export function SongsetRow({
                 {isOfflineAvailable && (
                   <Badge variant="secondary" className="text-xs gap-1">
                     <WifiOff className="size-3" />
-                    Offline
+                    {t("songsets.badge.offline")}
                   </Badge>
                 )}
                 {isArtifactsStale && (
                   <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-500/50">
                     <AlertTriangle className="size-3" />
-                    Artifacts out of date
+                    {t("songsets.alert.artifactsStale")}
                   </Badge>
                 )}
               </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useLocale } from "@/hooks/useLocale";
 import { PrePlayCard } from "@/components/play/PrePlayCard";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ interface RenderJobData {
 export default function PlayPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useLocale();
   const songsetId = params.id as string;
 
   const [songset, setSongset] = useState<SongsetData | null>(null);
@@ -72,9 +74,9 @@ export default function PlayPage() {
             return;
           }
           if (response.status === 404) {
-            throw new Error("Songset not found");
+            throw new Error(t("play.notFound"));
           }
-          throw new Error("Failed to load songset");
+          throw new Error(t("play.loadFailed"));
         }
 
         const data = await response.json();
@@ -102,7 +104,7 @@ export default function PlayPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load songset");
+          setError(err instanceof Error ? err.message : t("play.loadFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -118,7 +120,7 @@ export default function PlayPage() {
     return () => {
       cancelled = true;
     };
-  }, [songsetId, router]);
+  }, [songsetId, router, t]);
 
   const handleStartWorship = useCallback(() => {
     // Navigate to the controller player
@@ -145,14 +147,14 @@ export default function PlayPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <p className="text-center text-destructive">
-          {error || "Songset not found"}
+          {error || t("play.notFound")}
         </p>
         <Button
           variant="ghost"
           className="mt-4"
           onClick={() => router.push("/songsets")}
         >
-          Back to songsets
+          {t("play.backToSongsets")}
         </Button>
       </div>
     );
@@ -171,12 +173,12 @@ export default function PlayPage() {
             variant="ghost"
             size="icon"
             onClick={() => router.push(`/songsets/${songsetId}`)}
-            aria-label="Go back"
+            aria-label={t("play.backAriaLabel")}
           >
             <ArrowLeft className="size-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="font-semibold">Play</h1>
+            <h1 className="font-semibold">{t("play.title")}</h1>
             <p className="text-sm text-muted-foreground truncate">
               {songset.name}
             </p>

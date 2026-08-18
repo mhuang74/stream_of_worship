@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import type { CastTransportResult, CastMedia } from "@/hooks/useCast";
 
 // Mock next/navigation
@@ -223,6 +224,14 @@ describe("ControllerPage (songset)", () => {
       render(<ControllerPage />);
 
       expect(screen.getByText(/loading player/i)).toBeInTheDocument();
+    });
+
+    it("shows translated loading text in zh-Hant", async () => {
+      global.fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
+
+      render(<ControllerPage />, "zh-Hant");
+
+      expect(screen.getByText(/載入播放器中/i)).toBeInTheDocument();
     });
   });
 

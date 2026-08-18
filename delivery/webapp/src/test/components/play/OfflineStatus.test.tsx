@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { OfflineStatus } from "@/components/play/OfflineStatus";
 
 vi.mock("sonner", () => ({
@@ -71,6 +72,14 @@ describe("OfflineStatus", () => {
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /download for offline/i })).toBeInTheDocument();
+      });
+    });
+
+    it("renders download button in Traditional Chinese in zh-Hant", async () => {
+      render(<OfflineStatus {...mockProps} />, "zh-Hant");
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /下載供離線使用/i })).toBeInTheDocument();
       });
     });
 

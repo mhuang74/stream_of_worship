@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { BrowseSheet } from "@/components/songset/BrowseSheet";
 import { albumFilterKey } from "@/lib/search/album-filter";
 
@@ -363,5 +364,10 @@ describe("BrowseSheet", () => {
     const describeResult = await screen.findByTestId("semantic-search-results");
 
     expectBefore(screen.getByTestId("album-filter"), describeResult);
+  });
+
+  it("localizes the sheet title in zh-Hant", async () => {
+    render(<BrowseSheet {...defaultProps} />, "zh-Hant");
+    expect(screen.getByText("搜尋詩歌")).toBeInTheDocument();
   });
 });

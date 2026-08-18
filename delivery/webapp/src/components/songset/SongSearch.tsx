@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { type BpmBandKey } from "@/lib/constants";
 import type { StructuredSearchCriteria } from "./search/types";
 import type { AlbumFilter } from "@/lib/search/album-filter";
+import { useLocale } from "@/hooks/useLocale";
 
 interface SongSearchProps {
   onSearch: (query: string, albumFilters?: AlbumFilter[]) => void;
@@ -30,7 +31,7 @@ export function SongSearch({
   onAdvancedSearch,
   isLoading = false,
   className,
-  placeholder = "Search songs by title, artist, or album...",
+  placeholder,
   initialQuery,
   query: controlledQuery,
   onQueryChange,
@@ -40,6 +41,9 @@ export function SongSearch({
   searchButtonClassName,
   showSearchButton = true,
 }: SongSearchProps) {
+  const { t } = useLocale();
+  const searchPlaceholder = placeholder ?? t("browse.search.placeholder");
+
   const [internalQuery, setInternalQuery] = useState(initialQuery ?? "");
 
   const query = controlledQuery ?? internalQuery;
@@ -119,9 +123,9 @@ export function SongSearch({
             value={query}
             onChange={handleQueryChange}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
+            placeholder={searchPlaceholder}
             className="pl-9 pr-10"
-            aria-label="Search songs"
+            aria-label={t("browse.search.ariaLabel")}
             data-testid="search-input"
           />
           {showClearButton && (
@@ -130,7 +134,7 @@ export function SongSearch({
               size="icon-sm"
               className="absolute right-2 top-1/2 -translate-y-1/2"
               onClick={handleClear}
-              aria-label="Clear search"
+              aria-label={t("browse.search.clear")}
               data-testid="clear-search-button"
             >
               <X className="size-4" />
@@ -143,7 +147,7 @@ export function SongSearch({
             />
           )}
           {showLoadingIndicator && (
-            <span className="sr-only" role="status" aria-live="polite">Searching...</span>
+            <span className="sr-only" role="status" aria-live="polite">{t("browse.search.searching")}</span>
           )}
         </div>
         {showSearchButton && (
@@ -153,16 +157,16 @@ export function SongSearch({
             disabled={isLoading}
             className={cn("shrink-0 gap-1.5", searchButtonClassName)}
             data-testid="search-button"
-            aria-label={isLoading ? "Searching songs" : "Run song search"}
+            aria-label={isLoading ? t("browse.search.searchingSongs") : t("browse.search.runSearch")}
           >
             {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-            Search
+            {t("browse.search.searchButton")}
           </Button>
         )}
       </div>
 
       <p className="text-xs text-muted-foreground px-1" data-testid="keyword-help-text">
-        Tip: search by title, pinyin, or composer — e.g. &lsquo;歡喜&rsquo;, &lsquo;huan xi&rsquo;, &lsquo;曾祥怡&rsquo; · Press Enter to search
+        {t("browse.search.hint")}
       </p>
     </div>
   );

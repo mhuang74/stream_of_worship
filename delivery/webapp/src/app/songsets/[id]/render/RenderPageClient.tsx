@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets"
 import type { RenderFormData } from "@/components/render/RenderForm"
+import { useLocale } from "@/hooks/useLocale"
 
 const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((m) => ({ default: m.RenderForm })), {
   loading: () => <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-12 w-40" /></div>,
@@ -72,6 +73,7 @@ export function RenderPageClient({
   currentSongsetDurationSeconds,
 }: RenderPageClientProps) {
   const router = useRouter()
+  const { t } = useLocale()
 
   const hasActiveJob =
     initialLatestJob?.status === "running" || initialLatestJob?.status === "queued"
@@ -130,16 +132,16 @@ export function RenderPageClient({
               }
               setScreenState("submitted")
               const configSummary = []
-              if (data.config?.audioEnabled) configSummary.push("audio")
-              if (data.config?.videoEnabled) configSummary.push("video")
-              toast.info(`A render job is already in progress (${configSummary.join(" + ")})`)
+              if (data.config?.audioEnabled) configSummary.push(t("render.toast.config.audio"))
+              if (data.config?.videoEnabled) configSummary.push(t("render.toast.config.video"))
+              toast.info(`${t("render.toast.alreadyInProgress")} (${configSummary.join(" + ")})`)
             } else {
-              toast.error(data.error || "A render job is already in progress")
+              toast.error(data.error || t("render.toast.alreadyInProgress"))
             }
             return
           }
           const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to create render job")
+          throw new Error(errorData.error || t("render.toast.failedToCreateJob"))
         }
 
         const job = await response.json()
@@ -148,14 +150,14 @@ export function RenderPageClient({
           setEstimatedMinutes(Math.ceil(job.estimatedTotalSeconds / 60))
         }
         setScreenState("submitted")
-        toast.success("Render started")
+        toast.success(t("render.toast.started"))
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to start render")
+        toast.error(err instanceof Error ? err.message : t("render.toast.failedToStart"))
       } finally {
         setIsSubmitting(false)
       }
     },
-    [songsetId, router]
+    [songsetId, router, t]
   )
 
   const handleCancel = useCallback(async () => {
@@ -164,17 +166,17 @@ export function RenderPageClient({
     try {
       const response = await fetch(`/api/render-jobs/${jobId}`, { method: "DELETE" })
       if (!response.ok) {
-        throw new Error("Failed to cancel render job")
+        throw new Error(t("render.toast.failedToCancelJob"))
       }
       setScreenState("form")
       setJobId(null)
-      toast.info("Render cancelled")
+      toast.info(t("render.toast.cancelled"))
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to cancel")
+      toast.error(err instanceof Error ? err.message : t("render.toast.failedToCancel"))
     } finally {
       setIsCancelling(false)
     }
-  }, [jobId, isCancelling])
+  }, [jobId, isCancelling, t])
 
   if (isLoading) {
     return (
@@ -188,14 +190,14 @@ export function RenderPageClient({
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <p className="text-center text-destructive">
-          {error || "Songset not found"}
+          {error || t("render.songsetNotFound")}
         </p>
         <Button
           variant="ghost"
           className="mt-4"
           onClick={() => router.push("/songsets")}
         >
-          Back to songsets
+          {t("render.backToSongsets")}
         </Button>
       </div>
     )
@@ -211,12 +213,12 @@ export function RenderPageClient({
             variant="ghost"
             size="icon"
             onClick={() => router.push(`/songsets/${songsetId}`)}
-            aria-label="Go back"
+            aria-label={t("render.back.ariaLabel")}
           >
             <ArrowLeft className="size-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="font-semibold">Render</h1>
+            <h1 className="font-semibold">{t("render.heading")}</h1>
             <p className="text-sm text-muted-foreground truncate">
               {songset.name}
             </p>

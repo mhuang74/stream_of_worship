@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
 import { PlaybackControls } from "@/components/play/PlaybackControls";
 
 describe("PlaybackControls", () => {
@@ -92,6 +93,15 @@ describe("PlaybackControls", () => {
 
       const scrubBar = screen.getByRole("slider", { name: /seek/i });
       expect(scrubBar).toBeInTheDocument();
+    });
+  });
+
+  describe("zh-Hant localization", () => {
+    it("renders translated play button in zh-Hant", () => {
+      render(<PlaybackControls {...defaultProps} />, "zh-Hant");
+
+      const playButton = screen.getByRole("button", { name: /^播放$/i });
+      expect(playButton).toBeInTheDocument();
     });
   });
 
