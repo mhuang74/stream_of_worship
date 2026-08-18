@@ -20,6 +20,11 @@ from dataclasses import dataclass
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    from opencc import OpenCC
+except ImportError:  # pragma: no cover - optional runtime dependency
+    OpenCC = None
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.zanmei.ai"
@@ -32,6 +37,33 @@ _USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
+
+# zanmei.ai publishes lyrics in Simplified Chinese; the app canonicalises to
+# Traditional. Converter is built lazily once and reused (OpenCC init is slow).
+_converter_cache: dict[str, object] = {}
+
+
+def _to_traditional(text: str) -> str:
+    """Convert Simplified Chinese ``text`` to Traditional Chinese.
+
+    The OpenCC S2T conversion is idempotent on already-Traditional input, so
+    this is safe to run unconditionally. If the converter is unavailable or
+    fails, logs a warning and falls back to the original ``text`` so that a
+    conversion problem never blocks lyrics persistence.
+    """
+    converter = _converter_cache.get("s2t")
+    if converter is None:
+        if OpenCC is None:
+            logger.warning("opencc-python-reimplemented not installed; skipping S2T conversion")
+            return text
+        converter = OpenCC("s2t")
+        _converter_cache["s2t"] = converter
+    try:
+        return converter.convert(text)
+    except Exception:
+        # Never block persistence on a conversion failure; keep the original.
+        logger.warning("S2T lyrics conversion failed; storing original text", exc_info=True)
+        return text
 
 
 @dataclass
@@ -149,8 +181,11 @@ def fetch_zanmei_lyrics(song_id: str) -> str | None:
     pre = soup.select_one(f"pre#{_LYRIC_PRE_ID}")
     if not pre:
         return None
-    text = pre.get_text()
-    return text.strip() or None
+    text = pre.get_text().strip()
+    if not text:
+        return None
+    # zanmei.ai lyrics are Simplified Chinese; canonicalise to Traditional.
+    return _to_traditional(text)
 
 
 def fetch_structured_lyrics_from_zanmei(title: str, band: str | None = None) -> str | None:
