@@ -23,6 +23,7 @@ from sow_analysis.workers.components import (
     _precompute_global_features,
     _serialize_components,
     _snap_to_beat,
+    _to_traditional,
     compute_component_features,
     extract_components,
     get_or_detect_beat_grid,
@@ -1361,3 +1362,16 @@ class TestTier2BeatGridCacheReuse:
             # identify_from_lyrics_repetition sets confidence=0.7; not lowered to 0.5.
             for c in components:
                 assert c.confidence == 0.7
+
+
+class TestToTraditionalNiPreservation:
+    """The worship honorific 祢 must render as 祢, never 禰."""
+
+    def test_preserves_ni(self):
+        assert _to_traditional("词曲：祢就是唯一 点亮") == "詞曲：祢就是唯一 點亮"
+
+    def test_normalizes_legacy_mei_to_ni(self):
+        assert _to_traditional("祢就是唯一 禰是主") == "祢就是唯一 祢是主"
+
+    def test_idempotent_on_traditional(self):
+        assert _to_traditional("詞曲：祢就是唯一 點亮") == "詞曲：祢就是唯一 點亮"

@@ -39,8 +39,17 @@ class SnappedPhrase:
     asr_text: str
 
 
+# The worship honorific 祢 ("You", for God) must render as 祢, never 禰
+# (zhconv's zh-tw maps 祢 -> 禰). Normalise both 祢 and any historical 禰 to
+# 祢 so new 祢 and legacy 禰 records stay comparable. The private-use sentinel
+# survives zhconv untouched.
+_GOD_YOU_PROTECT = "\ue000"
+
+
 def _normalize(text: str) -> str:
+    text = text.replace("祢", _GOD_YOU_PROTECT).replace("禰", _GOD_YOU_PROTECT)
     text = convert(text, "zh-tw")
+    text = text.replace(_GOD_YOU_PROTECT, "祢")
     text = re.sub(r"[\s，。！？、,.!?;；:：'\"“”‘’（）()\[\]【】\-]", "", text)
     return text.lower()
 
