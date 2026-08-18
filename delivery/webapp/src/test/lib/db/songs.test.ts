@@ -190,6 +190,37 @@ describe("listSongs", () => {
     const query = dialect.sqlToQuery(findManyArgs.where);
     expect(query.sql).toContain('"songs"."id" = ANY');
   });
+
+  it("returns zero results when favoritesOnly is set and favoriteSongIds is empty", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { favoriteSongIds: [], favoritesOnly: true });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const query = dialect.sqlToQuery(findManyArgs.where);
+    expect(query.sql).toContain("false");
+  });
+
+  it("does not restrict when favoritesOnly is set but favoriteSongIds is undefined", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { favoritesOnly: true });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const query = dialect.sqlToQuery(findManyArgs.where);
+    expect(query.sql).not.toContain("false");
+    expect(query.sql).not.toContain("ANY");
+  });
 });
 
 describe("rrfRerank", () => {

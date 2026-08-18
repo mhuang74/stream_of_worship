@@ -439,4 +439,26 @@ describe("GET /api/songs", () => {
     const data = await response.json();
     expect(data.error).toBe("Failed to list songs");
   });
+
+  it("passes empty favoriteSongIds to listSongs when favoritesOnly=1 and user has 0 favorites", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+    vi.mocked(getFavoriteSongIds).mockResolvedValue([]);
+    vi.mocked(listSongs).mockResolvedValue({ songs: [], total: 0 });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?favoritesOnly=1"
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({
+        favoriteSongIds: [],
+        favoritesOnly: true,
+      })
+    );
+  });
 });
