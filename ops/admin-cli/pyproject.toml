@@ -21,6 +21,7 @@ scraper = [
     "lxml>=6.0.0",
     "requests>=2.32.0",
     "pypinyin>=0.52.0",
+    "opencc-python-reimplemented>=0.1.7",
 ]
 admin = [
     "psycopg[binary]>=3.2.0",
@@ -42,6 +43,7 @@ admin = [
     "langchain-core>=0.3.0",
     "pydantic>=2.7.0",
     "python-dotenv>=1.2.2",
+    "opencc-python-reimplemented>=0.1.7",
 ]
 constructor = [
     "langgraph>=0.2.50",

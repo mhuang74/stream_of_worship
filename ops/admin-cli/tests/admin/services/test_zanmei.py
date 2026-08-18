@@ -130,12 +130,16 @@ class TestSearchZanmeiSongs:
 
 class TestFetchZanmeiLyrics:
     def test_extracts_lyric_text(self, monkeypatch):
+        """Extracts the <pre> block and converts Simplified -> Traditional."""
         monkeypatch.setattr(zanmei, "_fetch", lambda url: SONG_HTML)
         text = fetch_zanmei_lyrics("45335")
         assert text is not None
         assert "[Verse]" in text
-        assert "祢就是唯一" in text
-        assert text.startswith("词：恒恩 Brook")
+        assert "禰就是唯一" in text
+        # zanmei.ai lyrics are Simplified; we canonicalise to Traditional.
+        assert text.startswith("詞：恆恩 Brook")
+        assert "有時候會迷惘　找不到前路方向" in text
+        assert "點亮我生命的奇蹟" in text
 
     def test_missing_lyric_pre_returns_none(self, monkeypatch):
         monkeypatch.setattr(zanmei, "_fetch", lambda url: SONG_HTML_NO_LYRICS)
@@ -163,3 +167,28 @@ class TestFetchStructuredLyricsFromZanmei:
     def test_no_results_returns_none(self, monkeypatch):
         monkeypatch.setattr(zanmei, "_fetch", lambda url: "<html></html>")
         assert fetch_structured_lyrics_from_zanmei("不存在", "无人") is None
+
+
+class TestToTraditional:
+    """Tests for the Simplified -> Traditional lyric canonicalisation."""
+
+    def test_converts_simplified_to_traditional(self):
+        assert zanmei._to_traditional("词曲：恒恩 点亮奇迹") == "詞曲：恆恩 點亮奇蹟"
+
+    def test_idempotent_on_traditional(self):
+        assert zanmei._to_traditional("詞曲：恆恩 點亮奇蹟") == "詞曲：恆恩 點亮奇蹟"
+
+    def test_returns_original_when_opencc_missing(self, monkeypatch):
+        monkeypatch.setattr(zanmei, "OpenCC", None)
+        monkeypatch.setattr(zanmei, "_converter_cache", {})
+        text = "词：恒恩"
+        assert zanmei._to_traditional(text) == text
+
+    def test_returns_original_when_conversion_fails(self, monkeypatch):
+        class Boom:
+            def convert(self, text):
+                raise RuntimeError("boom")
+
+        monkeypatch.setattr(zanmei, "_converter_cache", {"s2t": Boom()})
+        text = "词：恒恩"
+        assert zanmei._to_traditional(text) == text
