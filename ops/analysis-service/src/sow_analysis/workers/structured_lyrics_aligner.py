@@ -37,7 +37,6 @@ from .section_segmenter import (
     _map_sections_to_components,
     _render_numbered_lrc,
     _segmentation_model,
-    _validate_chorus_repetition,
 )
 
 logger = logging.getLogger(__name__)
@@ -671,8 +670,16 @@ async def align_structured_lyrics(
             )
             messages.append({"role": "user", "content": corrective})
 
-    # Defensive post-processing: chorus repetition cross-check.
-    sections = _validate_chorus_repetition(sections, lrc_content, weights=weights)
+    # Skip the deterministic chorus repetition cross-check for structured_lyrics_llm:
+    # the LLM
+    # aligned authoritative structured-lyrics section labels to LRC lines
+    # and intentionally included lyrical variations (e.g. outro tags where
+    # the last line differs from earlier occurrences). The deterministic
+    # repetition validator trims line_end to the last repeating line, which
+    # wrongly drops intentional variation lines from the final/exit chorus.
+    # The validator remains active for segment_song (llm_segmentation source)
+    # where the LLM segments from scratch and can hallucinate over-merged
+    # boundaries.
     lines = list(parse_lrc(lrc_content).lines)
     return _map_sections_to_components(
         sections,

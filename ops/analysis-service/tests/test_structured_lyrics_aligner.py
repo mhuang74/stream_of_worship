@@ -672,18 +672,36 @@ class TestAlignStructuredLyrics:
         assert components[1].role == "exit"
 
     @pytest.mark.asyncio
-    async def test_chorus_repetition_validation_applied(self, monkeypatch):
-        """Defensive post-processing: _validate_chorus_repetition is applied."""
+    async def test_chorus_repetition_validation_skipped_for_structured_lyrics_llm(self, monkeypatch):
+        """Chorus repetition cross-check is SKIPPED for structured_lyrics_llm.
+
+        The LLM aligned authoritative structured-lyrics section labels and
+        intentionally selected section boundaries (including lyrical
+        variations on the last line). The deterministic repetition validator
+        would trim line_end to the last line whose text repeats elsewhere,
+        wrongly dropping the variation line. Regression: final Exit Chorus
+        persisted one line short (26-32 instead of 26-33).
+        """
         monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "fake-key")
         monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://fake.example/v1")
         monkeypatch.setattr(settings, "SOW_LLM_MODEL", "fake-model")
 
-        # LRC where chorus lines repeat (lines 3-4 match lines 1-2)
-        lrc = """[00:10.00]哈利路亞
-[00:20.00]讚美主
-[00:30.00]哈利路亞
-[00:40.00]讚美主
+        # Chorus 1 (lines 1-2) ends on a non-repeating variation line. Line 1
+        # ("祢就是唯一") repeats at line 3, so the repetition validator WOULD trim
+        # chorus 1's line_end from 2 to 1. With the skip, line_end=2 is preserved.
+        lrc = """[00:10.00]祢就是唯一
+[00:20.00]我心永遠屬祢
+[00:30.00]祢就是唯一
+[00:40.00]我心永遠棲息
 """
+        # Structured lyrics whose chorus first line matches LRC line 1 so the
+        # content-alignment validator is a no-op (no corrective retries).
+        structured = json.dumps({
+            "sections": [
+                {"label": "Chorus", "raw_label": "[Chorus]", "lines": ["祢就是唯一", "我願永遠棲息"]},
+            ],
+            "preamble_lines": [],
+        })
         llm_response = json.dumps({
             "sections": [
                 {"label": "chorus", "line_start": 1, "line_end": 2, "confidence": 0.95},
@@ -697,15 +715,17 @@ class TestAlignStructuredLyrics:
             return_value=llm_response,
         ):
             components = await align_structured_lyrics(
-                _STRUCTURED_LYRICS_SIMPLE,
+                structured,
                 lrc,
             )
 
-        # Should produce components (chorus repetition validation is defensive,
-        # doesn't remove sections, only adjusts confidence/boundaries)
+        # LLM-aligned boundaries are preserved; nothing is trimmed.
         assert len(components) > 0
         chorus_rows = [c for c in components if c.component_type == "chorus"]
         assert len(chorus_rows) >= 2
+        # Chorus 1 keeps its intentional variation line (line_end 2, not 1).
+        first = chorus_rows[0]
+        assert first.line_end == 2
 
 
 # ── Unit tests for _validate_section_content_alignment() ───────────────────
