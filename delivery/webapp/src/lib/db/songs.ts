@@ -11,6 +11,7 @@ import {
 import type { BpmBandKey } from "@/lib/constants";
 import { sortAlbumOptions } from "@/lib/search/album-filter";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
+import { favoritesFirstOrder, favoritesOnlyPredicate } from "./favorites";
 
 export interface SongWithRecordings {
   id: string;
@@ -159,6 +160,10 @@ export interface ListSongsFilters {
   visibilityStatus?: string | string[];
   keys?: string[];
   bpmRange?: BpmBandKey[];
+  /** Pins these songs to the top of results (favorites-first browsing). */
+  favoriteSongIds?: string[];
+  /** When true and favoriteSongIds is present, restrict results to favorites. */
+  favoritesOnly?: boolean;
 }
 
 function buildPublishedRecordingExistsClause(
@@ -294,6 +299,11 @@ export async function listSongs(
   filters?: ListSongsFilters
 ): Promise<{ songs: SongWithRecordings[]; total: number }> {
   const whereClause = buildSongWhereClause(filters);
+  const favoritesOnlyClause = filters?.favoritesOnly
+    ? favoritesOnlyPredicate(filters?.favoriteSongIds)
+    : undefined;
+  // drizzle's `and` skips undefined, so this cleanly composes the optional filter.
+  const listWhereClause = and(whereClause, favoritesOnlyClause);
   const recordingWhereConditions = [];
   const visPredicate = recordingVisibilityPredicate(filters?.visibilityStatus);
   if (visPredicate) recordingWhereConditions.push(visPredicate);
@@ -303,8 +313,11 @@ export async function listSongs(
     : undefined;
 
   const result = await db.query.songs.findMany({
-    where: whereClause,
-    orderBy: [desc(songs.updatedAt)],
+    where: listWhereClause,
+    orderBy: [
+      favoritesFirstOrder(filters?.favoriteSongIds),
+      desc(songs.updatedAt),
+    ].filter((o): o is NonNullable<typeof o> => Boolean(o)),
     limit,
     offset,
     with: {
@@ -317,7 +330,7 @@ export async function listSongs(
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(songs)
-    .where(whereClause ?? sql`true`);
+    .where(listWhereClause ?? sql`true`);
 
   const total = countResult[0]?.count ?? 0;
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/songs/route";
 import { auth } from "@/lib/auth";
 import { listSongs } from "@/lib/db/songs";
+import { getFavoriteSongIds } from "@/lib/db/favorites";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -18,6 +19,10 @@ vi.mock("@/lib/db/songs", () => ({
   listSongs: vi.fn(),
 }));
 
+vi.mock("@/lib/db/favorites", () => ({
+  getFavoriteSongIds: vi.fn(),
+}));
+
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
   const request = new Request(url, options) as unknown as NextRequest;
   const urlObj = new URL(url);
@@ -31,6 +36,7 @@ function createMockRequest(url: string, options?: RequestInit): NextRequest {
 describe("GET /api/songs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getFavoriteSongIds).mockResolvedValue([]);
   });
 
   it("returns 401 when not authenticated", async () => {

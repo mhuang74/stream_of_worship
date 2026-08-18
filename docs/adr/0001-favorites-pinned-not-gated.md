@@ -1,0 +1,3 @@
+# Favorites are pinned to the top, not gated by default
+
+The initial request asked the songset builder to show only Favorites by default, with an override to browse the whole catalog. We chose instead to always show the entire catalog, promoting Favorites into a labeled section at the top of results. The gate reads as "favorites-first," but discovery stays intact: a search can surface unfamiliar songs that match the query, and those can become Favorites after listening. A hard favorites-only default would have hidden the catalog behind an action and throttled the discovery loop favorites are meant to foster.

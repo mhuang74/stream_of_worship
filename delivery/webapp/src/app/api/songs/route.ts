@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { listSongs } from "@/lib/db/songs";
+import { getFavoriteSongIds } from "@/lib/db/favorites";
 import {
   parseAlbumFilterParams,
   parseKeysParam,
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = Number(session.user.id);
+    const favoriteSongIds = await getFavoriteSongIds(userId);
+
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(
       parseInt(searchParams.get("limit") ?? "50"),
@@ -36,6 +40,8 @@ export async function GET(request: NextRequest) {
       visibilityStatus?: string | string[];
       keys?: string[];
       bpmRange?: BpmBandKey[];
+      favoriteSongIds?: string[];
+      favoritesOnly?: boolean;
     } = {};
 
     const { albumFilters, albumNames } = parseAlbumFilterParams(searchParams);
@@ -63,6 +69,16 @@ export async function GET(request: NextRequest) {
       ? (visibilityParam.includes(",") ? visibilityParam.split(",") : visibilityParam)
       : ["published", "review"];
     filters.visibilityStatus = visibilityStatus;
+
+    // Always pin the user's favorites to the top; the dedicated Favorites page
+    // narrows to favorites-only via the favoritesOnly param.
+    if (favoriteSongIds.length > 0) {
+      filters.favoriteSongIds = favoriteSongIds;
+    }
+    const favoritesOnlyParam = searchParams.get("favoritesOnly");
+    if (favoritesOnlyParam === "1" || favoritesOnlyParam === "true") {
+      filters.favoritesOnly = true;
+    }
 
     const result = await listSongs(limit, offset, filters);
 

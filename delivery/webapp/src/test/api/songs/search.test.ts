@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/songs/search/route";
 import { auth } from "@/lib/auth";
 import { fullTextSearchSongs } from "@/lib/db/search";
+import { getFavoriteSongIds } from "@/lib/db/favorites";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -18,6 +19,10 @@ vi.mock("@/lib/db/search", () => ({
   fullTextSearchSongs: vi.fn(),
 }));
 
+vi.mock("@/lib/db/favorites", () => ({
+  getFavoriteSongIds: vi.fn(),
+}));
+
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
   const request = new Request(url, options) as unknown as NextRequest;
   const urlObj = new URL(url);
@@ -31,6 +36,7 @@ function createMockRequest(url: string, options?: RequestInit): NextRequest {
 describe("GET /api/songs/search", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getFavoriteSongIds).mockResolvedValue([]);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -367,5 +373,22 @@ describe("GET /api/songs/search", () => {
     expect(response.status).toBe(500);
     const data = await response.json();
     expect(data.error).toBe("Failed to search songs");
+  });
+
+  it("threads the user's favorites into search options when present", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 7 } } as any);
+    vi.mocked(getFavoriteSongIds).mockResolvedValue(["fav-1", "fav-2"]);
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({ songs: [], total: 0 });
+
+    const request = createMockRequest("http://localhost:3000/api/songs/search?q=test");
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith(
+      "test",
+      50,
+      0,
+      ["published", "review"],
+      { favoriteSongIds: ["fav-1", "fav-2"], keys: undefined, bpmRange: undefined }
+    );
   });
 });

@@ -6,6 +6,7 @@ import { isProjectionRoute } from "@/lib/routes";
 
 const navItems = [
   { href: "/songsets", label: "Songsets" },
+  { href: "/favorites", label: "Favorites" },
   { href: "/settings", label: "Settings" },
 ];
 

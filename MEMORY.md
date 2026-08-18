@@ -1,3 +1,24 @@
+## 2026-08-18
+
+- Shipped the webapp **Favorites** feature (spec issue #140). Users mark songs
+  with a heart toggle; Favoriting requires the song to be **Completed** (heard
+  ≥90% of a full play), tracked client-side in localStorage as a deliberately
+  soft gate (ADR-0002). Favorites persist per-account in a new
+  `user_favorite_songs` table (cross-device) and are **pinned to the top** of the
+  songset BrowseSheet in a labeled "Favorites" section with the full catalog
+  always available beneath (ADR-0001), plus a dedicated `/favorites` page with a
+  nav entry in Header and BottomNav. Schema: drizzle migration 0020
+  (`user_favorite_songs`, unique user+song). New API: `GET/POST /api/favorites`,
+  `DELETE /api/favorites/[songId]`; `/api/songs` and `/api/songs/search` pin
+  favorites via a `favoriteSongIds` query-layer option (`favoritesFirstOrder`),
+  and `/api/songs` supports `favoritesOnly=1`. Completion gate lives in
+  `src/lib/audio/completion.ts` (localStorage + subscription), hooked into
+  `AudioPlayerContext` `timeupdate` (full-song playback only — transitions/loops
+  excluded). Tests at the confirmed seams (DB query layer SQL, completion module
+  + player integration, favorites API auth/contract, FavoriteButton gate). Full
+  webapp suite (1962), eslint, and tsc all green. Domain terms in CONTEXT.md
+  (Favorite, Completion).
+
 ## 2026-07-31
 
 - Generated a combined songset-constructor proposal report with **25 distinct themed

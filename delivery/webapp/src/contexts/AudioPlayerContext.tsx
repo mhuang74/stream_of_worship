@@ -8,6 +8,7 @@ import {
   useRef,
   useEffect,
 } from "react";
+import { markSongCompleted } from "@/lib/audio/completion";
 
 export type AudioTrackType = "song" | "transition" | "lyrics-loop";
 
@@ -91,10 +92,12 @@ export function AudioPlayerProvider({
   });
 
   const trackDurationRef = useRef<number>(0);
+  const currentTrackRef = useRef<AudioTrack | null>(null);
   
   // Update duration ref when track changes
   useEffect(() => {
     trackDurationRef.current = currentTrack?.duration || 0;
+    currentTrackRef.current = currentTrack;
   }, [currentTrack]);
 
   // Handle audio events
@@ -107,6 +110,17 @@ export function AudioPlayerProvider({
         ...prev,
         currentTime: audio.currentTime,
       }));
+
+      // Completion gate (CONTEXT.md: Completion): hearing ≥90% of a full song
+      // marks it completed in localStorage. Only full-song playback counts —
+      // transitions and lyric loops are excluded (ADR-0002, client-soft).
+      const track = currentTrackRef.current;
+      if (track?.type === "song" && track.songId) {
+        const duration = audio.duration;
+        if (duration > 0 && audio.currentTime / duration >= 0.9) {
+          markSongCompleted(track.songId);
+        }
+      }
 
       // Handle loop window
       if (isLoopingRef.current && loopWindowEndRef.current > 0) {

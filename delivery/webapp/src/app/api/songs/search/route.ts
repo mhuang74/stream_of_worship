@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fullTextSearchSongs } from "@/lib/db/search";
+import { getFavoriteSongIds } from "@/lib/db/favorites";
 import {
   parseAlbumFilterParams,
   parseKeysParam,
@@ -16,6 +17,8 @@ export async function GET(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const favoriteSongIds = await getFavoriteSongIds(Number(session.user.id));
 
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get("q");
@@ -48,6 +51,7 @@ export async function GET(request: NextRequest) {
       albumFilters,
       keys,
       bpmRange,
+      ...(favoriteSongIds.length > 0 ? { favoriteSongIds } : {}),
     });
 
     return NextResponse.json(result);

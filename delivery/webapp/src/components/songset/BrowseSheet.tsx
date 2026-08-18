@@ -86,6 +86,7 @@ export function BrowseSheet({
   const [error, setError] = useState<string | null>(null);
   const [addingSongIds, setAddingSongIds] = useState<Set<string>>(new Set());
   const [addedSongIds, setAddedSongIds] = useState<Set<string>>(new Set());
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
   const latestSearchIdRef = useRef(0);
@@ -221,6 +222,55 @@ export function BrowseSheet({
   );
 
   const isSongsetFull = itemCount >= SONGSET_MAX_SONGS;
+  // The server pins favorites first; split by membership to label the section.
+  const favoriteResults = results.filter((song) => favoriteIds.has(song.id));
+  const otherResults = results.filter((song) => !favoriteIds.has(song.id));
+
+  const loadFavoriteIds = useCallback(async () => {
+    try {
+      const response = await fetch("/api/favorites");
+      if (!response.ok) return;
+      const data = await response.json();
+      setFavoriteIds(new Set(Array.isArray(data.songIds) ? data.songIds : []));
+    } catch (err) {
+      console.error("Error loading favorites:", err);
+    }
+  }, []);
+
+  const handleToggleFavorite = useCallback(
+    async (songId: string) => {
+      const wasFavorite = favoriteIds.has(songId);
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(songId)) next.delete(songId);
+        else next.add(songId);
+        return next;
+      });
+
+      try {
+        const response = wasFavorite
+          ? await fetch(`/api/favorites/${encodeURIComponent(songId)}`, {
+              method: "DELETE",
+            })
+          : await fetch("/api/favorites", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ songId }),
+            });
+        if (!response.ok) throw new Error("Failed to update favorite");
+      } catch (err) {
+        setFavoriteIds((prev) => {
+          const next = new Set(prev);
+          if (wasFavorite) next.add(songId);
+          else next.delete(songId);
+          return next;
+        });
+        toast.error("Failed to update favorite");
+        console.error("Error updating favorite:", err);
+      }
+    },
+    [favoriteIds]
+  );
 
   const handleSwitchToSearchTab = useCallback((searchQuery: string) => {
     setKeywordQuery(searchQuery);
@@ -372,12 +422,18 @@ export function BrowseSheet({
   // Handle sheet open/close
   useEffect(() => {
     if (isOpen) {
+      const cleanups: Array<() => void> = [];
       if (albums.length === 0) {
         const albumTimeoutId = setTimeout(() => {
           loadAlbums();
         }, 0);
-        return () => clearTimeout(albumTimeoutId);
+        cleanups.push(() => clearTimeout(albumTimeoutId));
       }
+      const favoritesTimeoutId = setTimeout(() => {
+        loadFavoriteIds();
+      }, 0);
+      cleanups.push(() => clearTimeout(favoritesTimeoutId));
+      return () => cleanups.forEach((cleanup) => cleanup());
     } else {
       const timeoutId = setTimeout(() => {
         setKeywordQuery("");
@@ -398,7 +454,7 @@ export function BrowseSheet({
       }, 300);
       return () => clearTimeout(timeoutId);
     }
-  }, [isOpen, albums.length, loadAlbums, resetSemanticSearch]);
+  }, [isOpen, albums.length, loadAlbums, resetSemanticSearch, loadFavoriteIds]);
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -581,21 +637,58 @@ export function BrowseSheet({
                 )}
 
                 {!error && results.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pb-4">
-                    {results.map((song) => (
-                      <SongCard
-                        key={song.id}
-                        song={song}
-                        onAdd={handleAddSong}
-                        onPlay={handlePlaySong}
-                        isAdded={isSongAdded(song.id)}
-                        isAdding={isSongAdding(song.id)}
-                        disabled={isSongsetFull}
-                        isPlaying={playingSongId === song.id}
-                        isPreviewLoading={previewLoadingSongId === song.id}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    {favoriteResults.length > 0 && (
+                      <div data-testid="favorites-section">
+                        <h3 className="px-1 pb-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Favorites
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pb-4">
+                          {favoriteResults.map((song) => (
+                            <SongCard
+                              key={song.id}
+                              song={song}
+                              onAdd={handleAddSong}
+                              onPlay={handlePlaySong}
+                              onToggleFavorite={handleToggleFavorite}
+                              isFavorite={favoriteIds.has(song.id)}
+                              isAdded={isSongAdded(song.id)}
+                              isAdding={isSongAdding(song.id)}
+                              disabled={isSongsetFull}
+                              isPlaying={playingSongId === song.id}
+                              isPreviewLoading={previewLoadingSongId === song.id}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {otherResults.length > 0 && (
+                      <div data-testid="all-songs-section">
+                        {favoriteResults.length > 0 && (
+                          <h3 className="px-1 pb-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            All Songs
+                          </h3>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pb-4">
+                          {otherResults.map((song) => (
+                            <SongCard
+                              key={song.id}
+                              song={song}
+                              onAdd={handleAddSong}
+                              onPlay={handlePlaySong}
+                              onToggleFavorite={handleToggleFavorite}
+                              isFavorite={favoriteIds.has(song.id)}
+                              isAdded={isSongAdded(song.id)}
+                              isAdding={isSongAdding(song.id)}
+                              disabled={isSongsetFull}
+                              isPlaying={playingSongId === song.id}
+                              isPreviewLoading={previewLoadingSongId === song.id}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             ) : (
