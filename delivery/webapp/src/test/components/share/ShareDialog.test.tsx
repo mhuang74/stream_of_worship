@@ -255,13 +255,13 @@ describe("Share Link tab", () => {
     });
   });
 
-  it("formats null duration as Not available", async () => {
+  it("formats null duration as N/A", async () => {
     mockFetch.mockResolvedValueOnce(mockExistingShare("tok-1"));
 
     renderDialog({ durationSeconds: null });
     await waitFor(() => {
       const textarea = screen.getByRole("textbox", { name: /share message/i });
-      expect(textarea.value).toContain("Not available");
+      expect(textarea.value).toContain("N/A");
     });
   });
 });

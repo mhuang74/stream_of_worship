@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { userSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { VALID_FONT_FAMILIES } from "@/lib/constants";
-import { isLocale } from "@/lib/i18n/messages";
+import { isLocale, LOCALES } from "@/lib/i18n/messages";
 
 const DEFAULTS = {
   offlineAutoCache: true,
@@ -137,7 +137,7 @@ export async function PUT(request: NextRequest) {
 
     if (b.locale !== undefined && !isLocale(b.locale)) {
       return NextResponse.json(
-        { error: 'locale must be one of: "en", "zh-Hant"' },
+        { error: `locale must be one of: ${LOCALES.join(", ")}` },
         { status: 400 }
       );
     }
@@ -231,7 +231,14 @@ export async function PUT(request: NextRequest) {
         set: { ...values },
       });
 
-    return NextResponse.json({ settings: values });
+    const response = NextResponse.json({ settings: values });
+    response.cookies.set("sow_locale", values.locale, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+    return response;
   } catch (error) {
     console.error("Error saving settings:", error);
     return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });

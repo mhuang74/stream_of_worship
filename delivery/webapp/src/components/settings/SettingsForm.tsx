@@ -20,6 +20,7 @@ import {
 import { Info } from "lucide-react";
 import { FONT_FAMILIES, TEMPLATES, RESOLUTIONS } from "@/lib/constants";
 import { useLocale } from "@/hooks/useLocale";
+import { optionKey } from "@/lib/i18n/messages";
 import type { Locale, TranslationKey } from "@/lib/i18n/messages";
 
 export interface UserSettingsData {
@@ -72,18 +73,6 @@ function isIOSLessThan174(): boolean {
   const major = parseInt(match[1], 10);
   const minor = parseInt(match[2], 10);
   return !(major > 17 || (major === 17 && minor >= 4));
-}
-
-function templateLabelKey(value: string): TranslationKey {
-  return `settings.option.template.${value}` as TranslationKey;
-}
-
-function resolutionLabelKey(value: string): TranslationKey {
-  return `settings.option.resolution.${value}` as TranslationKey;
-}
-
-function fontFamilyLabelKey(value: string): TranslationKey {
-  return `settings.option.fontFamily.${value}` as TranslationKey;
 }
 
 export function SettingsForm({ initialSettings, onSave, isSaving = false }: SettingsFormProps) {
@@ -198,7 +187,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {TEMPLATES.map((tmpl) => (
                     <SelectItem key={tmpl.value} value={tmpl.value}>
-                      {t(templateLabelKey(tmpl.value))}
+                      {t(optionKey.template(tmpl.value))}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -219,7 +208,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {RESOLUTIONS.map((r) => (
                     <SelectItem key={r.value} value={r.value}>
-                      {t(resolutionLabelKey(r.value))}
+                      {t(optionKey.resolution(r.value))}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -261,7 +250,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 <SelectContent>
                   {FONT_FAMILIES.map((f) => (
                     <SelectItem key={f.value} value={f.value}>
-                      {t(fontFamilyLabelKey(f.value))}
+                      {t(optionKey.fontFamily(f.value))}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2, Monitor, AlertTriangle, Music, Clock } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { formatTotalDuration } from "@/lib/i18n/format";
 
 interface PublicSongsetItem {
   id: string;
@@ -66,15 +67,6 @@ export default function SharePage() {
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
-
-  const formatTotalDuration = (seconds: number | null): string => {
-    if (!seconds) return t("control.notApplicable");
-    const totalMinutes = Math.round(seconds / 60);
-    if (totalMinutes < 60) return `${totalMinutes} ${t("control.min")}`;
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = totalMinutes % 60;
-    return `${hours}${t("control.hours")} ${String(mins).padStart(2, "0")}${t("control.mins")}`;
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -194,7 +186,7 @@ export default function SharePage() {
           )}
           <div className="flex items-center gap-1 text-sm text-muted-foreground">
             <Clock className="size-3.5" />
-            {t("control.total")}: {formatTotalDuration(songset.totalDurationSeconds)}
+            {t("control.total")}: {formatTotalDuration(t, songset.totalDurationSeconds)}
           </div>
         </div>
 
