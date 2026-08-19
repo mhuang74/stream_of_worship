@@ -1,9 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
 import {
   favoritesFirstOrder,
   favoritesOnlyPredicate,
 } from "@/lib/db/favorites";
+
+vi.mock("@/db", () => ({ db: {} }));
 
 const dialect = new PgDialect();
 
