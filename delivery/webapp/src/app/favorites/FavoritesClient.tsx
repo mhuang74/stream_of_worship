@@ -71,6 +71,16 @@ export function FavoritesClient({
 
   const skipInitialFetchRef = useRef(true);
 
+  const initialSongsRef = useRef(initialSongs);
+  const initialTotalRef = useRef(initialTotal);
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    initialSongsRef.current = initialSongs;
+    initialTotalRef.current = initialTotal;
+    tRef.current = t;
+  }, [initialSongs, initialTotal, t]);
+
   useEffect(() => {
     if (skipInitialFetchRef.current) {
       skipInitialFetchRef.current = false;
@@ -95,9 +105,9 @@ export function FavoritesClient({
         setTotal(data.total);
       } catch {
         if (!cancelled) {
-          toast.error(t("favorites.loadFailed"));
-          setSongs(initialSongs); // fall back to SSR-provided data
-          setTotal(initialTotal);
+          toast.error(tRef.current("favorites.loadFailed"));
+          setSongs(initialSongsRef.current); // fall back to SSR-provided data
+          setTotal(initialTotalRef.current);
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -107,7 +117,7 @@ export function FavoritesClient({
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize, currentPage, initialSongs.length, t]);
+  }, [page, pageSize]);
 
   // Reconcile client page state with the RSC-provided currentPage after a
   // browser back/forward navigation (RSC restores currentPage, but client
