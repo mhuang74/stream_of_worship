@@ -10,7 +10,11 @@ const dialect = new PgDialect();
 describe("favoritesOnlyPredicate", () => {
   it("returns undefined when ids are absent", () => {
     expect(favoritesOnlyPredicate(undefined)).toBeUndefined();
-    expect(favoritesOnlyPredicate([])).toBeUndefined();
+  });
+
+  it("matches nothing when the favorite list is empty", () => {
+    const query = dialect.sqlToQuery(favoritesOnlyPredicate([])!);
+    expect(query.sql).toContain("false");
   });
 
   it("emits ANY(ARRAY[...]::text[]) — not a parenthesized list (regression for NeonDbError)", () => {
