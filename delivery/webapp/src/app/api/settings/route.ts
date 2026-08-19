@@ -189,6 +189,20 @@ export async function PUT(request: NextRequest) {
 
     const now = new Date();
 
+    // Preserve the existing saved locale when the client omits it (e.g. the
+    // Android client doesn't send `locale`), so a web-chosen zh-Hant isn't
+    // silently reset back to English.
+    let existingLocale: string | undefined;
+    try {
+      const existing = await db
+        .select({ locale: userSettings.locale })
+        .from(userSettings)
+        .where(eq(userSettings.userId, userId));
+      existingLocale = existing[0]?.locale;
+    } catch {
+      // Fall through; DEFAULTS.locale is used below.
+    }
+
     const values = {
       userId,
       offlineAutoCache:
@@ -219,7 +233,11 @@ export async function PUT(request: NextRequest) {
           : DEFAULTS.defaultKeyShiftSemitones,
       timingReviewFont:
         typeof b.timingReviewFont === "string" ? b.timingReviewFont : DEFAULTS.timingReviewFont,
-      locale: isLocale(b.locale) ? b.locale : DEFAULTS.locale,
+      locale: isLocale(b.locale)
+        ? b.locale
+        : isLocale(existingLocale)
+          ? existingLocale
+          : DEFAULTS.locale,
       updatedAt: now,
     };
 

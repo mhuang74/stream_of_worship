@@ -227,6 +227,23 @@ describe("PUT /api/settings", () => {
     expect(cookie?.path).toBe("/");
   });
 
+  it("preserves the existing saved locale when the client omits locale", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockUpsert();
+    const mockFrom = vi.fn().mockReturnThis();
+    const mockWhere = vi.fn().mockResolvedValue([{ locale: "zh-Hant" }]);
+    mockSelect.mockReturnValue({ from: mockFrom });
+    mockFrom.mockReturnValue({ where: mockWhere });
+
+    const res = await PUT(makeRequest("PUT", { defaultGapBeats: 4.0 }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.settings.locale).toBe("zh-Hant");
+
+    const cookie = res.cookies.get("sow_locale");
+    expect(cookie?.value).toBe("zh-Hant");
+  });
+
   it("returns 400 for invalid locale", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     const res = await PUT(makeRequest("PUT", { locale: "fr" }));

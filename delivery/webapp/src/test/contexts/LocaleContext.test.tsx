@@ -52,4 +52,24 @@ describe("LocaleContext", () => {
     expect(screen.getByTestId("nav").textContent).toBe("詩歌集");
     expect(document.documentElement.lang).toBe("zh-Hant");
   });
+
+  it("mirrors a changed initialLocale prop into state and document lang", () => {
+    const { rerender } = render(
+      <LocaleProvider initialLocale="en">
+        <Harness />
+      </LocaleProvider>
+    );
+    expect(screen.getByTestId("locale").textContent).toBe("en");
+    expect(document.documentElement.lang).toBe("en");
+
+    rerender(
+      <LocaleProvider initialLocale="zh-Hant">
+        <Harness />
+      </LocaleProvider>
+    );
+
+    expect(screen.getByTestId("locale").textContent).toBe("zh-Hant");
+    expect(screen.getByTestId("nav").textContent).toBe("詩歌集");
+    expect(document.documentElement.lang).toBe("zh-Hant");
+  });
 });
