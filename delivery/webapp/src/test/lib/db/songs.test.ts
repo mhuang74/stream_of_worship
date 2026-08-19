@@ -154,7 +154,9 @@ describe("listSongs", () => {
     const orderSql = findManyArgs.orderBy
       .map((item: unknown) => dialect.sqlToQuery(item).sql)
       .join(" | ");
-    expect(orderSql).toContain('CASE WHEN "songs"."id" in');
+    expect(orderSql).toContain('CASE WHEN "songs"."id" = ANY(ARRAY[');
+    expect(orderSql).toContain("::text[]");
+    expect(orderSql).not.toMatch(/ANY\(\(/);
     // The favorites-first group must precede the secondary ordering.
     expect(orderSql.indexOf('CASE WHEN')).toBeLessThan(orderSql.indexOf('"songs"."updated_at"'));
   });
@@ -188,7 +190,9 @@ describe("listSongs", () => {
 
     const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
     const query = dialect.sqlToQuery(findManyArgs.where);
-    expect(query.sql).toContain('"songs"."id" in');
+    expect(query.sql).toContain('"songs"."id" = ANY(ARRAY[');
+    expect(query.sql).toContain("::text[]");
+    expect(query.sql).not.toMatch(/ANY\(\(/);
   });
 
   it("returns zero results when favoritesOnly is set and favoriteSongIds is empty", async () => {

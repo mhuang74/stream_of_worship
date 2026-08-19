@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
-import { getPublicAudioUrl } from "@/lib/r2/public-url";
+import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 import type { BpmBandKey } from "@/lib/constants";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
@@ -90,10 +90,36 @@ export function BrowseSheet({
   const [addingSongIds, setAddingSongIds] = useState<Set<string>>(new Set());
   const [addedSongIds, setAddedSongIds] = useState<Set<string>>(new Set());
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavoriteToggle();
-  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
-  const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
   const latestSearchIdRef = useRef(0);
-  const { play, pause, currentTrack, state: playerState } = useAudioPlayerContext();
+  const { currentTrack } = useAudioPlayerContext();
+
+  const resolveSong = useCallback(
+    (songId: string) => {
+      const song = results.find((r) => r.id === songId);
+      if (!song) return null;
+      const recording = song.recordings[0];
+      return {
+        id: song.id,
+        title: song.title,
+        artist: song.composer || song.lyricist || t("browse.unknownArtist"),
+        recording: recording
+          ? {
+              hashPrefix: recording.hashPrefix,
+              contentHash: recording.contentHash,
+              durationSeconds: recording.durationSeconds,
+            }
+          : null,
+      };
+    },
+    [results, t]
+  );
+
+  const { playingSongId, previewLoadingSongId, handlePlay: handlePlaySong, reset: resetPlayback } =
+    useSongPlayback({
+      resolveSong,
+      noAudioMessage: t("browse.noAudioAvailable"),
+      failedToLoadMessage: t("browse.failedToLoadPreview"),
+    });
 
   // Load albums function
   const loadAlbums = useCallback(async () => {
@@ -264,91 +290,6 @@ export function BrowseSheet({
     );
   }, [handleSearch, keywordQuery, selectedAlbums, selectedKeys, selectedBpm]);
 
-  const handlePlaySong = useCallback(
-    async (songId: string) => {
-      const song = results.find((r) => r.id === songId);
-      if (!song || song.recordings.length === 0) {
-        toast.error(t("browse.noAudioAvailable"));
-        return;
-      }
-
-      if (playingSongId === songId && currentTrack?.id === `song-${songId}`) {
-        if (playerState.isPlaying) {
-          pause();
-          setPlayingSongId(null);
-          return;
-        }
-      }
-
-      const recording = song.recordings[0];
-      const artist = song.composer || song.lyricist || t("browse.unknownArtist");
-      const publicUrl = getPublicAudioUrl(recording.hashPrefix);
-
-      if (publicUrl) {
-        play({
-          id: `song-${songId}`,
-          title: song.title,
-          artist,
-          src: publicUrl,
-          type: "song",
-          duration: recording.durationSeconds ?? undefined,
-          recordingContentHash: recording.contentHash,
-          songId: songId,
-        });
-        setPlayingSongId(songId);
-        return;
-      }
-
-      setPreviewLoadingSongId(songId);
-
-      try {
-        const res = await fetch("/api/signed-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hashPrefix: recording.hashPrefix,
-            fileType: "audio",
-          }),
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to get audio URL");
-        }
-
-        const data = await res.json();
-
-        play({
-          id: `song-${songId}`,
-          title: song.title,
-          artist,
-          src: data.url,
-          type: "song",
-          duration: recording.durationSeconds ?? undefined,
-          recordingContentHash: recording.contentHash,
-          songId: songId,
-        });
-
-        setPlayingSongId(songId);
-      } catch {
-        toast.error(t("browse.failedToLoadPreview"));
-      } finally {
-        setPreviewLoadingSongId(null);
-      }
-    },
-    [results, playingSongId, currentTrack, playerState.isPlaying, play, pause, t]
-  );
-
-  useEffect(() => {
-    if (!currentTrack || !playerState.isPlaying) {
-      const timeout = setTimeout(() => {
-        if (!currentTrack || !playerState.isPlaying) {
-          setPlayingSongId(null);
-        }
-      }, 200);
-      return () => clearTimeout(timeout);
-    }
-  }, [currentTrack, playerState.isPlaying]);
-
   const sharedFilters = (
     <SharedFilters
       albums={albums}
@@ -416,13 +357,12 @@ export function BrowseSheet({
         setAddingSongIds(new Set());
         setAddedSongIds(new Set());
         setMode("keyword");
-        setPlayingSongId(null);
-        setPreviewLoadingSongId(null);
+        resetPlayback();
         resetSemanticSearch();
       }, 300);
       return () => clearTimeout(timeoutId);
     }
-  }, [isOpen, albums.length, loadAlbums, resetSemanticSearch, loadFavoriteIds]);
+  }, [isOpen, albums.length, loadAlbums, resetSemanticSearch, loadFavoriteIds, resetPlayback]);
 
   const renderSongCard = (song: SongCardData) => (
     <SongCard

@@ -16,6 +16,22 @@ vi.mock("sonner", () => ({
   },
 }));
 
+const mockPlay = vi.fn();
+const mockPause = vi.fn();
+
+vi.mock("@/contexts/AudioPlayerContext", () => ({
+  useAudioPlayerContext: () => ({
+    currentTrack: null,
+    state: { isPlaying: false },
+    play: mockPlay,
+    pause: mockPause,
+  }),
+}));
+
+vi.mock("@/lib/r2/public-url", () => ({
+  getPublicAudioUrl: vi.fn(() => null),
+}));
+
 function makeSongs(count: number): SongCardData[] {
   return Array.from({ length: count }, (_, i) => ({
     id: `song-${i + 1}`,
@@ -24,13 +40,24 @@ function makeSongs(count: number): SongCardData[] {
     lyricist: null,
     albumName: null,
     musicalKey: null,
-    recordings: [],
+    recordings: [
+      {
+        contentHash: `hash-${i + 1}`,
+        hashPrefix: `prefix-${i + 1}`,
+        durationSeconds: 180,
+        tempoBpm: 120,
+        musicalKey: "G",
+        visibilityStatus: "published",
+      },
+    ],
   }));
 }
 
 describe("FavoritesClient pagination", () => {
   beforeEach(() => {
     mockReplace.mockClear();
+    mockPlay.mockClear();
+    mockPause.mockClear();
     vi.stubGlobal("scrollTo", vi.fn());
   });
 
@@ -191,5 +218,130 @@ describe("FavoritesClient pagination", () => {
     });
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe("FavoritesClient playback", () => {
+  beforeEach(() => {
+    mockReplace.mockClear();
+    mockPlay.mockClear();
+    mockPause.mockClear();
+    vi.stubGlobal("scrollTo", vi.fn());
+  });
+
+  it("renders a play button on each song card", () => {
+    render(
+      <FavoritesClient
+        initialSongs={makeSongs(2)}
+        initialTotal={2}
+        currentPage={1}
+        pageSize={20}
+      />
+    );
+
+    const playButtons = screen.getAllByTestId("song-play-button");
+    expect(playButtons).toHaveLength(2);
+  });
+
+  it("plays a song via the signed-url fallback when no public URL is available", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ url: "https://signed.example/audio.mp3" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <FavoritesClient
+        initialSongs={makeSongs(1)}
+        initialTotal={1}
+        currentPage={1}
+        pageSize={20}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("song-play-button"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/signed-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hashPrefix: "prefix-1",
+          fileType: "audio",
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockPlay).toHaveBeenCalledWith({
+        id: "song-song-1",
+        title: "Song 1",
+        artist: "Composer",
+        src: "https://signed.example/audio.mp3",
+        type: "song",
+        duration: 180,
+        recordingContentHash: "hash-1",
+        songId: "song-1",
+        originSongsetId: undefined,
+      });
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a loading spinner while resolving the signed URL", async () => {
+    let resolveFetch: (value: unknown) => void;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <FavoritesClient
+        initialSongs={makeSongs(1)}
+        initialTotal={1}
+        currentPage={1}
+        pageSize={20}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("song-play-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("song-play-button").querySelector(".animate-spin")).toBeInTheDocument();
+    });
+
+    resolveFetch!({
+      ok: true,
+      json: async () => ({ url: "https://signed.example/audio.mp3" }),
+    });
+
+    await waitFor(() => {
+      expect(mockPlay).toHaveBeenCalled();
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("shows an error toast when the song has no recording", async () => {
+    const songs = makeSongs(1);
+    songs[0].recordings = [];
+
+    render(
+      <FavoritesClient
+        initialSongs={songs}
+        initialTotal={1}
+        currentPage={1}
+        pageSize={20}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("song-play-button"));
+
+    const { toast } = await import("sonner");
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("No audio available for this song");
+    });
   });
 });

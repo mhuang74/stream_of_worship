@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { songs, userFavorites } from "@/db/schema";
 
@@ -35,6 +35,15 @@ export async function removeFavorite(userId: number, songId: string): Promise<vo
 }
 
 /**
+ * Renders a string array as a Postgres array literal (`ARRAY[...]::text[]`).
+ * Passing a JS array directly into a `sql` template renders as a parenthesized
+ * row list (`($1, $2, $3)`), which Postgres rejects for `ANY`/`ALL` operators.
+ */
+function textArrayLiteral(ids: string[]): SQL {
+  return sql`ARRAY[${sql.join(ids.map((id) => sql`${id}`), sql`, `)}]::text[]`;
+}
+
+/**
  * Ordering expression that pins favorite songs to the top of a result list
  * (0 before 1), keeping the caller's secondary ordering beneath. When no
  * favorites are supplied, returns undefined so ordering is unchanged.
@@ -43,7 +52,7 @@ export function favoritesFirstOrder(
   favoriteSongIds: string[] | undefined
 ): SQL | undefined {
   if (!favoriteSongIds || favoriteSongIds.length === 0) return undefined;
-  return sql`CASE WHEN ${inArray(songs.id, favoriteSongIds)} THEN 0 ELSE 1 END`;
+  return sql`CASE WHEN ${songs.id} = ANY(${textArrayLiteral(favoriteSongIds)}) THEN 0 ELSE 1 END`;
 }
 
 /**
@@ -56,5 +65,5 @@ export function favoritesOnlyPredicate(
 ): SQL | undefined {
   if (!favoriteSongIds) return undefined; // context not loaded → no-op
   if (favoriteSongIds.length === 0) return sql`false`; // favorites-only, no favorites → match nothing
-  return inArray(songs.id, favoriteSongIds);
+  return sql`${songs.id} = ANY(${textArrayLiteral(favoriteSongIds)})`;
 }
