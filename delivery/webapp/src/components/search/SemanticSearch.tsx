@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
 import { Loader2, Sparkles, Music, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
+import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { toast } from "sonner";
-import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import type { StructuredSearchCriteria } from "@/components/songset/search/types";
 import type { BpmBandKey } from "@/lib/constants";
 import type { AlbumFilter } from "@/lib/search/album-filter";
@@ -69,11 +68,40 @@ export function useSemanticSearch({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
-  const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
   const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
   const latestSearchIdRef = useRef(0);
-  const { play, currentTrack, state: playerState } = useAudioPlayerContext();
+
+  const resolveSong = useCallback(
+    (songId: string) => {
+      const song = results.find((r) => r.id === songId);
+      if (!song) return null;
+      const recording = song.recordings[0];
+      return {
+        id: song.id,
+        title: song.title,
+        artist: song.composer || song.lyricist || t("audio.search.unknownArtist"),
+        recording: recording
+          ? {
+              hashPrefix: recording.hashPrefix,
+              contentHash: recording.contentHash,
+              durationSeconds: recording.durationSeconds,
+            }
+          : null,
+      };
+    },
+    [results, t]
+  );
+
+  const {
+    playingSongId,
+    previewLoadingSongId,
+    handlePlay: handlePlaySong,
+    reset: resetPlayback,
+  } = useSongPlayback({
+    resolveSong,
+    noAudioMessage: t("audio.search.noAudioForSong"),
+    failedToLoadMessage: t("audio.search.failedLoadPreview"),
+  });
 
   const reset = useCallback(() => {
     setQuery("");
@@ -82,11 +110,10 @@ export function useSemanticSearch({
     setIsLoading(false);
     setError(null);
     setHasSearched(false);
-    setPlayingSongId(null);
-    setPreviewLoadingSongId(null);
     setExpandedSongId(null);
+    resetPlayback();
     latestSearchIdRef.current += 1;
-  }, []);
+  }, [resetPlayback]);
 
   const handleSearch = useCallback(async () => {
     const trimmed = query.trim();
@@ -191,90 +218,6 @@ export function useSemanticSearch({
     (songId: string) => addingSongIds.has(songId),
     [addingSongIds]
   );
-
-  const handlePlaySong = useCallback(
-    async (songId: string) => {
-      const song = results.find((r) => r.id === songId);
-      if (!song || song.recordings.length === 0) {
-        toast.error(t("audio.search.noAudioForSong"));
-        return;
-      }
-
-      if (playingSongId === songId && currentTrack?.id === `song-${songId}`) {
-        if (playerState.isPlaying) {
-          setPlayingSongId(null);
-          return;
-        }
-      }
-
-      const recording = song.recordings[0];
-      const artist = song.composer || song.lyricist || t("audio.search.unknownArtist");
-      const publicUrl = getPublicAudioUrl(recording.hashPrefix);
-
-      if (publicUrl) {
-        play({
-          id: `song-${songId}`,
-          title: song.title,
-          artist,
-          src: publicUrl,
-          type: "song",
-          duration: recording.durationSeconds ?? undefined,
-          recordingContentHash: recording.contentHash,
-          songId: songId,
-        });
-        setPlayingSongId(songId);
-        return;
-      }
-
-      setPreviewLoadingSongId(songId);
-
-      try {
-        const res = await fetch("/api/signed-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hashPrefix: recording.hashPrefix,
-            fileType: "audio",
-          }),
-        });
-
-        if (!res.ok) {
-          throw new Error(t("audio.search.failedAudioUrl"));
-        }
-
-        const data = await res.json();
-
-        play({
-          id: `song-${songId}`,
-          title: song.title,
-          artist,
-          src: data.url,
-          type: "song",
-          duration: recording.durationSeconds ?? undefined,
-          recordingContentHash: recording.contentHash,
-          songId: songId,
-        });
-
-        setPlayingSongId(songId);
-      } catch {
-        toast.error(t("audio.search.failedLoadPreview"));
-      } finally {
-        setPreviewLoadingSongId(null);
-      }
-    },
-    [results, playingSongId, currentTrack, playerState.isPlaying, play, t]
-  );
-
-  useEffect(() => {
-    if (!currentTrack || !playerState.isPlaying) {
-      const timeout = setTimeout(() => {
-        if (!currentTrack || !playerState.isPlaying) {
-          setPlayingSongId(null);
-        }
-      }, 200);
-      return () => clearTimeout(timeout);
-    }
-  }, [currentTrack, playerState.isPlaying]);
 
   const formatSimilarity = (score: number) =>
     `${Math.round(score * 100)}% ${t("audio.search.matchSuffix")}`;

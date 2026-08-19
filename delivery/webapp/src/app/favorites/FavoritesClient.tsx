@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
+import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { toSongCardData } from "@/lib/song-card-data";
 import { COMPLETION_THRESHOLD } from "@/lib/constants";
 
@@ -35,6 +36,33 @@ export function FavoritesClient({
   const { toggleFavorite } = useFavoriteToggle(
     new Set(initialSongs.map((s) => s.id))
   );
+
+  const resolveSong = useCallback(
+    (songId: string) => {
+      const song = songs.find((s) => s.id === songId);
+      if (!song) return null;
+      const recording = song.recordings[0];
+      return {
+        id: song.id,
+        title: song.title,
+        artist: song.composer || song.lyricist || t("browse.unknownArtist"),
+        recording: recording
+          ? {
+              hashPrefix: recording.hashPrefix,
+              contentHash: recording.contentHash,
+              durationSeconds: recording.durationSeconds,
+            }
+          : null,
+      };
+    },
+    [songs, t]
+  );
+
+  const { playingSongId, previewLoadingSongId, handlePlay } = useSongPlayback({
+    resolveSong,
+    noAudioMessage: t("browse.noAudioAvailable"),
+    failedToLoadMessage: t("browse.failedToLoadPreview"),
+  });
 
   const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage);
@@ -174,6 +202,9 @@ export function FavoritesClient({
               song={song}
               isFavorite
               onToggleFavorite={handleToggleFavorite}
+              onPlay={handlePlay}
+              isPlaying={playingSongId === song.id}
+              isPreviewLoading={previewLoadingSongId === song.id}
             />
           ))}
         </div>

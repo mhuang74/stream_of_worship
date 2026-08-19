@@ -23,11 +23,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { GripVertical, Trash2, Music, Clock, ChevronRight, Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
-import { getPublicAudioUrl } from "@/lib/r2/public-url";
-import { toast } from "sonner";
-import { FavoriteButton } from "./FavoriteButton";
+import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { useLocale } from "@/hooks/useLocale";
+import { FavoriteButton } from "./FavoriteButton";
 
 function escapeCssSelectorValue(value: string): string {
   const globalCss = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
@@ -321,94 +319,32 @@ export function SongList({
     return () => clearTimeout(timer);
   }, [confirmingItemId, isRemoving]);
 
-  const { currentTrack, state: playerState, play, pause } = useAudioPlayerContext();
-  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
-  const [previewLoadingSongId, setPreviewLoadingSongId] = useState<string | null>(null);
-
-  const handlePlaySong = useCallback(
-    async (songId: string) => {
+  const resolveSong = useCallback(
+    (songId: string) => {
       const item = localItems.find((i) => i.songId === songId);
-      if (!item?.recording) {
-        toast.error(t("browse.noAudioAvailable"));
-        return;
-      }
-
-      if (playingSongId === songId && currentTrack?.id === `song-${songId}`) {
-        if (playerState.isPlaying) {
-          pause();
-          setPlayingSongId(null);
-          return;
-        }
-      }
-
-      const recording = item.recording;
-      const artist = item.song?.composer || item.song?.lyricist || t("browse.unknownArtist");
-      const publicUrl = getPublicAudioUrl(recording.hashPrefix);
-
-      if (publicUrl) {
-        play({
-          id: `song-${songId}`,
-          title: item.song?.title || t("browse.unknownSong"),
-          artist,
-          src: publicUrl,
-          type: "song",
-          duration: recording.durationSeconds ?? undefined,
-          recordingContentHash: recording.contentHash,
-          songId: songId,
-          originSongsetId: songsetId,
-        });
-        setPlayingSongId(songId);
-        return;
-      }
-
-      setPreviewLoadingSongId(songId);
-
-      try {
-        const res = await fetch("/api/signed-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hashPrefix: recording.hashPrefix,
-            fileType: "audio",
-          }),
-        });
-
-        if (!res.ok) throw new Error("Failed to get audio URL");
-
-        const data = await res.json();
-
-        play({
-          id: `song-${songId}`,
-          title: item.song?.title || t("browse.unknownSong"),
-          artist,
-          src: data.url,
-          type: "song",
-          duration: recording.durationSeconds ?? undefined,
-          recordingContentHash: recording.contentHash,
-          songId: songId,
-          originSongsetId: songsetId,
-        });
-
-        setPlayingSongId(songId);
-      } catch {
-        toast.error(t("browse.failedToLoadPreview"));
-      } finally {
-        setPreviewLoadingSongId(null);
-      }
+      if (!item) return null;
+      return {
+        id: item.songId,
+        title: item.song?.title || t("browse.unknownSong"),
+        artist: item.song?.composer || item.song?.lyricist || t("browse.unknownArtist"),
+        recording: item.recording
+          ? {
+              hashPrefix: item.recording.hashPrefix,
+              contentHash: item.recording.contentHash,
+              durationSeconds: item.recording.durationSeconds,
+            }
+          : null,
+      };
     },
-    [localItems, playingSongId, currentTrack, playerState.isPlaying, play, pause, songsetId, t]
+    [localItems, t]
   );
 
-  useEffect(() => {
-    if (!currentTrack || !playerState.isPlaying) {
-      const timeout = setTimeout(() => {
-        if (!currentTrack || !playerState.isPlaying) {
-          setPlayingSongId(null);
-        }
-      }, 200);
-      return () => clearTimeout(timeout);
-    }
-  }, [currentTrack, playerState.isPlaying]);
+  const { playingSongId, previewLoadingSongId, handlePlay: handlePlaySong } = useSongPlayback({
+    resolveSong,
+    originSongsetId: songsetId,
+    noAudioMessage: t("browse.noAudioAvailable"),
+    failedToLoadMessage: t("browse.failedToLoadPreview"),
+  });
 
   useEffect(() => {
     const currentItemIds = items.map((i) => i.id).join(",");
