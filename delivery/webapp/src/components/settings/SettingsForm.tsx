@@ -121,7 +121,9 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 }}
               >
                 <SelectTrigger id="locale">
-                  <SelectValue />
+                  <SelectValue>
+                    {(v: string) => t(LOCALE_OPTIONS.find((o) => o.value === v)?.key ?? "settings.language.en")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {LOCALE_OPTIONS.map((opt) => (
@@ -152,7 +154,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 }}
               >
                 <SelectTrigger id="defaultGapBeats">
-                  <SelectValue />
+                  <SelectValue>
+                    {(v: string) => {
+                      const b = parseFloat(v);
+                      return `${b} ${t(b === 1 ? "settings.unit.beat" : "settings.unit.beats")}`;
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {GAP_BEATS_OPTIONS.map((b) => (
@@ -182,7 +189,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 }}
               >
                 <SelectTrigger id="defaultVideoTemplate">
-                  <SelectValue />
+                  <SelectValue>{(v: string) => t(optionKey.template(v))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {TEMPLATES.map((tmpl) => (
@@ -203,7 +210,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 }}
               >
                 <SelectTrigger id="defaultResolution">
-                  <SelectValue />
+                  <SelectValue>{(v: string) => t(optionKey.resolution(v))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {RESOLUTIONS.map((r) => (
@@ -224,7 +231,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 }}
               >
                 <SelectTrigger id="defaultFontSizePreset">
-                  <SelectValue />
+                  <SelectValue>{(v: string) => t(optionKey.fontPreset(v))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {FONT_PRESETS.map((f) => (
@@ -245,7 +252,7 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 }}
               >
                 <SelectTrigger id="defaultFontFamily">
-                  <SelectValue />
+                  <SelectValue>{(v: string) => t(optionKey.fontFamily(v))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {FONT_FAMILIES.map((f) => (
@@ -285,7 +292,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                 }}
               >
                 <SelectTrigger id="lyricsLoopWindowSeconds">
-                  <SelectValue />
+                  <SelectValue>
+                    {(v: string) => {
+                      const s = parseFloat(v);
+                      return `${s} ${t(s === 1 ? "settings.unit.second" : "settings.unit.seconds")}`;
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {LOOP_WINDOW_OPTIONS.map((s) => (
@@ -360,7 +372,12 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                   }}
                 >
                   <SelectTrigger id="defaultKeyShiftSemitones">
-                    <SelectValue />
+                    <SelectValue>
+                      {(v: string) => {
+                        const s = parseInt(v, 10);
+                        return `${s > 0 ? `+${s}` : s === 0 ? t("settings.noKeyShift") : s} ${t("settings.unit.semitones")}`;
+                      }}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {KEY_SHIFT_OPTIONS.map((s) => (
@@ -382,7 +399,9 @@ export function SettingsForm({ initialSettings, onSave, isSaving = false }: Sett
                   }}
                 >
                   <SelectTrigger id="timingReviewFont">
-                    <SelectValue />
+                    <SelectValue>
+                      {(v: string) => t(TIMING_FONTS.find((f) => f.value === v)?.key ?? "settings.option.timingFont.sans")}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {TIMING_FONTS.map((f) => (

@@ -239,7 +239,7 @@ export function RenderForm({
                   }
                 >
                   <SelectTrigger id="template">
-                    <SelectValue />
+                    <SelectValue>{(v: string) => t(optionKey.template(v))}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {TEMPLATES.map((tmpl) => (
@@ -260,7 +260,7 @@ export function RenderForm({
                   }
                 >
                   <SelectTrigger id="resolution">
-                    <SelectValue />
+                    <SelectValue>{(v: string) => t(optionKey.resolution(v))}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {RESOLUTIONS.map((r) => (
@@ -281,7 +281,7 @@ export function RenderForm({
                   }
                 >
                   <SelectTrigger id="fontSize">
-                    <SelectValue />
+                    <SelectValue>{(v: string) => t(optionKey.fontPreset(v))}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {FONT_SIZES.map((f) => (
@@ -302,7 +302,7 @@ export function RenderForm({
                   }
                 >
                   <SelectTrigger id="fontFamily">
-                    <SelectValue />
+                    <SelectValue>{(v: string) => t(optionKey.fontFamily(v))}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {FONT_FAMILIES.map((f) => (
@@ -355,7 +355,7 @@ export function RenderForm({
                     }
                   >
                     <SelectTrigger id="titleCardDuration">
-                      <SelectValue />
+                      <SelectValue>{(v: string) => t(optionKey.titleCardDuration(parseInt(v, 10)))}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {TITLE_CARD_DURATIONS.map((d) => (

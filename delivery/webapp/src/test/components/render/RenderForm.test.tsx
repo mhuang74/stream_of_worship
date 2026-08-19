@@ -286,10 +286,13 @@ describe("RenderForm", () => {
       fireEvent.click(submitButton)
 
       await waitFor(() => {
-        expect(screen.getByText("1080p (Full HD)")).toBeInTheDocument()
+        expect(screen.getAllByText("1080p (Full HD)").length).toBeGreaterThanOrEqual(1)
       })
 
-      const resolutionRow = screen.getByText("1080p (Full HD)").closest("td")
+      const resolutionRow = screen
+        .getAllByText("1080p (Full HD)")
+        .map((el) => el.closest("td"))
+        .find((td) => td)
       expect(resolutionRow?.className).toContain("amber")
     })
 
@@ -308,11 +311,13 @@ describe("RenderForm", () => {
 
       await waitFor(() => {
         const classicElements = screen.getAllByText("Classic")
-        expect(classicElements.length).toBe(2)
+        expect(classicElements.length).toBeGreaterThanOrEqual(2)
       })
 
       const classicElements = screen.getAllByText("Classic")
-      const currentCol = classicElements.find((el) => el.className.includes("pl-3"))
+      const currentCol = classicElements
+        .map((el) => el.closest("td"))
+        .find((td) => td && td.className.includes("pl-3"))
       expect(currentCol?.className).not.toContain("amber")
     })
 
