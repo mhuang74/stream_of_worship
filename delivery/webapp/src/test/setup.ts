@@ -7,7 +7,7 @@ import "@testing-library/jest-dom";
 if (
   typeof window !== "undefined" &&
   (typeof window.localStorage === "undefined" ||
-    typeof window.localStorage.getItem !== "function")
+    typeof window.localStorage?.getItem !== "function")
 ) {
   const store = new Map<string, string>();
   const storage: Storage = {
