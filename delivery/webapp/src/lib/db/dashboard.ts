@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { recordings, songs, songsets, songsetShares, userFavorites } from "@/db/schema";
 import { listSongsetSummaries } from "./songsets";
@@ -102,9 +102,13 @@ export async function getCommunityFavoriteSample(
     .select({ songId: userFavorites.songId })
     .from(userFavorites)
     .where(
-      sql`${userFavorites.songId} NOT IN (
-        SELECT song_id FROM user_favorite_songs WHERE user_id = ${userId}
-      )`
+      notInArray(
+        userFavorites.songId,
+        db
+          .select({ songId: userFavorites.songId })
+          .from(userFavorites)
+          .where(eq(userFavorites.userId, userId))
+      )
     )
     .groupBy(userFavorites.songId)
     .orderBy(sql`random()`)

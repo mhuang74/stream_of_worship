@@ -14,6 +14,7 @@ import { FileMusic, Heart, Library, Share2, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
+import type { DashboardStats } from "@/lib/db/dashboard";
 import { t } from "@/lib/i18n/messages";
 import type { Locale, TranslationKey } from "@/lib/i18n/messages";
 
@@ -22,18 +23,10 @@ const ShareDialog = dynamic(
   { ssr: false }
 );
 
-export interface DashboardStatsProps {
-  songsetsCreated: number;
-  songsetsRendered: number;
-  songsetsShared: number;
-  favoriteSongs: number;
-  catalogSongs: number;
-}
-
 interface HomePageClientProps {
   locale: Locale;
   userName: string;
-  stats: DashboardStatsProps;
+  stats: DashboardStats;
   recentSongsets: DashboardSongset[];
   recentFavoriteSongs: SongCardData[];
   communityFavorites: Array<SongCardData & { favoriteCount: number }>;

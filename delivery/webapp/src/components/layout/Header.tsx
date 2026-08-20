@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { isProjectionRoute } from "@/lib/routes";
 import { useLocale } from "@/hooks/useLocale";
-import { useSession, signOut } from "@/lib/auth-client";
+import { useSignOut } from "@/hooks/useSignOut";
+import { useSession } from "@/lib/auth-client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -15,26 +16,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LogOut, Settings, User } from "lucide-react";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useLocale();
+  const { signOutAndRedirect } = useSignOut();
   const { data: session } = useSession();
   const user = session?.user;
-
-  async function handleSignOut() {
-    try {
-      await signOut();
-      toast.success(t("settings.signOut.success"));
-      router.push("/login");
-      router.refresh();
-    } catch {
-      toast.error(t("settings.signOut.error"));
-    }
-  }
 
   if (pathname?.startsWith("/share/") || isProjectionRoute(pathname)) {
     return null;
@@ -113,7 +103,7 @@ export function Header() {
                   <Settings className="size-4 mr-2" />
                   {t("nav.settings")}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleSignOut}>
+                <DropdownMenuItem onClick={signOutAndRedirect}>
                   <LogOut className="size-4 mr-2" />
                   {t("nav.signOut")}
                 </DropdownMenuItem>
