@@ -239,6 +239,11 @@ function SortableSongItem({
                 {item.recording?.tempoBpm && (
                   <span>• {Math.round(item.recording.tempoBpm)} {t("browse.bpm")}</span>
                 )}
+                {item.song?.albumName && (
+                  <span className="truncate hidden sm:inline" data-testid="song-album">
+                    • {item.song?.albumName}
+                  </span>
+                )}
               </div>
             </div>
 

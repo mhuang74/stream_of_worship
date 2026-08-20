@@ -176,6 +176,12 @@ describe("SongList", () => {
       expect(screen.getAllByText(/G/).length).toBeGreaterThan(0);
     });
 
+    it("renders album name", () => {
+      renderList();
+      expect(screen.getAllByTestId("song-album").length).toBe(2);
+      expect(screen.getAllByTestId("song-album")[0]).toHaveTextContent("Hymns");
+    });
+
     it("renders marked lines badge when songs have marked lines", () => {
       renderList();
       expect(screen.getByText(/3 marked/)).toBeInTheDocument();
