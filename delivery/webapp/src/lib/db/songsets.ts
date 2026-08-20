@@ -437,7 +437,25 @@ export async function listSongsetSummaries(
           eq(songsets.userId, userId),
           or(
             ilike(songsets.name, `%${trimmedSearch}%`),
-            ilike(songsets.description, `%${trimmedSearch}%`)
+            ilike(songsets.description, `%${trimmedSearch}%`),
+            // Fuzzy search across song metadata of any song in the songset:
+            // title, title_pinyin, composer, lyricist, album_name, album_series.
+            // Correlated EXISTS avoids row inflation so the groupBy/aggregates
+            // above are unaffected; the same condition feeds the count query.
+            sql<boolean>`exists (
+              select 1
+              from ${songsetItems}
+              join ${songs} on ${songs.id} = ${songsetItems.songId}
+              where ${songsetItems.songsetId} = ${songsets.id}
+                and (
+                  ${ilike(songs.title, `%${trimmedSearch}%`)}
+                  or ${ilike(songs.titlePinyin, `%${trimmedSearch}%`)}
+                  or ${ilike(songs.composer, `%${trimmedSearch}%`)}
+                  or ${ilike(songs.lyricist, `%${trimmedSearch}%`)}
+                  or ${ilike(songs.albumName, `%${trimmedSearch}%`)}
+                  or ${ilike(songs.albumSeries, `%${trimmedSearch}%`)}
+                )
+            )`
           )
         )
       : eq(songsets.userId, userId);
