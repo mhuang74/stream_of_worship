@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { SongList, SongListItem } from "./SongList";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { TransitionPanel, TransitionSettings } from "./TransitionPanel";
@@ -31,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import { toast } from "sonner";
 import { getRenderFailureText } from "@/lib/render/error-message";
-import { songsetsListUrl } from "@/lib/songset-list-state";
+import { useSongsetListBack } from "@/hooks/useSongsetListBack";
 import {
   ArrowLeft,
   MoreVertical,
@@ -105,7 +104,7 @@ export function SongsetEditor({
   highlightSongId,
   onHighlightConsumed,
 }: SongsetEditorProps) {
-  const router = useRouter();
+  const backToList = useSongsetListBack();
   const { t } = useLocale();
   const [isStaleBannerDismissed, setIsStaleBannerDismissed] = useState(false);
   const [isEditDescriptionOpen, setIsEditDescriptionOpen] = useState(false);
@@ -147,7 +146,7 @@ export function SongsetEditor({
 
   // Handle back navigation
   const handleBack = () => {
-    router.push(songsetsListUrl());
+    backToList();
   };
 
   // Handle reorder
@@ -215,7 +214,7 @@ export function SongsetEditor({
     setIsDeleting(true);
     try {
       await onDelete();
-      router.push(songsetsListUrl());
+      backToList();
       toast.success(t("songsets.toast.songsetDeleted"));
     } catch {
       toast.error(t("songsets.error.deleteFailed"));

@@ -52,6 +52,21 @@ export function getSongsetListState(): SongsetListState | null {
 }
 
 /**
+ * Build the /songsets URL with the list's URL-shape convention:
+ * `page` omitted when 1, `search` trimmed and omitted when empty.
+ * Exported so the list's own URL-sync effect and the back-to-list helper
+ * share one source of truth.
+ */
+export function buildSongsetsUrl(page: number, search: string): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  const trimmed = search.trim();
+  if (trimmed) params.set("search", trimmed);
+  const qs = params.toString();
+  return qs ? `/songsets?${qs}` : "/songsets";
+}
+
+/**
  * Build the /songsets URL from the saved list state. Matches the URL shape
  * SongsetsClient produces: `page` omitted when 1, `search` omitted when empty.
  * Returns bare `/songsets` when nothing is saved.
@@ -59,10 +74,5 @@ export function getSongsetListState(): SongsetListState | null {
 export function songsetsListUrl(): string {
   const state = getSongsetListState();
   if (!state) return "/songsets";
-
-  const params = new URLSearchParams();
-  if (state.page > 1) params.set("page", String(state.page));
-  if (state.search.trim()) params.set("search", state.search.trim());
-  const qs = params.toString();
-  return qs ? `/songsets?${qs}` : "/songsets";
+  return buildSongsetsUrl(state.page, state.search);
 }
