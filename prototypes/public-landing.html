@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stream of Worship — Public Landing (Prototype)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          background: "oklch(1 0 0)",
+          foreground: "oklch(0.145 0 0)",
+          card: "oklch(1 0 0)",
+          muted: "oklch(0.97 0 0)",
+          "muted-foreground": "oklch(0.556 0 0)",
+          primary: "oklch(0.205 0 0)",
+          "primary-foreground": "oklch(0.985 0 0)",
+          border: "oklch(0.922 0 0)",
+          accent: "oklch(0.97 0 0)",
+          "accent-foreground": "oklch(0.205 0 0)",
+        },
+        fontFamily: {
+          sans: ["Inter", "system-ui", "sans-serif"],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { font-family: Inter, system-ui, sans-serif; }
+  .gradient-hero {
+    background: linear-gradient(135deg, oklch(0.97 0.02 250) 0%, oklch(0.99 0.01 200) 50%, oklch(0.97 0.02 300) 100%);
+  }
+  .gradient-text {
+    background: linear-gradient(135deg, oklch(0.35 0.1 250), oklch(0.5 0.15 300));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+</style>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<!-- Header -->
+<header class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
+  <div class="flex h-14 items-center gap-4 px-4 max-w-6xl mx-auto">
+    <a href="/" class="flex items-center gap-2 font-semibold">
+      <span class="text-primary">Stream of Worship</span>
+    </a>
+    <nav class="hidden lg:flex items-center gap-6 ml-6" aria-label="Main navigation">
+      <a href="#" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Features</a>
+      <a href="#" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">How it works</a>
+      <a href="#" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Songs</a>
+    </nav>
+    <div class="ml-auto flex items-center gap-2">
+      <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted hover:text-foreground text-sm font-medium h-8 px-2.5 transition-all">Sign in</a>
+      <a href="/register" class="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 text-sm font-medium h-8 px-2.5 transition-all">Create account</a>
+    </div>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="gradient-hero border-b border-border">
+  <div class="max-w-6xl mx-auto px-4 py-20 md:py-28 grid md:grid-cols-2 gap-12 items-center">
+    <div>
+      <span class="inline-flex items-center rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground mb-6">
+        ✦ Seamless worship music transitions
+      </span>
+      <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
+        Lead worship without<br><span class="gradient-text">awkward pauses.</span>
+      </h1>
+      <p class="text-muted-foreground text-lg mt-4 max-w-md">
+        Stream of Worship analyzes tempo, key, and structure to generate smooth transitions between songs — then renders audio and lyrics videos for your service.
+      </p>
+      <div class="flex items-center gap-3 mt-8">
+        <a href="/register" class="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 text-sm font-medium h-9 px-4 transition-all">
+          Get started free
+        </a>
+        <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted hover:text-foreground text-sm font-medium h-9 px-4 transition-all">
+          Sign in
+        </a>
+      </div>
+      <p class="text-xs text-muted-foreground mt-4">No credit card required · Free for personal use</p>
+    </div>
+    <div class="relative">
+      <!-- Mock app screenshot -->
+      <div class="rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+        <div class="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-muted/50">
+          <span class="size-2.5 rounded-full bg-red-400"></span>
+          <span class="size-2.5 rounded-full bg-yellow-400"></span>
+          <span class="size-2.5 rounded-full bg-green-400"></span>
+          <span class="ml-2 text-xs text-muted-foreground">streamofworship.app</span>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold">Welcome back, Michael</div>
+            <div class="text-xs text-muted-foreground">Dashboard</div>
+          </div>
+          <div class="grid grid-cols-5 gap-2">
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold">12</div><div class="text-[10px] text-muted-foreground">Created</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold">8</div><div class="text-[10px] text-muted-foreground">Rendered</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold">5</div><div class="text-[10px] text-muted-foreground">Shared</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold">23</div><div class="text-[10px] text-muted-foreground">Favorites</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold">340</div><div class="text-[10px] text-muted-foreground">Catalog</div></div>
+          </div>
+          <div class="rounded-lg border border-border p-3">
+            <div class="text-xs font-medium mb-2">Recent songsets</div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                <span class="text-xs font-medium">主日敬拜 2026-08-23</span>
+                <span class="text-[10px] text-muted-foreground">6 songs · 24:30</span>
+              </div>
+              <div class="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                <span class="text-xs font-medium">Youth Night Set</span>
+                <span class="text-[10px] text-muted-foreground">4 songs · 18:12</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Floating badge -->
+      <div class="absolute -bottom-4 -left-4 rounded-lg border border-border bg-card shadow-lg px-3 py-2 flex items-center gap-2">
+        <span class="text-lg">🎵</span>
+        <div>
+          <div class="text-xs font-semibold">Smooth transitions</div>
+          <div class="text-[10px] text-muted-foreground">Key & tempo matched</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="max-w-6xl mx-auto px-4 py-16">
+  <h2 class="text-2xl font-bold text-center mb-2">Everything you need for a seamless service</h2>
+  <p class="text-muted-foreground text-center max-w-lg mx-auto mb-12">From song selection to rendered video, Stream of Worship handles the technical details so you can focus on leading.</p>
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="rounded-xl border border-border bg-card p-6 hover:shadow-md transition-shadow">
+      <div class="size-10 rounded-lg bg-muted flex items-center justify-center mb-4">🎼</div>
+      <h3 class="font-semibold mb-2">Build songsets</h3>
+      <p class="text-sm text-muted-foreground">Curate songs from a catalog of 300+ worship songs. Reorder, adjust keys, and preview transitions before you commit.</p>
+    </div>
+    <div class="rounded-xl border border-border bg-card p-6 hover:shadow-md transition-shadow">
+      <div class="size-10 rounded-lg bg-muted flex items-center justify-center mb-4">🎬</div>
+      <h3 class="font-semibold mb-2">Render audio & video</h3>
+      <p class="text-sm text-muted-foreground">Generate a single audio file with smooth crossfades, plus a lyrics video with your choice of template, resolution, and fonts.</p>
+    </div>
+    <div class="rounded-xl border border-border bg-card p-6 hover:shadow-md transition-shadow">
+      <div class="size-10 rounded-lg bg-muted flex items-center justify-center mb-4">🔗</div>
+      <h3 class="font-semibold mb-2">Share with your team</h3>
+      <p class="text-sm text-muted-foreground">Share rendered songsets with your worship team via a link. No accounts needed for viewers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="bg-muted/50 border-y border-border">
+  <div class="max-w-6xl mx-auto px-4 py-16">
+    <h2 class="text-2xl font-bold text-center mb-12">How it works</h2>
+    <div class="grid md:grid-cols-4 gap-8">
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">1</div>
+        <h3 class="font-semibold text-sm mb-1">Pick your songs</h3>
+        <p class="text-xs text-muted-foreground">Browse the catalog and add songs to a songset.</p>
+      </div>
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">2</div>
+        <h3 class="font-semibold text-sm mb-1">Tune transitions</h3>
+        <p class="text-xs text-muted-foreground">Adjust gap beats, key shifts, and preview each transition.</p>
+      </div>
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">3</div>
+        <h3 class="font-semibold text-sm mb-1">Render</h3>
+        <p class="text-xs text-muted-foreground">Generate the audio mix and lyrics video in the cloud.</p>
+      </div>
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">4</div>
+        <h3 class="font-semibold text-sm mb-1">Lead & share</h3>
+        <p class="text-xs text-muted-foreground">Play from any device or share a link with your team.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="max-w-6xl mx-auto px-4 py-16 text-center">
+  <h2 class="text-3xl font-bold mb-3">Ready to lead worship seamlessly?</h2>
+  <p class="text-muted-foreground mb-8">Join the community of worship leaders using Stream of Worship.</p>
+  <div class="flex items-center justify-center gap-3">
+    <a href="/register" class="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 text-sm font-medium h-9 px-4 transition-all">Create your free account</a>
+    <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted hover:text-foreground text-sm font-medium h-9 px-4 transition-all">Sign in</a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-border">
+  <div class="max-w-6xl mx-auto px-4 py-8 flex items-center justify-between">
+    <span class="text-sm font-semibold text-primary">Stream of Worship</span>
+    <span class="text-xs text-muted-foreground">© 2026 Stream of Worship</span>
+  </div>
+</footer>
+
+</body>
+</html>
