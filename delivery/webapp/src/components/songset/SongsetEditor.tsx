@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import { toast } from "sonner";
 import { getRenderFailureText } from "@/lib/render/error-message";
+import { songsetsListUrl } from "@/lib/songset-list-state";
 import {
   ArrowLeft,
   MoreVertical,
@@ -146,7 +147,7 @@ export function SongsetEditor({
 
   // Handle back navigation
   const handleBack = () => {
-    router.push("/songsets");
+    router.push(songsetsListUrl());
   };
 
   // Handle reorder
@@ -214,7 +215,7 @@ export function SongsetEditor({
     setIsDeleting(true);
     try {
       await onDelete();
-      router.push("/songsets");
+      router.push(songsetsListUrl());
       toast.success(t("songsets.toast.songsetDeleted"));
     } catch {
       toast.error(t("songsets.error.deleteFailed"));

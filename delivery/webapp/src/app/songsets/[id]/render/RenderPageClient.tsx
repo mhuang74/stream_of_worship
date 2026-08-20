@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets"
 import type { RenderFormData } from "@/components/render/RenderForm"
 import { useLocale } from "@/hooks/useLocale"
+import { songsetsListUrl } from "@/lib/songset-list-state"
 
 const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((m) => ({ default: m.RenderForm })), {
   loading: () => <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-12 w-40" /></div>,
@@ -195,7 +196,7 @@ export function RenderPageClient({
         <Button
           variant="ghost"
           className="mt-4"
-          onClick={() => router.push("/songsets")}
+          onClick={() => router.push(songsetsListUrl())}
         >
           {t("render.backToSongsets")}
         </Button>
