@@ -213,6 +213,11 @@ describe(".env.production.example", () => {
     expect(content).toContain("BETTER_AUTH_URL=");
   });
 
+  it("documents TRUSTED_ORIGINS", () => {
+    const content = readEnvExample();
+    expect(content).toContain("TRUSTED_ORIGINS=");
+  });
+
   it("documents NEXT_PUBLIC_CAST_RECEIVER_APP_ID", () => {
     const content = readEnvExample();
     expect(content).toContain("NEXT_PUBLIC_CAST_RECEIVER_APP_ID=");

@@ -18,10 +18,15 @@ export const auth = betterAuth({
   trustedOrigins: (request) => {
     if (!request) return [];
     const origin = request.headers.get("origin");
-    if (
-      origin &&
-      /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin)
-    ) {
+    if (!origin) return [];
+    // Allow private/LAN IPs (existing behavior)
+    if (/^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin)) {
+      return [origin];
+    }
+    // Allow configured origins (e.g. https://unoccluded.tailscale:8080)
+    const configured =
+      process.env.TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+    if (configured.includes(origin)) {
       return [origin];
     }
     return [];
