@@ -13,12 +13,14 @@ const LABEL_KEY: Record<Locale, "auth.language.en" | "auth.language.zhHant"> = {
 export function AuthLanguageSwitcher() {
   const { locale, setLocale, t } = useLocale();
 
-  // Persist the choice in the sow_locale cookie (same shape as the settings
-  // PUT route) so server-side resolveUserLocale() returns the chosen locale
+  // Persist the choice in the sow_locale cookie, matching the shape the
+  // settings PUT route sets (path=/, 365d, samesite=lax, secure in
+  // production), so server-side resolveUserLocale() returns the chosen locale
   // on subsequent navigations (login <-> register soft links re-resolve the
   // initial locale from the server, and the cookie fills the no-auth gap).
   useEffect(() => {
-    document.cookie = `sow_locale=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+    const secure = process.env.NODE_ENV === "production" ? "; secure" : "";
+    document.cookie = `sow_locale=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax${secure}`;
   }, [locale]);
 
   return (

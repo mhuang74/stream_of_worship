@@ -189,54 +189,62 @@ export async function PUT(request: NextRequest) {
 
     const now = new Date();
 
-    // Preserve the existing saved locale when the client omits it (e.g. the
-    // Android client doesn't send `locale`), so a web-chosen zh-Hant isn't
-    // silently reset back to English.
-    let existingLocale: string | undefined;
+    // Preserve existing saved values for any field the client omits (e.g. the
+    // Android client sends partial bodies, and the auth pages PUT only
+    // `locale`), so a partial update never resets unrelated settings.
+    let existing: typeof userSettings.$inferSelect | undefined;
     try {
-      const existing = await db
-        .select({ locale: userSettings.locale })
+      const rows = await db
+        .select()
         .from(userSettings)
         .where(eq(userSettings.userId, userId));
-      existingLocale = existing[0]?.locale;
+      existing = rows[0];
     } catch {
-      // Fall through; DEFAULTS.locale is used below.
+      // Fall through; DEFAULTS are used below.
     }
 
     const values = {
       userId,
       offlineAutoCache:
-        typeof b.offlineAutoCache === "boolean" ? b.offlineAutoCache : DEFAULTS.offlineAutoCache,
+        typeof b.offlineAutoCache === "boolean"
+          ? b.offlineAutoCache
+          : existing?.offlineAutoCache ?? DEFAULTS.offlineAutoCache,
       defaultGapBeats:
-        typeof b.defaultGapBeats === "number" ? b.defaultGapBeats : DEFAULTS.defaultGapBeats,
+        typeof b.defaultGapBeats === "number"
+          ? b.defaultGapBeats
+          : existing?.defaultGapBeats ?? DEFAULTS.defaultGapBeats,
       defaultVideoTemplate:
         typeof b.defaultVideoTemplate === "string"
           ? b.defaultVideoTemplate
-          : DEFAULTS.defaultVideoTemplate,
+          : existing?.defaultVideoTemplate ?? DEFAULTS.defaultVideoTemplate,
       defaultResolution:
-        typeof b.defaultResolution === "string" ? b.defaultResolution : DEFAULTS.defaultResolution,
+        typeof b.defaultResolution === "string"
+          ? b.defaultResolution
+          : existing?.defaultResolution ?? DEFAULTS.defaultResolution,
       lyricsLoopWindowSeconds:
         typeof b.lyricsLoopWindowSeconds === "number"
           ? b.lyricsLoopWindowSeconds
-          : DEFAULTS.lyricsLoopWindowSeconds,
+          : existing?.lyricsLoopWindowSeconds ?? DEFAULTS.lyricsLoopWindowSeconds,
       defaultFontSizePreset:
         typeof b.defaultFontSizePreset === "string"
           ? b.defaultFontSizePreset
-          : DEFAULTS.defaultFontSizePreset,
+          : existing?.defaultFontSizePreset ?? DEFAULTS.defaultFontSizePreset,
       defaultFontFamily:
         typeof b.defaultFontFamily === "string"
           ? b.defaultFontFamily
-          : DEFAULTS.defaultFontFamily,
+          : existing?.defaultFontFamily ?? DEFAULTS.defaultFontFamily,
       defaultKeyShiftSemitones:
         typeof b.defaultKeyShiftSemitones === "number"
           ? b.defaultKeyShiftSemitones
-          : DEFAULTS.defaultKeyShiftSemitones,
+          : existing?.defaultKeyShiftSemitones ?? DEFAULTS.defaultKeyShiftSemitones,
       timingReviewFont:
-        typeof b.timingReviewFont === "string" ? b.timingReviewFont : DEFAULTS.timingReviewFont,
+        typeof b.timingReviewFont === "string"
+          ? b.timingReviewFont
+          : existing?.timingReviewFont ?? DEFAULTS.timingReviewFont,
       locale: isLocale(b.locale)
         ? b.locale
-        : isLocale(existingLocale)
-          ? existingLocale
+        : isLocale(existing?.locale)
+          ? existing.locale
           : DEFAULTS.locale,
       updatedAt: now,
     };
