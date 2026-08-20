@@ -8,6 +8,7 @@ import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
+import { saveSongsetListState } from "@/lib/songset-list-state";
 
 const ShareDialog = dynamic(
   () => import("@/components/share/ShareDialog").then((m) => ({ default: m.ShareDialog })),
@@ -138,6 +139,12 @@ export function SongsetsClient({
     const qs = params.toString();
     router.replace(qs ? `/songsets?${qs}` : "/songsets");
   }, [page, committedSearch, router]);
+
+  // Persist the list's current page + committed search so back-to-list
+  // navigations from the editor subtree can restore the same page/query.
+  useEffect(() => {
+    saveSongsetListState(page, committedSearch);
+  }, [page, committedSearch]);
 
   const refreshSongsets = useCallback(() => {
     setRefreshKey((k) => k + 1);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useLocale } from "@/hooks/useLocale";
+import { songsetsListUrl } from "@/lib/songset-list-state";
 import { PrePlayCard } from "@/components/play/PrePlayCard";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import { Button } from "@/components/ui/button";
@@ -152,7 +153,7 @@ export default function PlayPage() {
         <Button
           variant="ghost"
           className="mt-4"
-          onClick={() => router.push("/songsets")}
+          onClick={() => router.push(songsetsListUrl())}
         >
           {t("play.backToSongsets")}
         </Button>

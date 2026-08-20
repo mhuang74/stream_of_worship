@@ -1,14 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithLocale, renderWithLocale as render } from "@/test/render";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { SongListItem } from "@/components/songset/SongList";
+import { saveSongsetListState } from "@/lib/songset-list-state";
 
 // Mock next/navigation
+const mockRouterPush = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: mockRouterPush,
   }),
   useParams: () => ({ id: "test-songset" }),
 }));
@@ -116,6 +118,11 @@ describe("SongsetEditor", () => {
     return render(<SongsetEditor {...defaultProps} {...props} />);
   };
 
+  beforeEach(() => {
+    mockRouterPush.mockClear();
+    sessionStorage.clear();
+  });
+
   describe("app bar", () => {
     it("renders songset name", () => {
       renderEditor();
@@ -130,6 +137,23 @@ describe("SongsetEditor", () => {
     it("has back button", () => {
       renderEditor();
       expect(screen.getByRole("button", { name: /go back/i })).toBeInTheDocument();
+    });
+
+    it("navigates back to the saved list page and search", () => {
+      saveSongsetListState(3, "grace");
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: /go back/i }));
+
+      expect(mockRouterPush).toHaveBeenCalledWith("/songsets?page=3&search=grace");
+    });
+
+    it("navigates back to the bare list URL when no state is saved", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: /go back/i }));
+
+      expect(mockRouterPush).toHaveBeenCalledWith("/songsets");
     });
 
     it("has render status badge", () => {

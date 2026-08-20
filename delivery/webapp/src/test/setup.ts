@@ -36,3 +36,38 @@ if (
   });
 }
 
+// Same story for sessionStorage: jsdom's own storage ends up undefined here.
+// Provide an in-memory Storage so list-state persistence (e.g. the songset
+// list pagination restore helper) is testable in jsdom.
+if (
+  typeof window !== "undefined" &&
+  (typeof window.sessionStorage === "undefined" ||
+    typeof window.sessionStorage?.getItem !== "function")
+) {
+  const store = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key) {
+      return store.has(key) ? store.get(key)! : null;
+    },
+    key(index) {
+      return [...store.keys()][index] ?? null;
+    },
+    removeItem(key) {
+      store.delete(key);
+    },
+    setItem(key, value) {
+      store.set(key, String(value));
+    },
+  };
+  Object.defineProperty(window, "sessionStorage", {
+    value: storage,
+    configurable: true,
+  });
+}
+
