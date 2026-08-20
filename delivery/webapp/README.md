@@ -4,16 +4,22 @@ Web application for rendering worship music transitions with synchronized lyrics
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 20.9+ (Next.js 16.2.6 requires `>=20.9.0`)
 - pnpm
 - PostgreSQL database (Neon recommended)
 - PostgreSQL `pgvector` extension enabled
 - Cloudflare R2 account
-- Upstash Redis account (for client-error telemetry rate limiting; optional — `POST /api/log-client-error` degrades to allow-all when unset)
+- Upstash Redis account (for client-error telemetry rate limiting; optional — when unset, `POST /api/log-client-error` falls back to a per-instance in-memory token-bucket limiter, not distributed)
 
 ## Environment Setup
 
-Copy `.env.example` to `.env.local` and configure:
+`pnpm dev` loads environment variables from `/opt/sow/.env` via `env-cmd` (see the `dev` script in `package.json`). To use a different file on your host, set `SOW_WEBAPP_ENV_FILE` before starting:
+
+```bash
+SOW_WEBAPP_ENV_FILE=/path/to/your.env pnpm dev
+```
+
+The dev server binds `0.0.0.0` (all interfaces), so it is reachable via any host IP including Tailscale — no bind-IP override needed. Next.js additionally auto-loads `.env.local` / `.env.development` / `.env` from the project directory, but only for keys not already set by `env-cmd` — the `env-cmd` file takes precedence. Required variables:
 
 - `SOW_DATABASE_URL` — PostgreSQL connection string
 - `SOW_R2_ENDPOINT_URL`, `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`, `SOW_R2_BUCKET` — Cloudflare R2 credentials
@@ -123,7 +129,7 @@ npx drizzle-kit migrate    # Run pending migrations
 - `GET /api/share/[token]`
   Public. Validates a share token and returns signed playback URLs. The MP4 is minted with a 14400s (4-hour) expiry for Cast/share playback; revoked (`revokedAt` set → 410) and expired (`expiresAt < now` → 410) tokens are rejected before minting.
 - `POST /api/log-client-error`
-  Best-effort, anonymized client-side telemetry sink for the Cast/Presentation transport layer (`src/hooks/useCast.ts`). Optional Better Auth session accepted but not required. Zod body schema: `{ message, kind: cast_load|cast_transport|presentation|other, meta? }`. Rate-limited via Upstash Redis token bucket (20 req/min per hashed client IP, 429 when exceeded). PII redaction: no full signed URLs, no user IDs; the raw client IP is hashed with a daily-rotating salt. Returns 202 on success. When Upstash env vars are unset the limiter is null and the endpoint degrades to an allow-all fallback (no throttling — fine for dev/test).
+  Best-effort, anonymized client-side telemetry sink for the Cast/Presentation transport layer (`src/hooks/useCast.ts`). Optional Better Auth session accepted but not required. Zod body schema: `{ message, kind: cast_load|cast_transport|presentation|other, meta? }`. Rate-limited via Upstash Redis token bucket (20 req/min per hashed client IP, 429 when exceeded). PII redaction: no full signed URLs, no user IDs; the raw client IP is hashed with a daily-rotating salt. Returns 202 on success. When Upstash env vars are unset the limiter is null and the endpoint falls back to a per-instance in-memory token-bucket limiter (still throttles, but per warm instance rather than distributed).
 
 ## Architecture
 
