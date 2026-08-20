@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useLocale } from "@/hooks/useLocale";
-import { songsetsListUrl } from "@/lib/songset-list-state";
+import { useSongsetListBack } from "@/hooks/useSongsetListBack";
 import { PrePlayCard } from "@/components/play/PrePlayCard";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ interface RenderJobData {
 export default function PlayPage() {
   const params = useParams();
   const router = useRouter();
+  const backToList = useSongsetListBack();
   const { t } = useLocale();
   const songsetId = params.id as string;
 
@@ -153,7 +154,7 @@ export default function PlayPage() {
         <Button
           variant="ghost"
           className="mt-4"
-          onClick={() => router.push(songsetsListUrl())}
+          onClick={() => backToList()}
         >
           {t("play.backToSongsets")}
         </Button>

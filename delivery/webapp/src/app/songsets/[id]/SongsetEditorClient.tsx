@@ -11,7 +11,7 @@ import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
-import { songsetsListUrl } from "@/lib/songset-list-state";
+import { useSongsetListBack } from "@/hooks/useSongsetListBack";
 
 const BrowseSheet = dynamic(
   () => import("@/components/songset/BrowseSheet").then((m) => ({ default: m.BrowseSheet })),
@@ -113,6 +113,7 @@ function transformItems(items: ApiSongsetItem[]): SongListItem[] {
 
 export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorClientProps) {
   const router = useRouter();
+  const backToList = useSongsetListBack();
   const { t } = useLocale();
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
@@ -516,7 +517,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <p className="text-destructive text-center">{error || t("songsets.error.notFound")}</p>
         <button
-          onClick={() => router.push(songsetsListUrl())}
+          onClick={() => backToList()}
           className="mt-4 text-primary hover:underline"
         >
           {t("songsets.backToSongsets")}
