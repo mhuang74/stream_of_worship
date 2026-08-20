@@ -43,6 +43,7 @@ interface SongCardProps {
   disabled?: boolean;
   isFavorite?: boolean;
   onToggleFavorite?: (songId: string) => void | Promise<void>;
+  favoriteCount?: number;
   className?: string;
 }
 
@@ -57,6 +58,7 @@ export function SongCard({
   disabled = false,
   isFavorite = false,
   onToggleFavorite,
+  favoriteCount,
   className,
 }: SongCardProps) {
   const { t } = useLocale();
@@ -138,6 +140,14 @@ export function SongCard({
                   data-testid="verified-badge"
                   aria-label={t("browse.verified")}
                 />
+              )}
+              {favoriteCount != null && favoriteCount > 0 && (
+                <span
+                  className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground inline-flex items-center gap-1"
+                  data-testid="favorited-by-badge"
+                >
+                  {t("home.badge.favoritedBy").replace("${n}", String(favoriteCount))}
+                </span>
               )}
             </h4>
             <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">

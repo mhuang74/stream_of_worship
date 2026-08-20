@@ -6,7 +6,7 @@ import SettingsPage from "@/app/settings/page";
 import { renderWithLocale as render } from "@/test/render";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
   useParams: () => ({}),
   usePathname: () => "/",
 }));
@@ -15,21 +15,50 @@ vi.mock("@/lib/i18n/server", () => ({
   resolveUserLocale: vi.fn().mockResolvedValue("en"),
 }));
 
+vi.mock("next/headers", () => ({
+  headers: vi.fn().mockResolvedValue(new Headers()),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  auth: { api: { getSession: vi.fn().mockResolvedValue(null) } },
+}));
+
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: null, isPending: false }),
+  signOut: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
 describe("HomePage", () => {
-  it("renders title", async () => {
+  it("renders the signed-out landing hero title", async () => {
     render(await HomePage());
-    expect(screen.getByRole("heading", { name: /stream of worship/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /lead worship without awkward pauses/i })
+    ).toBeInTheDocument();
   });
 
-  it("has link to songsets", async () => {
+  it("has a get-started link to /register", async () => {
     render(await HomePage());
-    expect(screen.getByRole("link", { name: /view songsets/i })).toHaveAttribute("href", "/songsets");
+    expect(screen.getByRole("link", { name: /get started free/i })).toHaveAttribute(
+      "href",
+      "/register"
+    );
   });
 });
 
 describe("SongsetsPage", () => {
   it("renders heading", () => {
-    render(<SongsetsClient initialData={{ songsets: [], total: 0 }} currentPage={1} pageSize={20} initialSearch="" />);
+    render(
+      <SongsetsClient
+        initialData={{ songsets: [], total: 0 }}
+        currentPage={1}
+        pageSize={20}
+        initialSearch=""
+      />
+    );
     expect(screen.getByRole("heading", { name: /songsets/i })).toBeInTheDocument();
   });
 });

@@ -1,21 +1,42 @@
-import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 import { resolveUserLocale } from "@/lib/i18n/server";
-import { t } from "@/lib/i18n/messages";
+import {
+  getDashboardStats,
+  getRecentSongsets,
+  getRecentFavoriteSongs,
+  getCommunityFavoriteSample,
+} from "@/lib/db/dashboard";
+import { HomePageClient } from "./page/HomePageClient";
+import { PublicLanding } from "./page/PublicLanding";
 
 export default async function HomePage() {
   const locale = await resolveUserLocale();
+  const session = await auth.api.getSession({ headers: await headers() });
+
+  if (!session?.user) {
+    return <PublicLanding locale={locale} />;
+  }
+
+  const userId = Number(session.user.id);
+  const [stats, recentSongsets, recentFavoriteSongs, communityFavorites] = await Promise.all([
+    getDashboardStats(userId),
+    getRecentSongsets(userId, 3),
+    getRecentFavoriteSongs(userId, 4),
+    getCommunityFavoriteSample(userId, 4),
+  ]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 px-4">
-      <h1 className="text-3xl font-bold text-center">{t(locale, "home.title")}</h1>
-      <p className="text-muted-foreground text-center max-w-md">
-        {t(locale, "home.subtitle")}
-      </p>
-      <Link href="/songsets" className={cn(buttonVariants())}>
-        {t(locale, "home.viewSongsets")}
-      </Link>
-    </div>
+    <HomePageClient
+      locale={locale}
+      userName={session.user.name}
+      stats={stats}
+      recentSongsets={recentSongsets.map((songset) => ({
+        ...songset,
+        updatedAt: songset.updatedAt.toISOString(),
+      }))}
+      recentFavoriteSongs={recentFavoriteSongs}
+      communityFavorites={communityFavorites}
+    />
   );
 }
