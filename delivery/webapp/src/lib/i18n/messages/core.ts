@@ -13,6 +13,7 @@ export const core = bundle({
     "nav.songsets": "Songsets",
     "nav.favorites": "Favorites",
     "nav.settings": "Settings",
+    "nav.signOut": "Sign out",
 
     // Home page
     "home.title": "Stream of Worship",
@@ -20,12 +21,74 @@ export const core = bundle({
       "Worship music transition and playback system. Manage songsets, render audio and video, and lead worship seamlessly.",
     "home.viewSongsets": "View Songsets",
 
+    // Dashboard (signed-in home)
+    "home.welcomeBack": "Welcome back, ${name}",
+    "home.stats.songsetsCreated": "Songsets created",
+    "home.stats.songsetsRendered": "Songsets rendered",
+    "home.stats.songsetsShared": "Songsets shared",
+    "home.stats.favoriteSongs": "Favorite songs",
+    "home.stats.catalogSongs": "Songs in catalog",
+    "home.section.recentSongsets": "Recent songsets",
+    "home.section.recentFavorites": "Favorite songs",
+    "home.section.communityFavorites": "From the community",
+    "home.action.viewAll": "View all",
+    "home.badge.favoritedBy": "Favorited by ${n}",
+    "home.empty.recentSongsets": "No songsets yet",
+    "home.empty.recentFavorites": "No favorites yet",
+    "home.empty.communityFavorites": "No community favorites",
+    "home.empty.createSongset": "Create your first songset",
+    "home.empty.browseCatalog": "Browse the catalog",
+
+    // Public landing (signed-out home)
+    "home.signedOut.title": "Stream of Worship",
+    "home.signedOut.subtitle":
+      "Worship music transition and playback system. Manage songsets, render audio and video, and lead worship seamlessly.",
+    "home.signedOut.heroTag": "Seamless worship music transitions",
+    "home.signedOut.heroTitle": "Lead worship without awkward pauses.",
+    "home.signedOut.heroDescription":
+      "Stream of Worship analyzes tempo, key, and structure to generate smooth transitions between songs — then renders audio and lyrics videos for your service.",
+    "home.signedOut.ctaPrimary": "Get started free",
+    "home.signedOut.ctaSecondary": "Sign in",
+    "home.signedOut.ctaFooter": "No credit card required · Free for personal use",
+    "home.signedOut.featuresTitle": "Everything you need for a seamless service",
+    "home.signedOut.featuresDescription":
+      "From song selection to rendered video, Stream of Worship handles the technical details so you can focus on leading.",
+    "home.signedOut.feature.build": "Build songsets",
+    "home.signedOut.feature.buildDesc":
+      "Curate songs from a catalog of 300+ worship songs. Reorder, adjust keys, and preview transitions before you commit.",
+    "home.signedOut.feature.render": "Render audio & video",
+    "home.signedOut.feature.renderDesc":
+      "Generate a single audio file with smooth crossfades, plus a lyrics video with your choice of template, resolution, and fonts.",
+    "home.signedOut.feature.share": "Share with your team",
+    "home.signedOut.feature.shareDesc":
+      "Share rendered songsets with your worship team via a link. No accounts needed for viewers.",
+    "home.signedOut.howItWorksTitle": "How it works",
+    "home.signedOut.step1": "Pick your songs",
+    "home.signedOut.step1Desc": "Browse the catalog and add songs to a songset.",
+    "home.signedOut.step2": "Tune transitions",
+    "home.signedOut.step2Desc": "Adjust gap beats, key shifts, and preview each transition.",
+    "home.signedOut.step3": "Render",
+    "home.signedOut.step3Desc": "Generate the audio mix and lyrics video in the cloud.",
+    "home.signedOut.step4": "Lead & share",
+    "home.signedOut.step4Desc": "Play from any device or share a link with your team.",
+    "home.signedOut.ctaBottomTitle": "Ready to lead worship seamlessly?",
+    "home.signedOut.ctaBottomDesc":
+      "Join the community of worship leaders using Stream of Worship.",
+    "home.signedOut.ctaBottomPrimary": "Create your free account",
+    "home.signedOut.nav.features": "Features",
+    "home.signedOut.nav.howItWorks": "How it works",
+    "home.signedOut.nav.songs": "Songs",
+
     // Settings page
     "settings.title": "Settings",
     "settings.loading": "Loading settings",
     "settings.saved": "Settings saved",
     "settings.failedLoad": "Failed to load settings",
     "settings.failedSave": "Failed to save settings",
+    "settings.section.account": "Account",
+    "settings.signOut": "Sign out",
+    "settings.signOut.success": "Signed out",
+    "settings.signOut.error": "Sign out failed",
 
     // Settings form
     "settings.section.transitions": "Transitions",
@@ -140,6 +203,7 @@ export const core = bundle({
     "nav.songsets": "詩歌集",
     "nav.favorites": "我的最愛",
     "nav.settings": "設定",
+    "nav.signOut": "登出",
 
     // Home page
     "home.title": "Stream of Worship",
@@ -147,12 +211,73 @@ export const core = bundle({
       "敬拜音樂轉場與播放系統。管理詩歌集、渲染音訊與影片，流暢地帶領敬拜。",
     "home.viewSongsets": "檢視詩歌集",
 
+    // Dashboard (signed-in home)
+    "home.welcomeBack": "${name}，歡迎回來",
+    "home.stats.songsetsCreated": "已建立詩歌集",
+    "home.stats.songsetsRendered": "已渲染詩歌集",
+    "home.stats.songsetsShared": "已分享詩歌集",
+    "home.stats.favoriteSongs": "最愛詩歌",
+    "home.stats.catalogSongs": "詩歌目錄總數",
+    "home.section.recentSongsets": "最近的詩歌集",
+    "home.section.recentFavorites": "我的最愛",
+    "home.section.communityFavorites": "來自社群的最愛",
+    "home.action.viewAll": "檢視全部",
+    "home.badge.favoritedBy": "${n} 人最愛",
+    "home.empty.recentSongsets": "尚無詩歌集",
+    "home.empty.recentFavorites": "尚無最愛",
+    "home.empty.communityFavorites": "尚無社群最愛",
+    "home.empty.createSongset": "建立您的第一個詩歌集",
+    "home.empty.browseCatalog": "瀏覽曲目",
+
+    // Public landing (signed-out home)
+    "home.signedOut.title": "Stream of Worship",
+    "home.signedOut.subtitle":
+      "敬拜音樂轉場與播放系統。管理詩歌集、渲染音訊與影片，無縫帶領敬拜。",
+    "home.signedOut.heroTag": "無縫敬拜音樂轉場",
+    "home.signedOut.heroTitle": "帶領敬拜，無需尷尬停頓。",
+    "home.signedOut.heroDescription":
+      "Stream of Worship 分析速度、調性與結構，生成歌曲間的流暢轉場——並為您的服事渲染音訊與歌詞影片。",
+    "home.signedOut.ctaPrimary": "免費開始使用",
+    "home.signedOut.ctaSecondary": "登入",
+    "home.signedOut.ctaFooter": "無需信用卡 · 個人使用免費",
+    "home.signedOut.featuresTitle": "無縫服事所需的一切",
+    "home.signedOut.featuresDescription":
+      "從選歌到渲染影片，Stream of Worship 處理技術細節，讓您專注帶領。",
+    "home.signedOut.feature.build": "建立詩歌集",
+    "home.signedOut.feature.buildDesc":
+      "從 300+ 首敬拜詩歌曲目中精選。重新排序、調整調性、預覽轉場。",
+    "home.signedOut.feature.render": "渲染音訊與影片",
+    "home.signedOut.feature.renderDesc":
+      "生成帶有流暢交叉淡入淡出的單一音訊檔案，以及可選擇模板、解析度與字體的歌詞影片。",
+    "home.signedOut.feature.share": "與團隊分享",
+    "home.signedOut.feature.shareDesc":
+      "透過連結分享渲染後的詩歌集給敬拜團隊。觀看者無需帳號。",
+    "home.signedOut.howItWorksTitle": "運作方式",
+    "home.signedOut.step1": "選擇詩歌",
+    "home.signedOut.step1Desc": "瀏覽曲目並加入詩歌集。",
+    "home.signedOut.step2": "調整轉場",
+    "home.signedOut.step2Desc": "調整間隔拍數、調性變化，並預覽每個轉場。",
+    "home.signedOut.step3": "渲染",
+    "home.signedOut.step3Desc": "在雲端生成音訊混音與歌詞影片。",
+    "home.signedOut.step4": "帶領與分享",
+    "home.signedOut.step4Desc": "在任何裝置播放，或分享連結給團隊。",
+    "home.signedOut.ctaBottomTitle": "準備好無縫帶領敬拜了嗎？",
+    "home.signedOut.ctaBottomDesc": "加入使用 Stream of Worship 的敬拜帶領者社群。",
+    "home.signedOut.ctaBottomPrimary": "建立免費帳號",
+    "home.signedOut.nav.features": "功能",
+    "home.signedOut.nav.howItWorks": "運作方式",
+    "home.signedOut.nav.songs": "詩歌",
+
     // Settings page
     "settings.title": "設定",
     "settings.loading": "載入設定中…",
     "settings.saved": "設定已儲存",
     "settings.failedLoad": "無法載入設定",
     "settings.failedSave": "無法儲存設定",
+    "settings.section.account": "帳號",
+    "settings.signOut": "登出",
+    "settings.signOut.success": "已登出",
+    "settings.signOut.error": "登出失敗",
 
     // Settings form
     "settings.section.transitions": "轉場",

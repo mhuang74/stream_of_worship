@@ -4,9 +4,24 @@ import { LocaleProvider } from "@/contexts/LocaleContext";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
 const mockPathname = vi.hoisted(() => vi.fn(() => "/songsets"));
+const mockSession = vi.hoisted(() =>
+  vi.fn(() => ({
+    user: { id: 1, name: "Michael", email: "m@example.com" },
+  }))
+);
 
 vi.mock("next/navigation", () => ({
   usePathname: mockPathname,
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: mockSession(), isPending: false }),
+  signOut: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 function renderHeader(initialLocale: "en" | "zh-Hant" = "en") {
@@ -20,6 +35,9 @@ function renderHeader(initialLocale: "en" | "zh-Hant" = "en") {
 describe("Header", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/songsets");
+    mockSession.mockReturnValue({
+      user: { id: 1, name: "Michael", email: "m@example.com" },
+    });
   });
 
   it("renders the app name", () => {

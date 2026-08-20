@@ -22,6 +22,14 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({
+    data: { user: { id: 1, name: "Michael", email: "m@example.com" } },
+    isPending: false,
+  }),
+  signOut: vi.fn(),
+}));
+
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));

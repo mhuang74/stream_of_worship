@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import { SettingsForm, UserSettingsData } from "@/components/settings/SettingsForm";
 import { SettingsSkeleton } from "@/components/settings/SettingsSkeleton";
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
+import { signOut } from "@/lib/auth-client";
+import { Loader2, LogOut } from "lucide-react";
 
 const DEFAULT_SETTINGS: UserSettingsData = {
   offlineAutoCache: true,
@@ -34,6 +37,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettingsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,6 +97,20 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSignOut() {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      toast.success(t("settings.signOut.success"));
+      router.push("/login");
+      router.refresh();
+    } catch {
+      toast.error(t("settings.signOut.error"));
+    } finally {
+      setIsSigningOut(false);
+    }
+  }
+
   return (
     <div className="px-4 py-6 max-w-2xl mx-auto">
       <FontPreviewStylesheets />
@@ -105,7 +123,20 @@ export default function SettingsPage() {
       )}
 
       {settings && !isLoading && (
-        <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} />
+        <>
+          <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} />
+          <div className="mt-8 border-t pt-6">
+            <h2 className="text-lg font-semibold mb-3">{t("settings.section.account")}</h2>
+            <Button variant="outline" onClick={handleSignOut} disabled={isSigningOut}>
+              {isSigningOut ? (
+                <Loader2 className="size-4 mr-2 animate-spin" />
+              ) : (
+                <LogOut className="size-4 mr-2" />
+              )}
+              {t("settings.signOut")}
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );

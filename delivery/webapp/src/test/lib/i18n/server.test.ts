@@ -39,7 +39,9 @@ function mockSelectResult(rows: { locale: unknown }[]) {
 describe("resolveUserLocale", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(headers).mockResolvedValue({} as any);
+    vi.mocked(headers).mockResolvedValue({
+      get: () => null,
+    } as any);
   });
 
   it("defaults to en on public pages when no cookie and no session", async () => {
@@ -81,5 +83,68 @@ describe("resolveUserLocale", () => {
     mockFrom.mockReturnValue({ where: mockWhere });
     mockWhere.mockRejectedValue(new Error("DB error"));
     await expect(resolveUserLocale()).resolves.toBe("zh-Hant");
+  });
+});
+
+describe("resolveUserLocale Accept-Language fallback (read-only)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("detects zh-Hant from Accept-Language 'zh-TW' when no cookie and no session", async () => {
+    mockCookie(undefined);
+    vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
+    vi.mocked(headers).mockResolvedValue({
+      get: (name: string) => (name === "accept-language" ? "zh-TW,en-US;q=0.9" : null),
+    } as any);
+    await expect(resolveUserLocale()).resolves.toBe("zh-Hant");
+  });
+
+  it("detects zh-Hant from Accept-Language 'zh' when no cookie and no session", async () => {
+    mockCookie(undefined);
+    vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
+    vi.mocked(headers).mockResolvedValue({
+      get: (name: string) => (name === "accept-language" ? "zh,en;q=0.9" : null),
+    } as any);
+    await expect(resolveUserLocale()).resolves.toBe("zh-Hant");
+  });
+
+  it("falls back to en for unknown language tags", async () => {
+    mockCookie(undefined);
+    vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
+    vi.mocked(headers).mockResolvedValue({
+      get: (name: string) => (name === "accept-language" ? "fr-FR,de;q=0.8" : null),
+    } as any);
+    await expect(resolveUserLocale()).resolves.toBe("en");
+  });
+
+  it("prefers cookie over Accept-Language", async () => {
+    mockCookie("zh-Hant");
+    vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
+    vi.mocked(headers).mockResolvedValue({
+      get: (name: string) => (name === "accept-language" ? "en-US" : null),
+    } as any);
+    await expect(resolveUserLocale()).resolves.toBe("zh-Hant");
+  });
+
+  it("uses Accept-Language as the authenticated user's fallback when no DB locale and no cookie", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 42 } } as any);
+    mockCookie(undefined);
+    mockSelectResult([{ locale: "fr" }]); // invalid DB value
+    vi.mocked(headers).mockResolvedValue({
+      get: (name: string) => (name === "accept-language" ? "zh-HK" : null),
+    } as any);
+    await expect(resolveUserLocale()).resolves.toBe("zh-Hant");
+  });
+
+  it("NEVER calls cookies().set() (read-only Server Component resolver)", async () => {
+    const cookieStore = { get: () => undefined, set: vi.fn() } as any;
+    vi.mocked(cookies).mockResolvedValue(cookieStore);
+    vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
+    vi.mocked(headers).mockResolvedValue({
+      get: (name: string) => (name === "accept-language" ? "zh-TW" : null),
+    } as any);
+    await resolveUserLocale();
+    expect(cookieStore.set).not.toHaveBeenCalled();
   });
 });
