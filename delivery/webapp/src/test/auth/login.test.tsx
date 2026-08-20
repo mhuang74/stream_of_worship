@@ -1,6 +1,6 @@
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithLocale } from "@/test/render";
 
 const { mockPush, mockRefresh, mockSignIn } = vi.hoisted(() => ({
@@ -8,6 +8,9 @@ const { mockPush, mockRefresh, mockSignIn } = vi.hoisted(() => ({
   mockRefresh: vi.fn(),
   mockSignIn: vi.fn(),
 }));
+
+const mockFetch = vi.fn();
+const originalFetch = global.fetch;
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
@@ -24,6 +27,15 @@ import LoginPage from "@/app/login/page";
 describe("LoginPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    global.fetch = mockFetch;
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    // The language-switcher tests write sow_locale; clear it so later tests
+    // start from a clean cookie state.
+    document.cookie = "sow_locale=; path=/; max-age=0";
   });
 
   it("renders email and password fields", () => {
@@ -92,6 +104,44 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/songsets");
+    });
+  });
+
+  it("persists zh-Hant locale via settings PUT on successful login", async () => {
+    mockSignIn.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
+    renderWithLocale(<LoginPage />, "zh-Hant");
+    await userEvent.type(screen.getByLabelText("電子郵件"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("密碼"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /登入/i }));
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/settings",
+        expect.objectContaining({
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locale: "zh-Hant" }),
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/songsets");
+    });
+  });
+
+  it("persists en locale via settings PUT on successful login (overrides saved locale)", async () => {
+    mockSignIn.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
+    renderWithLocale(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/settings",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ locale: "en" }),
+        })
+      );
     });
   });
 

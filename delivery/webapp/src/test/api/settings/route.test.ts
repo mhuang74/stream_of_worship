@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, PUT } from "@/app/api/settings/route";
-import { auth } from "@/lib/auth";
+import { auth, type Session } from "@/lib/auth";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -242,6 +242,27 @@ describe("PUT /api/settings", () => {
 
     const cookie = res.cookies.get("sow_locale");
     expect(cookie?.value).toBe("zh-Hant");
+  });
+
+  it("preserves existing non-locale fields when the client sends only locale", async () => {
+    // The fixture is structurally a session; cast at the mock boundary.
+    vi.mocked(auth.api.getSession).mockResolvedValue(
+      sessionUser as unknown as Session
+    );
+    mockUpsert();
+    const mockFrom = vi.fn().mockReturnThis();
+    const mockWhere = vi.fn().mockResolvedValue([storedSettings]);
+    mockSelect.mockReturnValue({ from: mockFrom });
+    mockFrom.mockReturnValue({ where: mockWhere });
+
+    const res = await PUT(makeRequest("PUT", { locale: "en" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.settings.defaultVideoTemplate).toBe("gradient_warm");
+    expect(data.settings.defaultResolution).toBe("1080p");
+    expect(data.settings.defaultFontFamily).toBe("lxgw_wenkai_tc");
+    expect(data.settings.defaultGapBeats).toBe(3.0);
+    expect(data.settings.locale).toBe("en");
   });
 
   it("returns 400 for invalid locale", async () => {

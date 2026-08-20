@@ -13,7 +13,7 @@ import { useLocale } from "@/hooks/useLocale";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
@@ -48,6 +48,18 @@ export default function LoginPage() {
       if (result.error) {
         setErrors({ form: result.error.message ?? t("auth.signIn.error.invalid") });
       } else {
+        // Persist the chosen display locale to user_settings so the post-login
+        // UI and future sessions/devices reflect the pre-login choice.
+        // Best-effort: navigation proceeds even if this fails.
+        try {
+          await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ locale }),
+          });
+        } catch {
+          // best-effort
+        }
         router.push("/songsets");
         router.refresh();
       }
