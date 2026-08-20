@@ -1,16 +1,16 @@
 # Graph Report - stream_of_worship  (2026-08-20)
 
 ## Corpus Check
-- 873 files · ~5,330,974 words
+- 874 files · ~5,331,145 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 18316 nodes · 41679 edges · 1326 communities (1173 shown, 153 thin omitted)
+- 18317 nodes · 41691 edges · 1325 communities (1170 shown, 155 thin omitted)
 - Extraction: 65% EXTRACTED · 35% INFERRED · 0% AMBIGUOUS · INFERRED: 14488 edges (avg confidence: 0.55)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `62f03f70`
+- Built from commit: `d157d4e4`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -228,7 +228,6 @@
 - [[_COMMUNITY_Community 221|Community 221]]
 - [[_COMMUNITY_Community 228|Community 228]]
 - [[_COMMUNITY_Community 229|Community 229]]
-- [[_COMMUNITY_Community 230|Community 230]]
 - [[_COMMUNITY_Community 232|Community 232]]
 - [[_COMMUNITY_Community 233|Community 233]]
 - [[_COMMUNITY_Community 234|Community 234]]
@@ -316,6 +315,7 @@
 - [[_COMMUNITY_Community 404|Community 404]]
 - [[_COMMUNITY_Community 405|Community 405]]
 - [[_COMMUNITY_Community 406|Community 406]]
+- [[_COMMUNITY_Community 407|Community 407]]
 - [[_COMMUNITY_Community 408|Community 408]]
 - [[_COMMUNITY_Community 409|Community 409]]
 - [[_COMMUNITY_Community 410|Community 410]]
@@ -659,6 +659,7 @@
 - [[_COMMUNITY_Community 749|Community 749]]
 - [[_COMMUNITY_Community 750|Community 750]]
 - [[_COMMUNITY_Community 751|Community 751]]
+- [[_COMMUNITY_Community 752|Community 752]]
 - [[_COMMUNITY_Community 753|Community 753]]
 - [[_COMMUNITY_Community 756|Community 756]]
 - [[_COMMUNITY_Community 757|Community 757]]
@@ -1175,19 +1176,18 @@
 - [[_COMMUNITY_Community 1308|Community 1308]]
 - [[_COMMUNITY_Community 1309|Community 1309]]
 - [[_COMMUNITY_Community 1310|Community 1310]]
+- [[_COMMUNITY_Community 1311|Community 1311]]
+- [[_COMMUNITY_Community 1312|Community 1312]]
+- [[_COMMUNITY_Community 1313|Community 1313]]
 - [[_COMMUNITY_Community 1316|Community 1316]]
 - [[_COMMUNITY_Community 1317|Community 1317]]
 - [[_COMMUNITY_Community 1318|Community 1318]]
 - [[_COMMUNITY_Community 1319|Community 1319]]
-- [[_COMMUNITY_Community 1320|Community 1320]]
 - [[_COMMUNITY_Community 1321|Community 1321]]
 - [[_COMMUNITY_Community 1322|Community 1322]]
-- [[_COMMUNITY_Community 1323|Community 1323]]
-- [[_COMMUNITY_Community 1324|Community 1324]]
 - [[_COMMUNITY_Community 1325|Community 1325]]
 - [[_COMMUNITY_Community 1326|Community 1326]]
 - [[_COMMUNITY_Community 1327|Community 1327]]
-- [[_COMMUNITY_Community 1328|Community 1328]]
 - [[_COMMUNITY_Community 1329|Community 1329]]
 - [[_COMMUNITY_Community 1330|Community 1330]]
 
@@ -1221,33 +1221,33 @@
 - 1-file cycle: `ops/analysis-service/src/sow_analysis/workers/section_segmenter.py -> ops/analysis-service/src/sow_analysis/workers/section_segmenter.py`
 - 1-file cycle: `ops/analysis-service/src/sow_analysis/workers/structured_lyrics_aligner.py -> ops/analysis-service/src/sow_analysis/workers/structured_lyrics_aligner.py`
 - 1-file cycle: `ops/analysis-service/src/sow_analysis/routes/__init__.py -> ops/analysis-service/src/sow_analysis/routes/__init__.py`
-- 2-file cycle: `ops/analysis-service/src/sow_analysis/main.py -> ops/analysis-service/src/sow_analysis/routes/jobs.py -> ops/analysis-service/src/sow_analysis/main.py`
 - 2-file cycle: `ops/analysis-service/src/sow_analysis/main.py -> ops/analysis-service/src/sow_analysis/routes/health.py -> ops/analysis-service/src/sow_analysis/main.py`
-- 2-file cycle: `ops/analysis-service/src/sow_analysis/workers/__init__.py -> ops/analysis-service/src/sow_analysis/workers/analyzer.py -> ops/analysis-service/src/sow_analysis/workers/__init__.py`
+- 2-file cycle: `ops/analysis-service/src/sow_analysis/main.py -> ops/analysis-service/src/sow_analysis/routes/jobs.py -> ops/analysis-service/src/sow_analysis/main.py`
 - 2-file cycle: `ops/analysis-service/src/sow_analysis/workers/queue.py -> ops/analysis-service/src/sow_analysis/workers/stem_separation.py -> ops/analysis-service/src/sow_analysis/workers/queue.py`
+- 2-file cycle: `ops/analysis-service/src/sow_analysis/workers/__init__.py -> ops/analysis-service/src/sow_analysis/workers/analyzer.py -> ops/analysis-service/src/sow_analysis/workers/__init__.py`
 - 3-file cycle: `ops/analysis-service/src/sow_analysis/workers/__init__.py -> ops/analysis-service/src/sow_analysis/workers/queue.py -> ops/analysis-service/src/sow_analysis/workers/analyzer.py -> ops/analysis-service/src/sow_analysis/workers/__init__.py`
 
-## Communities (1326 total, 153 thin omitted)
+## Communities (1325 total, 155 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.03
-Nodes (167): ReadOnlyClient, Path, Path, AppConfig, Path, ReadOnlyClient, Recording, Song (+159 more)
+Nodes (161): ReadOnlyClient, Path, Path, ReadOnlyClient, Recording, align_sequences(), align_sequences_per_line(), build_lrc_segments() (+153 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.02
-Nodes (192): from_row(), Read-only database client for catalog tables.  Provides read-only access to song, Get a song by ID, including soft-deleted songs.          Useful for displaying o, List songs with optional filters.          Args:             album: Filter by al, Search songs by query.          Args:             query: Search query string., List all unique album names.          Returns:             List of album names (, User-facing database error with a friendly message., List all unique musical keys.          Returns:             List of key names (e (+184 more)
+Nodes (183): from_row(), Read-only database client for catalog tables.  Provides read-only access to song, Get a song by ID, including soft-deleted songs.          Useful for displaying o, List songs with optional filters.          Args:             album: Filter by al, Search songs by query.          Args:             query: Search query string., List all unique album names.          Returns:             List of album names (, User-facing database error with a friendly message., List all unique musical keys.          Returns:             List of key names (e (+175 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.04
-Nodes (93): Path, Path, TransitionParams, TransitionGenerationService, AppState, PlaybackService, SongCatalogLoader, TransitionGenerationService (+85 more)
+Cohesion: 0.03
+Nodes (126): Main entry point for the Song Transition Preview App., Switch to a named screen.          Args:             screen_name: Name of the sc, Handle app mount event., Remove generated transition files that weren't saved by the user., Quit the application with cleanup., Main application for song transition preview., Initialize the application.          Args:             config_path: Path to conf, Load the song catalog from JSON. (+118 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.06
-Nodes (186): BaseModel, EmbeddingJobResult, JobResponse, LrcJobRequest, AnalyzeJobRequest, ComponentAnalysisJobRequest, EmbeddingJobRequest, FastAnalyzeJobRequest (+178 more)
+Cohesion: 0.10
+Nodes (165): BaseModel, JobResponse, LrcJobRequest, AnalyzeJobRequest, ComponentAnalysisJobRequest, EmbeddingJobRequest, FastAnalyzeJobRequest, ForcedAlignmentJobRequest (+157 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.10
-Nodes (89): adaptive_interval(), _advance_song(), align_lrc_recording(), analyze_recording(), _apply_manifest_writeback(), _backfill_lyrics_batch(), _backfill_lyrics_for_song(), batch() (+81 more)
+Cohesion: 0.04
+Nodes (166): _accept_key(), adaptive_interval(), _advance_song(), align_lrc_recording(), analyze_recording(), _apply_manifest_writeback(), _backfill_lyrics_batch(), _backfill_lyrics_for_song() (+158 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.09
@@ -1263,11 +1263,11 @@ Nodes (50): _bottleneck_lines(), _brief_summaries_prompt(), brief_summary_block(
 
 ### Community 8 - "Community 8"
 Cohesion: 0.09
-Nodes (21): handle_ingest(), Handle ingestion subcommands.      Args:         args: Parsed arguments, LRCGenerator, parse_lrc_file(), LRC generation pipeline using Whisper + LLM.  This module handles the creation o, Generate LRC file for a song.          Args:             audio_path: Path to aud, Run Whisper ASR on audio file.          Args:             audio_path: Path to au, Use LLM to align scraped lyrics with Whisper timestamps.          Args: (+13 more)
+Nodes (37): LRCGenerator, LRCLine, parse_lrc_file(), LRC generation pipeline using Whisper + LLM.  This module handles the creation o, Generate LRC file for a song.          Args:             audio_path: Path to aud, Run Whisper ASR on audio file.          Args:             audio_path: Path to au, Use LLM to align scraped lyrics with Whisper timestamps.          Args:, A single line in an LRC file. (+29 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.08
-Nodes (22): Path, cache_dir(), ensure_app_config_exists(), get_app_config_dir(), get_app_config_path(), get_cache_dir(), _key_to_attr(), load() (+14 more)
+Cohesion: 0.07
+Nodes (30): Path, Path, build_correction_prompt(), extract_video_id(), format_timestamp(), format_transcript_text(), main(), parse_lrc_response() (+22 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.07
@@ -1275,31 +1275,31 @@ Nodes (58): Path, cache_file_name(), canonical_line_snap(), _combined_score(), c
 
 ### Community 11 - "Community 11"
 Cohesion: 0.05
-Nodes (53): Path, R2Client, BackupResult, _build_extra_args(), build_inventory(), _build_manifest_object(), _check_disk_space(), _chunk_path() (+45 more)
+Nodes (49): Path, R2Client, BackupResult, _build_extra_args(), build_inventory(), _build_manifest_object(), _check_disk_space(), _chunk_path() (+41 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.08
 Nodes (20): Path, SongCatalogLoader, Song, Path, SongCatalogLoader, Song, Loads and manages the song catalog from JSON files., Loads and manages song catalog from JSON files. (+12 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.14
-Nodes (3): ComponentEditorScreen, ComponentEditorState, PlaybackService
+Cohesion: 0.04
+Nodes (30): identify_editor_role(), Constants for the Component Metadata editor TUI (v6).  v6 changes from v5: - New, Map a DB SongComponent to its editor-level role key, or None if not essential., Render Rich Text into Strip objects at the current content width., Render full component detail for the current song + selected role.          Args, Render a single visible line, applying scroll offset.          Translates the vi, fetch_lrc_for_song(), prefetch_all_lrc() (+22 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.04
-Nodes (45): loadShare(), loadData(), loadPage(), formatTotalDuration(), en(), zhHant(), t(), loadSongset() (+37 more)
+Cohesion: 0.03
+Nodes (54): loadShare(), StatCard(), StatCardProps, loadPage(), formatTotalDuration(), en(), zhHant(), bundle() (+46 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.05
-Nodes (12): Binding, Admin LRC editor Textual application., _BindingGroup, format_key_display(), Grouped footer widget for the LRC editor.  Displays key bindings organized into, LRCEditorScreen, UndoEntry, ComposeResult (+4 more)
+Nodes (10): Binding, Admin LRC editor Textual application., _BindingGroup, format_key_display(), Grouped footer widget for the LRC editor.  Displays key bindings organized into, LRCEditorScreen, UndoEntry, ComposeResult (+2 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.16
 Nodes (4): String, ListenableFuture, MediaController, ServiceMediaControllerFacade
 
 ### Community 17 - "Community 17"
-Cohesion: 0.16
-Nodes (38): DatabaseClient, ndarray, Path, R2Client, _bpm_bucket(), build_db_client(), build_r2_client(), compute_cps() (+30 more)
+Cohesion: 0.07
+Nodes (63): DatabaseClient, ndarray, Path, R2Client, Path, R2Client, Path, R2Client (+55 more)
 
 ### Community 18 - "Community 18"
 Cohesion: 0.12
@@ -1310,48 +1310,52 @@ Cohesion: 0.13
 Nodes (9): Boolean, CoroutineScope, Job, Long, PlaybackChapter, PlaybackLine, PlayerController, StateFlow (+1 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.15
-Nodes (19): build_chat_model_for_lyrics(), _build_lyrics_prompt(), extract_structured_lyrics_with_llm(), flatten_structured_lyrics(), _is_trailing_non_lyric(), parse_structured_lyrics(), parse_structured_lyrics_smart(), Parser for structured (section-tagged) lyrics from YouTube descriptions.  YouTub (+11 more)
+Cohesion: 0.17
+Nodes (17): build_chat_model_for_lyrics(), _build_lyrics_prompt(), extract_structured_lyrics_with_llm(), _is_trailing_non_lyric(), parse_structured_lyrics(), parse_structured_lyrics_smart(), Parser for structured (section-tagged) lyrics from YouTube descriptions.  YouTub, A single section of structured lyrics (e.g. Verse, Chorus). (+9 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.06
-Nodes (48): BPM_BAND_KEYS, BPM_BANDS, FONT_FAMILIES, FONT_SIZES, formatBpmBandRangeText(), PITCH_CLASSES, PitchClass, RESOLUTIONS (+40 more)
+Cohesion: 0.11
+Nodes (17): albumFilterKey(), compareNullsLast(), extractSeriesPrefix(), extractTrailingNumber(), formatAlbumLabel(), formatAlbumOptionLabel(), normalizeAlbumFilters(), sortAlbumOptions() (+9 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.14
 Nodes (7): Boolean, Long, PlayerController, String, FakeMediaPlayerFacade, FakeWakeLockHandle, Media3PlayerControllerTest
 
 ### Community 23 - "Community 23"
-Cohesion: 0.14
-Nodes (17): ArtifactDownloadRequest, ArtifactSizes, Boolean, List, Long, ShareToken, String, org (+9 more)
+Cohesion: 0.15
+Nodes (16): ArtifactDownloadRequest, ArtifactSizes, Boolean, List, Long, ShareToken, String, org (+8 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.07
 Nodes (33): ApiError, EmailPasswordRequest, RegisterRequest, Response, ResponseBody, StateFlow, String, EmailPasswordRequest (+25 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.08
-Nodes (26): ComponentInstance, _classify_posture_heuristic(), _extract_lyrics_for_component(), has_cached_llm_fields(), _has_religious_pronoun(), _is_essential(), _lyric_hash(), LLM-based theme and vocal posture classification for song components. (+18 more)
+Cohesion: 0.03
+Nodes (160): AbstractEventLoop, Json, Song catalog loading and management., Song catalog loading and management., id(), ComponentInstance, ndarray, Path (+152 more)
 
 ### Community 26 - "Community 26"
+Cohesion: 0.03
+Nodes (69): CapturedControllerProps, castTransportMock, makeSender(), makeTransport(), mockPush, mockReplace, mockRouterInstance, presentationSenderMock (+61 more)
+
+### Community 27 - "Community 27"
 Cohesion: 0.06
-Nodes (49): castTransportMock, makeSender(), makeTransport(), mockPush, mockReplace, mockRouterInstance, presentationSenderMock, RENDER_JOB_RESPONSE (+41 more)
+Nodes (60): ShareData, AuthLanguageSwitcher(), LABEL_KEY, useLocaleContext(), DashboardSongsetCardProps, useSignOut(), authClient, OfflineStatus() (+52 more)
 
 ### Community 28 - "Community 28"
 Cohesion: 0.16
 Nodes (12): Boolean, CoroutineScope, Job, RenderFormConfig, RenderJob, SongsetDetail, StateFlow, String (+4 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.04
-Nodes (45): CapturedControllerProps, CastTransportResult, KeyboardShortcutActions, fireKeyDown(), useKeyboardShortcuts(), isMediaSessionAvailable(), MediaSessionActions, MediaSessionMetadata (+37 more)
+Cohesion: 0.09
+Nodes (21): LyricsEditor(), LyricsEditorProps, renderEditor(), formatTime(), LyricsReviewSheet(), LyricsReviewSheetProps, TABS, TabType (+13 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.36
 Nodes (6): getWorkboxInstance(), registerServiceWorker(), ServiceWorkerRegistrationResult, ServiceWorkerStatus, mocks, unregisterServiceWorker()
 
 ### Community 31 - "Community 31"
-Cohesion: 0.17
-Nodes (23): Modifier, PlayerViewModel, PlaybackManifest, String, Media3PlayerController, PlaybackUiError, FullscreenPlaybackOverlays(), OfflinePlaybackBanner() (+15 more)
+Cohesion: 0.12
+Nodes (25): Modifier, PlayerViewModel, PlaybackManifest, String, SowTheme(), Media3PlayerController, PlaybackUiError, LyricsPanelTest (+17 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.31
@@ -1363,19 +1367,19 @@ Nodes (19): AuthenticatedAppGate(), AuthFormScaffold(), AuthScreenMode, LoginScr
 
 ### Community 34 - "Community 34"
 Cohesion: 0.11
-Nodes (26): Boolean, Double, Modifier, Song, SongSearchUiState, SongsetDetail, SongsetDetailViewModel, SongsetItem (+18 more)
+Nodes (24): Boolean, Double, Modifier, Song, SongSearchUiState, SongsetDetail, SongsetDetailViewModel, SongsetItem (+16 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.07
-Nodes (25): CastCommandTarget, dispatchCast(), makeTarget(), ControllerPage(), ShareControllerPage(), SongsetData, useCastTransport(), clamp() (+17 more)
+Cohesion: 0.12
+Nodes (15): clamp(), usePresentationReceiver(), UsePresentationReceiverOptions, UsePresentationReceiverResult, UsePresentationSenderOptions, UsePresentationSenderResult, validatePresentationCommand(), validatePresentationStatus() (+7 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.13
 Nodes (14): CurrentSession, Int, ResponseBody, String, Throwable, ResponseBody, String, IOException (+6 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.62
-Nodes (4): formatRenderFailedAt(), getRenderFailureText(), sanitizeRenderErrorMessage(), TRACEBACK_PREFIXES
+Cohesion: 0.06
+Nodes (50): construct_songset(), create_songset(), _get_connection_provider(), _import_constructor(), list_songsets(), _load_constraints_file(), _parse_relax(), Songset commands for sow-admin.  Provides CLI commands for listing songsets with (+42 more)
 
 ### Community 38 - "Community 38"
 Cohesion: 0.11
@@ -1394,12 +1398,12 @@ Cohesion: 0.12
 Nodes (8): Transition data models., TransitionRecord, Format generated time as HH:MM:SS., Return status indicator., Format for display in history list., Format generated time as HH:MM:SS., Represents a generated transition with metadata and parameters., Format for display in history list.
 
 ### Community 42 - "Community 42"
-Cohesion: 0.06
-Nodes (30): Exception, Path, ErrorLogger, get_error_logger(), get_session_logger(), init_error_logger(), init_session_logger(), Error logging utility for the Transition Builder app.  Provides centralized erro (+22 more)
+Cohesion: 0.11
+Nodes (33): buildBpmPredicate(), buildCatalogKeyTokenRegex(), buildEffectiveKeyPredicate(), buildKeyRegex(), buildKeyTokenRegex(), buildRecordingKeyPredicate(), buildRootTokenRegexForPitchClasses(), displayedKeyPitchClasses() (+25 more)
 
 ### Community 43 - "Community 43"
 Cohesion: 0.03
-Nodes (137): Create a SongsetItem from a database row tuple.          Args:             row:, Generate a new unique item ID.          Returns:             Unique ID string., Get duration formatted as MM:SS.          Returns:             Formatted duratio, Get the key to display (song key or recording key).          Returns:, A song within a songset with transition parameters.      Attributes:         id:, SongsetItem, AssetCache, SongsetItem (+129 more)
+Nodes (79): SongWithRecording, BrowseScreen, Browse screen.  Allows browsing and searching the song catalog to add songs to a, Focus the song table and set cursor to first row., Unregister callbacks to prevent memory leaks., Handle position updates from playback service., Handle state changes from playback service., Handle playback finished. (+71 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.32
@@ -1411,11 +1415,11 @@ Nodes (13): BroadcastReceiver, ArtifactDownloadRequest, Context, Intent, Long, O
 
 ### Community 46 - "Community 46"
 Cohesion: 0.07
-Nodes (35): Boolean, List, ArtifactSizes, Double, Int, List, Long, RenderFormConfig (+27 more)
+Nodes (37): Boolean, List, ArtifactSizes, Double, Int, List, Long, RenderFormConfig (+29 more)
 
 ### Community 47 - "Community 47"
-Cohesion: 0.07
-Nodes (221): AdminConfig, Configuration for sow-admin CLI.      Attributes:         analysis_url: URL of t, Audio commands for sow-admin.  Provides CLI commands for downloading audio from, Display video preview in Rich Panel with duration warning.      Args:         vi, Backfill structured lyrics for multiple songs from stdin.      Reads song IDs fr, Download audio from YouTube for multiple songs read from stdin.      Resolves so, Download audio from YouTube for a song.      Searches YouTube using the song's t, Prompt for y/n confirmation, return True if accepted.      Args:         message (+213 more)
+Cohesion: 0.10
+Nodes (182): AdminConfig, Configuration for sow-admin CLI.      Attributes:         analysis_url: URL of t, Audio commands for sow-admin.  Provides CLI commands for downloading audio from, Display video preview in Rich Panel with duration warning.      Args:         vi, Backfill structured lyrics for multiple songs from stdin.      Reads song IDs fr, Download audio from YouTube for multiple songs read from stdin.      Resolves so, Download audio from YouTube for a song.      Searches YouTube using the song's t, Prompt for y/n confirmation, return True if accepted.      Args:         message (+174 more)
 
 ### Community 48 - "Community 48"
 Cohesion: 0.40
@@ -1426,28 +1430,28 @@ Cohesion: 0.22
 Nodes (9): Boolean, CoroutineScope, StateFlow, String, DownloadOutcome, ShareUiState, ShareViewModel, statusMessage() (+1 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.05
-Nodes (41): geistMono, geistSans, metadata, GlobalAudioPlayer(), LocaleContext, LocaleContextValue, LocaleProvider(), Harness() (+33 more)
+Cohesion: 0.08
+Nodes (24): Any, AnalysisResult, _cached_components_have_llm_fields(), EmbeddingResult, LineEmbeddingResult, _parse_job_response(), HTTP client for the analysis service API.  Provides AnalysisClient for communica, Parse a job response from JSON.          Args:             data: JSON response f (+16 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.03
-Nodes (71): generate_id(), Data models for sow-app database entities.  Provides dataclasses for Songset and, MissingReferenceError, NotOwnerError, Read-write database client for songset tables.  Provides CRUD operations for son, Return True iff this client's user owns the given songset., Raise ``NotOwnerError`` if this client's user doesn't own the songset., Create a new songset owned by this client's user.          Args:             nam (+63 more)
+Nodes (80): generate_id(), DatabaseError, MissingReferenceError, NotOwnerError, Read-write database client for songset tables.  Provides CRUD operations for son, SongsetClient, transaction(), AppConfig (+72 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.05
-Nodes (67): defaultPlaybackControlsProps, mockSongCard, mockSongListItems, mockUseSongLyrics, TestPlayerWithTrack(), TestPlayerWithTwoSongs(), TestPlayerWithTwoTracks(), advance() (+59 more)
+Cohesion: 0.06
+Nodes (51): DashboardSongset, DashboardSongsetCard(), DashboardStats, FullTextSearchOptions, ListSongsFilters, SemanticSearchOptions, FavoritesClient(), FavoritesClientProps (+43 more)
 
 ### Community 53 - "Community 53"
-Cohesion: 0.04
-Nodes (110): ShareData, AuthLanguageSwitcher(), LABEL_KEY, useLocaleContext(), DashboardSongsetCardProps, optionKey, authClient, formatDuration() (+102 more)
+Cohesion: 0.03
+Nodes (86): optionKey, BPM_BANDS, FONT_FAMILIES, FONT_SIZES, FontFamilyValue, formatBpmBandRangeText(), PitchClass, RESOLUTIONS (+78 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.16
-Nodes (36): Path, align_sequences(), align_sequences_per_line(), build_lrc_segments(), calculate_final_score(), calculate_pinyin_accuracy(), calculate_text_score(), calculate_time_offset() (+28 more)
+Cohesion: 0.09
+Nodes (8): GenerationScreen, Set the list of songs to display.          Args:             songs: List of song, Song, Format seconds as MM:SS., Format section for display: 'Chorus (1:23-2:10, 47s)'., Reset all parameters to defaults., Exit modify mode and return to fresh mode., Add a transition to history, enforcing 50-item cap.
 
 ### Community 55 - "Community 55"
-Cohesion: 0.18
-Nodes (36): CacheManager, Qwen3AsrResult, LrcOptions, Options for LRC generation jobs., Reject legacy field names that have been renamed., LLMConfigError, Base exception for worker errors., Raised when LLM configuration is missing or invalid. (+28 more)
+Cohesion: 0.14
+Nodes (20): loadData(), isAndroid(), isIOS(), LyricJumpList(), LyricJumpListProps, AudioSegmentInfo, buildChaptersFromSegments(), ChapterGenerationOptions (+12 more)
 
 ### Community 56 - "Community 56"
 Cohesion: 0.16
@@ -1462,8 +1466,8 @@ Cohesion: 0.16
 Nodes (7): UserSettings, UserSettings, FakeSettingsScreenRepository, SettingsScreenTest, FakeSettingsRepository, SettingsViewModelTest, SettingsRepository
 
 ### Community 59 - "Community 59"
-Cohesion: 0.07
-Nodes (16): TUI models for Stream of Worship., from_dict(), load(), PlaylistItem, PlaylistMetadata, Playlist data models for multi-song support., Create from dictionary., A single item in a playlist (song + transition to next). (+8 more)
+Cohesion: 0.05
+Nodes (21): Path, TUI models for Stream of Worship., from_dict(), load(), PlaylistItem, PlaylistMetadata, Playlist data models for multi-song support., Create from dictionary. (+13 more)
 
 ### Community 61 - "Community 61"
 Cohesion: 0.22
@@ -1474,44 +1478,44 @@ Cohesion: 0.19
 Nodes (9): String, UserSettings, CoroutineScope, StateFlow, String, settingsValidationError(), SettingsUiState, SettingsViewModel (+1 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.06
-Nodes (69): CellHighlighted, CellSelected, ComponentAutosaveState, State captured in the autosave recovery file., ComponentDetailPanel, Handle Up arrow: move focus to previous editable field, re-render         with n, Handle Down arrow: move focus to next editable field, re-render         with new, Right panel (details mode) showing all component metadata + song info.      Disp (+61 more)
+Cohesion: 0.04
+Nodes (112): CellHighlighted, CellSelected, ComponentAutosaveState, State captured in the autosave recovery file., ComponentDetailPanel, Handle Up arrow: move focus to previous editable field, re-render         with n, Handle Down arrow: move focus to next editable field, re-render         with new, Rebuild strips with current _focus_idx (new highlight marker) without         ch (+104 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.07
-Nodes (22): Path, CacheManager, Path, Check if fast analysis result exists in cache.          Distinct from the full-t, Save fast analysis result to cache atomically.          Uses a NamedTemporaryFil, Copy stems to cache directory.          Args:             content_hash: Full SHA, Check if LRC result exists in cache.          Args:             content_hash: Fu, Save LRC result to cache.          Args:             content_hash: Full SHA-256 (+14 more)
+Cohesion: 0.03
+Nodes (80): Logger, Path, Path, CacheManager, ndarray, Path, CacheManager, R2Client (+72 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.18
-Nodes (36): ComponentInstance, ComponentInstance, OpenAI, Section, ValidatorWeights, Classifies song components using LLM theme and vocal posture detection.      Reu, ComponentInstance, _map_sections_to_components() (+28 more)
+Cohesion: 0.12
+Nodes (14): DispatchMessage, RenderWorkerMode, mockRestInvoke, mockSqsSendMessage, createRestClientFromEnv(), RenderWorkerMessage, RenderWorkerRestClient, RenderWorkerRestConfig (+6 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.07
-Nodes (22): AudioPlayerBar(), GlobalAudioPlayerProps, TestChildComponent(), ContainingSongset, LocateSongsetsPopover(), LyricsErrorBoundary, Props, State (+14 more)
+Cohesion: 0.06
+Nodes (41): AudioPlayerBar(), mockUseSongLyrics, TestPlayerWithTrack(), TestPlayerWithTwoSongs(), TestPlayerWithTwoTracks(), advance(), getAudioElement(), TriggerPlay() (+33 more)
 
 ### Community 67 - "Community 67"
 Cohesion: 0.17
 Nodes (36): Path, align_chunk(), align_lyrics(), assign_text_to_chunks(), build_aligned_text(), call_qwen3_asr(), _call_qwen3_asr_filetrans(), _compute_overlap_regions() (+28 more)
 
 ### Community 68 - "Community 68"
-Cohesion: 0.06
-Nodes (37): useSongsetListBack(), ApiResponse, ApiSongset, ApiSongsetItem, BrowseSheet, ShareDialog, SongsetEditorClient(), SongsetEditorClientProps (+29 more)
+Cohesion: 0.05
+Nodes (46): mockPush, FontPreviewStylesheets(), useSongsetListBack(), ApiResponse, ApiSongset, ApiSongsetItem, BrowseSheet, ShareDialog (+38 more)
 
 ### Community 69 - "Community 69"
-Cohesion: 0.13
-Nodes (33): Maintenance commands for soft-deleted catalog data and R2 cleanup., Apply display transformations: bytes to MB, truncate datetimes to seconds., Backfill normalized catalog key fields on active songs., List soft-deleted songs and recordings., Purge eligible soft-deleted DB rows and recording R2 prefixes., Restore soft-deleted songs or recordings., Repair songset items that point at missing or soft-deleted recordings., Diagnose failed render jobs against current songset state. (+25 more)
+Cohesion: 0.11
+Nodes (37): backup_r2(), _configure_r2_backup_debug_logging(), Maintenance commands for soft-deleted catalog data and R2 cleanup., Apply display transformations: bytes to MB, truncate datetimes to seconds., Backfill normalized catalog key fields on active songs., List soft-deleted songs and recordings., Purge eligible soft-deleted DB rows and recording R2 prefixes., Restore soft-deleted songs or recordings. (+29 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.10
-Nodes (10): Boolean, Modifier, String, SowApp(), SowNavigationBarItem(), SowShell(), SowShellTest, SowTheme() (+2 more)
+Cohesion: 0.12
+Nodes (16): Composable, Boolean, Modifier, String, AuthController, Modifier, PlaybackArtifact, SowApp() (+8 more)
 
 ### Community 75 - "Community 75"
-Cohesion: 0.38
-Nodes (8): Context, Intent, Long, String, buildShareTextIntent(), buildViewArtifactIntent(), enqueueArtifactDownload(), RenderArtifactKind
+Cohesion: 0.16
+Nodes (14): android, Context, Intent, Long, String, Modifier, String, buildShareTextIntent() (+6 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.02
-Nodes (114): DatabaseError, Client for songset CRUD operations, scoped to a single user.      All reads and, Batch-fetch item counts for multiple songsets.          Args:             songse, Close the underlying connection via the provider., SongsetClient, AppState, PlaybackService, Initialize generation screen.          Args:             state: Application stat (+106 more)
+Cohesion: 0.04
+Nodes (78): AppState, PlaybackService, Initialize generation screen.          Args:             state: Application stat, SongCatalogLoader, AppState, PlaybackService, SongCatalogLoader, TransitionGenerationService (+70 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.22
@@ -1523,7 +1527,7 @@ Nodes (16): artifactCacheKey(), ArtifactCacheStatus, CacheableArtifacts, cacheAr
 
 ### Community 79 - "Community 79"
 Cohesion: 0.07
-Nodes (37): constructor(), limitMock, makePostRequest(), mockInsertValues, setAllowCount(), validBody, dailySalt(), enforceRateLimit() (+29 more)
+Nodes (37): constructor(), limitMock, makePostRequest(), mockInsertValues, setAllowCount(), validBody, activeShare, completedJob (+29 more)
 
 ### Community 80 - "Community 80"
 Cohesion: 0.24
@@ -1534,24 +1538,24 @@ Cohesion: 0.28
 Nodes (7): ENV_EXAMPLE_PATH, readEnvExample(), README_PATH, readReadme(), readVercelJson(), VERCEL_JSON_PATH, WEBAPP_ROOT
 
 ### Community 82 - "Community 82"
-Cohesion: 0.24
-Nodes (17): Qwen3AsrResult, Qwen3AsrWord, _bucket_to_phrase(), _canonical_lines(), _FallbackFuzz, _normalize(), _phrases_from_words(), Snap ASR phrases to canonical lyric lines. (+9 more)
+Cohesion: 0.15
+Nodes (21): _display_stats(), _get_db_client(), init_db(), _mask_url(), Database commands for sow-admin.  Provides CLI commands for database initializat, Print the connection info table; return True if the database is reachable., Show database status and statistics.      Displays information about the databas, Show the database connection URL (password masked).      Outputs the configured (+13 more)
 
 ### Community 83 - "Community 83"
-Cohesion: 0.06
-Nodes (44): songsetItems, songsets, sendMessage(), DispatchMessage, dispatchToRenderWorker(), getRenderWorkerMode(), RenderWorkerMode, mockRestInvoke (+36 more)
+Cohesion: 0.09
+Nodes (31): songsetItems, songsets, sendMessage(), normalizeFontFamily(), dispatchToRenderWorker(), getRenderWorkerMode(), cancelRenderJob(), completeRenderJob() (+23 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.06
-Nodes (34): elapsed_seconds, error_message, phase, resolution, songset_id, started_at, template, name (+26 more)
-
-### Community 86 - "Community 86"
-Cohesion: 0.18
-Nodes (24): ArtifactSizes, Boolean, Double, Int, List, Modifier, OfflineArtifactMetadata, Pair (+16 more)
-
-### Community 87 - "Community 87"
 Cohesion: 0.07
 Nodes (29): error_message, estimated_total_seconds, phase_index, resolution, started_at, template, name, notNull (+21 more)
+
+### Community 86 - "Community 86"
+Cohesion: 0.14
+Nodes (25): ArtifactSizes, Boolean, Double, Int, List, Modifier, OfflineArtifactMetadata, Pair (+17 more)
+
+### Community 87 - "Community 87"
+Cohesion: 0.06
+Nodes (34): elapsed_seconds, error_message, estimated_total_seconds, phase, resolution, songset_id, template, name (+26 more)
 
 ### Community 88 - "Community 88"
 Cohesion: 0.09
@@ -1566,8 +1570,8 @@ Cohesion: 0.22
 Nodes (6): CreateShareRequest, Response, ShareToken, String, ShareApi, ShareListResponse
 
 ### Community 92 - "Community 92"
-Cohesion: 0.04
-Nodes (53): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+45 more)
+Cohesion: 0.06
+Nodes (36): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+28 more)
 
 ### Community 93 - "Community 93"
 Cohesion: 0.60
@@ -1578,24 +1582,24 @@ Cohesion: 0.53
 Nodes (4): AppConfig, BuildVariant, fromBuildConfig(), String
 
 ### Community 96 - "Community 96"
-Cohesion: 0.04
-Nodes (46): mockPathname, mockPush, mockRefresh, mockSession, mockSignOut, mockToast, mockPush, mockPush (+38 more)
+Cohesion: 0.03
+Nodes (63): defaultPlaybackControlsProps, mockSongCard, mockSongListItems, mockPathname, mockPush, mockRefresh, mockSession, mockSignOut (+55 more)
 
 ### Community 97 - "Community 97"
 Cohesion: 0.06
-Nodes (32): name, notNull, primaryKey, type, accessToken, createdAt, idToken, password (+24 more)
+Nodes (31): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+23 more)
 
 ### Community 98 - "Community 98"
-Cohesion: 0.07
-Nodes (54): autosave_exists(), clear_autosave(), from_dict(), get_autosave_path(), load_autosave(), Autosave recovery for the admin LRC editor.  Maintains an autosave recovery file, Check whether an autosave recovery file exists., Load autosave recovery state from disk.      Returns:         AutosaveState if a (+46 more)
+Cohesion: 0.10
+Nodes (37): autosave_exists(), clear_autosave(), from_dict(), get_autosave_path(), load_autosave(), Autosave recovery for the admin LRC editor.  Maintains an autosave recovery file, Check whether an autosave recovery file exists., Load autosave recovery state from disk.      Returns:         AutosaveState if a (+29 more)
 
 ### Community 99 - "Community 99"
 Cohesion: 0.06
-Nodes (31): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+23 more)
+Nodes (33): name, notNull, primaryKey, type, accessToken, createdAt, idToken, password (+25 more)
 
 ### Community 100 - "Community 100"
-Cohesion: 0.06
-Nodes (21): mockPush, FontPreviewStylesheets(), SongsetEditorLoading(), FontFamilyValue, RenderFormData, RenderForm, RenderJobData, RenderPageClient() (+13 more)
+Cohesion: 0.07
+Nodes (27): SongsetEditorLoading(), ArtifactSizes, formatBytes(), formatLimit(), formatShareDuration(), getFileSizeDisplay(), ShareDialog(), ShareDialogProps (+19 more)
 
 ### Community 101 - "Community 101"
 Cohesion: 0.15
@@ -1610,12 +1614,12 @@ Cohesion: 0.08
 Nodes (43): ndarray, Path, cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), download_onnx_model() (+35 more)
 
 ### Community 105 - "Community 105"
-Cohesion: 0.15
-Nodes (8): Custom Textual widgets for the Stream of Worship app., _format_time(), PlaybackBar, Reusable playback progress bar widget., Update the progress bar display.          Called by the parent screen from its _, Show/hide based on playback state.          Called by the parent screen from its, Format seconds as M:SS., A progress bar widget that displays playback position and duration.      Does NO
+Cohesion: 0.09
+Nodes (21): dialect, id, columns, name, nullsNotDistinct, prevId, checkConstraints, compositePrimaryKeys (+13 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.14
-Nodes (32): CacheManager, ndarray, Path, R2Client, ratio(), Local beat-grid cache lookup.          Checks for ``{hash_prefix}_beat_grid.json, Upload components.json to R2 at {hash_prefix}/components.json.          The ``re, Upload beat_grid.json to R2 at {hash_prefix}/beat_grid.json.          The ``payl (+24 more)
+Cohesion: 0.11
+Nodes (18): dialect, id, columns, name, nullsNotDistinct, prevId, checkConstraints, compositePrimaryKeys (+10 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.04
@@ -1627,7 +1631,7 @@ Nodes (52): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+4
 
 ### Community 109 - "Community 109"
 Cohesion: 0.04
-Nodes (52): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+44 more)
+Nodes (51): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+43 more)
 
 ### Community 111 - "Community 111"
 Cohesion: 0.33
@@ -1638,8 +1642,8 @@ Cohesion: 0.04
 Nodes (52): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+44 more)
 
 ### Community 130 - "Community 130"
-Cohesion: 0.13
-Nodes (10): Any, Path, is_quota_exhausted(), Qwen3AsrClient, Qwen3AsrNonRetriableError, Check if Qwen3 ASR is available for use.          Returns:             True when, True if daily quota is exhausted (will reset at UTC midnight)., Reset quota-exhausted flag on new UTC day. (+2 more)
+Cohesion: 0.12
+Nodes (5): Data models for sow-admin database entities.  Provides dataclasses for Song and, Embedding vector for a song.      Attributes:         song_id: Song ID (primary, Embedding vector for a single lyric line.      Attributes:         id: Row ID (a, SongEmbedding, SongLineEmbedding
 
 ### Community 134 - "Community 134"
 Cohesion: 0.15
@@ -1658,8 +1662,8 @@ Cohesion: 0.04
 Nodes (52): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+44 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.04
-Nodes (52): elapsed_seconds, error_message, estimated_seconds_left, estimated_total_seconds, font_family, phase, resolution, status (+44 more)
+Cohesion: 0.06
+Nodes (31): estimated_total_seconds, font_family, status, total_duration_seconds, total_phases, video_enabled, name, notNull (+23 more)
 
 ### Community 139 - "Community 139"
 Cohesion: 0.04
@@ -1667,19 +1671,19 @@ Nodes (52): name, notNull, primaryKey, type, name, notNull, primaryKey, type (+4
 
 ### Community 140 - "Community 140"
 Cohesion: 0.10
-Nodes (23): Double, Int, List, Pair, ReorderItemRequest, SongsetDetail, SongsetDetailViewModel, SongsetItem (+15 more)
+Nodes (24): Double, Int, List, Pair, ReorderItemRequest, SongsetDetail, SongsetDetailViewModel, SongsetItem (+16 more)
 
 ### Community 141 - "Community 141"
-Cohesion: 0.18
-Nodes (24): LrcOptions, Path, Semaphore, ResolvedLrcLanguage, Check if Qwen3 ASR transcription exists in cache., Analysis workers for processing jobs., _build_alignment_prompt(), _build_qwen3_asr_alignment_prompt() (+16 more)
+Cohesion: 0.17
+Nodes (7): LyricsErrorBoundary, Props, State, Fallback(), NormalChild(), ThrowingChild(), ZhFallback()
 
 ### Community 142 - "Community 142"
-Cohesion: 0.06
-Nodes (30): handle_config(), handle_migration(), handle_playlist(), launch_tui(), main(), Main CLI entry point for Stream of Worship.  Provides a unified interface for: -, Main entry point for the CLI.      When run without arguments, launches the TUI, Launch the TUI application.      Args:         config: Configuration object (+22 more)
+Cohesion: 0.10
+Nodes (10): AI metadata generation for worship songs.  This module uses LLM to generate: - A, Generate metadata for a song.          Args:             title: Song title, Build the LLM prompt for metadata generation.          Args:             title:, AI-generated metadata for a song., Get tempo category from BPM.          Args:             bpm: Beats per minute, Filter themes to only valid ones.          Args:             themes: List of the, Generate metadata for multiple songs.          Args:             songs: List of, Convert to dictionary. (+2 more)
 
 ### Community 143 - "Community 143"
 Cohesion: 0.05
-Nodes (85): HomePage(), CommunityFavoriteSong, DashboardStats, getCommunityFavoriteSample(), getDashboardStats(), getRecentFavoriteSongs(), getRecentSongsets(), mockFrom (+77 more)
+Nodes (59): GET(), HomePage(), CommunityFavoriteSong, getCommunityFavoriteSample(), getDashboardStats(), getRecentFavoriteSongs(), getRecentSongsets(), mockFrom (+51 more)
 
 ### Community 144 - "Community 144"
 Cohesion: 0.04
@@ -1694,8 +1698,8 @@ Cohesion: 0.04
 Nodes (48): Agent Summary, Details, Details, Details, Details, Details, Details, Details (+40 more)
 
 ### Community 148 - "Community 148"
-Cohesion: 0.04
-Nodes (50): main(), Main entry point for the Song Transition Preview App., Switch to a named screen.          Args:             screen_name: Name of the sc, Handle app mount event., Remove generated transition files that weren't saved by the user., Quit the application with cleanup., Main application for song transition preview., Initialize the application.          Args:             config_path: Path to conf (+42 more)
+Cohesion: 0.14
+Nodes (4): TransitionRecord, HistoryScreen, Enter modify mode with a transition's parameters., Get currently selected transition from history.
 
 ### Community 149 - "Community 149"
 Cohesion: 0.11
@@ -1703,39 +1707,39 @@ Nodes (18): dialect, id, prevId, checkConstraints, compositePrimaryKeys, indexes
 
 ### Community 150 - "Community 150"
 Cohesion: 0.05
-Nodes (54): RecordingInfo, addSongsetItem(), computeRenderState(), createSongset(), deleteSongset(), deleteSongsetItem(), duplicateSongset(), effectiveKeyFields() (+46 more)
+Nodes (57): RecordingInfo, addSongsetItem(), computeRenderState(), createSongset(), deleteSongset(), deleteSongsetItem(), duplicateSongset(), effectiveKeyFields() (+49 more)
 
 ### Community 151 - "Community 151"
-Cohesion: 0.12
-Nodes (27): _review_song_fields(), Any, Song, build_lyrics_payload(), build_song_diff(), build_song_from_review(), compute_song_id(), _normalize_lyrics_raw() (+19 more)
+Cohesion: 0.22
+Nodes (10): bindGlobalCallback(), cancelled, dispatchSettlement(), injectScriptOnce(), isCastSdkSupported(), loadCastSdk(), pending, freshLoader() (+2 more)
 
 ### Community 152 - "Community 152"
-Cohesion: 0.07
-Nodes (16): Path, PlaybackService, Audio playback service for TUI preview.  Uses pygame for cross-platform audio pl, Get the duration of the currently loaded file., Stop playback and reset position.          Returns:             True if successf, Seek to a specific position.          Args:             position_seconds: Positi, Audio playback service with seek support., Seek relative to current position.          Args:             delta_seconds: Sec (+8 more)
+Cohesion: 0.04
+Nodes (33): Path, PlaybackService, Audio playback service for TUI preview.  Uses pygame for cross-platform audio pl, Get the duration of the currently loaded file., Exception, Path, PlaybackService, Audio playback service using PyAudio backend. (+25 more)
 
 ### Community 153 - "Community 153"
 Cohesion: 0.04
 Nodes (49): completed_at, elapsed_seconds, error_message, estimated_seconds_left, mp3_r2_key, mp4_r2_key, status, template (+41 more)
 
 ### Community 154 - "Community 154"
-Cohesion: 0.16
-Nodes (25): CacheManager, ndarray, Path, Get total duration of loaded audio in seconds., analyze_audio(), analyze_audio_fast(), compute_loudness(), _compute_tempo_v4() (+17 more)
+Cohesion: 0.20
+Nodes (9): create_default_config(), ensure_config_exists(), load(), Configuration management for Stream of Worship.  This module handles loading, sa, Create a default configuration instance.      Returns:         Config instance w, Ensure config file exists, creating it with defaults if needed.      Returns:, Load configuration from a JSON file.          Args:             path: Path to co, Save configuration to a JSON file.          Args:             path: Path to save (+1 more)
 
 ### Community 155 - "Community 155"
 Cohesion: 0.04
-Nodes (48): completed_at, elapsed_seconds, error_message, estimated_seconds_left, mp4_r2_key, phase_index, template, total_phases (+40 more)
+Nodes (49): completed_at, error_message, estimated_seconds_left, mp3_r2_key, mp4_r2_key, percent_complete, phase, title_card_duration_seconds (+41 more)
 
 ### Community 156 - "Community 156"
-Cohesion: 0.08
-Nodes (29): accounts, accountsRelations, clientErrorLog, lyricMarks, lyricMarksRelations, recordingsRelations, renderJobsRelations, sessions (+21 more)
+Cohesion: 0.06
+Nodes (38): accounts, accountsRelations, clientErrorLog, lyricMarks, lyricMarksRelations, recordingsRelations, renderJobsRelations, sessions (+30 more)
 
 ### Community 157 - "Community 157"
-Cohesion: 0.06
-Nodes (25): R2Client, constructor(), mockGetSignedUrl, mockSend, AssetFetcher, AssetFetcherOptions, mockFetch, mockGetAudioSignedUrl (+17 more)
+Cohesion: 0.08
+Nodes (10): R2Client, constructor(), mockGetSignedUrl, mockSend, AssetFetcher, AssetFetcherOptions, mockFetch, mockGetAudioSignedUrl (+2 more)
 
 ### Community 158 - "Community 158"
-Cohesion: 0.07
-Nodes (24): FastAPI, set_job_queue(), Close httpx.AsyncClient connection pool., Stream of Worship Analysis Service., lifespan(), main(), FastAPI application entry point., Root endpoint.      Returns:         Service info (+16 more)
+Cohesion: 0.24
+Nodes (4): App, main(), TransitionBuilderApp, Path
 
 ### Community 159 - "Community 159"
 Cohesion: 0.04
@@ -1743,7 +1747,7 @@ Nodes (49): completed_at, elapsed_seconds, error_message, estimated_seconds_left
 
 ### Community 160 - "Community 160"
 Cohesion: 0.04
-Nodes (48): name, notNull, primaryKey, type, chapters_r2_key, elapsed_seconds, error_message, estimated_seconds_left (+40 more)
+Nodes (48): name, notNull, primaryKey, type, chapters_r2_key, completed_at, elapsed_seconds, error_message (+40 more)
 
 ### Community 161 - "Community 161"
 Cohesion: 0.04
@@ -1754,8 +1758,8 @@ Cohesion: 0.11
 Nodes (31): Any, _cleanup_transcript_line(), derive_song_defaults(), _extract_bracket_content(), _extract_chinese_title_from_youtube(), extract_video_id(), extract_video_metadata(), _fetch_transcript_draft() (+23 more)
 
 ### Community 163 - "Community 163"
-Cohesion: 0.08
-Nodes (34): Write songset constructor artifacts., LangGraph node implementations (v3 — in-DB scoring)., ConstructorState, LangGraph state schema., RunConfig, SongsetProposal, TransitionCandidate, Deterministic beam search for songset candidates. (+26 more)
+Cohesion: 0.09
+Nodes (43): Write songset constructor artifacts., LangGraph node implementations (v3 — in-DB scoring)., ConstructorState, LangGraph state schema., RunConfig, SongsetProposal, TransitionCandidate, RunConfig (+35 more)
 
 ### Community 164 - "Community 164"
 Cohesion: 0.31
@@ -1766,8 +1770,8 @@ Cohesion: 0.13
 Nodes (24): enrich_pool(), ndarray, Path, Any, main(), test_beam_search(), load_theme_anchors(), Embedding helpers — load_theme_anchors kept for theme-anchors sync. (+16 more)
 
 ### Community 166 - "Community 166"
-Cohesion: 0.15
-Nodes (4): compute_highlighted_index(), Update the highlighted line index and re-render.          Called by the screen's, Any, SongComponent
+Cohesion: 0.23
+Nodes (9): userLrcOverrides, makeRequest(), mockDelete, mockFindFirst, mockInsert, sessionUser, DELETE(), GET() (+1 more)
 
 ### Community 167 - "Community 167"
 Cohesion: 0.04
@@ -1775,7 +1779,7 @@ Nodes (47): default, name, notNull, primaryKey, type, analysis_status, content_h
 
 ### Community 168 - "Community 168"
 Cohesion: 0.04
-Nodes (47): default, name, notNull, primaryKey, type, analysis_status, content_hash, downbeats (+39 more)
+Nodes (47): default, name, notNull, primaryKey, type, analysis_status, downbeats, key_confidence (+39 more)
 
 ### Community 170 - "Community 170"
 Cohesion: 0.04
@@ -1783,7 +1787,7 @@ Nodes (47): default, name, notNull, primaryKey, type, analysis_status, content_h
 
 ### Community 171 - "Community 171"
 Cohesion: 0.04
-Nodes (47): default, name, notNull, primaryKey, type, analysis_status, content_hash, downbeats (+39 more)
+Nodes (47): downbeats, embeddings_shape, file_size_bytes, loudness_db, lrc_status, r2_audio_url, song_id, tempo_bpm (+39 more)
 
 ### Community 176 - "Community 176"
 Cohesion: 0.04
@@ -1799,7 +1803,7 @@ Nodes (5): name, notNull, primaryKey, type, beats
 
 ### Community 180 - "Community 180"
 Cohesion: 0.04
-Nodes (47): name, notNull, primaryKey, type, analysis_job_id, content_hash, downbeats, key_confidence (+39 more)
+Nodes (46): name, notNull, primaryKey, type, analysis_job_id, content_hash, hash_prefix, key_confidence (+38 more)
 
 ### Community 181 - "Community 181"
 Cohesion: 0.04
@@ -1807,19 +1811,19 @@ Nodes (46): name, notNull, primaryKey, type, analysis_job_id, content_hash, down
 
 ### Community 183 - "Community 183"
 Cohesion: 0.04
-Nodes (46): name, notNull, primaryKey, type, analysis_job_id, content_hash, downbeats, imported_at (+38 more)
+Nodes (46): name, notNull, primaryKey, type, analysis_job_id, content_hash, imported_at, key_confidence (+38 more)
 
 ### Community 184 - "Community 184"
 Cohesion: 0.04
 Nodes (46): name, notNull, primaryKey, type, analysis_job_id, content_hash, imported_at, key_confidence (+38 more)
 
 ### Community 186 - "Community 186"
-Cohesion: 0.06
-Nodes (24): Song, Path, Format section for display: 'Chorus (1:23-2:10, 47s)'., Represents a section within a song., Section, display_name(), from_dict(), Song and Section data models. (+16 more)
+Cohesion: 0.07
+Nodes (23): Song, Path, Represents a section within a song., Section, display_name(), from_dict(), Song and Section data models., Format seconds as MM:SS. (+15 more)
 
 ### Community 188 - "Community 188"
 Cohesion: 0.04
-Nodes (48): completed_at, elapsed_seconds, error_message, estimated_seconds_left, mp4_r2_key, phase_index, template, total_phases (+40 more)
+Nodes (49): completed_at, elapsed_seconds, error_message, estimated_seconds_left, mp3_r2_key, resolution, songset_id, status (+41 more)
 
 ### Community 189 - "Community 189"
 Cohesion: 0.12
@@ -1830,72 +1834,72 @@ Cohesion: 0.05
 Nodes (43): 1. Build and Start the Service, 2. Verify Health, API Endpoints, Architecture, ARM64 (Apple Silicon) - Standard PyTorch, Audio LRC Alignment CLI, Check Job Status, Component Analysis (v5) (+35 more)
 
 ### Community 191 - "Community 191"
-Cohesion: 0.03
-Nodes (78): Catalog commands for sow-admin.  Provides CLI commands for scraping, listing, se, Scrape song catalog from sop.org.      Scrapes the song catalog from sop.org/son, Insert a manually curated catalog song., Review and update nominal catalog metadata for an active song., Extract sort key from album_series for sorting.      Returns tuple of (prefix, n, Read song IDs from stdin, one per line.      Returns:         List of non-empty,, Soft-delete a catalog song while preserving associated R2 files.      Marks the, Delete a single song by song_id. (+70 more)
+Cohesion: 0.05
+Nodes (75): delete_song(), _delete_song_single(), _delete_songs_batch(), edit_song(), _extract_series_sort_key(), insert_song(), list_songs(), _print_duplicate_guidance() (+67 more)
 
 ### Community 192 - "Community 192"
 Cohesion: 0.05
 Nodes (44): default, name, notNull, primaryKey, type, name, notNull, primaryKey (+36 more)
 
 ### Community 193 - "Community 193"
-Cohesion: 0.14
-Nodes (25): id(), Any, Exception, Set a configuration value by key.          Supports dot notation mapping to flat, _acquire_llm_slot(), _enforce_llm_min_interval(), _extract_backoff_config(), _extract_json_from_text() (+17 more)
+Cohesion: 0.15
+Nodes (10): POST(), createMockRequest(), mockGenerateSignedUrl, mockGetAudioSignedUrl, mockGetChaptersSignedUrl, mockGetLrcSignedUrl, mockGetRenderedAudioSignedUrl, mockGetVideoSignedUrl (+2 more)
 
 ### Community 194 - "Community 194"
-Cohesion: 0.09
-Nodes (15): datetime, from_row(), Data models for Better Auth identity entities.  Shared between admin (``sow-admi, Create a User from a ``"user"`` table row.          Args:             row: Row t, Shared database helper functions.  Provides common utilities for database operat, Coerce a value to an ISO-8601 string, handling datetime objects.      psycopg3 r, to_str(), Transition generation service for TUI.  Handles generation of audio transitions (+7 more)
+Cohesion: 0.32
+Nodes (3): Job, JobStatus, JobType
 
 ### Community 195 - "Community 195"
 Cohesion: 0.36
 Nodes (7): Path, main(), phrases_to_lrc(), Convert phrases to LRC format., Run OmniSenseVoice transcription on a song and output LRC format., Run OmniSenseVoice transcription on audio file., transcribe_audio()
 
 ### Community 196 - "Community 196"
-Cohesion: 0.17
-Nodes (19): AudioSeparatorWrapper, CacheManager, Job, Path, R2Client, Semaphore, StageUpdater, Check if a stem exists in R2, trying new name then legacy fallback.          Arg (+11 more)
+Cohesion: 0.24
+Nodes (7): EmbeddingJobResult, EmbeddingJobRequest, LineEmbedding, Embedding for a single lyric line., _count_cjk_chars(), Embedding worker for generating text embeddings via OpenAI-compatible API., Generates text embeddings using OpenAI text-embedding-3-small.
 
 ### Community 197 - "Community 197"
-Cohesion: 0.04
-Nodes (42): _download_and_create_recording(), _download_if_needed(), Any, Path, Path, Path, Path, Path (+34 more)
+Cohesion: 0.08
+Nodes (14): Path, Return parsed {hash_prefix}/components.json from R2, or None.          Args:, Delete a file from R2 by its S3 key.          Args:             s3_key: Full S3, Upload lyrics.lrc to R2.          Args:             hash_prefix: Content hash pr, Check if an object exists in R2.          Args:             s3_url: s3://bucket/, Upload clean stems to R2.          Uploads vocals_dry.flac (Stage 2 output) and, Copy an object within R2.          Args:             source_s3_url: Source s3://, List objects in R2 with the given prefix.          Args:             prefix: Key (+6 more)
 
 ### Community 198 - "Community 198"
 Cohesion: 0.14
 Nodes (20): rv_continuous, compute_cps(), count_lyric_chars(), cps_bucket_label(), cps_to_prior(), _is_ws_or_punct(), Characters-Per-Second (CPS) helpers for prod-v5 BPM prior derivation.  Ported ve, Count lyric units: CJK characters individually, ASCII alphanumeric runs as 1 tok (+12 more)
 
 ### Community 199 - "Community 199"
-Cohesion: 0.24
-Nodes (21): _batch_lookup_analysis(), _batch_lookup_r2(), _build_candidate_query(), CandidateSignals, _compute_verdict(), _get_db_client(), _lookup_analysis_job(), _lookup_rlc_identity() (+13 more)
+Cohesion: 0.10
+Nodes (30): _batch_lookup_analysis(), _batch_lookup_r2(), _build_candidate_query(), CandidateSignals, _compute_verdict(), _get_db_client(), _lookup_analysis_job(), _lookup_rlc_identity() (+22 more)
 
 ### Community 200 - "Community 200"
-Cohesion: 0.04
-Nodes (51): GET(), { GET, POST }, DELETE(), GET(), removeFavorite(), db, recordings, renderJobs (+43 more)
+Cohesion: 0.05
+Nodes (46): { GET, POST }, GET(), DELETE(), GET(), removeFavorite(), db, recordings, renderJobs (+38 more)
 
 ### Community 201 - "Community 201"
 Cohesion: 0.05
 Nodes (44): default, name, notNull, primaryKey, type, name, notNull, primaryKey (+36 more)
 
 ### Community 202 - "Community 202"
-Cohesion: 0.42
-Nodes (12): Path, call_qwen3_asr(), _call_qwen3_asr_filetrans(), canonical_line_snap(), detect_chinese_script(), extract_segments(), _extract_segments_filetrans(), _find_local_dry_vocals() (+4 more)
+Cohesion: 0.41
+Nodes (13): Path, call_qwen3_asr(), _call_qwen3_asr_filetrans(), canonical_line_snap(), detect_chinese_script(), extract_segments(), _extract_segments_filetrans(), _find_local_dry_vocals() (+5 more)
 
 ### Community 203 - "Community 203"
 Cohesion: 0.13
 Nodes (15): id, identity, name, notNull, primaryKey, type, cache, cycle (+7 more)
 
 ### Community 204 - "Community 204"
-Cohesion: 0.04
-Nodes (89): User-created songset (playlist) for worship sets.      Attributes:         id: U, Create a Songset from a database row tuple.          Args:             row: Data, Generate a new unique songset ID.          Returns:             Unique ID string, Songset, ExportProgress, ExportResult, ExportService, AppState (+81 more)
+Cohesion: 0.03
+Nodes (127): Data models for sow-app database entities.  Provides dataclasses for Songset and, Create a SongsetItem from a database row tuple.          Args:             row:, Convert SongsetItem to dictionary.          Args:             include_joined: Wh, User-created songset (playlist) for worship sets.      Attributes:         id: U, Generate a new unique item ID.          Returns:             Unique ID string., Get duration formatted as MM:SS.          Returns:             Formatted duratio, Get the key to display (song key or recording key).          Returns:, Create a Songset from a database row tuple.          Args:             row: Data (+119 more)
 
 ### Community 205 - "Community 205"
-Cohesion: 0.33
-Nodes (6): downbeats, name, notNull, primaryKey, type, columns
+Cohesion: 0.18
+Nodes (11): downbeats, file_size_bytes, name, notNull, primaryKey, type, name, notNull (+3 more)
 
 ### Community 206 - "Community 206"
 Cohesion: 0.71
 Nodes (6): ReadOnlyClient, _keyword_search(), main(), _pgvector_search(), _semantic_search(), _theme_vocab_search()
 
 ### Community 207 - "Community 207"
-Cohesion: 0.18
-Nodes (11): downbeats, file_size_bytes, name, notNull, primaryKey, type, name, notNull (+3 more)
+Cohesion: 0.33
+Nodes (6): downbeats, name, notNull, primaryKey, type, columns
 
 ### Community 208 - "Community 208"
 Cohesion: 0.05
@@ -1906,36 +1910,36 @@ Cohesion: 0.15
 Nodes (38): ndarray, Path, compute_dtw_signal(), compute_signals_for_song(), download_r2(), dtw_path_stats(), embed_framewise(), _get_expected_tone_slopes() (+30 more)
 
 ### Community 210 - "Community 210"
-Cohesion: 0.07
-Nodes (11): BaseSettings, Service configuration using pydantic-settings., Validate BPM algorithm version to fail fast on typos., Analysis service configuration., Convert empty-string env vars to None for Optional[int] fields.          pydanti, Ensure YouTube transcript concurrency is at least 0 (0 = disabled)., Compute cgroup-aware default when not explicitly configured (<=0)., Compute cgroup-aware default when not explicitly configured (<=0).          Same (+3 more)
+Cohesion: 0.12
+Nodes (9): BaseSettings, Validate BPM algorithm version to fail fast on typos., Analysis service configuration., Convert empty-string env vars to None for Optional[int] fields.          pydanti, Ensure YouTube transcript concurrency is at least 0 (0 = disabled)., Compute cgroup-aware default when not explicitly configured (<=0)., Compute cgroup-aware default when not explicitly configured (<=0).          Same, Ensure concurrent jobs is at least 1 to prevent deadlock. (+1 more)
 
 ### Community 211 - "Community 211"
-Cohesion: 0.09
-Nodes (20): Path, R2Client, AssetCache, Get the local cache path for an LRC file.          Args:             hash_prefix, Check if an asset is already cached.          Args:             hash_prefix: Rec, Download and cache the main audio file.          Args:             hash_prefix:, Download and cache a stem file.          Args:             hash_prefix: Recordin, Download and cache the LRC lyrics file.          Args:             hash_prefix: (+12 more)
+Cohesion: 0.07
+Nodes (23): Path, R2Client, AssetCache, CacheEntry, Asset cache service for sow-app.  Manages local caching of R2 audio assets (stem, Get the local cache path for an LRC file.          Args:             hash_prefix, Check if an asset is already cached.          Args:             hash_prefix: Rec, Download and cache the main audio file.          Args:             hash_prefix: (+15 more)
 
 ### Community 212 - "Community 212"
 Cohesion: 0.05
 Nodes (38): Audio Commands (Phase 3-5), Audio Components, Batch Processing, Catalog Commands (Phase 2), Check Database Status, Config File Not Found, Configuration, Configuration File Location (+30 more)
 
 ### Community 213 - "Community 213"
-Cohesion: 0.21
-Nodes (21): AbstractEventLoop, OpenAI, parse_lrc(), call_llm_with_retry(), Run a synchronous LLM call with rate-limit retry, concurrency, and pacing., _build_client(), _build_segmentation_prompt(), _corrective_segmentation_call() (+13 more)
+Cohesion: 0.22
+Nodes (6): Path, Get currently loaded file., Load an audio file for playback.          Args:             file_path: Path to a, Start or resume playback.          Args:             file_path: File to play (if, Resume paused playback.          Returns:             True if resumed successful, Preview a section of a file.          Args:             file_path: Path to audio
 
 ### Community 214 - "Community 214"
 Cohesion: 0.15
 Nodes (30): event(), Trace event helpers for graph nodes., ConstructorState, build_chat_model(), LLM construction and structured-output helpers., structured(), beam_seed_candidates(), build_transition_matrix() (+22 more)
 
 ### Community 215 - "Community 215"
-Cohesion: 0.17
+Cohesion: 0.16
 Nodes (11): FreeTypeFont, GlobalLRCLine, Image, ImageDraw, ImageFont, FrameRenderer, _get_bool_env(), _get_int_env() (+3 more)
 
 ### Community 216 - "Community 216"
-Cohesion: 0.08
-Nodes (49): LRCWorkerError, Any, Exception, LRCLine, WorkerError, LRCLine, LRCWorkerError, build_correction_prompt() (+41 more)
+Cohesion: 0.04
+Nodes (135): Exception, LrcOptions, LRCWorkerError, Any, Path, CacheManager, Path, Semaphore (+127 more)
 
 ### Community 217 - "Community 217"
-Cohesion: 0.11
-Nodes (34): Analysis service external integrations., Path, Services layer for sow-app.  Business logic for catalog browsing, asset caching,, _is_quota_exhausted(), MvsepClient, MvsepClientError, MvsepNonRetriableError, MvsepParsingError (+26 more)
+Cohesion: 0.03
+Nodes (98): AudioSeparatorWrapper, FastAPI, Analysis service external integrations., Path, Path, CacheManager, Job, Path (+90 more)
 
 ### Community 218 - "Community 218"
 Cohesion: 0.05
@@ -1950,28 +1954,24 @@ Cohesion: 0.05
 Nodes (37): Audio Generation & Playback (Fully Implemented), Automated Tests, ✅ Completed Components, Comprehensive Test Suite, Configuration, Configuration System Refactoring (Latest), Core Features, 🎯 Current Status Summary (+29 more)
 
 ### Community 221 - "Community 221"
-Cohesion: 0.17
-Nodes (24): FontSizePreset, AudioSegmentInfo, FontSizePreset, GlobalLRCLine, Path, ProgressCallback, SegmentInfo, Chapter (+16 more)
+Cohesion: 0.18
+Nodes (25): FontSizePreset, AudioSegmentInfo, FontSizePreset, GlobalLRCLine, Path, ProgressCallback, SegmentInfo, Chapter (+17 more)
 
 ### Community 228 - "Community 228"
-Cohesion: 0.28
-Nodes (21): list_recordings(), delete_song(), _delete_song_single(), _delete_songs_batch(), edit_song(), _extract_series_sort_key(), get_db_client(), insert_song() (+13 more)
+Cohesion: 0.20
+Nodes (8): PlaybackPosition, PlaybackState, Audio playback service for sow-app.  Provides audio playback using miniaudio. Ma, Get current playback state., Current playback state., Current playback position information.      Attributes:         current_seconds:, # TODO: Implement section preview with automatic stop, Set playback event callbacks.          Args:             on_position_changed: Ca
 
 ### Community 229 - "Community 229"
 Cohesion: 0.11
 Nodes (35): Path, cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), extract_segments(), _get_field() (+27 more)
 
-### Community 230 - "Community 230"
-Cohesion: 0.19
-Nodes (20): LRCLine, A single line in an LRC file., Format as LRC line: [mm:ss.xx] text, Path, LRCGenerator, extract_lyrics_text(), generate_lrc_for_song(), generate_lrc_from_poc() (+12 more)
-
 ### Community 232 - "Community 232"
 Cohesion: 0.04
-Nodes (117): Highlighted, Song, AppState, Blurred, Changed, Input, Generation screen for song transition preview app., Set the list of songs to display.          Args:             songs: List of song (+109 more)
+Nodes (140): Container, Highlighted, Song, Transition data models., TransitionRecord, AppState, Blurred, Changed (+132 more)
 
 ### Community 234 - "Community 234"
-Cohesion: 0.09
-Nodes (22): SessionLogger, ndarray, Path, Transition generation service., TransitionGenerationService, Song, create_logarithmic_fade_in(), create_logarithmic_fade_out() (+14 more)
+Cohesion: 0.29
+Nodes (3): Get current playback position information.          Returns:             Playbac, Background thread to track playback position., Get current playback position in seconds.
 
 ### Community 235 - "Community 235"
 Cohesion: 0.13
@@ -1982,8 +1982,8 @@ Cohesion: 0.06
 Nodes (35): 1. User Request, 2. Next.js API Route (`delivery/webapp/src/app/api/render-jobs/route.ts`), 3. SQS Queue (`sow-render-jobs`), 4. Lambda Handler (`lambda_handler.py`), 5. Render Pipeline (`pipeline.py`), 6. Progress Tracking (Pull-Based), 7. Orphan Recovery, Architecture (+27 more)
 
 ### Community 237 - "Community 237"
-Cohesion: 0.17
-Nodes (16): _fetch_lrc_on_demand(), build_draft_from_catalog(), format_duration(), LRCFile, LRCLine, parse_lrc(), parse_lrc_full(), _parse_milliseconds() (+8 more)
+Cohesion: 0.10
+Nodes (30): Serialize current state to LRC format., check_active_lrc_job(), check_transcribed_changed(), generate_timestamped_filename(), Upload and save flow for the admin LRC editor.  Handles local draft save, R2 bac, save_local_backup(), save_local_draft(), upload_r2_backup() (+22 more)
 
 ### Community 238 - "Community 238"
 Cohesion: 0.19
@@ -1994,28 +1994,28 @@ Cohesion: 0.25
 Nodes (9): cli_entry(), config(), main(), Main entry point for sow-admin CLI.  Provides a Typer-based CLI for managing Str, Manage configuration.      Show, set, or display the path to the configuration f, Entry point for the CLI application., Callback for --version flag., sow-admin: Administrative tools for Stream of Worship.      Manage song catalogs (+1 more)
 
 ### Community 240 - "Community 240"
-Cohesion: 0.15
-Nodes (28): ensure_directories(), get_bundled_font_path(), get_cache_dir(), get_catalog_index_path(), get_config_path(), get_output_path(), get_playlists_path(), get_project_root() (+20 more)
+Cohesion: 0.12
+Nodes (30): ensure_directories(), get_bundled_font_path(), get_cache_dir(), get_catalog_index_path(), get_config_path(), get_output_path(), get_playlists_path(), get_project_root() (+22 more)
 
 ### Community 241 - "Community 241"
 Cohesion: 0.17
-Nodes (21): AssetFetcher, ChapterInfo, Any, connection, SongsetItem, R2Uploader, AssetFetcher, RenderProgress (+13 more)
+Nodes (20): AssetFetcher, ChapterInfo, Any, connection, SongsetItem, R2Uploader, AssetFetcher, RenderProgress (+12 more)
 
 ### Community 244 - "Community 244"
-Cohesion: 0.15
-Nodes (15): android, Composable, AuthController, Modifier, PlaybackArtifact, Modifier, String, NavHostController (+7 more)
+Cohesion: 0.64
+Nodes (6): _build_report(), _format_duration(), main(), _pool_overview(), _proposal_section(), _run_summary()
 
 ### Community 245 - "Community 245"
 Cohesion: 0.06
 Nodes (33): 1. Prerequisites, 2. Start the Development Server, 3. Verify It's Running, Adding a New Job Type, Analysis Service - Developer Guide, Architecture Overview, Audio-Separator Models (Required for Stem Separation), Check Model Loading (+25 more)
 
 ### Community 246 - "Community 246"
-Cohesion: 0.13
-Nodes (30): log(), Print message if verbose mode is enabled., generate_all_transitions(), generate_all_variants(), generate_drum_fade_transition(), generate_medium_silence_transition(), generate_medium_transition(), generate_transition_filename() (+22 more)
+Cohesion: 0.12
+Nodes (32): log(), Print message if verbose mode is enabled., generate_all_transitions(), generate_all_variants(), generate_drum_fade_transition(), generate_medium_silence_transition(), generate_medium_transition(), generate_transition_filename() (+24 more)
 
 ### Community 248 - "Community 248"
-Cohesion: 0.22
-Nodes (32): backfill_key_normalization(), backup_r2(), _bytes_to_mb(), _configure_r2_backup_debug_logging(), diagnose_render_failures(), _format_datetime(), _json_default(), list_r2_waste() (+24 more)
+Cohesion: 0.21
+Nodes (32): backfill_key_normalization(), _bytes_to_mb(), diagnose_render_failures(), _format_datetime(), _json_default(), list_r2_waste(), list_soft_deletes(), _load_clients() (+24 more)
 
 ### Community 249 - "Community 249"
 Cohesion: 0.06
@@ -2086,8 +2086,8 @@ Cohesion: 0.07
 Nodes (29): config, album_series, auto_relax, env_file, hymnal_mode, include_cpw, interactive_review, intimate (+21 more)
 
 ### Community 267 - "Community 267"
-Cohesion: 0.04
-Nodes (32): Path, PlaybackPosition, PlaybackService, PlaybackState, Audio playback service for sow-app.  Provides audio playback using miniaudio. Ma, Initialize the playback service.          Args:             buffer_ms: Audio buf, Pause playback.          Returns:             True if successful, False otherwis, Get current playback state. (+24 more)
+Cohesion: 0.13
+Nodes (7): PlaybackService, Initialize the playback service.          Args:             buffer_ms: Audio buf, Check if currently playing., Get duration of current file in seconds., Get current position in seconds., Audio playback service using miniaudio.      Manages audio playback with play/pa, Set playback volume.          Args:             volume: Volume level (0.0 to 1.0
 
 ### Community 268 - "Community 268"
 Cohesion: 0.07
@@ -2126,8 +2126,8 @@ Cohesion: 0.07
 Nodes (29): config, album_series, auto_relax, env_file, hymnal_mode, include_cpw, interactive_review, intimate (+21 more)
 
 ### Community 362 - "Community 362"
-Cohesion: 0.10
-Nodes (28): _build_fresh_editor_state(), cache_assets(), _colorize_visibility(), components_recording(), download_audio(), _drain_input_buffer(), edit_lrc(), playback_audio() (+20 more)
+Cohesion: 0.53
+Nodes (4): ReadOnlyClient, main(), Try to download LRC content from R2. Returns None if unavailable., _try_r2_lrc()
 
 ### Community 363 - "Community 363"
 Cohesion: 0.11
@@ -2162,12 +2162,12 @@ Cohesion: 0.07
 Nodes (30): lyric_mark_recording_content_hash_recordings_content_hash_fk, lyric_mark_user_id_user_id_fk, columnsFrom, columnsTo, name, onDelete, onUpdate, tableFrom (+22 more)
 
 ### Community 371 - "Community 371"
-Cohesion: 0.07
-Nodes (30): lyric_mark_recording_content_hash_recordings_content_hash_fk, lyric_mark_user_id_user_id_fk, columnsFrom, columnsTo, name, onDelete, onUpdate, tableFrom (+22 more)
+Cohesion: 0.12
+Nodes (17): lyric_mark_recording_content_hash_recordings_content_hash_fk, lyric_mark_user_id_user_id_fk, columnsFrom, columnsTo, name, onDelete, onUpdate, tableFrom (+9 more)
 
 ### Community 372 - "Community 372"
-Cohesion: 0.12
-Nodes (11): _format_timestamp(), Component Detail Panel widget for the Component Metadata editor (v6).  Right pan, Render Rich Text into Strip objects at the current content width., Render full component detail for the current song + selected role.          Args, Format an ISO-8601 timestamp to nearest second with UTC label., Rebuild strips with current _focus_idx (new highlight marker) without         ch, Render a single visible line, applying scroll offset.          Translates the vi, ComponentEditorState (+3 more)
+Cohesion: 0.29
+Nodes (4): Update state and notify listeners., Coroutine generator that yields audio chunks as requested by miniaudio., Pause playback.          Returns:             True if paused successfully, Stop playback and reset position.          Args:             clear_source: If Tr
 
 ### Community 373 - "Community 373"
 Cohesion: 0.12
@@ -2187,7 +2187,7 @@ Nodes (29): error_message, estimated_total_seconds, phase_index, resolution, sta
 
 ### Community 377 - "Community 377"
 Cohesion: 0.10
-Nodes (20): columns, concurrently, isUnique, method, name, with, idx_recordings_song_visibility_deleted, checkConstraints (+12 more)
+Nodes (21): recordings_song_id_songs_id_fk, checkConstraints, compositePrimaryKeys, foreignKeys, isRLSEnabled, name, policies, schema (+13 more)
 
 ### Community 378 - "Community 378"
 Cohesion: 0.07
@@ -2210,28 +2210,28 @@ Cohesion: 0.13
 Nodes (28): analyze_all_sections(), calculate_key_score(), calculate_section_compatibility(), calculate_tempo_score(), compute_energy_score(), extract_section_features(), generate_compatibility_heatmap(), load_all_song_results() (+20 more)
 
 ### Community 383 - "Community 383"
-Cohesion: 0.06
-Nodes (35): ActiveScreen, AppState, GenerationMode, PlaybackState, Application state model., Enter modify mode with a transition's parameters., Add a transition to history, enforcing the 50-item cap., Get the currently selected transition from history. (+27 more)
+Cohesion: 0.12
+Nodes (17): ActiveScreen, AppState, GenerationMode, PlaybackState, Application state model., Enter modify mode with a transition's parameters., Add a transition to history, enforcing the 50-item cap., Get the currently selected transition from history. (+9 more)
 
 ### Community 384 - "Community 384"
 Cohesion: 0.07
 Nodes (28): dependencies, @aws-sdk/client-s3, @aws-sdk/client-sqs, @aws-sdk/s3-request-presigner, @base-ui/react, better-auth, class-variance-authority, clsx (+20 more)
 
 ### Community 385 - "Community 385"
-Cohesion: 0.15
-Nodes (10): DataTable, Horizontal, GenerationScreen, Generation screen for creating transitions between two songs., HistoryScreen, History screen for viewing and managing generated transitions., Screen for viewing and managing transition history., ComposeResult (+2 more)
+Cohesion: 0.08
+Nodes (15): DataTable, Horizontal, GenerationScreen, Generation screen for creating transitions between two songs., HistoryScreen, History screen for viewing and managing generated transitions., Screen for viewing and managing transition history., Initialize the history screen.          Args:             state: Application sta (+7 more)
 
 ### Community 386 - "Community 386"
 Cohesion: 0.33
 Nodes (6): lrc_status, default, name, notNull, primaryKey, type
 
 ### Community 387 - "Community 387"
-Cohesion: 0.23
-Nodes (9): LogRecord, configure_logging(), JobIdFormatter, _JobStatusAccessFilter, Logging configuration with job_id context support.  Uses contextvars to automati, Drop uvicorn access-log records for GET /api/v1/jobs* (status + list polls)., Custom formatter that adds job_id prefix from contextvar.      Format: %(asctime, Format log record with job_id from context. (+1 more)
+Cohesion: 0.08
+Nodes (20): LogRecord, Any, CacheManager, Any, Job, range_get_throughput_diag(), Run a parallel Range-GET throughput diagnostic on a single R2 object.      Issue, configure_logging() (+12 more)
 
 ### Community 388 - "Community 388"
-Cohesion: 0.07
-Nodes (24): Logger, _last_modified_to_str(), R2Client, Cloudflare R2 storage client.  Provides upload and download of audio assets to C, Validate and normalize a full recording hash prefix., Return the exact R2 prefix for a recording hash., List objects under an exact recording prefix using 100-object pages., Delete all objects under an exact recording prefix in 100-object batches. (+16 more)
+Cohesion: 0.12
+Nodes (14): _last_modified_to_str(), Cloudflare R2 storage client.  Provides upload and download of audio assets to C, Validate and normalize a full recording hash prefix., Return the exact R2 prefix for a recording hash., List objects under an exact recording prefix using 100-object pages., Delete all objects under an exact recording prefix in 100-object batches., List objects under ``{prefix}/stems/`` for a recording.          Args:, Delete all objects under ``{prefix}/stems/`` in 100-object batches.          Arg (+6 more)
 
 ### Community 389 - "Community 389"
 Cohesion: 0.33
@@ -2254,16 +2254,16 @@ Cohesion: 0.08
 Nodes (25): dialect, render_jobs_songset_id_songsets_id_fk, id, columns, name, nullsNotDistinct, prevId, checkConstraints (+17 more)
 
 ### Community 394 - "Community 394"
-Cohesion: 0.08
-Nodes (25): dialect, id, columns, concurrently, isUnique, method, name, with (+17 more)
+Cohesion: 0.12
+Nodes (17): columns, concurrently, isUnique, method, name, with, idx_client_error_log_created, checkConstraints (+9 more)
 
 ### Community 395 - "Community 395"
 Cohesion: 0.33
 Nodes (6): updated_at, default, name, notNull, primaryKey, type
 
 ### Community 396 - "Community 396"
-Cohesion: 0.17
-Nodes (21): Path, analyze_song_allinone(), calculate_compatibility(), compute_file_hash(), create_simple_crossfade(), generate_stems_for_songs(), load_from_cache(), main() (+13 more)
+Cohesion: 0.19
+Nodes (19): Path, analyze_song_allinone(), calculate_compatibility(), create_simple_crossfade(), generate_stems_for_songs(), load_from_cache(), main(), parse_args() (+11 more)
 
 ### Community 397 - "Community 397"
 Cohesion: 0.13
@@ -2274,19 +2274,15 @@ Cohesion: 0.13
 Nodes (15): id, identity, name, notNull, primaryKey, type, cache, cycle (+7 more)
 
 ### Community 399 - "Community 399"
-Cohesion: 0.11
-Nodes (18): dialect, id, prevId, checkConstraints, compositePrimaryKeys, indexes, isRLSEnabled, name (+10 more)
-
-### Community 400 - "Community 400"
-Cohesion: 0.33
-Nodes (6): status, default, name, notNull, primaryKey, type
+Cohesion: 0.25
+Nodes (8): columns, concurrently, isUnique, method, name, with, idx_recordings_song_visibility_deleted, indexes
 
 ### Community 401 - "Community 401"
 Cohesion: 0.18
 Nodes (22): create_simple_crossfade(), determine_crossfade_durations(), generate_all_transitions(), generate_transition_filename(), load_analysis_results(), log(), main(), print_summary_report() (+14 more)
 
 ### Community 402 - "Community 402"
-Cohesion: 0.20
+Cohesion: 0.21
 Nodes (16): Any, Protocol, build_chapters_from_segments(), ChapterLine, chapters_to_ffmpeg_metadata(), ChaptersManifest, dataclass_to_camel_case_dict(), find_chapter_at_time() (+8 more)
 
 ### Community 403 - "Community 403"
@@ -2304,6 +2300,14 @@ Nodes (21): Path, call_qwen3_asr(), _call_qwen3_asr_filetrans(), canonical_line_
 ### Community 406 - "Community 406"
 Cohesion: 0.21
 Nodes (17): _fetch(), fetch_structured_lyrics_from_zanmei(), fetch_zanmei_lyrics(), _parse_search_results(), Scraper for structured lyrics from zanmei.ai (爱赞美).  zanmei.ai is a Chinese wors, Parse zanmei search-result table rows into ZanmeiSearchResult., Pick the best search hit by title (exact) then band (substring).      Falls back, Search zanmei.ai for songs matching ``title`` (and optionally ``band``).      Re (+9 more)
+
+### Community 407 - "Community 407"
+Cohesion: 0.33
+Nodes (3): Seek to a position in the current file.          Args:             position_seco, Skip forward by specified seconds.          Args:             seconds: Number of, Skip backward by specified seconds.          Args:             seconds: Number o
+
+### Community 408 - "Community 408"
+Cohesion: 0.33
+Nodes (6): template, default, name, notNull, primaryKey, type
 
 ### Community 409 - "Community 409"
 Cohesion: 0.15
@@ -2530,8 +2534,8 @@ Cohesion: 0.10
 Nodes (19): Agent Summary, Bottlenecks, Details, Details, Details, Details, Details, Diversity Summary (+11 more)
 
 ### Community 465 - "Community 465"
-Cohesion: 0.22
-Nodes (9): recordings_song_id_songs_id_fk, foreignKeys, columnsFrom, columnsTo, name, onDelete, onUpdate, tableFrom (+1 more)
+Cohesion: 0.33
+Nodes (6): default, name, notNull, primaryKey, type, analysis_status
 
 ### Community 466 - "Community 466"
 Cohesion: 0.21
@@ -2546,24 +2550,24 @@ Cohesion: 0.10
 Nodes (19): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+11 more)
 
 ### Community 469 - "Community 469"
-Cohesion: 0.24
-Nodes (10): Path, format_timestamp(), map_segments_to_lines(), normalize_text(), Forced alignment utility functions.  Migrated from services/qwen3/src/sow_qwen3/, Validate audio duration using soundfile (O(1) for WAV/FLAC) with librosa fallbac, Normalize text by removing whitespace and common CJK punctuation., Format seconds as [mm:ss.xx] timestamp. (+2 more)
+Cohesion: 0.33
+Nodes (6): template, default, name, notNull, primaryKey, type
 
 ### Community 470 - "Community 470"
-Cohesion: 0.27
-Nodes (7): Logger, Reusable step timing context manager for job processing transparency.  Wraps any, Returned by step_timer() for manual heartbeat calls inside the with-block., Log a 'still running' heartbeat line. Throttled to heartbeat_interval., Context manager that logs start, end, and elapsed time of a step.      Usage::, step_timer(), StepHeartbeat
+Cohesion: 0.33
+Nodes (6): updatedAt, default, name, notNull, primaryKey, type
 
 ### Community 471 - "Community 471"
-Cohesion: 0.15
-Nodes (8): Storage layer for R2 and local cache., parse_s3_url(), R2/S3-compatible storage client., Copy an object within R2.          Args:             source_s3_url: Source s3://, List objects in R2 with the given prefix.          Args:             prefix: Key, Parse s3://bucket/key to (bucket, key).      Args:         s3_url: URL in format, Upload the official lyrics.lrc with backup and ETag protection.          1. HEAD, Download audio from R2 to local path.          Args:             s3_url: s3://bu
+Cohesion: 0.33
+Nodes (6): video_enabled, default, name, notNull, primaryKey, type
 
 ### Community 472 - "Community 472"
 Cohesion: 0.33
 Nodes (6): title_card_duration_seconds, default, name, notNull, primaryKey, type
 
 ### Community 473 - "Community 473"
-Cohesion: 0.19
-Nodes (11): Json, Song catalog loading and management., Song catalog loading and management., analyze_song(), calculate_compatibility(), create_simple_crossfade(), main(), Calculate compatibility scores between two songs.      Scoring:     - Tempo: 100 (+3 more)
+Cohesion: 0.33
+Nodes (8): analyze_song(), calculate_compatibility(), create_simple_crossfade(), main(), Calculate compatibility scores between two songs.      Scoring:     - Tempo: 100, Create equal-power crossfade between two songs.      Algorithm:     1. Load ster, Main execution function., Run complete feature extraction on a single song.      Returns dictionary with:
 
 ### Community 474 - "Community 474"
 Cohesion: 0.11
@@ -2594,12 +2598,12 @@ Cohesion: 0.34
 Nodes (16): aws_cmd(), build_and_push_image(), check_prerequisites(), create_ecr_repo(), create_event_source_mapping(), create_iam_role(), create_lambda(), create_sqs_queues() (+8 more)
 
 ### Community 481 - "Community 481"
-Cohesion: 0.11
-Nodes (25): Path, R2Client, Path, R2Client, build_r2_client(), download_audio(), estimate_tempo(), main() (+17 more)
+Cohesion: 0.33
+Nodes (6): lrc_status, default, name, notNull, primaryKey, type
 
 ### Community 482 - "Community 482"
-Cohesion: 0.08
-Nodes (23): dialect, render_jobs_songset_id_songsets_id_fk, render_jobs_user_id_user_id_fk, id, prevId, foreignKeys, indexes, name (+15 more)
+Cohesion: 0.11
+Nodes (18): render_jobs_songset_id_songsets_id_fk, render_jobs_user_id_user_id_fk, foreignKeys, indexes, name, schema, columnsFrom, columnsTo (+10 more)
 
 ### Community 483 - "Community 483"
 Cohesion: 0.12
@@ -2610,12 +2614,12 @@ Cohesion: 0.12
 Nodes (17): render_jobs_songset_id_songsets_id_fk, render_jobs_user_id_user_id_fk, foreignKeys, columnsFrom, columnsTo, name, onDelete, onUpdate (+9 more)
 
 ### Community 485 - "Community 485"
-Cohesion: 0.12
-Nodes (17): render_jobs_songset_id_songsets_id_fk, render_jobs_user_id_user_id_fk, foreignKeys, columnsFrom, columnsTo, name, onDelete, onUpdate (+9 more)
+Cohesion: 0.08
+Nodes (26): render_jobs_songset_id_songsets_id_fk, render_jobs_user_id_user_id_fk, checkConstraints, compositePrimaryKeys, foreignKeys, indexes, isRLSEnabled, name (+18 more)
 
 ### Community 486 - "Community 486"
-Cohesion: 0.07
-Nodes (30): lyric_mark_recording_content_hash_recordings_content_hash_fk, lyric_mark_user_id_user_id_fk, columnsFrom, columnsTo, name, onDelete, onUpdate, tableFrom (+22 more)
+Cohesion: 0.12
+Nodes (17): lyric_mark_recording_content_hash_recordings_content_hash_fk, lyric_mark_user_id_user_id_fk, columnsFrom, columnsTo, name, onDelete, onUpdate, tableFrom (+9 more)
 
 ### Community 487 - "Community 487"
 Cohesion: 0.12
@@ -2702,8 +2706,8 @@ Cohesion: 0.25
 Nodes (13): Path, main(), merge_vad_segments(), phrases_to_lrc(), Run SenseVoice transcription on audio file.      Args:         audio_path: Path, Merge nearby VAD segments into longer spans., Convert phrases to LRC format.      Args:         phrases: List of (start, end,, Run SenseVoice transcription on a song and output LRC format.      By default, t (+5 more)
 
 ### Community 508 - "Community 508"
-Cohesion: 0.12
-Nodes (26): Path, RunConfig, SongCandidate, ReadOnlyClient, RunConfig, SongCandidate, ReadOnlyClient, RunConfig (+18 more)
+Cohesion: 0.13
+Nodes (25): Path, RunConfig, SongCandidate, ReadOnlyClient, RunConfig, SongCandidate, ReadOnlyClient, RunConfig (+17 more)
 
 ### Community 509 - "Community 509"
 Cohesion: 0.33
@@ -2714,8 +2718,8 @@ Cohesion: 0.13
 Nodes (15): id, identity, name, notNull, primaryKey, type, cache, cycle (+7 more)
 
 ### Community 511 - "Community 511"
-Cohesion: 0.13
-Nodes (15): id, identity, name, notNull, primaryKey, type, cache, cycle (+7 more)
+Cohesion: 0.08
+Nodes (24): id, dialect, id, identity, name, notNull, primaryKey, type (+16 more)
 
 ### Community 512 - "Community 512"
 Cohesion: 0.13
@@ -2738,8 +2742,8 @@ Cohesion: 0.13
 Nodes (15): id, identity, name, notNull, primaryKey, type, cache, cycle (+7 more)
 
 ### Community 517 - "Community 517"
-Cohesion: 0.21
-Nodes (7): RenderJobSummary, normalizeFontFamily(), RenderPage(), serializeJob(), APP_RENDER_DEFAULTS, buildInitialRenderData(), UserSettingsData
+Cohesion: 0.33
+Nodes (6): title_card_duration_seconds, default, name, notNull, primaryKey, type
 
 ### Community 518 - "Community 518"
 Cohesion: 0.13
@@ -2770,12 +2774,12 @@ Cohesion: 0.35
 Nodes (12): String, BottomNavDestination, createRoute(), encodeRouteSegment(), Login, Player, Render, Settings (+4 more)
 
 ### Community 525 - "Community 525"
-Cohesion: 0.21
-Nodes (10): Logger, Path, Songset list screen.  Displays all user-created songsets with options to create,, get_logger(), Logging configuration for sow-app.  Provides session logging to file without int, Rotate log file on startup if it exceeds max size.      Args:         log_file:, Set up application logging to file with startup rotation.      Args:         log, Get a logger for a specific module.      Args:         name: Module name (usuall (+2 more)
+Cohesion: 0.29
+Nodes (9): Logger, Path, get_logger(), Logging configuration for sow-app.  Provides session logging to file without int, Rotate log file on startup if it exceeds max size.      Args:         log_file:, Set up application logging to file with startup rotation.      Args:         log, Get a logger for a specific module.      Args:         name: Module name (usuall, _rotate_log_if_needed() (+1 more)
 
 ### Community 526 - "Community 526"
-Cohesion: 0.32
-Nodes (12): RunConfig, SongCandidate, SongsetDraft, SongsetProposal, TransitionCandidate, ProposalItem, composer_diversity(), draft_from_candidates() (+4 more)
+Cohesion: 0.33
+Nodes (6): resolution, default, name, notNull, primaryKey, type
 
 ### Community 527 - "Community 527"
 Cohesion: 0.44
@@ -2862,24 +2866,24 @@ Cohesion: 0.37
 Nodes (11): _bar(), build_enrichment_report(), _dominant_theme(), _phase_label(), Pool enrichment distribution report generation., render_console_summary(), _render_markdown(), _shannon_entropy() (+3 more)
 
 ### Community 548 - "Community 548"
-Cohesion: 0.24
-Nodes (17): Counter, RunConfig, SongCandidate, SongsetProposal, TransitionCandidate, beam_diagnostics(), diagnostic_lines(), enrichment_drop_diagnostics() (+9 more)
+Cohesion: 0.41
+Nodes (11): Counter, RunConfig, SongCandidate, SongsetProposal, TransitionCandidate, beam_diagnostics(), diagnostic_lines(), enrichment_drop_diagnostics() (+3 more)
 
 ### Community 549 - "Community 549"
 Cohesion: 0.27
 Nodes (11): Boolean, Int, Long, Modifier, PlaybackChapter, PlaybackLine, PlaybackManifest, String (+3 more)
 
 ### Community 550 - "Community 550"
-Cohesion: 0.15
-Nodes (9): activeShare, completedJob, mockCreateR2Client, mockFindFirstJob, mockFindFirstShare, mockGenerateSignedUrl, mockGetObjectSize, mockGetSongsetPublicView (+1 more)
+Cohesion: 0.33
+Nodes (6): createdAt, default, name, notNull, primaryKey, type
 
 ### Community 551 - "Community 551"
 Cohesion: 0.49
 Nodes (10): Any, AssetFetcherProtocol, build_ffmpeg_filter_complex(), calculate_gap_ms(), calculate_total_duration(), concatenate_audio_files(), generate_songset_audio(), get_audio_info() (+2 more)
 
 ### Community 552 - "Community 552"
-Cohesion: 0.16
-Nodes (18): _accept_key(), key_review_accept_catalog(), key_review_accept_detected(), key_review_list(), key_review_show(), _load_key_review_rows(), _print_key_review_caveat(), KeyMode (+10 more)
+Cohesion: 0.28
+Nodes (11): KeyMode, _normalize_text(), parse_musical_key(), _parse_token(), ParsedMusicalKey, pitch_class(), Musical key parsing and pitch-class normalization., Return the entry pitch class for a key string, if parseable. (+3 more)
 
 ### Community 553 - "Community 553"
 Cohesion: 0.33
@@ -2887,7 +2891,7 @@ Nodes (6): status, default, name, notNull, primaryKey, type
 
 ### Community 554 - "Community 554"
 Cohesion: 0.33
-Nodes (4): identify_editor_role(), Constants for the Component Metadata editor TUI (v6).  v6 changes from v5: - New, Map a DB SongComponent to its editor-level role key, or None if not essential., SongComponent
+Nodes (6): resolution, default, name, notNull, primaryKey, type
 
 ### Community 555 - "Community 555"
 Cohesion: 0.29
@@ -2910,16 +2914,16 @@ Cohesion: 0.40
 Nodes (4): databaseUrl, findTwoCharacterChineseSubstring(), readSowDatabaseUrl(), SearchFixture
 
 ### Community 560 - "Community 560"
-Cohesion: 0.37
-Nodes (8): getCompletedSongIds(), isSongCompleted(), Listener, listeners, markSongCompleted(), readCompleted(), resetCompletionForTests(), subscribeCompletion()
+Cohesion: 0.33
+Nodes (6): template, default, name, notNull, primaryKey, type
 
 ### Community 561 - "Community 561"
 Cohesion: 0.18
 Nodes (10): How Filters Were Applied, Key Findings, Proposal 1, Proposal 2, Proposal 3, Proposal 4, Proposal 5, Run Summary (+2 more)
 
 ### Community 562 - "Community 562"
-Cohesion: 0.24
-Nodes (6): fetch_lrc_for_song(), prefetch_all_lrc(), LRC fetch service for the Component Metadata editor (v5).  Downloads LRC content, _prefetch_lrc(), Path, R2Client
+Cohesion: 0.33
+Nodes (6): updatedAt, default, name, notNull, primaryKey, type
 
 ### Community 563 - "Community 563"
 Cohesion: 0.38
@@ -3082,16 +3086,16 @@ Cohesion: 0.22
 Nodes (8): Agent Summary, Details, Details, Pool Overview, Rank 2 - Score 0.8549, Rank 9 - Score 0.8572, Run Summary, Songset Proposals
 
 ### Community 604 - "Community 604"
-Cohesion: 0.04
-Nodes (47): content_hash, downbeats, imported_at, key_confidence, lrc_status, r2_lrc_url, r2_stems_url, song_id (+39 more)
+Cohesion: 0.33
+Nodes (6): lrc_status, default, name, notNull, primaryKey, type
 
 ### Community 605 - "Community 605"
 Cohesion: 0.22
 Nodes (8): Catalog, Language, Locale, Lyrics, Render, Songset & Transitions, Stream of Worship, User State
 
 ### Community 606 - "Community 606"
-Cohesion: 0.18
-Nodes (8): GET(), completedJob, makeParams(), makeRequest(), mockCreateR2Client, mockFindFirst, mockGetObjectSize, sessionUser
+Cohesion: 0.33
+Nodes (6): createdAt, default, name, notNull, primaryKey, type
 
 ### Community 607 - "Community 607"
 Cohesion: 0.22
@@ -3130,20 +3134,20 @@ Cohesion: 0.29
 Nodes (6): How Filters Were Applied, Key Findings, Proposal 1, Run Summary, Songset Constructor Review, What Was Done
 
 ### Community 616 - "Community 616"
-Cohesion: 0.26
-Nodes (8): makeRequest(), mockDelete, mockInsert, mockSelect, sessionUser, DELETE(), GET(), POST()
+Cohesion: 0.40
+Nodes (5): content_hash, name, notNull, primaryKey, type
 
 ### Community 617 - "Community 617"
 Cohesion: 0.29
 Nodes (5): CI_WORKFLOW_PATH, DEPLOY_WORKFLOW_PATH, loadWorkflow(), REPO_ROOT, WEBAPP_ROOT
 
 ### Community 620 - "Community 620"
-Cohesion: 0.33
-Nodes (6): updated_at, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): mp4_r2_key, name, notNull, primaryKey, type
 
 ### Community 621 - "Community 621"
-Cohesion: 0.21
-Nodes (11): check_cache_access(), check_embedding_connection(), check_llm_connection(), check_r2_connection(), health_check(), Health check endpoint., Health check endpoint.      Returns:         Service health status, Check if cache directory is accessible.      Returns:         Status dictionary (+3 more)
+Cohesion: 0.40
+Nodes (5): phase_index, name, notNull, primaryKey, type
 
 ### Community 622 - "Community 622"
 Cohesion: 0.11
@@ -3210,8 +3214,8 @@ Cohesion: 0.40
 Nodes (5): lrc_job_id, name, notNull, primaryKey, type
 
 ### Community 638 - "Community 638"
-Cohesion: 0.15
-Nodes (8): _download_object_to_tempfile(), DownloadResult, HashingReader, A wrapper around a readable stream that computes SHA-256 and MD5 as data is read, Result of downloading a single object to a temp file., Emit per-object download trace and update accumulators.          Called from eac, Emit a retry trace event when a download retry fires.          Called from `_dow, Download a single object to a temp file with consistency checking.      Download
+Cohesion: 0.12
+Nodes (7): _download_object_to_tempfile(), HashingReader, A wrapper around a readable stream that computes SHA-256 and MD5 as data is read, Call on_progress if enough time has elapsed since last report., Emit per-object download trace and update accumulators.          Called from eac, Emit a retry trace event when a download retry fires.          Called from `_dow, Download a single object to a temp file with consistency checking.      Download
 
 ### Community 639 - "Community 639"
 Cohesion: 0.40
@@ -3238,8 +3242,8 @@ Cohesion: 0.33
 Nodes (6): include_title_card, default, name, notNull, primaryKey, type
 
 ### Community 645 - "Community 645"
-Cohesion: 0.33
-Nodes (6): video_enabled, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): total_phases, name, notNull, primaryKey, type
 
 ### Community 646 - "Community 646"
 Cohesion: 0.40
@@ -3282,8 +3286,8 @@ Cohesion: 0.40
 Nodes (5): phase_index, name, notNull, primaryKey, type
 
 ### Community 656 - "Community 656"
-Cohesion: 0.24
-Nodes (5): Path, Run two-stage stem separation.          Stage 1: Extract vocals and instrumental, Run Stage 2 only: remove echo/reverb from vocals using UVR-De-Echo.          Use, Lazily initialize models on first use. Thread-safe via lock., Validate model availability by loading then discarding instances.          Confi
+Cohesion: 0.40
+Nodes (5): content_hash, name, notNull, primaryKey, type
 
 ### Community 657 - "Community 657"
 Cohesion: 0.40
@@ -3317,17 +3321,21 @@ Nodes (6): include_title_card, default, name, notNull, primaryKey, type
 Cohesion: 0.40
 Nodes (5): name, notNull, primaryKey, type, accountId
 
+### Community 665 - "Community 665"
+Cohesion: 0.40
+Nodes (5): elapsed_seconds, name, notNull, primaryKey, type
+
 ### Community 666 - "Community 666"
-Cohesion: 0.36
-Nodes (5): addFavorite(), addFavoriteSchema, GET(), POST(), mockRequest()
+Cohesion: 0.40
+Nodes (5): key_confidence, name, notNull, primaryKey, type
 
 ### Community 667 - "Community 667"
 Cohesion: 0.33
 Nodes (6): lrc_status, default, name, notNull, primaryKey, type
 
 ### Community 668 - "Community 668"
-Cohesion: 0.33
-Nodes (6): createdAt, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): original_filename, name, notNull, primaryKey, type
 
 ### Community 669 - "Community 669"
 Cohesion: 0.33
@@ -3575,7 +3583,7 @@ Nodes (6): default, name, notNull, primaryKey, type, analysis_status
 
 ### Community 730 - "Community 730"
 Cohesion: 0.40
-Nodes (5): songset_id, name, notNull, primaryKey, type
+Nodes (5): phase_index, name, notNull, primaryKey, type
 
 ### Community 731 - "Community 731"
 Cohesion: 0.33
@@ -3606,8 +3614,8 @@ Cohesion: 0.33
 Nodes (6): download_status, default, name, notNull, primaryKey, type
 
 ### Community 738 - "Community 738"
-Cohesion: 0.33
-Nodes (6): updatedAt, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): total_phases, name, notNull, primaryKey, type
 
 ### Community 739 - "Community 739"
 Cohesion: 0.33
@@ -3634,16 +3642,16 @@ Cohesion: 0.33
 Nodes (6): default, name, notNull, primaryKey, type, audio_enabled
 
 ### Community 745 - "Community 745"
-Cohesion: 0.36
-Nodes (6): Path, extract_vocals_two_stage(), main(), Two-stage vocal extraction pipeline.      Stage 1: Extract vocals from the mix u, parse_args(), Parse command-line arguments.
+Cohesion: 0.53
+Nodes (4): Path, extract_vocals_two_stage(), main(), Two-stage vocal extraction pipeline.      Stage 1: Extract vocals from the mix u
 
 ### Community 746 - "Community 746"
 Cohesion: 0.33
 Nodes (6): updated_at, default, name, notNull, primaryKey, type
 
 ### Community 747 - "Community 747"
-Cohesion: 0.29
-Nodes (4): is_available(), Check if MVSEP is available for use.          Returns:             True when ena, Reset quota-exhausted flag on new UTC day., True if daily quota is exhausted (will reset at UTC midnight).          Distingu
+Cohesion: 0.40
+Nodes (5): downbeats, name, notNull, primaryKey, type
 
 ### Community 748 - "Community 748"
 Cohesion: 0.33
@@ -3660,6 +3668,10 @@ Nodes (6): status, default, name, notNull, primaryKey, type
 ### Community 751 - "Community 751"
 Cohesion: 0.33
 Nodes (6): updated_at, default, name, notNull, primaryKey, type
+
+### Community 752 - "Community 752"
+Cohesion: 0.40
+Nodes (5): estimated_total_seconds, name, notNull, primaryKey, type
 
 ### Community 753 - "Community 753"
 Cohesion: 0.33
@@ -3715,7 +3727,7 @@ Nodes (5): cache_file, cached_at, file_size_bytes, original_filename, d7c85fac05
 
 ### Community 768 - "Community 768"
 Cohesion: 0.40
-Nodes (5): lrc_job_id, name, notNull, primaryKey, type
+Nodes (5): downbeats, name, notNull, primaryKey, type
 
 ### Community 769 - "Community 769"
 Cohesion: 0.50
@@ -3766,8 +3778,8 @@ Cohesion: 0.33
 Nodes (6): percent_complete, default, name, notNull, primaryKey, type
 
 ### Community 781 - "Community 781"
-Cohesion: 0.33
-Nodes (6): resolution, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): error_message, name, notNull, primaryKey, type
 
 ### Community 782 - "Community 782"
 Cohesion: 0.40
@@ -3806,8 +3818,8 @@ Cohesion: 0.40
 Nodes (5): youtube_url, name, notNull, primaryKey, type
 
 ### Community 791 - "Community 791"
-Cohesion: 0.33
-Nodes (6): lrc_status, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): songset_id, name, notNull, primaryKey, type
 
 ### Community 792 - "Community 792"
 Cohesion: 0.40
@@ -3830,12 +3842,12 @@ Cohesion: 0.40
 Nodes (5): deleted_at, name, notNull, primaryKey, type
 
 ### Community 797 - "Community 797"
-Cohesion: 0.33
-Nodes (6): percent_complete, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): visibility_status, name, notNull, primaryKey, type
 
 ### Community 798 - "Community 798"
-Cohesion: 0.33
-Nodes (6): title_card_duration_seconds, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): name, notNull, primaryKey, type, accessTokenExpiresAt
 
 ### Community 799 - "Community 799"
 Cohesion: 0.40
@@ -3858,16 +3870,16 @@ Cohesion: 0.40
 Nodes (5): musical_key, name, notNull, primaryKey, type
 
 ### Community 804 - "Community 804"
-Cohesion: 0.33
-Nodes (6): include_title_card, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): content_hash, name, notNull, primaryKey, type
 
 ### Community 805 - "Community 805"
 Cohesion: 0.40
-Nodes (5): idToken, name, notNull, primaryKey, type
+Nodes (5): downbeats, name, notNull, primaryKey, type
 
 ### Community 806 - "Community 806"
-Cohesion: 0.33
-Nodes (6): title_card_duration_seconds, default, name, notNull, primaryKey, type
+Cohesion: 0.40
+Nodes (5): elapsed_seconds, name, notNull, primaryKey, type
 
 ### Community 807 - "Community 807"
 Cohesion: 0.40
@@ -3979,7 +3991,7 @@ Nodes (5): songset_id, name, notNull, primaryKey, type
 
 ### Community 834 - "Community 834"
 Cohesion: 0.40
-Nodes (5): total_duration_seconds, name, notNull, primaryKey, type
+Nodes (5): error_message, name, notNull, primaryKey, type
 
 ### Community 835 - "Community 835"
 Cohesion: 0.40
@@ -3999,11 +4011,11 @@ Nodes (5): name, notNull, primaryKey, type, beats
 
 ### Community 839 - "Community 839"
 Cohesion: 0.40
-Nodes (5): phase_index, name, notNull, primaryKey, type
+Nodes (5): estimated_seconds_left, name, notNull, primaryKey, type
 
 ### Community 840 - "Community 840"
 Cohesion: 0.40
-Nodes (5): refreshTokenExpiresAt, name, notNull, primaryKey, type
+Nodes (5): imported_at, name, notNull, primaryKey, type
 
 ### Community 841 - "Community 841"
 Cohesion: 0.40
@@ -4043,7 +4055,7 @@ Nodes (5): musical_mode, name, notNull, primaryKey, type
 
 ### Community 850 - "Community 850"
 Cohesion: 0.40
-Nodes (5): phase, name, notNull, primaryKey, type
+Nodes (5): key_confidence, name, notNull, primaryKey, type
 
 ### Community 851 - "Community 851"
 Cohesion: 0.33
@@ -4087,7 +4099,7 @@ Nodes (5): deleted_at, name, notNull, primaryKey, type
 
 ### Community 861 - "Community 861"
 Cohesion: 0.40
-Nodes (5): name, notNull, primaryKey, type, accountId
+Nodes (5): password, name, notNull, primaryKey, type
 
 ### Community 862 - "Community 862"
 Cohesion: 0.40
@@ -4099,7 +4111,7 @@ Nodes (5): embeddings_shape, name, notNull, primaryKey, type
 
 ### Community 864 - "Community 864"
 Cohesion: 0.40
-Nodes (3): Convert SongsetItem to dictionary.          Args:             include_joined: Wh, Convert Songset to dictionary.          Returns:             Dictionary represen, Any
+Nodes (5): phase, name, notNull, primaryKey, type
 
 ### Community 865 - "Community 865"
 Cohesion: 0.40
@@ -4195,7 +4207,7 @@ Nodes (5): file_size_bytes, name, notNull, primaryKey, type
 
 ### Community 888 - "Community 888"
 Cohesion: 0.40
-Nodes (5): mp3_r2_key, name, notNull, primaryKey, type
+Nodes (5): r2_lrc_url, name, notNull, primaryKey, type
 
 ### Community 889 - "Community 889"
 Cohesion: 0.40
@@ -4227,7 +4239,7 @@ Nodes (5): phase_index, name, notNull, primaryKey, type
 
 ### Community 896 - "Community 896"
 Cohesion: 0.40
-Nodes (5): visibility_status, name, notNull, primaryKey, type
+Nodes (5): r2_stems_url, name, notNull, primaryKey, type
 
 ### Community 897 - "Community 897"
 Cohesion: 0.40
@@ -4367,7 +4379,7 @@ Nodes (5): total_phases, name, notNull, primaryKey, type
 
 ### Community 931 - "Community 931"
 Cohesion: 0.40
-Nodes (5): embeddings_shape, name, notNull, primaryKey, type
+Nodes (5): refreshToken, name, notNull, primaryKey, type
 
 ### Community 932 - "Community 932"
 Cohesion: 0.40
@@ -4383,7 +4395,7 @@ Nodes (5): deleted_at, name, notNull, primaryKey, type
 
 ### Community 935 - "Community 935"
 Cohesion: 0.40
-Nodes (5): file_size_bytes, name, notNull, primaryKey, type
+Nodes (5): song_id, name, notNull, primaryKey, type
 
 ### Community 936 - "Community 936"
 Cohesion: 0.40
@@ -4395,7 +4407,7 @@ Nodes (5): embeddings_shape, name, notNull, primaryKey, type
 
 ### Community 938 - "Community 938"
 Cohesion: 0.40
-Nodes (5): file_size_bytes, name, notNull, primaryKey, type
+Nodes (5): tempo_bpm, name, notNull, primaryKey, type
 
 ### Community 939 - "Community 939"
 Cohesion: 0.40
@@ -4471,7 +4483,7 @@ Nodes (5): total_phases, name, notNull, primaryKey, type
 
 ### Community 957 - "Community 957"
 Cohesion: 0.40
-Nodes (5): mp3_r2_key, name, notNull, primaryKey, type
+Nodes (5): elapsed_seconds, name, notNull, primaryKey, type
 
 ### Community 958 - "Community 958"
 Cohesion: 0.40
@@ -4574,8 +4586,8 @@ Cohesion: 0.40
 Nodes (5): visibility_status, name, notNull, primaryKey, type
 
 ### Community 983 - "Community 983"
-Cohesion: 0.40
-Nodes (5): name, notNull, primaryKey, type, analysis_job_id
+Cohesion: 0.33
+Nodes (6): name, notNull, primaryKey, type, analysis_job_id, columns
 
 ### Community 984 - "Community 984"
 Cohesion: 0.40
@@ -4603,7 +4615,7 @@ Nodes (5): hash_prefix, name, notNull, primaryKey, type
 
 ### Community 990 - "Community 990"
 Cohesion: 0.40
-Nodes (5): completed_at, name, notNull, primaryKey, type
+Nodes (5): idToken, name, notNull, primaryKey, type
 
 ### Community 991 - "Community 991"
 Cohesion: 0.40
@@ -4627,7 +4639,7 @@ Nodes (5): original_filename, name, notNull, primaryKey, type
 
 ### Community 996 - "Community 996"
 Cohesion: 0.40
-Nodes (5): hash_prefix, name, notNull, primaryKey, type
+Nodes (5): password, name, notNull, primaryKey, type
 
 ### Community 997 - "Community 997"
 Cohesion: 0.40
@@ -4651,7 +4663,7 @@ Nodes (5): songset_id, name, notNull, primaryKey, type
 
 ### Community 1002 - "Community 1002"
 Cohesion: 0.40
-Nodes (5): r2_lrc_url, name, notNull, primaryKey, type
+Nodes (5): phase, name, notNull, primaryKey, type
 
 ### Community 1003 - "Community 1003"
 Cohesion: 0.40
@@ -4683,11 +4695,11 @@ Nodes (5): duration_seconds, name, notNull, primaryKey, type
 
 ### Community 1010 - "Community 1010"
 Cohesion: 0.40
-Nodes (5): completed_at, name, notNull, primaryKey, type
+Nodes (5): providerId, name, notNull, primaryKey, type
 
 ### Community 1011 - "Community 1011"
 Cohesion: 0.40
-Nodes (5): lrc_job_id, name, notNull, primaryKey, type
+Nodes (5): songset_id, name, notNull, primaryKey, type
 
 ### Community 1012 - "Community 1012"
 Cohesion: 0.40
@@ -4733,6 +4745,10 @@ Nodes (5): musical_mode, name, notNull, primaryKey, type
 Cohesion: 0.40
 Nodes (5): original_filename, name, notNull, primaryKey, type
 
+### Community 1023 - "Community 1023"
+Cohesion: 0.40
+Nodes (5): name, notNull, primaryKey, type, accessTokenExpiresAt
+
 ### Community 1024 - "Community 1024"
 Cohesion: 0.40
 Nodes (5): visibility_status, name, notNull, primaryKey, type
@@ -4743,7 +4759,7 @@ Nodes (5): r2_lrc_url, name, notNull, primaryKey, type
 
 ### Community 1026 - "Community 1026"
 Cohesion: 0.40
-Nodes (5): song_id, name, notNull, primaryKey, type
+Nodes (5): file_size_bytes, name, notNull, primaryKey, type
 
 ### Community 1027 - "Community 1027"
 Cohesion: 0.40
@@ -4763,7 +4779,7 @@ Nodes (5): youtube_url, name, notNull, primaryKey, type
 
 ### Community 1031 - "Community 1031"
 Cohesion: 0.40
-Nodes (5): started_at, name, notNull, primaryKey, type
+Nodes (5): phase_index, name, notNull, primaryKey, type
 
 ### Community 1032 - "Community 1032"
 Cohesion: 0.40
@@ -4791,11 +4807,11 @@ Nodes (5): phase_index, name, notNull, primaryKey, type
 
 ### Community 1038 - "Community 1038"
 Cohesion: 0.40
-Nodes (5): scope, name, notNull, primaryKey, type
+Nodes (5): refreshToken, name, notNull, primaryKey, type
 
 ### Community 1039 - "Community 1039"
 Cohesion: 0.40
-Nodes (5): name, notNull, primaryKey, type, accessTokenExpiresAt
+Nodes (5): refreshTokenExpiresAt, name, notNull, primaryKey, type
 
 ### Community 1040 - "Community 1040"
 Cohesion: 0.40
@@ -4835,7 +4851,7 @@ Nodes (5): key_window_agreement, name, notNull, primaryKey, type
 
 ### Community 1049 - "Community 1049"
 Cohesion: 0.40
-Nodes (5): estimated_total_seconds, name, notNull, primaryKey, type
+Nodes (5): scope, name, notNull, primaryKey, type
 
 ### Community 1050 - "Community 1050"
 Cohesion: 0.40
@@ -4875,7 +4891,7 @@ Nodes (5): r2_lrc_url, name, notNull, primaryKey, type
 
 ### Community 1059 - "Community 1059"
 Cohesion: 0.40
-Nodes (5): refreshToken, name, notNull, primaryKey, type
+Nodes (5): started_at, name, notNull, primaryKey, type
 
 ### Community 1060 - "Community 1060"
 Cohesion: 0.40
@@ -5221,14 +5237,6 @@ Nodes (3): Signal summary, Top-10 lines to spot-check, wo_yao_kan_jian_146 —
 Cohesion: 0.40
 Nodes (5): r2_stems_url, name, notNull, primaryKey, type
 
-### Community 1301 - "Community 1301"
-Cohesion: 0.40
-Nodes (5): elapsed_seconds, name, notNull, primaryKey, type
-
-### Community 1302 - "Community 1302"
-Cohesion: 0.40
-Nodes (5): password, name, notNull, primaryKey, type
-
 ### Community 1303 - "Community 1303"
 Cohesion: 0.40
 Nodes (5): sections, name, notNull, primaryKey, type
@@ -5242,12 +5250,12 @@ Cohesion: 0.40
 Nodes (5): total_duration_seconds, name, notNull, primaryKey, type
 
 ### Community 1306 - "Community 1306"
-Cohesion: 0.03
-Nodes (55): Exception, Path, ErrorLogger, get_error_logger(), get_session_logger(), init_error_logger(), init_session_logger(), Error logging utility for Transition Builder app.  Provides centralized error lo (+47 more)
+Cohesion: 0.02
+Nodes (87): Path, Transition generation service for TUI.  Handles generation of audio transitions, TransitionGenerationService, TransitionParams, TransitionRecord, Exception, Path, ErrorLogger (+79 more)
 
 ### Community 1307 - "Community 1307"
 Cohesion: 0.03
-Nodes (76): App, Get a songset by ID, scoped to the current user.          Args:             song, Move an item to a new position.          Args:             item_id: The item ID., AppScreen, add_user(), delete_user(), _get_user_client(), list_users() (+68 more)
+Nodes (110): AppScreen, from_row(), Data models for Better Auth identity entities.  Shared between admin (``sow-admi, A user identity (Better Auth ``"user"`` table row).      Attributes:         id:, Create a User from a ``"user"`` table row.          Args:             row: Row t, Convert User to a snake_case dictionary., User, ExportProgress (+102 more)
 
 ### Community 1308 - "Community 1308"
 Cohesion: 0.40
@@ -5273,10 +5281,6 @@ Nodes (5): estimated_seconds_left, name, notNull, primaryKey, type
 Cohesion: 0.40
 Nodes (5): hash_prefix, name, notNull, primaryKey, type
 
-### Community 1320 - "Community 1320"
-Cohesion: 0.40
-Nodes (5): idToken, name, notNull, primaryKey, type
-
 ### Community 1321 - "Community 1321"
 Cohesion: 0.40
 Nodes (5): key_confidence, name, notNull, primaryKey, type
@@ -5284,14 +5288,6 @@ Nodes (5): key_confidence, name, notNull, primaryKey, type
 ### Community 1322 - "Community 1322"
 Cohesion: 0.40
 Nodes (5): loudness_db, name, notNull, primaryKey, type
-
-### Community 1323 - "Community 1323"
-Cohesion: 0.40
-Nodes (5): phase, name, notNull, primaryKey, type
-
-### Community 1324 - "Community 1324"
-Cohesion: 0.40
-Nodes (5): providerId, name, notNull, primaryKey, type
 
 ### Community 1325 - "Community 1325"
 Cohesion: 0.40
@@ -5305,10 +5301,6 @@ Nodes (5): r2_stems_url, name, notNull, primaryKey, type
 Cohesion: 0.40
 Nodes (5): sections, name, notNull, primaryKey, type
 
-### Community 1328 - "Community 1328"
-Cohesion: 0.40
-Nodes (5): songset_id, name, notNull, primaryKey, type
-
 ### Community 1329 - "Community 1329"
 Cohesion: 0.40
 Nodes (5): total_duration_seconds, name, notNull, primaryKey, type
@@ -5318,18 +5310,18 @@ Cohesion: 0.40
 Nodes (5): total_phases, name, notNull, primaryKey, type
 
 ## Knowledge Gaps
-- **7442 isolated node(s):** `projectId`, `orgId`, `projectName`, `String`, `Bundle` (+7437 more)
+- **7440 isolated node(s):** `projectId`, `orgId`, `projectName`, `String`, `Bundle` (+7435 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **153 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **155 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Input` connect `Community 232` to `Community 385`, `Community 76`, `Community 52`, `Community 383`?**
-  _High betweenness centrality (0.068) - this node is a cross-community bridge._
-- **Why does `Json` connect `Community 473` to `Community 0`, `Community 257`, `Community 1`, `Community 258`, `Community 4`, `Community 388`, `Community 6`, `Community 7`, `Community 8`, `Community 10`, `Community 11`, `Community 396`, `Community 141`, `Community 142`, `Community 401`, `Community 402`, `Community 148`, `Community 404`, `Community 405`, `Community 151`, `Community 25`, `Community 1306`, `Community 412`, `Community 163`, `Community 548`, `Community 165`, `Community 551`, `Community 47`, `Community 563`, `Community 51`, `Community 566`, `Community 191`, `Community 193`, `Community 65`, `Community 67`, `Community 197`, `Community 202`, `Community 206`, `Community 463`, `Community 209`, `Community 466`, `Community 210`, `Community 213`, `Community 471`, `Community 88`, `Community 475`, `Community 98`, `Community 612`, `Community 229`, `Community 230`, `Community 103`, `Community 106`, `Community 364`, `Community 241`, `Community 246`, `Community 248`, `Community 508`, `Community 382`?**
-  _High betweenness centrality (0.050) - this node is a cross-community bridge._
-- **Why does `SowApiClientFactory` connect `Community 88` to `Community 473`?**
+- **Why does `Input` connect `Community 232` to `Community 76`, `Community 52`?**
+  _High betweenness centrality (0.071) - this node is a cross-community bridge._
+- **Why does `Json` connect `Community 25` to `Community 257`, `Community 1`, `Community 258`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 10`, `Community 11`, `Community 396`, `Community 142`, `Community 401`, `Community 402`, `Community 404`, `Community 405`, `Community 154`, `Community 1306`, `Community 412`, `Community 163`, `Community 37`, `Community 165`, `Community 551`, `Community 50`, `Community 563`, `Community 51`, `Community 566`, `Community 191`, `Community 64`, `Community 67`, `Community 202`, `Community 206`, `Community 463`, `Community 209`, `Community 466`, `Community 88`, `Community 473`, `Community 216`, `Community 475`, `Community 98`, `Community 612`, `Community 229`, `Community 103`, `Community 364`, `Community 241`, `Community 244`, `Community 246`, `Community 248`, `Community 508`, `Community 382`?**
+  _High betweenness centrality (0.049) - this node is a cross-community bridge._
+- **Why does `SowApiClientFactory` connect `Community 88` to `Community 25`?**
   _High betweenness centrality (0.037) - this node is a cross-community bridge._
 - **Are the 496 inferred relationships involving `R2Client` (e.g. with `Audio commands for sow-admin.  Provides CLI commands for downloading audio from` and `Display video preview in Rich Panel with duration warning.      Args:         vi`) actually correct?**
   _`R2Client` has 496 INFERRED edges - model-reasoned connections that need verification._
