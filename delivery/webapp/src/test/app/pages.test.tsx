@@ -23,6 +23,16 @@ vi.mock("@/lib/auth", () => ({
   auth: { api: { getSession: vi.fn().mockResolvedValue(null) } },
 }));
 
+// Signed-out tests never reach the dashboard queries; mock the module so the
+// page's server-only import of @/db (which requires SOW_DATABASE_URL) never
+// loads in the jsdom test environment.
+vi.mock("@/lib/db/dashboard", () => ({
+  getDashboardStats: vi.fn(),
+  getRecentSongsets: vi.fn(),
+  getRecentFavoriteSongs: vi.fn(),
+  getCommunityFavoriteSample: vi.fn(),
+}));
+
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({ data: null, isPending: false }),
   signOut: vi.fn(),
