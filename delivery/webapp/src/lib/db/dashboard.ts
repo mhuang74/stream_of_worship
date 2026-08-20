@@ -1,9 +1,9 @@
-import { and, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { songs, songsets, songsetShares, userFavorites } from "@/db/schema";
+import { recordings, songs, songsets, songsetShares, userFavorites } from "@/db/schema";
 import { listSongsetSummaries } from "./songsets";
 import { getFavoriteSongIds } from "./favorites";
-import { listSongs } from "./songs";
+import { listSongs, mapSongWithRecordings } from "./songs";
 import { toSongCardData } from "@/lib/song-card-data";
 import type { SongCardData } from "@/components/songset/SongCard";
 
@@ -128,11 +128,20 @@ export async function getCommunityFavoriteSample(
 
   const counts = new Map(rows.map((row) => [row.songId, row.favoriteCount]));
 
-  const { songs: songRows } = await listSongs(songIds.length, 0, {
-    visibilityStatus: ["published", "review"],
+  const songRows = await db.query.songs.findMany({
+    where: inArray(songs.id, songIds),
+    with: {
+      recordings: {
+        where: and(
+          inArray(recordings.visibilityStatus, ["published", "review"]),
+          isNull(recordings.deletedAt)
+        ),
+      },
+    },
   });
 
-  return toSongCardData(songRows)
-    .filter((song) => counts.has(song.id))
-    .map((song) => ({ ...song, favoriteCount: counts.get(song.id) ?? 0 }));
+  return toSongCardData(songRows.map(mapSongWithRecordings)).map((song) => ({
+    ...song,
+    favoriteCount: counts.get(song.id) ?? 0,
+  }));
 }
