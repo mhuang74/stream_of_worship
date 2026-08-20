@@ -85,7 +85,7 @@ export const songsetsBundle = bundle({
     "songsets.placeholder.name": "e.g., Sunday Worship",
     "songsets.placeholder.description": "e.g., Easter service songs",
     "songsets.placeholder.songsetName": "Songset name",
-    "songsets.searchPlaceholder": "Search songsets by name or description...",
+    "songsets.searchPlaceholder": "Search by songset name or song title, artist, album...",
 
     // Empty states
     "songsets.empty.noSongsets": "No songsets yet. Create one to get started.",
@@ -223,7 +223,7 @@ export const songsetsBundle = bundle({
     "songsets.placeholder.name": "例如：主日敬拜",
     "songsets.placeholder.description": "例如：復活節詩歌",
     "songsets.placeholder.songsetName": "詩歌集名稱",
-    "songsets.searchPlaceholder": "依名稱或描述搜尋詩歌集...",
+    "songsets.searchPlaceholder": "依詩歌集名稱或詩歌名稱、作者、專輯搜尋...",
 
     // Empty states
     "songsets.empty.noSongsets": "尚無詩歌集。建立一個以開始使用。",
