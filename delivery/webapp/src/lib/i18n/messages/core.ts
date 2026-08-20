@@ -44,7 +44,8 @@ export const core = bundle({
     "home.signedOut.subtitle":
       "Worship music transition and playback system. Manage songsets, render audio and video, and lead worship seamlessly.",
     "home.signedOut.heroTag": "Seamless worship music transitions",
-    "home.signedOut.heroTitle": "Lead worship without awkward pauses.",
+    "home.signedOut.heroTitleLead": "Lead worship without ",
+    "home.signedOut.heroTitleAccent": "awkward pauses.",
     "home.signedOut.heroDescription":
       "Stream of Worship analyzes tempo, key, and structure to generate smooth transitions between songs — then renders audio and lyrics videos for your service.",
     "home.signedOut.ctaPrimary": "Get started free",
@@ -234,7 +235,8 @@ export const core = bundle({
     "home.signedOut.subtitle":
       "敬拜音樂轉場與播放系統。管理詩歌集、渲染音訊與影片，無縫帶領敬拜。",
     "home.signedOut.heroTag": "無縫敬拜音樂轉場",
-    "home.signedOut.heroTitle": "帶領敬拜，無需尷尬停頓。",
+    "home.signedOut.heroTitleLead": "帶領敬拜，",
+    "home.signedOut.heroTitleAccent": "無需尷尬停頓。",
     "home.signedOut.heroDescription":
       "Stream of Worship 分析速度、調性與結構，生成歌曲間的流暢轉場——並為您的服事渲染音訊與歌詞影片。",
     "home.signedOut.ctaPrimary": "免費開始使用",

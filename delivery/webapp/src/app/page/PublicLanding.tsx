@@ -22,16 +22,20 @@ export function PublicLanding({ locale }: { locale: Locale }) {
   return (
     <div className="flex flex-col min-h-[60vh]">
       {/* Hero */}
-      <section className="bg-gradient-to-b from-primary/5 via-background to-background">
-        <div className="mx-auto max-w-6xl px-4 py-16 md:py-24 grid lg:grid-cols-2 gap-12 items-center">
+      <section className="gradient-hero border-b border-border">
+        <div className="mx-auto max-w-6xl px-4 py-20 md:py-28 grid md:grid-cols-2 gap-12 items-center">
           <div className="space-y-6">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
               ✦ {t(locale, "home.signedOut.heroTag")}
             </span>
-            <h1 className="text-4xl md:text-5xl font-bold leading-tight">
-              {t(locale, "home.signedOut.heroTitle")}
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
+              {t(locale, "home.signedOut.heroTitleLead")}
+              <br />
+              <span className="gradient-text">
+                {t(locale, "home.signedOut.heroTitleAccent")}
+              </span>
             </h1>
-            <p className="text-muted-foreground max-w-md">
+            <p className="text-muted-foreground text-lg max-w-md">
               {t(locale, "home.signedOut.heroDescription")}
             </p>
             <div className="flex flex-wrap items-center gap-3">
@@ -49,33 +53,54 @@ export function PublicLanding({ locale }: { locale: Locale }) {
           </div>
 
           {/* Static CSS mockup of the dashboard */}
-          <div className="hidden lg:block rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="size-8 rounded-full bg-primary/15" />
-              <div className="flex-1 h-4 rounded bg-muted" />
-              <div className="h-6 w-24 rounded-md bg-muted" />
-              <div className="h-6 w-24 rounded-md bg-muted" />
-            </div>
-            <div className="grid grid-cols-5 gap-2 mb-4">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="rounded-md border border-border bg-muted/40 p-2">
-                  <div className="size-4 rounded bg-muted mb-1.5" />
-                  <div className="h-3 w-3/4 rounded bg-muted" />
-                  <div className="h-4 w-1/2 rounded bg-muted mt-1" />
+          <div className="relative">
+            <div className="rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+              <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-muted/50">
+                <div className="size-2.5 rounded-full bg-red-400" />
+                <div className="size-2.5 rounded-full bg-yellow-400" />
+                <div className="size-2.5 rounded-full bg-green-400" />
+                <span className="ml-2 text-xs text-muted-foreground">streamofworship.app</span>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Welcome back, Michael</div>
+                  <div className="text-xs text-muted-foreground">Dashboard</div>
                 </div>
-              ))}
-            </div>
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="flex items-center gap-3 rounded-md border border-border p-2">
-                  <div className="size-8 rounded bg-muted" />
-                  <div className="flex-1 space-y-1">
-                    <div className="h-3 w-2/3 rounded bg-muted" />
-                    <div className="h-2 w-1/3 rounded bg-muted" />
+                <div className="grid grid-cols-5 gap-2">
+                  {[
+                    { value: "12", label: "Created" },
+                    { value: "8", label: "Rendered" },
+                    { value: "5", label: "Shared" },
+                    { value: "23", label: "Favorites" },
+                    { value: "340", label: "Catalog" },
+                  ].map((stat) => (
+                    <div key={stat.label} className="rounded-lg bg-muted p-2 text-center">
+                      <div className="text-lg font-bold">{stat.value}</div>
+                      <div className="text-[10px] text-muted-foreground">{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <div className="text-xs font-medium mb-2">Recent songsets</div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                      <div className="text-xs font-medium">主日敬拜 2026-08-23</div>
+                      <div className="text-[10px] text-muted-foreground">6 songs · 24:30</div>
+                    </div>
+                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                      <div className="text-xs font-medium">Youth Night Set</div>
+                      <div className="text-[10px] text-muted-foreground">4 songs · 18:12</div>
+                    </div>
                   </div>
-                  <div className="h-5 w-16 rounded-md bg-muted" />
                 </div>
-              ))}
+              </div>
+            </div>
+            <div className="absolute -bottom-4 -left-4 rounded-lg border border-border bg-card shadow-lg px-3 py-2 flex items-center gap-2">
+              <span className="text-lg">🎵</span>
+              <div>
+                <div className="text-xs font-semibold">Smooth transitions</div>
+                <div className="text-[10px] text-muted-foreground">Key & tempo matched</div>
+              </div>
             </div>
           </div>
         </div>
