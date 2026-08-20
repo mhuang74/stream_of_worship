@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { signUp } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
+import { useLocale } from "@/hooks/useLocale";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { t, locale } = useLocale();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,22 +30,22 @@ export default function RegisterPage() {
   function validate() {
     const next: typeof errors = {};
     if (!name) {
-      next.name = "Name is required";
+      next.name = t("auth.register.validation.nameRequired");
     }
     if (!email) {
-      next.email = "Email is required";
+      next.email = t("auth.register.validation.emailRequired");
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      next.email = "Enter a valid email address";
+      next.email = t("auth.register.validation.emailFormat");
     }
     if (!password) {
-      next.password = "Password is required";
+      next.password = t("auth.register.validation.passwordRequired");
     } else if (password.length < 8) {
-      next.password = "Password must be at least 8 characters";
+      next.password = t("auth.register.validation.passwordShort");
     }
     if (!confirmPassword) {
-      next.confirmPassword = "Please confirm your password";
+      next.confirmPassword = t("auth.register.validation.confirmRequired");
     } else if (confirmPassword !== password) {
-      next.confirmPassword = "Passwords do not match";
+      next.confirmPassword = t("auth.register.validation.confirmMismatch");
     }
     return next;
   }
@@ -58,13 +62,27 @@ export default function RegisterPage() {
     try {
       const result = await signUp.email({ email, password, name });
       if (result.error) {
-        setErrors({ form: result.error.message ?? "Registration failed" });
+        setErrors({ form: result.error.message ?? t("auth.register.error.failed") });
       } else {
+        // Persist the chosen display locale to user_settings so the post-login
+        // UI is in the selected language. Best-effort: navigation proceeds even
+        // if this fails (defaults to en).
+        if (locale !== "en") {
+          try {
+            await fetch("/api/settings", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ locale }),
+            });
+          } catch {
+            // best-effort
+          }
+        }
         router.push("/songsets");
         router.refresh();
       }
     } catch {
-      setErrors({ form: "An unexpected error occurred. Please try again." });
+      setErrors({ form: t("auth.register.error.unexpected") });
     } finally {
       setLoading(false);
     }
@@ -74,17 +92,20 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl">Create account</CardTitle>
-          <CardDescription>Enter your details to get started</CardDescription>
+          <div className="flex justify-end">
+            <AuthLanguageSwitcher />
+          </div>
+          <CardTitle className="text-2xl">{t("auth.register.title")}</CardTitle>
+          <CardDescription>{t("auth.register.subtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{t("auth.register.name")}</Label>
               <Input
                 id="name"
                 type="text"
-                placeholder="Your name"
+                placeholder={t("auth.register.namePlaceholder")}
                 autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -98,11 +119,11 @@ export default function RegisterPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.register.email")}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={t("auth.register.emailPlaceholder")}
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -116,7 +137,7 @@ export default function RegisterPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.register.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -133,18 +154,18 @@ export default function RegisterPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
+              <Label htmlFor="confirmPassword">{t("auth.register.confirmPassword")}</Label>
               <Input
                 id="confirmPassword"
                 type="password"
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                aria-describedby={errors.confirmPassword ? "confirm-password-error" : undefined}
+                aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined}
                 aria-invalid={!!errors.confirmPassword}
               />
               {errors.confirmPassword && (
-                <p id="confirm-password-error" className="text-sm text-destructive" role="alert">
+                <p id="confirmPassword-error" className="text-sm text-destructive" role="alert">
                   {errors.confirmPassword}
                 </p>
               )}
@@ -155,14 +176,14 @@ export default function RegisterPage() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Create account"}
+              {loading ? t("auth.register.submitting") : t("auth.register.submit")}
             </Button>
           </form>
           <p className="text-center text-sm text-muted-foreground mt-4">
-            Already have an account?{" "}
-            <a href="/login" className="text-primary underline-offset-4 hover:underline">
-              Sign in
-            </a>
+            {t("auth.register.hasAccount")}{" "}
+            <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+              {t("auth.register.signInLink")}
+            </Link>
           </p>
         </CardContent>
       </Card>

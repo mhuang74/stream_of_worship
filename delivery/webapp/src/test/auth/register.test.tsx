@@ -1,12 +1,16 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithLocale } from "@/test/render";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const { mockPush, mockRefresh, mockSignUp } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockRefresh: vi.fn(),
   mockSignUp: vi.fn(),
 }));
+
+const mockFetch = vi.fn();
+const originalFetch = global.fetch;
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
@@ -24,10 +28,16 @@ import RegisterPage from "@/app/register/page";
 describe("RegisterPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    global.fetch = mockFetch;
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   it("renders all fields", () => {
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     expect(screen.getByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
@@ -36,7 +46,7 @@ describe("RegisterPage", () => {
   });
 
   it("shows error when name is empty", async () => {
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
@@ -45,7 +55,7 @@ describe("RegisterPage", () => {
   });
 
   it("shows error when email is empty", async () => {
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() => {
@@ -55,7 +65,7 @@ describe("RegisterPage", () => {
   });
 
   it("shows error for invalid email format", async () => {
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "notanemail");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
@@ -65,7 +75,7 @@ describe("RegisterPage", () => {
   });
 
   it("shows error when password is empty", async () => {
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
@@ -75,7 +85,7 @@ describe("RegisterPage", () => {
   });
 
   it("shows error when password is too short", async () => {
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "short");
@@ -86,7 +96,7 @@ describe("RegisterPage", () => {
   });
 
   it("shows error when passwords do not match", async () => {
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
@@ -99,7 +109,7 @@ describe("RegisterPage", () => {
 
   it("calls signUp.email with correct args on valid submit", async () => {
     mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
@@ -116,7 +126,7 @@ describe("RegisterPage", () => {
 
   it("redirects to /songsets and calls refresh on success", async () => {
     mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
@@ -133,7 +143,7 @@ describe("RegisterPage", () => {
       data: null,
       error: { message: "User already exists" },
     });
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "existing@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
@@ -150,7 +160,7 @@ describe("RegisterPage", () => {
       resolve = r;
     });
     mockSignUp.mockReturnValue(pending);
-    render(<RegisterPage />);
+    renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
@@ -160,5 +170,42 @@ describe("RegisterPage", () => {
       expect(screen.getByRole("button", { name: /creating account/i })).toBeDisabled();
     });
     resolve!({ data: { user: { id: "1" } }, error: null });
+  });
+
+  it("persists zh-Hant locale via settings PUT when locale is zh-Hant", async () => {
+    mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
+    renderWithLocale(<RegisterPage />, "zh-Hant");
+    await userEvent.type(screen.getByLabelText("姓名"), "Test User");
+    await userEvent.type(screen.getByLabelText("電子郵件"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("密碼"), "password123");
+    await userEvent.type(screen.getByLabelText("確認密碼"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /建立帳號/i }));
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/settings",
+        expect.objectContaining({
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locale: "zh-Hant" }),
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/songsets");
+    });
+  });
+
+  it("does not call the settings API when locale is en", async () => {
+    mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
+    renderWithLocale(<RegisterPage />);
+    await userEvent.type(screen.getByLabelText("Name"), "Test User");
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    await userEvent.type(screen.getByLabelText("Confirm password"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/songsets");
+    });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });
