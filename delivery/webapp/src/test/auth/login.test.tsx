@@ -1,6 +1,7 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderWithLocale } from "@/test/render";
 
 const { mockPush, mockRefresh, mockSignIn } = vi.hoisted(() => ({
   mockPush: vi.fn(),
@@ -26,14 +27,14 @@ describe("LoginPage", () => {
   });
 
   it("renders email and password fields", () => {
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
   it("shows validation error when email is empty", async () => {
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
       expect(screen.getByText("Email is required")).toBeInTheDocument();
@@ -42,7 +43,7 @@ describe("LoginPage", () => {
   });
 
   it("shows validation error for invalid email format", async () => {
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "notanemail");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
@@ -51,7 +52,7 @@ describe("LoginPage", () => {
   });
 
   it("shows validation error when password is empty", async () => {
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
@@ -60,7 +61,7 @@ describe("LoginPage", () => {
   });
 
   it("shows validation error when password is too short", async () => {
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "short");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
@@ -71,7 +72,7 @@ describe("LoginPage", () => {
 
   it("calls signIn.email with credentials on valid submit", async () => {
     mockSignIn.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
@@ -85,7 +86,7 @@ describe("LoginPage", () => {
 
   it("redirects to /songsets on successful login", async () => {
     mockSignIn.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
@@ -99,7 +100,7 @@ describe("LoginPage", () => {
       data: null,
       error: { message: "Invalid email or password" },
     });
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "wrongpassword");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
@@ -114,7 +115,7 @@ describe("LoginPage", () => {
       resolve = r;
     });
     mockSignIn.mockReturnValue(pending);
-    render(<LoginPage />);
+    renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
@@ -122,5 +123,32 @@ describe("LoginPage", () => {
       expect(screen.getByRole("button", { name: /signing in/i })).toBeDisabled();
     });
     resolve!({ data: { user: { id: "1" } }, error: null });
+  });
+
+  it("switches to zh-Hant via the language switcher", async () => {
+    renderWithLocale(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: "繁體中文" }));
+    expect(
+      screen.getByText("登入", { selector: '[data-slot="card-title"]' })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("密碼")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "繁體中文" })).toHaveAttribute(
+      "aria-current",
+      "true"
+    );
+    expect(document.cookie).toContain("sow_locale=zh-Hant");
+  });
+
+  it("switches back to English and rewrites the cookie", async () => {
+    renderWithLocale(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: "繁體中文" }));
+    expect(document.cookie).toContain("sow_locale=zh-Hant");
+    await userEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(screen.getByText("Sign in", { selector: '[data-slot="card-title"]' })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "English" })).toHaveAttribute(
+      "aria-current",
+      "true"
+    );
+    expect(document.cookie).toContain("sow_locale=en");
   });
 });

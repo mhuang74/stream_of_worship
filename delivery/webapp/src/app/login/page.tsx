@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
+import { useLocale } from "@/hooks/useLocale";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
@@ -18,14 +22,14 @@ export default function LoginPage() {
   function validate() {
     const next: typeof errors = {};
     if (!email) {
-      next.email = "Email is required";
+      next.email = t("auth.signIn.validation.emailRequired");
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      next.email = "Enter a valid email address";
+      next.email = t("auth.signIn.validation.emailFormat");
     }
     if (!password) {
-      next.password = "Password is required";
+      next.password = t("auth.signIn.validation.passwordRequired");
     } else if (password.length < 8) {
-      next.password = "Password must be at least 8 characters";
+      next.password = t("auth.signIn.validation.passwordShort");
     }
     return next;
   }
@@ -42,13 +46,13 @@ export default function LoginPage() {
     try {
       const result = await signIn.email({ email, password });
       if (result.error) {
-        setErrors({ form: result.error.message ?? "Invalid email or password" });
+        setErrors({ form: result.error.message ?? t("auth.signIn.error.invalid") });
       } else {
         router.push("/songsets");
         router.refresh();
       }
     } catch {
-      setErrors({ form: "An unexpected error occurred. Please try again." });
+      setErrors({ form: t("auth.signIn.error.unexpected") });
     } finally {
       setLoading(false);
     }
@@ -58,17 +62,20 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl">Sign in</CardTitle>
-          <CardDescription>Enter your credentials to access Stream of Worship</CardDescription>
+          <div className="flex justify-end">
+            <AuthLanguageSwitcher />
+          </div>
+          <CardTitle className="text-2xl">{t("auth.signIn.title")}</CardTitle>
+          <CardDescription>{t("auth.signIn.subtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.signIn.email")}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={t("auth.signIn.emailPlaceholder")}
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -82,7 +89,7 @@ export default function LoginPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.signIn.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -104,14 +111,14 @@ export default function LoginPage() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? t("auth.signIn.submitting") : t("auth.signIn.submit")}
             </Button>
           </form>
           <p className="text-center text-sm text-muted-foreground mt-4">
-            Don&apos;t have an account?{" "}
-            <a href="/register" className="text-primary underline-offset-4 hover:underline">
-              Register
-            </a>
+            {t("auth.signIn.noAccount")}{" "}
+            <Link href="/register" className="text-primary underline-offset-4 hover:underline">
+              {t("auth.signIn.registerLink")}
+            </Link>
           </p>
         </CardContent>
       </Card>
