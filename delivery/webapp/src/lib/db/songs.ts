@@ -60,6 +60,7 @@ export interface RecordingInfo {
   r2LrcUrl: string | null;
   visibilityStatus: string | null;
   analysisStatus: string | null;
+  theme: string | null;
 }
 
 type SongRow = typeof songs.$inferSelect & {
@@ -110,6 +111,7 @@ function mapRecordingInfo(
     r2LrcUrl: recording.r2LrcUrl,
     visibilityStatus: recording.visibilityStatus,
     analysisStatus: recording.analysisStatus,
+    theme: recording.theme,
   };
 }
 
@@ -534,6 +536,7 @@ export async function semanticSearchSongs(
         r.r2_lrc_url,
         r.visibility_status,
         r.analysis_status,
+        r.theme,
         se.model_version,
         (1 - (se.embedding <=> ${vectorStr}::vector))::float AS similarity
       FROM song_embedding se
@@ -599,6 +602,7 @@ export async function semanticSearchSongs(
           r2LrcUrl: (row.r2_lrc_url as string | null) ?? null,
           visibilityStatus: (row.visibility_status as string | null) ?? null,
           analysisStatus: (row.analysis_status as string | null) ?? null,
+          theme: (row.theme as string | null) ?? null,
         },
       ],
     };

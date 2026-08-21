@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RenderStatusBadge } from "@/components/songset/RenderStatusBadge";
 import type { RenderState } from "@/components/songset/RenderStatusBadge";
+import { ThemeArcSpan } from "@/components/songset/ThemeLabel";
 import { Clock, Play, Share2 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 
@@ -16,6 +17,7 @@ export interface DashboardSongset {
   updatedAt: string;
   renderState: RenderState;
   lastCompletedRenderJobId: string | null;
+  themes: string[];
 }
 
 interface DashboardSongsetCardProps {
@@ -81,6 +83,9 @@ export function DashboardSongsetCard({
 
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <RenderStatusBadge state={songset.renderState} />
+          {songset.themes.length > 0 && (
+            <ThemeArcSpan themes={songset.themes} />
+          )}
         </div>
 
         <div className="flex items-center gap-2 mt-3">

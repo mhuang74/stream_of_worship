@@ -7,6 +7,7 @@ import { Music, Clock, Disc, Plus, Check, BadgeCheck, Play, Pause, Loader2 } fro
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { FavoriteButton } from "./FavoriteButton";
+import { ThemeLabel } from "./ThemeLabel";
 import { useLocale } from "@/hooks/useLocale";
 
 export interface SongCardData {
@@ -29,6 +30,7 @@ export interface SongCardData {
     effectiveKeyStartRoot?: string | null;
     effectiveKeyEndRoot?: string | null;
     visibilityStatus: string | null;
+    theme: string | null;
   }[];
 }
 
@@ -155,6 +157,11 @@ export function SongCard({
               <span className="truncate" data-testid="song-artist">
                 {artist}
               </span>
+              {song.albumName && (
+                <span className="truncate hidden sm:inline" data-testid="song-album">
+                  • {song.albumName}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
               {duration && (
@@ -171,12 +178,12 @@ export function SongCard({
               {tempo && (
                 <span data-testid="song-tempo">{Math.round(tempo)} {t("browse.bpm")}</span>
               )}
-              {song.albumName && (
-                <span className="truncate hidden sm:inline" data-testid="song-album">
-                  • {song.albumName}
-                </span>
-              )}
             </div>
+            {primaryRecording?.theme && (
+              <div className="mt-1">
+                <ThemeLabel theme={primaryRecording.theme} />
+              </div>
+            )}
           </div>
 
           {/* Favorite + Add buttons */}

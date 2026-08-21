@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { useLocale } from "@/hooks/useLocale";
 import { FavoriteButton } from "./FavoriteButton";
+import { ThemeLabel } from "./ThemeLabel";
 
 function escapeCssSelectorValue(value: string): string {
   const globalCss = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
@@ -61,6 +62,7 @@ export interface SongListItem {
     effectiveKey?: string | null;
     effectiveKeyStartPitchClass?: number | null;
     effectiveKeyEndPitchClass?: number | null;
+    theme?: string | null;
   } | null;
   gapBeats: number;
   crossfadeEnabled: number;
@@ -245,6 +247,11 @@ function SortableSongItem({
                   </span>
                 )}
               </div>
+              {item.recording?.theme && (
+                <div className="mt-1">
+                  <ThemeLabel theme={item.recording.theme} />
+                </div>
+              )}
             </div>
 
             {/* Transition indicator (for non-first songs) */}

@@ -536,10 +536,10 @@ class TestRecording:
 
     def test_recording_columns_select_order_matches_from_row(self):
         """Verify RECORDING_COLUMNS_SELECT column count and order matches
-        what from_row expects (36 columns in canonical order).
+        what from_row expects (38 columns in canonical order).
         """
         columns = [c.strip() for c in RECORDING_COLUMNS_SELECT.split(",") if c.strip()]
-        assert len(columns) == 36
+        assert len(columns) == 38
         assert columns[0] == "content_hash"
         assert columns[13] == "key_confidence"
         assert columns[14] == "key_algorithm_version"
@@ -551,9 +551,11 @@ class TestRecording:
         assert columns[33] == "visibility_status"
         assert columns[34] == "download_status"
         assert columns[35] == "deleted_at"
+        assert columns[36] == "theme"
+        assert columns[37] == "vocal_posture"
 
-    def test_from_row_36_column_canonical_order(self):
-        """Test from_row with 36-column schema including structured lyrics."""
+    def test_from_row_38_column_canonical_order(self):
+        """Test from_row with 38-column schema including theme/vocal_posture."""
         row = (
             "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # 0  content_hash
             "c6de4449928d",  # 1  hash_prefix
@@ -591,8 +593,10 @@ class TestRecording:
             "published",  # 33 visibility_status
             "completed",  # 34 download_status
             None,  # 35 deleted_at
+            "讚美",  # 36 theme
+            "To God",  # 37 vocal_posture
         )
-        assert len(row) == 36
+        assert len(row) == 38
         recording = Recording.from_row(row)
 
         assert recording.structured_lyrics_raw == "raw description text"
@@ -601,6 +605,8 @@ class TestRecording:
         assert recording.visibility_status == "published"
         assert recording.download_status == "completed"
         assert recording.deleted_at is None
+        assert recording.theme == "讚美"
+        assert recording.vocal_posture == "To God"
 
     def test_from_row_34_column_legacy_still_works(self):
         """34-column legacy row still deserialises (new fields → None)."""

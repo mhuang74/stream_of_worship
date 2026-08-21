@@ -22,6 +22,10 @@ _Avoid_: track, audio, file
 A detected structural segment of a Recording — such as a chorus, verse, or bridge — with per-segment musical features (BPM, key, energy) and an entry/exit role for transition planning. Admin-side only; users never interact with it directly.
 _Avoid_: section, part, segment
 
+**VocalPosture**:
+A 3-value classification of a song component's lyrical addressee: "To God", "About God", "To Congregation". Admin-side only; persisted at the component and recording level but not surfaced in the webapp.
+_Avoid_: voice, perspective, address
+
 > Three "section" concepts exist in the codebase and are easily confused:
 > - `Song.sections` — scraped lyric sections from sop.org (lyric structure).
 > - `Recording.sections` — allin1 analysis section labels (audio structure boundaries).
@@ -38,7 +42,7 @@ The changeover between adjacent songs in a Songset, controlled by five parameter
 _Avoid_: crossfade, segue, bridge
 
 **Theme**:
-A fixed 12-value vocabulary classifying a song's worship theme: 讚美, 感恩, 敬拜, 奉獻, 認罪, 差遣, 信心, 祈禱, 復興, 聖靈, 十字架, 跟隨. Each theme maps to a Worship Arc phase; a ThemeAnchor is the reference embedding used to classify a song's themes by cosine similarity.
+A fixed 12-value vocabulary classifying a song's worship theme: 讚美, 感恩, 敬拜, 奉獻, 認罪, 差遣, 信心, 祈禱, 復興, 聖靈, 十字架, 跟隨. Each theme maps to a Worship Arc phase; a ThemeAnchor is the reference embedding used to classify a song's themes by cosine similarity. At the recording level, the theme is aggregated from component-level classifications (most frequent, with chorus-preference tie-breaking) and persisted as `recordings.theme`.
 _Avoid_: tag, category, label
 
 **Worship Arc**:

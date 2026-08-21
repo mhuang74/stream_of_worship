@@ -980,6 +980,45 @@ class DatabaseClient:
                 (structured_lyrics_raw, structured_lyrics, hash_prefix),
             )
 
+    def update_recording_theme(
+        self,
+        hash_prefix: str,
+        theme: Optional[str],
+        vocal_posture: Optional[str],
+    ) -> bool:
+        """Update the recording-level theme and vocal_posture aggregate.
+
+        Coerces out-of-enum values to None using the canonical frozensets
+        (mirrors the upsert_song_components coercion pattern).
+
+        Args:
+            hash_prefix: The hash prefix of the recording.
+            theme: Aggregated theme (one of SONG_COMPONENT_THEMES, or None).
+            vocal_posture: Aggregated posture (one of SONG_COMPONENT_VOCAL_POSTURES, or None).
+
+        Returns:
+            True if a row was updated, False if no recording matched.
+        """
+        coerced_theme = theme if (theme is None or theme in _SONG_COMPONENT_THEME_SET) else None
+        coerced_posture = (
+            vocal_posture
+            if (vocal_posture is None or vocal_posture in _SONG_COMPONENT_POSTURE_SET)
+            else None
+        )
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings
+                SET theme = %s,
+                    vocal_posture = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s
+                """,
+                (coerced_theme, coerced_posture, hash_prefix),
+            )
+            return cursor.rowcount > 0
+
     def get_recording_by_job_id(
         self, job_id: str, job_type: str = "analysis"
     ) -> Optional[Recording]:

@@ -110,6 +110,8 @@ export const recordings = pgTable("recordings", {
   visibilityStatus: text("visibility_status"),
   downloadStatus: text("download_status").default("pending"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  theme: text("theme"),
+  vocalPosture: text("vocal_posture"),
 }, (t) => [
   index("idx_recordings_song_visibility_deleted").on(t.songId, t.visibilityStatus, t.deletedAt),
 ]);
