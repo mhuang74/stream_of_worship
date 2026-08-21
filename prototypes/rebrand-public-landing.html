@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clapping Tree — Public Landing (Rebrand Prototype)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          /* Brand palette sampled from brand_logo_clapping_hands.jpg */
+          background: "#faf6ea",          /* warm cream (logo paper) */
+          foreground: "#2e2a20",          /* warm olive-charcoal */
+          card: "#fffdf6",                /* lighter cream */
+          "card-foreground": "#2e2a20",
+          muted: "#f0ead6",               /* muted cream */
+          "muted-foreground": "#6f6a55",  /* warm gray-olive */
+          primary: "#1c6786",             /* deep teal (badge ring text) */
+          "primary-foreground": "#faf8ed",
+          secondary: "#5b955c",           /* olive green (leaves) */
+          "secondary-foreground": "#faf8ed",
+          gold: "#e9a83a",                /* sun gold (deeper, for text) */
+          "gold-bright": "#f8c625",       /* sun gold (badge center) */
+          border: "#e4dcc4",              /* warm sand border */
+        },
+        fontFamily: {
+          sans: ["Inter", "system-ui", "sans-serif"],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { font-family: Inter, system-ui, sans-serif; }
+  .gradient-hero {
+    background:
+      radial-gradient(ellipse 60% 50% at 85% 10%, rgba(91, 149, 92, 0.10), transparent),
+      radial-gradient(ellipse 50% 40% at 10% 90%, rgba(28, 103, 134, 0.08), transparent),
+      linear-gradient(135deg, #f6efdb 0%, #eff2e4 50%, #f9f0d4 100%);
+  }
+  .gradient-text {
+    background: linear-gradient(135deg, #1c6786, #5b955c);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .logo-round {
+    border-radius: 9999px;
+    object-fit: cover;
+    object-position: center;
+  }
+</style>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<!-- Header -->
+<header class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
+  <div class="flex h-14 items-center gap-4 px-4 max-w-6xl mx-auto">
+    <a href="/" class="flex items-center gap-2 font-semibold">
+      <img src="assets/brand_logo_clapping_hands.jpg" alt="Clapping Tree logo" class="logo-round size-8 ring-1 ring-border">
+      <span class="text-primary">Clapping Tree</span>
+    </a>
+    <nav class="hidden lg:flex items-center gap-6 ml-6" aria-label="Main navigation">
+      <a href="#features" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Features</a>
+      <a href="#how-it-works" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">How it works</a>
+      <a href="#" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Songs</a>
+    </nav>
+    <div class="ml-auto flex items-center gap-2">
+      <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-border bg-card hover:bg-muted hover:text-foreground text-sm font-medium h-8 px-2.5 transition-all">Sign in</a>
+      <a href="/register" class="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/85 text-sm font-medium h-8 px-2.5 transition-all">Create account</a>
+    </div>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="gradient-hero border-b border-border">
+  <div class="max-w-6xl mx-auto px-4 py-20 md:py-28 grid md:grid-cols-2 gap-12 items-center">
+    <div>
+      <span class="inline-flex items-center rounded-full border border-border bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground mb-6">
+        ✦ Seamless worship music transitions
+      </span>
+      <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
+        From Bible Verse to<br><span class="gradient-text">Chrome-Casted Lyrics.</span>
+      </h1>
+      <p class="text-secondary text-lg mt-4 italic font-medium">
+        Songs that move people, like trees that clap.
+      </p>
+      <p class="text-muted-foreground mt-2 max-w-md">
+        Clapping Tree analyzes tempo, key, and structure to generate smooth transitions between songs — then renders audio and lyrics videos for your service.
+      </p>
+      <div class="flex items-center gap-3 mt-8">
+        <a href="/register" class="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/85 text-sm font-medium h-9 px-4 transition-all">
+          Get started free
+        </a>
+        <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-border bg-card hover:bg-muted hover:text-foreground text-sm font-medium h-9 px-4 transition-all">
+          Sign in
+        </a>
+      </div>
+      <p class="text-xs text-muted-foreground mt-4">No credit card required · Free for personal use</p>
+    </div>
+    <div class="relative">
+      <!-- Logo stamp overlapping the mockup -->
+      <img src="assets/brand_logo_clapping_hands.jpg" alt="Clapping Tree badge" class="logo-round absolute -top-8 -right-4 size-24 md:size-28 shadow-lg ring-4 ring-background z-10">
+      <!-- Mock app screenshot -->
+      <div class="rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+        <div class="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-muted/50">
+          <span class="size-2.5 rounded-full bg-red-400"></span>
+          <span class="size-2.5 rounded-full bg-yellow-400"></span>
+          <span class="size-2.5 rounded-full bg-green-400"></span>
+          <span class="ml-2 text-xs text-muted-foreground">clappingtree.app</span>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold flex items-center gap-1.5">
+              <img src="assets/brand_logo_clapping_hands.jpg" alt="" class="logo-round size-4">
+              Welcome back, Michael
+            </div>
+            <div class="text-xs text-muted-foreground">Dashboard</div>
+          </div>
+          <div class="grid grid-cols-5 gap-2">
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold text-primary">12</div><div class="text-[10px] text-muted-foreground">Created</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold text-primary">8</div><div class="text-[10px] text-muted-foreground">Rendered</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold text-primary">5</div><div class="text-[10px] text-muted-foreground">Shared</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold text-primary">23</div><div class="text-[10px] text-muted-foreground">Favorites</div></div>
+            <div class="rounded-lg bg-muted p-2 text-center"><div class="text-lg font-bold text-primary">340</div><div class="text-[10px] text-muted-foreground">Catalog</div></div>
+          </div>
+          <div class="rounded-lg border border-border p-3">
+            <div class="text-xs font-medium mb-2">Recent songsets</div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                <span class="text-xs font-medium">主日敬拜 2026-08-23</span>
+                <span class="text-[10px] text-muted-foreground">6 songs · 24:30</span>
+              </div>
+              <div class="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+                <span class="text-xs font-medium">Youth Night Set</span>
+                <span class="text-[10px] text-muted-foreground">4 songs · 18:12</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Floating badge -->
+      <div class="absolute -bottom-4 -left-4 rounded-lg border border-border bg-card shadow-lg px-3 py-2 flex items-center gap-2">
+        <span class="size-7 rounded-full bg-gold-bright/30 flex items-center justify-center text-sm">👏</span>
+        <div>
+          <div class="text-xs font-semibold">Smooth transitions</div>
+          <div class="text-[10px] text-muted-foreground">Key & tempo matched</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features" class="max-w-6xl mx-auto px-4 py-16">
+  <h2 class="text-2xl font-bold text-center mb-2">Everything you need for a seamless service</h2>
+  <p class="text-muted-foreground text-center max-w-lg mx-auto mb-12">From song selection to rendered video, Clapping Tree handles the technical details so you can focus on leading.</p>
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="rounded-xl border border-border bg-card p-6 hover:shadow-md transition-shadow">
+      <div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">🎼</div>
+      <h3 class="font-semibold mb-2">Build songsets</h3>
+      <p class="text-sm text-muted-foreground">Curate songs from a catalog of 300+ worship songs. Reorder, adjust keys, and preview transitions before you commit.</p>
+    </div>
+    <div class="rounded-xl border border-border bg-card p-6 hover:shadow-md transition-shadow">
+      <div class="size-10 rounded-lg bg-secondary/15 flex items-center justify-center mb-4">🎬</div>
+      <h3 class="font-semibold mb-2">Render audio & video</h3>
+      <p class="text-sm text-muted-foreground">Generate a single audio file with smooth crossfades, plus a lyrics video with your choice of template, resolution, and fonts.</p>
+    </div>
+    <div class="rounded-xl border border-border bg-card p-6 hover:shadow-md transition-shadow">
+      <div class="size-10 rounded-lg bg-gold-bright/20 flex items-center justify-center mb-4">🔗</div>
+      <h3 class="font-semibold mb-2">Share with your team</h3>
+      <p class="text-sm text-muted-foreground">Share rendered songsets with your worship team via a link. No accounts needed for viewers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how-it-works" class="bg-muted/50 border-y border-border">
+  <div class="max-w-6xl mx-auto px-4 py-16">
+    <h2 class="text-2xl font-bold text-center mb-12">How it works</h2>
+    <div class="grid md:grid-cols-4 gap-8">
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">1</div>
+        <h3 class="font-semibold text-sm mb-1">Pick your songs</h3>
+        <p class="text-xs text-muted-foreground">Browse the catalog and add songs to a songset.</p>
+      </div>
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">2</div>
+        <h3 class="font-semibold text-sm mb-1">Tune transitions</h3>
+        <p class="text-xs text-muted-foreground">Adjust gap beats, key shifts, and preview each transition.</p>
+      </div>
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">3</div>
+        <h3 class="font-semibold text-sm mb-1">Render</h3>
+        <p class="text-xs text-muted-foreground">Generate the audio mix and lyrics video in the cloud.</p>
+      </div>
+      <div class="text-center">
+        <div class="size-10 mx-auto rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold mb-3">4</div>
+        <h3 class="font-semibold text-sm mb-1">Lead & share</h3>
+        <p class="text-xs text-muted-foreground">Play from any device or share a link with your team.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="max-w-6xl mx-auto px-4 py-16 text-center">
+  <h2 class="text-3xl font-bold mb-3">Ready to lead worship seamlessly?</h2>
+  <p class="text-muted-foreground mb-8">Join the community of worship leaders using Clapping Tree.</p>
+  <div class="flex items-center justify-center gap-3">
+    <a href="/register" class="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/85 text-sm font-medium h-9 px-4 transition-all">Create your free account</a>
+    <a href="/login" class="inline-flex items-center justify-center rounded-lg border border-border bg-card hover:bg-muted hover:text-foreground text-sm font-medium h-9 px-4 transition-all">Sign in</a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-border">
+  <div class="max-w-6xl mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
+    <span class="flex items-center gap-2 text-sm font-semibold text-primary">
+      <img src="assets/brand_logo_clapping_hands.jpg" alt="" class="logo-round size-6 ring-1 ring-border">
+      Clapping Tree
+    </span>
+    <span class="text-xs text-muted-foreground italic text-center">"…the trees of the field shall clap their hands." — Isaiah 55:12</span>
+    <span class="text-xs text-muted-foreground">© 2026 Clapping Tree</span>
+  </div>
+</footer>
+
+</body>
+</html>
