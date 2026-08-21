@@ -16,6 +16,7 @@ import {
   RenderStatusBadge,
   RenderState,
 } from "./RenderStatusBadge";
+import { ThemeArcSpan } from "./ThemeLabel";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import {
@@ -57,6 +58,7 @@ export interface SongsetRowProps {
   onDownloadVideo?: () => void;
   onDelete?: () => void;
   className?: string;
+  themes?: string[];
 }
 
 export function SongsetRow({
@@ -81,6 +83,7 @@ export function SongsetRow({
   onDownloadVideo,
   onDelete,
   className,
+  themes,
 }: SongsetRowProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { t, locale } = useLocale();
@@ -230,6 +233,9 @@ export function SongsetRow({
                   errorMessage={renderErrorMessage}
                   failedAt={failedAt}
                 />
+                {themes && themes.length > 0 && (
+                  <ThemeArcSpan themes={themes} />
+                )}
                 {isOfflineAvailable && (
                   <Badge variant="secondary" className="text-xs gap-1">
                     <WifiOff className="size-3" />

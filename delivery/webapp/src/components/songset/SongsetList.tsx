@@ -33,6 +33,7 @@ export interface Songset {
   lastCompletedRenderJobId: string | null;
   renderErrorMessage?: string | null;
   failedAt?: Date | null;
+  themes?: string[];
 }
 
 interface SongsetListProps {

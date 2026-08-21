@@ -88,6 +88,12 @@ CREATE TABLE IF NOT EXISTS recordings (
     -- Download status (pending|processing|completed|failed)
     download_status TEXT DEFAULT 'pending',
 
+    -- Recording-level theme/posture (aggregated from song_components)
+    theme TEXT
+        CHECK (theme IN ('讚美','感恩','敬拜','奉獻','認罪','差遣','信心','祈禱','復興','聖靈','十字架','跟隨') OR theme IS NULL),
+    vocal_posture TEXT
+        CHECK (vocal_posture IN ('To God','About God','To Congregation') OR vocal_posture IS NULL),
+
     -- Soft delete timestamp (NULL = active)
     deleted_at timestamptz
 );
@@ -313,6 +319,15 @@ ALTER TABLE recordings ADD COLUMN IF NOT EXISTS structured_lyrics_raw TEXT;
 ALTER TABLE recordings ADD COLUMN IF NOT EXISTS structured_lyrics TEXT;
 """
 
+# Recording-level theme/posture aggregation (mode across song_components,
+# with chorus-preference tie-breaking). Idempotent — safe on existing tables.
+ALTER_RECORDINGS_THEME_POSTURE_COLUMNS = """
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS theme TEXT
+    CHECK (theme IN ('讚美','感恩','敬拜','奉獻','認罪','差遣','信心','祈禱','復興','聖靈','十字架','跟隨') OR theme IS NULL);
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS vocal_posture TEXT
+    CHECK (vocal_posture IN ('To God','About God','To Congregation') OR vocal_posture IS NULL);
+"""
+
 # Column list for song_components SELECT queries (matches SongComponent.from_row).
 # v5: 16 original + 11 new = 27 columns.
 SONG_COMPONENT_COLUMNS_SELECT = """
@@ -374,7 +389,7 @@ RECORDING_COLUMNS_SELECT = """
     embeddings_shape, analysis_status, analysis_job_id, lrc_status,
     lrc_job_id, created_at, updated_at, youtube_url,
     structured_lyrics_raw, structured_lyrics, visibility_status,
-    download_status, deleted_at
+    download_status, deleted_at, theme, vocal_posture
 """
 
 # Column lists for JOIN queries (used by catalog service and other query builders)
@@ -384,7 +399,7 @@ RECORDING_COLUMNS_FOR_JOIN = ", ".join(
 )
 
 SONG_COLUMN_COUNT = 24
-RECORDING_COLUMN_COUNT = 36
+RECORDING_COLUMN_COUNT = 38
 
 # SQL for listing active (non-deleted) songs
 ACTIVE_SONGS_QUERY = f"""

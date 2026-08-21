@@ -24,6 +24,7 @@ export function toSongCardData(songs: SongWithRecordings[]): SongCardData[] {
       effectiveKeyStartRoot: r.effectiveKeyStartRoot,
       effectiveKeyEndRoot: r.effectiveKeyEndRoot,
       visibilityStatus: r.visibilityStatus,
+      theme: r.theme,
     })),
   }));
 }

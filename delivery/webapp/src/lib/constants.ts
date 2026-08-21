@@ -95,3 +95,49 @@ export function formatBpmBandRangeText(band: BpmBandKey): string {
   }
   return `≥ ${config.min}`;
 }
+
+// ---------------------------------------------------------------------------
+// Song themes — 12-value vocabulary mirroring admin CLI SONG_COMPONENT_THEMES.
+// Each theme maps to a Worship Arc phase (1–5); THEME_PHASE_COLORS provides
+// one {bg, text} hex pair per phase for WCAG AA contrast on badges.
+// ---------------------------------------------------------------------------
+
+export const SONG_THEMES = [
+  "讚美",
+  "感恩",
+  "敬拜",
+  "奉獻",
+  "認罪",
+  "差遣",
+  "信心",
+  "祈禱",
+  "復興",
+  "聖靈",
+  "十字架",
+  "跟隨",
+] as const;
+
+export type SongTheme = (typeof SONG_THEMES)[number];
+
+export const THEME_TO_PHASE: Record<SongTheme, number> = {
+  讚美: 1,
+  感恩: 2,
+  敬拜: 3,
+  祈禱: 3,
+  信心: 3,
+  聖靈: 3,
+  奉獻: 4,
+  認罪: 4,
+  十字架: 4,
+  差遣: 5,
+  跟隨: 5,
+  復興: 5,
+};
+
+export const THEME_PHASE_COLORS: Record<number, { bg: string; text: string }> = {
+  1: { bg: "#fef3c7", text: "#92400e" }, // amber — Call/Praise
+  2: { bg: "#dcfce7", text: "#166534" }, // green — Thanksgiving
+  3: { bg: "#dbeafe", text: "#1e40af" }, // blue — Worship
+  4: { bg: "#fce7f3", text: "#9f1239" }, // rose — Response
+  5: { bg: "#ede9fe", text: "#5b21b6" }, // violet — Commission
+};

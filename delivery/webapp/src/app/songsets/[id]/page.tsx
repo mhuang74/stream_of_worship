@@ -58,6 +58,7 @@ export default async function SongsetEditorPage({
                 durationSeconds: item.recording.durationSeconds,
                 tempoBpm: item.recording.tempoBpm,
                 musicalKey: item.recording.musicalKey,
+                theme: item.recording.theme,
               }
             : null,
         })),

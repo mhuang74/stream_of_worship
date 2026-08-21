@@ -36,6 +36,7 @@ export interface PublicSongsetItem {
   effectiveKeyStartPitchClass: number | null;
   effectiveKeyEndPitchClass: number | null;
   keyWarning: EffectiveKey["warning"];
+  theme: string | null;
 }
 
 export interface SongsetPublicView {
@@ -74,6 +75,7 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
       keyScoreMargin: recordings.keyScoreMargin,
       keyWindowAgreement: recordings.keyWindowAgreement,
       recordingDeletedAt: recordings.deletedAt,
+      recordingTheme: recordings.theme,
     })
     .from(songsetItems)
     .leftJoin(songs, eq(songsetItems.songId, songs.id))
@@ -95,6 +97,7 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
       tempoBpm: item.tempoBpm,
       recordingMusicalKey: item.recordingMusicalKey,
       ...effectiveKeyFields(item),
+      theme: item.recordingTheme,
     }));
 
   const totalDurationSeconds = items.reduce(
@@ -220,6 +223,7 @@ export interface SongsetListItem {
   lastCompletedRenderJobId: string | null;
   renderErrorMessage: string | null;
   failedAt: Date | null;
+  themes: string[];
 }
 
 export interface SongsetItemRecording {
@@ -234,8 +238,8 @@ export interface SongsetItemRecording {
   effectiveKeyMode: EffectiveKey["mode"];
   effectiveKeyStartPitchClass: number | null;
   effectiveKeyEndPitchClass: number | null;
-  keyWarning: EffectiveKey["warning"];
   r2AudioUrl: string | null;
+  theme: string | null;
 }
 
 export interface SongsetItemDetail {
@@ -478,6 +482,7 @@ export async function listSongsetSummaries(
         renderErrorMessage: sql<string | null>`left(${renderJobs.errorMessage}, 4000)`,
         latestJobStartedAt: renderJobs.startedAt,
         latestJobCreatedAt: renderJobs.createdAt,
+        themes: sql<string[]>`array_agg(${recordings.theme}) filter (where ${recordings.deletedAt} is null and ${recordings.theme} is not null)`,
       })
       .from(songsets)
       .leftJoin(songsetItems, eq(songsetItems.songsetId, songsets.id))
@@ -523,6 +528,7 @@ export async function listSongsetSummaries(
           renderErrorMessage:
             renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
           failedAt: renderState === "failed" ? failedAt : null,
+          themes: (row.themes ?? []).filter(Boolean),
         };
       }),
     };
@@ -583,6 +589,7 @@ export async function getSongsetEditorData(
         keyScoreMargin: recordings.keyScoreMargin,
         keyWindowAgreement: recordings.keyWindowAgreement,
         r2AudioUrl: recordings.r2AudioUrl,
+        recordingTheme: recordings.theme,
         recordingDeletedAt: recordings.deletedAt,
         markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
       })
@@ -623,6 +630,7 @@ export async function getSongsetEditorData(
         recordings.keyScoreMargin,
         recordings.keyWindowAgreement,
         recordings.r2AudioUrl,
+        recordings.theme,
         recordings.deletedAt
       )
       .orderBy(asc(songsetItems.position));
@@ -663,6 +671,7 @@ export async function getSongsetEditorData(
             musicalKey: item.recordingMusicalKey,
             ...effectiveKeyFields(item),
             r2AudioUrl: item.r2AudioUrl,
+            theme: item.recordingTheme,
           }
         : null,
     }));
@@ -692,6 +701,9 @@ export async function getSongsetEditorData(
       renderErrorMessage:
         renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
       failedAt: renderState === "failed" ? failedAt : null,
+      themes: items
+        .map((item) => item.recording?.theme)
+        .filter((t): t is string => t != null),
       items,
     };
   });
@@ -930,6 +942,7 @@ export async function getSongset(
               musicalKey: item.recording.musicalKey,
               ...keyFields,
               r2AudioUrl: item.recording.r2AudioUrl,
+              theme: item.recording.theme,
             }
           : null,
       };
@@ -954,6 +967,9 @@ export async function getSongset(
     renderState,
     renderErrorMessage: null,
     failedAt: null,
+    themes: items
+      .map((item) => item.recording?.theme)
+      .filter((t): t is string => t != null),
     items,
   };
 }
@@ -979,10 +995,11 @@ export async function createSongset(
     lastFailedRenderJobId: row.lastFailedRenderJobId,
     lastCompletedRenderJobId: row.lastCompletedRenderJobId,
     itemCount: 0,
-    durationSeconds: null,
-    renderState: "unrendered",
     renderErrorMessage: null,
     failedAt: null,
+    themes: [],
+    durationSeconds: null,
+    renderState: "unrendered",
   };
 }
 
@@ -1037,8 +1054,10 @@ export async function updateSongset(
     renderState,
     renderErrorMessage: null,
     failedAt: null,
+    themes: [],
   };
 }
+
 
 export async function deleteSongset(id: string, userId: number): Promise<boolean> {
   const existing = await db.query.songsets.findFirst({
@@ -1139,6 +1158,7 @@ export async function addSongsetItem(
           musicalKey: item.recording.musicalKey,
           ...keyFields,
           r2AudioUrl: item.recording.r2AudioUrl,
+          theme: item.recording.theme,
         }
       : null,
   };
@@ -1225,6 +1245,7 @@ export async function updateSongsetItem(
           musicalKey: updated.recording.musicalKey,
           ...keyFields,
           r2AudioUrl: updated.recording.r2AudioUrl,
+          theme: updated.recording.theme,
         }
       : null,
   };

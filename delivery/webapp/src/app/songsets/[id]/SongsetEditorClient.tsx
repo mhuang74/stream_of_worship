@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
+import { ThemeLabel } from "@/components/songset/ThemeLabel";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
@@ -63,6 +64,7 @@ interface ApiSongsetItem {
     durationSeconds: number | null;
     tempoBpm: number | null;
     musicalKey: string | null;
+    theme?: string | null;
   } | null;
   markedLineCount?: number;
 }
@@ -526,8 +528,17 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     );
   }
 
+  const themes = [...new Set(items.map((i) => i.recording?.theme).filter(Boolean))] as string[];
+
   return (
     <>
+      {themes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          {themes.map((theme) => (
+            <ThemeLabel key={theme} theme={theme} />
+          ))}
+        </div>
+      )}
       <SongsetEditor
         songset={songset}
         items={items}

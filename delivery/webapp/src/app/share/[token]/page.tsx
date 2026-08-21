@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2, Monitor, AlertTriangle, Music, Clock } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { ThemeLabel } from "@/components/songset/ThemeLabel";
 import { formatTotalDuration } from "@/lib/i18n/format";
 
 interface PublicSongsetItem {
@@ -18,6 +19,7 @@ interface PublicSongsetItem {
   durationSeconds: number | null;
   tempoBpm: number | null;
   recordingMusicalKey: string | null;
+  theme: string | null;
 }
 
 interface ShareData {
@@ -215,6 +217,11 @@ export default function SharePage() {
                   <p className="text-xs text-muted-foreground truncate">
                     {[item.composer, item.lyricist].filter(Boolean).join(" • ") || item.albumName || ""}
                   </p>
+                  {item.theme && (
+                    <div className="mt-1">
+                      <ThemeLabel theme={item.theme} />
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 text-sm text-muted-foreground">
                   {item.songMusicalKey && (

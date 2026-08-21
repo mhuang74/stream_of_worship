@@ -2577,6 +2577,111 @@ def _render_components_table(
     console.print(table)
 
 
+def _aggregate_recording_theme(
+    components: list[SongComponent],
+) -> tuple[Optional[str], Optional[str]]:
+    """Aggregate recording-level theme and posture from component classifications.
+
+    Most frequent (mode) theme across components. Ties broken by:
+    1. First chorus (component_type='chorus', occurrence_index=1)
+    2. Highest average theme_confidence among tied themes
+    3. First occurrence (by start_time)
+
+    Same rule for vocal_posture. All-NULL components → (None, None).
+
+    Args:
+        components: List of SongComponent instances.
+
+    Returns:
+        (theme, vocal_posture) tuple.
+    """
+    from collections import defaultdict
+
+    from stream_of_worship.admin.db.schema import (
+        SONG_COMPONENT_THEMES,
+        SONG_COMPONENT_VOCAL_POSTURES,
+    )
+
+    theme_set = frozenset(SONG_COMPONENT_THEMES)
+    posture_set = frozenset(SONG_COMPONENT_VOCAL_POSTURES)
+
+    # Filter to valid, non-null classifications.
+    themed = [c for c in components if c.theme and c.theme in theme_set]
+    postured = [c for c in components if c.vocal_posture and c.vocal_posture in posture_set]
+
+    def _aggregate(
+        items: list[SongComponent],
+        attr: str,
+    ) -> Optional[str]:
+        if not items:
+            return None
+
+        # Count frequencies.
+        counts: dict[str, int] = defaultdict(int)
+        for c in items:
+            counts[getattr(c, attr)] += 1
+
+        max_count = max(counts.values())
+        tied = [v for v, cnt in counts.items() if cnt == max_count]
+        if len(tied) == 1:
+            return tied[0]
+
+        # Tie-break 1: first chorus preference.
+        chorus = next(
+            (
+                c
+                for c in items
+                if c.component_type == "chorus"
+                and c.occurrence_index == 1
+                and getattr(c, attr) in tied
+            ),
+            None,
+        )
+        if chorus is not None:
+            return getattr(chorus, attr)
+
+        # Tie-break 2: highest average confidence among tied values.
+        avg_conf: dict[str, float] = {}
+        for v in tied:
+            confs = [
+                getattr(c, f"{attr}_confidence") or 0.0
+                for c in items
+                if getattr(c, attr) == v
+            ]
+            avg_conf[v] = sum(confs) / len(confs) if confs else 0.0
+        best_conf = max(avg_conf.values())
+        conf_tied = [v for v, sc in avg_conf.items() if abs(sc - best_conf) < 1e-9]
+        if len(conf_tied) == 1:
+            return conf_tied[0]
+
+        # Tie-break 3: first occurrence by start_time.
+        first = min(
+            (c for c in items if getattr(c, attr) in conf_tied),
+            key=lambda c: c.start_time if c.start_time is not None else float("inf"),
+        )
+        return getattr(first, attr)
+
+    return _aggregate(themed, "theme"), _aggregate(postured, "vocal_posture")
+
+
+def _persist_recording_theme(
+    recording: Recording,
+    components: list[SongComponent],
+    db_client: DatabaseClient,
+) -> None:
+    """Aggregate theme/posture from components and persist to recordings row.
+
+    Silent on failure — recording-level theme is a convenience aggregate,
+    not a hard requirement. A DB error here should not fail the component
+    analysis pipeline.
+    """
+    try:
+        theme, posture = _aggregate_recording_theme(components)
+        db_client.update_recording_theme(recording.hash_prefix, theme, posture)
+    except Exception:
+        pass
+
+
 def _submit_component_analysis_job(
     recording: Recording,
     song_id: str,
@@ -2743,6 +2848,7 @@ def _submit_component_analysis_job(
                     db_client.upsert_song_components(
                         song_id, recording.content_hash, components
                     )
+                    _persist_recording_theme(recording, components, db_client)
                 return components
             console.print(
                 "[yellow]Cached components.json lacks requested LLM fields; "
@@ -2839,6 +2945,7 @@ def _submit_component_analysis_job(
         final_job.result.components, song_id, recording.content_hash
     )
     db_client.upsert_song_components(song_id, recording.content_hash, components)
+    _persist_recording_theme(recording, components, db_client)
 
     console.print(
         f"[green]Extracted {len(components)} component(s) "
@@ -2959,6 +3066,15 @@ def components_recording(
         ),
     ),
     format_: str = typer.Option("table", "--format", help="Output format (table|json)"),
+    backfill_song_classification: bool = typer.Option(
+        False,
+        "--backfill-song-classification",
+        help=(
+            "Skip analysis; read existing song_components rows, aggregate "
+            "theme/posture, and write recordings.theme / recordings.vocal_posture. "
+            "Works with --stdin for batch backfill."
+        ),
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Extract and display chorus/verse component metadata for a song.
@@ -2993,6 +3109,10 @@ def components_recording(
     progress messages go to stderr).
 
     Batch mode: pass --stdin to read song IDs from stdin (one per line).
+
+    --backfill-song-classification: skip analysis; read existing song_components
+    rows, aggregate theme/posture, and write recordings.theme / recordings.vocal_posture.
+    Works with --stdin for batch backfill.
     """
     # Flag override: --compute-all-fields enables advanced feature flags.
     # NOTE: does NOT set all_components — essential-only filtering still
@@ -3040,6 +3160,65 @@ def components_recording(
 
     db_client = get_db_client(config)
 
+    # --backfill-song-classification: skip analysis, aggregate from existing
+    # song_components rows and write recordings.theme / recordings.vocal_posture.
+    if backfill_song_classification:
+        if stdin:
+            raw = sys.stdin.read().splitlines()
+            song_ids = [
+                line.strip() for line in raw if line.strip() and not line.strip().startswith("#")
+            ]
+            if not song_ids:
+                out_console.print(
+                    "[red]No song IDs read from stdin (expected one per line)[/red]"
+                )
+                raise typer.Exit(1)
+        else:
+            song_ids = [song_id]
+
+        results: list[dict] = []
+        for sid in song_ids:
+            recording = db_client.get_recording_by_song_id(sid)
+            if not recording:
+                results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
+                continue
+            components = db_client.get_song_components(sid)
+            if not components:
+                results.append(
+                    {"song_id": sid, "status": "failed", "error": "No song_components rows"}
+                )
+                continue
+            theme, posture = _aggregate_recording_theme(components)
+            db_client.update_recording_theme(recording.hash_prefix, theme, posture)
+            results.append(
+                {
+                    "song_id": sid,
+                    "status": "succeeded",
+                    "theme": theme,
+                    "vocal_posture": posture,
+                }
+            )
+
+        if format_ == "json":
+            print(json.dumps(results, ensure_ascii=False, indent=2))
+        else:
+            succeeded = sum(1 for r in results if r["status"] != "failed")
+            failed = sum(1 for r in results if r["status"] == "failed")
+            out_console.print(
+                f"[green]Backfilled {succeeded} song(s)[/green]"
+                + (f", [red]{failed} failed[/red]" if failed else "")
+            )
+            for r in results:
+                if r["status"] == "succeeded":
+                    out_console.print(
+                        f"  [green]{r['song_id']}[/green]: "
+                        f"theme={r['theme']}, posture={r['vocal_posture']}"
+                    )
+                else:
+                    out_console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
+        if any(r["status"] == "failed" for r in results):
+            raise typer.Exit(1)
+        return
     # Batch mode via stdin.
     if stdin:
         if segmentation_mode is not None:
@@ -3258,6 +3437,7 @@ def _sync_components_from_r2(
 
     if components:  # never call upsert with [] - would wipe existing rows
         db_client.upsert_song_components(song_id, recording.content_hash, components)
+        _persist_recording_theme(recording, components, db_client)
     console.print(f"[green]Synced {len(components)} component(s) R2 -> DB.[/green]")
     return components
 

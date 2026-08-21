@@ -224,6 +224,8 @@ class Recording:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     deleted_at: Optional[str] = None
+    theme: Optional[str] = None
+    vocal_posture: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Recording":
@@ -242,10 +244,32 @@ class Recording:
             - 27 columns: with visibility_status at the end (after youtube_url)
             - 28 columns: with deleted_at at the end (after visibility_status)
             - 29 columns: with download_status at index 27 and deleted_at at index 28
+            - 36 columns: pre-theme schema (no theme/vocal_posture at end)
+            - 38 columns: with theme at index 36 and vocal_posture at index 37
         """
         row_len = len(row)
 
-        if row_len >= 36:
+        theme = None
+        vocal_posture = None
+
+        if row_len >= 38:
+            key_algorithm_version = row[14]
+            key_score_margin = row[15]
+            key_window_agreement = row[16]
+            key_candidates = row[17]
+            key_detected_at = row[18]
+            loudness_index = 19
+            created_at = row[28]
+            updated_at = row[29]
+            youtube_url = row[30]
+            structured_lyrics_raw = row[31]
+            structured_lyrics = row[32]
+            visibility_status = row[33]
+            download_status = row[34]
+            deleted_at = row[35]
+            theme = row[36]
+            vocal_posture = row[37]
+        elif row_len >= 36:
             key_algorithm_version = row[14]
             key_score_margin = row[15]
             key_window_agreement = row[16]
@@ -363,6 +387,8 @@ class Recording:
             created_at=_to_str(created_at),
             updated_at=_to_str(updated_at),
             deleted_at=_to_str(deleted_at),
+            theme=theme,
+            vocal_posture=vocal_posture,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -408,6 +434,8 @@ class Recording:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "deleted_at": self.deleted_at,
+            "theme": self.theme,
+            "vocal_posture": self.vocal_posture,
         }
 
     @property

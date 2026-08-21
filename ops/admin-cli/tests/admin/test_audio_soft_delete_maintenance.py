@@ -866,6 +866,8 @@ def test_list_soft_deleted_recordings_with_counts_uses_schema_column_count():
         "published",
         "completed",
         "2024-01-03T00:00:00",
+        None,  # theme
+        None,  # vocal_posture
     )
     assert len(recording_values) == RECORDING_COLUMN_COUNT
     cursor = FakeCursor(fetchall_rows=[recording_values + (4,)])
