@@ -29,6 +29,11 @@ describe("LoginPage", () => {
     vi.clearAllMocks();
     global.fetch = mockFetch;
     mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+    // Ensure clean location.search for tests that don't set callbackUrl.
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "" },
+      writable: true,
+    });
   });
 
   afterEach(() => {
@@ -96,14 +101,44 @@ describe("LoginPage", () => {
     });
   });
 
-  it("redirects to /songsets on successful login", async () => {
+  it("redirects to / on successful login", async () => {
     mockSignIn.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
     renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/songsets");
+      expect(mockPush).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("redirects to callbackUrl when present on successful login", async () => {
+    mockSignIn.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "?callbackUrl=/songsets/123" },
+      writable: true,
+    });
+    renderWithLocale(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/songsets/123");
+    });
+  });
+
+  it("ignores external callbackUrl and redirects to /", async () => {
+    mockSignIn.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "?callbackUrl=https://evil.com" },
+      writable: true,
+    });
+    renderWithLocale(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/");
     });
   });
 
@@ -124,7 +159,7 @@ describe("LoginPage", () => {
       );
     });
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/songsets");
+      expect(mockPush).toHaveBeenCalledWith("/");
     });
   });
 

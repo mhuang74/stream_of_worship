@@ -60,7 +60,18 @@ export default function LoginPage() {
         } catch {
           // best-effort
         }
-        router.push("/songsets");
+        // Honor deep-link callbackUrl from proxy.ts, but never open-redirect
+        // (external/protocol-relative URLs) or loop back to auth pages.
+        const callbackUrl = new URLSearchParams(window.location.search).get("callbackUrl");
+        const safeCallback =
+          callbackUrl &&
+          callbackUrl.startsWith("/") &&
+          !callbackUrl.startsWith("//") &&
+          callbackUrl !== "/login" &&
+          callbackUrl !== "/register"
+            ? callbackUrl
+            : "/";
+        router.push(safeCallback);
         router.refresh();
       }
     } catch {
