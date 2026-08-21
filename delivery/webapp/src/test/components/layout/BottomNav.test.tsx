@@ -25,13 +25,13 @@ describe("BottomNav", () => {
   it("renders navigation links", () => {
     renderNav();
     expect(screen.getByRole("link", { name: "Songsets" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Favorites" })).toBeInTheDocument();
   });
 
   it("has correct hrefs", () => {
     renderNav();
     expect(screen.getByRole("link", { name: "Songsets" })).toHaveAttribute("href", "/songsets");
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: "Favorites" })).toHaveAttribute("href", "/favorites");
   });
 
   it("marks active route", () => {
@@ -44,7 +44,6 @@ describe("BottomNav", () => {
     renderNav("zh-Hant");
     expect(screen.getByRole("link", { name: "詩歌集" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "我的最愛" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "設定" })).toBeInTheDocument();
   });
 
   it("does not render on projection routes", () => {

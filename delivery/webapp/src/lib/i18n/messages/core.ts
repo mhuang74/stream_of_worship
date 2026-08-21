@@ -10,6 +10,7 @@ export const core = bundle({
 
     // Navigation
     "nav.main.ariaLabel": "Main navigation",
+    "nav.dashboard": "Dashboard",
     "nav.songsets": "Songsets",
     "nav.favorites": "Favorites",
     "nav.settings": "Settings",
@@ -201,6 +202,7 @@ export const core = bundle({
 
     // Navigation
     "nav.main.ariaLabel": "主要導覽",
+    "nav.dashboard": "儀表板",
     "nav.songsets": "詩歌集",
     "nav.favorites": "我的最愛",
     "nav.settings": "設定",

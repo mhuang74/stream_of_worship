@@ -289,8 +289,8 @@ describe("Accessibility (Task 8.2)", () => {
 
     it("inactive links do not have aria-current", () => {
       render(<BottomNav />);
-      const settings = screen.getByRole("link", { name: /settings/i });
-      expect(settings).not.toHaveAttribute("aria-current");
+      const favorites = screen.getByRole("link", { name: /favorites/i });
+      expect(favorites).not.toHaveAttribute("aria-current");
     });
   });
 
