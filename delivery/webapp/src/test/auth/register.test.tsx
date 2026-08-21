@@ -124,7 +124,7 @@ describe("RegisterPage", () => {
     });
   });
 
-  it("redirects to /songsets and calls refresh on success", async () => {
+  it("redirects to / and calls refresh on success", async () => {
     mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
     renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
@@ -133,7 +133,7 @@ describe("RegisterPage", () => {
     await userEvent.type(screen.getByLabelText("Confirm password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/songsets");
+      expect(mockPush).toHaveBeenCalledWith("/");
       expect(mockRefresh).toHaveBeenCalled();
     });
   });
@@ -191,7 +191,7 @@ describe("RegisterPage", () => {
       );
     });
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/songsets");
+      expect(mockPush).toHaveBeenCalledWith("/");
     });
   });
 
@@ -204,7 +204,7 @@ describe("RegisterPage", () => {
     await userEvent.type(screen.getByLabelText("Confirm password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/songsets");
+      expect(mockPush).toHaveBeenCalledWith("/");
     });
     expect(mockFetch).not.toHaveBeenCalled();
   });

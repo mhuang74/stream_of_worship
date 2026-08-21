@@ -78,7 +78,7 @@ export default function RegisterPage() {
             // best-effort
           }
         }
-        router.push("/songsets");
+        router.push("/");
         router.refresh();
       }
     } catch {
