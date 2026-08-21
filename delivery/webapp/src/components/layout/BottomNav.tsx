@@ -6,9 +6,9 @@ import { isProjectionRoute } from "@/lib/routes";
 import { useLocale } from "@/hooks/useLocale";
 
 const navItems = [
+  { href: "/", key: "nav.dashboard" as const },
   { href: "/songsets", key: "nav.songsets" as const },
   { href: "/favorites", key: "nav.favorites" as const },
-  { href: "/settings", key: "nav.settings" as const },
 ];
 
 export function BottomNav() {
@@ -30,7 +30,8 @@ export function BottomNav() {
     >
       <div className="flex h-16">
         {navItems.map((item) => {
-          const isActive = pathname?.startsWith(item.href);
+          const isActive =
+            item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href);
           return (
             <Link
               key={item.href}

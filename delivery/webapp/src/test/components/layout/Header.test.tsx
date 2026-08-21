@@ -54,19 +54,17 @@ describe("Header", () => {
   it("renders desktop navigation links", () => {
     renderHeader();
     const songsetsLink = screen.getByRole("link", { name: "Songsets" });
-    const settingsLink = screen.getByRole("link", { name: "Settings" });
+    const favoritesLink = screen.getByRole("link", { name: "Favorites" });
     expect(songsetsLink).toHaveAttribute("href", "/songsets");
-    expect(settingsLink).toHaveAttribute("href", "/settings");
+    expect(favoritesLink).toHaveAttribute("href", "/favorites");
   });
 
   it("renders Traditional Chinese navigation links in zh-Hant", () => {
     renderHeader("zh-Hant");
     const songsetsLink = screen.getByRole("link", { name: "詩歌集" });
     const favoritesLink = screen.getByRole("link", { name: "我的最愛" });
-    const settingsLink = screen.getByRole("link", { name: "設定" });
     expect(songsetsLink).toHaveAttribute("href", "/songsets");
     expect(favoritesLink).toHaveAttribute("href", "/favorites");
-    expect(settingsLink).toHaveAttribute("href", "/settings");
   });
 
   it("does not render on projection routes", () => {
