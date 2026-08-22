@@ -26,6 +26,23 @@ export const browseBundle = bundle({
     "browse.themes.dropdownLabel": "Theme",
     "browse.themes.clearAll": "Clear all",
 
+    // AlbumMultiSelect
+    "browse.albums.label": "Albums:",
+    "browse.albums.dropdownLabel": "Albums",
+    "browse.albums.all": "All",
+    "browse.albums.selected": "Selected",
+    "browse.albums.clearAll": "Clear all",
+
+    // BpmRangeMultiSelect
+    "browse.bpm.label": "BPM:",
+    "browse.bpm.dropdownLabel": "BPM Range",
+    "browse.bpm.all": "All",
+    "browse.bpm.clearAll": "Clear all",
+    "browse.bpm.band.slow": "Slow",
+    "browse.bpm.band.moderate": "Moderate",
+    "browse.bpm.band.upbeat": "Upbeat",
+    "browse.bpm.band.fast": "Fast",
+
     // SongCard
     "browse.unknownArtist": "Unknown Artist",
     "browse.playPreview": "Play preview",
@@ -120,6 +137,23 @@ export const browseBundle = bundle({
     "browse.themes.label": "主題：",
     "browse.themes.dropdownLabel": "主題",
     "browse.themes.clearAll": "清除全部",
+
+    // AlbumMultiSelect
+    "browse.albums.label": "專輯：",
+    "browse.albums.dropdownLabel": "專輯",
+    "browse.albums.all": "全部",
+    "browse.albums.selected": "已選",
+    "browse.albums.clearAll": "清除全部",
+
+    // BpmRangeMultiSelect
+    "browse.bpm.label": "BPM：",
+    "browse.bpm.dropdownLabel": "BPM 範圍",
+    "browse.bpm.all": "全部",
+    "browse.bpm.clearAll": "清除全部",
+    "browse.bpm.band.slow": "慢速",
+    "browse.bpm.band.moderate": "中速",
+    "browse.bpm.band.upbeat": "快步",
+    "browse.bpm.band.fast": "快速",
 
     // SongCard
     "browse.unknownArtist": "未知演唱者",

@@ -124,15 +124,15 @@ export default function ShareControllerPage() {
 
   const sender = usePresentationSender({
     presentationUrl,
-    onConnected: () => toast.success("Connected to projection screen"),
+    onConnected: () => toast.success(t("control.connectedProjection")),
     onDisconnected: () => {
       setPresentationMediaStatus(null);
-      toast.info("Disconnected from projection screen");
+      toast.info(t("control.disconnectedProjection"));
     },
     onStartError: (m) => toast.error(m),
     onStatus: (status) => {
       if (status.type === "error") {
-        toast.error("TV projection failed — check connection");
+        toast.error(t("projection.tvFailed"));
       } else if (status.type === "media") {
         setPresentationMediaStatus(status);
       }

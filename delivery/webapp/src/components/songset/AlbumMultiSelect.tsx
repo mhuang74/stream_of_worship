@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import {
   albumFilterKey,
   formatAlbumLabel,
@@ -36,6 +37,7 @@ export function AlbumMultiSelect({
   disabled = false,
   className,
 }: AlbumMultiSelectProps) {
+  const { t } = useLocale();
   const selectedSet = new Set(selectedAlbums.map(albumFilterKey));
 
   const toggleAlbum = (album: AlbumOption) => {
@@ -53,10 +55,10 @@ export function AlbumMultiSelect({
   const clearAlbums = () => onSelectedAlbumsChange([]);
   const triggerValue =
     selectedAlbums.length === 0
-      ? `All ${albums.length}`
+      ? `${t("browse.albums.all")} ${albums.length}`
       : selectedAlbums.length === 1
         ? formatAlbumLabel(selectedAlbums[0])
-        : `${selectedAlbums.length} Selected`;
+        : `${selectedAlbums.length} ${t("browse.albums.selected")}`;
 
   return (
     <div className={cn("space-y-2", className)} data-testid="album-multi-select">
@@ -71,7 +73,7 @@ export function AlbumMultiSelect({
             data-testid="album-filter"
           >
             <span className="max-w-[18rem] truncate whitespace-nowrap">
-              <span className="font-medium">Albums:</span>{" "}
+              <span className="font-medium">{t("browse.albums.label")}</span>{" "}
               <span className="text-muted-foreground">{triggerValue}</span>
             </span>
             <ChevronDown className="size-3 text-muted-foreground/60" />
@@ -79,12 +81,12 @@ export function AlbumMultiSelect({
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-72 max-h-80">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>Albums</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("browse.albums.dropdownLabel")}</DropdownMenuLabel>
             {selectedAlbums.length > 0 && (
               <>
                 <DropdownMenuItem onClick={clearAlbums} data-testid="album-clear-all">
                   <X className="size-3.5" />
-                  Clear all
+                  {t("browse.albums.clearAll")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>

@@ -91,6 +91,14 @@ export const controlBundle = bundle({
     "control.shareMessageDuration": "Duration:",
     "control.shareMessageOutro": "Open this link to view the song list in read-only mode and start Worship Playback:",
 
+    // --- Controller pages — projection connection toasts (songset + share)
+    "control.connectedProjection": "Connected to projection screen",
+    "control.disconnectedProjection": "Disconnected from projection screen",
+
+    // --- ShareDialog — outgoing share text (compose: .replace("${name}", songsetName))
+    "control.shareSendMessage": "Check out \"${name}\" on Stream of Worship",
+    "control.shareEmailSubject": "Stream of Worship: ${name}",
+
     // --- TransitionControls (components/transition/TransitionControls.tsx)
     "control.gap": "Gap",
     "control.gapValue": "gap value",
@@ -218,6 +226,14 @@ export const controlBundle = bundle({
     "control.shareMessageIntro": "我與您分享了一個 Stream of Worship 詩歌集：",
     "control.shareMessageDuration": "時長：",
     "control.shareMessageOutro": "開啟此連結以唯讀模式檢視詩歌清單並開始敬拜播放：",
+
+    // --- Controller pages — projection connection toasts (songset + share)
+    "control.connectedProjection": "已連線至投影畫面",
+    "control.disconnectedProjection": "已與投影畫面斷線",
+
+    // --- ShareDialog — outgoing share text (compose: ${name})
+    "control.shareSendMessage": "看看「${name}」— 在 Stream of Worship 上",
+    "control.shareEmailSubject": "Stream of Worship：${name}",
 
     // --- TransitionControls (components/transition/TransitionControls.tsx)
     "control.gap": "間隔",

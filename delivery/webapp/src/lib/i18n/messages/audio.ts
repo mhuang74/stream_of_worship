@@ -52,6 +52,16 @@ export const audioBundle = bundle({
     "audio.offline.updateIos": "Update iOS for offline",
     "audio.offline.iosTooltip": "Offline caching requires iOS 17.4 or later",
 
+    // LocateSongsetsPopover
+    "audio.locate.findButton": "Find containing songsets",
+    "audio.locate.findTitle": "Find in songsets",
+    "audio.locate.loadFailed": "Failed to load songsets",
+    "audio.locate.empty": "This song is not in any of your songsets.",
+    "audio.locate.listAria": "Songsets containing this song",
+    "audio.locate.songs": "songs",
+    "audio.locate.position": "Position",
+    "audio.locate.origin": "Origin",
+
     // SemanticSearch — input
     "audio.search.placeholder": "Describe songs by theme or feeling...",
     "audio.search.ariaLabel": "Describe songs to search for",
@@ -139,6 +149,16 @@ export const audioBundle = bundle({
     // OfflineStatus — iOS unsupported
     "audio.offline.updateIos": "更新 iOS 以使用離線功能",
     "audio.offline.iosTooltip": "離線快取需要 iOS 17.4 或更新版本",
+
+    // LocateSongsetsPopover
+    "audio.locate.findButton": "尋找包含此詩歌的詩歌集",
+    "audio.locate.findTitle": "在詩歌集中尋找",
+    "audio.locate.loadFailed": "無法載入詩歌集",
+    "audio.locate.empty": "此詩歌不在您的任何詩歌集中。",
+    "audio.locate.listAria": "包含此詩歌的詩歌集",
+    "audio.locate.songs": "首詩歌",
+    "audio.locate.position": "位置",
+    "audio.locate.origin": "來源",
 
     // SemanticSearch — input
     "audio.search.placeholder": "以主題或感受描述詩歌...",

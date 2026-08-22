@@ -31,8 +31,8 @@ describe("SharedFilters", () => {
     vi.clearAllMocks();
   });
 
-  const renderFilters = (props = {}) => {
-    return render(<SharedFilters {...defaultProps} {...props} />);
+  const renderFilters = (props = {}, locale = "en" as const) => {
+    return render(<SharedFilters {...defaultProps} {...props} />, locale);
   };
 
   describe("rendering", () => {
@@ -63,6 +63,13 @@ describe("SharedFilters", () => {
       renderFilters();
       expect(screen.getByTestId("key-filter")).toHaveTextContent("Keys: All");
       expect(screen.getByTestId("bpm-filter")).toHaveTextContent("BPM: All");
+    });
+
+    it("renders translated album and bpm filter labels in zh-Hant", () => {
+      renderFilters({}, "zh-Hant");
+      expect(screen.getByTestId("album-filter")).toHaveTextContent(/專輯：/);
+      expect(screen.getByTestId("album-filter")).toHaveTextContent("全部 3");
+      expect(screen.getByTestId("bpm-filter")).toHaveTextContent("全部");
     });
   });
 
