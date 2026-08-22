@@ -339,7 +339,7 @@ export function SongsetList({
     <>
       {renderSearchBar("mb-4")}
 
-      <div className={cn("space-y-3", className)}>
+      <div className={cn("grid grid-cols-1 md:grid-cols-2 gap-3", className)}>
         {songsets.map((songset) => (
           <SongsetRow
             key={songset.id}
