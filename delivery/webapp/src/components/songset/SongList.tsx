@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { useLocale } from "@/hooks/useLocale";
 import { FavoriteButton } from "./FavoriteButton";
-import { ThemeLabel } from "./ThemeLabel";
+import { ThemeLabel, toSongTheme } from "./ThemeLabel";
 
 function escapeCssSelectorValue(value: string): string {
   const globalCss = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
@@ -152,6 +152,8 @@ function SortableSongItem({
 
   const hasMarkedLines = (item.markedLineCount ?? 0) > 0;
 
+  const itemTheme = item.recording?.theme ? toSongTheme(item.recording.theme) : null;
+
   return (
     <div
       ref={setNodeRef}
@@ -247,9 +249,9 @@ function SortableSongItem({
                   </span>
                 )}
               </div>
-              {item.recording?.theme && (
+              {itemTheme && (
                 <div className="mt-1">
-                  <ThemeLabel theme={item.recording.theme} />
+                  <ThemeLabel theme={itemTheme} />
                 </div>
               )}
             </div>

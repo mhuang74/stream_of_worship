@@ -5,9 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RenderStatusBadge } from "@/components/songset/RenderStatusBadge";
 import type { RenderState } from "@/components/songset/RenderStatusBadge";
-import { ThemeArcSpan } from "@/components/songset/ThemeLabel";
+import { ThemeArcSpan, toSongTheme } from "@/components/songset/ThemeLabel";
 import { Clock, Play, Share2 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import type { SongTheme } from "@/lib/constants";
 
 export interface DashboardSongset {
   id: string;
@@ -58,6 +59,8 @@ export function DashboardSongsetCard({
     }).format(new Date(date));
   };
 
+  const arcThemes = songset.themes.map(toSongTheme).filter((t): t is SongTheme => t !== null);
+
   return (
     <Card className="transition-shadow hover:shadow-md" data-testid="dashboard-songset-card">
       <CardContent className="p-4">
@@ -83,8 +86,8 @@ export function DashboardSongsetCard({
 
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <RenderStatusBadge state={songset.renderState} />
-          {songset.themes.length > 0 && (
-            <ThemeArcSpan themes={songset.themes} />
+          {arcThemes.length > 0 && (
+            <ThemeArcSpan themes={arcThemes} />
           )}
         </div>
 

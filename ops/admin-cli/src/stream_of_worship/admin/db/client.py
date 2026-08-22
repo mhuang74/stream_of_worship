@@ -1013,7 +1013,7 @@ class DatabaseClient:
                 SET theme = %s,
                     vocal_posture = %s,
                     updated_at = NOW()
-                WHERE hash_prefix = %s
+                WHERE hash_prefix = %s AND deleted_at IS NULL
                 """,
                 (coerced_theme, coerced_posture, hash_prefix),
             )

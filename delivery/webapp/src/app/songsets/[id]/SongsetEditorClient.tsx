@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
-import { ThemeLabel } from "@/components/songset/ThemeLabel";
+import { ThemeLabel, toSongTheme } from "@/components/songset/ThemeLabel";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
@@ -534,9 +534,10 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     <>
       {themes.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          {themes.map((theme) => (
-            <ThemeLabel key={theme} theme={theme} />
-          ))}
+          {themes.map((theme) => {
+            const safeTheme = toSongTheme(theme);
+            return safeTheme ? <ThemeLabel key={theme} theme={safeTheme} /> : null;
+          })}
         </div>
       )}
       <SongsetEditor

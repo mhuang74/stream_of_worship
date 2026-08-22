@@ -1,24 +1,36 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { THEME_PHASE_COLORS, THEME_TO_PHASE, type SongTheme } from "@/lib/constants";
+import {
+  SONG_THEMES,
+  THEME_PHASE_COLORS,
+  THEME_TO_PHASE,
+  type SongTheme,
+} from "@/lib/constants";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n/messages";
 
+/** Narrow a DB string to a known theme, or null if it's not in the enum. */
+export function toSongTheme(value: string): SongTheme | null {
+  return SONG_THEMES.includes(value as SongTheme) ? (value as SongTheme) : null;
+}
+
 /** A color-coded badge for a single worship theme. */
-export function ThemeLabel({ theme }: { theme: string }) {
+export function ThemeLabel({ theme }: { theme: SongTheme }) {
   const { t } = useLocale();
-  const phase = THEME_TO_PHASE[theme as SongTheme];
-  const colors = phase ? THEME_PHASE_COLORS[phase] : null;
+  const safeTheme = toSongTheme(theme);
+  if (!safeTheme) return null;
+  const phase = THEME_TO_PHASE[safeTheme];
+  const colors = THEME_PHASE_COLORS[phase];
 
   return (
     <Badge
       variant="outline"
       className="text-xs px-1.5 py-0"
-      style={colors ? { backgroundColor: colors.bg, color: colors.text, borderColor: "transparent" } : undefined}
+      style={{ backgroundColor: colors.bg, color: colors.text, borderColor: "transparent" }}
       data-testid="theme-label"
     >
-      {t(`theme.${theme}` as TranslationKey)}
+      {t(`theme.${safeTheme}` as TranslationKey)}
     </Badge>
   );
 }
@@ -29,37 +41,38 @@ export function ThemeLabel({ theme }: { theme: string }) {
  * - Single theme → render a single ThemeLabel.
  * - Two+ themes → render "first → last" using translated labels.
  */
-export function ThemeArcSpan({ themes }: { themes: string[] }) {
+export function ThemeArcSpan({ themes }: { themes: SongTheme[] }) {
   const { t } = useLocale();
 
-  if (themes.length === 0) return null;
-  if (themes.length === 1) return <ThemeLabel theme={themes[0]} />;
+  const safeThemes = themes
+    .map(toSongTheme)
+    .filter((t): t is SongTheme => t !== null);
 
-  const first = themes[0];
-  const last = themes[themes.length - 1];
-  const firstPhase = THEME_TO_PHASE[first as SongTheme];
-  const lastPhase = THEME_TO_PHASE[last as SongTheme];
-  const firstColors = firstPhase ? THEME_PHASE_COLORS[firstPhase] : null;
-  const lastColors = lastPhase ? THEME_PHASE_COLORS[lastPhase] : null;
+  if (safeThemes.length === 0) return null;
+  if (safeThemes.length === 1) return <ThemeLabel theme={safeThemes[0]} />;
+
+  const first = safeThemes[0];
+  const last = safeThemes[safeThemes.length - 1];
+  const firstColors = THEME_PHASE_COLORS[THEME_TO_PHASE[first]];
+  const lastColors = THEME_PHASE_COLORS[THEME_TO_PHASE[last]];
 
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-4xl text-xs font-medium"
-      data-testid="theme-arc-span"
-    >
-      <span
-        className="inline-flex items-center rounded-4xl px-1.5 py-0.5"
-        style={firstColors ? { backgroundColor: firstColors.bg, color: firstColors.text } : undefined}
+    <span className="inline-flex items-center gap-1" data-testid="theme-arc-span">
+      <Badge
+        variant="outline"
+        className="text-xs px-1.5 py-0"
+        style={{ backgroundColor: firstColors.bg, color: firstColors.text, borderColor: "transparent" }}
       >
         {t(`theme.${first}` as TranslationKey)}
-      </span>
+      </Badge>
       <span className="text-muted-foreground">→</span>
-      <span
-        className="inline-flex items-center rounded-4xl px-1.5 py-0.5"
-        style={lastColors ? { backgroundColor: lastColors.bg, color: lastColors.text } : undefined}
+      <Badge
+        variant="outline"
+        className="text-xs px-1.5 py-0"
+        style={{ backgroundColor: lastColors.bg, color: lastColors.text, borderColor: "transparent" }}
       >
         {t(`theme.${last}` as TranslationKey)}
-      </span>
+      </Badge>
     </span>
   );
 }
