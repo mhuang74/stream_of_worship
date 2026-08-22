@@ -11,6 +11,7 @@ import {
   parseAlbumValues,
   parseBpmRangeParams,
   parseKeysParam,
+  parseThemesParam,
 } from "@/lib/db/search-helpers";
 import { z } from "zod";
 import type { AlbumFilter } from "@/lib/search/album-filter";
@@ -26,6 +27,7 @@ const RequestSchema = z.object({
   albums: z.array(z.union([z.string(), AlbumFilterSchema])).optional(),
   keys: z.array(z.string()).optional(),
   bpmRange: z.union([z.string(), z.array(z.string())]).optional(),
+  themes: z.array(z.string()).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -65,8 +67,9 @@ export async function POST(request: NextRequest) {
       ? Array.isArray(bpmRangeRaw) ? bpmRangeRaw : [bpmRangeRaw]
       : [];
     const bpmRange = parseBpmRangeParams(bpmRangeParams);
-    const semanticOptions = albumFilters || albums || keys || bpmRange
-      ? { albumFilters, albums, keys, bpmRange }
+    const themes = parseThemesParam(parsed.data.themes ?? []);
+    const semanticOptions = albumFilters || albums || keys || bpmRange || themes
+      ? { albumFilters, albums, keys, bpmRange, themes }
       : undefined;
 
     let queryEmbedding: number[];

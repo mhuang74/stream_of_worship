@@ -20,6 +20,12 @@ export const browseBundle = bundle({
     "browse.keys.clearAll": "Clear all",
     "browse.clearAll": "Clear all",
 
+    // ThemeMultiSelect
+    "browse.themes.all": "All",
+    "browse.themes.label": "Themes:",
+    "browse.themes.dropdownLabel": "Theme",
+    "browse.themes.clearAll": "Clear all",
+
     // SongCard
     "browse.unknownArtist": "Unknown Artist",
     "browse.playPreview": "Play preview",
@@ -108,6 +114,12 @@ export const browseBundle = bundle({
     "browse.keys.dropdownLabel": "調性",
     "browse.keys.clearAll": "清除全部",
     "browse.clearAll": "清除全部",
+
+    // ThemeMultiSelect
+    "browse.themes.all": "全部",
+    "browse.themes.label": "主題：",
+    "browse.themes.dropdownLabel": "主題",
+    "browse.themes.clearAll": "清除全部",
 
     // SongCard
     "browse.unknownArtist": "未知演唱者",

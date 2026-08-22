@@ -1,5 +1,11 @@
 import { sql, type SQL } from "drizzle-orm";
-import { PITCH_CLASSES, BPM_BAND_KEYS, type BpmBandKey } from "@/lib/constants";
+import {
+  PITCH_CLASSES,
+  BPM_BAND_KEYS,
+  SONG_THEMES,
+  type BpmBandKey,
+  type SongTheme,
+} from "@/lib/constants";
 import { parseMusicalKey } from "@/lib/music/key";
 import {
   normalizeAlbumFilters,
@@ -191,6 +197,24 @@ export function parseBpmRangeParams(
     .filter((value): value is BpmBandKey => isValidBpmBand(value));
   if (bands.length === 0) return undefined;
   return Array.from(new Set(bands));
+}
+
+export function isValidTheme(value: string): value is SongTheme {
+  return (SONG_THEMES as readonly string[]).includes(value);
+}
+
+export function parseThemesParam(themesParams: string[]): SongTheme[] | undefined {
+  const themes = themesParams
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value): value is SongTheme => isValidTheme(value));
+  if (themes.length === 0) return undefined;
+  return Array.from(new Set(themes));
+}
+
+export function buildThemePredicate(themes: SongTheme[], alias: string = "r"): SQL {
+  const col = sql.raw(`${alias}.theme`);
+  return sql`${col} = ANY(${sql`ARRAY[${sql.join(themes.map((t) => sql`${t}`), sql`, `)}]::text[]`})`;
 }
 
 export function parseAlbumValues(values: string[]): string[] | undefined {

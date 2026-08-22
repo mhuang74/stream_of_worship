@@ -6,9 +6,10 @@ import {
   parseAlbumFilterParams,
   parseKeysParam,
   parseBpmRangeParams,
+  parseThemesParam,
 } from "@/lib/db/search-helpers";
 import type { AlbumFilter } from "@/lib/search/album-filter";
-import type { BpmBandKey } from "@/lib/constants";
+import type { BpmBandKey, SongTheme } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       visibilityStatus?: string | string[];
       keys?: string[];
       bpmRange?: BpmBandKey[];
+      themes?: SongTheme[];
       favoriteSongIds?: string[];
       favoritesOnly?: boolean;
     } = {};
@@ -65,6 +67,9 @@ export async function GET(request: NextRequest) {
 
     const bpmRange = parseBpmRangeParams(searchParams.getAll("bpmRange"));
     if (bpmRange) filters.bpmRange = bpmRange;
+
+    const themes = parseThemesParam(searchParams.getAll("themes"));
+    if (themes) filters.themes = themes;
 
     // Default to published + review for browse; respect explicit client override
     const visibilityParam = searchParams.get("visibilityStatus");

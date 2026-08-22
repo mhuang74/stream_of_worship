@@ -153,6 +153,15 @@ describe("BrowseSheet", () => {
     fireEvent.click(screen.getByTestId("bpm-option-slow"));
   };
 
+  const selectTheme = async () => {
+    const testId = `theme-option-${encodeURIComponent("感恩")}`;
+    fireEvent.click(screen.getByTestId("theme-filter"));
+    await waitFor(() => {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(testId));
+  };
+
   const expectBefore = (before: Element, after: Element) => {
     expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
@@ -202,12 +211,15 @@ describe("BrowseSheet", () => {
 
     await selectAlbum();
     await selectKeyAndBpm();
+    await selectTheme();
     fireEvent.click(screen.getByTestId("search-button"));
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^\/api\/songs\?.*albumName=Hymns.*keys=D.*bpmRange=slow.*limit=50/
+          new RegExp(
+            `^/api/songs\\?.*albumName=Hymns.*keys=D.*bpmRange=slow.*themes=${encodeURIComponent("感恩")}.*limit=50`
+          )
         )
       );
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("albumSeries=Classic"));
@@ -254,6 +266,7 @@ describe("BrowseSheet", () => {
 
     await selectAlbum();
     await selectKeyAndBpm();
+    await selectTheme();
     fireEvent.click(screen.getByTestId("describe-mode-tab"));
     fireEvent.change(screen.getByTestId("semantic-search-input"), {
       target: { value: "songs about grace" },
@@ -271,6 +284,7 @@ describe("BrowseSheet", () => {
             albums: [hymnsFilter],
             keys: ["D"],
             bpmRange: ["slow"],
+            themes: ["感恩"],
           }),
         })
       );

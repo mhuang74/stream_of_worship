@@ -7,8 +7,9 @@ import {
   buildEffectiveKeyPredicate,
   buildBpmPredicates,
   buildVisibilityCondition,
+  buildThemePredicate,
 } from "./search-helpers";
-import type { BpmBandKey } from "@/lib/constants";
+import type { BpmBandKey, SongTheme } from "@/lib/constants";
 import { sortAlbumOptions } from "@/lib/search/album-filter";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 import { favoritesFirstOrder, favoritesOnlyPredicate } from "./favorites";
@@ -162,6 +163,7 @@ export interface ListSongsFilters {
   visibilityStatus?: string | string[];
   keys?: string[];
   bpmRange?: BpmBandKey[];
+  themes?: SongTheme[];
   /** Pins these songs to the top of results (favorites-first browsing). */
   favoriteSongIds?: string[];
   /** When true and favoriteSongIds is present, restrict results to favorites. */
@@ -281,6 +283,20 @@ function buildSongWhereClause(
           and r3.tempo_bpm IS NOT NULL
           ${visCond ? sql`and ${visCond}` : sql``}
           and ${bpmPredicate}
+      )`
+    );
+  }
+
+  if (filters?.themes && filters.themes.length > 0) {
+    const themePredicate = buildThemePredicate(filters.themes, "r4");
+    const visCond = buildVisibilityCondition(filters?.visibilityStatus, "r4");
+    whereConditions.push(
+      sql`exists (
+        select 1 from recordings r4
+        where r4.song_id = ${songs.id}
+          and r4.deleted_at IS NULL
+          ${visCond ? sql`and ${visCond}` : sql``}
+          and ${themePredicate}
       )`
     );
   }
@@ -463,6 +479,7 @@ export interface SemanticSearchOptions {
   albumFilters?: AlbumFilter[];
   keys?: string[];
   bpmRange?: BpmBandKey[];
+  themes?: SongTheme[];
 }
 
 function validateEmbedding(embedding: number[], expectedDims: number = 1536): string {
@@ -506,6 +523,7 @@ export async function semanticSearchSongs(
   const bpmFilter = options?.bpmRange && options.bpmRange.length > 0
     ? sql`AND ${buildBpmPredicates(options.bpmRange, "r")}`
     : sql``;
+  const themeFilter = options?.themes && options.themes.length > 0 ? sql`AND ${buildThemePredicate(options.themes, "r")}` : sql``;
 
   const rows = await db.execute(sql`
     SELECT * FROM (
@@ -546,6 +564,7 @@ export async function semanticSearchSongs(
         AND r.deleted_at IS NULL
         ${keyFilter}
         ${bpmFilter}
+        ${themeFilter}
       WHERE s.deleted_at IS NULL
         AND se.model_version = ${expectedModelVersion}
         ${albumFilter}

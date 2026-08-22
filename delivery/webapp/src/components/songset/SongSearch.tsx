@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type BpmBandKey } from "@/lib/constants";
+import { type BpmBandKey, type SongTheme } from "@/lib/constants";
 import type { StructuredSearchCriteria } from "./search/types";
 import type { AlbumFilter } from "@/lib/search/album-filter";
 import { useLocale } from "@/hooks/useLocale";
@@ -22,6 +22,7 @@ interface SongSearchProps {
   selectedAlbums?: AlbumFilter[];
   selectedKeys?: string[];
   selectedBpm?: BpmBandKey[];
+  selectedThemes?: SongTheme[];
   searchButtonClassName?: string;
   showSearchButton?: boolean;
 }
@@ -38,6 +39,7 @@ export function SongSearch({
   selectedAlbums = [],
   selectedKeys = [],
   selectedBpm,
+  selectedThemes = [],
   searchButtonClassName,
   showSearchButton = true,
 }: SongSearchProps) {
@@ -57,7 +59,10 @@ export function SongSearch({
   );
 
   const hasAdvancedFilters =
-    selectedAlbums.length > 0 || selectedKeys.length > 0 || (selectedBpm?.length ?? 0) > 0;
+    selectedAlbums.length > 0 ||
+    selectedKeys.length > 0 ||
+    (selectedBpm?.length ?? 0) > 0 ||
+    selectedThemes.length > 0;
 
   const triggerSearch = useCallback(
     () => {
@@ -67,6 +72,7 @@ export function SongSearch({
           query: query.trim() || undefined,
           keys: selectedKeys.length > 0 ? selectedKeys : undefined,
           bpmRange: selectedBpm && selectedBpm.length > 0 ? selectedBpm : undefined,
+          themes: selectedThemes.length > 0 ? selectedThemes : undefined,
           albums: normalizedAlbums,
         });
       } else {
@@ -79,6 +85,7 @@ export function SongSearch({
       onAdvancedSearch,
       selectedKeys,
       selectedBpm,
+      selectedThemes,
       onSearch,
       query,
     ]

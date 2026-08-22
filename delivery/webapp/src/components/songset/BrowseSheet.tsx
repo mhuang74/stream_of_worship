@@ -21,7 +21,7 @@ import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
-import type { BpmBandKey } from "@/lib/constants";
+import type { BpmBandKey, SongTheme } from "@/lib/constants";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 import { useLocale } from "@/hooks/useLocale";
 
@@ -79,6 +79,7 @@ export function BrowseSheet({
   const [selectedAlbums, setSelectedAlbums] = useState<AlbumFilter[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [selectedBpm, setSelectedBpm] = useState<BpmBandKey[]>([]);
+  const [selectedThemes, setSelectedThemes] = useState<SongTheme[]>([]);
   const [activeFilters, setActiveFilters] = useState<StructuredSearchCriteria | undefined>();
   const [results, setResults] = useState<SongCardData[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -152,6 +153,7 @@ export function BrowseSheet({
         albums: albumFilters && albumFilters.length > 0 ? albumFilters : undefined,
         keys: advanced?.keys,
         bpmRange: advanced?.bpmRange,
+        themes: advanced?.themes,
       };
       setKeywordQuery(searchQuery);
       setActiveFilters(nextFilters);
@@ -174,6 +176,11 @@ export function BrowseSheet({
         if (nextFilters.bpmRange?.length) {
           for (const band of nextFilters.bpmRange) {
             params.append("bpmRange", band);
+          }
+        }
+        if (nextFilters.themes?.length) {
+          for (const theme of nextFilters.themes) {
+            params.append("themes", theme);
           }
         }
         params.set("limit", "50");
@@ -274,7 +281,10 @@ export function BrowseSheet({
   const handleKeywordSubmit = useCallback(() => {
     const normalizedAlbums = selectedAlbums.length > 0 ? selectedAlbums : undefined;
     const hasAdvancedFilters =
-      selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm.length > 0;
+      selectedAlbums.length > 0 ||
+      selectedKeys.length > 0 ||
+      selectedBpm.length > 0 ||
+      selectedThemes.length > 0;
 
     handleSearch(
       keywordQuery,
@@ -284,11 +294,12 @@ export function BrowseSheet({
             query: keywordQuery.trim() || undefined,
             keys: selectedKeys.length > 0 ? selectedKeys : undefined,
             bpmRange: selectedBpm.length > 0 ? selectedBpm : undefined,
+            themes: selectedThemes.length > 0 ? selectedThemes : undefined,
             albums: normalizedAlbums,
           }
         : undefined
     );
-  }, [handleSearch, keywordQuery, selectedAlbums, selectedKeys, selectedBpm]);
+  }, [handleSearch, keywordQuery, selectedAlbums, selectedKeys, selectedBpm, selectedThemes]);
 
   const sharedFilters = (
     <SharedFilters
@@ -299,10 +310,13 @@ export function BrowseSheet({
       onSelectedKeysChange={setSelectedKeys}
       selectedBpm={selectedBpm}
       onSelectedBpmChange={setSelectedBpm}
+      selectedThemes={selectedThemes}
+      onSelectedThemesChange={setSelectedThemes}
       onClearFilters={() => {
         setSelectedAlbums([]);
         setSelectedKeys([]);
         setSelectedBpm([]);
+        setSelectedThemes([]);
       }}
       isLoading={isLoading || isLoadingAlbums}
       className="px-1"
@@ -325,6 +339,7 @@ export function BrowseSheet({
     albums: selectedAlbums,
     keys: selectedKeys,
     bpmRange: selectedBpm,
+    themes: selectedThemes,
     showSearchButton: false,
   });
 
@@ -349,6 +364,7 @@ export function BrowseSheet({
         setSelectedAlbums([]);
         setSelectedKeys([]);
         setSelectedBpm([]);
+        setSelectedThemes([]);
         setActiveFilters(undefined);
         setResults([]);
         setTotalCount(0);
@@ -446,6 +462,7 @@ export function BrowseSheet({
                   selectedAlbums={selectedAlbums}
                   selectedKeys={selectedKeys}
                   selectedBpm={selectedBpm}
+                  selectedThemes={selectedThemes}
                   showSearchButton={false}
                 />
               </div>
@@ -533,14 +550,14 @@ export function BrowseSheet({
                       {`${t("browse.empty.noSongsFoundPrefix")}${keywordQuery}${t("browse.empty.noSongsFoundSuffix")}`}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {activeFilters?.keys?.length || activeFilters?.bpmRange
+                      {activeFilters?.keys?.length || activeFilters?.bpmRange || activeFilters?.themes?.length
                         ? t("browse.empty.tryAdjustFilters")
                         : t("browse.empty.tryDifferentTerm")}
                     </p>
                   </div>
                 )}
 
-                {!error && !isLoading && hasKeywordSearched && results.length === 0 && !keywordQuery && (activeFilters?.albums?.length || activeFilters?.keys?.length || activeFilters?.bpmRange) && (
+                {!error && !isLoading && hasKeywordSearched && results.length === 0 && !keywordQuery && (activeFilters?.albums?.length || activeFilters?.keys?.length || activeFilters?.bpmRange || activeFilters?.themes?.length) && (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Music className="size-8 text-muted-foreground mb-2" />
                     <p className="text-muted-foreground">{t("browse.empty.noMatchFilters")}</p>
