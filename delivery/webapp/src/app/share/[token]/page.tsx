@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2, Monitor, AlertTriangle, Music, Clock } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { ThemeLabel } from "@/components/songset/ThemeLabel";
+import { ThemeLabel, toSongTheme } from "@/components/songset/ThemeLabel";
 import { formatTotalDuration } from "@/lib/i18n/format";
 
 interface PublicSongsetItem {
@@ -202,7 +202,9 @@ export default function SharePage() {
           </div>
 
           <div className="space-y-2">
-            {items.map((item, index) => (
+            {items.map((item, index) => {
+              const itemTheme = item.theme ? toSongTheme(item.theme) : null;
+              return (
               <div
                 key={item.id}
                 className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
@@ -217,9 +219,9 @@ export default function SharePage() {
                   <p className="text-xs text-muted-foreground truncate">
                     {[item.composer, item.lyricist].filter(Boolean).join(" • ") || item.albumName || ""}
                   </p>
-                  {item.theme && (
+                  {itemTheme && (
                     <div className="mt-1">
-                      <ThemeLabel theme={item.theme} />
+                      <ThemeLabel theme={itemTheme} />
                     </div>
                   )}
                 </div>
@@ -235,7 +237,8 @@ export default function SharePage() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

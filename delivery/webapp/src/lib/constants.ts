@@ -119,7 +119,7 @@ export const SONG_THEMES = [
 
 export type SongTheme = (typeof SONG_THEMES)[number];
 
-export const THEME_TO_PHASE: Record<SongTheme, number> = {
+export const THEME_TO_PHASE: Record<SongTheme, 1 | 2 | 3 | 4 | 5> = {
   讚美: 1,
   感恩: 2,
   敬拜: 3,
@@ -134,10 +134,10 @@ export const THEME_TO_PHASE: Record<SongTheme, number> = {
   復興: 5,
 };
 
-export const THEME_PHASE_COLORS: Record<number, { bg: string; text: string }> = {
+export const THEME_PHASE_COLORS: Record<1 | 2 | 3 | 4 | 5, { bg: string; text: string }> = {
   1: { bg: "#fef3c7", text: "#92400e" }, // amber — Call/Praise
   2: { bg: "#dcfce7", text: "#166534" }, // green — Thanksgiving
   3: { bg: "#dbeafe", text: "#1e40af" }, // blue — Worship
-  4: { bg: "#fce7f3", text: "#9f1239" }, // rose — Response
-  5: { bg: "#ede9fe", text: "#5b21b6" }, // violet — Commission
+  4: { bg: "#fce7f3", text: "#9d174d" }, // rose — Response
+  5: { bg: "#e0e7ff", text: "#3730a3" }, // violet — Commission
 };

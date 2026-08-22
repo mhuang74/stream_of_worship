@@ -29,6 +29,7 @@ interface ApiSongset {
   lastCompletedRenderJobId: string | null;
   renderErrorMessage: string | null;
   failedAt: string | null;
+  themes: string[];
 }
 
 interface ApiResponse {
@@ -49,6 +50,7 @@ function transformSongsets(songsets: ApiSongset[]): Songset[] {
     lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
     renderErrorMessage: songset.renderErrorMessage,
     failedAt: songset.failedAt ? new Date(songset.failedAt) : null,
+    themes: songset.themes ?? [],
     isOfflineAvailable: false,
     isArtifactsStale: songset.renderState === "stale",
   }));

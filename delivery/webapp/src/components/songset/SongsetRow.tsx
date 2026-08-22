@@ -16,9 +16,10 @@ import {
   RenderStatusBadge,
   RenderState,
 } from "./RenderStatusBadge";
-import { ThemeArcSpan } from "./ThemeLabel";
+import { ThemeArcSpan, toSongTheme } from "./ThemeLabel";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
+import type { SongTheme } from "@/lib/constants";
 import {
   MoreVertical,
   Edit,
@@ -90,6 +91,8 @@ export function SongsetRow({
 
   const canPlayFreshRender =
     renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onPlay);
+
+  const arcThemes = (themes ?? []).map(toSongTheme).filter((t): t is SongTheme => t !== null);
 
   const formatDuration = (seconds?: number) => {
     if (!seconds) return "--:--";
@@ -233,8 +236,8 @@ export function SongsetRow({
                   errorMessage={renderErrorMessage}
                   failedAt={failedAt}
                 />
-                {themes && themes.length > 0 && (
-                  <ThemeArcSpan themes={themes} />
+                {arcThemes.length > 0 && (
+                  <ThemeArcSpan themes={arcThemes} />
                 )}
                 {isOfflineAvailable && (
                   <Badge variant="secondary" className="text-xs gap-1">

@@ -17,6 +17,15 @@ import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
 
+/** Collect non-null recording themes in item order. */
+function collectThemes(
+  items: { recording?: { theme?: string | null } | null }[]
+): string[] {
+  return items
+    .map((item) => item.recording?.theme)
+    .filter((t): t is string => t != null);
+}
+
 export interface PublicSongsetItem {
   id: string;
   position: number;
@@ -482,7 +491,7 @@ export async function listSongsetSummaries(
         renderErrorMessage: sql<string | null>`left(${renderJobs.errorMessage}, 4000)`,
         latestJobStartedAt: renderJobs.startedAt,
         latestJobCreatedAt: renderJobs.createdAt,
-        themes: sql<string[]>`array_agg(${recordings.theme}) filter (where ${recordings.deletedAt} is null and ${recordings.theme} is not null)`,
+        themes: sql<string[]>`array_agg(${recordings.theme} order by ${songsetItems.position}) filter (where ${recordings.deletedAt} is null and ${recordings.theme} is not null)`,
       })
       .from(songsets)
       .leftJoin(songsetItems, eq(songsetItems.songsetId, songsets.id))
@@ -701,9 +710,7 @@ export async function getSongsetEditorData(
       renderErrorMessage:
         renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
       failedAt: renderState === "failed" ? failedAt : null,
-      themes: items
-        .map((item) => item.recording?.theme)
-        .filter((t): t is string => t != null),
+      themes: collectThemes(items),
       items,
     };
   });
@@ -967,9 +974,7 @@ export async function getSongset(
     renderState,
     renderErrorMessage: null,
     failedAt: null,
-    themes: items
-      .map((item) => item.recording?.theme)
-      .filter((t): t is string => t != null),
+    themes: collectThemes(items),
     items,
   };
 }
@@ -977,7 +982,7 @@ export async function getSongset(
 export async function createSongset(
   userId: number,
   data: { name: string; description?: string }
-): Promise<SongsetListItem> {
+): Promise<Omit<SongsetListItem, "themes">> {
   const id = nanoid();
   const rows = await db
     .insert(songsets)
@@ -997,7 +1002,6 @@ export async function createSongset(
     itemCount: 0,
     renderErrorMessage: null,
     failedAt: null,
-    themes: [],
     durationSeconds: null,
     renderState: "unrendered",
   };
@@ -1007,7 +1011,7 @@ export async function updateSongset(
   id: string,
   userId: number,
   patch: { name?: string; description?: string | null }
-): Promise<SongsetListItem | null> {
+): Promise<Omit<SongsetListItem, "themes"> | null> {
   const existing = await db.query.songsets.findFirst({
     where: and(eq(songsets.id, id), eq(songsets.userId, userId)),
   });
@@ -1054,7 +1058,6 @@ export async function updateSongset(
     renderState,
     renderErrorMessage: null,
     failedAt: null,
-    themes: [],
   };
 }
 

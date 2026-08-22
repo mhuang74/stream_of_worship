@@ -2671,15 +2671,15 @@ def _persist_recording_theme(
 ) -> None:
     """Aggregate theme/posture from components and persist to recordings row.
 
-    Silent on failure — recording-level theme is a convenience aggregate,
-    not a hard requirement. A DB error here should not fail the component
-    analysis pipeline.
+    A DB error here should not fail the component analysis pipeline — the
+    recording-level theme is a convenience aggregate, not a hard requirement.
     """
     try:
         theme, posture = _aggregate_recording_theme(components)
-        db_client.update_recording_theme(recording.hash_prefix, theme, posture)
-    except Exception:
-        pass
+        if theme is not None or posture is not None:
+            db_client.update_recording_theme(recording.hash_prefix, theme, posture)
+    except Exception as e:
+        logger.warning(f"Failed to persist recording theme for {recording.hash_prefix}: {e}")
 
 
 def _submit_component_analysis_job(
@@ -3185,7 +3185,7 @@ def components_recording(
             components = db_client.get_song_components(sid)
             if not components:
                 results.append(
-                    {"song_id": sid, "status": "failed", "error": "No song_components rows"}
+                    {"song_id": sid, "status": "no_data", "error": "No theme data to backfill"}
                 )
                 continue
             theme, posture = _aggregate_recording_theme(components)
@@ -3202,7 +3202,7 @@ def components_recording(
         if format_ == "json":
             print(json.dumps(results, ensure_ascii=False, indent=2))
         else:
-            succeeded = sum(1 for r in results if r["status"] != "failed")
+            succeeded = sum(1 for r in results if r["status"] == "succeeded")
             failed = sum(1 for r in results if r["status"] == "failed")
             out_console.print(
                 f"[green]Backfilled {succeeded} song(s)[/green]"
@@ -3213,6 +3213,10 @@ def components_recording(
                     out_console.print(
                         f"  [green]{r['song_id']}[/green]: "
                         f"theme={r['theme']}, posture={r['vocal_posture']}"
+                    )
+                elif r["status"] == "no_data":
+                    out_console.print(
+                        f"  [yellow]No theme data to backfill for {r['song_id']}[/yellow]"
                     )
                 else:
                     out_console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")

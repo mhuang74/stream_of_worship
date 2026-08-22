@@ -7,7 +7,7 @@ import { Music, Clock, Disc, Plus, Check, BadgeCheck, Play, Pause, Loader2 } fro
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { FavoriteButton } from "./FavoriteButton";
-import { ThemeLabel } from "./ThemeLabel";
+import { ThemeLabel, toSongTheme } from "./ThemeLabel";
 import { useLocale } from "@/hooks/useLocale";
 
 export interface SongCardData {
@@ -80,6 +80,7 @@ export function SongCard({
   const primaryRecording = publishedRecording ?? song.recordings[0];
   const duration = primaryRecording?.durationSeconds;
   const tempo = primaryRecording?.tempoBpm;
+  const primaryTheme = primaryRecording?.theme ? toSongTheme(primaryRecording.theme) : null;
   const effectiveKeyDisplay =
     primaryRecording?.effectiveKeyStartRoot &&
     primaryRecording?.effectiveKeyEndRoot &&
@@ -179,9 +180,9 @@ export function SongCard({
                 <span data-testid="song-tempo">{Math.round(tempo)} {t("browse.bpm")}</span>
               )}
             </div>
-            {primaryRecording?.theme && (
+            {primaryTheme && (
               <div className="mt-1">
-                <ThemeLabel theme={primaryRecording.theme} />
+                <ThemeLabel theme={primaryTheme} />
               </div>
             )}
           </div>
