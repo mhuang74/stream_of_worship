@@ -18,7 +18,7 @@ function SongsetRowSkeleton() {
 export function SongsetListSkeleton() {
   const { t } = useLocale();
   return (
-    <div className="space-y-3" aria-label={t("songsets.loading.songsets")} role="status">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3" aria-label={t("songsets.loading.songsets")} role="status">
       <span className="sr-only">{t("songsets.loading.songsetsSr")}</span>
       {Array.from({ length: 4 }).map((_, i) => (
         <SongsetRowSkeleton key={i} />

@@ -61,6 +61,8 @@ describe("SongsetList", () => {
       // SongsetListSkeleton renders a status region with aria-label "Loading songsets"
       const skeleton = screen.getByRole("status", { name: /loading songsets/i });
       expect(skeleton).toBeInTheDocument();
+      // Matches the loaded list container so there is no layout shift on completion
+      expect(skeleton).toHaveClass("grid grid-cols-1 md:grid-cols-2 gap-3");
     });
   });
 
@@ -108,6 +110,14 @@ describe("SongsetList", () => {
     it("renders FAB for creating new songset", () => {
       renderList();
       expect(screen.getByRole("button", { name: /create new songset/i })).toBeInTheDocument();
+    });
+    it("renders songsets in a responsive two-column grid on desktop", () => {
+      renderList();
+      const list = screen
+        .getByText("Sunday Worship")
+        .closest("div[class*='grid grid-cols-1 md:grid-cols-2']");
+      expect(list).not.toBeNull();
+      expect(list).toContainElement(screen.getByText("Youth Service"));
     });
   });
 
