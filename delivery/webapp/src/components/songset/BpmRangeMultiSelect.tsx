@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import {
   BPM_BANDS,
   BPM_BAND_KEYS,
@@ -33,6 +34,7 @@ export function BpmRangeMultiSelect({
   disabled = false,
   className,
 }: BpmRangeMultiSelectProps) {
+  const { t } = useLocale();
   const selectedSet = new Set(selectedBpm);
 
   const toggleBpm = (band: BpmBandKey) => {
@@ -51,9 +53,11 @@ export function BpmRangeMultiSelect({
 
   let triggerText: string;
   if (sortedBpm.length === 0) {
-    triggerText = "All";
+    triggerText = t("browse.bpm.all");
   } else {
-    triggerText = sortedBpm.map((band) => BPM_BANDS[band].label).join(", ");
+    triggerText = sortedBpm
+      .map((band) => t(`browse.bpm.band.${band}`))
+      .join(", ");
   }
 
   return (
@@ -69,7 +73,7 @@ export function BpmRangeMultiSelect({
             data-testid="bpm-filter"
           >
             <span className="max-w-[18rem] truncate whitespace-nowrap">
-              <span className="font-medium">BPM:</span>{" "}
+              <span className="font-medium">{t("browse.bpm.label")}</span>{" "}
               <span className="text-muted-foreground">{triggerText}</span>
             </span>
             <ChevronDown className="size-3 text-muted-foreground/60" />
@@ -77,12 +81,12 @@ export function BpmRangeMultiSelect({
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-72 max-h-80">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>BPM Range</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("browse.bpm.dropdownLabel")}</DropdownMenuLabel>
             {selectedBpm.length > 0 && (
               <>
                 <DropdownMenuItem onClick={clearBpm} data-testid="bpm-clear-all">
                   <X className="size-3.5" />
-                  Clear all
+                  {t("browse.bpm.clearAll")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -95,7 +99,7 @@ export function BpmRangeMultiSelect({
                 onSelect={(e) => e.preventDefault()}
                 data-testid={`bpm-option-${band}`}
               >
-                {BPM_BANDS[band].label} ({formatBpmBandRangeText(band)})
+                {t(`browse.bpm.band.${band}`)} ({formatBpmBandRangeText(band)})
               </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuGroup>

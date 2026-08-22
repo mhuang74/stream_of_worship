@@ -165,11 +165,11 @@ export default function ControllerPage() {
   const media = useMemo<CastMedia>(
     () => ({
       videoUrl: videoUrl ?? "",
-      title: songset?.name ?? "Worship Set",
+      title: songset?.name ?? t("control.worshipSet"),
       source: { kind: "songset", idOrToken: songsetId },
       startSeconds: 0,
     }),
-    [videoUrl, songset?.name, songsetId],
+    [videoUrl, songset?.name, songsetId, t],
   );
 
   const cast = useCastTransport({
@@ -179,15 +179,15 @@ export default function ControllerPage() {
 
   const sender = usePresentationSender({
     presentationUrl,
-    onConnected: () => toast.success("Connected to projection screen"),
+    onConnected: () => toast.success(t("control.connectedProjection")),
     onDisconnected: () => {
       setPresentationMediaStatus(null);
-      toast.info("Disconnected from projection screen");
+      toast.info(t("control.disconnectedProjection"));
     },
     onStartError: (m) => toast.error(m),
     onStatus: (status) => {
       if (status.type === "error") {
-        toast.error("TV projection failed — check connection");
+        toast.error(t("projection.tvFailed"));
       } else if (status.type === "media") {
         setPresentationMediaStatus(status);
       }

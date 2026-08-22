@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/hooks/useLocale";
 import { MapPin, Loader2, ListMusic, ArrowUpRight } from "lucide-react";
 
 interface ContainingSongset {
@@ -24,6 +25,7 @@ interface ContainingSongset {
 }
 
 export function LocateSongsetsPopover() {
+  const { t } = useLocale();
   const { currentTrack } = useAudioPlayer();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -64,7 +66,7 @@ export function LocateSongsetsPopover() {
       .catch((err) => {
         if (err?.name === "AbortError") return;
         console.error("Locate songsets failed:", err);
-        setError("Failed to load songsets");
+        setError(t("audio.locate.loadFailed"));
       })
       .finally(() => setLoading(false));
 
@@ -101,8 +103,8 @@ export function LocateSongsetsPopover() {
           variant="ghost"
           size="icon-sm"
           className="shrink-0"
-          aria-label="Find containing songsets"
-          title="Find in songsets"
+          aria-label={t("audio.locate.findButton")}
+          title={t("audio.locate.findTitle")}
         >
           <MapPin className="size-4" />
         </Button>
@@ -125,12 +127,12 @@ export function LocateSongsetsPopover() {
           </div>
         ) : songsets.length === 0 ? (
           <div className="px-3 py-4 text-sm text-muted-foreground">
-            This song is not in any of your songsets.
+            {t("audio.locate.empty")}
           </div>
         ) : (
           <div
             role="list"
-            aria-label="Songsets containing this song"
+            aria-label={t("audio.locate.listAria")}
             className="flex flex-col"
           >
             {songsets.map((ss) => (
@@ -153,12 +155,12 @@ export function LocateSongsetsPopover() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{ss.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {ss.itemCount} songs • Position {ss.songPosition + 1}
+                    {ss.itemCount} {t("audio.locate.songs")} • {t("audio.locate.position")} {ss.songPosition + 1}
                   </p>
                 </div>
                 {ss.isOrigin && (
                   <span className="text-xs text-primary shrink-0 font-medium">
-                    Origin
+                    {t("audio.locate.origin")}
                   </span>
                 )}
                 <ArrowUpRight className="size-3.5 text-muted-foreground shrink-0" />

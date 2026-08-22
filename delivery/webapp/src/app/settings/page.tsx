@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS: UserSettingsData = {
 
 async function fetchSettings(): Promise<UserSettingsData> {
   const res = await fetch("/api/settings");
-  if (!res.ok) throw new Error("Failed to load settings");
+  if (!res.ok) throw new Error("settings_failed");
   const data = await res.json();
   return { ...DEFAULT_SETTINGS, ...data.settings };
 }
@@ -51,9 +51,9 @@ export default function SettingsPage() {
         if (!cancelled) {
           setSettings(nextSettings);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : t("settings.failedLoad"));
+          setError(t("settings.failedLoad"));
         }
       } finally {
         if (!cancelled) {
@@ -84,7 +84,7 @@ export default function SettingsPage() {
           return;
         }
         const data = await res.json();
-        throw new Error(data.error || "Failed to save settings");
+        throw new Error(data.error || t("settings.failedSave"));
       }
 
       setSettings(updated);

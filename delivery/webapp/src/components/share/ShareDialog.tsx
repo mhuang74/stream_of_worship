@@ -184,10 +184,12 @@ export function ShareDialog({
       }
 
       const sharePageUrl = shareInfo.shareUrl;
-      const text = `Check out "${songsetName}" on Stream of Worship`;
+      const text = t("control.shareSendMessage").replace("${name}", songsetName);
 
       if (app === "email") {
-        const subject = encodeURIComponent(`Stream of Worship: ${songsetName}`);
+        const subject = encodeURIComponent(
+          t("control.shareEmailSubject").replace("${name}", songsetName)
+        );
         const body = encodeURIComponent(`${text}\n\n${sharePageUrl}`);
         window.open(`mailto:?subject=${subject}&body=${body}`);
       } else if (app === "whatsapp") {
