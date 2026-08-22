@@ -163,7 +163,23 @@ The project consists of **eight architecturally separate components**:
 - **Safety**:
   - Use `run_in_background=True` for long-running analysis tasks.
   - Verify file existence before reading/processing.
-- Update MEMORY after completion of each phase, typically triggered by git commit
+## Webapp visual validation (test user)
+
+Real pages (`/songsets`, `/favorites`, dashboard) are auth-gated — unauthenticated requests get HTTP 307 to `/login?callbackUrl=...`. To visually validate changes in a real browser:
+
+**Credentials:** NOT stored here. Obtain by exporting the env vars `SOW_WEBAPP_TESTUSER_LOGIN` (email) and `SOW_WEBAPP_TESTUSER_PASSWORD` — the user provides their values.
+
+**Browser recipe that works on this host** (verified 2026-08-23):
+
+1. The dev server runs with `--experimental-https` (self-signed cert) → browser tool plain `open` fails with `ERR_CERT_AUTHORITY_INVALID`, and both `app.path` spawn and `app.relay` time out. Instead launch a cert-tolerant headless Chrome via `hub`:
+   - `application: /usr/bin/google-chrome`
+   - args: `["--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--ignore-certificate-errors", "--remote-debugging-port=9222", "--user-data-dir=/tmp/sow-chrome-profile", "about:blank"]`
+   - `ready: { port: 9222 }`
+2. Browser tool `open` with `app: { cdp_url: "http://127.0.0.1:9222" }`, url `https://localhost:8080/<page>` — it lands on `/login`.
+3. Sign in: `tab.fill("#email", …)`, `tab.fill("#password", …)`, `tab.click("button[type='submit']")`. The submit fires and the auth fetch succeeds, but the client-side redirect to the target page may not complete — then `tab.goto("https://localhost:8080/<page>")`.
+4. Measure layout, don't eyeball: `getBoundingClientRect()` on `[data-songset-id]` cards (or any element). Column count proof: 2-col grid → cards share `top` with two distinct `left`s; 1-col → single `left`, distinct `top`s.
+
+**Quirks:** no `tab.setViewport` — use `tab.page.setViewport({width, height})`. CSS viewport ≠ device pixels (`deviceScaleFactor` ~1.25); Tailwind `md:` breakpoint is 768 CSS px. If a dev server is already on 8080, reuse it (hot reloads); don't start a second one.
 
 ## Session Completion (MANDATORY)
 
