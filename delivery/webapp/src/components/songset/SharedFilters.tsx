@@ -2,10 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { BpmBandKey } from "@/lib/constants";
+import type { BpmBandKey, SongTheme } from "@/lib/constants";
 import { AlbumMultiSelect } from "./AlbumMultiSelect";
 import { MusicalKeyMultiSelect } from "./MusicalKeyMultiSelect";
 import { BpmRangeMultiSelect } from "./BpmRangeMultiSelect";
+import { ThemeMultiSelect } from "./ThemeMultiSelect";
 import type { AlbumFilter, AlbumOption } from "@/lib/search/album-filter";
 import { useLocale } from "@/hooks/useLocale";
 
@@ -17,6 +18,8 @@ interface SharedFiltersProps {
   onSelectedKeysChange: (keys: string[]) => void;
   selectedBpm?: BpmBandKey[];
   onSelectedBpmChange: (bpm: BpmBandKey[]) => void;
+  selectedThemes?: SongTheme[];
+  onSelectedThemesChange: (themes: SongTheme[]) => void;
   onClearFilters: () => void;
   isLoading?: boolean;
   className?: string;
@@ -30,13 +33,18 @@ export function SharedFilters({
   onSelectedKeysChange,
   selectedBpm = [],
   onSelectedBpmChange,
+  selectedThemes = [],
+  onSelectedThemesChange,
   onClearFilters,
   isLoading = false,
   className,
 }: SharedFiltersProps) {
   const { t } = useLocale();
   const hasAnyFilters =
-    selectedAlbums.length > 0 || selectedKeys.length > 0 || selectedBpm.length > 0;
+    selectedAlbums.length > 0 ||
+    selectedKeys.length > 0 ||
+    selectedBpm.length > 0 ||
+    selectedThemes.length > 0;
 
   return (
     <div className={cn("space-y-2", className)} data-testid="shared-filters">
@@ -59,6 +67,12 @@ export function SharedFilters({
         <BpmRangeMultiSelect
           selectedBpm={selectedBpm}
           onSelectedBpmChange={onSelectedBpmChange}
+          disabled={isLoading}
+        />
+
+        <ThemeMultiSelect
+          selectedThemes={selectedThemes}
+          onSelectedThemesChange={onSelectedThemesChange}
           disabled={isLoading}
         />
 

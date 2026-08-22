@@ -250,6 +250,30 @@ describe("GET /api/songs/search", () => {
     expect(fullTextSearchSongs).toHaveBeenCalledWith("test", 50, 0, ["published", "review"], { favoriteSongIds: [], keys: undefined, bpmRange: ["slow"], favoritesOnly: false });
   });
 
+  it("parses themes filter param", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(fullTextSearchSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs/search?q=test&themes=感恩"
+    );
+    await GET(request);
+
+    expect(fullTextSearchSongs).toHaveBeenCalledWith(
+      "test",
+      50,
+      0,
+      ["published", "review"],
+      expect.objectContaining({ themes: ["感恩"] })
+    );
+  });
+
   it("parses combined keys + bpmRange filters (AND semantics)", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

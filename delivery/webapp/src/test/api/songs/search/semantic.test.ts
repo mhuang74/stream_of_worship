@@ -172,6 +172,7 @@ describe("POST /api/songs/search/semantic", () => {
       albums: [" Hymns ", "", "Hymns", "Worship"],
       keys: ["D", "H"],
       bpmRange: ["slow"],
+      themes: ["感恩"],
     }));
 
     expect(semanticSearchSongs).toHaveBeenCalledWith(
@@ -179,7 +180,7 @@ describe("POST /api/songs/search/semantic", () => {
       "text-embedding-3-small",
       40,
       ["published", "review"],
-      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: ["slow"] }
+      { albums: ["Hymns", "Worship"], keys: ["D"], bpmRange: ["slow"], themes: ["感恩"] }
     );
   });
 

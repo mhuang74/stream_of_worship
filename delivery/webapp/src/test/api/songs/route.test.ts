@@ -425,6 +425,50 @@ describe("GET /api/songs", () => {
     );
   });
 
+  it("parses themes filter param", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(listSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?themes=感恩"
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({ themes: ["感恩"] })
+    );
+  });
+
+  it("ignores invalid theme value", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    vi.mocked(listSongs).mockResolvedValue({
+      songs: [],
+      total: 0,
+    });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?themes=Gospel"
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.not.objectContaining({ themes: expect.anything() })
+    );
+  });
+
   it("returns 500 on error", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

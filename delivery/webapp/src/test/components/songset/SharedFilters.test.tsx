@@ -21,6 +21,8 @@ describe("SharedFilters", () => {
     onSelectedKeysChange: vi.fn(),
     selectedBpm: [],
     onSelectedBpmChange: vi.fn(),
+    selectedThemes: [],
+    onSelectedThemesChange: vi.fn(),
     onClearFilters: vi.fn(),
     isLoading: false,
   };
@@ -209,6 +211,52 @@ describe("SharedFilters", () => {
       await waitFor(() => {
         expect(screen.getByTestId("bpm-clear-all")).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("theme multi-select", () => {
+    const gratitudeOptionTestId = `theme-option-${encodeURIComponent("感恩")}`;
+
+    it("selecting a theme calls onSelectedThemesChange", async () => {
+      renderFilters();
+
+      fireEvent.click(screen.getByTestId("theme-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId(gratitudeOptionTestId)).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId(gratitudeOptionTestId));
+      expect(defaultProps.onSelectedThemesChange).toHaveBeenCalledWith(["感恩"]);
+    });
+
+    it("deselecting a theme calls onSelectedThemesChange removing the theme", async () => {
+      renderFilters({ selectedThemes: ["感恩"] });
+
+      fireEvent.click(screen.getByTestId("theme-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId(gratitudeOptionTestId)).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId(gratitudeOptionTestId));
+      expect(defaultProps.onSelectedThemesChange).toHaveBeenCalledWith([]);
+    });
+
+    it("shows translated theme label when one selected", () => {
+      renderFilters({ selectedThemes: ["感恩"] });
+      expect(screen.getByTestId("theme-filter")).toHaveTextContent("Themes: Thanksgiving");
+    });
+
+    it("shows Clear all item when a theme is selected", async () => {
+      renderFilters({ selectedThemes: ["感恩"] });
+      fireEvent.click(screen.getByTestId("theme-filter"));
+      await waitFor(() => {
+        expect(screen.getByTestId("theme-clear-all")).toBeInTheDocument();
+      });
+    });
+
+    it("renders Clear all button when only a theme is selected", () => {
+      renderFilters({ selectedThemes: ["感恩"] });
+      expect(screen.getByTestId("clear-all-filters")).toBeInTheDocument();
     });
   });
 

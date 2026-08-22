@@ -6,6 +6,7 @@ import {
   parseAlbumFilterParams,
   parseKeysParam,
   parseBpmRangeParams,
+  parseThemesParam,
 } from "@/lib/db/search-helpers";
 
 export async function GET(request: NextRequest) {
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
 
     const keys = parseKeysParam(searchParams.get("keys"));
     const bpmRange = parseBpmRangeParams(searchParams.getAll("bpmRange"));
+    const themes = parseThemesParam(searchParams.getAll("themes"));
     const { albumFilters, albumNames: albums } = parseAlbumFilterParams(searchParams);
 
     const result = await fullTextSearchSongs(query, limit, offset, visibilityStatus, {
@@ -54,6 +56,7 @@ export async function GET(request: NextRequest) {
       albumFilters,
       keys,
       bpmRange,
+      themes,
       favoriteSongIds,
       favoritesOnly,
     });

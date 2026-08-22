@@ -7,8 +7,9 @@ import {
   buildEffectiveKeyPredicate,
   buildBpmPredicates,
   buildVisibilityCondition,
+  buildThemePredicate,
 } from "./search-helpers";
-import type { BpmBandKey } from "@/lib/constants";
+import type { BpmBandKey, SongTheme } from "@/lib/constants";
 import type { AlbumFilter } from "@/lib/search/album-filter";
 
 export interface FullTextSearchOptions {
@@ -16,6 +17,7 @@ export interface FullTextSearchOptions {
   albumFilters?: AlbumFilter[];
   keys?: string[];
   bpmRange?: BpmBandKey[];
+  themes?: SongTheme[];
   /** Pins these songs to the top of results (favorites-first search). */
   favoriteSongIds?: string[];
   /** When true and favoriteSongIds is present, restrict results to favorites. */
@@ -86,6 +88,20 @@ export async function fullTextSearchSongs(
           and r3.tempo_bpm IS NOT NULL
           ${visCond ? sql`and ${visCond}` : sql``}
           and ${bpmPredicate}
+      )`
+    );
+  }
+
+  if (options?.themes && options.themes.length > 0) {
+    const themePredicate = buildThemePredicate(options.themes, "r4");
+    const visCond = buildVisibilityCondition(visibilityStatus, "r4");
+    whereConditions.push(
+      sql`exists (
+        select 1 from recordings r4
+        where r4.song_id = ${songs.id}
+          and r4.deleted_at IS NULL
+          ${visCond ? sql`and ${visCond}` : sql``}
+          and ${themePredicate}
       )`
     );
   }

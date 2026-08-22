@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { toast } from "sonner";
 import type { StructuredSearchCriteria } from "@/components/songset/search/types";
-import type { BpmBandKey } from "@/lib/constants";
+import type { BpmBandKey, SongTheme } from "@/lib/constants";
 import type { AlbumFilter } from "@/lib/search/album-filter";
 import { useLocale } from "@/hooks/useLocale";
 
@@ -31,6 +31,7 @@ interface SemanticSearchProps {
   albums?: AlbumFilter[];
   keys?: string[];
   bpmRange?: StructuredSearchCriteria["bpmRange"];
+  themes?: SongTheme[];
   searchButtonClassName?: string;
   showSearchButton?: boolean;
   className?: string;
@@ -45,6 +46,7 @@ interface UseSemanticSearchOptions {
   albums?: AlbumFilter[];
   keys?: string[];
   bpmRange?: StructuredSearchCriteria["bpmRange"];
+  themes?: SongTheme[];
   searchButtonClassName?: string;
   showSearchButton?: boolean;
 }
@@ -58,6 +60,7 @@ export function useSemanticSearch({
   albums = [],
   keys = [],
   bpmRange,
+  themes = [],
   searchButtonClassName,
   showSearchButton = true,
 }: UseSemanticSearchOptions) {
@@ -137,10 +140,12 @@ export function useSemanticSearch({
           albums?: AlbumFilter[];
           keys?: string[];
           bpmRange?: BpmBandKey[];
+          themes?: SongTheme[];
         } = { query: trimmed, limit: 20 };
         if (albums.length > 0) body.albums = albums;
         if (keys.length > 0) body.keys = keys;
         if (bpmRange && bpmRange.length > 0) body.bpmRange = bpmRange;
+        if (themes.length > 0) body.themes = themes;
 
         response = await fetch("/api/songs/search/semantic", {
           method: "POST",
@@ -161,6 +166,9 @@ export function useSemanticSearch({
           for (const band of bpmRange) {
             params.append("bpmRange", band);
           }
+        }
+        for (const theme of themes) {
+          params.append("themes", theme);
         }
         params.set("limit", "50");
 
@@ -197,7 +205,7 @@ export function useSemanticSearch({
         setIsLoading(false);
       }
     }
-  }, [query, albums, keys, bpmRange, onSwitchToSearchTab, t]);
+  }, [query, albums, keys, bpmRange, themes, onSwitchToSearchTab, t]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {

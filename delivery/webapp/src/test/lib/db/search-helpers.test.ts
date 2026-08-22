@@ -10,9 +10,12 @@ import {
   effectiveKeyMatchesFilter,
   isValidPitchClass,
   isValidBpmBand,
+  isValidTheme,
   parseKeysParam,
   parseBpmRangeParam,
   parseBpmRangeParams,
+  parseThemesParam,
+  buildThemePredicate,
 } from "@/lib/db/search-helpers";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -303,5 +306,67 @@ describe("parseBpmRangeParams", () => {
 
   it("filters invalid entries within comma-separated values", () => {
     expect(parseBpmRangeParams(["slow,medium,fast"])).toEqual(["slow", "fast"]);
+  });
+});
+
+describe("isValidTheme", () => {
+  it("returns true for a valid theme", () => {
+    expect(isValidTheme("感恩")).toBe(true);
+  });
+
+  it("returns false for an invalid theme", () => {
+    expect(isValidTheme("Gospel")).toBe(false);
+  });
+});
+
+describe("parseThemesParam", () => {
+  it("parses valid themes", () => {
+    expect(parseThemesParam(["感恩"])).toEqual(["感恩"]);
+    expect(parseThemesParam(["感恩", "敬拜"])).toEqual(["感恩", "敬拜"]);
+  });
+
+  it("filters out invalid themes", () => {
+    expect(parseThemesParam(["感恩", "Gospel", "敬拜"])).toEqual(["感恩", "敬拜"]);
+  });
+
+  it("deduplicates themes", () => {
+    expect(parseThemesParam(["感恩", "感恩", "敬拜"])).toEqual(["感恩", "敬拜"]);
+  });
+
+  it("returns undefined for empty array", () => {
+    expect(parseThemesParam([])).toBeUndefined();
+  });
+
+  it("returns undefined when all invalid", () => {
+    expect(parseThemesParam(["Gospel", "Unknown"])).toBeUndefined();
+  });
+
+  it("parses comma-separated values within a single param", () => {
+    expect(parseThemesParam(["感恩,敬拜"])).toEqual(["感恩", "敬拜"]);
+  });
+
+  it("trims whitespace around comma-separated values", () => {
+    expect(parseThemesParam([" 感恩 , 敬拜 "])).toEqual(["感恩", "敬拜"]);
+  });
+});
+
+describe("buildThemePredicate", () => {
+  it("renders r.theme = ANY(...) with default alias", () => {
+    const sqlFragment = buildThemePredicate(["感恩"]);
+    const query = dialect.sqlToQuery(sqlFragment);
+    expect(query.sql).toContain("r.theme");
+    expect(query.sql).toContain("= ANY");
+    expect(query.sql).toContain("::text[]");
+    expect(query.params).toContain("感恩");
+  });
+
+  it("uses custom alias when provided", () => {
+    const sqlFragment = buildThemePredicate(["感恩", "敬拜"], "r4");
+    const query = dialect.sqlToQuery(sqlFragment);
+    expect(query.sql).toContain("r4.theme");
+    expect(query.sql).not.toContain("r.theme");
+    expect(query.sql).toContain("= ANY");
+    expect(query.params).toContain("感恩");
+    expect(query.params).toContain("敬拜");
   });
 });
