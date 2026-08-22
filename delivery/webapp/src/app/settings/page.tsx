@@ -84,7 +84,8 @@ export default function SettingsPage() {
           return;
         }
         const data = await res.json();
-        throw new Error(data.error || t("settings.failedSave"));
+        console.error("Failed to save settings:", data.error);
+        throw new Error(t("settings.failedSave"));
       }
 
       setSettings(updated);

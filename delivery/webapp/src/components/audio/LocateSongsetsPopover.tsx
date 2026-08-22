@@ -71,7 +71,7 @@ export function LocateSongsetsPopover() {
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [open, songId, originSongsetId]);
+  }, [open, songId, originSongsetId, t]);
 
   const handleSelect = useCallback(
     (songsetId: string) => {

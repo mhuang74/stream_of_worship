@@ -15,7 +15,6 @@ import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import {
-  BPM_BANDS,
   BPM_BAND_KEYS,
   formatBpmBandRangeText,
   type BpmBandKey,
