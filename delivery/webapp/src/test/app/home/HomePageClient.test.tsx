@@ -133,6 +133,19 @@ describe("HomePageClient", () => {
       "Favorited by 7"
     );
   });
+  it("renders favorite and community song grids in a responsive two-column layout", () => {
+    render(<HomePageClient {...defaultProps} />);
+    const favoritesGrid = screen
+      .getByText("Song f1")
+      .closest("div[class*='grid grid-cols-1 md:grid-cols-2 gap-2']");
+    const communityGrid = screen
+      .getByText("Song c1")
+      .closest("div[class*='grid grid-cols-1 md:grid-cols-2 gap-2']");
+    expect(favoritesGrid).not.toBeNull();
+    expect(communityGrid).not.toBeNull();
+    expect(favoritesGrid).toContainElement(screen.getByText("Song f2"));
+    expect(communityGrid).toContainElement(screen.getByText("Song c2"));
+  });
 
   it("shows empty state with create-songset CTA when no songsets", () => {
     render(
