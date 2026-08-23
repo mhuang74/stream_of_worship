@@ -191,7 +191,7 @@ export function HomePageClient({
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {songs.map((song) => (
               <SongCard
                 key={song.id}
@@ -213,7 +213,7 @@ export function HomePageClient({
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">{t(locale, "home.section.communityFavorites")}</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {communityFavorites.map((song) => (
               <SongCard
                 key={song.id}
