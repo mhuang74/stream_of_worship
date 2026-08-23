@@ -4,13 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
-import { sendVerificationEmail } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
+import { useResendVerification } from "@/hooks/useResendVerification";
+import { persistLocale } from "@/lib/persist-locale";
+import { isValidEmail, MIN_PASSWORD_LENGTH } from "@/lib/validation";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,36 +22,18 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [loading, setLoading] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
-  const [resending, setResending] = useState(false);
-  const [resendState, setResendState] = useState<"idle" | "sent" | "error">("idle");
-
-  async function handleResendVerification() {
-    if (!unverifiedEmail) return;
-    setResending(true);
-    setResendState("idle");
-    try {
-      const result = await sendVerificationEmail({
-        email: unverifiedEmail,
-        callbackURL: "/",
-      });
-      setResendState(result.error ? "error" : "sent");
-    } catch {
-      setResendState("error");
-    } finally {
-      setResending(false);
-    }
-  }
+  const { resending, resendState, resend } = useResendVerification(unverifiedEmail);
 
   function validate() {
     const next: typeof errors = {};
     if (!email) {
       next.email = t("auth.signIn.validation.emailRequired");
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    } else if (!isValidEmail(email)) {
       next.email = t("auth.signIn.validation.emailFormat");
     }
     if (!password) {
       next.password = t("auth.signIn.validation.passwordRequired");
-    } else if (password.length < 8) {
+    } else if (password.length < MIN_PASSWORD_LENGTH) {
       next.password = t("auth.signIn.validation.passwordShort");
     }
     return next;
@@ -79,15 +63,7 @@ export default function LoginPage() {
         // Persist the chosen display locale to user_settings so the post-login
         // UI and future sessions/devices reflect the pre-login choice.
         // Best-effort: navigation proceeds even if this fails.
-        try {
-          await fetch("/api/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ locale }),
-          });
-        } catch {
-          // best-effort
-        }
+        await persistLocale(locale);
         // Honor deep-link callbackUrl from proxy.ts, but never open-redirect
         // (external/protocol-relative URLs) or loop back to auth pages.
         const callbackUrl = new URLSearchParams(window.location.search).get("callbackUrl");
@@ -170,7 +146,7 @@ export default function LoginPage() {
                   type="button"
                   variant="link"
                   className="px-0 h-auto"
-                  onClick={handleResendVerification}
+                  onClick={resend}
                   disabled={resending}
                 >
                   {resending

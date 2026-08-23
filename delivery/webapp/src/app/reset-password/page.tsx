@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
+import { MIN_PASSWORD_LENGTH } from "@/lib/validation";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -31,7 +32,7 @@ function ResetPasswordForm() {
     const next: typeof errors = {};
     if (!password) {
       next.password = t("auth.resetPassword.validation.passwordRequired");
-    } else if (password.length < 8) {
+    } else if (password.length < MIN_PASSWORD_LENGTH) {
       next.password = t("auth.resetPassword.validation.passwordShort");
     }
     if (!confirmPassword) {

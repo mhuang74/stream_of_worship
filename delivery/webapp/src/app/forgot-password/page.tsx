@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
+import { isValidEmail } from "@/lib/validation";
 
 export default function ForgotPasswordPage() {
   const { t } = useLocale();
@@ -23,7 +24,7 @@ export default function ForgotPasswordPage() {
     const next: typeof errors = {};
     if (!email) {
       next.email = t("auth.forgotPassword.validation.emailRequired");
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    } else if (!isValidEmail(email)) {
       next.email = t("auth.forgotPassword.validation.emailFormat");
     }
     return next;
