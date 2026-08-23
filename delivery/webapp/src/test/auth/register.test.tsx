@@ -3,10 +3,11 @@ import { screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockPush, mockRefresh, mockSignUp } = vi.hoisted(() => ({
+const { mockPush, mockRefresh, mockSignUp, mockSendVerificationEmail } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockRefresh: vi.fn(),
   mockSignUp: vi.fn(),
+  mockSendVerificationEmail: vi.fn(),
 }));
 
 const mockFetch = vi.fn();
@@ -21,6 +22,7 @@ vi.mock("@/lib/auth-client", () => ({
   signOut: vi.fn(),
   useSession: vi.fn(() => ({ data: null, isPending: false })),
   signUp: { email: mockSignUp },
+  sendVerificationEmail: mockSendVerificationEmail,
 }));
 
 import RegisterPage from "@/app/register/page";
@@ -124,7 +126,7 @@ describe("RegisterPage", () => {
     });
   });
 
-  it("redirects to / and calls refresh on success", async () => {
+  it("shows the check-your-email confirmation on success (no redirect)", async () => {
     mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
     renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
@@ -133,8 +135,31 @@ describe("RegisterPage", () => {
     await userEvent.type(screen.getByLabelText("Confirm password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/");
-      expect(mockRefresh).toHaveBeenCalled();
+      expect(screen.getByText("Check your email")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/user@example\.com/)).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  it("resends the verification email from the confirmation screen", async () => {
+    mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
+    mockSendVerificationEmail.mockResolvedValue({ data: { status: true }, error: null });
+    renderWithLocale(<RegisterPage />);
+    await userEvent.type(screen.getByLabelText("Name"), "Test User");
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    await userEvent.type(screen.getByLabelText("Confirm password"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Check your email")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /resend verification email/i }));
+    await waitFor(() => {
+      expect(mockSendVerificationEmail).toHaveBeenCalledWith({
+        email: "user@example.com",
+        callbackURL: "/",
+      });
     });
   });
 
@@ -155,10 +180,7 @@ describe("RegisterPage", () => {
   });
 
   it("shows loading state during submission", async () => {
-    let resolve: (v: unknown) => void;
-    const pending = new Promise((r) => {
-      resolve = r;
-    });
+    const { promise: pending, resolve } = Promise.withResolvers<unknown>();
     mockSignUp.mockReturnValue(pending);
     renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
@@ -191,7 +213,7 @@ describe("RegisterPage", () => {
       );
     });
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/");
+      expect(screen.getByText("請檢查您的電子郵件")).toBeInTheDocument();
     });
   });
 
@@ -204,7 +226,7 @@ describe("RegisterPage", () => {
     await userEvent.type(screen.getByLabelText("Confirm password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/");
+      expect(screen.getByText("Check your email")).toBeInTheDocument();
     });
     expect(mockFetch).not.toHaveBeenCalled();
   });

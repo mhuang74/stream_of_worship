@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signUp } from "@/lib/auth-client";
+import { sendVerificationEmail, signUp } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +11,6 @@ import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const { t, locale } = useLocale();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -26,6 +24,12 @@ export default function RegisterPage() {
     form?: string;
   }>({});
   const [loading, setLoading] = useState(false);
+  // With requireEmailVerification, signUp.email() no longer auto-signs-in.
+  // On success we swap to a "check your email" confirmation state instead of
+  // navigating (spec v1, Phase 4).
+  const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendState, setResendState] = useState<"idle" | "sent" | "error">("idle");
 
   function validate() {
     const next: typeof errors = {};
@@ -65,8 +69,8 @@ export default function RegisterPage() {
         setErrors({ form: result.error.message ?? t("auth.register.error.failed") });
       } else {
         // Persist the chosen display locale to user_settings so the post-login
-        // UI is in the selected language. Best-effort: navigation proceeds even
-        // if this fails (defaults to en).
+        // UI is in the selected language. Best-effort: the confirmation screen
+        // renders even if this fails (defaults to en).
         if (locale !== "en") {
           try {
             await fetch("/api/settings", {
@@ -78,14 +82,75 @@ export default function RegisterPage() {
             // best-effort
           }
         }
-        router.push("/");
-        router.refresh();
+        setSubmittedEmail(email);
       }
     } catch {
       setErrors({ form: t("auth.register.error.unexpected") });
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleResend() {
+    if (!submittedEmail) return;
+    setResending(true);
+    setResendState("idle");
+    try {
+      const result = await sendVerificationEmail({
+        email: submittedEmail,
+        callbackURL: "/",
+      });
+      setResendState(result.error ? "error" : "sent");
+    } catch {
+      setResendState("error");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  if (submittedEmail) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader className="space-y-1">
+            <div className="flex justify-end">
+              <AuthLanguageSwitcher />
+            </div>
+            <CardTitle className="text-2xl">{t("auth.register.verify.title")}</CardTitle>
+            <CardDescription>
+              {t("auth.register.verify.subtitle").replace("${email}", submittedEmail)}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleResend}
+              disabled={resending}
+            >
+              {resending ? t("auth.register.verify.resending") : t("auth.register.verify.resend")}
+            </Button>
+            {resendState === "sent" && (
+              <p className="text-sm text-muted-foreground text-center" role="status">
+                {t("auth.register.verify.resendSent")}
+              </p>
+            )}
+            {resendState === "error" && (
+              <p className="text-sm text-destructive text-center" role="alert">
+                {t("auth.register.verify.resendError")}
+              </p>
+            )}
+            <p className="text-center text-sm text-muted-foreground">
+              {t("auth.register.hasAccount")}{" "}
+              <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+                {t("auth.register.signInLink")}
+              </Link>
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (

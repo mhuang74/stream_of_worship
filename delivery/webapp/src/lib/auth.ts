@@ -3,6 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import { sendPasswordResetEmail, sendVerificationEmail } from "@/lib/email/client";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -34,6 +35,19 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     maxPasswordLength: 128,
+    // New sign-ups must verify their inbox before signing in (spec v1). The
+    // 0023_backfill_email_verified.sql migration marks pre-existing users as
+    // verified so enforcement doesn't lock them out.
+    requireEmailVerification: true,
+    sendResetPassword: async ({ user, url }) =>
+      sendPasswordResetEmail({ to: user.email, url }),
+  },
+  emailVerification: {
+    sendVerificationEmail: async ({ user, url }) =>
+      sendVerificationEmail({ to: user.email, url }),
+    // The user just proved they own the inbox — sign them in and hand them to
+    // the callback URL (default "/") instead of a second login.
+    autoSignInAfterVerification: true,
   },
   plugins: [nextCookies()],
   session: {

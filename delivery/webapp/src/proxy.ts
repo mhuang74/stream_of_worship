@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { isLocale } from "@/lib/i18n/messages";
 import { parseAcceptLanguage } from "@/lib/i18n/accept-language";
 
-const PUBLIC_PATHS = ["/", "/login", "/register", "/api/auth", "/share", "/api/share"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/share", "/api/share"];
 // Allow projection pages — matched by suffix to cover both songset and
 // share projection routes.
 function isPublicPath(pathname: string) {

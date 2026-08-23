@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { SettingsForm, UserSettingsData } from "@/components/settings/SettingsForm";
+import { SettingsForm } from "@/components/settings/SettingsForm";
+import type { UserSettingsData } from "@/components/settings/SettingsForm";
 import { SettingsSkeleton } from "@/components/settings/SettingsSkeleton";
+import { AccountSettings } from "@/components/settings/AccountSettings";
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
-import { useSignOut } from "@/hooks/useSignOut";
-import { Loader2, LogOut } from "lucide-react";
 
 const DEFAULT_SETTINGS: UserSettingsData = {
   offlineAutoCache: true,
@@ -38,7 +37,6 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isSigningOut, signOutAndRedirect } = useSignOut();
 
   useEffect(() => {
     let cancelled = false;
@@ -111,17 +109,13 @@ export default function SettingsPage() {
 
       {settings && !isLoading && (
         <>
-          <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} />
           <div className="mt-8 border-t pt-6">
             <h2 className="text-lg font-semibold mb-3">{t("settings.section.account")}</h2>
-            <Button variant="outline" onClick={signOutAndRedirect} disabled={isSigningOut}>
-              {isSigningOut ? (
-                <Loader2 className="size-4 mr-2 animate-spin" />
-              ) : (
-                <LogOut className="size-4 mr-2" />
-              )}
-              {t("settings.signOut")}
-            </Button>
+            <AccountSettings />
+          </div>
+          <div className="mt-8 border-t pt-6">
+            <h2 className="text-lg font-semibold mb-3">{t("settings.section.preferences")}</h2>
+            <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} />
           </div>
         </>
       )}

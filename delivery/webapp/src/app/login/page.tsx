@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
+import { sendVerificationEmail } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,26 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendState, setResendState] = useState<"idle" | "sent" | "error">("idle");
+
+  async function handleResendVerification() {
+    if (!unverifiedEmail) return;
+    setResending(true);
+    setResendState("idle");
+    try {
+      const result = await sendVerificationEmail({
+        email: unverifiedEmail,
+        callbackURL: "/",
+      });
+      setResendState(result.error ? "error" : "sent");
+    } catch {
+      setResendState("error");
+    } finally {
+      setResending(false);
+    }
+  }
 
   function validate() {
     const next: typeof errors = {};
@@ -46,7 +67,14 @@ export default function LoginPage() {
     try {
       const result = await signIn.email({ email, password });
       if (result.error) {
-        setErrors({ form: result.error.message ?? t("auth.signIn.error.invalid") });
+        // Better Auth returns 403 + code EMAIL_NOT_VERIFIED when the account
+        // is unverified — surface a resend action instead of a dead-end error.
+        if (result.error.code === "EMAIL_NOT_VERIFIED") {
+          setUnverifiedEmail(email);
+          setErrors({});
+        } else {
+          setErrors({ form: result.error.message ?? t("auth.signIn.error.invalid") });
+        }
       } else {
         // Persist the chosen display locale to user_settings so the post-login
         // UI and future sessions/devices reflect the pre-login choice.
@@ -133,10 +161,43 @@ export default function LoginPage() {
                 {errors.form}
               </p>
             )}
+            {unverifiedEmail && (
+              <div className="text-sm">
+                <p className="text-destructive" role="alert">
+                  {t("auth.signIn.unverified.message")}
+                </p>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="px-0 h-auto"
+                  onClick={handleResendVerification}
+                  disabled={resending}
+                >
+                  {resending
+                    ? t("auth.signIn.unverified.resending")
+                    : t("auth.signIn.unverified.resend")}
+                </Button>
+                {resendState === "sent" && (
+                  <p className="text-muted-foreground" role="status">
+                    {t("auth.signIn.unverified.resendSent")}
+                  </p>
+                )}
+                {resendState === "error" && (
+                  <p className="text-destructive" role="alert">
+                    {t("auth.signIn.unverified.resendError")}
+                  </p>
+                )}
+              </div>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? t("auth.signIn.submitting") : t("auth.signIn.submit")}
             </Button>
           </form>
+          <p className="text-center text-sm mt-2">
+            <Link href="/forgot-password" className="text-primary underline-offset-4 hover:underline">
+              {t("auth.signIn.forgotPassword")}
+            </Link>
+          </p>
           <p className="text-center text-sm text-muted-foreground mt-4">
             {t("auth.signIn.noAccount")}{" "}
             <Link href="/register" className="text-primary underline-offset-4 hover:underline">
