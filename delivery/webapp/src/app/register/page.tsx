@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { sendVerificationEmail, signUp } from "@/lib/auth-client";
+import { signUp } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
+import { useResendVerification } from "@/hooks/useResendVerification";
+import { persistLocale } from "@/lib/persist-locale";
+import { isValidEmail, MIN_PASSWORD_LENGTH } from "@/lib/validation";
 
 export default function RegisterPage() {
   const { t, locale } = useLocale();
@@ -28,8 +31,7 @@ export default function RegisterPage() {
   // On success we swap to a "check your email" confirmation state instead of
   // navigating (spec v1, Phase 4).
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
-  const [resending, setResending] = useState(false);
-  const [resendState, setResendState] = useState<"idle" | "sent" | "error">("idle");
+  const { resending, resendState, resend } = useResendVerification(submittedEmail);
 
   function validate() {
     const next: typeof errors = {};
@@ -38,12 +40,12 @@ export default function RegisterPage() {
     }
     if (!email) {
       next.email = t("auth.register.validation.emailRequired");
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    } else if (!isValidEmail(email)) {
       next.email = t("auth.register.validation.emailFormat");
     }
     if (!password) {
       next.password = t("auth.register.validation.passwordRequired");
-    } else if (password.length < 8) {
+    } else if (password.length < MIN_PASSWORD_LENGTH) {
       next.password = t("auth.register.validation.passwordShort");
     }
     if (!confirmPassword) {
@@ -71,40 +73,13 @@ export default function RegisterPage() {
         // Persist the chosen display locale to user_settings so the post-login
         // UI is in the selected language. Best-effort: the confirmation screen
         // renders even if this fails (defaults to en).
-        if (locale !== "en") {
-          try {
-            await fetch("/api/settings", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ locale }),
-            });
-          } catch {
-            // best-effort
-          }
-        }
+        await persistLocale(locale);
         setSubmittedEmail(email);
       }
     } catch {
       setErrors({ form: t("auth.register.error.unexpected") });
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleResend() {
-    if (!submittedEmail) return;
-    setResending(true);
-    setResendState("idle");
-    try {
-      const result = await sendVerificationEmail({
-        email: submittedEmail,
-        callbackURL: "/",
-      });
-      setResendState(result.error ? "error" : "sent");
-    } catch {
-      setResendState("error");
-    } finally {
-      setResending(false);
     }
   }
 
@@ -126,7 +101,7 @@ export default function RegisterPage() {
               type="button"
               variant="outline"
               className="w-full"
-              onClick={handleResend}
+              onClick={resend}
               disabled={resending}
             >
               {resending ? t("auth.register.verify.resending") : t("auth.register.verify.resend")}

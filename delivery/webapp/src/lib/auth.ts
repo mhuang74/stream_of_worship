@@ -45,9 +45,6 @@ export const auth = betterAuth({
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) =>
       sendVerificationEmail({ to: user.email, url }),
-    // The user just proved they own the inbox — sign them in and hand them to
-    // the callback URL (default "/") instead of a second login.
-    autoSignInAfterVerification: true,
   },
   plugins: [nextCookies()],
   session: {

@@ -23,6 +23,35 @@ function fromAddress(): string {
   );
 }
 
+interface SendEmailParams {
+  to: string;
+  subject: string;
+  html: string;
+  skipLabel: string;
+  errorLabel: string;
+}
+
+async function sendEmail({
+  to,
+  subject,
+  html,
+  skipLabel,
+  errorLabel,
+}: SendEmailParams): Promise<void> {
+  const resend = getResend();
+  if (!resend) {
+    console.warn(`[email] RESEND_API_KEY not set; skipping ${skipLabel} to ${to}`);
+    return;
+  }
+  const { error } = await resend.emails.send({
+    from: fromAddress(),
+    to,
+    subject,
+    html,
+  });
+  if (error) console.error(`[email] ${errorLabel}:`, error);
+}
+
 /**
  * Send the email-verification message. `url` points at Better Auth's
  * `/verify-email?token=...&callbackURL=...` endpoint (auto sign-in + redirect
@@ -32,20 +61,13 @@ export async function sendVerificationEmail({
   to,
   url,
 }: EmailSendArgs): Promise<void> {
-  const resend = getResend();
-  if (!resend) {
-    console.warn(
-      `[email] RESEND_API_KEY not set; skipping verification email to ${to} (${url})`
-    );
-    return;
-  }
-  const { error } = await resend.emails.send({
-    from: fromAddress(),
+  await sendEmail({
     to,
     subject: "Verify your email",
     html: `<p>Welcome to Stream of Worship!</p><p><a href="${url}">Verify your email</a></p><p>If you didn't create an account, you can safely ignore this email.</p>`,
+    skipLabel: "verification email",
+    errorLabel: "Failed to send verification email",
   });
-  if (error) console.error("[email] Failed to send verification email:", error);
 }
 
 /**
@@ -57,18 +79,11 @@ export async function sendPasswordResetEmail({
   to,
   url,
 }: EmailSendArgs): Promise<void> {
-  const resend = getResend();
-  if (!resend) {
-    console.warn(
-      `[email] RESEND_API_KEY not set; skipping password reset email to ${to} (${url})`
-    );
-    return;
-  }
-  const { error } = await resend.emails.send({
-    from: fromAddress(),
+  await sendEmail({
     to,
     subject: "Reset your password",
     html: `<p>Click the link below to reset your password:</p><p><a href="${url}">Reset your password</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+    skipLabel: "password reset email",
+    errorLabel: "Failed to send reset email",
   });
-  if (error) console.error("[email] Failed to send reset email:", error);
 }

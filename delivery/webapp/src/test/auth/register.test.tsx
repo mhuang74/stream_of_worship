@@ -3,11 +3,11 @@ import { screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockPush, mockRefresh, mockSignUp, mockSendVerificationEmail } = vi.hoisted(() => ({
+const { mockPush, mockRefresh, mockSignUp, mockRequestVerificationEmail } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockRefresh: vi.fn(),
   mockSignUp: vi.fn(),
-  mockSendVerificationEmail: vi.fn(),
+  mockRequestVerificationEmail: vi.fn(),
 }));
 
 const mockFetch = vi.fn();
@@ -22,7 +22,7 @@ vi.mock("@/lib/auth-client", () => ({
   signOut: vi.fn(),
   useSession: vi.fn(() => ({ data: null, isPending: false })),
   signUp: { email: mockSignUp },
-  sendVerificationEmail: mockSendVerificationEmail,
+  requestVerificationEmail: mockRequestVerificationEmail,
 }));
 
 import RegisterPage from "@/app/register/page";
@@ -144,7 +144,7 @@ describe("RegisterPage", () => {
 
   it("resends the verification email from the confirmation screen", async () => {
     mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
-    mockSendVerificationEmail.mockResolvedValue({ data: { status: true }, error: null });
+    mockRequestVerificationEmail.mockResolvedValue({ data: { status: true }, error: null });
     renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
@@ -156,7 +156,7 @@ describe("RegisterPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /resend verification email/i }));
     await waitFor(() => {
-      expect(mockSendVerificationEmail).toHaveBeenCalledWith({
+      expect(mockRequestVerificationEmail).toHaveBeenCalledWith({
         email: "user@example.com",
         callbackURL: "/",
       });
@@ -217,7 +217,7 @@ describe("RegisterPage", () => {
     });
   });
 
-  it("does not call the settings API when locale is en", async () => {
+  it("persists en locale via settings PUT on successful registration (overrides saved locale)", async () => {
     mockSignUp.mockResolvedValue({ data: { user: { id: "1" } }, error: null });
     renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
@@ -226,8 +226,16 @@ describe("RegisterPage", () => {
     await userEvent.type(screen.getByLabelText("Confirm password"), "password123");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/settings",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ locale: "en" }),
+        })
+      );
+    });
+    await waitFor(() => {
       expect(screen.getByText("Check your email")).toBeInTheDocument();
     });
-    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

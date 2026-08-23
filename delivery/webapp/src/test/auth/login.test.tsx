@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithLocale } from "@/test/render";
 
-const { mockPush, mockRefresh, mockSignIn, mockSendVerificationEmail } = vi.hoisted(() => ({
+const { mockPush, mockRefresh, mockSignIn, mockRequestVerificationEmail } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockRefresh: vi.fn(),
   mockSignIn: vi.fn(),
-  mockSendVerificationEmail: vi.fn(),
+  mockRequestVerificationEmail: vi.fn(),
 }));
 
 const mockFetch = vi.fn();
@@ -21,7 +21,7 @@ vi.mock("@/lib/auth-client", () => ({
   signIn: { email: mockSignIn },
   signOut: vi.fn(),
   useSession: vi.fn(() => ({ data: null, isPending: false })),
-  sendVerificationEmail: mockSendVerificationEmail,
+  requestVerificationEmail: mockRequestVerificationEmail,
 }));
 
 import LoginPage from "@/app/login/page";
@@ -209,7 +209,7 @@ describe("LoginPage", () => {
       data: null,
       error: { message: "Email not verified", code: "EMAIL_NOT_VERIFIED", status: 403 },
     });
-    mockSendVerificationEmail.mockResolvedValue({ data: { status: true }, error: null });
+    mockRequestVerificationEmail.mockResolvedValue({ data: { status: true }, error: null });
     renderWithLocale(<LoginPage />);
     await userEvent.type(screen.getByLabelText("Email"), "unverified@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "password123");
@@ -221,7 +221,7 @@ describe("LoginPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /resend verification email/i }));
     await waitFor(() => {
-      expect(mockSendVerificationEmail).toHaveBeenCalledWith({
+      expect(mockRequestVerificationEmail).toHaveBeenCalledWith({
         email: "unverified@example.com",
         callbackURL: "/",
       });
