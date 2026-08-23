@@ -19,6 +19,8 @@ export interface DashboardStats {
  * Aggregate counts for the signed-in dashboard. "Rendered" = songsets with at
  * least one successful render (snapshot column, uses idx_songsets_user_updated).
  * "Shared" = active (non-revoked, non-expired) shares created by the user.
+ * "Catalog" = non-soft-deleted songs with at least one published/review,
+ * non-deleted recording that has LRC (lrc_status='completed' or r2_lrc_url set).
  */
 export async function getDashboardStats(userId: number): Promise<DashboardStats> {
   const [created] = await db
@@ -52,7 +54,19 @@ export async function getDashboardStats(userId: number): Promise<DashboardStats>
   const [catalog] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(songs)
-    .where(isNull(songs.deletedAt));
+    .where(
+      and(
+        isNull(songs.deletedAt),
+        sql`exists (
+          select 1
+          from recordings
+          where recordings.song_id = ${songs.id}
+            and recordings.deleted_at IS NULL
+            and recordings.visibility_status = ANY(${sql`ARRAY['published','review']::text[]`})
+            and (recordings.lrc_status = 'completed' OR recordings.r2_lrc_url IS NOT NULL)
+        )`
+      )
+    );
 
   return {
     songsetsCreated: created?.n ?? 0,
