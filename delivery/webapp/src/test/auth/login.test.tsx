@@ -3,10 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithLocale } from "@/test/render";
 
-const { mockPush, mockRefresh, mockSignIn } = vi.hoisted(() => ({
+const { mockPush, mockRefresh, mockSignIn, mockSendVerificationEmail } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockRefresh: vi.fn(),
   mockSignIn: vi.fn(),
+  mockSendVerificationEmail: vi.fn(),
 }));
 
 const mockFetch = vi.fn();
@@ -20,6 +21,7 @@ vi.mock("@/lib/auth-client", () => ({
   signIn: { email: mockSignIn },
   signOut: vi.fn(),
   useSession: vi.fn(() => ({ data: null, isPending: false })),
+  sendVerificationEmail: mockSendVerificationEmail,
 }));
 
 import LoginPage from "@/app/login/page";
@@ -192,6 +194,58 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Invalid email or password")).toBeInTheDocument();
     });
+  });
+
+  it("renders a forgot-password link to /forgot-password", () => {
+    renderWithLocale(<LoginPage />);
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute(
+      "href",
+      "/forgot-password"
+    );
+  });
+
+  it("shows a resend-verification action for an unverified email", async () => {
+    mockSignIn.mockResolvedValue({
+      data: null,
+      error: { message: "Email not verified", code: "EMAIL_NOT_VERIFIED", status: 403 },
+    });
+    mockSendVerificationEmail.mockResolvedValue({ data: { status: true }, error: null });
+    renderWithLocale(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("Email"), "unverified@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/hasn't been verified yet/i)).toBeInTheDocument();
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /resend verification email/i }));
+    await waitFor(() => {
+      expect(mockSendVerificationEmail).toHaveBeenCalledWith({
+        email: "unverified@example.com",
+        callbackURL: "/",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Verification email sent")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the form error for non-verification sign-in failures", async () => {
+    mockSignIn.mockResolvedValue({
+      data: null,
+      error: { message: "Invalid email or password", code: "INVALID_EMAIL_OR_PASSWORD" },
+    });
+    renderWithLocale(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "wrongpassword");
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Invalid email or password")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/hasn't been verified yet/i)
+    ).not.toBeInTheDocument();
   });
 
   it("shows loading state during submission", async () => {

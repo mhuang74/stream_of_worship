@@ -21,6 +21,13 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/lib/auth-client", () => ({
   signOut: (...args: unknown[]) => mockSignOut(...args),
+  updateUser: vi.fn(() => Promise.resolve({ data: null, error: null })),
+  changePassword: vi.fn(() => Promise.resolve({ data: null, error: null })),
+  sendVerificationEmail: vi.fn(() => Promise.resolve({ data: null, error: null })),
+  useSession: () => ({
+    data: { user: { id: "1", name: "Test User", email: "user@example.com" } },
+    isPending: false,
+  }),
 }));
 
 function mockFetchSettings() {
