@@ -32,6 +32,122 @@ def _load_config(config_path: Optional[Path]) -> AdminConfig:
         raise typer.Exit(1)
 
 
+def _truncate(value, width: int = 40) -> str:
+    """Render a value for table display, truncating long strings.
+
+    ``None`` renders as an empty string; non-string values (ints, floats,
+    booleans) are stringified first so numeric columns display.
+    """
+    if value is None:
+        return ""
+    text = str(value)
+    if len(text) > width:
+        return text[:width] + "…"
+    return text
+
+
+def _print_cascade_preview(preview: dict[str, list[dict]]) -> None:
+    """Print a per-table breakdown of rows a delete would cascade away."""
+    table_specs = [
+        (
+            "songsets",
+            "Songsets",
+            [
+                ("ID", "id"),
+                ("Name", "name"),
+                ("Description", "description"),
+                ("Created", "created_at"),
+            ],
+        ),
+        (
+            "songset_items",
+            "Songset Items",
+            [
+                ("ID", "id"),
+                ("Songset ID", "songset_id"),
+                ("Song ID", "song_id"),
+                ("Pos", "position"),
+                ("Created", "created_at"),
+            ],
+        ),
+        (
+            "user_settings",
+            "User Settings",
+            [
+                ("User ID", "user_id"),
+                ("Offline Auto-Cache", "offline_auto_cache"),
+                ("Created", "created_at"),
+                ("Updated", "updated_at"),
+            ],
+        ),
+        (
+            "user_lrc_override",
+            "User LRC Overrides",
+            [
+                ("ID", "id"),
+                ("Recording Hash", "recording_content_hash"),
+                ("Created", "created_at"),
+                ("Updated", "updated_at"),
+            ],
+        ),
+        (
+            "lyric_mark",
+            "Lyric Marks",
+            [
+                ("ID", "id"),
+                ("Recording Hash", "recording_content_hash"),
+                ("Timestamp (s)", "timestamp_seconds"),
+                ("Created", "created_at"),
+            ],
+        ),
+        (
+            "songset_share",
+            "Songset Shares",
+            [
+                ("Token", "token"),
+                ("Songset ID", "songset_id"),
+                ("Render Job ID", "render_job_id"),
+                ("Created", "created_at"),
+            ],
+        ),
+        (
+            "account",
+            "Accounts",
+            [
+                ("ID", "id"),
+                ("Provider", "providerId"),
+                ("Account ID", "accountId"),
+                ("Created", "createdAt"),
+            ],
+        ),
+        (
+            "session",
+            "Sessions",
+            [
+                ("ID", "id"),
+                ("Token", "token"),
+                ("Expires", "expiresAt"),
+                ("Created", "createdAt"),
+            ],
+        ),
+    ]
+    for key, title, columns in table_specs:
+        rows = preview.get(key, [])
+        table = Table(title=f"{title} ({len(rows)} row(s))")
+        for header, _ in columns:
+            table.add_column(header)
+        if not rows:
+            table.add_row("[dim](no rows)[/dim]")
+        else:
+            sample = rows[:10]
+            for row in sample:
+                table.add_row(*[_truncate(row.get(col)) for _, col in columns])
+            omitted = len(rows) - len(sample)
+            if omitted > 0:
+                table.add_row(f"[dim]… {omitted} more row(s) omitted[/dim]")
+        console.print(table)
+
+
 @app.command("add")
 def add_user(
     email: str = typer.Argument(..., help="User email (must be unique)"),
@@ -120,6 +236,7 @@ def delete_user(
                     "lyric_mark, songset_share rows, and Better Auth account/"
                     "session rows.[/yellow]"
                 )
+                _print_cascade_preview(client.preview_cascade_delete(user_id))
                 confirm = typer.confirm("Continue?", default=False)
                 if not confirm:
                     console.print("[dim]Cancelled.[/dim]")
