@@ -180,7 +180,10 @@ describe("RegisterPage", () => {
   });
 
   it("shows loading state during submission", async () => {
-    const { promise: pending, resolve } = Promise.withResolvers<unknown>();
+    let resolve!: (value: unknown) => void;
+    const pending = new Promise<unknown>((res) => {
+      resolve = res;
+    });
     mockSignUp.mockReturnValue(pending);
     renderWithLocale(<RegisterPage />);
     await userEvent.type(screen.getByLabelText("Name"), "Test User");
@@ -191,7 +194,7 @@ describe("RegisterPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /creating account/i })).toBeDisabled();
     });
-    resolve!({ data: { user: { id: "1" } }, error: null });
+    resolve({ data: { user: { id: "1" } }, error: null });
   });
 
   it("persists zh-Hant locale via settings PUT when locale is zh-Hant", async () => {
