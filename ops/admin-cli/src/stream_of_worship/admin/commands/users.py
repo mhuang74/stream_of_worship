@@ -47,7 +47,11 @@ def _truncate(value, width: int = 40) -> str:
 
 
 def _print_cascade_preview(preview: dict[str, list[dict]]) -> None:
-    """Print a per-table breakdown of rows a delete would cascade away."""
+    """Print a per-table breakdown of rows a delete would cascade away.
+
+    Empty tables are skipped; when every table is empty a single dim line is
+    printed; a total row count is appended after the tables.
+    """
     table_specs = [
         (
             "songsets",
@@ -131,21 +135,29 @@ def _print_cascade_preview(preview: dict[str, list[dict]]) -> None:
             ],
         ),
     ]
+    total = 0
+    printed_any = False
     for key, title, columns in table_specs:
         rows = preview.get(key, [])
+        if not rows:
+            continue
+        total += len(rows)
+        printed_any = True
         table = Table(title=f"{title} ({len(rows)} row(s))")
         for header, _ in columns:
             table.add_column(header)
-        if not rows:
-            table.add_row("[dim](no rows)[/dim]")
-        else:
-            sample = rows[:10]
-            for row in sample:
-                table.add_row(*[_truncate(row.get(col)) for _, col in columns])
-            omitted = len(rows) - len(sample)
-            if omitted > 0:
-                table.add_row(f"[dim]… {omitted} more row(s) omitted[/dim]")
+        sample = rows[:10]
+        for row in sample:
+            table.add_row(*[_truncate(row.get(col)) for _, col in columns])
+        omitted = len(rows) - len(sample)
+        if omitted > 0:
+            table.add_row(f"[dim]… {omitted} more row(s) omitted[/dim]")
         console.print(table)
+
+    if not printed_any:
+        console.print("[dim]No cascade data to delete.[/dim]")
+    else:
+        console.print(f"[yellow]Total: {total} row(s) will be cascade-deleted.[/yellow]")
 
 
 @app.command("add")
