@@ -105,3 +105,32 @@ class TestUserClient:
         assert user_client.get_user(user.id) is None
         # Songsets cascade-deleted: list returns empty for this (now-defunct) user_id
         assert songset_client.list_songsets() == []
+
+    def test_preview_cascade_delete_lists_rows_per_table(self, user_client, postgres_url):
+        """Preview must report every cascade table with the user's rows."""
+        from stream_of_worship.db.app.songset_client import SongsetClient
+
+        user = user_client.create_user("alice@example.com", name="Alice")
+        songset_client = SongsetClient(
+            ConnectionProvider(postgres_url, sslmode="disable"), user_id=user.id
+        )
+        songset = songset_client.create_songset("Sunday")
+        songset_client.add_item(songset.id, song_id="song.1")
+        songset_client.add_item(songset.id, song_id="song.2")
+
+        preview = user_client.preview_cascade_delete(user.id)
+
+        assert set(preview.keys()) == {
+            "songsets", "songset_items", "user_settings", "user_lrc_override",
+            "lyric_mark", "songset_share", "account", "session",
+        }
+        assert len(preview["songsets"]) == 1
+        assert preview["songsets"][0]["name"] == "Sunday"
+        assert len(preview["songset_items"]) == 2
+        assert all(item["songset_id"] == songset.id for item in preview["songset_items"])
+        assert preview["user_settings"] == []
+        assert preview["account"] == []
+        assert preview["session"] == []
+
+        # Unknown user: every table reports empty (no crash)
+        assert all(v == [] for v in user_client.preview_cascade_delete(999999).values())
