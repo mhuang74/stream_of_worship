@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { BUILD_COMMIT_DATE, BUILD_COMMIT_HASH } from "@/lib/build-info";
 import { screen } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { PublicLanding } from "@/app/page/PublicLanding";
@@ -76,5 +77,12 @@ describe("PublicLanding", () => {
       screen.getByRole("link", { name: "Create your free account" })
     ).toHaveAttribute("href", "/register");
     expect(screen.getByText("Stream of Worship")).toBeInTheDocument();
+  });
+  it("renders a hidden build stamp with the build commit hash and date", () => {
+    render(<PublicLanding locale="en" />);
+    const stamp = screen.getByTestId("build-stamp");
+    expect(stamp).toHaveClass("sr-only");
+    expect(stamp.textContent).toContain(BUILD_COMMIT_HASH);
+    expect(stamp.textContent).toContain(BUILD_COMMIT_DATE);
   });
 });
