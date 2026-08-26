@@ -3,6 +3,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n/messages";
 import type { Locale } from "@/lib/i18n/messages";
+import { BUILD_COMMIT_DATE, BUILD_COMMIT_HASH } from "@/lib/build-info";
 import { FileMusic, Video, Share2 } from "lucide-react";
 
 const FEATURES = [
@@ -170,6 +171,9 @@ export function PublicLanding({ locale }: { locale: Locale }) {
           <span>{t(locale, "brand.name")}</span>
           <span>© {new Date().getFullYear()}</span>
         </div>
+        <span className="sr-only" data-testid="build-stamp">
+          {BUILD_COMMIT_HASH} {BUILD_COMMIT_DATE}
+        </span>
       </footer>
     </div>
   );
