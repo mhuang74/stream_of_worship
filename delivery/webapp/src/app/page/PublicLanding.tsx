@@ -71,12 +71,12 @@ export function PublicLanding({ locale }: { locale: Locale }) {
             </div>
             <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
               <span>▶</span>
-              <span>主日敬拜 2026-08-23</span>
+              <span>小組敬拜 2026-08-23</span>
             </div>
             <div className="absolute -bottom-4 -left-4 rounded-lg border border-border bg-card shadow-lg px-3 py-2 flex items-center gap-2">
               <Cast className="size-4 text-primary" />
               <div>
-                <div className="text-xs font-semibold">Lyrics on the big screen</div>
+                <div className="text-xs font-semibold">Lyrics on the TV</div>
                 <div className="text-[10px] text-muted-foreground">No awkward interruptions</div>
               </div>
             </div>
