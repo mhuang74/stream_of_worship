@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BUILD_COMMIT_DATE, BUILD_COMMIT_HASH } from "@/lib/build-info";
-import { screen } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { PublicLanding } from "@/app/page/PublicLanding";
 
@@ -84,5 +84,19 @@ describe("PublicLanding", () => {
     expect(stamp).toHaveClass("sr-only");
     expect(stamp.textContent).toContain(BUILD_COMMIT_HASH);
     expect(stamp.textContent).toContain(BUILD_COMMIT_DATE);
+  });
+
+  it("reveals the build info when the copyright year is clicked", () => {
+    render(<PublicLanding locale="en" />);
+    const toggle = screen.getByRole("button", { name: "Toggle build info" });
+    expect(screen.queryByTestId("build-stamp-visible")).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    const visible = screen.getByTestId("build-stamp-visible");
+    expect(visible.textContent).toContain(BUILD_COMMIT_HASH);
+    expect(visible.textContent).toContain(BUILD_COMMIT_DATE);
+
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("build-stamp-visible")).not.toBeInTheDocument();
   });
 });
