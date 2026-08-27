@@ -60,23 +60,11 @@ export function Header() {
             </>
           ) : (
             <>
-              <a
-                href="#features"
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-              >
-                {t("home.signedOut.nav.features")}
-              </a>
-              <a
-                href="#how-it-works"
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-              >
-                {t("home.signedOut.nav.howItWorks")}
-              </a>
               <Link
-                href="/songsets"
+                href="/about"
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
-                {t("home.signedOut.nav.songs")}
+                {t("nav.about")}
               </Link>
             </>
           )}

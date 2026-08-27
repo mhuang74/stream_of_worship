@@ -87,11 +87,6 @@ describe("Header avatar dropdown", () => {
       "href",
       "/register"
     );
-    expect(screen.getByRole("link", { name: "Features" })).toHaveAttribute("href", "#features");
-    expect(screen.getByRole("link", { name: "How it works" })).toHaveAttribute(
-      "href",
-      "#how-it-works"
-    );
-    expect(screen.getByRole("link", { name: "Songs" })).toHaveAttribute("href", "/songsets");
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
   });
 });

@@ -13,6 +13,7 @@ export const core = bundle({
     "nav.dashboard": "Dashboard",
     "nav.songsets": "Songsets",
     "nav.favorites": "Favorites",
+    "nav.about": "About",
     "nav.settings": "Settings",
     "nav.signOut": "Sign out",
 
@@ -80,6 +81,18 @@ export const core = bundle({
     "home.signedOut.nav.features": "Features",
     "home.signedOut.nav.howItWorks": "How it works",
     "home.signedOut.nav.songs": "Songs",
+    // About page
+    "about.heroTitle": "Built for small group worship leaders",
+    "about.heroDescription": "Stream of Worship exists because leading bilingual small group worship shouldn't mean fumbling between YouTube videos and praying the Wi-Fi holds.",
+    "about.whyTitle": "Why I built this",
+    "about.whyPara1": "I noticed a lack of tools for small group leaders—especially those of us with a bilingual Traditional Chinese and English background. We love our worship songs, but we're stuck making do with tools that weren't built for us.",
+    "about.whyPara2": "My first church was a home church in Shanghai, and I grew to appreciate and love worship songs in Traditional Chinese from Stream of Praise (sop.org). Those songs carried me through countless small group gatherings.",
+    "about.whyPara3": "But every time I led worship, I faced the same problem: playing SOP worship lyrics videos from YouTube meant dealing with interruptions between songs and unreliable network in the middle of worship. The awkward pauses broke the flow. The dead silences when the connection dropped broke the moment. I wanted worship to flow.",
+    "about.whatTitle": "What this tool does",
+    "about.whatPara1": "Stream of Worship strings your songs into one seamless set, renders a synchronized lyrics video, and casts it to the TV—so your small group can worship together without awkward interruptions.",
+    "about.whatPara2": "No more fumbling between tracks. No more praying the Wi-Fi holds. Pick your songs, render the video, cast to the screen, and worship flows from song to song.",
+    "about.ctaTitle": "Ready to lead worship without interruption?",
+    "about.ctaDescription": "From one small group leader to another.",
 
     // Settings page
     "settings.title": "Settings",
@@ -272,6 +285,7 @@ export const core = bundle({
     "nav.dashboard": "儀表板",
     "nav.songsets": "詩歌集",
     "nav.favorites": "我的最愛",
+    "nav.about": "關於",
     "nav.settings": "設定",
     "nav.signOut": "登出",
 
@@ -338,6 +352,18 @@ export const core = bundle({
     "home.signedOut.nav.features": "功能",
     "home.signedOut.nav.howItWorks": "運作方式",
     "home.signedOut.nav.songs": "詩歌",
+    // 關於頁面
+    "about.heroTitle": "為小組敬拜帶領者而建",
+    "about.heroDescription": "Stream of Worship 的存在，是因為帶領雙語小組敬拜不應該意味著在 YouTube 影片之間手忙腳亂，還要祈禱網路不要斷線。",
+    "about.whyTitle": "為什麼我做這個工具",
+    "about.whyPara1": "我發現市面上缺乏為小組帶領者設計的工具——尤其是像我們這些具有繁中–英文雙語背景的人。我們熱愛敬拜詩歌，卻只能將就用著不是為我們設計的工具。",
+    "about.whyPara2": "我的第一間教會是上海的一個家庭教會，在那裡我漸漸認識並愛上讚美之泉（sop.org）的繁體中文敬拜詩歌。這些詩歌陪伴我走過無數次的小組聚會。",
+    "about.whyPara3": "但每次帶領敬拜，我都面對同樣的問題：從 YouTube 播放讚美之泉的歌詞影片，意味著詩歌之間要處理中斷，敬拜中還要面對不可靠的網路。尷尬的停頓打斷了敬拜的流暢，斷線時的死寂破壞了當下的氛圍。我希望敬拜能流暢地進行。",
+    "about.whatTitle": "這個工具做什麼",
+    "about.whatPara1": "Stream of Worship 將您的詩歌串成無縫詩歌集，渲染同步歌詞影片，並投放至電視——讓您的小組一同敬拜，不再尷尬中斷。",
+    "about.whatPara2": "不再在詩歌間手忙腳亂。不再祈禱網路穩定。選好詩歌、渲染影片、投放至螢幕，敬拜就從一首詩歌流暢銜接到下一首。",
+    "about.ctaTitle": "準備好無間斷帶領敬拜了嗎？",
+    "about.ctaDescription": "從一個小組帶領者到另一個。",
 
     // Settings page
     "settings.title": "設定",
