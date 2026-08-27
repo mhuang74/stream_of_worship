@@ -74,4 +74,16 @@ describe("Header", () => {
 
     expect(screen.queryByRole("banner")).not.toBeInTheDocument();
   });
+
+  it("renders About link when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderHeader();
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
+  });
+
+  it("renders Traditional Chinese About link in zh-Hant when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderHeader("zh-Hant");
+    expect(screen.getByRole("link", { name: "關於" })).toHaveAttribute("href", "/about");
+  });
 });
