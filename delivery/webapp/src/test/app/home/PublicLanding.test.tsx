@@ -25,7 +25,7 @@ describe("PublicLanding", () => {
   it("renders hero strings in Traditional Chinese for zh-Hant", () => {
     render(<PublicLanding locale="zh-Hant" />);
     expect(
-      screen.getByRole("heading", { name: "帶領小組敬拜，不再尷尬中斷。" })
+      screen.getByRole("heading", { name: "帶領小組敬拜，不再尷尬間斷。" })
     ).toBeInTheDocument();
     expect(
       screen.getByText((content, element) =>
