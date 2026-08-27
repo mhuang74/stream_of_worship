@@ -7,6 +7,7 @@ import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
 import { Toaster } from "@/components/ui/sonner";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { resolveUserLocale } from "@/lib/i18n/server";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -48,6 +49,7 @@ export default async function RootLayout({
           </GlobalAudioPlayer>
           <Toaster />
         </LocaleProvider>
+        <Analytics />
       </body>
     </html>
   );
