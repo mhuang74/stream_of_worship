@@ -46,7 +46,7 @@ describe("HomePage", () => {
   it("renders the signed-out landing hero title", async () => {
     render(await HomePage());
     expect(
-      screen.getByRole("heading", { name: /lead worship without awkward pauses/i })
+      screen.getByRole("heading", { name: /lead worship with no awkward interruptions/i })
     ).toBeInTheDocument();
   });
 

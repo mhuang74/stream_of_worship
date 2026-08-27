@@ -55,6 +55,12 @@ _Avoid_: set list, service order, liturgy
 The process of producing an audio (MP3) and/or video (MP4) deliverable with a chapters manifest from a Songset, stored in Cloudflare R2.
 _Avoid_: export, encode, output
 
+### Projection
+
+**Projection**:
+The webapp's two-screen worship playback model: an operator controls playback on a controller screen while a synchronized lyrics video plays chrome-free on a second projection screen (a TV or projector) via the W3C Presentation API. Casting the lyrics video to the big screen is what lets worship flow without interruption.
+_Avoid_: casting (generic), screen mirroring, chromecast, second screen
+
 ### Lyrics
 
 **Lyrics**:

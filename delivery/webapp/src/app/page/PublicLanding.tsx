@@ -4,12 +4,12 @@ import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n/messages";
 import type { Locale } from "@/lib/i18n/messages";
 import { BuildStamp } from "./BuildStamp";
-import { FileMusic, Video, Share2 } from "lucide-react";
+import { FileMusic, Video, Cast } from "lucide-react";
 
 const FEATURES = [
   { icon: FileMusic, titleKey: "home.signedOut.feature.build", descKey: "home.signedOut.feature.buildDesc" },
   { icon: Video, titleKey: "home.signedOut.feature.render", descKey: "home.signedOut.feature.renderDesc" },
-  { icon: Share2, titleKey: "home.signedOut.feature.share", descKey: "home.signedOut.feature.shareDesc" },
+  { icon: Cast, titleKey: "home.signedOut.feature.cast", descKey: "home.signedOut.feature.castDesc" },
 ] as const;
 
 const STEPS = [
@@ -53,54 +53,31 @@ export function PublicLanding({ locale }: { locale: Locale }) {
             <p className="text-xs text-muted-foreground">{t(locale, "home.signedOut.ctaFooter")}</p>
           </div>
 
-          {/* Static CSS mockup of the dashboard */}
+          {/* Static CSS mockup of the projected lyrics screen */}
           <div className="relative">
-            <div className="rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-              <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-muted/50">
-                <div className="size-2.5 rounded-full bg-red-400" />
-                <div className="size-2.5 rounded-full bg-yellow-400" />
-                <div className="size-2.5 rounded-full bg-green-400" />
-                <span className="ml-2 text-xs text-muted-foreground">streamofworship.app</span>
+            <div className="rounded-2xl border-4 border-border bg-card shadow-xl overflow-hidden aspect-video">
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-muted/50">
+                <Cast className="size-4 text-primary" />
+                <span className="text-xs text-muted-foreground">Casting to Living Room TV</span>
               </div>
-              <div className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">Welcome back, Michael</div>
-                  <div className="text-xs text-muted-foreground">Dashboard</div>
-                </div>
-                <div className="grid grid-cols-5 gap-2">
-                  {[
-                    { value: "12", label: "Created" },
-                    { value: "8", label: "Rendered" },
-                    { value: "5", label: "Shared" },
-                    { value: "23", label: "Favorites" },
-                    { value: "340", label: "Catalog" },
-                  ].map((stat) => (
-                    <div key={stat.label} className="rounded-lg bg-muted p-2 text-center">
-                      <div className="text-lg font-bold">{stat.value}</div>
-                      <div className="text-[10px] text-muted-foreground">{stat.label}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-lg border border-border p-3">
-                  <div className="text-xs font-medium mb-2">Recent songsets</div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
-                      <div className="text-xs font-medium">主日敬拜 2026-08-23</div>
-                      <div className="text-[10px] text-muted-foreground">6 songs · 24:30</div>
-                    </div>
-                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
-                      <div className="text-xs font-medium">Youth Night Set</div>
-                      <div className="text-[10px] text-muted-foreground">4 songs · 18:12</div>
-                    </div>
-                  </div>
-                </div>
+              <div className="px-6 py-8 space-y-3 min-h-[160px] flex flex-col justify-center">
+                <p className="text-sm text-muted-foreground/60">奇妙十架與主恩</p>
+                <p className="text-xl font-semibold gradient-text">奇異恩典 何等甘甜</p>
+                <p className="text-sm text-muted-foreground/60">我罪已得赦免</p>
+              </div>
+              <div className="h-1 bg-muted">
+                <div className="h-1 bg-primary w-2/3" />
               </div>
             </div>
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <span>▶</span>
+              <span>主日敬拜 2026-08-23</span>
+            </div>
             <div className="absolute -bottom-4 -left-4 rounded-lg border border-border bg-card shadow-lg px-3 py-2 flex items-center gap-2">
-              <span className="text-lg">🎵</span>
+              <Cast className="size-4 text-primary" />
               <div>
-                <div className="text-xs font-semibold">Smooth transitions</div>
-                <div className="text-[10px] text-muted-foreground">Key & tempo matched</div>
+                <div className="text-xs font-semibold">Lyrics on the big screen</div>
+                <div className="text-[10px] text-muted-foreground">No awkward interruptions</div>
               </div>
             </div>
           </div>

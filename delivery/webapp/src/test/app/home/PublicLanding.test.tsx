@@ -9,27 +9,27 @@ describe("PublicLanding", () => {
     render(<PublicLanding locale="en" />);
     expect(
       screen.getByText((content, element) =>
-        element?.textContent === "✦ Seamless worship music transitions"
+        element?.textContent === "✦ Lyrics video on the big screen"
       )
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
-        name: "Lead worship without awkward pauses.",
+        name: "Lead worship with no awkward interruptions.",
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Stream of Worship analyzes tempo, key, and structure/)
+      screen.getByText(/strings your songs into one seamless set/)
     ).toBeInTheDocument();
   });
 
   it("renders hero strings in Traditional Chinese for zh-Hant", () => {
     render(<PublicLanding locale="zh-Hant" />);
     expect(
-      screen.getByRole("heading", { name: "帶領敬拜，無需尷尬停頓。" })
+      screen.getByRole("heading", { name: "帶領敬拜，不再尷尬中斷。" })
     ).toBeInTheDocument();
     expect(
       screen.getByText((content, element) =>
-        element?.textContent === "✦ 無縫敬拜音樂轉場"
+        element?.textContent === "✦ 大螢幕上的歌詞影片"
       )
     ).toBeInTheDocument();
   });
@@ -47,13 +47,13 @@ describe("PublicLanding", () => {
   it("renders all three feature cards", () => {
     render(<PublicLanding locale="en" />);
     expect(
-      screen.getByRole("heading", { name: "Build songsets" })
+      screen.getByRole("heading", { name: "Build your set" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Render audio & video" })
+      screen.getByRole("heading", { name: "Render lyrics video" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Share with your team" })
+      screen.getByRole("heading", { name: "Cast to the big screen" })
     ).toBeInTheDocument();
   });
 
@@ -63,15 +63,15 @@ describe("PublicLanding", () => {
       screen.getByRole("heading", { name: "How it works" })
     ).toBeInTheDocument();
     expect(screen.getByText("Pick your songs")).toBeInTheDocument();
-    expect(screen.getByText("Tune transitions")).toBeInTheDocument();
     expect(screen.getByText("Render")).toBeInTheDocument();
-    expect(screen.getByText("Lead & share")).toBeInTheDocument();
+    expect(screen.getByText("Cast to the screen")).toBeInTheDocument();
+    expect(screen.getByText("Lead without interruption")).toBeInTheDocument();
   });
 
   it("renders bottom CTA and footer", () => {
     render(<PublicLanding locale="en" />);
     expect(
-      screen.getByRole("heading", { name: "Ready to lead worship seamlessly?" })
+      screen.getByRole("heading", { name: "Ready to lead worship without interruption?" })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Create your free account" })
