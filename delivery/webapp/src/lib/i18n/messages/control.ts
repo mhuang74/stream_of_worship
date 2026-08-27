@@ -46,6 +46,9 @@ export const controlBundle = bundle({
     "control.min": "min",
     "control.hours": "h",
     "control.mins": "m",
+    "control.inviteTitle": "Enjoying this worship set?",
+    "control.inviteBody": "Create your own seamless worship sets with Stream of Worship.",
+    "control.inviteCta": "Learn more",
 
     // --- Share audio page (app/share/[token]/play/audio) ----------------
     "control.noAudioForShare": "No audio available for this share",
@@ -182,6 +185,9 @@ export const controlBundle = bundle({
     "control.min": "分鐘",
     "control.hours": "小時",
     "control.mins": "分",
+    "control.inviteTitle": "喜歡這個敬拜詩歌集嗎？",
+    "control.inviteBody": "用 Stream of Worship 建立您自己的無縫敬拜詩歌集。",
+    "control.inviteCta": "了解更多",
 
     // --- Share audio page (app/share/[token]/play/audio) ----------------
     "control.noAudioForShare": "此分享沒有可用的音訊",
