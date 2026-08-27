@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BUILD_COMMIT_DATE, BUILD_COMMIT_HASH } from "@/lib/build-info";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, within } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { PublicLanding } from "@/app/page/PublicLanding";
 
@@ -9,12 +9,12 @@ describe("PublicLanding", () => {
     render(<PublicLanding locale="en" />);
     expect(
       screen.getByText((content, element) =>
-        element?.textContent === "✦ Lyrics video on the big screen"
+        element?.textContent === "✦ Lyrics video for small group worship"
       )
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
-        name: "Lead worship with no awkward interruptions.",
+        name: "Lead your small group in worship with no awkward interruptions.",
       })
     ).toBeInTheDocument();
     expect(
@@ -25,11 +25,11 @@ describe("PublicLanding", () => {
   it("renders hero strings in Traditional Chinese for zh-Hant", () => {
     render(<PublicLanding locale="zh-Hant" />);
     expect(
-      screen.getByRole("heading", { name: "帶領敬拜，不再尷尬中斷。" })
+      screen.getByRole("heading", { name: "帶領小組敬拜，不再尷尬中斷。" })
     ).toBeInTheDocument();
     expect(
       screen.getByText((content, element) =>
-        element?.textContent === "✦ 大螢幕上的歌詞影片"
+        element?.textContent === "✦ 為小組敬拜而設的歌詞影片"
       )
     ).toBeInTheDocument();
   });
@@ -46,32 +46,40 @@ describe("PublicLanding", () => {
 
   it("renders all three feature cards", () => {
     render(<PublicLanding locale="en" />);
+    const features = screen
+      .getByRole("heading", {
+        name: "Everything your small group needs to worship without interruption",
+      })
+      .closest("section")!;
     expect(
-      screen.getByRole("heading", { name: "Build your set" })
+      within(features).getByRole("heading", { name: "Build your set" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Render lyrics video" })
+      within(features).getByRole("heading", { name: "Render lyrics video" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Cast to the big screen" })
+      within(features).getByRole("heading", { name: "Cast to the TV" })
     ).toBeInTheDocument();
   });
 
   it("renders the four how-it-works steps", () => {
     render(<PublicLanding locale="en" />);
+    const steps = screen
+      .getByRole("heading", { name: "How it works" })
+      .closest("section")!;
     expect(
       screen.getByRole("heading", { name: "How it works" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Pick your songs")).toBeInTheDocument();
-    expect(screen.getByText("Render")).toBeInTheDocument();
-    expect(screen.getByText("Cast to the screen")).toBeInTheDocument();
-    expect(screen.getByText("Lead without interruption")).toBeInTheDocument();
+    expect(within(steps).getByText("Pick your songs")).toBeInTheDocument();
+    expect(within(steps).getByText("Render")).toBeInTheDocument();
+    expect(within(steps).getByText("Cast to the TV")).toBeInTheDocument();
+    expect(within(steps).getByText("Worship without interruption")).toBeInTheDocument();
   });
 
   it("renders bottom CTA and footer", () => {
     render(<PublicLanding locale="en" />);
     expect(
-      screen.getByRole("heading", { name: "Ready to lead worship without interruption?" })
+      screen.getByRole("heading", { name: "Ready to lead small group worship without interruption?" })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Create your free account" })
