@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2, Monitor, AlertTriangle, Music, Clock } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { useSession } from "@/lib/auth-client";
 import { ThemeLabel, toSongTheme } from "@/components/songset/ThemeLabel";
 import { formatTotalDuration } from "@/lib/i18n/format";
 
@@ -62,7 +64,9 @@ export default function SharePage() {
   const params = useParams();
   const router = useRouter();
   const { t } = useLocale();
+  const { data: session } = useSession();
   const token = params.token as string;
+  const isAnonymous = !session?.user;
 
   const [shareData, setShareData] = useState<ShareData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -294,6 +298,17 @@ export default function SharePage() {
           </div>
         )}
       </main>
+      {isAnonymous && (
+        <footer className="border-t px-4 py-6 mt-6">
+          <div className="max-w-2xl mx-auto text-center space-y-2">
+            <p className="font-medium">{t("control.inviteTitle")}</p>
+            <p className="text-sm text-muted-foreground">{t("control.inviteBody")}</p>
+            <Link href="/" className="text-sm text-primary hover:underline">
+              {t("control.inviteCta")}
+            </Link>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }
