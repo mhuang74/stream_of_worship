@@ -25,7 +25,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Stream of Worship",
-  description: "Worship music transition and playback system",
+  description: "Small Group Worship Lyrics Videos",
 };
 
 export default async function RootLayout({
