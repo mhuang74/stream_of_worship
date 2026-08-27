@@ -28,18 +28,16 @@ function AboutContent({ locale }: { locale: Locale }) {
 
       {/* Why I built this */}
       <section className="mx-auto max-w-3xl px-4 py-16">
-        <div className="prose prose-neutral dark:prose-invert max-w-none">
-          <h2 className="text-2xl font-bold mb-4">{t(locale, "about.whyTitle")}</h2>
-          <p className="text-muted-foreground leading-relaxed mb-4">
-            {t(locale, "about.whyPara1")}
-          </p>
-          <p className="text-muted-foreground leading-relaxed mb-4">
-            {t(locale, "about.whyPara2")}
-          </p>
-          <p className="text-muted-foreground leading-relaxed">
-            {t(locale, "about.whyPara3")}
-          </p>
-        </div>
+        <h2 className="text-2xl font-bold mb-4">{t(locale, "about.whyTitle")}</h2>
+        <p className="text-muted-foreground leading-relaxed mb-4">
+          {t(locale, "about.whyPara1")}
+        </p>
+        <p className="text-muted-foreground leading-relaxed mb-4">
+          {t(locale, "about.whyPara2")}
+        </p>
+        <p className="text-muted-foreground leading-relaxed">
+          {t(locale, "about.whyPara3")}
+        </p>
       </section>
 
       {/* What this tool does */}
