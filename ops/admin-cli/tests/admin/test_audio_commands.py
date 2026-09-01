@@ -1224,26 +1224,6 @@ class TestAudioListCommand:
         assert _list_column_caps(111, extra_col=True) == (11, 11, 12, None)
 
     def test_list_column_caps_monotonic(self):
-        """Text cap never decreases as pane width grows; id cap never decreases
-        within a text-cap rung."""
-        from stream_of_worship.admin.commands.audio import _list_column_caps
-
-        prev_text, prev_id = 0, 0
-        for width in range(100, 201):
-            text_cap, id_cap, _updated_cap, _fn = _list_column_caps(width)
-            assert text_cap >= prev_text
-            assert id_cap >= prev_id if text_cap == prev_text else True
-            prev_text, prev_id = text_cap, id_cap
-
-    def test_list_column_caps_extra_col_disables_filename(self):
-        """`--sort updated` (extra Updated column) disables the Filename column."""
-        from stream_of_worship.admin.commands.audio import _list_column_caps
-
-        assert _list_column_caps(140, extra_col=True) == (18, 24, 16, None)
-        assert _list_column_caps(200, extra_col=True) == (18, 36, 16, None)
-        assert _list_column_caps(111, extra_col=True) == (11, 11, 12, None)
-
-    def test_list_column_caps_monotonic(self):
         """Text and id caps never decrease as pane width grows."""
         from stream_of_worship.admin.commands.audio import _list_column_caps
 
