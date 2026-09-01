@@ -328,6 +328,39 @@ class TestCatalogListCommand:
 
         _drop_all_tables(make_test_provider)
 
+    @pytest.mark.integration
+    def test_list_narrow_width_renders_columns(
+        self, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """At 120 columns Title/Album render instead of collapsing to ellipses."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        client.insert_song(
+            Song(
+                id="song_001",
+                title="第一首歌",
+                source_url="https://example.com/1",
+                scraped_at="2024-01-01T00:00:00",
+                composer="Composer A",
+                album_name="專輯一",
+                album_series="系列一",
+                musical_key="G",
+            )
+        )
+
+        monkeypatch.setenv("COLUMNS", "120")
+        result = runner.invoke(app, ["catalog", "list", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        assert "第一首歌" in result.output
+        assert "專輯一" in result.output
+        assert "Album Series" in result.output
+
+        _drop_all_tables(make_test_provider)
+
 
 class TestCatalogSearchCommand:
     """Tests for 'catalog search' command."""

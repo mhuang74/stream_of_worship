@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import typer
 from botocore.exceptions import ClientError
+from rich.cells import cell_len
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
@@ -321,6 +322,9 @@ def _colorize_status(status: str) -> str:
 def _colorize_visibility(visibility: Optional[str]) -> str:
     """Get Rich markup for visibility status.
 
+    Returns a one-cell badge so the audio list table can spend its width
+    budget on text columns; the legend line under the table decodes it.
+
     Args:
         visibility: Visibility status string
 
@@ -328,13 +332,13 @@ def _colorize_visibility(visibility: Optional[str]) -> str:
         Rich markup string with visual indicator
     """
     if visibility == "published":
-        return "[green]● published[/green]"
+        return "[green]●[/green]"
     elif visibility == "review":
-        return "[yellow]◐ review[/yellow]"
+        return "[yellow]◐[/yellow]"
     elif visibility == "hold":
-        return "[dim]○ hold[/dim]"
+        return "[dim]○[/dim]"
     else:
-        return "[dim]- none[/dim]"
+        return "[dim]·[/dim]"
 
 
 def _read_song_ids_from_stdin() -> list[str]:
@@ -349,6 +353,79 @@ def _read_song_ids_from_stdin() -> list[str]:
         if line:
             song_ids.append(line)
     return song_ids
+
+
+def _list_column_caps(
+    width: int, extra_col: bool = False
+) -> tuple[int, int, Optional[int], int]:
+    """Compute column caps for the audio list table so no column collapses or wraps.
+
+    All list-table columns render ``no_wrap=True`` and every column is capped,
+    so the total width stays bounded; Rich's layout gives no_wrap columns their
+    max content width first, so without caps the 54-char Song ID starves Album
+    and Song Title into empty bordered columns.
+
+    The ladder below is the measured envelope (probed against live data, 41
+    published rows, at W=95..200): each tuple is the best (text_cap, id_cap,
+    filename_cap) that renders with all headers intact, no empty columns, and
+    single-line rows. Song ID shrinks before text; Filename appears only once
+    text and ID both max out (width >= ~147).
+
+    Returns ``(text_cap, song_id_cap, updated_cap, filename_cap_or_None)``.
+    ``updated_cap`` is the Updated column max width (only used when
+    ``extra_col``); the caller passes it to the Updated column's max_width.
+    """
+    TEXT_MAX = 18  # fits CJK title 主啊，我要跟隨祢 (16) + ellipsis headroom
+    ID_MAX, ID_MIN = 36, 12
+    # Updated column max width (sort=updated only): 12 cells below 120 cols,
+    # else 16. Verified: 111 needs upd 12; 120+ renders full 16.
+    updated_cap = 16 if width >= 120 else 12
+    if extra_col:
+        # Verified: 111 → (11, 11, upd12); 120 → (13, 12, upd16);
+        # 130 → (18, 14); 140 → (18, 24); 160+ → (18, 36). Below 111
+        # the Updated column forces header clipping regardless — degrade
+        # gracefully (rich ellipsizes instead of leaving empty columns).
+        if width >= 160:
+            return TEXT_MAX, ID_MAX, updated_cap, None
+        if width >= 130:
+            return TEXT_MAX, max(12, min(ID_MAX, width - 116)), updated_cap, None
+        if width >= 120:
+            return 13, ID_MIN, updated_cap, None
+        if width >= 111:
+            return 11, 11, 12, None
+        return 11, 11, 9, None
+    # No Updated column. Song ID shrinks first; Filename only appears once
+    # text_cap and id_cap are both maxed. Verified: 111 → (18, 12);
+    # 120 → (18, 21); 130 → (18, 31); 140 → (18, 36); 150 → fn 14;
+    # 160 → fn 24; 200 → fn 64. Below 111: 105 → (14, 12); 100 → (12, 11).
+    if width >= 111:
+        id_cap = max(ID_MIN, min(ID_MAX, width - 99))
+        fn_cap = width - 136 if width >= 147 else None
+        return TEXT_MAX, id_cap, updated_cap, fn_cap
+    if width >= 105:
+        return 14, ID_MIN, updated_cap, None
+    if width >= 100:
+        return 12, 11, updated_cap, None
+    # Below 100 nothing fits without clipping headers; degrade gracefully.
+    return 12, 11, 9, None
+
+
+def _display_truncate(value: str, cap: int) -> str:
+    """Truncate ``value`` to at most ``cap`` display cells, CJK-aware.
+
+    Unlike the char-count-based ``_truncate`` in users.py, this measures via
+    ``rich.cells.cell_len`` so CJK double-width characters don't overflow the
+    panel line.
+    """
+    if cell_len(value) <= cap:
+        return value
+    if cap <= 1:
+        return "…"[: max(cap, 0)]
+    # Drop characters from the tail until the ellipsis fits within cap.
+    out = value
+    while cell_len(out) > cap - 1:
+        out = out[:-1]
+    return out + "…"
 
 
 def _submit_lrc_single(
@@ -1907,18 +1984,40 @@ def list_recordings(
         if lrc:
             filter_parts.append(f"lrc={lrc}")
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
+        # Caps keep the flexible text columns from collapsing: Rich gives
+        # no_wrap columns their max content width first, starving Album/Title.
+        text_cap, id_cap, updated_cap, filename_cap = _list_column_caps(console.width, sort == "updated")
         table = Table(title=f"Recordings ({len(enriched)} total){filter_str}")
-        table.add_column("Album", style="yellow")
-        table.add_column("Song Title", style="green")
-        table.add_column("Visibility", justify="center")
+        table.add_column("Album", style="yellow", no_wrap=True, max_width=text_cap, overflow="ellipsis")
+        table.add_column(
+            "Song Title",
+            style="green",
+            no_wrap=True,
+            max_width=text_cap,
+            overflow="ellipsis",
+        )
+        table.add_column("Visibility", justify="center", no_wrap=True)
         table.add_column("Duration", style="cyan", no_wrap=True)
         table.add_column("Key", style="cyan", no_wrap=True)
         table.add_column("BPM", style="magenta", justify="right", no_wrap=True)
-        table.add_column("Song ID", style="dim", no_wrap=True)
-        table.add_column("Filename", style="yellow")
+        table.add_column("Song ID", style="dim", no_wrap=True, max_width=id_cap, overflow="ellipsis")
+        if filename_cap is not None:
+            table.add_column(
+                "Filename",
+                style="yellow",
+                no_wrap=True,
+                max_width=filename_cap,
+                overflow="ellipsis",
+            )
         table.add_column("Hash Prefix", style="dim", no_wrap=True)
         if sort == "updated":
-            table.add_column("Updated", style="dim", no_wrap=True)
+            table.add_column(
+                "Updated",
+                style="dim",
+                no_wrap=True,
+                max_width=updated_cap,
+                overflow="ellipsis",
+            )
 
         for rec, song_title, album_name, _album_series in enriched:
             song_id = rec.song_id or "-"
@@ -1938,7 +2037,7 @@ def list_recordings(
             # BPM rounded to nearest integer
             bpm_str = str(round(rec.tempo_bpm)) if rec.tempo_bpm is not None else "--"
 
-            table.add_row(
+            row_vals = [
                 album_name or "-",
                 song_title or "-",
                 visibility_text,
@@ -1946,12 +2045,16 @@ def list_recordings(
                 key_str,
                 bpm_str,
                 song_id,
-                rec.original_filename,
                 rec.hash_prefix,
-                rec.updated_at[:16] if sort == "updated" and rec.updated_at else "",
-            )
+            ]
+            if filename_cap is not None:
+                row_vals.insert(7, rec.original_filename or "-")
+            if sort == "updated":
+                row_vals.append(rec.updated_at[:16] if rec.updated_at else "")
+            table.add_row(*row_vals)
 
         console.print(table)
+        console.print("[dim]● published   ◐ review   ○ hold   · none[/dim]")
 
 
 @app.command("show")
@@ -2005,7 +2108,7 @@ def show_recording(
 
     info_lines.extend(
         [
-            f"[cyan]Filename:[/cyan] {recording.original_filename}",
+            f"[cyan]Filename:[/cyan] {_display_truncate(recording.original_filename or '', max(40, console.width - 26))}",
             f"[cyan]Size:[/cyan] {_format_size_mb(recording.file_size_bytes)}",
             f"[cyan]Duration:[/cyan] {_format_duration(recording.duration_seconds)}",
             f"[cyan]Imported:[/cyan] {recording.imported_at}",

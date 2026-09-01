@@ -1203,9 +1203,137 @@ class TestAudioListCommand:
 
         _drop_all_tables(monkeypatch)
 
+    def test_list_column_caps_values(self):
+        """Column caps match the measured envelope (see _list_column_caps docstring)."""
+        from stream_of_worship.admin.commands.audio import _list_column_caps
+
+        assert _list_column_caps(100) == (12, 11, 12, None)
+        assert _list_column_caps(105) == (14, 12, 12, None)
+        assert _list_column_caps(111) == (18, 12, 12, None)
+        assert _list_column_caps(130) == (18, 31, 16, None)
+        assert _list_column_caps(140) == (18, 36, 16, None)
+        assert _list_column_caps(150) == (18, 36, 16, 14)
+        assert _list_column_caps(200) == (18, 36, 16, 64)
+
+    def test_list_column_caps_extra_col_disables_filename(self):
+        """`--sort updated` (extra Updated column) disables the Filename column."""
+        from stream_of_worship.admin.commands.audio import _list_column_caps
+
+        assert _list_column_caps(140, extra_col=True) == (18, 24, 16, None)
+        assert _list_column_caps(200, extra_col=True) == (18, 36, 16, None)
+        assert _list_column_caps(111, extra_col=True) == (11, 11, 12, None)
+
+    def test_list_column_caps_monotonic(self):
+        """Text cap never decreases as pane width grows; id cap never decreases
+        within a text-cap rung."""
+        from stream_of_worship.admin.commands.audio import _list_column_caps
+
+        prev_text, prev_id = 0, 0
+        for width in range(100, 201):
+            text_cap, id_cap, _updated_cap, _fn = _list_column_caps(width)
+            assert text_cap >= prev_text
+            assert id_cap >= prev_id if text_cap == prev_text else True
+            prev_text, prev_id = text_cap, id_cap
+
+    def test_list_column_caps_extra_col_disables_filename(self):
+        """`--sort updated` (extra Updated column) disables the Filename column."""
+        from stream_of_worship.admin.commands.audio import _list_column_caps
+
+        assert _list_column_caps(140, extra_col=True) == (18, 24, 16, None)
+        assert _list_column_caps(200, extra_col=True) == (18, 36, 16, None)
+        assert _list_column_caps(111, extra_col=True) == (11, 11, 12, None)
+
+    def test_list_column_caps_monotonic(self):
+        """Text and id caps never decrease as pane width grows."""
+        from stream_of_worship.admin.commands.audio import _list_column_caps
+
+        prev_text, prev_id = 0, 0
+        for width in range(100, 201):
+            text_cap, id_cap, _updated_cap, _fn = _list_column_caps(width)
+            assert text_cap >= prev_text
+            assert id_cap >= prev_id
+            prev_text, prev_id = text_cap, id_cap
+
+    def test_display_truncate_cjk_aware(self):
+        """Truncation measures display cells, not character count."""
+        from stream_of_worship.admin.commands.audio import _display_truncate
+
+        long_name = "【主啊，我要跟隨祢 Lord】官方歌詞版MV.mp3"
+        result = _display_truncate(long_name, 40)
+        assert result.endswith("…")
+        assert len(result) < len(long_name)
+        from rich.cells import cell_len
+
+        assert cell_len(result) <= 40
+        assert _display_truncate("short.mp3", 40) == "short.mp3"
+
+    @pytest.mark.integration
+    def test_list_narrow_width_renders_cjk_columns(
+        self, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """At 120 columns Album/Song Title render instead of collapsing."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+
+        for sid, title in [("song_001", "第一首歌"), ("song_002", "第二首歌")]:
+            client.insert_song(
+                Song(
+                    id=sid,
+                    title=title,
+                    source_url=f"https://example.com/{sid}",
+                    scraped_at="2024-01-01T00:00:00",
+                )
+            )
+
+        client.insert_recording(
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="aaaaaaaaaaaa",
+                song_id="song_001",
+                original_filename="song1.mp3",
+                file_size_bytes=1024000,
+                imported_at="2024-01-15T10:30:00",
+            )
+        )
+        client.insert_recording(
+            Recording(
+                content_hash="b" * 64,
+                hash_prefix="bbbbbbbbbbbb",
+                song_id="song_002",
+                original_filename="song2.mp3",
+                file_size_bytes=2048000,
+                imported_at="2024-01-16T10:30:00",
+            )
+        )
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        monkeypatch.setenv("COLUMNS", "120")
+        result = runner.invoke(app, ["audio", "list", "--config", str(config_path)])
+
+        assert result.exit_code == 0
+        assert "第一首歌" in result.output
+        assert "第二首歌" in result.output
+        assert "Album" in result.output
+
+        _drop_all_tables(make_test_provider)
+
 
 class TestAudioShowCommand:
     """Tests for 'audio show' command."""
+
+    def test_show_filename_truncation_unit(self):
+        """_display_truncate caps CJK filenames to the display-width cap."""
+        from stream_of_worship.admin.commands.audio import _display_truncate
+
+        name = "【主啊，我要跟隨祢 Lord】官方歌詞版MV.mp3"
+        result = _display_truncate(name, 40)
+        from rich.cells import cell_len
+
+        assert cell_len(result) <= 40
+        assert result.endswith("…")
+        assert _display_truncate("short.mp3", 40) == "short.mp3"
 
     def test_show_without_config(self):
         """Fails cleanly when no config file exists."""

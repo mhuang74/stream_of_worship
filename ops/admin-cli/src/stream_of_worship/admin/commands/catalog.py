@@ -854,13 +854,23 @@ def list_songs(
             console.print(song.id)
     else:
         # Table format
+        # Caps keep the flexible text columns from collapsing: Rich gives
+        # no_wrap columns their max content width first, starving Title/Album
+        # on narrow panes. Verified at 111/140/200 with the full 505-song
+        # table: full CJK titles, headers intact, single-line rows.
         table = Table(title=f"Songs ({len(songs)} total)")
-        table.add_column("Title", style="cyan")
-        table.add_column("Key", style="magenta", justify="center")
-        table.add_column("Album", style="yellow")
-        table.add_column("Album Series", style="white")
-        table.add_column("Composer", style="green")
-        table.add_column("ID", style="dim", no_wrap=True)
+        table.add_column("Title", style="cyan", no_wrap=True, max_width=19, overflow="ellipsis")
+        table.add_column("Key", style="magenta", justify="center", min_width=5)
+        table.add_column("Album", style="yellow", no_wrap=True, max_width=19, overflow="ellipsis")
+        table.add_column(
+            "Album Series",
+            style="white",
+            no_wrap=True,
+            max_width=14,
+            overflow="ellipsis",
+        )
+        table.add_column("Composer", style="green", no_wrap=True, max_width=16, overflow="ellipsis")
+        table.add_column("ID", style="dim", no_wrap=True, max_width=20, overflow="ellipsis")
 
         for song in songs:
             table.add_row(
