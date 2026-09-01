@@ -1996,7 +1996,7 @@ def list_recordings(
             max_width=text_cap,
             overflow="ellipsis",
         )
-        table.add_column("Visibility", justify="center", no_wrap=True)
+        table.add_column("Vis", justify="center", no_wrap=True)
         table.add_column("Duration", style="cyan", no_wrap=True)
         table.add_column("Key", style="cyan", no_wrap=True)
         table.add_column("BPM", style="magenta", justify="right", no_wrap=True)
