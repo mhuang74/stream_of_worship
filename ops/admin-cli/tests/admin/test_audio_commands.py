@@ -375,6 +375,48 @@ class TestAudioListCommand:
         # Validation passed; failure (if any) is from DB, not from visibility filter.
         assert "Invalid visibility" not in result.output
 
+    def test_list_rejects_invalid_theme(self, tmp_path, monkeypatch):
+        """Invalid theme value is rejected before DB access."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("[database]\n")
+
+        result = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--theme", "bogus"],
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid theme" in result.output
+
+    def test_list_accepts_theme_none(self, tmp_path, monkeypatch):
+        """`--theme none` passes validation (fails later at DB access, not validation)."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("[database]\n")
+
+        result = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--theme", "none"],
+        )
+
+        # Validation passed; failure (if any) is from DB, not from theme filter.
+        assert "Invalid theme" not in result.output
+
+    def test_list_accepts_valid_theme_enum(self, tmp_path, monkeypatch):
+        """A canonical SONG_COMPONENT_THEMES value passes validation."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("[database]\n")
+
+        result = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--theme", "敬拜"],
+        )
+
+        # Validation passed; failure (if any) is from DB, not from theme filter.
+        assert "Invalid theme" not in result.output
+
     @pytest.mark.integration
     def test_list_empty_database(self, make_test_provider, postgres_url, tmp_path):
         """Shows a message when no recordings exist."""

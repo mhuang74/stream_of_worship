@@ -33,7 +33,11 @@ from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, g
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song, SongComponent
-from stream_of_worship.admin.db.schema import RECORDING_COLUMNS_FOR_JOIN, RECORDING_COLUMNS_SELECT
+from stream_of_worship.admin.db.schema import (
+    RECORDING_COLUMNS_FOR_JOIN,
+    RECORDING_COLUMNS_SELECT,
+    SONG_COMPONENT_THEMES,
+)
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
@@ -1887,6 +1891,12 @@ def list_recordings(
         "-a",
         help="Filter by album name (substring, case-insensitive; matches album_name or album_series)",
     ),
+    theme: Optional[str] = typer.Option(
+        None,
+        "--theme",
+        "-t",
+        help="Filter by recording-level theme (讚美|感恩|敬拜|奉獻|認罪|差遣|信心|祈禱|復興|聖靈|十字架|跟隨|none where none = no theme set)",
+    ),
     lrc: Optional[str] = typer.Option(
         None,
         "--lrc",
@@ -1933,6 +1943,15 @@ def list_recordings(
             )
             raise typer.Exit(1)
 
+    # Validate theme filter
+    if theme:
+        valid_themes = set(SONG_COMPONENT_THEMES) | {"none"}
+        if theme not in valid_themes:
+            console.print(
+                f"[red]Invalid theme: {theme}. Must be one of: {', '.join(sorted(valid_themes))}[/red]"
+            )
+            raise typer.Exit(1)
+
     # Validate sort option
     valid_sorts = {"album", "series", "title", "imported", "updated"}
     if sort not in valid_sorts:
@@ -1949,6 +1968,7 @@ def list_recordings(
         visibility=visibility,
         lrc_status=lrc,
         album=album,
+        theme=theme,
         sort_by=sort,
         limit=limit,
     )
@@ -1983,6 +2003,8 @@ def list_recordings(
             filter_parts.append(f"album={album}")
         if lrc:
             filter_parts.append(f"lrc={lrc}")
+        if theme:
+            filter_parts.append(f"theme={theme}")
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
         # Caps keep the flexible text columns from collapsing: Rich gives
         # no_wrap columns their max content width first, starving Album/Title.
@@ -2136,6 +2158,8 @@ def show_recording(
     info_lines.append(
         f"[cyan]Visibility:[/cyan] {_colorize_visibility(recording.visibility_status)}"
     )
+    info_lines.append(f"[cyan]Theme:[/cyan] {recording.theme or '- none -'}")
+    info_lines.append(f"[cyan]Posture:[/cyan] {recording.vocal_posture or '- none -'}")
 
     # Analysis results (only shown when analysis is complete)
     if recording.has_analysis:
