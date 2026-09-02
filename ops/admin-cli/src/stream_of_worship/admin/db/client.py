@@ -812,6 +812,7 @@ class DatabaseClient:
         visibility: Optional[str] = None,
         lrc_status: Optional[str] = None,
         album: Optional[str] = None,
+        theme: Optional[str] = None,
         sort_by: str = "imported",
         limit: Optional[int] = None,
         include_deleted: bool = False,
@@ -825,6 +826,7 @@ class DatabaseClient:
             visibility: Filter by visibility status. Pass "none" to match recordings with NULL visibility_status.
             lrc_status: Filter by LRC status.
             album: Filter by album name (case-insensitive substring).
+            theme: Filter by recording-level theme. Pass "none" to match recordings with NULL theme.
             sort_by: Sort order (``album``, ``series``, ``title``, ``imported``).
             limit: Maximum number of results.
             include_deleted: Whether to include soft-deleted recordings.
@@ -873,6 +875,12 @@ class DatabaseClient:
         if album:
             query += " AND (s.album_name ILIKE %s OR s.album_series ILIKE %s)"
             params.extend([f"%{album}%", f"%{album}%"])
+        if theme:
+            if theme == "none":
+                query += " AND r.theme IS NULL"
+            else:
+                query += " AND r.theme = %s"
+                params.append(theme)
 
         order_map = {
             "album": "s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
