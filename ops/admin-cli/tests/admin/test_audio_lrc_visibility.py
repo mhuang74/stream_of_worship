@@ -227,11 +227,12 @@ def test_interrupt_reconciliation_preserves_visibility():
 
     results = {"song_1": {}}
     audio._reconcile_on_interrupt(
-        active_jobs={"song_1": "lrc-job-1"},
+        active_jobs={("song_1", "lrc"): "lrc-job-1"},
         results=results,
         db_client=db_client,
         r2_client=r2_client,
         console=_console(),
+        config=MagicMock(),
     )
 
     db_client.update_recording_lrc.assert_called_once_with(

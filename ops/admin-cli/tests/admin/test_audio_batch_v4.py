@@ -6,6 +6,7 @@ database or R2 access. They use the Typer CliRunner against the real app.
 
 from unittest.mock import MagicMock, patch
 
+import stream_of_worship.admin.commands.audio as audio_mod
 from rich.console import Console
 from typer.testing import CliRunner
 
@@ -339,6 +340,7 @@ def _make_recording(
     download_status: str = "completed",
     analysis_status: str = "completed",
     lrc_status: str = "completed",
+    structured_lyrics: str | None = None,
 ) -> Recording:
     return Recording(
         content_hash=hash_prefix + "0" * 52,
@@ -350,6 +352,8 @@ def _make_recording(
         download_status=download_status,
         analysis_status=analysis_status,
         lrc_status=lrc_status,
+        structured_lyrics=structured_lyrics,
+        youtube_url="https://youtu.be/abc",
     )
 
 
@@ -680,3 +684,182 @@ class TestProbeBatchAlbumFilter:
         mock_db.list_songs.assert_called_once()
         call_kwargs = mock_db.list_songs.call_args
         assert call_kwargs.kwargs.get("album") == "敬拜讚美"
+class TestComponentsStepFlagsV3:
+    """--components step-flag validation per the v3 spec."""
+
+    def test_components_alone_passes_validation(self, tmp_path):
+        """--components alone passes step-flag validation."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            ["audio", "batch", "--components", "--config", str(config_path)],
+            env=WIDE_ENV,
+        )
+        assert "No step flags selected" not in result.output
+
+    def test_force_components_passes_force_scoping(self, tmp_path):
+        """--force --components passes force scoping."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            ["audio", "batch", "--force", "--components", "--config", str(config_path)],
+            env=WIDE_ENV,
+        )
+        assert "exactly one step flag" not in result.output
+
+    def test_backfill_lyrics_components_passes_mutual_exclusivity(self, tmp_path):
+        """--backfill-lyrics --components passes the mutual-exclusivity check."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--backfill-lyrics",
+                "--components",
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert "cannot be combined" not in result.output
+
+    def test_force_backfill_lyrics_components_passes_force_scoping(self, tmp_path):
+        """--force --backfill-lyrics --components passes force scoping (use case 2)."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--backfill-lyrics",
+                "--force",
+                "--components",
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert "exactly one step flag" not in result.output
+
+
+class TestAllStepsIncludesComponentsV3:
+    """--all-steps selects download, backfill_lyrics, lrc, analyze, embedding, components."""
+
+    def test_all_steps_selects_components_and_backfill(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+
+        mock_db = MagicMock()
+        mock_db.list_recordings_with_songs.return_value = []
+        mock_db.list_songs.return_value = [_make_song("song_1", album_name="X")]
+        mock_db.get_recording_by_song_id.return_value = None
+
+        captured: dict = {}
+
+        def _fake_process_batch(**kwargs):
+            captured.update(kwargs)
+            return {sid: {} for sid in kwargs["song_ids"]}
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=mock_db,
+            ),
+            patch("stream_of_worship.admin.commands.audio.R2Client"),
+            patch("stream_of_worship.admin.commands.audio.AnalysisClient"),
+            patch(
+                "stream_of_worship.admin.commands.audio._process_batch",
+                side_effect=_fake_process_batch,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["audio", "batch", "--album", "X", "--all-steps", "--config", str(config_path)],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert captured["selected_steps"] == [
+            "download",
+            "backfill_lyrics",
+            "lrc",
+            "analyze",
+            "embedding",
+            "components",
+        ]
+
+
+class TestBackfillSkipIfPresentV3:
+    """Backfill-lyrics skip-if-present is unconditional (resolved Q2)."""
+
+    def test_force_does_not_override_lyrics_skip(self, tmp_path):
+        """--force does NOT refetch already-present structured lyrics."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+
+        rec = _make_recording(
+            "song_1",
+            structured_lyrics='{"sections":[{"type":"verse"}]}',
+        )
+        mock_db = MagicMock()
+        mock_db.get_recording_by_song_id.return_value = rec
+        mock_db.list_recordings_with_songs.return_value = [(rec, "Song 1", "Album", None)]
+        mock_db.list_songs.return_value = []
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=mock_db,
+            ),
+            patch("stream_of_worship.admin.commands.audio._backfill_lyrics_for_song") as m_bf,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio",
+                    "batch",
+                    "--album",
+                    "X",
+                    "--backfill-lyrics",
+                    "--force",
+                    "--config",
+                    str(config_path),
+                ],
+                env=WIDE_ENV,
+            )
+
+        assert "skipped: structured lyrics already present" in result.output
+        m_bf.assert_not_called()
+
+    def test_backfill_lyrics_batch_counts_skip(self):
+        """_backfill_lyrics_batch counts a skip in the summary."""
+        import io
+
+        rec = _make_recording(
+            "song_1",
+            structured_lyrics='{"sections":[{"type":"verse"}]}',
+        )
+        mock_db = MagicMock()
+        mock_db.get_recording_by_song_id.return_value = rec
+
+        with (
+            patch("sys.stdin", io.StringIO("song_1\n")),
+            patch.object(
+                audio_mod, "_prompt_confirmation", return_value=True
+            ),
+            patch.object(audio_mod, "_backfill_lyrics_for_song") as m_bf,
+        ):
+            audio_mod._backfill_lyrics_batch(
+                db_client=mock_db,
+                console=Console(file=io.StringIO(), width=200),
+                skip_confirm=True,
+            )
+
+        m_bf.assert_not_called()
+
+
