@@ -1144,9 +1144,15 @@ def import_youtube_audio_for_song(
         is_direct_url = True
 
     # Fetch structured lyrics per source (D4, D5). Non-fatal: failures here
-    # must not block the download. When source is zanmei-only, skip the
-    # YouTube metadata call entirely (search_or_url may be a bare query).
-    youtube_for_lyrics = search_or_url if structured_lyrics_source != "zanmei" else None
+    # must not block the download. Use the URL resolved by video preview; a
+    # bare search query is not a URL (yt-dlp generic extractor rejects it),
+    # so skip the metadata call when no URL is available.
+    youtube_for_lyrics: Optional[str] = None
+    if structured_lyrics_source != "zanmei":
+        if video_info and video_info.get("webpage_url"):
+            youtube_for_lyrics = video_info["webpage_url"]
+        elif search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
+            youtube_for_lyrics = search_or_url
     structured_raw, structured_json_str, _lyrics_source_used = _fetch_structured_lyrics(
         youtube_url=youtube_for_lyrics,
         song_title=song.title,

@@ -4594,6 +4594,71 @@ class TestLlmLyricsFlags:
         mock_import.assert_called_once()
         assert mock_import.call_args.kwargs.get("use_llm") is True
 
+    def test_download_search_passes_resolved_url_to_structured_lyrics(self, tmp_path):
+        """audio download (search) passes the preview-resolved URL, not the raw query, to lyrics fetch."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        fake_db.list_active_recordings_by_song.return_value = []
+        fake_audio = tmp_path / "downloaded.mp3"
+        fake_audio.write_bytes(b"fake audio content")
+
+        mock_downloader = MagicMock()
+        mock_downloader.build_search_query.return_value = "我相信 赞美之泉"
+        mock_downloader.preview_video.return_value = {
+            "id": "abc123",
+            "title": "…【I Believe [我相信] 】…",
+            "duration": 294,
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+        }
+        mock_downloader.download.return_value = fake_audio
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.YouTubeDownloader"
+            ) as mock_downloader_cls,
+            patch("stream_of_worship.admin.commands.audio.R2Client") as mock_r2_cls,
+            patch(
+                "stream_of_worship.admin.commands.audio.compute_file_hash",
+                return_value="a" * 64,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_hash_prefix",
+                return_value="a" * 12,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.probe_duration",
+                return_value=294.0,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._fetch_structured_lyrics",
+                return_value=(None, None, "youtube"),
+            ) as mock_fetch_lyrics,
+        ):
+            mock_downloader_cls.return_value = mock_downloader
+            mock_r2_cls.return_value = MagicMock(
+                upload_audio=MagicMock(return_value="s3://sow-audio/aaaaaaaaaaaa/audio.mp3")
+            )
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--yes"],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0
+        mock_fetch_lyrics.assert_called_once()
+        assert (
+            mock_fetch_lyrics.call_args.kwargs.get("youtube_url")
+            == "https://www.youtube.com/watch?v=abc123"
+        )
+
     def test_backfill_lyrics_llm_no_api_key_hard_fails(self, monkeypatch):
         """--backfill-lyrics (default) with SOW_LLM_API_KEY unset → exit 1, red error."""
         monkeypatch.delenv("SOW_LLM_API_KEY", raising=False)
