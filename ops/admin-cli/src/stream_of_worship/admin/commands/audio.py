@@ -1153,7 +1153,7 @@ def import_youtube_audio_for_song(
             youtube_for_lyrics = video_info["webpage_url"]
         elif search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
             youtube_for_lyrics = search_or_url
-    structured_raw, structured_json_str, _lyrics_source_used = _fetch_structured_lyrics(
+    structured_raw, structured_json_str, lyrics_source_used = _fetch_structured_lyrics(
         youtube_url=youtube_for_lyrics,
         song_title=song.title,
         band=song.composer,
@@ -1161,6 +1161,28 @@ def import_youtube_audio_for_song(
         use_llm=use_llm,
         console=console,
     )
+
+    # Mirror _backfill_lyrics_for_song's outcome reporting. This fetch is
+    # non-fatal and was silent, so a transient metadata failure or an
+    # empty-sections LLM result saved NULL structured lyrics invisibly
+    # (2026-09-05 ibelieve_wo_xiang_xin incident).
+    if structured_json_str:
+        structured_json = json.loads(structured_json_str)
+    else:
+        structured_json = None
+    if structured_json and structured_json.get("sections"):
+        num_sections = len(structured_json["sections"])
+        console.print(
+            f"[green]Structured lyrics ({lyrics_source_used}): {num_sections} section(s).[/green]"
+        )
+    else:
+        console.print(
+            f"[yellow]No section tags found from {lyrics_source_used} — stored raw only.[/yellow]"
+        )
+        console.print(
+            f"[dim]If this is unexpected, retry with "
+            f"'sow-admin audio download {song_id} --backfill-lyrics'.[/dim]"
+        )
 
     console.print("[cyan]Downloading audio from YouTube...[/cyan]")
     try:
@@ -7010,7 +7032,7 @@ def _download_and_create_recording(
         structured_json_str: Optional[str] = None
         if youtube_url:
             try:
-                structured_raw, structured_json_str, _src = _fetch_structured_lyrics(
+                structured_raw, structured_json_str, src = _fetch_structured_lyrics(
                     youtube_url=youtube_url,
                     song_title=song.title,
                     band=song.composer,
@@ -7030,7 +7052,18 @@ def _download_and_create_recording(
                 console.print(
                     f"  [yellow]Structured lyrics fetch failed (non-fatal): {e}[/yellow]"
                 )
-
+            else:
+                structured_json = json.loads(structured_json_str)
+                if structured_json and structured_json.get("sections"):
+                    num_sections = len(structured_json["sections"])
+                    console.print(
+                        f"  [green]✓ Structured lyrics ({src}): {num_sections} section(s)[/green]"
+                    )
+                else:
+                    console.print(
+                        f"  [yellow]~ No section tags from {src} — stored raw only; "
+                        f"re-run with --backfill-lyrics later[/yellow]"
+                    )
         recording = Recording(
             content_hash=content_hash,
             hash_prefix=prefix,
