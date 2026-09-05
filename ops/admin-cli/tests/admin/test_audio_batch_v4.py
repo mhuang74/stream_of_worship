@@ -311,9 +311,9 @@ class TestSongIdSelection:
     def test_song_id_targets_single_song(self, tmp_path):
         config_path = tmp_path / "config.toml"
         config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
-
         mock_db = MagicMock()
         mock_db.get_song.return_value = _make_song("song_001", album_name="X")
+        mock_db.get_recording_by_song_id.return_value = None
 
         captured: dict = {}
 
