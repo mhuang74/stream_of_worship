@@ -126,7 +126,7 @@ class TestEagerLrcHandoff:
         song_ids = ["s1", "s2", "s3"]
         created: dict = {}  # song_id -> recording, populated by download
 
-        def _download_and_create_recording(song_id, song, db, r2, console):
+        def _download_and_create_recording(song_id, song, db, r2, console, use_llm=True):
             rec = _make_recording(song_id)
             created[song_id] = rec
             return rec, None
@@ -154,6 +154,7 @@ class TestEagerLrcHandoff:
                 console=Console(quiet=True),
                 database_url="postgresql://test",
                 download_concurrency=1,
+                config=MagicMock(),
             )
 
         # One submit per song (eager, from the download worker)
@@ -164,7 +165,7 @@ class TestEagerLrcHandoff:
         song_ids = ["s1", "s2"]
         created: dict = {}
 
-        def _download_and_create_recording(sid, song, db, r2, c):
+        def _download_and_create_recording(sid, song, db, r2, c, use_llm=True):
             rec = _make_recording(sid)
             created[sid] = rec
             return rec, None
@@ -190,6 +191,7 @@ class TestEagerLrcHandoff:
                 console=Console(quiet=True),
                 database_url="postgresql://test",
                 download_concurrency=1,
+                config=MagicMock(),
             )
 
         # Exactly one submit per song (eager), none re-submitted by the main loop
@@ -218,6 +220,7 @@ class TestEagerLrcHandoff:
                 console=Console(quiet=True),
                 database_url="postgresql://test",
                 download_concurrency=1,
+                config=MagicMock(),
             )
 
         assert stubs["analysis_client"].submit_lrc.call_count == 1
@@ -230,7 +233,7 @@ class TestEagerLrcHandoff:
 
         with patch(
             "stream_of_worship.admin.commands.audio._download_and_create_recording",
-            side_effect=lambda sid, song, db, r2, c: (None, "boom"),
+            side_effect=lambda sid, song, db, r2, c, use_llm=True: (None, "boom"),
         ):
             _process_batch(
                 db_client=stubs["db_client"],
@@ -244,6 +247,7 @@ class TestEagerLrcHandoff:
                 console=Console(quiet=True),
                 database_url="postgresql://test",
                 download_concurrency=1,
+                config=MagicMock(),
             )
 
         stubs["analysis_client"].submit_lrc.assert_not_called()
@@ -270,6 +274,7 @@ class TestLrcOnlyPath:
             console=Console(quiet=True),
             database_url="postgresql://test",
             download_concurrency=1,
+            config=MagicMock(),
         )
 
         # One submit per song, all from _advance_song (no download phase ran)

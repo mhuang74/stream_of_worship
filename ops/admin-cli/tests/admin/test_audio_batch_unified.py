@@ -24,6 +24,7 @@ from stream_of_worship.admin.commands.audio import (
     _poll_one_cycle,
     _submit_analysis_for_song,
     _submit_embedding_for_song,
+    _submit_lrc_for_song,
     _submit_step,
 )
 from stream_of_worship.admin.db.models import Recording, Song
@@ -161,6 +162,7 @@ class TestAdvanceSong:
             console=Console(quiet=True), results=results,
             active_jobs=active_jobs, lrc_attempted=lrc_attempted,
             _add_manifest_entry=_noop_manifest_entry,
+            config=MagicMock(),
         )
 
         assert (song_id, "analyze") in active_jobs
@@ -190,6 +192,7 @@ class TestAdvanceSong:
             console=Console(quiet=True), results=results,
             active_jobs=active_jobs, lrc_attempted=lrc_attempted,
             _add_manifest_entry=_noop_manifest_entry,
+            config=MagicMock(),
         )
 
         assert (song_id, "embedding") in active_jobs
@@ -207,6 +210,7 @@ class TestAdvanceSong:
             console=Console(quiet=True), results=results,
             active_jobs=active_jobs, lrc_attempted=lrc_attempted,
             _add_manifest_entry=_noop_manifest_entry,
+            config=MagicMock(),
         )
 
         assert len(active_jobs) == 0
@@ -225,6 +229,7 @@ class TestAdvanceSong:
             console=Console(quiet=True), results=results,
             active_jobs=active_jobs, lrc_attempted=lrc_attempted,
             _add_manifest_entry=_noop_manifest_entry,
+            config=MagicMock(),
         )
 
         assert results[song_id]["_pipeline"] == "completed"
@@ -243,6 +248,7 @@ class TestAdvanceSong:
             console=Console(quiet=True), results=results,
             active_jobs=active_jobs, lrc_attempted=lrc_attempted,
             _add_manifest_entry=_noop_manifest_entry,
+            config=MagicMock(),
         )
 
         # Should not have submitted a new job
@@ -530,6 +536,78 @@ class TestSubmitEmbeddingForSong:
 
 
 # ---------------------------------------------------------------------------
+# submit-path trace lines name the step
+# ---------------------------------------------------------------------------
+
+class TestSubmitTraceLinesNameTheStep:
+    def test_submit_trace_lines_name_the_step(self):
+        """Submit-path console traces carry the step name on every line."""
+        song_id = "s1"
+
+        # lrc
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording(song_id)
+        db_client.get_song.return_value = _make_song(song_id)
+        r2_client = MagicMock()
+        r2_client.lrc_exists.return_value = None
+        analysis_client = MagicMock()
+        analysis_client.submit_lrc.return_value = JobInfo(
+            job_id="lrc-1", status="queued", job_type="lrc"
+        )
+        console = Console(record=True)
+        status = _submit_lrc_for_song(
+            song_id,
+            db_client,
+            analysis_client,
+            r2_client,
+            force=False,
+            stale_after_minutes=120,
+            console=console,
+            results={song_id: {}},
+            active_lrc_jobs={},
+            lrc_attempted=set(),
+            _add_manifest_entry=_noop_manifest_entry,
+        )
+        assert status == "submitted"
+        assert "(submitted: lrc " in console.export_text()
+
+        # analysis
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording(song_id)
+        analysis_client = MagicMock()
+        analysis_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="ana-1", status="queued", job_type="fast_analyze"
+        )
+        console = Console(record=True)
+        job_id, status = _submit_analysis_for_song(
+            song_id, db_client, analysis_client, MagicMock(),
+            force=False, analysis_tier="fast", stale_after_minutes=120,
+            console=console, results={song_id: {}},
+            _add_manifest_entry=_noop_manifest_entry,
+        )
+        assert status == "submitted" and job_id == "ana-1"
+        assert "(submitted: analysis " in console.export_text()
+
+        # embedding
+        db_client = MagicMock()
+        db_client.get_song.return_value = _make_song(song_id)
+        db_client.get_recording_by_song_id.return_value = _make_recording(song_id)
+        db_client.get_embedding_content_hash.return_value = None
+        analysis_client = MagicMock()
+        analysis_client.submit_embedding.return_value = JobInfo(
+            job_id="emb-1", status="queued", job_type="embedding"
+        )
+        console = Console(record=True)
+        job_id, status = _submit_embedding_for_song(
+            song_id, db_client, analysis_client, MagicMock(),
+            force=False, analysis_tier="fast", stale_after_minutes=120,
+            console=console, results={song_id: {}},
+            _add_manifest_entry=_noop_manifest_entry,
+        )
+        assert status == "submitted" and job_id == "emb-1"
+        assert "(submitted: embedding " in console.export_text()
+
+# ---------------------------------------------------------------------------
 # _poll_one_cycle
 # ---------------------------------------------------------------------------
 
@@ -573,6 +651,7 @@ class TestPollOneCycle:
                 resubmit_counts=resubmit_counts,
                 last_completion_time=time.time(),
                 batch_start_time=time.time(),
+                config=MagicMock(),
             )
 
         # LRC job should be removed, analysis job should be added
@@ -627,6 +706,7 @@ class TestPollOneCycle:
             resubmit_counts=resubmit_counts,
             last_completion_time=time.time(),
             batch_start_time=time.time(),
+            config=MagicMock(),
         )
 
         # Song A: analysis completed → embedding submitted
@@ -706,6 +786,7 @@ class TestUnifiedResume:
                 console=Console(quiet=True),
                 database_url="postgresql://test",
                 download_concurrency=1,
+                config=MagicMock(),
             )
 
         # Both processing jobs should have been polled
@@ -713,3 +794,380 @@ class TestUnifiedResume:
         # Results should have entries for s1 and s2
         assert "s1" in results
         assert "s2" in results
+
+
+# ---------------------------------------------------------------------------
+# v3: components step in the unified loop
+# ---------------------------------------------------------------------------
+
+from types import SimpleNamespace
+
+from stream_of_worship.admin.commands.audio import (
+    _db_components_have_llm_fields,
+    _handle_components_completion,
+    _submit_components_for_song,
+)
+from stream_of_worship.admin.db.models import SongComponent
+
+
+def _comp(
+    component_type: str = "chorus",
+    occurrence_index: int = 1,
+    role: str = "entry",
+    theme: str | None = "讚美",
+    posture: str | None = "站立",
+) -> SongComponent:
+    return SongComponent(
+        song_id="s1",
+        content_hash="h" * 64,
+        component_type=component_type,
+        occurrence_index=occurrence_index,
+        role=role,
+        theme=theme,
+        vocal_posture=posture,
+    )
+
+
+class TestDbComponentsHaveLlmFields:
+    def test_essential_candidates_complete_true(self):
+        comps = [_comp(role="entry"), _comp(role="exit")]
+        assert _db_components_have_llm_fields(comps) is True
+
+    def test_missing_one_field_false(self):
+        comps = [_comp(role="entry"), _comp(role="exit", theme=None)]
+        assert _db_components_have_llm_fields(comps) is False
+
+    def test_no_candidates_false(self):
+        comps = [_comp(component_type="verse", role="none")]
+        assert _db_components_have_llm_fields(comps) is False
+
+    def test_first_bridge_counts_as_candidate(self):
+        comps = [_comp(component_type="bridge", occurrence_index=1, role="none")]
+        assert _db_components_have_llm_fields(comps) is True
+        comps2 = [_comp(component_type="bridge", occurrence_index=2, role="none")]
+        assert _db_components_have_llm_fields(comps2) is False
+
+
+class TestSubmitComponentsForSong:
+    def _run(
+        self,
+        recording=None,
+        db_comps=None,
+        force=False,
+        newly_backfilled=False,
+        config=None,
+    ):
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = recording
+        db_client.get_song_components.return_value = db_comps or []
+        analysis_client = MagicMock()
+        analysis_client.submit_component_analysis.return_value = JobInfo(
+            job_id="comp-1", status="processing", job_type="component_analysis"
+        )
+        console = Console(quiet=True)
+        results: dict = {"s1": {}}
+        manifest: list = []
+        job_id, status = _submit_components_for_song(
+            "s1",
+            db_client,
+            analysis_client,
+            config or MagicMock(analysis_url="https://analysis"),
+            force,
+            console,
+            results,
+            lambda *a, **k: manifest.append(a),
+            newly_backfilled=newly_backfilled,
+        )
+        return job_id, status, results["s1"], manifest, db_client, analysis_client
+
+    def test_no_recording_skipped(self):
+        _, status, results, _, _, _ = self._run(recording=None)
+        assert status == "skipped_no_recording"
+        assert results["components"] == "skipped_no_recording"
+
+    def test_recording_without_audio_url_skipped(self):
+        rec = _make_recording("s1")
+        rec.r2_audio_url = None
+        _, status, results, _, _, _ = self._run(recording=rec)
+        assert status == "skipped_no_recording"
+
+    def test_no_sections_or_lrc_skipped(self):
+        rec = _make_recording("s1")
+        _, status, results, _, _, _ = self._run(recording=rec)
+        assert status == "skipped_no_sections"
+
+    def test_db_comps_present_skips_completed(self):
+        rec = _rec_with_sections()
+        comps = [_comp(role="entry"), _comp(role="exit")]
+        _, status, results, _, _, analysis = self._run(recording=rec, db_comps=comps)
+        assert status == "skipped_completed"
+        analysis.submit_component_analysis.assert_not_called()
+        assert results["components"] == "completed"
+        assert results["components_source"] == "db_existing"
+
+    def test_db_comps_present_but_theme_stale_re_aggregates(self):
+        rec = _rec_with_sections()
+        rec.theme = None
+        rec.vocal_posture = None
+        comps = [_comp(role="entry"), _comp(role="exit")]
+        with patch.object(audio, "_persist_recording_theme") as m_persist:
+            _, status, _, _, _, _ = self._run(recording=rec, db_comps=comps)
+        assert status == "skipped_completed"
+        m_persist.assert_called_once()
+
+    def test_newly_backfilled_bypasses_db_skip(self):
+        rec = _rec_with_sections()
+        comps = [_comp(role="entry"), _comp(role="exit")]
+        with patch.object(
+            audio, "_prepare_component_job_inputs"
+        ) as m_prep:
+            m_prep.return_value = {
+                "sections": [], "beats": None, "downbeats": None,
+                "lrc_content": None, "structured_lyrics": None,
+                "cached_result": None,
+            }
+            _, status, _, _, _, analysis = self._run(
+                recording=rec, db_comps=comps, newly_backfilled=True
+            )
+        assert status == "submitted"
+        analysis.submit_component_analysis.assert_called_once()
+        assert analysis.submit_component_analysis.call_args.kwargs["force"] is True
+
+    def test_force_bypasses_db_skip(self):
+        rec = _rec_with_sections()
+        comps = [_comp(role="entry"), _comp(role="exit")]
+        with patch.object(audio, "_prepare_component_job_inputs") as m_prep:
+            m_prep.return_value = {
+                "sections": [], "beats": None, "downbeats": None,
+                "lrc_content": None, "structured_lyrics": None,
+                "cached_result": None,
+            }
+            _, status, _, _, _, analysis = self._run(
+                recording=rec, db_comps=comps, force=True
+            )
+        assert status == "submitted"
+        analysis.submit_component_analysis.assert_called_once()
+
+    def test_happy_path_submits_job(self):
+        rec = _rec_with_sections()
+        _, status, results, manifest, _, analysis = self._run(recording=rec)
+        assert status == "submitted"
+        assert analysis.submit_component_analysis.assert_called_once() or True
+        assert manifest[-1][2] == "components" and manifest[-1][5] == "submitted"
+
+
+
+class TestHandleComponentsCompletion:
+    def test_completed_persists_components(self):
+        db = MagicMock()
+        db.get_recording_by_song_id.return_value = _make_recording("s1")
+        db.get_song.return_value = _make_song("s1")
+        job = JobInfo(
+            job_id="c1",
+            status="completed",
+            job_type="component_analysis",
+            result=SimpleNamespace(
+                components=[
+                    {"component_type": "chorus", "occurrence_index": 1, "role": "entry"}
+                ]
+            ),
+        )
+        results: dict = {"s1": {}}
+        is_terminal, new_job_id = _handle_components_completion(
+            "s1", "c1", job, db, Console(quiet=True), results, lambda *a, **k: None
+        )
+        assert is_terminal is True
+        assert new_job_id is None
+        db.upsert_song_components.assert_called_once()
+        assert results["s1"]["components"] == "completed"
+        assert results["s1"]["components_count"] == 1
+
+    def test_failed_job_marks_failed(self):
+        db = MagicMock()
+        job = JobInfo(
+            job_id="c1", status="failed", job_type="component_analysis",
+            error_message="boom",
+        )
+        results: dict = {"s1": {}}
+        is_terminal, _ = _handle_components_completion(
+            "s1", "c1", job, db, Console(quiet=True), results, lambda *a, **k: None
+        )
+        assert is_terminal is True
+        assert results["s1"]["components"] == "failed"
+
+    def test_empty_components_completed_with_zero(self):
+        db = MagicMock()
+        db.get_recording_by_song_id.return_value = _make_recording("s1")
+        job = JobInfo(
+            job_id="c1",
+            status="completed",
+            job_type="component_analysis",
+            result=SimpleNamespace(components=[]),
+        )
+        results: dict = {"s1": {}}
+        is_terminal, _ = _handle_components_completion(
+            "s1", "c1", job, db, Console(quiet=True), results, lambda *a, **k: None
+        )
+        assert is_terminal is True
+        assert results["s1"]["components"] == "completed"
+        assert results["s1"]["components_count"] == 0
+
+
+def _rec_with_sections(song_id: str = "s1") -> Recording:
+    """Recording with full analysis + LRC complete so components are eligible."""
+    return Recording(
+        content_hash="h" * 64,
+        hash_prefix="abc123def456",
+        original_filename="test.mp3",
+        file_size_bytes=100,
+        imported_at="2024-01-01T00:00:00",
+        song_id=song_id,
+        r2_audio_url="https://r2/audio.mp3",
+        youtube_url="https://youtu.be/abc",
+        download_status="completed",
+        lrc_status="completed",
+        analysis_status="completed",
+        sections="[]",
+    )
+
+
+class TestAdvanceSongComponents:
+    def test_lrc_completed_advances_to_components(self):
+        song_id = "s1"
+        db_client = MagicMock()
+        rec = _rec_with_sections(song_id)
+        db_client.get_recording_by_song_id.return_value = rec
+        db_client.get_song.return_value = _make_song(song_id)
+        db_client.get_song_components.return_value = []
+        db_client.get_embedding_content_hash.return_value = None
+
+        analysis_client = MagicMock()
+        analysis_client.submit_component_analysis.return_value = JobInfo(
+            job_id="comp-1", status="processing", job_type="component_analysis"
+        )
+        results = {song_id: {"lrc": "completed", "analyze": "completed"}}
+        active_jobs: dict = {}
+
+        _advance_song(
+            song_id,
+            "lrc",
+            ["lrc", "components"],
+            db_client,
+            analysis_client,
+            MagicMock(),
+            force=False,
+            analysis_tier="fast",
+            stale_after_minutes=120,
+            console=Console(quiet=True),
+            results=results,
+            active_jobs=active_jobs,
+            lrc_attempted={song_id},
+            _add_manifest_entry=_noop_manifest_entry,
+            config=MagicMock(analysis_url="https://analysis"),
+        )
+
+        assert (song_id, "components") in active_jobs
+        assert active_jobs[(song_id, "components")] == "comp-1"
+
+
+class TestReconcileOnInterruptV3:
+    def _reconcile(self, active_jobs, db, r2, config=None):
+        results: dict = {"s1": {}}
+        audio._reconcile_on_interrupt(
+            active_jobs,
+            results,
+            db,
+            r2,
+            Console(quiet=True),
+            config or MagicMock(analysis_url="https://analysis"),
+        )
+        return results
+
+    def test_components_job_with_cached_result_upserts(self):
+        db = MagicMock()
+        db.get_recording_by_song_id.return_value = _rec_with_sections()
+        r2 = MagicMock()
+        with patch.object(
+            audio, "_prepare_component_job_inputs"
+        ) as m_prep:
+            m_prep.return_value = {
+                "sections": [], "beats": None, "downbeats": None,
+                "lrc_content": None, "structured_lyrics": None,
+                "cached_result": {"components": [
+                    {"component_type": "chorus", "occurrence_index": 1, "role": "entry"}
+                ]},
+            }
+            results = self._reconcile({("s1", "components"): "c-1"}, db, r2)
+        db.upsert_song_components.assert_called_once()
+        assert results["s1"]["components"] == "completed"
+
+    def test_analyze_job_leaves_db_untouched(self):
+        db = MagicMock()
+        db.get_recording_by_song_id.return_value = _make_recording("s1")
+        results = self._reconcile({("s1", "analyze"): "a-1"}, db, MagicMock())
+        db.update_recording_lrc.assert_not_called()
+        db.update_recording_status.assert_not_called()
+
+    def test_same_song_components_and_lrc_reconciled_without_collision(self):
+        db = MagicMock()
+        db.get_recording_by_song_id.return_value = _rec_with_sections()
+        r2 = MagicMock()
+        r2.lrc_exists.return_value = None
+        with patch.object(
+            audio, "_prepare_component_job_inputs", return_value=None
+        ):
+            results = self._reconcile(
+                {("s1", "components"): "c-1", ("s1", "lrc"): "l-1"}, db, r2
+            )
+        # Both keys processed: components failed, lrc failed (no R2 file)
+        assert results["s1"]["components"] == "failed"
+        assert results["s1"]["lrc"] == "failed"
+
+
+class TestDownloadStructuredLyrics:
+    def _invoke(self, tmp_path, fetch_side_effect=None, fetch_return=None):
+        db = MagicMock()
+        db.get_recording_by_hash.return_value = None
+        r2 = MagicMock()
+        r2.upload_audio.return_value = "https://r2/audio.mp3"
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_bytes(b"x" * 10)
+        song = _make_song("s1")
+        fetch_kwargs = (
+            {"side_effect": fetch_side_effect}
+            if fetch_side_effect is not None
+            else {"return_value": fetch_return}
+        )
+        with (
+            patch.object(audio, "YouTubeDownloader") as m_dl,
+            patch.object(audio, "compute_file_hash", return_value="h" * 64),
+            patch.object(audio, "get_hash_prefix", return_value="abc123def456"),
+            patch.object(audio, "probe_duration", return_value=100.0),
+            patch.object(audio, "_fetch_structured_lyrics", **fetch_kwargs),
+        ):
+            m_dl.return_value.download_with_info.return_value = (
+                audio_path,
+                "https://youtu.be/xyz",
+                "Video Title",
+            )
+            recording, error = audio._download_and_create_recording(
+                "s1", song, db, r2, Console(quiet=True), use_llm=True
+            )
+        return recording, error
+
+    def test_download_creates_recording_with_structured_lyrics(self, tmp_path):
+        recording, error = self._invoke(
+            tmp_path, fetch_return=("raw", '{"sections":[]}', "youtube")
+        )
+        assert error is None
+        assert recording is not None
+        assert recording.structured_lyrics == '{"sections":[]}'
+        assert recording.structured_lyrics_raw == "raw"
+
+    def test_structured_lyrics_failure_non_fatal(self, tmp_path):
+        import typer
+
+        recording, error = self._invoke(tmp_path, fetch_side_effect=typer.Exit(1))
+        assert error is None
+        assert recording is not None
+        assert recording.structured_lyrics is None

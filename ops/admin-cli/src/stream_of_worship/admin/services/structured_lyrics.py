@@ -258,12 +258,8 @@ def parse_structured_lyrics_smart(
 
     - use_llm=True (default): runs heuristic, then LLM cleanup. LLM env misconfig /
       call failure is FATAL (raises). Returns the cleaned dict
-      (StructuredLyricsResult.to_dict()) or None if the description is empty.
-    - use_llm=False: runs the heuristic only. Non-fatal on parse failure
-      (returns None).
-
-    ``source_desc`` names the text origin and is passed through to the LLM
-    prompt (default: YouTube description).
+      (StructuredLyricsResult.to_dict()); an LLM result with zero sections
+      returns None, as does an empty description.
     """
     if not description:
         return None
@@ -271,7 +267,10 @@ def parse_structured_lyrics_smart(
         result = extract_structured_lyrics_with_llm(description, source_desc=source_desc)
         if result is None:
             return None
-        return result.to_dict() or None
+        # An LLM result with zero sections means "no lyrics found" — callers
+        # (e.g. the zanmei auto-fallback) key off None, not off an
+        # empty-sections dict, which is truthy.
+        return result.to_dict() if result.sections else None
     return parse_structured_lyrics(description)
 
 

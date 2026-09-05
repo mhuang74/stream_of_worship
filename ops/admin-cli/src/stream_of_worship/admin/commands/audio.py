@@ -1144,10 +1144,16 @@ def import_youtube_audio_for_song(
         is_direct_url = True
 
     # Fetch structured lyrics per source (D4, D5). Non-fatal: failures here
-    # must not block the download. When source is zanmei-only, skip the
-    # YouTube metadata call entirely (search_or_url may be a bare query).
-    youtube_for_lyrics = search_or_url if structured_lyrics_source != "zanmei" else None
-    structured_raw, structured_json_str, _lyrics_source_used = _fetch_structured_lyrics(
+    # must not block the download. Use the URL resolved by video preview; a
+    # bare search query is not a URL (yt-dlp generic extractor rejects it),
+    # so skip the metadata call when no URL is available.
+    youtube_for_lyrics: Optional[str] = None
+    if structured_lyrics_source != "zanmei":
+        if video_info and video_info.get("webpage_url"):
+            youtube_for_lyrics = video_info["webpage_url"]
+        elif search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
+            youtube_for_lyrics = search_or_url
+    structured_raw, structured_json_str, lyrics_source_used = _fetch_structured_lyrics(
         youtube_url=youtube_for_lyrics,
         song_title=song.title,
         band=song.composer,
@@ -1155,6 +1161,28 @@ def import_youtube_audio_for_song(
         use_llm=use_llm,
         console=console,
     )
+
+    # Mirror _backfill_lyrics_for_song's outcome reporting. This fetch is
+    # non-fatal and was silent, so a transient metadata failure or an
+    # empty-sections LLM result saved NULL structured lyrics invisibly
+    # (2026-09-05 ibelieve_wo_xiang_xin incident).
+    if structured_json_str:
+        structured_json = json.loads(structured_json_str)
+    else:
+        structured_json = None
+    if structured_json and structured_json.get("sections"):
+        num_sections = len(structured_json["sections"])
+        console.print(
+            f"[green]Structured lyrics ({lyrics_source_used}): {num_sections} section(s).[/green]"
+        )
+    else:
+        console.print(
+            f"[yellow]No section tags found from {lyrics_source_used} — stored raw only.[/yellow]"
+        )
+        console.print(
+            f"[dim]If this is unexpected, retry with "
+            f"'sow-admin audio download {song_id} --backfill-lyrics'.[/dim]"
+        )
 
     console.print("[cyan]Downloading audio from YouTube...[/cyan]")
     try:
@@ -1300,10 +1328,25 @@ def _backfill_lyrics_batch(
             raise typer.Exit(0)
 
     success = 0
+    skipped = 0
     failed = 0
     for idx, sid in enumerate(song_ids, 1):
         console.rule(f"[bold cyan][{idx}/{len(song_ids)}] {sid}")
         try:
+            recording = db_client.get_recording_by_song_id(sid)
+            # Skip-if-present: batch backfill is fill-missing regardless of
+            # force; the explicit single-song call stays always-refetch.
+            if recording and recording.structured_lyrics:
+                try:
+                    existing = json.loads(recording.structured_lyrics)
+                except (json.JSONDecodeError, TypeError):
+                    existing = None
+                if existing and existing.get("sections"):
+                    console.print(
+                        f"[yellow]~ Skipped (already has structured lyrics): {sid}[/yellow]"
+                    )
+                    skipped += 1
+                    continue
             ok = _backfill_lyrics_for_song(
                 song_id=sid,
                 db_client=db_client,
@@ -1324,7 +1367,9 @@ def _backfill_lyrics_batch(
             console.print(f"[red]✗ Failed: {sid}: {e}[/red]")
 
     console.print()
-    console.print(f"[bold]Summary:[/bold] {success} backfilled, {failed} failed")
+    console.print(
+        f"[bold]Summary:[/bold] {success} backfilled, {skipped} skipped, {failed} failed"
+    )
 
 
 def _download_audio_batch(
@@ -2809,6 +2854,159 @@ def _persist_recording_theme(
         logger.warning(f"Failed to persist recording theme for {recording.hash_prefix}: {e}")
 
 
+def _prepare_component_job_inputs(
+    recording: Recording,
+    song_id: str,
+    analysis_url: str,
+    config: AdminConfig,
+    console: Console,
+    force: bool,
+    classify_theme: bool,
+    classify_vocal_posture: bool,
+    segmentation_mode: Optional[str] = None,
+    all_components: bool = False,
+) -> Optional[dict]:
+    """Gather inputs for a component-analysis job and validate any cached result.
+
+    Extracted from ``_submit_component_analysis_job`` so batch flows (unified
+    loop submit, interrupt reconciliation) can reuse the gather/preflight/
+    cache-check without submitting.
+
+    Returns a dict with keys ``sections``, ``beats``, ``downbeats``,
+    ``lrc_content``, ``structured_lyrics`` and ``cached_result`` — the last is
+    the validated cached components.json dict (R2 hit whose components carry
+    the requested LLM fields for essential roles) or None. Returns None only
+    when the segmentation-mode preflight fails (message already printed).
+
+    Note: the LRC fetch deliberately re-loads default config into a separate
+    ``lrc_config`` local — assigning to ``config`` here would shadow the
+    parameter and silently redirect the R2 cache check below to the reloaded
+    default config instead of the caller's.
+    """
+    # Gather cached data from the recording row.
+    sections: Optional[list[dict]] = None
+    if recording.has_full_analysis and recording.sections:
+        try:
+            sections = json.loads(recording.sections)
+        except (json.JSONDecodeError, TypeError):
+            sections = None
+
+    beats: Optional[list[float]] = None
+    if recording.beats:
+        try:
+            beats = json.loads(recording.beats)
+        except (json.JSONDecodeError, TypeError):
+            beats = None
+
+    downbeats: Optional[list[float]] = None
+    if recording.downbeats:
+        try:
+            downbeats = json.loads(recording.downbeats)
+        except (json.JSONDecodeError, TypeError):
+            downbeats = None
+
+    # Fetch LRC content from R2 if available.
+    lrc_content: Optional[str] = None
+    if recording.has_lrc:
+        try:
+            lrc_config = AdminConfig.load(None)
+            r2 = R2Client(lrc_config.r2_bucket, lrc_config.r2_endpoint_url)
+            lrc_content = r2.download_lrc_content(recording.hash_prefix)
+        except Exception as e:
+            console.print(f"[yellow]Could not fetch LRC from R2: {e}[/yellow]")
+
+    # Fetch structured lyrics from the recording row.
+    structured_lyrics: Optional[str] = None
+    if recording.structured_lyrics:
+        structured_lyrics = recording.structured_lyrics
+
+    # Preflight: segmentation_mode requires its data source to be present.
+    if segmentation_mode == "structured_lyrics":
+        if not structured_lyrics:
+            console.print(
+                f"[red]Cannot use --segmentation-mode structured_lyrics: recording "
+                f"{song_id} has no structured_lyrics. Run "
+                f"`sow-admin audio download --youtube ...` or "
+                f"`sow-admin catalog insert --youtube ...` first.[/red]"
+            )
+            return None
+        if not lrc_content:
+            console.print(
+                f"[red]Cannot use --segmentation-mode structured_lyrics: recording "
+                f"{song_id} has no LRC (lrc_status != 'completed'). Run "
+                f"`sow-admin audio analyze lrc {song_id}` first.[/red]"
+            )
+            return None
+    if segmentation_mode == "llm" and not lrc_content:
+        console.print(
+            f"[red]Cannot use --segmentation-mode llm: recording {song_id} has no LRC "
+            f"(lrc_status != 'completed'). Run "
+            f"`sow-admin audio analyze lrc {song_id}` first.[/red]"
+        )
+        return None
+    if segmentation_mode == "repetition" and not lrc_content:
+        console.print(
+            f"[red]Cannot use --segmentation-mode repetition: recording {song_id} "
+            f"has no LRC.[/red]"
+        )
+        return None
+    if segmentation_mode == "allin1" and not sections:
+        console.print(
+            f"[red]Cannot use --segmentation-mode allin1: recording {song_id} has no "
+            f"cached allin1 sections. Run "
+            f"`sow-admin audio analyze --analysis-tier full {song_id}` first.[/red]"
+        )
+        return None
+
+    # Check R2 for cached components.json (unless force). Batch passes
+    # all_components=False (essential-roles-only); single-song passes its own
+    # --all-components flag through.
+    cached_result: Optional[dict] = None
+    if not force:
+        cached = None
+        try:
+            r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+            client = AnalysisClient(analysis_url, timeout=300)
+            cached = client.get_cached_component_result(
+                recording.hash_prefix, r2_client=r2_client
+            )
+        except ValueError as e:
+            # Misconfigured R2 creds — surface loudly. Do NOT fall through to a
+            # job submission that nobody asked to gate on cache.
+            console.print(f"[red]R2 cache check skipped: {e}[/red]")
+        except Exception:  # noqa: S110 - network error: fall through to submit.
+            pass
+
+        if cached is not None:
+            cached_components = cached.get("components", [])
+            cache_valid = _cached_components_have_llm_fields(
+                cached_components,
+                classify_theme=classify_theme,
+                classify_vocal_posture=classify_vocal_posture,
+                all_components=all_components,
+            )
+            if cache_valid:
+                console.print(
+                    f"[green]Cached component result found in R2 "
+                    f"(schema_version={cached.get('schema_version')})[/green]"
+                )
+                cached_result = cached
+            else:
+                console.print(
+                    "[yellow]Cached components.json lacks requested LLM fields; "
+                    "submitting new job to compute them.[/yellow]"
+                )
+
+    return {
+        "sections": sections,
+        "beats": beats,
+        "downbeats": downbeats,
+        "lrc_content": lrc_content,
+        "structured_lyrics": structured_lyrics,
+        "cached_result": cached_result,
+    }
+
+
 def _submit_component_analysis_job(
     recording: Recording,
     song_id: str,
@@ -2864,123 +3062,41 @@ def _submit_component_analysis_job(
     Returns:
         Persisted SongComponent list, or None on failure.
     """
-    # Gather cached data from the recording row.
-    sections: Optional[list[dict]] = None
-    if recording.has_full_analysis and recording.sections:
-        try:
-            sections = json.loads(recording.sections)
-        except (json.JSONDecodeError, TypeError):
-            sections = None
-
-    beats: Optional[list[float]] = None
-    if recording.beats:
-        try:
-            beats = json.loads(recording.beats)
-        except (json.JSONDecodeError, TypeError):
-            beats = None
-
-    downbeats: Optional[list[float]] = None
-    if recording.downbeats:
-        try:
-            downbeats = json.loads(recording.downbeats)
-        except (json.JSONDecodeError, TypeError):
-            downbeats = None
-
-    # Fetch LRC content from R2 if available.
-    lrc_content: Optional[str] = None
-    if recording.has_lrc:
-        try:
-            config = AdminConfig.load(None)
-            r2 = R2Client(config.r2_bucket, config.r2_endpoint_url)
-            lrc_content = r2.download_lrc_content(recording.hash_prefix)
-        except Exception as e:
-            console.print(f"[yellow]Could not fetch LRC from R2: {e}[/yellow]")
-
-    # Fetch structured lyrics from the recording row.
-    structured_lyrics: Optional[str] = None
-    if recording.structured_lyrics:
-        structured_lyrics = recording.structured_lyrics
-
-    # Preflight: segmentation_mode requires its data source to be present.
-    if segmentation_mode == "structured_lyrics":
-        if not structured_lyrics:
-            console.print(
-                f"[red]Cannot use --segmentation-mode structured_lyrics: recording "
-                f"{song_id} has no structured_lyrics. Run "
-                f"`sow-admin audio download --youtube ...` or "
-                f"`sow-admin catalog insert --youtube ...` first.[/red]"
-            )
-            return None
-        if not lrc_content:
-            console.print(
-                f"[red]Cannot use --segmentation-mode structured_lyrics: recording "
-                f"{song_id} has no LRC (lrc_status != 'completed'). Run "
-                f"`sow-admin audio analyze lrc {song_id}` first.[/red]"
-            )
-            return None
-    if segmentation_mode == "llm" and not lrc_content:
-        console.print(
-            f"[red]Cannot use --segmentation-mode llm: recording {song_id} has no LRC "
-            f"(lrc_status != 'completed'). Run "
-            f"`sow-admin audio analyze lrc {song_id}` first.[/red]"
-        )
-        return None
-    if segmentation_mode == "repetition" and not lrc_content:
-        console.print(
-            f"[red]Cannot use --segmentation-mode repetition: recording {song_id} "
-            f"has no LRC.[/red]"
-        )
-        return None
-    if segmentation_mode == "allin1" and not sections:
-        console.print(
-            f"[red]Cannot use --segmentation-mode allin1: recording {song_id} has no "
-            f"cached allin1 sections. Run "
-            f"`sow-admin audio analyze --analysis-tier full {song_id}` first.[/red]"
-        )
+    inputs = _prepare_component_job_inputs(
+        recording,
+        song_id,
+        analysis_url,
+        config,
+        console,
+        force,
+        classify_theme,
+        classify_vocal_posture,
+        segmentation_mode,
+        all_components=all_components,
+    )
+    if inputs is None:
         return None
 
-    # Check R2 for cached components.json (unless force).
-    if not force:
-        cached = None
-        try:
-            r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
-            client = AnalysisClient(analysis_url, timeout=300)
-            cached = client.get_cached_component_result(
-                recording.hash_prefix, r2_client=r2_client
-            )
-        except ValueError as e:
-            # Misconfigured R2 creds — surface loudly. Do NOT fall through to a
-            # job submission that nobody asked to gate on cache.
-            console.print(f"[red]R2 cache check skipped: {e}[/red]")
-        except Exception:  # noqa: S110 - network error: fall through to submit.
-            pass
+    sections = inputs["sections"]
+    beats = inputs["beats"]
+    downbeats = inputs["downbeats"]
+    lrc_content = inputs["lrc_content"]
+    structured_lyrics = inputs["structured_lyrics"]
 
-        if cached is not None:
-            cached_components = cached.get("components", [])
-            cache_valid = _cached_components_have_llm_fields(
-                cached_components,
-                classify_theme=classify_theme,
-                classify_vocal_posture=classify_vocal_posture,
-                all_components=all_components,
+    # Cached fast path: persist the validated cached result directly.
+    cached_result = inputs["cached_result"]
+    if cached_result is not None:
+        cached_components = cached_result.get("components", [])
+        components = _parse_component_results(
+            cached_components, song_id, recording.content_hash
+        )
+        if components:  # guard against empty = no-op upsert wipe
+            db_client.upsert_song_components(
+                song_id, recording.content_hash, components
             )
-            if cache_valid:
-                console.print(
-                    f"[green]Cached component result found in R2 "
-                    f"(schema_version={cached.get('schema_version')})[/green]"
-                )
-                components = _parse_component_results(
-                    cached_components, song_id, recording.content_hash
-                )
-                if components:  # guard against empty = no-op upsert wipe
-                    db_client.upsert_song_components(
-                        song_id, recording.content_hash, components
-                    )
-                    _persist_recording_theme(recording, components, db_client)
-                return components
-            console.print(
-                "[yellow]Cached components.json lacks requested LLM fields; "
-                "submitting new job to compute them.[/yellow]"
-            )
+            _persist_recording_theme(recording, components, db_client)
+        return components
+
 
     # Submit the job.
     try:
@@ -6219,12 +6335,26 @@ def batch(
     analysis_status: Optional[str] = typer.Option(
         None, "--analysis-status", help="Filter by analysis status"
     ),
+    song_id: Optional[str] = typer.Option(
+        None,
+        "--song-id",
+        help=(
+            "Target one song by ID (exclusive with --album/--song/status "
+            "filters/--stdin/--limit); for remediating a failed song"
+        ),
+    ),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (pipe-friendly)"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
     download: bool = typer.Option(False, "--download", help="Run the download step"),
     lrc: bool = typer.Option(False, "--lrc", help="Run the LRC step"),
     analyze: bool = typer.Option(False, "--analyze", help="Run the analysis step"),
     embedding: bool = typer.Option(False, "--embedding", help="Run the embedding step"),
+    components: bool = typer.Option(
+        False,
+        "--components",
+        help="Run the component analysis step (snap-to-downbeat, energy roles, "
+        "LLM theme + vocal posture classification)",
+    ),
     backfill_lyrics: bool = typer.Option(
         False, "--backfill-lyrics", help="Backfill structured lyrics from YouTube for existing recordings"
     ),
@@ -6263,13 +6393,27 @@ def batch(
     """Batch process songs: download audio, generate LRC, analyze, and embed.
 
     Each phase is gated strictly by its step flag: --download, --lrc,
-    --analyze, --embedding, or --all-steps. No phase runs as a side effect
-    of another.
+    --analyze, --embedding, --components, or --all-steps. No phase runs as a
+    side effect of another.
+
+    --all-steps is the one command that fills everything missing and
+    re-identifies components whose structured-lyrics input changed (this run
+    only). It includes --backfill-lyrics + --components and fetches structured
+    lyrics during download for new songs. Components auto-skips songs already
+    classified with recording-level theme/posture — use `--force --components`
+    to force reclassify everything, or `--backfill-lyrics --force --components`
+    to re-identify after backfilling structured lyrics for all songs (note:
+    --force does not refetch already-present structured lyrics).
+    --song-id targets exactly one song by ID (exclusive with the selection filters); use it
+    to remediate a song that failed a prior batch run.
 
     Examples:
+        sow-admin audio batch --album 深愛耶穌 --all-steps
+        sow-admin audio batch --song-id <song_id> --all-steps
+        sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --lrc --components
+        sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --force --components
         sow-admin audio batch --analysis-status incomplete --analyze \\
             --analysis-tier fast --limit 500
-        sow-admin audio batch --all-steps
         sow-admin audio batch --resume ~/.local/share/sow-admin/batch/2026-06-30T0215_manifest.json
     """
     # Validate format
@@ -6324,10 +6468,12 @@ def batch(
             ("--analysis-status", analysis_status),
             ("--stdin", stdin),
             ("--limit", limit),
+            ("--song-id", song_id),
             ("--download", download),
             ("--lrc", lrc),
             ("--analyze", analyze),
             ("--embedding", embedding),
+            ("--components", components),
             ("--all-steps", all_steps),
             ("--force", force),
         ]
@@ -6336,34 +6482,61 @@ def batch(
                 console.print(f"[red]--resume is mutually exclusive with {flag_name}.[/red]")
                 raise typer.Exit(1)
 
+    # --song-id mutual exclusivity: it is a selection method like --stdin;
+    # filter flags compose with each other but not with a direct ID.
+    if song_id is not None:
+        selection_conflicts = [
+            ("--album", album),
+            ("--song", song),
+            ("--lrc-status", lrc_status),
+            ("--download-status", download_status),
+            ("--analysis-status", analysis_status),
+            ("--stdin", stdin),
+            ("--limit", limit),
+        ]
+        for flag_name, flag_val in selection_conflicts:
+            if flag_val:
+                console.print(f"[red]--song-id is mutually exclusive with {flag_name}.[/red]")
+                raise typer.Exit(1)
+
     # Resolve selected steps
     step_flags = {
         "download": download,
         "lrc": lrc,
         "analyze": analyze,
         "embedding": embedding,
+        "components": components,
         "backfill_lyrics": backfill_lyrics,
     }
     selected_steps: List[str] = [s for s, v in step_flags.items() if v]
 
     if all_steps:
-        selected_steps = ["download", "lrc", "analyze", "embedding"]
+        selected_steps = [
+            "download",
+            "backfill_lyrics",
+            "lrc",
+            "analyze",
+            "embedding",
+            "components",
+        ]
     elif not selected_steps and resume is None:
         console.print(
             "[red]No step flags selected. Specify at least one of "
-            "--download, --lrc, --analyze, --embedding, --backfill-lyrics, "
-            "or --all-steps.[/red]"
+            "--download, --lrc, --analyze, --embedding, --components, "
+            "--backfill-lyrics, or --all-steps.[/red]"
         )
         raise typer.Exit(1)
 
-    # --backfill-lyrics mutual exclusivity: only allowed with --lrc
-    if "backfill_lyrics" in selected_steps:
+    # --backfill-lyrics mutual exclusivity: only allowed with --lrc (and
+    # --components, a fill-missing pair). --all-steps bypasses this check.
+    if "backfill_lyrics" in selected_steps and not all_steps:
         conflicting = {"download", "analyze", "embedding"} & set(selected_steps)
         if conflicting:
             console.print(
                 f"[red]--backfill-lyrics cannot be combined with "
                 f"{', '.join(sorted(conflicting))}. "
-                f"Only --lrc is allowed alongside --backfill-lyrics.[/red]"
+                f"Only --lrc and --components are allowed alongside "
+                f"--backfill-lyrics.[/red]"
             )
             raise typer.Exit(1)
 
@@ -6376,12 +6549,13 @@ def batch(
                 "one step flag alongside --force.[/red]"
             )
             raise typer.Exit(1)
-        # --backfill-lyrics always overwrites (B7); --force is accepted silently
+        # --backfill-lyrics always skips already-present structured lyrics
+        # (fill-missing); --force is scoped to the non-backfill step only.
         non_backfill_steps = [s for s in selected_steps if s != "backfill_lyrics"]
-        if non_backfill_steps and len(selected_steps) != 1:
+        if non_backfill_steps and len(non_backfill_steps) != 1:
             console.print(
                 "[red]--force requires exactly one step flag "
-                "(--download, --lrc, --analyze, or --embedding).[/red]"
+                "(--download, --lrc, --analyze, --embedding, or --components).[/red]"
             )
             raise typer.Exit(1)
         if len(non_backfill_steps) == 1 and "download" in non_backfill_steps:
@@ -6392,7 +6566,7 @@ def batch(
                 "  sow-admin audio delete --recording --hash-prefix <old>\n"
                 "  sow-admin maintenance purge-soft-deletes --entity recordings "
                 "--hash-prefix <old> --confirm\n"
-                "  sow-admin audio batch --song <song_id> --download"
+                "  sow-admin audio batch --song-id <song_id> --download"
             )
             raise typer.Exit(1)
 
@@ -6444,6 +6618,7 @@ def batch(
             console=console,
             database_url=config.get_connection_url(),
             download_concurrency=download_concurrency,
+            config=config,
         )
         _print_stats(results, db_client, console, format)
 
@@ -6454,9 +6629,16 @@ def batch(
         return
 
     # Normal path: resolve song IDs
-    song_ids = _resolve_song_ids(
-        db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit
-    )
+    if song_id is not None:
+        target_song = db_client.get_song(song_id)
+        if not target_song:
+            console.print(f"[red]Song not found: {song_id}[/red]")
+            raise typer.Exit(1)
+        song_ids = [song_id]
+    else:
+        song_ids = _resolve_song_ids(
+            db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit
+        )
     if not song_ids:
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
         raise typer.Exit(0)
@@ -6491,6 +6673,19 @@ def batch(
                 console.print(f"  [yellow]→ {sid} (skipped: no YouTube URL)[/yellow]")
                 backfill_results[sid]["backfill_lyrics"] = "skipped"
                 continue
+            # Skip-if-present is UNCONDITIONAL — --force does NOT override it.
+            # --force is scoped to the components step only (resolved Q2).
+            if recording.structured_lyrics:
+                try:
+                    existing = json.loads(recording.structured_lyrics)
+                except (json.JSONDecodeError, TypeError):
+                    existing = None
+                if existing and existing.get("sections"):
+                    console.print(
+                        f"  [yellow]→ {sid} (skipped: structured lyrics already present)[/yellow]"
+                    )
+                    backfill_results[sid]["backfill_lyrics"] = "skipped"
+                    continue
             try:
                 _backfill_lyrics_for_song(
                     song_id=sid,
@@ -6527,10 +6722,19 @@ def batch(
                 raise typer.Exit(1)
             return
 
-        # If combined with --lrc, merge results and fall through to LRC processing
+        # If combined with other steps, merge results and fall through
         results = backfill_results
     else:
         results = {}
+
+    # Songs whose structured lyrics were backfilled THIS run: their component
+    # input data changed, so components are re-identified even when existing
+    # component rows already carry theme/posture (surgical, no --force needed).
+    newly_backfilled: set[str] = {
+        sid
+        for sid, r in results.items()
+        if r.get("backfill_lyrics") == "completed"
+    }
 
     # Initialize R2 and Analysis clients
     try:
@@ -6549,7 +6753,6 @@ def batch(
         console.print(f"[red]Analysis service not configured: {e}[/red]")
         raise typer.Exit(1)
 
-    # Process all songs
     results = _process_batch(
         db_client=db_client,
         r2_client=r2_client,
@@ -6563,6 +6766,9 @@ def batch(
         database_url=config.get_connection_url(),
         download_concurrency=download_concurrency,
         initial_results=results if results else None,
+        config=config,
+        use_llm=use_llm,
+        newly_backfilled=newly_backfilled,
     )
 
     # Print final stats
@@ -6738,6 +6944,19 @@ def _print_dry_run_v4(
             console.print(f"    [dim]Download:[/dim] {recording.download_status}")
             console.print(f"    [dim]LRC:[/dim] {recording.lrc_status}")
             console.print(f"    [dim]Analysis:[/dim] {recording.analysis_status}")
+            if "backfill_lyrics" in selected_steps:
+                has_structured = False
+                if recording.structured_lyrics:
+                    try:
+                        parsed = json.loads(recording.structured_lyrics)
+                        has_structured = bool(parsed and parsed.get("sections"))
+                    except (json.JSONDecodeError, TypeError):
+                        has_structured = False
+                console.print(f"    [dim]Structured lyrics:[/dim] {'yes' if has_structured else 'no'}")
+            if "components" in selected_steps:
+                console.print(
+                    f"    [dim]Components:[/dim] {len(db_client.get_song_components(song.id))} row(s)"
+                )
         console.print()
 
     if missing:
@@ -6759,8 +6978,14 @@ def _download_and_create_recording(
     db_client: DatabaseClient,
     r2_client: R2Client,
     console: Console,
+    use_llm: bool = True,
 ) -> tuple[Optional[Recording], Optional[str]]:
     """Download audio from YouTube, upload to R2, and create a Recording entry.
+
+    Mirrors the single-song import path: after the R2 upload succeeds (the
+    only non-refundable cost), fetches structured lyrics from the video
+    description so --all-steps yields structured-lyrics-backed component
+    identification. Non-fatal on failure — the download still succeeds.
 
     Args:
         song_id: Song ID
@@ -6768,6 +6993,7 @@ def _download_and_create_recording(
         db_client: Database client
         r2_client: R2 client
         console: Rich console
+        use_llm: Use LLM to extract/cleanup structured lyrics
 
     Returns:
         Tuple of (Recording or None, error message or None)
@@ -6835,6 +7061,45 @@ def _download_and_create_recording(
         r2_url = r2_client.upload_audio(audio_path, prefix)
         console.print(f"  [green]→ Uploaded: {r2_url}[/green]")
 
+        # Fetch structured lyrics AFTER the duplicate-hash early return and
+        # the R2 upload: a discarded duplicate download must not burn an LLM
+        # lyrics extraction, and the upload is the only pre-fetch cost paid.
+        structured_raw: Optional[str] = None
+        structured_json_str: Optional[str] = None
+        if youtube_url:
+            try:
+                structured_raw, structured_json_str, src = _fetch_structured_lyrics(
+                    youtube_url=youtube_url,
+                    song_title=song.title,
+                    band=song.composer,
+                    source="auto",
+                    use_llm=use_llm,
+                    console=console,
+                )
+            except Exception as e:
+                # Non-fatal: download still succeeds; components will use
+                # fallback segmentation. User can --backfill-lyrics later.
+                # Catches typer.Exit(1) (subclass of Exception via
+                # click.exceptions.Exit) which _fetch_structured_lyrics raises
+                # on LLM parse failure with use_llm=True — critical in the
+                # thread context where typer.Exit would otherwise propagate to
+                # _download_worker's except Exception and mark the download
+                # failed.
+                console.print(
+                    f"  [yellow]Structured lyrics fetch failed (non-fatal): {e}[/yellow]"
+                )
+            else:
+                structured_json = json.loads(structured_json_str)
+                if structured_json and structured_json.get("sections"):
+                    num_sections = len(structured_json["sections"])
+                    console.print(
+                        f"  [green]✓ Structured lyrics ({src}): {num_sections} section(s)[/green]"
+                    )
+                else:
+                    console.print(
+                        f"  [yellow]~ No section tags from {src} — stored raw only; "
+                        f"re-run with --backfill-lyrics later[/yellow]"
+                    )
         recording = Recording(
             content_hash=content_hash,
             hash_prefix=prefix,
@@ -6846,6 +7111,8 @@ def _download_and_create_recording(
             download_status="completed",
             youtube_url=youtube_url,
             duration_seconds=duration,
+            structured_lyrics_raw=structured_raw,
+            structured_lyrics=structured_json_str,
         )
         db_client.insert_recording(recording)
         console.print(f"  [green]✓ Recording created (hash_prefix: {prefix})[/green]")
@@ -7060,13 +7327,13 @@ def _submit_lrc_for_song(
 
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
-        console.print(f"  [yellow]→ {song_id} (skipped: no recording)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: lrc no recording)[/yellow]")
         return "skipped_no_recording"
 
     song = db_client.get_song(song_id)
     lyrics_text = _resolve_lyrics_text(song, recording) if song else None
     if not song or not lyrics_text:
-        console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: lrc no lyrics)[/yellow]")
         return "skipped_no_lyrics"
 
     # Check R2 (skip when force)
@@ -7102,7 +7369,7 @@ def _submit_lrc_for_song(
                     submitted_at=datetime.now(timezone.utc).isoformat(),
                 )
                 console.print(
-                    f"  [yellow]→ {song_id} (reusing job: {recording.lrc_job_id})[/yellow]"
+                    f"  [yellow]→ {song_id} (reusing lrc job: {recording.lrc_job_id})[/yellow]"
                 )
                 return "reused"
 
@@ -7140,11 +7407,11 @@ def _submit_lrc_for_song(
             "submitted",
             submitted_at=datetime.now(timezone.utc).isoformat(),
         )
-        console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+        console.print(f"  [green]→ {song_id} (submitted: lrc {job.job_id})[/green]")
         return "submitted"
 
     except AnalysisServiceError as e:
-        console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+        console.print(f"  [red]✗ {song_id} lrc submit failed: {e}[/red]")
         results[song_id]["lrc"] = "failed"
         results[song_id]["lrc_error"] = str(e)
         _add_manifest_entry(
@@ -7170,7 +7437,7 @@ def _submit_lrc_for_song(
 # independently through the step chain: download → lrc → analyze → embedding.
 # ---------------------------------------------------------------------------
 
-_STEP_CHAIN = ["download", "lrc", "analyze", "embedding"]
+_STEP_CHAIN = ["download", "lrc", "analyze", "embedding", "components"]
 
 _FAST_INTERVAL = 5.0
 _SLOW_INTERVAL = 30.0
@@ -7218,7 +7485,7 @@ def _submit_analysis_for_song(
     """
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording or not recording.r2_audio_url:
-        console.print(f"  [yellow]→ {song_id} (skipped: no recording/audio)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: analysis no recording/audio)[/yellow]")
         results[song_id]["analyze"] = "failed"
         results[song_id]["analyze_error"] = "No recording or audio URL"
         _add_manifest_entry(
@@ -7263,7 +7530,7 @@ def _submit_analysis_for_song(
                     tier_is_fast = analysis_tier == "fast"
                     if job_is_fast != tier_is_fast:
                         console.print(
-                            f"  [yellow]→ {song_id} (skipped reuse: job tier "
+                            f"  [yellow]→ {song_id} (skipped: analysis reuse — job tier "
                             f"{'fast' if job_is_fast else 'full'} != "
                             f"requested {analysis_tier})[/yellow]"
                         )
@@ -7278,7 +7545,7 @@ def _submit_analysis_for_song(
                             submitted_at=datetime.now(timezone.utc).isoformat(),
                         )
                         console.print(
-                            f"  [yellow]→ {song_id} (reusing job: "
+                            f"  [yellow]→ {song_id} (reusing analysis job: "
                             f"{recording.analysis_job_id})[/yellow]"
                         )
                         return (recording.analysis_job_id, "reused")
@@ -7320,11 +7587,11 @@ def _submit_analysis_for_song(
             "submitted",
             submitted_at=datetime.now(timezone.utc).isoformat(),
         )
-        console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+        console.print(f"  [green]→ {song_id} (submitted: analysis {job.job_id})[/green]")
         return (job.job_id, "submitted")
 
     except AnalysisServiceError as e:
-        console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+        console.print(f"  [red]✗ {song_id} analysis submit failed: {e}[/red]")
         results[song_id]["analyze"] = "failed"
         results[song_id]["analyze_error"] = str(e)
         _add_manifest_entry(
@@ -7360,7 +7627,7 @@ def _submit_embedding_for_song(
     """
     song = db_client.get_song(song_id)
     if not song or not song.lyrics_raw:
-        console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: embedding no lyrics)[/yellow]")
         results[song_id]["embedding"] = "failed"
         results[song_id]["embedding_error"] = "No lyrics"
         recording = db_client.get_recording_by_song_id(song_id)
@@ -7407,10 +7674,10 @@ def _submit_embedding_for_song(
             "submitted",
             submitted_at=datetime.now(timezone.utc).isoformat(),
         )
-        console.print(f"  [green]→ {song_id} (submitted: {job_info.job_id})[/green]")
+        console.print(f"  [green]→ {song_id} (submitted: embedding {job_info.job_id})[/green]")
         return (job_info.job_id, "submitted")
     except Exception as e:
-        console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+        console.print(f"  [red]✗ {song_id} embedding submit failed: {e}[/red]")
         results[song_id]["embedding"] = "failed"
         results[song_id]["embedding_error"] = str(e)
         _add_manifest_entry(
@@ -7426,6 +7693,316 @@ def _submit_embedding_for_song(
         return (None, "failed")
 
 
+def _db_components_have_llm_fields(comps: list[SongComponent]) -> bool:
+    """Whether DB component rows carry theme + posture for all essential roles.
+
+    Mirrors services.analysis._cached_components_have_llm_fields for
+    SongComponent rows: essential candidates are rows with role in
+    {entry, exit, loop_target, entry_exit} or the first bridge occurrence.
+    """
+    essential_roles = {"entry", "exit", "loop_target", "entry_exit"}
+    candidates = [
+        c
+        for c in comps
+        if c.role in essential_roles
+        or (c.component_type == "bridge" and c.occurrence_index == 1)
+    ]
+    return bool(candidates) and all(c.theme and c.vocal_posture for c in candidates)
+
+
+def _submit_components_for_song(
+    song_id: str,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    config: AdminConfig,
+    force: bool,
+    console: Console,
+    results: dict,
+    _add_manifest_entry: Any,
+    newly_backfilled: bool = False,
+) -> Tuple[Optional[str], str]:
+    """Submit (or skip) the components step for a single song.
+
+    Submit-only — the unified loop polls the returned job id. No DB status
+    field exists for components; the job id lives in ``active_jobs`` and the
+    manifest only (db_client.update_recording_status has no components_status
+    kwarg — calling it with one raises TypeError).
+
+    Returns ``(job_id, status)`` where *status* is one of ``submitted``,
+    ``skipped_no_recording``, ``skipped_no_sections``, ``skipped_completed``,
+    or ``failed``.
+    """
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording or not recording.r2_audio_url:
+        console.print(f"  [yellow]→ {song_id} (skipped: components no recording/audio)[/yellow]")
+        results[song_id]["components"] = "skipped_no_recording"
+        results[song_id]["components_error"] = "No recording or audio URL"
+        _add_manifest_entry(
+            song_id,
+            recording.hash_prefix if recording else "",
+            "components",
+            "components",
+            None,
+            "failed",
+            error_message="No recording or audio URL",
+        )
+        return (None, "skipped_no_recording")
+
+    # Eligibility mirror of the components stdin-batch check: components
+    # identification needs sections (analysis) or LRC to segment on.
+    if not recording.has_full_analysis and not recording.has_lrc:
+        console.print(
+            f"  [yellow]→ {song_id} (skipped: components no sections or LRC — run audio lrc first)[/yellow]"
+        )
+        results[song_id]["components"] = "skipped_no_sections"
+        return (None, "skipped_no_sections")
+
+    # DB-first fill-missing skip (unless force or newly-backfilled this run).
+    if not force and not newly_backfilled:
+        comps = db_client.get_song_components(song_id)
+        if _db_components_have_llm_fields(comps):
+            # Always re-aggregate: self-guarding, idempotent, and refreshes a
+            # stale recordings.theme even when non-None.
+            _persist_recording_theme(recording, comps, db_client)
+            console.print(
+                f"  [dim]→ {song_id} (skipped: components already classified)[/dim]"
+            )
+            results[song_id]["components"] = "completed"
+            results[song_id]["components_source"] = "db_existing"
+            _add_manifest_entry(
+                song_id,
+                recording.hash_prefix,
+                "components",
+                "components",
+                None,
+                "completed",
+            )
+            return (None, "skipped_completed")
+
+    # Gather inputs (also validates the R2 cache unless force/newly_backfilled).
+    try:
+        inputs = _prepare_component_job_inputs(
+            recording,
+            song_id,
+            config.analysis_url,
+            config,
+            console,
+            force or newly_backfilled,
+            True,
+            True,
+        )
+    except Exception as e:
+        results[song_id]["components"] = "failed"
+        results[song_id]["components_error"] = str(e)
+        _add_manifest_entry(
+            song_id,
+            recording.hash_prefix,
+            "components",
+            "components",
+            None,
+            "failed",
+            error_class=type(e).__name__,
+            error_message=str(e),
+        )
+        return (None, "failed")
+
+    if inputs is None:  # segmentation preflight failure (message printed)
+        results[song_id]["components"] = "failed"
+        results[song_id]["components_error"] = "Segmentation preflight failed"
+        _add_manifest_entry(
+            song_id,
+            recording.hash_prefix,
+            "components",
+            "components",
+            None,
+            "failed",
+            error_message="Segmentation preflight failed",
+        )
+        return (None, "failed")
+
+    # Cached fast path (only reachable when not force and not newly_backfilled).
+    if inputs["cached_result"]:
+        cached_components = inputs["cached_result"].get("components", [])
+        components = _parse_component_results(
+            cached_components, song_id, recording.content_hash
+        )
+        if components:  # guard against empty = no-op upsert wipe
+            db_client.upsert_song_components(song_id, recording.content_hash, components)
+            _persist_recording_theme(recording, components, db_client)
+        console.print(f"  [green]→ {song_id} (cached components restored from R2)[/green]")
+        results[song_id]["components"] = "completed"
+        results[song_id]["components_source"] = "r2_cache"
+        _add_manifest_entry(
+            song_id,
+            recording.hash_prefix,
+            "components",
+            "components",
+            None,
+            "completed",
+        )
+        return (None, "skipped_completed")
+
+    # Submit with the --compute-all-fields flag set: snap-to-downbeat,
+    # energy-aware roles, LLM theme + vocal posture, essential roles only.
+    try:
+        job = analysis_client.submit_component_analysis(
+            audio_url=recording.r2_audio_url,
+            content_hash=recording.content_hash,
+            song_id=song_id,
+            sections=inputs["sections"],
+            beats=inputs["beats"],
+            downbeats=inputs["downbeats"],
+            lrc_content=inputs["lrc_content"],
+            structured_lyrics=inputs["structured_lyrics"],
+            force=force or newly_backfilled,
+            snap_to_downbeat=True,
+            energy_aware_roles=True,
+            use_stems=False,
+            classify_theme=True,
+            classify_vocal_posture=True,
+            skip_beat_cache=False,
+            all_components=False,
+            segmentation_mode=None,
+        )
+    except Exception as e:
+        # Broad catch: _advance_song sits OUTSIDE the poll loop's try/except —
+        # an uncaught TypeError/network error here would kill the whole batch.
+        console.print(f"  [red]✗ {song_id} components submit failed: {e}[/red]")
+        results[song_id]["components"] = "failed"
+        results[song_id]["components_error"] = str(e)
+        _add_manifest_entry(
+            song_id,
+            recording.hash_prefix,
+            "components",
+            "components",
+            None,
+            "failed",
+            error_class=type(e).__name__,
+            error_message=str(e),
+        )
+        return (None, "failed")
+
+    _add_manifest_entry(
+        song_id,
+        recording.hash_prefix,
+        "components",
+        "components",
+        job.job_id,
+        "submitted",
+        submitted_at=datetime.now(timezone.utc).isoformat(),
+    )
+    console.print(f"  [green]→ {song_id} (submitted: components {job.job_id})[/green]")
+    return (job.job_id, "submitted")
+
+
+def _handle_components_completion(
+    song_id: str,
+    job_id: str,
+    job: JobInfo,
+    db_client: DatabaseClient,
+    console: Console,
+    results: dict,
+    _add_manifest_entry: Any,
+) -> Tuple[bool, Optional[str]]:
+    """Process a completed/failed components job.
+
+    Returns ``(is_terminal, new_job_id)``.
+    """
+    if job.status == "completed":
+        recording = db_client.get_recording_by_song_id(song_id)
+        if not recording:
+            console.print(f"  [red]✗ {song_id}: recording vanished[/red]")
+            results[song_id]["components"] = "failed"
+            results[song_id]["components_error"] = "Recording vanished"
+            _add_manifest_entry(
+                song_id,
+                "",
+                "components",
+                "components",
+                job_id,
+                "failed",
+                error_message="Recording vanished",
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return (True, None)
+
+        raw = getattr(job.result, "components", None) if job.result else None
+        if not raw:
+            console.print(f"  [yellow]→ {song_id} — no components extracted[/yellow]")
+            results[song_id]["components"] = "completed"
+            results[song_id]["components_count"] = 0
+            _add_manifest_entry(
+                song_id,
+                recording.hash_prefix,
+                "components",
+                "components",
+                job_id,
+                "completed",
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return (True, None)
+
+        try:
+            components = _parse_component_results(raw, song_id, recording.content_hash)
+            db_client.upsert_song_components(song_id, recording.content_hash, components)
+            _persist_recording_theme(recording, components, db_client)
+        except Exception as e:
+            # Permanent DB failure — do NOT let the poll loop's generic
+            # except retry a doomed write forever.
+            console.print(f"  [red]✗ {song_id} components persist failed: {e}[/red]")
+            results[song_id]["components"] = "failed"
+            results[song_id]["components_error"] = str(e)
+            _add_manifest_entry(
+                song_id,
+                recording.hash_prefix,
+                "components",
+                "components",
+                job_id,
+                "failed",
+                error_class=type(e).__name__,
+                error_message=str(e),
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return (True, None)
+
+        results[song_id]["components"] = "completed"
+        results[song_id]["components_count"] = len(components)
+        _add_manifest_entry(
+            song_id,
+            recording.hash_prefix,
+            "components",
+            "components",
+            job_id,
+            "completed",
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        song = db_client.get_song(song_id)
+        song_name = song.title if song else song_id
+        console.print(f"  [green]✓[/green] {song_name} — components completed ({len(components)})")
+        return (True, None)
+
+    elif job.status in ("failed", "cancelled"):
+        results[song_id]["components"] = "failed"
+        results[song_id]["components_error"] = job.error_message or "Unknown error"
+        _add_manifest_entry(
+            song_id,
+            "",
+            "components",
+            "components",
+            job_id,
+            "failed",
+            error_message=job.error_message or "Unknown error",
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        song = db_client.get_song(song_id)
+        song_name = song.title if song else song_id
+        console.print(f"  [red]✗[/red] {song_name} — components failed: {results[song_id]['components_error']}")
+        return (True, None)
+
+    # Still processing
+    return (False, None)
+
+
 def _submit_step(
     song_id: str,
     step: str,
@@ -7439,6 +8016,8 @@ def _submit_step(
     results: dict,
     lrc_attempted: set,
     _add_manifest_entry: Any,
+    config: AdminConfig,
+    newly_backfilled: Optional[set[str]] = None,
 ) -> Tuple[Optional[str], str]:
     """Dispatch to the appropriate submit helper for *step*.
 
@@ -7488,6 +8067,18 @@ def _submit_step(
             results,
             _add_manifest_entry,
         )
+    elif step == "components":
+        return _submit_components_for_song(
+            song_id,
+            db_client,
+            analysis_client,
+            config,
+            force,  # already a param — forward it (v2 forgot this)
+            console,
+            results,
+            _add_manifest_entry,
+            newly_backfilled=(song_id in (newly_backfilled or set())),
+        )
     return (None, "failed")
 
 
@@ -7506,6 +8097,8 @@ def _advance_song(
     active_jobs: dict,
     lrc_attempted: set,
     _add_manifest_entry: Any,
+    config: AdminConfig,
+    newly_backfilled: Optional[set[str]] = None,
 ) -> None:
     """Walk the step chain forward from *completed_step* and submit the next
     ready step, skipping steps that are already done or not selected.
@@ -7538,6 +8131,8 @@ def _advance_song(
             results,
             lrc_attempted,
             _add_manifest_entry,
+            config,
+            newly_backfilled=newly_backfilled,
         )
 
         if status == "submitted" or status == "reused":
@@ -7549,6 +8144,7 @@ def _advance_song(
             "skipped_completed",
             "skipped_no_lyrics",
             "skipped_no_recording",
+            "skipped_no_sections",
             "skipped_up_to_date",
         ):
             continue  # try next step in chain
@@ -7713,6 +8309,7 @@ def _handle_lrc_404(
         console.print(f"  [green]✓[/green] {song_name} — LRC found on R2 (job was lost)")
         return (True, None)
 
+
     resubmit_count = resubmit_counts.get(song_id, 0)
     if resubmit_count >= max_resubmits:
         console.print(
@@ -7740,7 +8337,7 @@ def _handle_lrc_404(
         return (True, None)
 
     console.print(
-        f"  [yellow]→ {song_id}: Job lost (404), resubmitting "
+        f"  [yellow]→ {song_id}: LRC job lost (404), resubmitting "
         f"(attempt {resubmit_count + 1}/{max_resubmits})...[/yellow]"
     )
     try:
@@ -8085,6 +8682,7 @@ def _download_worker(
     _add_manifest_entry: Any,
     manifest_lock: threading.Lock,
     eager_lrc: bool,
+    use_llm: bool = True,
 ) -> dict:
     """Download a single song in a worker thread.
 
@@ -8103,7 +8701,7 @@ def _download_worker(
         if not recording:
             # No recording yet → download + create
             recording, error = _download_and_create_recording(
-                song_id, song, thread_db, r2_client, quiet_console
+                song_id, song, thread_db, r2_client, quiet_console, use_llm
             )
             if not recording:
                 return {
@@ -8172,18 +8770,20 @@ def _print_unified_progress(
     lrc_active = sum(1 for (_, s) in active_jobs if s == "lrc")
     analyze_active = sum(1 for (_, s) in active_jobs if s == "analyze")
     embedding_active = sum(1 for (_, s) in active_jobs if s == "embedding")
+    components_active = sum(1 for (_, s) in active_jobs if s == "components")
 
     lrc_done = sum(1 for r in results.values() if r.get("lrc") == "completed")
     analyze_done = sum(1 for r in results.values() if r.get("analyze") == "completed")
     embedding_done = sum(1 for r in results.values() if r.get("embedding") == "completed")
+    components_done = sum(1 for r in results.values() if r.get("components") == "completed")
     failed = sum(1 for r in results.values() for v in r.values() if v == "failed")
     completed = sum(1 for r in results.values() if r.get("_pipeline") == "completed")
 
     elapsed = time.time() - start_time
     console.print(
-        f"⏳ pending(down/lrc/ana/emb)={len(pending_futures)}/{lrc_active}/"
-        f"{analyze_active}/{embedding_active}  "
-        f"✓(lrc/ana/emb)={lrc_done}/{analyze_done}/{embedding_done}  "
+        f"⏳ pending(down/lrc/ana/emb/comp)={len(pending_futures)}/{lrc_active}/"
+        f"{analyze_active}/{embedding_active}/{components_active}  "
+        f"✓(lrc/ana/emb/comp)={lrc_done}/{analyze_done}/{embedding_done}/{components_done}  "
         f"pipeline={completed}  "
         f"✗={failed}  "
         f"(elapsed: {int(elapsed // 60)}m {int(elapsed % 60)}s)"
@@ -8208,6 +8808,8 @@ def _poll_one_cycle(
     resubmit_counts: dict,
     last_completion_time: float,
     batch_start_time: float,
+    config: AdminConfig,
+    newly_backfilled: Optional[set[str]] = None,
 ) -> Tuple[Set[Future], float]:
     """Run one iteration of the interleaved loop.
 
@@ -8240,6 +8842,8 @@ def _poll_one_cycle(
                     active_jobs,
                     lrc_attempted,
                     _add_manifest_entry,
+                    config,
+                    newly_backfilled,
                 )
             elif result["status"] == "failed":
                 results[sid]["_pipeline"] = "completed"
@@ -8293,6 +8897,16 @@ def _poll_one_cycle(
                     results,
                     _add_manifest_entry,
                 )
+            elif step == "components":
+                is_terminal, new_job_id = _handle_components_completion(
+                    song_id,
+                    job_id,
+                    job,
+                    db_client,
+                    console,
+                    results,
+                    _add_manifest_entry,
+                )
             else:
                 continue
 
@@ -8314,6 +8928,8 @@ def _poll_one_cycle(
                     active_jobs,
                     lrc_attempted,
                     _add_manifest_entry,
+                    config,
+                    newly_backfilled,
                 )
             elif new_job_id:
                 active_jobs[key] = new_job_id
@@ -8350,17 +8966,22 @@ def _poll_one_cycle(
                             active_jobs,
                             lrc_attempted,
                             _add_manifest_entry,
+                            config,
+                            newly_backfilled,
                         )
                     elif new_job_id:
                         active_jobs[key] = new_job_id
                 else:
-                    # No R2 fallback for analysis/embedding
+                    # No R2 fallback for analysis/embedding; components has no
+                    # DB status field (update_recording_status would raise on
+                    # components_status) — results/manifest only.
                     recording = db_client.get_recording_by_song_id(song_id)
                     hash_prefix = recording.hash_prefix if recording else ""
-                    db_client.update_recording_status(
-                        hash_prefix=hash_prefix,
-                        **{f"{step}_status": "failed"},
-                    )
+                    if step != "components":
+                        db_client.update_recording_status(
+                            hash_prefix=hash_prefix,
+                            **{f"{step}_status": "failed"},
+                        )
                     results[song_id][step] = "failed"
                     results[song_id][f"{step}_error"] = "Job lost (404)"
                     del active_jobs[key]
@@ -8369,7 +8990,7 @@ def _poll_one_cycle(
                         song_id,
                         hash_prefix,
                         step,
-                        analysis_tier if step == "analyze" else "embedding",
+                        analysis_tier if step == "analyze" else step,
                         job_id,
                         "failed",
                         error_message="Job lost (404)",
@@ -8399,22 +9020,25 @@ def _process_batch(
     database_url: str,
     download_concurrency: int,
     initial_results: Optional[Dict[str, dict]] = None,
+    config: AdminConfig = None,
+    use_llm: bool = True,
+    newly_backfilled: Optional[set[str]] = None,
 ) -> dict:
     """Process all songs in batch with an interleaved unified poll loop.
 
     A single main loop manages both pending downloads (via a
     ``ThreadPoolExecutor``) and active service jobs (LRC / analyze /
-    embedding).  Each song advances independently through the step chain:
-    download → lrc → analyze → embedding.  This eliminates the phase
-    barriers of the previous design where one slow song blocked every
-    other song's downstream work.
+    embedding / components).  Each song advances independently through the
+    step chain: download → lrc → analyze → embedding → components.  This
+    eliminates the phase barriers of the previous design where one slow song
+    blocked every other song's downstream work.
 
     Args:
         db_client: Database client (main thread)
         r2_client: R2 client
         analysis_client: Analysis service client
         song_ids: List of song IDs to process
-        selected_steps: Steps to run (download/lrc/analyze/embedding)
+        selected_steps: Steps to run (download/lrc/analyze/embedding/components)
         force: Force re-run of the single selected step
         analysis_tier: fast or full
         stale_after_minutes: Staleness threshold for processing jobs
@@ -8423,6 +9047,11 @@ def _process_batch(
         download_concurrency: Max parallel downloads
         initial_results: Pre-existing results dict (e.g. from backfill step)
             to merge into. Keys for each song are preserved.
+        config: AdminConfig (required for the components step)
+        use_llm: Use LLM for structured-lyrics extraction during downloads
+        newly_backfilled: Song IDs whose structured lyrics were backfilled
+            this run — their components are re-identified (input changed).
+
 
     Returns:
         Dict with results for each song
@@ -8535,13 +9164,14 @@ def _process_batch(
                     _add_manifest_entry,
                     manifest_lock,
                     eager_lrc,
+                    use_llm,
                 )
                 pending_futures.add(future)
         else:
             executor = None
             # No download phase — advance each song from the "download" step
             # so the cascade picks up the first selected step (lrc/analyze/
-            # embedding).
+            # embedding/components).
             for song_id in song_ids:
                 _advance_song(
                     song_id,
@@ -8558,6 +9188,8 @@ def _process_batch(
                     active_jobs,
                     lrc_attempted,
                     _add_manifest_entry,
+                    config,
+                    newly_backfilled,
                 )
 
         # Interleaved main loop
@@ -8580,6 +9212,8 @@ def _process_batch(
                 resubmit_counts,
                 last_completion_time,
                 batch_start_time,
+                config,
+                newly_backfilled,
             )
             _flush_manifest()
 
@@ -8595,11 +9229,12 @@ def _process_batch(
             executor.shutdown(wait=False, cancel_futures=True)
         # Reconcile active service jobs
         _reconcile_on_interrupt(
-            {sid: jid for (sid, step), jid in active_jobs.items()},
+            active_jobs,
             results,
             db_client,
             r2_client,
             console,
+            config,
         )
         _flush_manifest()
         raise
@@ -8637,55 +9272,105 @@ def _confirm_r2_lrc(
 
 
 def _reconcile_on_interrupt(
-    active_jobs: dict,
+    active_jobs: Dict[Tuple[str, str], str],
     results: dict,
     db_client: DatabaseClient,
     r2_client: R2Client,
     console: Console,
+    config: AdminConfig,
 ) -> None:
     """Reconcile status for in-progress jobs on Ctrl+C.
 
     Args:
-        active_jobs: Dict of song_id -> job_id still in progress
+        active_jobs: Dict of (song_id, step) -> job_id still in progress
         results: Results dict to update
         db_client: Database client
         r2_client: R2 client
         console: Rich console
+        config: AdminConfig (needed for the components cache check)
     """
     console.print()
     console.print("[yellow]Batch interrupted. Reconciling status...[/yellow]")
 
-    for song_id, job_id in active_jobs.items():
+    for (song_id, step), job_id in active_jobs.items():
         recording = db_client.get_recording_by_song_id(song_id)
         if not recording:
             continue
 
         hash_prefix = recording.hash_prefix
 
-        # Check R2 for LRC
-        lrc_url = r2_client.lrc_exists(hash_prefix)
-        if lrc_url:
-            db_client.update_recording_lrc(
-                hash_prefix,
-                lrc_url,
-                visibility_status=None,
-            )
-            results[song_id]["lrc"] = "completed"
+        if step == "lrc":
+            # Check R2 for LRC
+            lrc_url = r2_client.lrc_exists(hash_prefix)
+            if lrc_url:
+                db_client.update_recording_lrc(
+                    hash_prefix,
+                    lrc_url,
+                    visibility_status=None,
+                )
+                results[song_id]["lrc"] = "completed"
 
-            song = db_client.get_song(song_id)
-            song_name = song.title if song else song_id
-            console.print(f"  [green]✓[/green] {song_name}: LRC found on R2 (completed)")
+                song = db_client.get_song(song_id)
+                song_name = song.title if song else song_id
+                console.print(f"  [green]✓[/green] {song_name}: LRC found on R2 (completed)")
+            else:
+                db_client.update_recording_status(
+                    hash_prefix=hash_prefix,
+                    lrc_status="failed",
+                )
+                results[song_id]["lrc"] = "failed"
+                results[song_id]["lrc_error"] = "Batch interrupted, LRC not on R2"
+
+                song = db_client.get_song(song_id)
+                song_name = song.title if song else song_id
+                console.print(f"  [red]✗[/red] {song_name}: LRC not on R2 (marked failed)")
+
+        elif step == "components":
+            # No DB status field for components. If the finished job's result
+            # already landed in the R2 cache, restore it; otherwise mark failed.
+            try:
+                inputs = _prepare_component_job_inputs(
+                    recording,
+                    song_id,
+                    config.analysis_url,
+                    config,
+                    console,
+                    False,
+                    True,
+                    True,
+                )
+                components = (
+                    _parse_component_results(
+                        inputs["cached_result"].get("components", []),
+                        song_id,
+                        recording.content_hash,
+                    )
+                    if inputs and inputs["cached_result"]
+                    else None
+                )
+            except Exception:
+                components = None
+            if components:
+                db_client.upsert_song_components(song_id, recording.content_hash, components)
+                _persist_recording_theme(recording, components, db_client)
+                results[song_id]["components"] = "completed"
+                console.print(
+                    f"  [green]✓[/green] {song_id}: cached components restored from R2"
+                )
+            else:
+                results[song_id]["components"] = "failed"
+                results[song_id]["components_error"] = "Batch interrupted"
+                console.print(
+                    f"  [red]✗[/red] {song_id}: components job interrupted "
+                    f"(no cached result on R2)"
+                )
+
         else:
-            db_client.update_recording_status(
-                hash_prefix=hash_prefix,
-                lrc_status="failed",
+            # analyze/embedding: job continues server-side; no DB change here.
+            console.print(
+                f"  [dim]→ {song_id}: {step} job continues server-side; "
+                f"'audio status --reconcile' catches late completions[/dim]"
             )
-            results[song_id]["lrc"] = "failed"
-            results[song_id]["lrc_error"] = "Batch interrupted, LRC not on R2"
-
-            song = db_client.get_song(song_id)
-            song_name = song.title if song else song_id
-            console.print(f"  [red]✗[/red] {song_name}: LRC not on R2 (marked failed)")
 
     console.print()
     console.print(
@@ -8724,6 +9409,7 @@ def _resume_from_manifest(
     console: Console,
     database_url: str,
     download_concurrency: int,
+    config: AdminConfig,
 ) -> dict:
     """Resume a batch from a manifest file using the unified interleaved loop.
 
@@ -8745,6 +9431,8 @@ def _resume_from_manifest(
         console: Rich console
         database_url: Database URL (for API symmetry; resume has no downloads)
         download_concurrency: Max parallel downloads (unused on resume)
+        config: AdminConfig (needed for the components step)
+
 
     Returns:
         Results dict
@@ -8873,16 +9561,18 @@ def _resume_from_manifest(
                 resubmit_counts=resubmit_counts,
                 last_completion_time=last_completion_time,
                 batch_start_time=batch_start_time,
+                config=config,
             )
             _flush()
     except KeyboardInterrupt:
         console.print("\n[yellow]Resume interrupted. Flushing manifest...[/yellow]")
         _reconcile_on_interrupt(
-            {sid: jid for (sid, step), jid in active_jobs.items()},
+            active_jobs,
             results,
             db_client,
             r2_client,
             console,
+            config,
         )
         _flush()
         raise
@@ -8922,6 +9612,13 @@ def _apply_manifest_writeback(
             if step == "embedding":
                 existing_hash = db_client.get_embedding_content_hash(song_id)
                 if existing_hash:
+                    return
+            if step == "components":
+                comps = db_client.get_song_components(song_id)
+                if _db_components_have_llm_fields(comps):
+                    # Re-aggregate (self-guarding, idempotent) to refresh a
+                    # stale recordings.theme when component rows changed.
+                    _persist_recording_theme(recording, comps, db_client)
                     return
 
         job = analysis_client.get_job(job_id)
@@ -8979,6 +9676,12 @@ def _apply_manifest_writeback(
         elif step == "embedding":
             if job.result and hasattr(job.result, "embedding"):
                 _write_embedding_result(job, db_client, console)
+        elif step == "components":
+            raw = getattr(job.result, "components", None) if job.result else None
+            if raw and recording:
+                components = _parse_component_results(raw, song_id, recording.content_hash)
+                db_client.upsert_song_components(song_id, recording.content_hash, components)
+                _persist_recording_theme(recording, components, db_client)
     except Exception as e:
         logger.warning(f"Manifest writeback failed for {song_id}/{step}: {e}")
 
@@ -9112,6 +9815,25 @@ def _print_stats(
             ]
         )
 
+    # Components stats
+    components_completed = sum(1 for r in results.values() if r.get("components") == "completed")
+    components_failed = sum(1 for r in results.values() if r.get("components") == "failed")
+    components_skipped = sum(
+        1
+        for r in results.values()
+        if r.get("components") in ("skipped_no_sections", "skipped_no_recording")
+    )
+    if components_completed or components_failed or components_skipped:
+        lines.extend(
+            [
+                f"│ {'':<30} {'':>18} │",
+                f"│ {'Components:':<30} {'':>18} │",
+                f"│ {'  Completed:':<30} {components_completed:>18} │",
+                f"│ {'  Failed:':<30} {components_failed:>18} │",
+                f"│ {'  Skipped:':<30} {components_skipped:>18} │",
+            ]
+        )
+
     lines.append("╰" + "─" * 52 + "╯")
 
     console.print("\n".join(lines))
@@ -9160,6 +9882,19 @@ def _print_stats(
     if failed_embeddings:
         console.print("\n[bold red]Failed embedding:[/bold red]")
         for song_id, error in failed_embeddings:
+            song = db_client.get_song(song_id)
+            song_name = song.title if song else song_id
+            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
+
+    # Print failed components
+    failed_components = [
+        (song_id, r.get("components_error"))
+        for song_id, r in results.items()
+        if r.get("components") == "failed"
+    ]
+    if failed_components:
+        console.print("\n[bold red]Failed components:[/bold red]")
+        for song_id, error in failed_components:
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
             console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)

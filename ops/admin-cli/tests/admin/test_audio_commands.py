@@ -1,5 +1,6 @@
 """Tests for audio CLI commands."""
 
+import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -4594,6 +4595,71 @@ class TestLlmLyricsFlags:
         mock_import.assert_called_once()
         assert mock_import.call_args.kwargs.get("use_llm") is True
 
+    def test_download_search_passes_resolved_url_to_structured_lyrics(self, tmp_path):
+        """audio download (search) passes the preview-resolved URL, not the raw query, to lyrics fetch."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        fake_db.list_active_recordings_by_song.return_value = []
+        fake_audio = tmp_path / "downloaded.mp3"
+        fake_audio.write_bytes(b"fake audio content")
+
+        mock_downloader = MagicMock()
+        mock_downloader.build_search_query.return_value = "我相信 赞美之泉"
+        mock_downloader.preview_video.return_value = {
+            "id": "abc123",
+            "title": "…【I Believe [我相信] 】…",
+            "duration": 294,
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+        }
+        mock_downloader.download.return_value = fake_audio
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.YouTubeDownloader"
+            ) as mock_downloader_cls,
+            patch("stream_of_worship.admin.commands.audio.R2Client") as mock_r2_cls,
+            patch(
+                "stream_of_worship.admin.commands.audio.compute_file_hash",
+                return_value="a" * 64,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_hash_prefix",
+                return_value="a" * 12,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.probe_duration",
+                return_value=294.0,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._fetch_structured_lyrics",
+                return_value=(None, None, "youtube"),
+            ) as mock_fetch_lyrics,
+        ):
+            mock_downloader_cls.return_value = mock_downloader
+            mock_r2_cls.return_value = MagicMock(
+                upload_audio=MagicMock(return_value="s3://sow-audio/aaaaaaaaaaaa/audio.mp3")
+            )
+            result = runner.invoke(
+                app,
+                ["audio", "download", "song_001", "--yes"],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0
+        mock_fetch_lyrics.assert_called_once()
+        assert (
+            mock_fetch_lyrics.call_args.kwargs.get("youtube_url")
+            == "https://www.youtube.com/watch?v=abc123"
+        )
+
     def test_backfill_lyrics_llm_no_api_key_hard_fails(self, monkeypatch):
         """--backfill-lyrics (default) with SOW_LLM_API_KEY unset → exit 1, red error."""
         monkeypatch.delenv("SOW_LLM_API_KEY", raising=False)
@@ -4831,6 +4897,81 @@ class TestStructuredLyricsSource:
         mock_single.assert_called_once()
         assert mock_single.call_args.kwargs.get("structured_lyrics_source") == "zanmei"
 
+
+class TestDownloadStructuredLyricsOutcome:
+    """Tests for download-time structured-lyrics outcome reporting."""
+
+    def _invoke_download(self, tmp_path, mock_fetch_return):
+        """Run a mocked single-song audio download; return the CliRunner result."""
+        fake_config = MagicMock()
+        fake_db = MagicMock()
+        fake_db.list_active_recordings_by_song.return_value = []
+        fake_audio = tmp_path / "downloaded.mp3"
+        fake_audio.write_bytes(b"fake audio content")
+
+        mock_downloader = MagicMock()
+        mock_downloader.build_search_query.return_value = "我相信 赞美之泉"
+        mock_downloader.preview_video.return_value = {
+            "id": "abc123",
+            "title": "I Believe MV",
+            "duration": 294,
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+        }
+        mock_downloader.download.return_value = fake_audio
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.AdminConfig.load",
+                return_value=fake_config,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=fake_db,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.YouTubeDownloader"
+            ) as mock_downloader_cls,
+            patch("stream_of_worship.admin.commands.audio.R2Client") as mock_r2_cls,
+            patch(
+                "stream_of_worship.admin.commands.audio.compute_file_hash",
+                return_value="a" * 64,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.get_hash_prefix",
+                return_value="a" * 12,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio.probe_duration",
+                return_value=294.0,
+            ),
+            patch(
+                "stream_of_worship.admin.commands.audio._fetch_structured_lyrics",
+                return_value=mock_fetch_return,
+            ),
+        ):
+            mock_downloader_cls.return_value = mock_downloader
+            mock_r2_cls.return_value = MagicMock(
+                upload_audio=MagicMock(return_value="s3://sow-audio/aaaaaaaaaaaa/audio.mp3")
+            )
+            return runner.invoke(
+                app, ["audio", "download", "song_001", "--yes"], env=WIDE_ENV
+            )
+
+    def test_download_prints_green_sections_outcome(self, tmp_path):
+        """Successful lyrics fetch prints a green 'Structured lyrics (...): N section(s).' line."""
+        sections_json = json.dumps(
+            {"sections": [{"label": "verse", "raw_label": "Verse", "lines": ["Line 1"]}]}
+        )
+        result = self._invoke_download(tmp_path, ("raw text", sections_json, "youtube"))
+        assert result.exit_code == 0
+        assert "Structured lyrics (youtube): 1 section(s)." in result.output
+
+    def test_download_prints_yellow_no_sections_outcome(self, tmp_path):
+        """No-sections fetch prints a yellow fallback hint with the backfill command."""
+        result = self._invoke_download(tmp_path, ("raw text", None, "youtube"))
+        assert result.exit_code == 0
+        assert "No section tags found from youtube" in result.output
+        assert "--backfill-lyrics" in result.output
 
 class TestFetchStructuredLyricsSelect:
     """Tests for the _fetch_structured_lyrics source-selection helper."""

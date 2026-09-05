@@ -422,6 +422,7 @@ sow-admin audio batch --lrc-status incomplete --lrc
 
 # Resume an interrupted batch from its manifest
 sow-admin audio batch --resume ~/.local/share/sow-admin/batch/<batch_id>_manifest.json
+sow-admin audio batch --song-id <song_id> --all-steps   # remediate one failed song
 ```
 
 **Step gating is strict.** Each phase runs *only* when its step flag is
@@ -430,8 +431,10 @@ present — no phase runs as a side effect of another. At least one of
 `--all-steps` is required.
 
 **Filtering** (`--album`, `--song`, `--lrc-status`, `--download-status`,
-`--analysis-status`, `--stdin`, `--limit`) selects which songs to process.
-Status values:
+`--analysis-status`, `--stdin`, `--limit`, `--song-id`) selects which songs to
+process. `--song-id` targets a single song by ID (exclusive with the other
+selection filters) — useful for remediating a song that failed a prior batch
+run. Status values:
 
 | Filter | Allowed values |
 |--------|----------------|
@@ -461,7 +464,7 @@ Status values:
   ```bash
   sow-admin audio delete --recording --hash-prefix <old>
   sow-admin maintenance purge-soft-deletes --entity recordings --hash-prefix <old> --confirm
-  sow-admin audio batch --song <song_id> --download
+  sow-admin audio batch --song-id <song_id> --download
   ```
 
 **`--backfill-lyrics`** fetches structured lyrics from YouTube for existing

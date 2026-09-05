@@ -7,6 +7,7 @@ Provides search-based audio downloading from YouTube using song metadata
 import os
 import re
 import tempfile
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -111,13 +112,26 @@ def _extract_bracket_content(video_title: Optional[str]) -> Optional[str]:
     return None
 
 
-def _normalize_for_match(s: str) -> str:
-    """Normalize a string for substring matching.
+# Bracket/paren/quote punctuation stripped before title matching: used
+# only to denote the Chinese-title convention (e.g. 平安（粵語） vs
+# 平安 [粵語] Peace), never part of the song name itself.
+_BRACKET_PUNCT_RE = re.compile(r"""[\[\](){}【】「」『』《》〈〉〔〕“”‘’'"]""")
 
-    Lowercases, collapses all whitespace sequences to a single space, and
-    strips leading/trailing whitespace.
+
+def _normalize_for_match(s: str) -> str:
+    """Normalize a string for whitespace-, width-, and punctuation-insensitive matching.
+
+    NFKC-normalizes (folding fullwidth forms like ``［我相信］`` to their
+    ASCII counterparts), strips bracket/paren/quote punctuation that only
+    denotes the Chinese-title convention (e.g. ``平安（粵語）`` matches
+    ``平安 [粵語] Peace``), lowercases, and removes all whitespace — so
+    comparisons ignore whitespace-only differences such as
+    ``I Believe [我相信] `` vs ``I Believe[我相信]``.
     """
-    return re.sub(r"\s+", " ", s.strip()).lower()
+    s = unicodedata.normalize("NFKC", s)
+    s = _BRACKET_PUNCT_RE.sub("", s)
+    s = re.sub(r"\s+", "", s).lower()
+    return s.strip()
 
 
 def _titles_match(song_title: str, video_title: Optional[str]) -> bool:
@@ -127,7 +141,6 @@ def _titles_match(song_title: str, video_title: Optional[str]) -> bool:
     ``【…】`` bracket format:
 
     - **Convention 2** — catalog ``English [Chinese]`` (e.g.
-      ``Holy, Holy [聖潔榮耀主]``) paired with a YouTube bracket like
       ``【Holy, Holy 聖潔榮耀主】...``. Matches when every Chinese segment
       and the English part are substrings of the bracket content, subject
       to a length heuristic that blocks medleys/compilations.
@@ -147,6 +160,10 @@ def _titles_match(song_title: str, video_title: Optional[str]) -> bool:
     """
     if not video_title:
         return False
+
+    # Fold fullwidth forms (e.g. ``［我相信］`` → ``[我相信]``) so both
+    # catalog bracket conventions feed the same segment extraction.
+    song_title = unicodedata.normalize("NFKC", song_title)
 
     chinese_segments = re.findall(r"\[([^\]]+)\]", song_title)
     catalog_without_brackets = re.sub(r"\s*\[([^\]]+)\]\s*", r"\1 ", song_title)
