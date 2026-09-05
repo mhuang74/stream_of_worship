@@ -361,6 +361,178 @@ class TestSongIdSelection:
         mock_db.list_songs.assert_not_called()
 
 
+class TestMultiAlbumSelection:
+    """Repeated --album and --album-file: union selection, conflicts, errors."""
+
+    def test_repeatable_album_unions_selection(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        mock_db = MagicMock()
+        mock_db.list_recordings_with_songs.side_effect = [
+            [(_make_recording("song_a"), "歌A", "敬拜讚美15", None)],
+            [(_make_recording("song_b"), "歌B", "深愛耶穌", None)],
+        ]
+        mock_db.list_songs.return_value = []
+
+        captured: dict = {}
+
+        def _fake_process_batch(**kwargs):
+            captured.update(kwargs)
+            return {sid: {} for sid in kwargs["song_ids"]}
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=mock_db,
+            ),
+            patch("stream_of_worship.admin.commands.audio.R2Client"),
+            patch("stream_of_worship.admin.commands.audio.AnalysisClient"),
+            patch(
+                "stream_of_worship.admin.commands.audio._process_batch",
+                side_effect=_fake_process_batch,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio",
+                    "batch",
+                    "--album",
+                    "敬拜讚美15",
+                    "--album",
+                    "深愛耶穌",
+                    "--all-steps",
+                    "--config",
+                    str(config_path),
+                ],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert captured["song_ids"] == ["song_a", "song_b"]
+        album_kwargs = [
+            call.kwargs.get("album")
+            for call in mock_db.list_recordings_with_songs.call_args_list
+        ]
+        assert album_kwargs == ["敬拜讚美15", "深愛耶穌"]
+
+    def test_album_file_feeds_union_selection(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        album_file = tmp_path / "albums.txt"
+        album_file.write_text("敬拜讚美15\n\n# second album below\n深愛耶穌\n", encoding="utf-8")
+        mock_db = MagicMock()
+        mock_db.list_recordings_with_songs.side_effect = [
+            [(_make_recording("song_a"), "歌A", "敬拜讚美15", None)],
+            [(_make_recording("song_b"), "歌B", "深愛耶穌", None)],
+        ]
+        mock_db.list_songs.return_value = []
+
+        captured: dict = {}
+
+        def _fake_process_batch(**kwargs):
+            captured.update(kwargs)
+            return {sid: {} for sid in kwargs["song_ids"]}
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=mock_db,
+            ),
+            patch("stream_of_worship.admin.commands.audio.R2Client"),
+            patch("stream_of_worship.admin.commands.audio.AnalysisClient"),
+            patch(
+                "stream_of_worship.admin.commands.audio._process_batch",
+                side_effect=_fake_process_batch,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio",
+                    "batch",
+                    "--album-file",
+                    str(album_file),
+                    "--all-steps",
+                    "--config",
+                    str(config_path),
+                ],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert captured["song_ids"] == ["song_a", "song_b"]
+        album_kwargs = [
+            call.kwargs.get("album")
+            for call in mock_db.list_recordings_with_songs.call_args_list
+        ]
+        assert album_kwargs == ["敬拜讚美15", "深愛耶穌"]
+
+    def test_album_file_missing_exits_1(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--album-file",
+                str(tmp_path / "nope.txt"),
+                "--analyze",
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code == 1
+        assert "Could not read album file" in result.output
+
+    def test_album_file_with_song_id_exits_1(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        album_file = tmp_path / "albums.txt"
+        album_file.write_text("敬拜讚美15\n", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--song-id",
+                "song_001",
+                "--album-file",
+                str(album_file),
+                "--analyze",
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code == 1
+        assert "--song-id is mutually exclusive with --album-file" in result.output
+
+    def test_album_file_with_resume_exits_1(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        album_file = tmp_path / "albums.txt"
+        album_file.write_text("敬拜讚美15\n", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--resume",
+                "/tmp/manifest.json",
+                "--album-file",
+                str(album_file),
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code == 1
+        assert "--resume is mutually exclusive" in result.output
+
+
 class TestRecordingModelAnalysis:
     """Tests for the Recording model analysis properties."""
 
@@ -540,7 +712,7 @@ class TestResolveSongIdsAlbumFilter:
 
         result = _resolve_song_ids(
             db,
-            album=ALBUM_PARTIAL,
+            albums=[ALBUM_PARTIAL],
             song=None,
             lrc_status=None,
             download_status=None,
@@ -571,7 +743,7 @@ class TestResolveSongIdsAlbumFilter:
 
         result = _resolve_song_ids(
             db,
-            album=ALBUM_FULL,
+            albums=[ALBUM_FULL],
             song=None,
             lrc_status=None,
             download_status=None,
@@ -599,7 +771,7 @@ class TestResolveSongIdsAlbumFilter:
 
         result = _resolve_song_ids(
             db,
-            album="敬拜讚美",
+            albums=["敬拜讚美"],
             song=None,
             lrc_status=None,
             download_status=None,
@@ -625,7 +797,7 @@ class TestResolveSongIdsAlbumFilter:
 
         result = _resolve_song_ids(
             db,
-            album=ALBUM_PARTIAL,
+            albums=[ALBUM_PARTIAL],
             song=None,
             lrc_status=None,
             download_status=None,
@@ -648,7 +820,7 @@ class TestResolveSongIdsAlbumFilter:
 
         result = _resolve_song_ids(
             db,
-            album="不存在的專輯",
+            albums=["不存在的專輯"],
             song=None,
             lrc_status=None,
             download_status=None,
@@ -672,7 +844,7 @@ class TestResolveSongIdsAlbumFilter:
 
         result = _resolve_song_ids(
             db,
-            album=None,
+            albums=[],
             song="恩典",
             lrc_status=None,
             download_status=None,
@@ -682,6 +854,108 @@ class TestResolveSongIdsAlbumFilter:
         )
 
         assert song_id in result
+
+
+class TestReadAlbumsFromFile:
+    """Unit tests for _read_albums_from_file parsing and error paths."""
+
+    def test_parses_lines_skipping_blanks_and_comments(self, tmp_path):
+        from stream_of_worship.admin.commands.audio import _read_albums_from_file
+
+        path = tmp_path / "albums.txt"
+        path.write_text("敬拜讚美15\n\n# comment line\n  深愛耶穌  \n", encoding="utf-8")
+
+        assert _read_albums_from_file(path) == ["敬拜讚美15", "深愛耶穌"]
+
+    def test_missing_file_exits_1(self, tmp_path):
+        import pytest
+        import typer
+        from stream_of_worship.admin.commands.audio import _read_albums_from_file
+
+        with pytest.raises(typer.Exit):
+            _read_albums_from_file(tmp_path / "missing.txt")
+
+    def test_comments_only_file_exits_1(self, tmp_path):
+        import pytest
+        import typer
+        from stream_of_worship.admin.commands.audio import _read_albums_from_file
+
+        path = tmp_path / "albums.txt"
+        path.write_text("# only comments\n\n", encoding="utf-8")
+
+        with pytest.raises(typer.Exit):
+            _read_albums_from_file(path)
+
+
+class TestResolveSongIdsMultiAlbum:
+    """Unit tests for _resolve_song_ids multi-album union semantics."""
+
+    def test_resolve_multi_album_union(self):
+        from stream_of_worship.admin.commands.audio import _resolve_song_ids
+
+        db = MagicMock()
+        # Album A yields a recorded song; album B re-yields it (dedupe) plus
+        # its own recorded song and unrecorded songs.
+        db.list_recordings_with_songs.side_effect = [
+            [(_make_recording("song_a"), "歌A", "敬拜讚美15", None)],
+            [
+                (_make_recording("song_a"), "歌A", "敬拜讚美15", None),
+                (_make_recording("song_b"), "歌B", "深愛耶穌", None),
+            ],
+        ]
+        db.list_songs.side_effect = [
+            [_make_song("song_u1", "蒙恩", album_name="敬拜讚美15")],
+            [
+                _make_song("song_u1", "蒙恩", album_name="敬拜讚美15"),
+                _make_song("song_u2", "盼望", album_name="深愛耶穌"),
+            ],
+        ]
+        db.get_recording_by_song_id.return_value = None
+
+        result = _resolve_song_ids(
+            db,
+            albums=["敬拜讚美15", "深愛耶穌"],
+            song=None,
+            lrc_status=None,
+            download_status=None,
+            analysis_status=None,
+            stdin=False,
+            limit=None,
+        )
+
+        assert result == ["song_a", "song_b", "song_u1", "song_u2"]
+        albums_queried = [
+            call.kwargs.get("album")
+            for call in db.list_recordings_with_songs.call_args_list
+        ]
+        assert albums_queried == ["敬拜讚美15", "深愛耶穌"]
+        albums_songs = [call.kwargs.get("album") for call in db.list_songs.call_args_list]
+        assert albums_songs == ["敬拜讚美15", "深愛耶穌"]
+
+    def test_resolve_albums_empty_no_filter(self):
+        from stream_of_worship.admin.commands.audio import _resolve_song_ids
+
+        db = MagicMock()
+        db.list_recordings_with_songs.return_value = [
+            (_make_recording("song_001"), "恩典之路", ALBUM_FULL, None),
+        ]
+        db.list_songs.return_value = []
+        db.get_recording_by_song_id.return_value = None
+
+        result = _resolve_song_ids(
+            db,
+            albums=[],
+            song=None,
+            lrc_status=None,
+            download_status=None,
+            analysis_status=None,
+            stdin=False,
+            limit=None,
+        )
+
+        assert "song_001" in result
+        assert db.list_recordings_with_songs.call_args.kwargs.get("album") is None
+        assert db.list_songs.call_args.kwargs.get("album") is None
 
 
 class TestDryRunGroupedOutput:

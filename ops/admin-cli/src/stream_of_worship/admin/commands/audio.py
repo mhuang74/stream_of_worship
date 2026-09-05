@@ -359,6 +359,35 @@ def _read_song_ids_from_stdin() -> list[str]:
     return song_ids
 
 
+def _read_albums_from_file(path: Path) -> list[str]:
+    """Read album name filters from a file, one per line.
+
+    Blank lines and lines starting with ``#`` are ignored. Exits with an error
+    if the file cannot be read or yields no album names (an empty selection
+    would silently mean "no filter" and select the whole library).
+
+    Args:
+        path: Path to the album file
+
+    Returns:
+        List of stripped album name filters
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        console.print(f"[red]Could not read album file: {path}: {e}[/red]")
+        raise typer.Exit(1)
+    albums = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            albums.append(line)
+    if not albums:
+        console.print(f"[red]Album file contains no album names: {path}[/red]")
+        raise typer.Exit(1)
+    return albums
+
+
 def _list_column_caps(
     width: int, extra_col: bool = False
 ) -> tuple[int, int, Optional[int], int]:
@@ -6322,10 +6351,21 @@ def playback_audio(
 
 @app.command("batch")
 def batch(
-    album: Optional[str] = typer.Option(
-        None,
+    album: List[str] = typer.Option(
+        [],
         "--album",
-        help="Filter by album name (substring, case-insensitive; matches album_name or album_series)",
+        help=(
+            "Filter by album name (substring, case-insensitive; matches album_name or "
+            "album_series). Repeatable: songs matching any occurrence are selected."
+        ),
+    ),
+    album_file: Optional[Path] = typer.Option(
+        None,
+        "--album-file",
+        help=(
+            "File listing album names, one per line (# comments and blank lines ignored). "
+            "Union with repeated --album."
+        ),
     ),
     song: Optional[str] = typer.Option(None, "--song", help="Filter by song name (partial match)"),
     lrc_status: Optional[str] = typer.Option(None, "--lrc-status", help="Filter by LRC status"),
@@ -6409,6 +6449,8 @@ def batch(
 
     Examples:
         sow-admin audio batch --album 深愛耶穌 --all-steps
+        sow-admin audio batch --album 敬拜讚美15 --album 深愛耶穌 --all-steps
+        sow-admin audio batch --album-file albums.txt --all-steps
         sow-admin audio batch --song-id <song_id> --all-steps
         sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --lrc --components
         sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --force --components
@@ -6462,6 +6504,7 @@ def batch(
     if resume is not None:
         resume_conflicts = [
             ("--album", album),
+            ("--album-file", album_file),
             ("--song", song),
             ("--lrc-status", lrc_status),
             ("--download-status", download_status),
@@ -6487,6 +6530,7 @@ def batch(
     if song_id is not None:
         selection_conflicts = [
             ("--album", album),
+            ("--album-file", album_file),
             ("--song", song),
             ("--lrc-status", lrc_status),
             ("--download-status", download_status),
@@ -6498,6 +6542,12 @@ def batch(
             if flag_val:
                 console.print(f"[red]--song-id is mutually exclusive with {flag_name}.[/red]")
                 raise typer.Exit(1)
+
+    # Merge repeated --album occurrences with --album-file contents (union, deduped)
+    albums: List[str] = []
+    for a in list(album) + (_read_albums_from_file(album_file) if album_file else []):
+        if a not in albums:
+            albums.append(a)
 
     # Resolve selected steps
     step_flags = {
@@ -6637,7 +6687,7 @@ def batch(
         song_ids = [song_id]
     else:
         song_ids = _resolve_song_ids(
-            db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit
+            db_client, albums, song, lrc_status, download_status, analysis_status, stdin, limit
         )
     if not song_ids:
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
@@ -6784,7 +6834,7 @@ def batch(
 
 def _resolve_song_ids(
     db_client: DatabaseClient,
-    album: Optional[str],
+    albums: List[str],
     song: Optional[str],
     lrc_status: Optional[str],
     download_status: Optional[str],
@@ -6796,8 +6846,9 @@ def _resolve_song_ids(
 
     Args:
         db_client: Database client
-        album: Filter by album name (substring, case-insensitive;
-            matches album_name or album_series)
+        albums: List of album substring filters, OR-ed together; empty list
+            means no album filter (substring, case-insensitive; matches
+            album_name or album_series)
         song: Filter by song name (partial match, case-insensitive)
         lrc_status: Filter by LRC status
         download_status: Filter by download status
@@ -6815,39 +6866,42 @@ def _resolve_song_ids(
         return song_ids
 
     song_ids: list[str] = []
+    albums_or_none: List[Optional[str]] = list(albums) if albums else [None]
 
-    rows = db_client.list_recordings_with_songs(
-        status=analysis_status,
-        lrc_status=lrc_status,
-        album=album,
-        limit=None,
-        sort_by="created",
-    )
+    for album in albums_or_none:
+        rows = db_client.list_recordings_with_songs(
+            status=analysis_status,
+            lrc_status=lrc_status,
+            album=album,
+            limit=None,
+            sort_by="created",
+        )
 
-    for recording, song_title, album_name, album_series in rows:
-        if not recording.song_id:
-            continue
+        for recording, song_title, album_name, album_series in rows:
+            if not recording.song_id:
+                continue
 
-        if download_status and recording.download_status != download_status:
-            continue
+            if download_status and recording.download_status != download_status:
+                continue
 
-        if song and (not song_title or song.lower() not in song_title.lower()):
-            continue
+            if song and (not song_title or song.lower() not in song_title.lower()):
+                continue
 
-        if recording.song_id not in song_ids:
-            song_ids.append(recording.song_id)
+            if recording.song_id not in song_ids:
+                song_ids.append(recording.song_id)
 
     has_status_filters = download_status or lrc_status or analysis_status
     if not has_status_filters:
-        songs = db_client.list_songs(album=album, limit=None)
-        for s in songs:
-            if s.id in song_ids:
-                continue
-            if song and (not s.title or song.lower() not in s.title.lower()):
-                continue
-            existing_recording = db_client.get_recording_by_song_id(s.id)
-            if not existing_recording:
-                song_ids.append(s.id)
+        for album in albums_or_none:
+            songs = db_client.list_songs(album=album, limit=None)
+            for s in songs:
+                if s.id in song_ids:
+                    continue
+                if song and (not s.title or song.lower() not in s.title.lower()):
+                    continue
+                existing_recording = db_client.get_recording_by_song_id(s.id)
+                if not existing_recording:
+                    song_ids.append(s.id)
 
     if limit:
         song_ids = song_ids[:limit]
