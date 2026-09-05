@@ -659,6 +659,23 @@ class TestTitlesMatch:
     def test_none_video_title(self):
         assert _titles_match("Song", None) is False
 
+    def test_fullwidth_catalog_brackets_fold_to_ascii(self):
+        song = "I Believe［我相信］"
+        video = (
+            "【I Believe [我相信] 】官方歌詞版MV (Official Lyrics MV) - 讚美之泉敬拜讚美 (24)"
+        )
+        assert _titles_match(song, video) is True
+
+    def test_fullwidth_video_brackets_fold_to_ascii(self):
+        song = "I Believe [我相信]"
+        video = "【I Believe［我相信］】MV"
+        assert _titles_match(song, video) is True
+
+    def test_bracketless_video_ignores_whitespace_diff(self):
+        song = "Amazing Grace"
+        video = "  amazing   grace  "
+        assert _titles_match(song, video) is True
+
 
 class TestSelectBestCandidate:
     """Tests for the _select_best_candidate helper."""
