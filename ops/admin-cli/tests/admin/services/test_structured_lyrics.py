@@ -372,6 +372,21 @@ class TestParseStructuredLyricsSmart:
         assert result is not None
         assert result == expected.to_dict()
 
+    def test_use_llm_true_empty_sections_returns_none(self):
+        """use_llm=True with an LLM result of zero sections returns None (not {})."""
+        fake_chat = MagicMock()
+        fake_structured = MagicMock()
+        fake_structured.invoke.return_value = StructuredLyricsResult()
+        fake_chat.with_structured_output.return_value = fake_structured
+
+        with patch(
+            "stream_of_worship.admin.services.structured_lyrics.build_chat_model_for_lyrics",
+            return_value=fake_chat,
+        ):
+            result = parse_structured_lyrics_smart(WORKED_EXAMPLE, use_llm=True)
+
+        assert result is None
+
 
 class TestFixtureFiles:
     """Tests that verify committed fixture files are valid."""
