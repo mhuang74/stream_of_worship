@@ -1848,26 +1848,28 @@ class TestRangeGetDiagnostic:
 
         r2._client.get_object.side_effect = _get_object
 
-        # Thread-safe mock for time.monotonic that increments by 1.0 each call.
-        # We pre-compute a sequence of values and use an index with a lock.
-        mono_values = [
-            0.0,   # single start
-            1.0,   # single end
-            1.0,   # multi outer start
-            1.0, 2.0,  # range 0 start/end
-            1.0, 2.0,  # range 1 start/end
-            1.0, 2.0,  # range 2 start/end
-            1.0, 2.0,  # range 3 start/end
-            2.0,   # multi outer end
-        ]
-        mono_idx = [0]
+        # Deterministic mock for time.monotonic. The production code records
+        # start/end pairs per thread (single fetch on the main thread, then
+        # 4 range fetches on pool workers whose interleaving is unordered).
+        # A shared indexed sequence can mispair across worker threads
+        # (elapsed <= 0 -> 1e-9 clamp -> 1e10 MB/s), so pair values per
+        # thread instead: the main thread walks the outer sequence, worker
+        # threads use a per-thread counter (each start/end pair is always
+        # (1.0+n, 2.0+n) -> elapsed 1.0 regardless of interleaving).
+        main_values = [0.0, 1.0, 1.0, 2.0]  # single start/end, multi outer start/end
+        main_idx = [0]
         mono_lock = threading.Lock()
+        tl = threading.local()
 
         def _mock_monotonic():
-            with mono_lock:
-                i = mono_idx[0]
-                mono_idx[0] = i + 1
-                return mono_values[i]
+            if threading.current_thread() is threading.main_thread():
+                with mono_lock:
+                    v = main_values[main_idx[0]]
+                    main_idx[0] += 1
+                    return v
+            n = getattr(tl, "calls", 0)
+            tl.calls = n + 1
+            return 1.0 + n
 
         with patch("time.monotonic", side_effect=_mock_monotonic):
             result = range_get_throughput_diag(r2, "test/key", num_ranges=4)
