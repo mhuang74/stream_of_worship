@@ -6335,6 +6335,14 @@ def batch(
     analysis_status: Optional[str] = typer.Option(
         None, "--analysis-status", help="Filter by analysis status"
     ),
+    song_id: Optional[str] = typer.Option(
+        None,
+        "--song-id",
+        help=(
+            "Target one song by ID (exclusive with --album/--song/status "
+            "filters/--stdin/--limit); for remediating a failed song"
+        ),
+    ),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (pipe-friendly)"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
     download: bool = typer.Option(False, "--download", help="Run the download step"),
@@ -6396,9 +6404,12 @@ def batch(
     to force reclassify everything, or `--backfill-lyrics --force --components`
     to re-identify after backfilling structured lyrics for all songs (note:
     --force does not refetch already-present structured lyrics).
+    --song-id targets exactly one song by ID (exclusive with the selection filters); use it
+    to remediate a song that failed a prior batch run.
 
     Examples:
         sow-admin audio batch --album 深愛耶穌 --all-steps
+        sow-admin audio batch --song-id <song_id> --all-steps
         sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --lrc --components
         sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --force --components
         sow-admin audio batch --analysis-status incomplete --analyze \\
@@ -6457,6 +6468,7 @@ def batch(
             ("--analysis-status", analysis_status),
             ("--stdin", stdin),
             ("--limit", limit),
+            ("--song-id", song_id),
             ("--download", download),
             ("--lrc", lrc),
             ("--analyze", analyze),
@@ -6468,6 +6480,23 @@ def batch(
         for flag_name, flag_val in resume_conflicts:
             if flag_val:
                 console.print(f"[red]--resume is mutually exclusive with {flag_name}.[/red]")
+                raise typer.Exit(1)
+
+    # --song-id mutual exclusivity: it is a selection method like --stdin;
+    # filter flags compose with each other but not with a direct ID.
+    if song_id is not None:
+        selection_conflicts = [
+            ("--album", album),
+            ("--song", song),
+            ("--lrc-status", lrc_status),
+            ("--download-status", download_status),
+            ("--analysis-status", analysis_status),
+            ("--stdin", stdin),
+            ("--limit", limit),
+        ]
+        for flag_name, flag_val in selection_conflicts:
+            if flag_val:
+                console.print(f"[red]--song-id is mutually exclusive with {flag_name}.[/red]")
                 raise typer.Exit(1)
 
     # Resolve selected steps
@@ -6537,7 +6566,7 @@ def batch(
                 "  sow-admin audio delete --recording --hash-prefix <old>\n"
                 "  sow-admin maintenance purge-soft-deletes --entity recordings "
                 "--hash-prefix <old> --confirm\n"
-                "  sow-admin audio batch --song <song_id> --download"
+                "  sow-admin audio batch --song-id <song_id> --download"
             )
             raise typer.Exit(1)
 
@@ -6600,9 +6629,16 @@ def batch(
         return
 
     # Normal path: resolve song IDs
-    song_ids = _resolve_song_ids(
-        db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit
-    )
+    if song_id is not None:
+        target_song = db_client.get_song(song_id)
+        if not target_song:
+            console.print(f"[red]Song not found: {song_id}[/red]")
+            raise typer.Exit(1)
+        song_ids = [song_id]
+    else:
+        song_ids = _resolve_song_ids(
+            db_client, album, song, lrc_status, download_status, analysis_status, stdin, limit
+        )
     if not song_ids:
         console.print("[yellow]No songs found matching the criteria.[/yellow]")
         raise typer.Exit(0)

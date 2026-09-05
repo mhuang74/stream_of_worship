@@ -215,6 +215,152 @@ class TestResumeMutualExclusivity:
         assert "--resume is mutually exclusive" in result.output
 
 
+
+class TestSongIdSelection:
+    """--song-id selects exactly one song; exclusive with all selection flags."""
+
+    def test_song_id_with_stdin_exits_1(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--song-id",
+                "song_001",
+                "--stdin",
+                "--analyze",
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code == 1
+        assert "--song-id is mutually exclusive with --stdin" in result.output
+
+    def test_song_id_with_album_exits_1(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--song-id",
+                "song_001",
+                "--album",
+                "X",
+                "--analyze",
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code == 1
+        assert "--song-id is mutually exclusive with --album" in result.output
+
+    def test_resume_with_song_id_exits_1(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "batch",
+                "--resume",
+                "/tmp/manifest.json",
+                "--song-id",
+                "song_001",
+                "--config",
+                str(config_path),
+            ],
+            env=WIDE_ENV,
+        )
+        assert result.exit_code == 1
+        assert "--resume is mutually exclusive" in result.output
+
+    def test_song_id_not_found_exits_1(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+
+        mock_db = MagicMock()
+        mock_db.get_song.return_value = None
+
+        with patch(
+            "stream_of_worship.admin.commands.audio.get_db_client",
+            return_value=mock_db,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio",
+                    "batch",
+                    "--song-id",
+                    "nope",
+                    "--analyze",
+                    "--config",
+                    str(config_path),
+                ],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 1
+        assert "Song not found: nope" in result.output
+
+    def test_song_id_targets_single_song(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
+
+        mock_db = MagicMock()
+        mock_db.get_song.return_value = _make_song("song_001", album_name="X")
+
+        captured: dict = {}
+
+        def _fake_process_batch(**kwargs):
+            captured.update(kwargs)
+            return {sid: {} for sid in kwargs["song_ids"]}
+
+        with (
+            patch(
+                "stream_of_worship.admin.commands.audio.get_db_client",
+                return_value=mock_db,
+            ),
+            patch("stream_of_worship.admin.commands.audio.R2Client"),
+            patch("stream_of_worship.admin.commands.audio.AnalysisClient"),
+            patch(
+                "stream_of_worship.admin.commands.audio._process_batch",
+                side_effect=_fake_process_batch,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "audio",
+                    "batch",
+                    "--song-id",
+                    "song_001",
+                    "--all-steps",
+                    "--config",
+                    str(config_path),
+                ],
+                env=WIDE_ENV,
+            )
+
+        assert result.exit_code == 0, result.output
+        assert captured["song_ids"] == ["song_001"]
+        assert captured["selected_steps"] == [
+            "download",
+            "backfill_lyrics",
+            "lrc",
+            "analyze",
+            "embedding",
+            "components",
+        ]
+        mock_db.list_recordings_with_songs.assert_not_called()
+        mock_db.list_songs.assert_not_called()
+
+
 class TestRecordingModelAnalysis:
     """Tests for the Recording model analysis properties."""
 
