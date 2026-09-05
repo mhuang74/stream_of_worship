@@ -7291,13 +7291,13 @@ def _submit_lrc_for_song(
 
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
-        console.print(f"  [yellow]→ {song_id} (skipped: no recording)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: lrc no recording)[/yellow]")
         return "skipped_no_recording"
 
     song = db_client.get_song(song_id)
     lyrics_text = _resolve_lyrics_text(song, recording) if song else None
     if not song or not lyrics_text:
-        console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: lrc no lyrics)[/yellow]")
         return "skipped_no_lyrics"
 
     # Check R2 (skip when force)
@@ -7333,7 +7333,7 @@ def _submit_lrc_for_song(
                     submitted_at=datetime.now(timezone.utc).isoformat(),
                 )
                 console.print(
-                    f"  [yellow]→ {song_id} (reusing job: {recording.lrc_job_id})[/yellow]"
+                    f"  [yellow]→ {song_id} (reusing lrc job: {recording.lrc_job_id})[/yellow]"
                 )
                 return "reused"
 
@@ -7371,11 +7371,11 @@ def _submit_lrc_for_song(
             "submitted",
             submitted_at=datetime.now(timezone.utc).isoformat(),
         )
-        console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+        console.print(f"  [green]→ {song_id} (submitted: lrc {job.job_id})[/green]")
         return "submitted"
 
     except AnalysisServiceError as e:
-        console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+        console.print(f"  [red]✗ {song_id} lrc submit failed: {e}[/red]")
         results[song_id]["lrc"] = "failed"
         results[song_id]["lrc_error"] = str(e)
         _add_manifest_entry(
@@ -7449,7 +7449,7 @@ def _submit_analysis_for_song(
     """
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording or not recording.r2_audio_url:
-        console.print(f"  [yellow]→ {song_id} (skipped: no recording/audio)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: analysis no recording/audio)[/yellow]")
         results[song_id]["analyze"] = "failed"
         results[song_id]["analyze_error"] = "No recording or audio URL"
         _add_manifest_entry(
@@ -7494,7 +7494,7 @@ def _submit_analysis_for_song(
                     tier_is_fast = analysis_tier == "fast"
                     if job_is_fast != tier_is_fast:
                         console.print(
-                            f"  [yellow]→ {song_id} (skipped reuse: job tier "
+                            f"  [yellow]→ {song_id} (skipped: analysis reuse — job tier "
                             f"{'fast' if job_is_fast else 'full'} != "
                             f"requested {analysis_tier})[/yellow]"
                         )
@@ -7509,7 +7509,7 @@ def _submit_analysis_for_song(
                             submitted_at=datetime.now(timezone.utc).isoformat(),
                         )
                         console.print(
-                            f"  [yellow]→ {song_id} (reusing job: "
+                            f"  [yellow]→ {song_id} (reusing analysis job: "
                             f"{recording.analysis_job_id})[/yellow]"
                         )
                         return (recording.analysis_job_id, "reused")
@@ -7551,11 +7551,11 @@ def _submit_analysis_for_song(
             "submitted",
             submitted_at=datetime.now(timezone.utc).isoformat(),
         )
-        console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+        console.print(f"  [green]→ {song_id} (submitted: analysis {job.job_id})[/green]")
         return (job.job_id, "submitted")
 
     except AnalysisServiceError as e:
-        console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+        console.print(f"  [red]✗ {song_id} analysis submit failed: {e}[/red]")
         results[song_id]["analyze"] = "failed"
         results[song_id]["analyze_error"] = str(e)
         _add_manifest_entry(
@@ -7591,7 +7591,7 @@ def _submit_embedding_for_song(
     """
     song = db_client.get_song(song_id)
     if not song or not song.lyrics_raw:
-        console.print(f"  [yellow]→ {song_id} (skipped: no lyrics)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: embedding no lyrics)[/yellow]")
         results[song_id]["embedding"] = "failed"
         results[song_id]["embedding_error"] = "No lyrics"
         recording = db_client.get_recording_by_song_id(song_id)
@@ -7638,10 +7638,10 @@ def _submit_embedding_for_song(
             "submitted",
             submitted_at=datetime.now(timezone.utc).isoformat(),
         )
-        console.print(f"  [green]→ {song_id} (submitted: {job_info.job_id})[/green]")
+        console.print(f"  [green]→ {song_id} (submitted: embedding {job_info.job_id})[/green]")
         return (job_info.job_id, "submitted")
     except Exception as e:
-        console.print(f"  [red]✗ {song_id} failed to submit: {e}[/red]")
+        console.print(f"  [red]✗ {song_id} embedding submit failed: {e}[/red]")
         results[song_id]["embedding"] = "failed"
         results[song_id]["embedding_error"] = str(e)
         _add_manifest_entry(
@@ -7698,7 +7698,7 @@ def _submit_components_for_song(
     """
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording or not recording.r2_audio_url:
-        console.print(f"  [yellow]→ {song_id} (skipped: no recording/audio)[/yellow]")
+        console.print(f"  [yellow]→ {song_id} (skipped: components no recording/audio)[/yellow]")
         results[song_id]["components"] = "skipped_no_recording"
         results[song_id]["components_error"] = "No recording or audio URL"
         _add_manifest_entry(
@@ -7716,7 +7716,7 @@ def _submit_components_for_song(
     # identification needs sections (analysis) or LRC to segment on.
     if not recording.has_full_analysis and not recording.has_lrc:
         console.print(
-            f"  [yellow]→ {song_id} (skipped: no sections or LRC — run audio lrc first)[/yellow]"
+            f"  [yellow]→ {song_id} (skipped: components no sections or LRC — run audio lrc first)[/yellow]"
         )
         results[song_id]["components"] = "skipped_no_sections"
         return (None, "skipped_no_sections")
@@ -7855,7 +7855,7 @@ def _submit_components_for_song(
         "submitted",
         submitted_at=datetime.now(timezone.utc).isoformat(),
     )
-    console.print(f"  [green]→ {song_id} (submitted: {job.job_id})[/green]")
+    console.print(f"  [green]→ {song_id} (submitted: components {job.job_id})[/green]")
     return (job.job_id, "submitted")
 
 
@@ -8301,7 +8301,7 @@ def _handle_lrc_404(
         return (True, None)
 
     console.print(
-        f"  [yellow]→ {song_id}: Job lost (404), resubmitting "
+        f"  [yellow]→ {song_id}: LRC job lost (404), resubmitting "
         f"(attempt {resubmit_count + 1}/{max_resubmits})...[/yellow]"
     )
     try:

@@ -24,6 +24,7 @@ from stream_of_worship.admin.commands.audio import (
     _poll_one_cycle,
     _submit_analysis_for_song,
     _submit_embedding_for_song,
+    _submit_lrc_for_song,
     _submit_step,
 )
 from stream_of_worship.admin.db.models import Recording, Song
@@ -533,6 +534,78 @@ class TestSubmitEmbeddingForSong:
         assert status == "skipped_no_lyrics"
         assert results[song_id]["embedding"] == "failed"
 
+
+# ---------------------------------------------------------------------------
+# submit-path trace lines name the step
+# ---------------------------------------------------------------------------
+
+class TestSubmitTraceLinesNameTheStep:
+    def test_submit_trace_lines_name_the_step(self):
+        """Submit-path console traces carry the step name on every line."""
+        song_id = "s1"
+
+        # lrc
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording(song_id)
+        db_client.get_song.return_value = _make_song(song_id)
+        r2_client = MagicMock()
+        r2_client.lrc_exists.return_value = None
+        analysis_client = MagicMock()
+        analysis_client.submit_lrc.return_value = JobInfo(
+            job_id="lrc-1", status="queued", job_type="lrc"
+        )
+        console = Console(record=True)
+        status = _submit_lrc_for_song(
+            song_id,
+            db_client,
+            analysis_client,
+            r2_client,
+            force=False,
+            stale_after_minutes=120,
+            console=console,
+            results={song_id: {}},
+            active_lrc_jobs={},
+            lrc_attempted=set(),
+            _add_manifest_entry=_noop_manifest_entry,
+        )
+        assert status == "submitted"
+        assert "(submitted: lrc " in console.export_text()
+
+        # analysis
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording(song_id)
+        analysis_client = MagicMock()
+        analysis_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="ana-1", status="queued", job_type="fast_analyze"
+        )
+        console = Console(record=True)
+        job_id, status = _submit_analysis_for_song(
+            song_id, db_client, analysis_client, MagicMock(),
+            force=False, analysis_tier="fast", stale_after_minutes=120,
+            console=console, results={song_id: {}},
+            _add_manifest_entry=_noop_manifest_entry,
+        )
+        assert status == "submitted" and job_id == "ana-1"
+        assert "(submitted: analysis " in console.export_text()
+
+        # embedding
+        db_client = MagicMock()
+        db_client.get_song.return_value = _make_song(song_id)
+        db_client.get_recording_by_song_id.return_value = _make_recording(song_id)
+        db_client.get_embedding_content_hash.return_value = None
+        analysis_client = MagicMock()
+        analysis_client.submit_embedding.return_value = JobInfo(
+            job_id="emb-1", status="queued", job_type="embedding"
+        )
+        console = Console(record=True)
+        job_id, status = _submit_embedding_for_song(
+            song_id, db_client, analysis_client, MagicMock(),
+            force=False, analysis_tier="fast", stale_after_minutes=120,
+            console=console, results={song_id: {}},
+            _add_manifest_entry=_noop_manifest_entry,
+        )
+        assert status == "submitted" and job_id == "emb-1"
+        assert "(submitted: embedding " in console.export_text()
 
 # ---------------------------------------------------------------------------
 # _poll_one_cycle
