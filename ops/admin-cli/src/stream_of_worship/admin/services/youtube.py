@@ -112,15 +112,24 @@ def _extract_bracket_content(video_title: Optional[str]) -> Optional[str]:
     return None
 
 
+# Bracket/paren/quote punctuation stripped before title matching: used
+# only to denote the Chinese-title convention (e.g. 平安（粵語） vs
+# 平安 [粵語] Peace), never part of the song name itself.
+_BRACKET_PUNCT_RE = re.compile(r"""[\[\](){}【】「」『』《》〈〉〔〕“”‘’'"]""")
+
+
 def _normalize_for_match(s: str) -> str:
-    """Normalize a string for whitespace- and width-insensitive matching.
+    """Normalize a string for whitespace-, width-, and punctuation-insensitive matching.
 
     NFKC-normalizes (folding fullwidth forms like ``［我相信］`` to their
-    ASCII counterparts), lowercases, and removes all whitespace — so
+    ASCII counterparts), strips bracket/paren/quote punctuation that only
+    denotes the Chinese-title convention (e.g. ``平安（粵語）`` matches
+    ``平安 [粵語] Peace``), lowercases, and removes all whitespace — so
     comparisons ignore whitespace-only differences such as
     ``I Believe [我相信] `` vs ``I Believe[我相信]``.
     """
     s = unicodedata.normalize("NFKC", s)
+    s = _BRACKET_PUNCT_RE.sub("", s)
     s = re.sub(r"\s+", "", s).lower()
     return s.strip()
 
