@@ -44,6 +44,7 @@ admin = [
     "pydantic>=2.7.0",
     "python-dotenv>=1.2.2",
     "opencc-python-reimplemented>=0.1.7",
+    "yt-dlp-ejs>=0.8.0",
 ]
 constructor = [
     "langgraph>=0.2.50",
