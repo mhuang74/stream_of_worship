@@ -179,7 +179,7 @@ Real pages (`/songsets`, `/favorites`, dashboard) are auth-gated — unauthentic
 3. Sign in: `tab.fill("#email", …)`, `tab.fill("#password", …)`, `tab.click("button[type='submit']")`. The submit fires and the auth fetch succeeds, but the client-side redirect to the target page may not complete — then `tab.goto("https://localhost:8080/<page>")`.
 4. Measure layout, don't eyeball: `getBoundingClientRect()` on `[data-songset-id]` cards (or any element). Column count proof: 2-col grid → cards share `top` with two distinct `left`s; 1-col → single `left`, distinct `top`s.
 
-**Quirks:** no `tab.setViewport` — use `tab.page.setViewport({width, height})`. CSS viewport ≠ device pixels (`deviceScaleFactor` ~1.25); Tailwind `md:` breakpoint is 768 CSS px. If a dev server is already on 8080, reuse it (hot reloads); don't start a second one.
+**Quirks:** no `tab.setViewport` and no `tab.page` on tab handles — set the viewport inside `tab.run` via the raw Puppeteer page: `await tab.run(async ({ page }) => { await page.setViewport({ width: 390, height: 844 }); … })`, then measure with `page.evaluate`/`getBoundingClientRect()`. CSS viewport ≠ device pixels (`deviceScaleFactor` ~1.25); Tailwind `md:` breakpoint is 768 CSS px. If a dev server is already on 8080, reuse it (hot reloads); don't start a second one.
 
 ## Session Completion (MANDATORY)
 
