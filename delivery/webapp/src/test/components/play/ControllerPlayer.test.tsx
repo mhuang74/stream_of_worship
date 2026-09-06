@@ -1659,6 +1659,13 @@ describe("ControllerPlayer", () => {
 
   // ── Fullscreen ─────────────────────────────────────────────────────────
   describe("fullscreen", () => {
+    afterEach(() => {
+      Reflect.deleteProperty(
+        window.HTMLVideoElement.prototype,
+        "webkitEnterFullscreen"
+      );
+    });
+
     it("requests fullscreen on mount", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);
@@ -1667,6 +1674,39 @@ describe("ControllerPlayer", () => {
       await waitFor(() => {
         expect(document.documentElement.requestFullscreen).toHaveBeenCalled();
       });
+    });
+
+    it("falls back to video webkitEnterFullscreen when document fullscreen is unavailable", async () => {
+      // iOS WKWebView (Chrome iOS): no document fullscreen API.
+      Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+      // But the <video> element exposes native WebKit fullscreen.
+      const enterFullscreenSpy = vi.fn();
+      Object.defineProperty(window.HTMLVideoElement.prototype, "webkitEnterFullscreen", {
+        value: enterFullscreenSpy,
+        writable: true,
+        configurable: true,
+      });
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const button = screen.getByRole("button", { name: "Enter fullscreen" });
+      fireEvent.click(button);
+
+      expect(enterFullscreenSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("hides the fullscreen button when neither fullscreen capability exists", async () => {
+      Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      expect(
+        screen.queryByRole("button", { name: /fullscreen/i })
+      ).not.toBeInTheDocument();
     });
   });
 });
