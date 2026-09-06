@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Stream of Worship tab icon: flowing sound-wave glyph on an opaque rounded tile.
+       Brand: strictly monochrome. Tile oklch(0.205 0 0) ≈ #1E1E1E, glyph oklch(0.985 0 0) ≈ #FCFCFC. -->
+  <rect width="512" height="512" rx="112" fill="#1E1E1E"/>
+  <g fill="none" stroke="#FCFCFC" stroke-width="36" stroke-linecap="round">
+    <!-- top wave: solid white -->
+    <path d="M 84 200 C 148 164, 212 164, 256 200 C 300 236, 364 236, 428 200"/>
+    <!-- bottom wave: white at ~55% opacity, same phase, constant 112px separation so the
+         76px edge gap never closes at small sizes (reads as one flowing stream) -->
+    <path d="M 84 312 C 148 276, 212 276, 256 312 C 300 348, 364 348, 428 312" opacity="0.55"/>
+  </g>
+</svg>
