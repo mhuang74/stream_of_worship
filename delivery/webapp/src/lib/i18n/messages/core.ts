@@ -81,6 +81,8 @@ export const core = bundle({
     "home.signedOut.nav.features": "Features",
     "home.signedOut.nav.howItWorks": "How it works",
     "home.signedOut.nav.songs": "Songs",
+    "home.signedOut.demoTitle": "See it in action",
+    "home.signedOut.demoDescription": "Watch how Stream of Worship turns a song list into a seamless worship set — from picking songs to casting the lyrics video to your TV.",
     // About page
     "about.heroTitle": "Built for small group worship leaders",
     "about.heroDescription": "Stream of Worship exists because leading small group worship shouldn't mean fumbling between YouTube videos and praying the Wi-Fi holds.",
@@ -352,6 +354,8 @@ export const core = bundle({
     "home.signedOut.nav.features": "功能",
     "home.signedOut.nav.howItWorks": "運作方式",
     "home.signedOut.nav.songs": "詩歌",
+    "home.signedOut.demoTitle": "看看實際效果",
+    "home.signedOut.demoDescription": "觀看 Stream of Worship 如何將詩歌清單變成流暢的敬拜組曲——從選歌到將歌詞影片投放到電視。",
     // 關於頁面
     "about.heroTitle": "為小組敬拜主領而建",
     "about.heroDescription": "Stream of Worship 的存在，是因為帶領小組敬拜不應該意味著在 YouTube 影片之間手忙腳亂，還要祈禱網路不要斷線。",
