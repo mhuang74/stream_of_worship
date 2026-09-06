@@ -4,16 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { isProjectionRoute } from "@/lib/routes";
 import { useLocale } from "@/hooks/useLocale";
-
-const navItems = [
-  { href: "/", key: "nav.dashboard" as const },
-  { href: "/songsets", key: "nav.songsets" as const },
-  { href: "/favorites", key: "nav.favorites" as const },
-];
+import { useSession } from "@/lib/auth-client";
 
 export function BottomNav() {
   const pathname = usePathname();
   const { t } = useLocale();
+  const { data: session } = useSession();
+  const user = session?.user;
+
+  const navItems = [
+    { href: "/", key: "nav.dashboard" as const },
+    { href: "/songsets", key: "nav.songsets" as const },
+    { href: "/favorites", key: "nav.favorites" as const },
+    ...(user ? [] : [{ href: "/about", key: "nav.about" as const }]),
+  ];
 
   if (
     pathname?.includes("/play/controller") ||
