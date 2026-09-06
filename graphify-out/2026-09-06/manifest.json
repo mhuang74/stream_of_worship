@@ -1086,9 +1086,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/layout/BottomNav.tsx": {
-    "mtime": 1787347697.9718354,
-    "seen": 1787357371.894442,
-    "ast_hash": "9e43c6a7944d2b8e708efe792f301726",
+    "mtime": 1788695669.641871,
+    "seen": 1788696253.1810281,
+    "ast_hash": "baf956d915e43c62e4514df506c3d42c",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/layout/Header.tsx": {
@@ -2148,9 +2148,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/layout/BottomNav.test.tsx": {
-    "mtime": 1787347697.9728353,
-    "seen": 1787357371.8950684,
-    "ast_hash": "e010d9eae3ed14227b885d67ad4a5996",
+    "mtime": 1788695881.3524625,
+    "seen": 1788696253.194208,
+    "ast_hash": "437060d68ee987794197316783a11ca3",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/layout/Header.test.tsx": {
