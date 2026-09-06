@@ -672,9 +672,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/package.json": {
-    "mtime": 1787822629.3059132,
-    "seen": 1787827474.9833336,
-    "ast_hash": "b8379cd8660afb5f92759689d13310cb",
+    "mtime": 1788693287.555599,
+    "seen": 1788694534.3215802,
+    "ast_hash": "3b945f475e5e10d953a6846c114cd2ba",
     "semantic_hash": ""
   },
   "delivery/webapp/postcss.config.mjs": {
@@ -888,9 +888,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/layout.tsx": {
-    "mtime": 1787824607.6644099,
-    "seen": 1787827474.9858952,
-    "ast_hash": "c2699fc54578360156899e92c7dd33fc",
+    "mtime": 1788693287.590599,
+    "seen": 1788694534.3244026,
+    "ast_hash": "43525812e8e423ed6763bca0141c60b4",
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/login/page.tsx": {
@@ -1674,9 +1674,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/core.ts": {
-    "mtime": 1788230080.3981469,
-    "seen": 1788301509.5223663,
-    "ast_hash": "1477b46dbe5208bc5bdc33ba099f362e",
+    "mtime": 1788693287.591599,
+    "seen": 1788694534.3459122,
+    "ast_hash": "78b392fcfc192ba3b9c63447c33f14ee",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/favorites.ts": {
@@ -3468,8 +3468,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py": {
-    "mtime": 1788665539.0566363,
-    "seen": 1788665543.7857275,
+    "mtime": 1788693288.2616017,
+    "seen": 1788694534.3698049,
     "ast_hash": "bf00229be7a8c26c0ddec03da093fa0d",
     "semantic_hash": ""
   },
@@ -3726,8 +3726,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/structured_lyrics.py": {
-    "mtime": 1788593542.3741555,
-    "seen": 1788595222.8893738,
+    "mtime": 1788693288.2896016,
+    "seen": 1788694534.3727872,
     "ast_hash": "33884fca544172a7a64f3ebdfc1a82cd",
     "semantic_hash": ""
   },
@@ -3738,8 +3738,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/youtube.py": {
-    "mtime": 1788602766.5248234,
-    "seen": 1788602817.029329,
+    "mtime": 1788693288.337602,
+    "seen": 1788694534.372861,
     "ast_hash": "66a7544b16d7e52fb306374c4eab3a8f",
     "semantic_hash": ""
   },
@@ -4566,8 +4566,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/README.md": {
-    "mtime": 1788604138.8335452,
-    "seen": 1788604488.547861,
+    "mtime": 1788693288.2126014,
+    "seen": 1788694534.3827887,
     "ast_hash": "6caa7037b44fdb0e1ed1a85f34197d05",
     "semantic_hash": ""
   },
@@ -4626,8 +4626,8 @@
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
-    "mtime": 1787823324.3753934,
-    "seen": 1787827475.0257657,
+    "mtime": 1788694102.727562,
+    "seen": 1788694534.3833342,
     "ast_hash": "1569d60d5a79dbe40f35faa35d76f653",
     "semantic_hash": ""
   },
@@ -4785,6 +4785,18 @@
     "mtime": 1787822629.3069131,
     "seen": 1787827474.9986775,
     "ast_hash": "ad9da102a6e2b406db5d89074bea2b28",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/design/icon.svg": {
+    "mtime": 1788694385.520622,
+    "seen": 1788694534.3834481,
+    "ast_hash": "f9e3843dcdf032a377f2fff0cad54f48",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/app/apple-icon.png": {
+    "mtime": 1788694395.4346285,
+    "seen": 1788694534.3837347,
+    "ast_hash": "80eecebbb41d09455891fd7bd38c8acd",
     "semantic_hash": ""
   }
 }
