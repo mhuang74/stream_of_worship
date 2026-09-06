@@ -86,6 +86,16 @@ describe("PublicLanding", () => {
     ).toHaveAttribute("href", "/register");
     expect(screen.getByText("Stream of Worship")).toBeInTheDocument();
   });
+  it("renders the demo video section with the YouTube embed", () => {
+    render(<PublicLanding locale="en" />);
+    const demo = screen
+      .getByRole("heading", { name: "See it in action" })
+      .closest("section")!;
+    const iframe = within(demo).getByTitle("See it in action");
+    expect(iframe).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/4X4RQxU7SlU");
+    expect(iframe).toHaveAttribute("allowFullScreen");
+  });
+
   it("renders a hidden build stamp with the build commit hash and date", () => {
     render(<PublicLanding locale="en" />);
     const stamp = screen.getByTestId("build-stamp");

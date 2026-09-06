@@ -108,6 +108,26 @@ export function PublicLanding({ locale }: { locale: Locale }) {
         </div>
       </section>
 
+      {/* Demo video */}
+      <section id="demo" className="mx-auto max-w-6xl px-4 py-16">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl font-bold">{t(locale, "home.signedOut.demoTitle")}</h2>
+          <p className="text-muted-foreground mt-2 max-w-2xl mx-auto">
+            {t(locale, "home.signedOut.demoDescription")}
+          </p>
+        </div>
+        <div className="mx-auto max-w-3xl">
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/4X4RQxU7SlU"
+            title={t(locale, "home.signedOut.demoTitle")}
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="aspect-video w-full rounded-2xl border border-border shadow-xl"
+          />
+        </div>
+      </section>
+
       {/* How it works */}
       <section id="how-it-works" className="bg-muted/50 border-y border-border">
         <div className="mx-auto max-w-6xl px-4 py-16">
