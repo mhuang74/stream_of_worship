@@ -68,6 +68,14 @@ export interface ControllerPlayerProps {
 }
 
 const IOS_INFO_KEY = "sow-ios-info-shown";
+
+// iOS WebKit exposes native fullscreen on <video> (AVPlayer UI) even where the
+// document Fullscreen API is unavailable (all WKWebView browsers, incl. Chrome
+// iOS). Capability-detected at mount; see handleReenterFullscreen.
+type VideoElementWithIOSFullscreen = HTMLVideoElement & {
+  webkitEnterFullscreen?: () => void;
+};
+
 const SEEK_DEBOUNCE_MS = 200;
 const BUFFERING_ACTIONABLE_MS = 15_000;
 
@@ -119,6 +127,8 @@ export function ControllerPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
+  const [canDocumentFullscreen, setCanDocumentFullscreen] = useState(false);
+  const [canVideoFullscreen, setCanVideoFullscreen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [localSongIndex, setLocalSongIndex] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -560,7 +570,18 @@ export function ControllerPlayer({
   }, [router, playerId, exitRoute, isPresentationActive, handleStopPresentation]);
 
   const handleReenterFullscreen = useCallback(() => {
-    document.documentElement.requestFullscreen().catch(() => {});
+    if (typeof document.documentElement.requestFullscreen === "function") {
+      document.documentElement.requestFullscreen().catch(() => {});
+      return;
+    }
+    // iOS WKWebView (Chrome iOS etc.): document fullscreen is unavailable.
+    // Fall back to the <video> element's native WebKit fullscreen. Requires a
+    // user gesture — satisfied because this runs from a button tap.
+    try {
+      (videoRef.current as VideoElementWithIOSFullscreen | null)?.webkitEnterFullscreen?.();
+    } catch {
+      // Best-effort; capability detection hides this button when absent.
+    }
   }, []);
 
   // Cancel any pending debounced seek on unmount.
@@ -666,6 +687,16 @@ export function ControllerPlayer({
       }
     };
   }, [autoFullscreen]);
+  // Capability detection (SSR-safe: set in an effect, not render). The document
+  // Fullscreen API is unavailable in all iOS WKWebView browsers; the <video>
+  // element's native WebKit fullscreen is the only in-page escape hatch there.
+  useEffect(() => {
+    setCanDocumentFullscreen(
+      typeof document.documentElement.requestFullscreen === "function"
+    );
+    const video = videoRef.current as VideoElementWithIOSFullscreen | null;
+    setCanVideoFullscreen(typeof video?.webkitEnterFullscreen === "function");
+  }, []);
 
   // Mute (+ pause) local video when presentation is active (audio plays on the
   // receiver). Composes with the disconnect→resume effect below.
@@ -906,13 +937,17 @@ export function ControllerPlayer({
                 <ArrowLeft className="size-5" />
               </Button>
 
-              {!isFullscreen && (
+              {!isFullscreen && (canDocumentFullscreen || canVideoFullscreen) && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="size-10 text-white hover:bg-white/20"
                   onClick={handleReenterFullscreen}
-                  aria-label={t("controller.reenterFullscreen")}
+                  aria-label={
+                    canDocumentFullscreen
+                      ? t("controller.reenterFullscreen")
+                      : t("controller.enterFullscreen")
+                  }
                 >
                   <Maximize className="size-5" />
                 </Button>
