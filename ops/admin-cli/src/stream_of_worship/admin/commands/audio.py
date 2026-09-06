@@ -6670,7 +6670,7 @@ def batch(
             download_concurrency=download_concurrency,
             config=config,
         )
-        _print_stats(results, db_client, console, format)
+        _print_stats(results, db_client, console, format, selected_steps=manifest_data.get("selected_steps", []))
 
         # Exit nonzero if any step has a failure
         failed_any = any(v == "failed" for r in results.values() for v in r.values())
@@ -6822,7 +6822,7 @@ def batch(
     )
 
     # Print final stats
-    _print_stats(results, db_client, console, format)
+    _print_stats(results, db_client, console, format, selected_steps=selected_steps)
 
     # Exit nonzero if any selected step has a failure
     failed_any = any(
@@ -7382,12 +7382,14 @@ def _submit_lrc_for_song(
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
         console.print(f"  [yellow]→ {song_id} (skipped: lrc no recording)[/yellow]")
+        results[song_id]["lrc"] = "skipped_no_recording"
         return "skipped_no_recording"
 
     song = db_client.get_song(song_id)
     lyrics_text = _resolve_lyrics_text(song, recording) if song else None
     if not song or not lyrics_text:
         console.print(f"  [yellow]→ {song_id} (skipped: lrc no lyrics)[/yellow]")
+        results[song_id]["lrc"] = "skipped_no_lyrics"
         return "skipped_no_lyrics"
 
     # Check R2 (skip when force)
@@ -9745,6 +9747,7 @@ def _print_stats(
     db_client: DatabaseClient,
     console: Console,
     format: str,
+    selected_steps: Optional[List[str]] = None,
 ) -> None:
     """Print final batch statistics.
 
@@ -9753,6 +9756,9 @@ def _print_stats(
         db_client: Database client for looking up song info
         console: Rich console
         format: Output format (rich or json)
+        selected_steps: Steps selected for this run. ``None`` means the
+            selection is unknown; the LRC-skip-on-download-failure inference
+            is then treated as present.
     """
     if format == "json":
         import json
@@ -9799,10 +9805,42 @@ def _print_stats(
     else:
         avg_lrc_time = med_lrc_time = min_lrc_time = max_lrc_time = None
 
+    # Songs requiring manual intervention: failed steps AND data-gap skips.
+    attention: list[tuple[str, list[tuple[str, str]]]] = []
+    for song_id, r in results.items():
+        reasons: list[tuple[str, str]] = []
+        if r.get("download") == "failed":
+            reasons.append(("download", f"failed — {r.get('error') or 'unknown error'}"))
+            if (selected_steps is None or "lrc" in selected_steps) and "lrc" not in r:
+                reasons.append(("lrc", "skipped (download failed)"))
+        if r.get("lrc") == "failed":
+            reasons.append(("lrc", f"failed — {r.get('lrc_error') or 'unknown error'}"))
+        elif r.get("lrc") in ("skipped_no_lyrics", "skipped_no_recording"):
+            label = "no lyrics in catalog" if r["lrc"] == "skipped_no_lyrics" else "no recording"
+            reasons.append(("lrc", f"skipped ({label})"))
+        if r.get("analyze") == "failed":
+            reasons.append(("analyze", f"failed — {r.get('analyze_error') or 'unknown error'}"))
+        if r.get("embedding") == "failed":
+            reasons.append(("embedding", f"failed — {r.get('embedding_error') or 'unknown error'}"))
+        if r.get("components") == "failed":
+            reasons.append(("components", f"failed — {r.get('components_error') or 'unknown error'}"))
+        elif r.get("components") in ("skipped_no_sections", "skipped_no_recording"):
+            label = (
+                "no sections or LRC — run 'audio lrc' first"
+                if r["components"] == "skipped_no_sections"
+                else "no recording or audio"
+            )
+            reasons.append(("components", f"skipped ({label})"))
+        if r.get("backfill_lyrics") == "failed":
+            reasons.append(("backfill_lyrics", "failed — structured-lyrics backfill"))
+        if reasons:
+            attention.append((song_id, reasons))
+
     # Build summary table
     lines = [
         f"╭─ {'Batch Summary':^50} ╮",
         f"│ {'Songs processed:':<30} {total:>18} │",
+        f"│ {'Needs attention:':<30} {len(attention):>18} │",
         f"│ {'':<30} {'':>18} │",
         f"│ {'Downloads:':<30} {'':>18} │",
         f"│ {'  Completed:':<30} {download_completed:>18} │",
@@ -9892,66 +9930,14 @@ def _print_stats(
 
     console.print("\n".join(lines))
 
-    # Print failed downloads
-    failed_downloads = [
-        (song_id, r.get("error")) for song_id, r in results.items() if r.get("download") == "failed"
-    ]
-    if failed_downloads:
-        console.print("\n[bold red]Failed downloads:[/bold red]")
-        for song_id, error in failed_downloads:
+    if attention:
+        console.print("\n[bold red]Requires manual intervention:[/bold red]")
+        for song_id, reasons in attention:
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
-            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
-
-    # Print failed LRCs
-    failed_lrcs = [
-        (song_id, r.get("lrc_error")) for song_id, r in results.items() if r.get("lrc") == "failed"
-    ]
-    if failed_lrcs:
-        console.print("\n[bold red]Failed LRC:[/bold red]")
-        for song_id, error in failed_lrcs:
-            song = db_client.get_song(song_id)
-            song_name = song.title if song else song_id
-            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
-
-    # Print failed analysis
-    failed_analysis = [
-        (song_id, r.get("analyze_error"))
-        for song_id, r in results.items()
-        if r.get("analyze") == "failed"
-    ]
-    if failed_analysis:
-        console.print("\n[bold red]Failed analysis:[/bold red]")
-        for song_id, error in failed_analysis:
-            song = db_client.get_song(song_id)
-            song_name = song.title if song else song_id
-            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
-
-    # Print failed embeddings
-    failed_embeddings = [
-        (song_id, r.get("embedding_error"))
-        for song_id, r in results.items()
-        if r.get("embedding") == "failed"
-    ]
-    if failed_embeddings:
-        console.print("\n[bold red]Failed embedding:[/bold red]")
-        for song_id, error in failed_embeddings:
-            song = db_client.get_song(song_id)
-            song_name = song.title if song else song_id
-            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
-
-    # Print failed components
-    failed_components = [
-        (song_id, r.get("components_error"))
-        for song_id, r in results.items()
-        if r.get("components") == "failed"
-    ]
-    if failed_components:
-        console.print("\n[bold red]Failed components:[/bold red]")
-        for song_id, error in failed_components:
-            song = db_client.get_song(song_id)
-            song_name = song.title if song else song_id
-            console.print(f"  - {song_name} [{song_id}]: {error}", markup=False)
+            console.print(f"  - {song_name} [{song_id}]", markup=False)
+            for step, reason in reasons:
+                console.print(f"      {step}: {reason}", markup=False)
 
 
 @app.command("probe")

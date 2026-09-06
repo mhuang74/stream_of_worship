@@ -417,3 +417,59 @@ class TestSubmitLrcForSongHelper:
 
         assert status == "skipped_no_lyrics"
         stubs["analysis_client"].submit_lrc.assert_not_called()
+
+    def test_no_lyrics_records_skip_in_results(self, stubs):
+        song_id = "s1"
+        rec = _make_recording(song_id)
+        stubs["db_client"].get_recording_by_song_id.return_value = rec
+        song = _make_song(song_id)
+        song.lyrics_raw = None
+        stubs["db_client"].get_song.return_value = song
+
+        active: dict = {}
+        attempted: set = set()
+        results: dict = {song_id: {}}
+
+        status = _submit_lrc_for_song(
+            song_id,
+            stubs["db_client"],
+            stubs["analysis_client"],
+            stubs["r2_client"],
+            force=False,
+            stale_after_minutes=120,
+            console=Console(quiet=True),
+            results=results,
+            active_lrc_jobs=active,
+            lrc_attempted=attempted,
+            _add_manifest_entry=lambda *a, **k: None,
+        )
+
+        assert status == "skipped_no_lyrics"
+        assert results[song_id]["lrc"] == "skipped_no_lyrics"
+        stubs["analysis_client"].submit_lrc.assert_not_called()
+
+    def test_no_recording_records_skip_in_results(self, stubs):
+        song_id = "s1"
+        stubs["db_client"].get_recording_by_song_id.return_value = None
+
+        active: dict = {}
+        attempted: set = set()
+        results: dict = {song_id: {}}
+
+        status = _submit_lrc_for_song(
+            song_id,
+            stubs["db_client"],
+            stubs["analysis_client"],
+            stubs["r2_client"],
+            force=False,
+            stale_after_minutes=120,
+            console=Console(quiet=True),
+            results=results,
+            active_lrc_jobs=active,
+            lrc_attempted=attempted,
+            _add_manifest_entry=lambda *a, **k: None,
+        )
+
+        assert status == "skipped_no_recording"
+        assert results[song_id]["lrc"] == "skipped_no_recording"
+        stubs["analysis_client"].submit_lrc.assert_not_called()
