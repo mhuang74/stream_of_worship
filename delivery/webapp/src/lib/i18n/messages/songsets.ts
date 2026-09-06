@@ -250,8 +250,8 @@ export const songsetsBundle = bundle({
 
     // Badges / alerts
     "songsets.badge.offline": "離線",
-    "songsets.alert.artifactsStale": "產物已過時",
-    "songsets.alert.staleDescription": "詩歌自上次渲染後已修改。",
+    "songsets.alert.artifactsStale": "影片可能需更新",
+    "songsets.alert.staleDescription": "詩歌集自上次渲染後已修改。",
     "songsets.alert.renderFailed": "渲染失敗",
     "songsets.markedLines": "行已標記",
     "songsets.markedLinesHint": "在桌面版開啟以編輯文字",
