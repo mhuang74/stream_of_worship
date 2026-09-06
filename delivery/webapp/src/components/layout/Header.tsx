@@ -100,8 +100,14 @@ export function Header() {
           ) : (
             <>
               <Link
+                href="/about"
+                className="lg:hidden text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                {t("nav.about")}
+              </Link>
+              <Link
                 href="/login"
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "hidden lg:inline-flex")}
               >
                 {t("auth.signIn.submit")}
               </Link>

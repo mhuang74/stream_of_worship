@@ -16,7 +16,6 @@ export function BottomNav() {
     { href: "/", key: "nav.dashboard" as const },
     { href: "/songsets", key: "nav.songsets" as const },
     { href: "/favorites", key: "nav.favorites" as const },
-    ...(user ? [] : [{ href: "/about", key: "nav.about" as const }]),
   ];
 
   if (
@@ -24,6 +23,9 @@ export function BottomNav() {
     pathname?.startsWith("/share/") ||
     isProjectionRoute(pathname)
   ) {
+    return null;
+  }
+  if (!user) {
     return null;
   }
 
