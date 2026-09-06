@@ -4,9 +4,20 @@ import { LocaleProvider } from "@/contexts/LocaleContext";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
 const mockPathname = vi.hoisted(() => vi.fn(() => "/songsets"));
+const mockSession = vi.hoisted(() =>
+  vi.fn(() => ({
+    user: { id: 1, name: "Michael", email: "m@example.com" },
+  }))
+);
 
 vi.mock("next/navigation", () => ({
   usePathname: mockPathname,
+}));
+
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: mockSession(), isPending: false }),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 }));
 
 function renderNav(initialLocale: "en" | "zh-Hant" = "en") {
@@ -20,6 +31,9 @@ function renderNav(initialLocale: "en" | "zh-Hant" = "en") {
 describe("BottomNav", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/songsets");
+    mockSession.mockReturnValue({
+      user: { id: 1, name: "Michael", email: "m@example.com" },
+    });
   });
 
   it("renders navigation links", () => {
@@ -52,5 +66,16 @@ describe("BottomNav", () => {
     renderNav();
 
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
+  it("renders About link when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderNav();
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
+  });
+
+  it("does not render About link when signed in", () => {
+    renderNav();
+    expect(screen.queryByRole("link", { name: "About" })).not.toBeInTheDocument();
   });
 });
