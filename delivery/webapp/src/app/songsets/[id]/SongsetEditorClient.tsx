@@ -6,7 +6,6 @@ import dynamic from "next/dynamic";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
-import { ThemeLabel, toSongTheme } from "@/components/songset/ThemeLabel";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
@@ -363,6 +362,27 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     [songsetId, t]
   );
 
+  // Handle name update (rename)
+  const handleUpdateName = useCallback(
+    async (name: string) => {
+      const response = await fetch(`/api/songsets/${songsetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      if (!response.ok) {
+        throw new Error(t("songsets.error.renameFailed"));
+      }
+
+      // Update local state
+      setSongset((prev) =>
+        prev ? { ...prev, name } : null
+      );
+    },
+    [songsetId, t]
+  );
+
   // Handle duplicate
   const handleDuplicate = useCallback(async () => {
     const response = await fetch(`/api/songsets/${songsetId}/duplicate`, {
@@ -527,19 +547,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       </div>
     );
   }
-
-  const themes = [...new Set(items.map((i) => i.recording?.theme).filter(Boolean))] as string[];
-
   return (
     <>
-      {themes.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          {themes.map((theme) => {
-            const safeTheme = toSongTheme(theme);
-            return safeTheme ? <ThemeLabel key={theme} theme={safeTheme} /> : null;
-          })}
-        </div>
-      )}
       <SongsetEditor
         songset={songset}
         items={items}
@@ -550,6 +559,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         onPlay={handlePlay}
         onRetry={handleRetry}
         onUpdateDescription={handleUpdateDescription}
+        onRename={handleUpdateName}
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}
         onShare={handleShare}

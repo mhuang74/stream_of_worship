@@ -29,6 +29,7 @@ vi.mock("@/lib/r2/public-url", () => ({
 
 vi.mock("sonner", () => ({
   toast: {
+    success: vi.fn(),
     error: vi.fn(),
   },
 }));
@@ -108,6 +109,7 @@ describe("SongsetEditor", () => {
     onPlay: vi.fn(),
     onRetry: vi.fn(),
     onUpdateDescription: vi.fn().mockResolvedValue(undefined),
+    onRename: vi.fn().mockResolvedValue(undefined),
     onDuplicate: vi.fn().mockResolvedValue(undefined),
     onDelete: vi.fn().mockResolvedValue(undefined),
     onShare: vi.fn(),
@@ -258,6 +260,75 @@ describe("SongsetEditor", () => {
         expect(screen.getByRole("dialog")).toBeInTheDocument();
         expect(screen.getByText(/Delete Songset/i)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("rename", () => {
+    it("opens rename dialog with prefilled name when rename menu item clicked", async () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^rename$/i }));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(screen.getByText(/Rename Songset/i)).toBeInTheDocument();
+      });
+      expect(screen.getByLabelText(/^name$/i)).toHaveValue("Sunday Worship");
+    });
+
+    it("calls onRename with trimmed name and closes the dialog", async () => {
+      const onRename = vi.fn().mockResolvedValue(undefined);
+      renderEditor({ onRename });
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^rename$/i }));
+      });
+
+      const nameInput = screen.getByLabelText(/^name$/i);
+      fireEvent.change(nameInput, { target: { value: "  New Name  " } });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      await waitFor(() => {
+        expect(onRename).toHaveBeenCalledWith("New Name");
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    it("disables save when the name is blank", async () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^rename$/i }));
+      });
+
+      const nameInput = screen.getByLabelText(/^name$/i);
+      fireEvent.change(nameInput, { target: { value: "   " } });
+
+      expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+    });
+  });
+
+  describe("theme labels", () => {
+    it("renders theme labels inside the header when recordings have themes", () => {
+      const items = mockItems.map((item, index) =>
+        index === 0 ? { ...item, recording: { ...item.recording!, theme: "讚美" } } : item
+      );
+      renderEditor({ items });
+
+      const labels = screen.getAllByTestId("theme-label");
+      expect(labels.some((label) => label.closest("header") !== null)).toBe(true);
+    });
+
+    it("renders no theme labels when recordings have no themes", () => {
+      renderEditor();
+      expect(screen.queryByTestId("theme-label")).not.toBeInTheDocument();
     });
   });
 

@@ -22,8 +22,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ThemeLabel, toSongTheme } from "./ThemeLabel";
 import { Alert, AlertDescription, AlertTitle, AlertAction } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -72,6 +74,7 @@ export interface SongsetEditorProps {
   onPlay: () => void;
   onRetry: () => void;
   onUpdateDescription: (description: string) => Promise<void>;
+  onRename: (name: string) => Promise<void>;
   onDuplicate: () => Promise<void>;
   onDelete: () => Promise<void>;
   onShare: () => void;
@@ -93,6 +96,7 @@ export function SongsetEditor({
   onRender,
   onPlay,
   onUpdateDescription,
+  onRename,
   onDuplicate,
   onDelete,
   onShare,
@@ -113,6 +117,9 @@ export function SongsetEditor({
   const [selectedTransitionItem, setSelectedTransitionItem] = useState<SongListItem | null>(null);
   const [descriptionValue, setDescriptionValue] = useState(songset.description || "");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [isSavingName, setIsSavingName] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavoriteToggle();
@@ -143,6 +150,7 @@ export function SongsetEditor({
     0
   );
   const isDurationOverLimit = totalDurationSeconds > SONGSET_MAX_DURATION_SECONDS;
+  const themes = [...new Set(items.map((i) => i.recording?.theme).filter(Boolean))] as string[];
 
   // Handle back navigation
   const handleBack = () => {
@@ -206,6 +214,20 @@ export function SongsetEditor({
       toast.error(t("songsets.error.updateDescriptionFailed"));
     } finally {
       setIsSavingDescription(false);
+    }
+  };
+
+  // Handle rename save
+  const handleRename = async () => {
+    setIsSavingName(true);
+    try {
+      await onRename(renameValue.trim());
+      setIsRenameOpen(false);
+      toast.success(t("songsets.toast.renamed"));
+    } catch {
+      toast.error(t("songsets.error.renameFailed"));
+    } finally {
+      setIsSavingName(false);
     }
   };
 
@@ -278,6 +300,14 @@ export function SongsetEditor({
 
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-lg truncate">{songset.name}</h1>
+            {themes.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 mt-1">
+                {themes.map((theme) => {
+                  const safeTheme = toSongTheme(theme);
+                  return safeTheme ? <ThemeLabel key={theme} theme={safeTheme} /> : null;
+                })}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               {items.length} {t(items.length === 1 ? "songsets.unit.song" : "songsets.unit.songs")}
               {isDurationOverLimit && (
@@ -312,6 +342,15 @@ export function SongsetEditor({
                 {t("songsets.action.play")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  setRenameValue(songset.name);
+                  setIsRenameOpen(true);
+                }}
+              >
+                <Edit className="size-4 mr-2" />
+                {t("songsets.action.rename")}
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setIsEditDescriptionOpen(true)}>
                 <Edit className="size-4 mr-2" />
                 {t("songsets.action.editDescription")}
@@ -513,6 +552,52 @@ export function SongsetEditor({
               disabled={isSavingDescription}
             >
               {isSavingDescription ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  {t("songsets.loading.saving")}
+                </>
+              ) : (
+                t("songsets.action.save")
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("songsets.dialog.renameTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("songsets.dialog.renameDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="rename">{t("songsets.label.name")}</Label>
+              <Input
+                id="rename"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                placeholder={t("songsets.placeholder.songsetName")}
+                disabled={isSavingName}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsRenameOpen(false)}
+              disabled={isSavingName}
+            >
+              {t("songsets.action.cancel")}
+            </Button>
+            <Button
+              onClick={handleRename}
+              disabled={isSavingName || !renameValue.trim()}
+            >
+              {isSavingName ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
                   {t("songsets.loading.saving")}
