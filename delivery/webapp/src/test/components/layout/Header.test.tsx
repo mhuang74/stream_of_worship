@@ -78,17 +78,13 @@ describe("Header", () => {
   it("renders About link when signed out", () => {
     mockSession.mockReturnValue(null);
     renderHeader();
-    const abouts = screen.getAllByRole("link", { name: "About" });
-    expect(abouts).toHaveLength(2);
-    abouts.forEach((a) => expect(a).toHaveAttribute("href", "/about"));
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
   });
 
   it("renders Traditional Chinese About link in zh-Hant when signed out", () => {
     mockSession.mockReturnValue(null);
     renderHeader("zh-Hant");
-    const abouts = screen.getAllByRole("link", { name: "關於" });
-    expect(abouts).toHaveLength(2);
-    abouts.forEach((a) => expect(a).toHaveAttribute("href", "/about"));
+    expect(screen.getByRole("link", { name: "關於" })).toHaveAttribute("href", "/about");
   });
 
   it("renders Sign in link when signed out", () => {

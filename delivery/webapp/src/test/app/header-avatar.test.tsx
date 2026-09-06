@@ -87,7 +87,6 @@ describe("Header avatar dropdown", () => {
       "href",
       "/register"
     );
-    const abouts = screen.getAllByRole("link", { name: "About" });
-    abouts.forEach((a) => expect(a).toHaveAttribute("href", "/about"));
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
   });
 });
