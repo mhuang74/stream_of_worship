@@ -6670,7 +6670,10 @@ def batch(
             download_concurrency=download_concurrency,
             config=config,
         )
-        _print_stats(results, db_client, console, format, selected_steps=manifest_data.get("selected_steps", []))
+        _print_stats(
+            results, db_client, console, format,
+            selected_steps=manifest_data.get("selected_steps", []),
+        )
 
         # Exit nonzero if any step has a failure
         failed_any = any(v == "failed" for r in results.values() for v in r.values())
@@ -9821,9 +9824,13 @@ def _print_stats(
         if r.get("analyze") == "failed":
             reasons.append(("analyze", f"failed — {r.get('analyze_error') or 'unknown error'}"))
         if r.get("embedding") == "failed":
-            reasons.append(("embedding", f"failed — {r.get('embedding_error') or 'unknown error'}"))
+            reasons.append(
+                ("embedding", f"failed — {r.get('embedding_error') or 'unknown error'}")
+            )
         if r.get("components") == "failed":
-            reasons.append(("components", f"failed — {r.get('components_error') or 'unknown error'}"))
+            reasons.append(
+                ("components", f"failed — {r.get('components_error') or 'unknown error'}")
+            )
         elif r.get("components") in ("skipped_no_sections", "skipped_no_recording"):
             label = (
                 "no sections or LRC — run 'audio lrc' first"
