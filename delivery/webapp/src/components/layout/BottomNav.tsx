@@ -26,7 +26,21 @@ export function BottomNav() {
     return null;
   }
   if (!user) {
-    return null;
+    return (
+      <nav
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background"
+        aria-label={t("nav.about")}
+      >
+        <div className="flex h-16 items-center justify-center">
+          <Link
+            href="/about"
+            className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            {t("nav.about")}
+          </Link>
+        </div>
+      </nav>
+    );
   }
 
   return (

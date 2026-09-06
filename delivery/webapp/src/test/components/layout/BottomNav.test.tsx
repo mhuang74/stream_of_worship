@@ -68,10 +68,14 @@ describe("BottomNav", () => {
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
-  it("does not render navigation when signed out", () => {
+  it("renders About link when signed out", () => {
     mockSession.mockReturnValue(null);
     renderNav();
-    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    const aboutLink = screen.getByRole("link", { name: "About" });
+    expect(aboutLink).toHaveAttribute("href", "/about");
+    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Songsets" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Favorites" })).not.toBeInTheDocument();
   });
 
   it("renders Dashboard, Songsets, Favorites without About when signed in", () => {
