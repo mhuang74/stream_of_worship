@@ -30,7 +30,7 @@ export function BottomNav() {
     return (
       <nav
         className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background"
-        aria-label={t("nav.about")}
+        aria-label={t("nav.main.ariaLabel")}
       >
         <div className="flex h-16 items-center justify-between px-4">
           <Link
