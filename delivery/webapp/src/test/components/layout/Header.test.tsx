@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { Header } from "@/components/layout/Header";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { beforeEach, describe, it, expect, vi } from "vitest";
@@ -9,10 +9,11 @@ const mockSession = vi.hoisted(() =>
     user: { id: 1, name: "Michael", email: "m@example.com" },
   }))
 );
+const mockRefresh = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   usePathname: mockPathname,
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: mockRefresh }),
 }));
 
 vi.mock("@/lib/auth-client", () => ({
@@ -92,4 +93,31 @@ describe("Header", () => {
     renderHeader();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
   });
+
+  it("renders the language toggle in the header when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderHeader();
+    expect(screen.getByRole("button", { name: "English" })).toBeInTheDocument();
+  });
+
+  it("renders the Traditional Chinese language toggle in zh-Hant when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderHeader("zh-Hant");
+    expect(screen.getByRole("button", { name: "繁體中文" })).toBeInTheDocument();
+  });
+
+  it("does not render a language toggle in the header when signed in", () => {
+    renderHeader();
+    expect(screen.queryByRole("button", { name: "English" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "繁體中文" })).not.toBeInTheDocument();
+  });
+  it("refreshes server content and persists the cookie when the language is switched", () => {
+    mockSession.mockReturnValue(null);
+    renderHeader();
+    mockRefresh.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "繁體中文" }));
+    expect(document.cookie).toContain("sow_locale=zh-Hant");
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
 });

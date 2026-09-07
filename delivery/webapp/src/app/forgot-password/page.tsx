@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AuthLanguageSwitcher } from "@/components/auth/AuthLanguageSwitcher";
+import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
 import { isValidEmail } from "@/lib/validation";
 
@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
           <div className="flex justify-end">
-            <AuthLanguageSwitcher />
+            <LanguageSwitcher />
           </div>
           <CardTitle className="text-2xl">{t("auth.forgotPassword.title")}</CardTitle>
           <CardDescription>{t("auth.forgotPassword.subtitle")}</CardDescription>

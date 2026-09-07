@@ -12,6 +12,7 @@ const mockSession = vi.hoisted(() =>
 
 vi.mock("next/navigation", () => ({
   usePathname: mockPathname,
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
 vi.mock("@/lib/auth-client", () => ({
@@ -85,4 +86,24 @@ describe("BottomNav", () => {
     expect(screen.getByRole("link", { name: "Favorites" })).toHaveAttribute("href", "/favorites");
     expect(screen.queryByRole("link", { name: "About" })).not.toBeInTheDocument();
   });
+
+  it("renders the language toggle alongside About when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderNav();
+    expect(screen.getByRole("link", { name: "About" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "English" })).toBeInTheDocument();
+  });
+
+  it("renders the Traditional Chinese language toggle in zh-Hant when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderNav("zh-Hant");
+    expect(screen.getByRole("button", { name: "繁體中文" })).toBeInTheDocument();
+  });
+
+  it("does not render a language toggle when signed in", () => {
+    renderNav();
+    expect(screen.queryByRole("button", { name: "English" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "繁體中文" })).not.toBeInTheDocument();
+  });
+
 });
