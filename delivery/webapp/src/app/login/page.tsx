@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
 import { useResendVerification } from "@/hooks/useResendVerification";
 import { persistLocale } from "@/lib/persist-locale";
@@ -89,9 +88,6 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <div className="flex justify-end">
-            <LanguageSwitcher />
-          </div>
           <CardTitle className="text-2xl">{t("auth.signIn.title")}</CardTitle>
           <CardDescription>{t("auth.signIn.subtitle")}</CardDescription>
         </CardHeader>
