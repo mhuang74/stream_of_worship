@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { useLocale } from "@/hooks/useLocale";
 import { MIN_PASSWORD_LENGTH } from "@/lib/validation";
 
@@ -77,9 +76,6 @@ function ResetPasswordForm() {
     return (
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <div className="flex justify-end">
-            <LanguageSwitcher />
-          </div>
           <CardTitle className="text-2xl">{t("auth.resetPassword.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -99,9 +95,6 @@ function ResetPasswordForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader className="space-y-1">
-        <div className="flex justify-end">
-          <LanguageSwitcher />
-        </div>
         <CardTitle className="text-2xl">{t("auth.resetPassword.title")}</CardTitle>
         <CardDescription>{t("auth.resetPassword.subtitle")}</CardDescription>
       </CardHeader>

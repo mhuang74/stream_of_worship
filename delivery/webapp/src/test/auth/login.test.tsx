@@ -263,31 +263,4 @@ describe("LoginPage", () => {
     });
     resolve!({ data: { user: { id: "1" } }, error: null });
   });
-
-  it("switches to zh-Hant via the language switcher", async () => {
-    renderWithLocale(<LoginPage />);
-    await userEvent.click(screen.getByRole("button", { name: "繁體中文" }));
-    expect(
-      screen.getByText("登入", { selector: '[data-slot="card-title"]' })
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("密碼")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "繁體中文" })).toHaveAttribute(
-      "aria-current",
-      "true"
-    );
-    expect(document.cookie).toContain("sow_locale=zh-Hant");
-  });
-
-  it("switches back to English and rewrites the cookie", async () => {
-    renderWithLocale(<LoginPage />);
-    await userEvent.click(screen.getByRole("button", { name: "繁體中文" }));
-    expect(document.cookie).toContain("sow_locale=zh-Hant");
-    await userEvent.click(screen.getByRole("button", { name: "English" }));
-    expect(screen.getByText("Sign in", { selector: '[data-slot="card-title"]' })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "English" })).toHaveAttribute(
-      "aria-current",
-      "true"
-    );
-    expect(document.cookie).toContain("sow_locale=en");
-  });
 });
