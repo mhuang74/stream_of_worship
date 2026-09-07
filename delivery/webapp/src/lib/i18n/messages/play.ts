@@ -93,7 +93,7 @@ export const playBundle = bundle({
     "controller.tapToResume": "Tap to resume at",
     "controller.iosTitle": "iOS Playback Tips",
     "controller.iosDesc":
-      "Tap the screen to show controls. Tap the fullscreen button to enter iOS fullscreen. Open the lyric list and tap a line to jump to that moment.",
+      "Tap the screen to show controls. Open the lyric list and tap a line to jump to that moment. Fullscreen video uses the iOS system player — lyrics and playback controls are only available outside fullscreen (tap Done to exit).",
     "controller.dismissInfo": "Dismiss info",
     "controller.keyboardShortcuts": "Keyboard shortcuts",
     "controller.kbSpacePlayPause": "Play/Pause",
@@ -190,7 +190,7 @@ export const playBundle = bundle({
     "controller.resumeStale": "從電視位置恢復可能已過時 — 輕觸以恢復至",
     "controller.tapToResume": "輕觸以恢復至",
     "controller.iosTitle": "iOS 播放提示",
-    "controller.iosDesc": "輕觸螢幕顯示控制列。點擊全螢幕按鈕以進入 iOS 全螢幕。開啟歌詞列表並輕觸歌詞行以跳轉到該時間點。",
+    "controller.iosDesc": "輕觸螢幕顯示控制列。開啟歌詞列表並輕觸歌詞行以跳轉到該時間點。全螢幕影片使用 iOS 系統播放器 — 歌詞與播放控制僅在全螢幕外可用（點擊「完成」離開）。",
     "controller.dismissInfo": "關閉資訊",
     "controller.keyboardShortcuts": "鍵盤快速鍵",
     "controller.kbSpacePlayPause": "播放/暫停",
