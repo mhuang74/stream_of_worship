@@ -1,6 +1,11 @@
-"use client";
-
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PlaybackControls } from "./PlaybackControls";
@@ -71,10 +76,33 @@ const IOS_INFO_KEY = "sow-ios-info-shown";
 
 // iOS WebKit exposes native fullscreen on <video> (AVPlayer UI) even where the
 // document Fullscreen API is unavailable (all WKWebView browsers, incl. Chrome
-// iOS). Capability-detected at mount; see handleReenterFullscreen.
+// iOS). Capability-detected via useSyncExternalStore; see
+// canDocumentFullscreenSnapshot / canVideoFullscreenSnapshot and
+// handleReenterFullscreen.
 type VideoElementWithIOSFullscreen = HTMLVideoElement & {
   webkitEnterFullscreen?: () => void;
 };
+
+// These fullscreen capabilities never change for a browser session, so there
+// is no store to subscribe to — the subscribe function is a no-op.
+const subscribeCapabilitiesNever = () => () => {};
+
+function canDocumentFullscreenSnapshot(): boolean {
+  return typeof document.documentElement?.requestFullscreen === "function";
+}
+
+function canVideoFullscreenSnapshot(): boolean {
+  // Capability lives on the prototype in WebKit, so this is instance- and
+  // mount-timing independent — a client-side navigation to the play page
+  // (no <video> in the DOM yet at first render) still detects it. The
+  // prototype lookup needs the undefined guard for TS (webkitEnterFullscreen
+  // is an optional member of VideoElementWithIOSFullscreen).
+  return (
+    typeof HTMLVideoElement !== "undefined" &&
+    typeof (HTMLVideoElement.prototype as VideoElementWithIOSFullscreen)
+      .webkitEnterFullscreen === "function"
+  );
+}
 
 const SEEK_DEBOUNCE_MS = 200;
 const BUFFERING_ACTIONABLE_MS = 15_000;
@@ -127,8 +155,21 @@ export function ControllerPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
-  const [canDocumentFullscreen, setCanDocumentFullscreen] = useState(false);
-  const [canVideoFullscreen, setCanVideoFullscreen] = useState(false);
+  // Fullscreen capability detection (SSR-safe): useSyncExternalStore with a
+  // `false` server snapshot — SSR renders no fullscreen button, the client
+  // snapshot supplies the real answer immediately after hydration with no
+  // setState-in-effect cascading render. Capabilities never change during a
+  // browser session, so there is no store to subscribe to.
+  const canDocumentFullscreen = useSyncExternalStore(
+    subscribeCapabilitiesNever,
+    canDocumentFullscreenSnapshot,
+    () => false
+  );
+  const canVideoFullscreen = useSyncExternalStore(
+    subscribeCapabilitiesNever,
+    canVideoFullscreenSnapshot,
+    () => false
+  );
   const [isMuted, setIsMuted] = useState(false);
   const [localSongIndex, setLocalSongIndex] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -687,16 +728,6 @@ export function ControllerPlayer({
       }
     };
   }, [autoFullscreen]);
-  // Capability detection (SSR-safe: set in an effect, not render). The document
-  // Fullscreen API is unavailable in all iOS WKWebView browsers; the <video>
-  // element's native WebKit fullscreen is the only in-page escape hatch there.
-  useEffect(() => {
-    setCanDocumentFullscreen(
-      typeof document.documentElement.requestFullscreen === "function"
-    );
-    const video = videoRef.current as VideoElementWithIOSFullscreen | null;
-    setCanVideoFullscreen(typeof video?.webkitEnterFullscreen === "function");
-  }, []);
 
   // Mute (+ pause) local video when presentation is active (audio plays on the
   // receiver). Composes with the disconnect→resume effect below.
