@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { LogOut, Settings, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -108,6 +109,9 @@ export function Header() {
               <Link href="/register" className={cn(buttonVariants({ size: "sm" }))}>
                 {t("auth.register.submit")}
               </Link>
+              <div className="hidden lg:flex ml-2 items-center">
+                <LanguageSwitcher />
+              </div>
             </>
           )}
         </div>
