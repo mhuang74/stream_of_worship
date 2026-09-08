@@ -186,6 +186,19 @@
       "source_location": "L16"
     },
     {
+      "id": "delivery_webapp_src_components_play_controllerplayer_controllerplayerprops",
+      "label": "ControllerPlayerProps",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 107,
+      "community_name": "[id]/play/controller/page.tsx",
+      "file_type": "code",
+      "norm_label": "controllerplayerprops",
+      "source_file": "delivery/webapp/src/components/play/ControllerPlayer.tsx",
+      "source_location": "L42"
+    },
+    {
       "id": "delivery_webapp_src_components_play_lyricjumplist_lyricjumplistprops",
       "label": "LyricJumpListProps",
       "_callable": true,
@@ -1016,19 +1029,6 @@
       "norm_label": "usecasttransportoptions",
       "source_file": "delivery/webapp/src/hooks/useCast.ts",
       "source_location": "L76"
-    },
-    {
-      "id": "delivery_webapp_src_lib_cast_loader_window",
-      "label": "Window",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "window",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L12"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_player_media3playercontroller_media3playercontroller",
@@ -2630,19 +2630,6 @@
       "source_location": "L45"
     },
     {
-      "id": "delivery_webapp_src_components_play_controllerplayer_controllerplayerprops",
-      "label": "ControllerPlayerProps",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 195,
-      "community_name": "controller-page.test.tsx",
-      "file_type": "code",
-      "norm_label": "controllerplayerprops",
-      "source_file": "delivery/webapp/src/components/play/ControllerPlayer.tsx",
-      "source_location": "L42"
-    },
-    {
       "id": "delivery_webapp_src_hooks_usecast_casttransportresult",
       "label": "CastTransportResult",
       "_callable": true,
@@ -4034,19 +4021,6 @@
       "source_location": "L30"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem",
-      "label": "SongsetItem",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 255,
-      "community_name": "SongsetItem",
-      "file_type": "code",
-      "norm_label": "songsetitem",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L84"
-    },
-    {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_playlistmetadata",
       "label": "PlaylistMetadata",
       "_callable": true,
@@ -4084,6 +4058,19 @@
       "norm_label": "missingreferenceerror",
       "source_file": "ops/admin-cli/src/stream_of_worship/db/app/songset_client.py",
       "source_location": "L23"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem",
+      "label": "SongsetItem",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": "songsetitem",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L84"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_notownererror",
@@ -6478,30 +6465,17 @@
       "source_location": "L216"
     },
     {
-      "id": "delivery_webapp_src_components_settings_settingsform_settingsformprops",
-      "label": "SettingsFormProps",
+      "id": "delivery_webapp_src_lib_cast_loader_window",
+      "label": "Window",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community": 416,
+      "community_name": "loader.ts",
       "file_type": "code",
-      "norm_label": "settingsformprops",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L39"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_usersettingsdata",
-      "label": "UserSettingsData",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "usersettingsdata",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L26"
+      "norm_label": "window",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L12"
     },
     {
       "id": "delivery_webapp_src_app_songsets_id_play_page_renderjobdata",
@@ -7217,6 +7191,32 @@
       "norm_label": "statcardprops",
       "source_file": "delivery/webapp/src/components/dashboard/StatCard.tsx",
       "source_location": "L5"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_settingsformprops",
+      "label": "SettingsFormProps",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "settingsformprops",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L39"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_usersettingsdata",
+      "label": "UserSettingsData",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "usersettingsdata",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L26"
     },
     {
       "id": "delivery_webapp_src_contexts_localecontext_localecontextvalue",
@@ -16152,42 +16152,6 @@
       "source_location": "L301"
     },
     {
-      "id": "delivery_webapp_src_lib_cast_loader_bindglobalcallback",
-      "label": "bindGlobalCallback()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "bindglobalcallback()",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L139"
-    },
-    {
-      "id": "delivery_webapp_src_lib_cast_loader_dispatchsettlement",
-      "label": "dispatchSettlement()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "dispatchsettlement()",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L89"
-    },
-    {
-      "id": "delivery_webapp_src_lib_cast_loader_injectscriptonce",
-      "label": "injectScriptOnce()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "injectscriptonce()",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L120"
-    },
-    {
       "id": "delivery_webapp_src_lib_cast_loader_iscastsdksupported",
       "label": "isCastSdkSupported()",
       "_callable": true,
@@ -16198,42 +16162,6 @@
       "norm_label": "iscastsdksupported()",
       "source_file": "delivery/webapp/src/lib/cast/loader.ts",
       "source_location": "L232"
-    },
-    {
-      "id": "delivery_webapp_src_lib_cast_loader_loadcastsdk",
-      "label": "loadCastSdk()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "loadcastsdk()",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L172"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_cast_loader_test_freshloader",
-      "label": "freshLoader()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "freshloader()",
-      "source_file": "delivery/webapp/src/test/lib/cast/loader.test.ts",
-      "source_location": "L8"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_cast_loader_test_resetwindow",
-      "label": "resetWindow()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "resetwindow()",
-      "source_file": "delivery/webapp/src/test/lib/cast/loader.test.ts",
-      "source_location": "L15"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_core_design_sowtheme_sowtheme",
@@ -17741,7 +17669,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "log()",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -17753,11 +17681,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_all_transitions()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L993"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
+      "label": "generate_transition_filename()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_transition_filename()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_load_all_song_sections",
@@ -17765,7 +17705,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "load_all_song_sections()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17777,11 +17717,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1424"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
+      "label": "parse_args()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "parse_args()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1366"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_print_summary_report",
@@ -17789,7 +17741,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "print_summary_report()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17801,7 +17753,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "save_summary_csv()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17813,7 +17765,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "save_transitions_index()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17825,7 +17777,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "select_transition_candidates()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -27768,6 +27720,18 @@
       "source_location": "L173"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_app_sowapp_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 216,
+      "community_name": "ExportService",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
+      "source_location": "L47"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_screens_export_progress_exportprogressscreen_action_back",
       "label": ".action_back()",
       "_callable": true,
@@ -29081,7 +29045,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_all_variants()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29093,7 +29057,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_drum_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29105,7 +29069,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_medium_silence_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29117,23 +29081,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_medium_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L202"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
-      "label": "generate_transition_filename()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_transition_filename()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_generate_vocal_fade_transition",
@@ -29141,7 +29093,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_vocal_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29153,23 +29105,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "load_stems_for_section()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L73"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
-      "label": "parse_args()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "parse_args()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1366"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_share_shareviewmodel_shareviewmodel_createshare",
@@ -30696,54 +30636,6 @@
       "source_location": "L18"
     },
     {
-      "id": "lab_sow_app_src_sow_lab_app_logging_config_rotate_log_if_needed",
-      "label": "_rotate_log_if_needed()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "_rotate_log_if_needed()",
-      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
-      "source_location": "L10"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_logging_config_setup_logging",
-      "label": "setup_logging()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "setup_logging()",
-      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
-      "source_location": "L43"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_check_database_connection",
-      "label": "_check_database_connection()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "_check_database_connection()",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L83"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_check_first_run",
-      "label": "_check_first_run()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "_check_first_run()",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L59"
-    },
-    {
       "id": "lab_sow_app_src_sow_lab_app_main_config",
       "label": "config()",
       "_callable": true,
@@ -30754,30 +30646,6 @@
       "norm_label": "config()",
       "source_file": "lab/sow-app/src/sow_lab_app/main.py",
       "source_location": "L407"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_run",
-      "label": "run()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "run()",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L164"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_show_welcome",
-      "label": "_show_welcome()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "_show_welcome()",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L69"
     },
     {
       "id": "delivery_webapp_src_components_lyrics_lyricstimingeditor_buildlrc",
@@ -31656,52 +31524,148 @@
       "source_location": "L85"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songset_to_dict",
-      "label": ".to_dict()",
+      "id": "delivery_webapp_src_app_layout_rootlayout",
+      "label": "RootLayout()",
       "_callable": true,
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
+      "community_name": "Header.tsx",
       "file_type": "code",
-      "norm_label": ".to_dict()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L57"
+      "norm_label": "rootlayout()",
+      "source_file": "delivery/webapp/src/app/layout.tsx",
+      "source_location": "L32"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem_display_key",
-      "label": ".display_key()",
+      "id": "delivery_webapp_src_components_layout_bottomnav_bottomnav",
+      "label": "BottomNav()",
       "_callable": true,
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
+      "community_name": "Header.tsx",
       "file_type": "code",
-      "norm_label": ".display_key()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L246"
+      "norm_label": "bottomnav()",
+      "source_file": "delivery/webapp/src/components/layout/BottomNav.tsx",
+      "source_location": "L10"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem_formatted_duration",
-      "label": ".formatted_duration()",
+      "id": "delivery_webapp_src_components_layout_header_header",
+      "label": "Header()",
       "_callable": true,
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
+      "community_name": "Header.tsx",
       "file_type": "code",
-      "norm_label": ".formatted_duration()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L233"
+      "norm_label": "header()",
+      "source_file": "delivery/webapp/src/components/layout/Header.tsx",
+      "source_location": "L22"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem_to_dict",
-      "label": ".to_dict()",
+      "id": "delivery_webapp_src_components_layout_languageswitcher_languageswitcher",
+      "label": "LanguageSwitcher()",
       "_callable": true,
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
+      "community_name": "Header.tsx",
       "file_type": "code",
-      "norm_label": ".to_dict()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L182"
+      "norm_label": "languageswitcher()",
+      "source_file": "delivery/webapp/src/components/layout/LanguageSwitcher.tsx",
+      "source_location": "L14"
+    },
+    {
+      "id": "delivery_webapp_src_components_layout_languageswitcher_languageswitcher_switchto",
+      "label": "switchTo()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "switchto()",
+      "source_file": "delivery/webapp/src/components/layout/LanguageSwitcher.tsx",
+      "source_location": "L32"
+    },
+    {
+      "id": "delivery_webapp_src_components_ui_avatar_avatar",
+      "label": "Avatar()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "avatar()",
+      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
+      "source_location": "L23"
+    },
+    {
+      "id": "delivery_webapp_src_components_ui_avatar_avatarfallback",
+      "label": "AvatarFallback()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "avatarfallback()",
+      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
+      "source_location": "L44"
+    },
+    {
+      "id": "delivery_webapp_src_lib_i18n_server_resolveuserlocale",
+      "label": "resolveUserLocale()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "resolveuserlocale()",
+      "source_file": "delivery/webapp/src/lib/i18n/server.ts",
+      "source_location": "L25"
+    },
+    {
+      "id": "delivery_webapp_src_lib_routes_isprojectionroute",
+      "label": "isProjectionRoute()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "isprojectionroute()",
+      "source_file": "delivery/webapp/src/lib/routes.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test_renderheader",
+      "label": "renderHeader()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "renderheader()",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L30"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_bottomnav_test_rendernav",
+      "label": "renderNav()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "rendernav()",
+      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
+      "source_location": "L24"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_header_test_renderheader",
+      "label": "renderHeader()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "renderheader()",
+      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
+      "source_location": "L28"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_playlist_post_init",
@@ -32088,6 +32052,18 @@
       "source_location": "L506"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_screens_browse_browsescreen_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "lab/sow-app/src/sow_lab_app/screens/browse.py",
+      "source_location": "L37"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_services_catalog_catalogservice_get_songset_with_items",
       "label": ".get_songset_with_items()",
       "_callable": true,
@@ -32124,6 +32100,42 @@
       "source_location": "L73"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songset_to_dict",
+      "label": ".to_dict()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": ".to_dict()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L57"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem_display_key",
+      "label": ".display_key()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": ".display_key()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L246"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem_formatted_duration",
+      "label": ".formatted_duration()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": ".formatted_duration()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L233"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem_from_row",
       "label": ".from_row()",
       "_callable": true,
@@ -32146,6 +32158,18 @@
       "norm_label": ".generate_id()",
       "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
       "source_location": "L223"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songsetitem_to_dict",
+      "label": ".to_dict()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": ".to_dict()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L182"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_missingreferenceerror_init",
@@ -41244,42 +41268,6 @@
       "source_location": "L448"
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_detect_chinese_script",
-      "label": "detect_chinese_script()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 405,
-      "community_name": "convert",
-      "file_type": "code",
-      "norm_label": "detect_chinese_script()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L290"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_sequential_canonical_snap",
-      "label": "sequential_canonical_snap()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 405,
-      "community_name": "convert",
-      "file_type": "code",
-      "norm_label": "sequential_canonical_snap()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1496"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_verify_asr_quality",
-      "label": "verify_asr_quality()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 405,
-      "community_name": "convert",
-      "file_type": "code",
-      "norm_label": "verify_asr_quality()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1574"
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_results_to_lrc",
       "label": "results_to_lrc()",
       "_callable": true,
@@ -41688,12 +41676,108 @@
       "source_location": "L58"
     },
     {
+      "id": "delivery_webapp_src_lib_cast_loader_bindglobalcallback",
+      "label": "bindGlobalCallback()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "bindglobalcallback()",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L139"
+    },
+    {
+      "id": "delivery_webapp_src_lib_cast_loader_dispatchsettlement",
+      "label": "dispatchSettlement()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "dispatchsettlement()",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L89"
+    },
+    {
+      "id": "delivery_webapp_src_lib_cast_loader_injectscriptonce",
+      "label": "injectScriptOnce()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "injectscriptonce()",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L120"
+    },
+    {
+      "id": "delivery_webapp_src_lib_cast_loader_loadcastsdk",
+      "label": "loadCastSdk()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "loadcastsdk()",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L172"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_cast_loader_test_freshloader",
+      "label": "freshLoader()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "freshloader()",
+      "source_file": "delivery/webapp/src/test/lib/cast/loader.test.ts",
+      "source_location": "L8"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_cast_loader_test_resetwindow",
+      "label": "resetWindow()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "resetwindow()",
+      "source_file": "delivery/webapp/src/test/lib/cast/loader.test.ts",
+      "source_location": "L15"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_compute_overlap_regions",
+      "label": "_compute_overlap_regions()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 417,
+      "community_name": "merge_chunks",
+      "file_type": "code",
+      "norm_label": "_compute_overlap_regions()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L1476"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_merge_chunks",
+      "label": "merge_chunks()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 417,
+      "community_name": "merge_chunks",
+      "file_type": "code",
+      "norm_label": "merge_chunks()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L1406"
+    },
+    {
       "id": "delivery_webapp_src_app_settings_loading_settingsloading",
       "label": "SettingsLoading()",
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settingsloading()",
       "source_file": "delivery/webapp/src/app/settings/loading.tsx",
@@ -41705,7 +41789,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "fetchsettings()",
       "source_file": "delivery/webapp/src/app/settings/page.tsx",
@@ -41717,7 +41801,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settingspage()",
       "source_file": "delivery/webapp/src/app/settings/page.tsx",
@@ -41729,7 +41813,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "handlesave()",
       "source_file": "delivery/webapp/src/app/settings/page.tsx",
@@ -41741,7 +41825,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "loadsettings()",
       "source_file": "delivery/webapp/src/app/settings/page.tsx",
@@ -41753,83 +41837,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "fontpreviewstylesheets()",
       "source_file": "delivery/webapp/src/components/fonts/FontPreviewStylesheets.tsx",
       "source_location": "L3"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_isioslessthan174",
-      "label": "isIOSLessThan174()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "isioslessthan174()",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L67"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_settingsform",
-      "label": "SettingsForm()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "settingsform()",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L78"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_handlereset",
-      "label": "handleReset()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "handlereset()",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L94"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_handlesubmit",
-      "label": "handleSubmit()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "handlesubmit()",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L99"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_update",
-      "label": "update()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "update()",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L85"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_withselectvalue",
-      "label": "withSelectValue()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "withselectvalue()",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L90"
     },
     {
       "id": "delivery_webapp_src_components_settings_settingsskeleton_settingsskeleton",
@@ -41837,7 +41849,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settingsskeleton()",
       "source_file": "delivery/webapp/src/components/settings/SettingsSkeleton.tsx",
@@ -41849,23 +41861,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "mockfetchsettings()",
       "source_file": "delivery/webapp/src/test/app/settings-signout.test.tsx",
       "source_location": "L33"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_settings_settingsform_test_renderform",
-      "label": "renderForm()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "renderform()",
-      "source_file": "delivery/webapp/src/test/components/settings/SettingsForm.test.tsx",
-      "source_location": "L19"
     },
     {
       "id": "delivery_webapp_src_app_songsets_id_play_page_playpage",
@@ -44376,18 +44376,6 @@
       "source_location": "L9"
     },
     {
-      "id": "delivery_webapp_src_app_layout_rootlayout",
-      "label": "RootLayout()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "rootlayout()",
-      "source_file": "delivery/webapp/src/app/layout.tsx",
-      "source_location": "L32"
-    },
-    {
       "id": "delivery_webapp_src_app_page_buildstamp_buildstamp",
       "label": "BuildStamp()",
       "_callable": true,
@@ -44436,52 +44424,76 @@
       "source_location": "L13"
     },
     {
-      "id": "delivery_webapp_src_components_layout_bottomnav_bottomnav",
-      "label": "BottomNav()",
+      "id": "delivery_webapp_src_components_settings_settingsform_isioslessthan174",
+      "label": "isIOSLessThan174()",
       "_callable": true,
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "bottomnav()",
-      "source_file": "delivery/webapp/src/components/layout/BottomNav.tsx",
-      "source_location": "L10"
+      "norm_label": "isioslessthan174()",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L67"
     },
     {
-      "id": "delivery_webapp_src_components_layout_header_header",
-      "label": "Header()",
+      "id": "delivery_webapp_src_components_settings_settingsform_settingsform",
+      "label": "SettingsForm()",
       "_callable": true,
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "header()",
-      "source_file": "delivery/webapp/src/components/layout/Header.tsx",
-      "source_location": "L22"
+      "norm_label": "settingsform()",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L78"
     },
     {
-      "id": "delivery_webapp_src_components_layout_languageswitcher_languageswitcher",
-      "label": "LanguageSwitcher()",
+      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_handlereset",
+      "label": "handleReset()",
       "_callable": true,
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "languageswitcher()",
-      "source_file": "delivery/webapp/src/components/layout/LanguageSwitcher.tsx",
-      "source_location": "L14"
+      "norm_label": "handlereset()",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L94"
     },
     {
-      "id": "delivery_webapp_src_components_layout_languageswitcher_languageswitcher_switchto",
-      "label": "switchTo()",
+      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_handlesubmit",
+      "label": "handleSubmit()",
       "_callable": true,
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "switchto()",
-      "source_file": "delivery/webapp/src/components/layout/LanguageSwitcher.tsx",
-      "source_location": "L32"
+      "norm_label": "handlesubmit()",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L99"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_update",
+      "label": "update()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "update()",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L85"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_settingsform_withselectvalue",
+      "label": "withSelectValue()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "withselectvalue()",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L90"
     },
     {
       "id": "delivery_webapp_src_components_songset_renderstatusbadge_renderstatusbadge",
@@ -44494,30 +44506,6 @@
       "norm_label": "renderstatusbadge()",
       "source_file": "delivery/webapp/src/components/songset/RenderStatusBadge.tsx",
       "source_location": "L63"
-    },
-    {
-      "id": "delivery_webapp_src_components_ui_avatar_avatar",
-      "label": "Avatar()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "avatar()",
-      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
-      "source_location": "L23"
-    },
-    {
-      "id": "delivery_webapp_src_components_ui_avatar_avatarfallback",
-      "label": "AvatarFallback()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "avatarfallback()",
-      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
-      "source_location": "L44"
     },
     {
       "id": "delivery_webapp_src_contexts_localecontext_localeprovider",
@@ -44580,42 +44568,6 @@
       "source_location": "L88"
     },
     {
-      "id": "delivery_webapp_src_lib_i18n_server_resolveuserlocale",
-      "label": "resolveUserLocale()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "resolveuserlocale()",
-      "source_file": "delivery/webapp/src/lib/i18n/server.ts",
-      "source_location": "L25"
-    },
-    {
-      "id": "delivery_webapp_src_lib_routes_isprojectionroute",
-      "label": "isProjectionRoute()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "isprojectionroute()",
-      "source_file": "delivery/webapp/src/lib/routes.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test_renderheader",
-      "label": "renderHeader()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "renderheader()",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L30"
-    },
-    {
       "id": "delivery_webapp_src_test_app_home_homepageclient_test_makesong",
       "label": "makeSong()",
       "_callable": true,
@@ -44640,28 +44592,16 @@
       "source_location": "L52"
     },
     {
-      "id": "delivery_webapp_src_test_components_layout_bottomnav_test_rendernav",
-      "label": "renderNav()",
+      "id": "delivery_webapp_src_test_components_settings_settingsform_test_renderform",
+      "label": "renderForm()",
       "_callable": true,
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "rendernav()",
-      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
-      "source_location": "L24"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_layout_header_test_renderheader",
-      "label": "renderHeader()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "renderheader()",
-      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
-      "source_location": "L28"
+      "norm_label": "renderform()",
+      "source_file": "delivery/webapp/src/test/components/settings/SettingsForm.test.tsx",
+      "source_location": "L19"
     },
     {
       "id": "delivery_webapp_src_test_contexts_localecontext_test_harness",
@@ -45490,18 +45430,6 @@
       "norm_label": "._hide_empty_state()",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/browse.py",
       "source_location": "L201"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_screens_browse_browsescreen_init",
-      "label": ".__init__()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 51,
-      "community_name": "BrowseScreen",
-      "file_type": "code",
-      "norm_label": ".__init__()",
-      "source_file": "lab/sow-app/src/sow_lab_app/screens/browse.py",
-      "source_location": "L37"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_screens_browse_browsescreen_load_songs",
@@ -48432,18 +48360,6 @@
       "source_location": "L64"
     },
     {
-      "id": "lab_sow_app_src_sow_lab_app_app_sowapp_init",
-      "label": ".__init__()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 61,
-      "community_name": "PlaybackService",
-      "file_type": "code",
-      "norm_label": ".__init__()",
-      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
-      "source_location": "L47"
-    },
-    {
       "id": "lab_sow_app_src_sow_lab_app_services_playback_playbackservice_current_file",
       "label": ".current_file()",
       "_callable": true,
@@ -49536,18 +49452,6 @@
       "source_location": "L140"
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_compute_overlap_regions",
-      "label": "_compute_overlap_regions()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 67,
-      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "file_type": "code",
-      "norm_label": "_compute_overlap_regions()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1476"
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_count_cjk_chars",
       "label": "_count_cjk_chars()",
       "_callable": true,
@@ -49558,6 +49462,18 @@
       "norm_label": "_count_cjk_chars()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
       "source_location": "L1010"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_detect_chinese_script",
+      "label": "detect_chinese_script()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 67,
+      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "file_type": "code",
+      "norm_label": "detect_chinese_script()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L290"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_extract_asr_text",
@@ -49692,18 +49608,6 @@
       "source_location": "L625"
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_merge_chunks",
-      "label": "merge_chunks()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 67,
-      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "file_type": "code",
-      "norm_label": "merge_chunks()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1406"
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_normalize_for_matching",
       "label": "_normalize_for_matching()",
       "_callable": true,
@@ -49800,6 +49704,18 @@
       "source_location": "L1245"
     },
     {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_sequential_canonical_snap",
+      "label": "sequential_canonical_snap()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 67,
+      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "file_type": "code",
+      "norm_label": "sequential_canonical_snap()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L1496"
+    },
+    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_strip_cjk_spaces",
       "label": "_strip_cjk_spaces()",
       "_callable": true,
@@ -49822,6 +49738,18 @@
       "norm_label": "_upload_to_oss()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
       "source_location": "L57"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_verify_asr_quality",
+      "label": "verify_asr_quality()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 67,
+      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "file_type": "code",
+      "norm_label": "verify_asr_quality()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L1574"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_word_fallback_for_chunk",
@@ -52404,6 +52332,30 @@
       "source_location": "L2449"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_logging_config_rotate_log_if_needed",
+      "label": "_rotate_log_if_needed()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "_rotate_log_if_needed()",
+      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
+      "source_location": "L10"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_logging_config_setup_logging",
+      "label": "setup_logging()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "setup_logging()",
+      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
+      "source_location": "L43"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_main_backup_all_songsets",
       "label": "backup_all_songsets()",
       "_callable": true,
@@ -52426,6 +52378,30 @@
       "norm_label": "backup_songset()",
       "source_file": "lab/sow-app/src/sow_lab_app/main.py",
       "source_location": "L261"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_check_database_connection",
+      "label": "_check_database_connection()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "_check_database_connection()",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L83"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_check_first_run",
+      "label": "_check_first_run()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "_check_first_run()",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L59"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_main_db_check",
@@ -52462,6 +52438,30 @@
       "norm_label": "restore_songset()",
       "source_file": "lab/sow-app/src/sow_lab_app/main.py",
       "source_location": "L351"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_run",
+      "label": "run()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "run()",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L164"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_show_welcome",
+      "label": "_show_welcome()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "_show_welcome()",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L69"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_songset_io_importresult_post_init",
@@ -62634,50 +62634,6 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_lib_cast_loader",
-      "label": "loader.ts",
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "loader.ts",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_lib_cast_loader_cancelled",
-      "label": "cancelled",
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "cancelled",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L37"
-    },
-    {
-      "id": "delivery_webapp_src_lib_cast_loader_pending",
-      "label": "pending",
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "pending",
-      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
-      "source_location": "L50"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_cast_loader_test",
-      "label": "loader.test.ts",
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "useCast.ts",
-      "file_type": "code",
-      "norm_label": "loader.test.ts",
-      "source_file": "delivery/webapp/src/test/lib/cast/loader.test.ts",
-      "source_location": "L1"
-    },
-    {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_core_design_sowtheme",
       "label": "SowTheme.kt",
       "_origin": "ast",
@@ -63799,11 +63755,22 @@
       "source_location": "L650"
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions",
+      "label": "generate_section_transitions.py",
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_section_transitions.py",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1"
+    },
+    {
       "id": "lab_poc_scripts_analyze_sections_rationale_69",
       "label": "Print message if verbose mode is enabled.",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "print message if verbose mode is enabled.",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -63814,7 +63781,7 @@
       "label": "Save master transitions index (v2.0) - single source of truth. Args:\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "save master transitions index (v2.0) - single source of truth. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -63825,29 +63792,51 @@
       "label": "Save summary CSV for quick reference (v2.0). Exports flattened view of\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "save summary csv for quick reference (v2.0). exports flattened view of...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1267"
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
+      "label": "Create descriptive filename for section transition audio. Format:\u2026",
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "create descriptive filename for section transition audio. format:...",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L131"
+    },
+    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1312",
       "label": "Print final summary report (v2.1).",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "print final summary report (v2.1).",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1312"
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
+      "label": "Parse command-line arguments.",
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "parse command-line arguments.",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1367"
+    },
+    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1425",
       "label": "Main execution function.",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "main execution function.",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -63858,7 +63847,7 @@
       "label": "Filter compatible section pairs worthy of transition generation. Args:\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "filter compatible section pairs worthy of transition generation. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -63869,7 +63858,7 @@
       "label": "Load all song sections from allin1 analysis. Optimization: First checks for\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "load all song sections from allin1 analysis. optimization: first checks for...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -63880,7 +63869,7 @@
       "label": "Generate all section transition audio files for candidate pairs (v2.1). This\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "generate all section transition audio files for candidate pairs (v2.1). this...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -77442,6 +77431,17 @@
       "source_location": ""
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_app_py_appconfig",
+      "label": "AppConfig",
+      "_origin": "ast",
+      "community": 216,
+      "community_name": "ExportService",
+      "file_type": "code",
+      "norm_label": "appconfig",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_screens_export_progress_py_appstate",
       "label": "AppState",
       "_origin": "ast",
@@ -77561,6 +77561,17 @@
       "norm_label": "videotemplate",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_app_rationale_48",
+      "label": "Initialize the application. Args: config: Application configuration",
+      "_origin": "ast",
+      "community": 216,
+      "community_name": "ExportService",
+      "file_type": "rationale",
+      "norm_label": "initialize the application. args: config: application configuration",
+      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
+      "source_location": "L48"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_screens_export_progress_rationale_103",
@@ -79934,44 +79945,11 @@
       "source_location": ""
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions",
-      "label": "generate_section_transitions.py",
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_section_transitions.py",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
-      "label": "Create descriptive filename for section transition audio. Format:\u2026",
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "create descriptive filename for section transition audio. format:...",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L131"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
-      "label": "Parse command-line arguments.",
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "parse command-line arguments.",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1367"
-    },
-    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_203",
       "label": "Create medium transition: Full section A + crossfade + Full section B. Args:\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create medium transition: full section a + crossfade + full section b. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -79982,7 +79960,7 @@
       "label": "Create medium transition with silence gap between sections. Algorithm: 1. Load\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create medium transition with silence gap between sections. algorithm: 1. load...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -79993,7 +79971,7 @@
       "label": "Create vocal-fade transition: sections connected by vocal-only bridge with\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create vocal-fade transition: sections connected by vocal-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -80004,7 +79982,7 @@
       "label": "Create drum-fade transition: sections connected by drum-only bridge with\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create drum-fade transition: sections connected by drum-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -80015,7 +79993,7 @@
       "label": "Load all 4 stems (bass, drums, other, vocals) for a specific section. Args:\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "load all 4 stems (bass, drums, other, vocals) for a specific section. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -80026,7 +80004,7 @@
       "label": "Generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -81529,39 +81507,6 @@
       "source_location": ""
     },
     {
-      "id": "lab_sow_app_src_sow_lab_app_logging_config_py_logger",
-      "label": "Logger",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "logger",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_logging_config_py_path",
-      "label": "Path",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "path",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_py_appconfig",
-      "label": "AppConfig",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "code",
-      "norm_label": "appconfig",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "lab_sow_app_src_sow_lab_app_config_rationale_111",
       "label": "Cache directory - always at standard platform location.",
       "_origin": "ast",
@@ -81705,39 +81650,6 @@
       "source_location": "L56"
     },
     {
-      "id": "lab_sow_app_src_sow_lab_app_logging_config_rationale_11",
-      "label": "Rotate log file on startup if it exceeds max size. Args: log_file: Path to the\u2026",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "rationale",
-      "norm_label": "rotate log file on startup if it exceeds max size. args: log_file: path to the...",
-      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
-      "source_location": "L11"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_logging_config_rationale_44",
-      "label": "Set up application logging to file with startup rotation. Args: log_dir:\u2026",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "rationale",
-      "norm_label": "set up application logging to file with startup rotation. args: log_dir:...",
-      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
-      "source_location": "L44"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_rationale_172",
-      "label": "Launch the TUI application.",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "rationale",
-      "norm_label": "launch the tui application.",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L172"
-    },
-    {
       "id": "lab_sow_app_src_sow_lab_app_main_rationale_421",
       "label": "Manage configuration. Show, set, or display the path to the configuration file.\u2026",
       "_origin": "ast",
@@ -81747,39 +81659,6 @@
       "norm_label": "manage configuration. show, set, or display the path to the configuration file....",
       "source_file": "lab/sow-app/src/sow_lab_app/main.py",
       "source_location": "L421"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_rationale_60",
-      "label": "Check if this is the first run (no config exists). Returns: True if first run",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "rationale",
-      "norm_label": "check if this is the first run (no config exists). returns: true if first run",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L60"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_rationale_70",
-      "label": "Show welcome message for first run.",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "rationale",
-      "norm_label": "show welcome message for first run.",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L70"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_main_rationale_84",
-      "label": "Check if the database is reachable. Args: config: App configuration Returns:\u2026",
-      "_origin": "ast",
-      "community": 244,
-      "community_name": "get_app_config_path",
-      "file_type": "rationale",
-      "norm_label": "check if the database is reachable. args: config: app configuration returns:...",
-      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
-      "source_location": "L84"
     },
     {
       "id": "ops_admin_cli_analyze_job_does_allin1_use_madmom_for_bpm",
@@ -82887,70 +82766,257 @@
       "source_location": "L73"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_py_any",
-      "label": "Any",
+      "id": "delivery_webapp_src_app_layout",
+      "label": "app/layout.tsx",
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
+      "community_name": "Header.tsx",
       "file_type": "code",
-      "norm_label": "any",
-      "source_file": "",
-      "source_location": ""
+      "norm_label": "app/layout.tsx",
+      "source_file": "delivery/webapp/src/app/layout.tsx",
+      "source_location": "L1"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_183",
-      "label": "Convert SongsetItem to dictionary. Args: include_joined: Whether to include\u2026",
+      "id": "delivery_webapp_src_app_layout_geistmono",
+      "label": "geistMono",
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
-      "file_type": "rationale",
-      "norm_label": "convert songsetitem to dictionary. args: include_joined: whether to include...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L183"
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "geistmono",
+      "source_file": "delivery/webapp/src/app/layout.tsx",
+      "source_location": "L20"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_234",
-      "label": "Get duration formatted as MM:SS. Returns: Formatted duration string.",
+      "id": "delivery_webapp_src_app_layout_geistsans",
+      "label": "geistSans",
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
-      "file_type": "rationale",
-      "norm_label": "get duration formatted as mm:ss. returns: formatted duration string.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L234"
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "geistsans",
+      "source_file": "delivery/webapp/src/app/layout.tsx",
+      "source_location": "L13"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_247",
-      "label": "Get the key to display (song key or recording key). Returns: Key string.",
+      "id": "delivery_webapp_src_app_layout_metadata",
+      "label": "metadata",
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
-      "file_type": "rationale",
-      "norm_label": "get the key to display (song key or recording key). returns: key string.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L247"
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "metadata",
+      "source_file": "delivery/webapp/src/app/layout.tsx",
+      "source_location": "L27"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_58",
-      "label": "Convert Songset to dictionary. Returns: Dictionary representation of the\u2026",
+      "id": "delivery_webapp_src_components_layout_bottomnav",
+      "label": "BottomNav.tsx",
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
-      "file_type": "rationale",
-      "norm_label": "convert songset to dictionary. returns: dictionary representation of the...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L58"
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "bottomnav.tsx",
+      "source_file": "delivery/webapp/src/components/layout/BottomNav.tsx",
+      "source_location": "L1"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_85",
-      "label": "A song within a songset with transition parameters. Attributes: id: Unique item\u2026",
+      "id": "delivery_webapp_src_components_layout_header",
+      "label": "Header.tsx",
       "_origin": "ast",
       "community": 255,
-      "community_name": "SongsetItem",
-      "file_type": "rationale",
-      "norm_label": "a song within a songset with transition parameters. attributes: id: unique item...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
-      "source_location": "L85"
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "header.tsx",
+      "source_file": "delivery/webapp/src/components/layout/Header.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_components_ui_avatar",
+      "label": "avatar.tsx",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "avatar.tsx",
+      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_components_ui_avatar_avatarvariants",
+      "label": "avatarVariants",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "avatarvariants",
+      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "delivery_webapp_src_lib_routes",
+      "label": "routes.ts",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "routes.ts",
+      "source_file": "delivery/webapp/src/lib/routes.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test",
+      "label": "header-avatar.test.tsx",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "header-avatar.test.tsx",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test_mockpathname",
+      "label": "mockPathname",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mockpathname",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test_mockpush",
+      "label": "mockPush",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mockpush",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test_mockrefresh",
+      "label": "mockRefresh",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mockrefresh",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L8"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test_mocksession",
+      "label": "mockSession",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mocksession",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L10"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test_mocksignout",
+      "label": "mockSignOut",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mocksignout",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L9"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_header_avatar_test_mocktoast",
+      "label": "mockToast",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mocktoast",
+      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
+      "source_location": "L11"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_bottomnav_test",
+      "label": "BottomNav.test.tsx",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "bottomnav.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_bottomnav_test_mockpathname",
+      "label": "mockPathname",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mockpathname",
+      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_bottomnav_test_mocksession",
+      "label": "mockSession",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mocksession",
+      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_header_test",
+      "label": "Header.test.tsx",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "header.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_header_test_mockpathname",
+      "label": "mockPathname",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mockpathname",
+      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_header_test_mockrefresh",
+      "label": "mockRefresh",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mockrefresh",
+      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
+      "source_location": "L12"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_layout_header_test_mocksession",
+      "label": "mockSession",
+      "_origin": "ast",
+      "community": 255,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "mocksession",
+      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
+      "source_location": "L7"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_rationale_131",
@@ -83323,6 +83389,28 @@
       "source_location": "L80"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_screens_browse_py_appstate",
+      "label": "AppState",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": "appstate",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_py_any",
+      "label": "Any",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "code",
+      "norm_label": "any",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_py_any",
       "label": "Any",
       "_origin": "ast",
@@ -83389,6 +83477,17 @@
       "source_location": ""
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_screens_browse_rationale_43",
+      "label": "Initialize the screen. Args: state: Application state catalog: Catalog service\u2026",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "rationale",
+      "norm_label": "initialize the screen. args: state: application state catalog: catalog service...",
+      "source_file": "lab/sow-app/src/sow_lab_app/screens/browse.py",
+      "source_location": "L43"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_services_catalog_rationale_465",
       "label": "Get a songset with resolved items using batch queries (Fix 10). Steps: 1. Fetch\u2026",
       "_origin": "ast",
@@ -83411,6 +83510,17 @@
       "source_location": "L135"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_183",
+      "label": "Convert SongsetItem to dictionary. Args: include_joined: Whether to include\u2026",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "rationale",
+      "norm_label": "convert songsetitem to dictionary. args: include_joined: whether to include...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L183"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_224",
       "label": "Generate a new unique item ID. Returns: Unique ID string.",
       "_origin": "ast",
@@ -83420,6 +83530,28 @@
       "norm_label": "generate a new unique item id. returns: unique id string.",
       "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
       "source_location": "L224"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_234",
+      "label": "Get duration formatted as MM:SS. Returns: Formatted duration string.",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "rationale",
+      "norm_label": "get duration formatted as mm:ss. returns: formatted duration string.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L234"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_247",
+      "label": "Get the key to display (song key or recording key). Returns: Key string.",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "rationale",
+      "norm_label": "get the key to display (song key or recording key). returns: key string.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L247"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_39",
@@ -83433,6 +83565,17 @@
       "source_location": "L39"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_58",
+      "label": "Convert Songset to dictionary. Returns: Dictionary representation of the\u2026",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "rationale",
+      "norm_label": "convert songset to dictionary. returns: dictionary representation of the...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L58"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_74",
       "label": "Generate a new unique songset ID. Returns: Unique ID string.",
       "_origin": "ast",
@@ -83442,6 +83585,17 @@
       "norm_label": "generate a new unique songset id. returns: unique id string.",
       "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
       "source_location": "L74"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_85",
+      "label": "A song within a songset with transition parameters. Attributes: id: Unique item\u2026",
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "SongsetClient",
+      "file_type": "rationale",
+      "norm_label": "a song within a songset with transition parameters. attributes: id: unique item...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/models.py",
+      "source_location": "L85"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_rationale_110",
@@ -95940,39 +96094,6 @@
       "source_location": ""
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1501",
-      "label": "Snap ASR segments to canonical lyrics using sequential fuzzy matching.\u2026",
-      "_origin": "ast",
-      "community": 405,
-      "community_name": "convert",
-      "file_type": "rationale",
-      "norm_label": "snap asr segments to canonical lyrics using sequential fuzzy matching....",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1501"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1578",
-      "label": "Compute overall fuzzy match score between ASR text and canonical lyrics. This\u2026",
-      "_origin": "ast",
-      "community": 405,
-      "community_name": "convert",
-      "file_type": "rationale",
-      "norm_label": "compute overall fuzzy match score between asr text and canonical lyrics. this...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1578"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_291",
-      "label": "Detect whether Chinese text is traditional or simplified.",
-      "_origin": "ast",
-      "community": 405,
-      "community_name": "convert",
-      "file_type": "rationale",
-      "norm_label": "detect whether chinese text is traditional or simplified.",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L291"
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_rationale_121",
       "label": "Call Qwen3-ASR-Flash-FileTrans API (async file transcription). This model uses\u2026",
       "_origin": "ast",
@@ -96490,11 +96611,77 @@
       "source_location": "L22"
     },
     {
+      "id": "delivery_webapp_src_lib_cast_loader",
+      "label": "loader.ts",
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "loader.ts",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_lib_cast_loader_cancelled",
+      "label": "cancelled",
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "cancelled",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L37"
+    },
+    {
+      "id": "delivery_webapp_src_lib_cast_loader_pending",
+      "label": "pending",
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "pending",
+      "source_file": "delivery/webapp/src/lib/cast/loader.ts",
+      "source_location": "L50"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_cast_loader_test",
+      "label": "loader.test.ts",
+      "_origin": "ast",
+      "community": 416,
+      "community_name": "loader.ts",
+      "file_type": "code",
+      "norm_label": "loader.test.ts",
+      "source_file": "delivery/webapp/src/test/lib/cast/loader.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1410",
+      "label": "Merge force-aligned results from all chunks. For single-chunk songs, returns\u2026",
+      "_origin": "ast",
+      "community": 417,
+      "community_name": "merge_chunks",
+      "file_type": "rationale",
+      "norm_label": "merge force-aligned results from all chunks. for single-chunk songs, returns...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L1410"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1479",
+      "label": "Compute overlap regions between consecutive chunks. Args: chunks: List of\u2026",
+      "_origin": "ast",
+      "community": 417,
+      "community_name": "merge_chunks",
+      "file_type": "rationale",
+      "norm_label": "compute overlap regions between consecutive chunks. args: chunks: list of...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L1479"
+    },
+    {
       "id": "delivery_webapp_src_app_settings_loading",
       "label": "settings/loading.tsx",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settings/loading.tsx",
       "source_file": "delivery/webapp/src/app/settings/loading.tsx",
@@ -96505,7 +96692,7 @@
       "label": "settings/page.tsx",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settings/page.tsx",
       "source_file": "delivery/webapp/src/app/settings/page.tsx",
@@ -96516,7 +96703,7 @@
       "label": "DEFAULT_SETTINGS",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "default_settings",
       "source_file": "delivery/webapp/src/app/settings/page.tsx",
@@ -96527,139 +96714,29 @@
       "label": "FontPreviewStylesheets.tsx",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "fontpreviewstylesheets.tsx",
       "source_file": "delivery/webapp/src/components/fonts/FontPreviewStylesheets.tsx",
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_components_settings_settingsform",
-      "label": "SettingsForm.tsx",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "settingsform.tsx",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_font_presets",
-      "label": "FONT_PRESETS",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "font_presets",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L45"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_gap_beats_options",
-      "label": "GAP_BEATS_OPTIONS",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "gap_beats_options",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L63"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_key_shift_options",
-      "label": "KEY_SHIFT_OPTIONS",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "key_shift_options",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L65"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_locale_options",
-      "label": "LOCALE_OPTIONS",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "locale_options",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L58"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_loop_window_options",
-      "label": "LOOP_WINDOW_OPTIONS",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "loop_window_options",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L64"
-    },
-    {
-      "id": "delivery_webapp_src_components_settings_settingsform_timing_fonts",
-      "label": "TIMING_FONTS",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "timing_fonts",
-      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
-      "source_location": "L52"
-    },
-    {
       "id": "delivery_webapp_src_components_settings_settingsskeleton",
       "label": "SettingsSkeleton.tsx",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settingsskeleton.tsx",
       "source_file": "delivery/webapp/src/components/settings/SettingsSkeleton.tsx",
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_lib_constants_resolutions",
-      "label": "RESOLUTIONS",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "resolutions",
-      "source_file": "delivery/webapp/src/lib/constants.ts",
-      "source_location": "L40"
-    },
-    {
-      "id": "delivery_webapp_src_lib_constants_templates",
-      "label": "TEMPLATES",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "templates",
-      "source_file": "delivery/webapp/src/lib/constants.ts",
-      "source_location": "L34"
-    },
-    {
-      "id": "delivery_webapp_src_lib_i18n_messages_optionkey",
-      "label": "optionKey",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "optionkey",
-      "source_file": "delivery/webapp/src/lib/i18n/messages.ts",
-      "source_location": "L93"
-    },
-    {
       "id": "delivery_webapp_src_test_app_settings_save_error_test",
       "label": "settings-save-error.test.tsx",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settings-save-error.test.tsx",
       "source_file": "delivery/webapp/src/test/app/settings-save-error.test.tsx",
@@ -96670,7 +96747,7 @@
       "label": "mockPush",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "mockpush",
       "source_file": "delivery/webapp/src/test/app/settings-save-error.test.tsx",
@@ -96681,7 +96758,7 @@
       "label": "mockToast",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "mocktoast",
       "source_file": "delivery/webapp/src/test/app/settings-save-error.test.tsx",
@@ -96692,7 +96769,7 @@
       "label": "SETTINGS_PAYLOAD",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settings_payload",
       "source_file": "delivery/webapp/src/test/app/settings-save-error.test.tsx",
@@ -96703,7 +96780,7 @@
       "label": "settings-signout.test.tsx",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "settings-signout.test.tsx",
       "source_file": "delivery/webapp/src/test/app/settings-signout.test.tsx",
@@ -96714,7 +96791,7 @@
       "label": "mockPush",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "mockpush",
       "source_file": "delivery/webapp/src/test/app/settings-signout.test.tsx",
@@ -96725,7 +96802,7 @@
       "label": "mockRefresh",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "mockrefresh",
       "source_file": "delivery/webapp/src/test/app/settings-signout.test.tsx",
@@ -96736,7 +96813,7 @@
       "label": "mockSignOut",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "mocksignout",
       "source_file": "delivery/webapp/src/test/app/settings-signout.test.tsx",
@@ -96747,33 +96824,11 @@
       "label": "mockToast",
       "_origin": "ast",
       "community": 42,
-      "community_name": "SettingsForm.tsx",
+      "community_name": "settings/page.tsx",
       "file_type": "code",
       "norm_label": "mocktoast",
       "source_file": "delivery/webapp/src/test/app/settings-signout.test.tsx",
       "source_location": "L9"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_settings_settingsform_test",
-      "label": "SettingsForm.test.tsx",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "settingsform.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/settings/SettingsForm.test.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_settings_settingsform_test_defaultsettings",
-      "label": "defaultSettings",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "SettingsForm.tsx",
-      "file_type": "code",
-      "norm_label": "defaultsettings",
-      "source_file": "delivery/webapp/src/test/components/settings/SettingsForm.test.tsx",
-      "source_location": "L6"
     },
     {
       "id": "delivery_webapp_package_dependencies_better_auth",
@@ -98822,50 +98877,6 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_app_layout",
-      "label": "app/layout.tsx",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "app/layout.tsx",
-      "source_file": "delivery/webapp/src/app/layout.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_app_layout_geistmono",
-      "label": "geistMono",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "geistmono",
-      "source_file": "delivery/webapp/src/app/layout.tsx",
-      "source_location": "L20"
-    },
-    {
-      "id": "delivery_webapp_src_app_layout_geistsans",
-      "label": "geistSans",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "geistsans",
-      "source_file": "delivery/webapp/src/app/layout.tsx",
-      "source_location": "L13"
-    },
-    {
-      "id": "delivery_webapp_src_app_layout_metadata",
-      "label": "metadata",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "metadata",
-      "source_file": "delivery/webapp/src/app/layout.tsx",
-      "source_location": "L27"
-    },
-    {
       "id": "delivery_webapp_src_app_page_buildstamp",
       "label": "BuildStamp.tsx",
       "_origin": "ast",
@@ -98943,28 +98954,6 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_components_layout_bottomnav",
-      "label": "BottomNav.tsx",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "bottomnav.tsx",
-      "source_file": "delivery/webapp/src/components/layout/BottomNav.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_components_layout_header",
-      "label": "Header.tsx",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "header.tsx",
-      "source_file": "delivery/webapp/src/components/layout/Header.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "delivery_webapp_src_components_layout_languageswitcher",
       "label": "LanguageSwitcher.tsx",
       "_origin": "ast",
@@ -98987,26 +98976,81 @@
       "source_location": "L9"
     },
     {
-      "id": "delivery_webapp_src_components_ui_avatar",
-      "label": "avatar.tsx",
+      "id": "delivery_webapp_src_components_settings_settingsform",
+      "label": "SettingsForm.tsx",
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "avatar.tsx",
-      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
+      "norm_label": "settingsform.tsx",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_components_ui_avatar_avatarvariants",
-      "label": "avatarVariants",
+      "id": "delivery_webapp_src_components_settings_settingsform_font_presets",
+      "label": "FONT_PRESETS",
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "avatarvariants",
-      "source_file": "delivery/webapp/src/components/ui/avatar.tsx",
-      "source_location": "L7"
+      "norm_label": "font_presets",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L45"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_gap_beats_options",
+      "label": "GAP_BEATS_OPTIONS",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "gap_beats_options",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L63"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_key_shift_options",
+      "label": "KEY_SHIFT_OPTIONS",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "key_shift_options",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L65"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_locale_options",
+      "label": "LOCALE_OPTIONS",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "locale_options",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L58"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_loop_window_options",
+      "label": "LOOP_WINDOW_OPTIONS",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "loop_window_options",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L64"
+    },
+    {
+      "id": "delivery_webapp_src_components_settings_settingsform_timing_fonts",
+      "label": "TIMING_FONTS",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "timing_fonts",
+      "source_file": "delivery/webapp/src/components/settings/SettingsForm.tsx",
+      "source_location": "L52"
     },
     {
       "id": "delivery_webapp_src_components_ui_button_buttonvariants",
@@ -99073,6 +99117,28 @@
       "norm_label": "build_commit_hash",
       "source_file": "delivery/webapp/src/lib/build-info.ts",
       "source_location": "L3"
+    },
+    {
+      "id": "delivery_webapp_src_lib_constants_resolutions",
+      "label": "RESOLUTIONS",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "resolutions",
+      "source_file": "delivery/webapp/src/lib/constants.ts",
+      "source_location": "L40"
+    },
+    {
+      "id": "delivery_webapp_src_lib_constants_templates",
+      "label": "TEMPLATES",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "templates",
+      "source_file": "delivery/webapp/src/lib/constants.ts",
+      "source_location": "L34"
     },
     {
       "id": "delivery_webapp_src_lib_i18n_format",
@@ -99229,6 +99295,17 @@
       "source_location": "L73"
     },
     {
+      "id": "delivery_webapp_src_lib_i18n_messages_optionkey",
+      "label": "optionKey",
+      "_origin": "ast",
+      "community": 50,
+      "community_name": "messages.ts",
+      "file_type": "code",
+      "norm_label": "optionkey",
+      "source_file": "delivery/webapp/src/lib/i18n/messages.ts",
+      "source_location": "L93"
+    },
+    {
       "id": "delivery_webapp_src_lib_i18n_messages_play",
       "label": "play.ts",
       "_origin": "ast",
@@ -99317,94 +99394,6 @@
       "source_location": "L6"
     },
     {
-      "id": "delivery_webapp_src_lib_routes",
-      "label": "routes.ts",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "routes.ts",
-      "source_file": "delivery/webapp/src/lib/routes.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test",
-      "label": "header-avatar.test.tsx",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "header-avatar.test.tsx",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test_mockpathname",
-      "label": "mockPathname",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mockpathname",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L6"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test_mockpush",
-      "label": "mockPush",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mockpush",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L7"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test_mockrefresh",
-      "label": "mockRefresh",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mockrefresh",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L8"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test_mocksession",
-      "label": "mockSession",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mocksession",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L10"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test_mocksignout",
-      "label": "mockSignOut",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mocksignout",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L9"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_header_avatar_test_mocktoast",
-      "label": "mockToast",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mocktoast",
-      "source_file": "delivery/webapp/src/test/app/header-avatar.test.tsx",
-      "source_location": "L11"
-    },
-    {
       "id": "delivery_webapp_src_test_app_home_homepageclient_test",
       "label": "HomePageClient.test.tsx",
       "_origin": "ast",
@@ -99449,81 +99438,26 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_test_components_layout_bottomnav_test",
-      "label": "BottomNav.test.tsx",
+      "id": "delivery_webapp_src_test_components_settings_settingsform_test",
+      "label": "SettingsForm.test.tsx",
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "bottomnav.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
+      "norm_label": "settingsform.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/settings/SettingsForm.test.tsx",
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_test_components_layout_bottomnav_test_mockpathname",
-      "label": "mockPathname",
+      "id": "delivery_webapp_src_test_components_settings_settingsform_test_defaultsettings",
+      "label": "defaultSettings",
       "_origin": "ast",
       "community": 50,
       "community_name": "messages.ts",
       "file_type": "code",
-      "norm_label": "mockpathname",
-      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
+      "norm_label": "defaultsettings",
+      "source_file": "delivery/webapp/src/test/components/settings/SettingsForm.test.tsx",
       "source_location": "L6"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_layout_bottomnav_test_mocksession",
-      "label": "mockSession",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mocksession",
-      "source_file": "delivery/webapp/src/test/components/layout/BottomNav.test.tsx",
-      "source_location": "L7"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_layout_header_test",
-      "label": "Header.test.tsx",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "header.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_layout_header_test_mockpathname",
-      "label": "mockPathname",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mockpathname",
-      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
-      "source_location": "L6"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_layout_header_test_mockrefresh",
-      "label": "mockRefresh",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mockrefresh",
-      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
-      "source_location": "L12"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_layout_header_test_mocksession",
-      "label": "mockSession",
-      "_origin": "ast",
-      "community": 50,
-      "community_name": "messages.ts",
-      "file_type": "code",
-      "norm_label": "mocksession",
-      "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
-      "source_location": "L7"
     },
     {
       "id": "delivery_webapp_src_test_contexts_localecontext_test",
@@ -99733,17 +99667,6 @@
       "norm_label": "write diagnose_report.md if --report flag is set.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/report_writer.py",
       "source_location": "L1"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_screens_browse_py_appstate",
-      "label": "AppState",
-      "_origin": "ast",
-      "community": 51,
-      "community_name": "BrowseScreen",
-      "file_type": "code",
-      "norm_label": "appstate",
-      "source_file": "",
-      "source_location": ""
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_screens_browse_py_changed",
@@ -100085,17 +100008,6 @@
       "norm_label": "focus the search input.",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/browse.py",
       "source_location": "L423"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_screens_browse_rationale_43",
-      "label": "Initialize the screen. Args: state: Application state catalog: Catalog service\u2026",
-      "_origin": "ast",
-      "community": 51,
-      "community_name": "BrowseScreen",
-      "file_type": "rationale",
-      "norm_label": "initialize the screen. args: state: application state catalog: catalog service...",
-      "source_file": "lab/sow-app/src/sow_lab_app/screens/browse.py",
-      "source_location": "L43"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_screens_browse_rationale_57",
@@ -102574,7 +102486,7 @@
       "node_kind": "heading",
       "norm_label": "lyrics",
       "source_file": "CONTEXT.md",
-      "source_location": "L64"
+      "source_location": "L65"
     },
     {
       "id": "context_md_context",
@@ -102598,7 +102510,7 @@
       "node_kind": "heading",
       "norm_label": "projection",
       "source_file": "CONTEXT.md",
-      "source_location": "L58"
+      "source_location": "L59"
     },
     {
       "id": "context_render",
@@ -102610,7 +102522,7 @@
       "node_kind": "heading",
       "norm_label": "render",
       "source_file": "CONTEXT.md",
-      "source_location": "L52"
+      "source_location": "L53"
     },
     {
       "id": "context_songset_transitions",
@@ -102646,18 +102558,7 @@
       "node_kind": "heading",
       "norm_label": "user state",
       "source_file": "CONTEXT.md",
-      "source_location": "L70"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_app_py_appconfig",
-      "label": "AppConfig",
-      "_origin": "ast",
-      "community": 61,
-      "community_name": "PlaybackService",
-      "file_type": "code",
-      "norm_label": "appconfig",
-      "source_file": "",
-      "source_location": ""
+      "source_location": "L71"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_playback_py_path",
@@ -102669,17 +102570,6 @@
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_app_rationale_48",
-      "label": "Initialize the application. Args: config: Application configuration",
-      "_origin": "ast",
-      "community": 61,
-      "community_name": "PlaybackService",
-      "file_type": "rationale",
-      "norm_label": "initialize the application. args: config: application configuration",
-      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
-      "source_location": "L48"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_playback_rationale_107",
@@ -103724,17 +103614,6 @@
       "source_location": "L1368"
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1410",
-      "label": "Merge force-aligned results from all chunks. For single-chunk songs, returns\u2026",
-      "_origin": "ast",
-      "community": 67,
-      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "file_type": "rationale",
-      "norm_label": "merge force-aligned results from all chunks. for single-chunk songs, returns...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1410"
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_146",
       "label": "Call Qwen3-ASR-Flash-FileTrans API (async file transcription).",
       "_origin": "ast",
@@ -103746,15 +103625,26 @@
       "source_location": "L146"
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1479",
-      "label": "Compute overlap regions between consecutive chunks. Args: chunks: List of\u2026",
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1501",
+      "label": "Snap ASR segments to canonical lyrics using sequential fuzzy matching.\u2026",
       "_origin": "ast",
       "community": 67,
       "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
       "file_type": "rationale",
-      "norm_label": "compute overlap regions between consecutive chunks. args: chunks: list of...",
+      "norm_label": "snap asr segments to canonical lyrics using sequential fuzzy matching....",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
-      "source_location": "L1479"
+      "source_location": "L1501"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1578",
+      "label": "Compute overall fuzzy match score between ASR text and canonical lyrics. This\u2026",
+      "_origin": "ast",
+      "community": 67,
+      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "file_type": "rationale",
+      "norm_label": "compute overall fuzzy match score between asr text and canonical lyrics. this...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L1578"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_1693",
@@ -103788,6 +103678,17 @@
       "norm_label": "extract segments from qwentranscription (filetrans) response.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
       "source_location": "L255"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_291",
+      "label": "Detect whether Chinese text is traditional or simplified.",
+      "_origin": "ast",
+      "community": 67,
+      "community_name": "gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "file_type": "rationale",
+      "norm_label": "detect whether chinese text is traditional or simplified.",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep_force_align_v2.py",
+      "source_location": "L291"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_mvsep_force_align_v2_rationale_306",
@@ -107450,6 +107351,39 @@
       "source_location": "L2527"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_logging_config_py_logger",
+      "label": "Logger",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "logger",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_logging_config_py_path",
+      "label": "Path",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "path",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_py_appconfig",
+      "label": "AppConfig",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "code",
+      "norm_label": "appconfig",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_main_py_callback",
       "label": "callback",
       "_origin": "ast",
@@ -107505,6 +107439,39 @@
       "source_location": ""
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_logging_config_rationale_11",
+      "label": "Rotate log file on startup if it exceeds max size. Args: log_file: Path to the\u2026",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "rationale",
+      "norm_label": "rotate log file on startup if it exceeds max size. args: log_file: path to the...",
+      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
+      "source_location": "L11"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_logging_config_rationale_44",
+      "label": "Set up application logging to file with startup rotation. Args: log_dir:\u2026",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "rationale",
+      "norm_label": "set up application logging to file with startup rotation. args: log_dir:...",
+      "source_file": "lab/sow-app/src/sow_lab_app/logging_config.py",
+      "source_location": "L44"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_rationale_172",
+      "label": "Launch the TUI application.",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "rationale",
+      "norm_label": "launch the tui application.",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L172"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_main_rationale_231",
       "label": "Check database connectivity.",
       "_origin": "ast",
@@ -107558,6 +107525,39 @@
       "norm_label": "stream of worship user app - manage worship songsets.",
       "source_file": "lab/sow-app/src/sow_lab_app/main.py",
       "source_location": "L53"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_rationale_60",
+      "label": "Check if this is the first run (no config exists). Returns: True if first run",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "rationale",
+      "norm_label": "check if this is the first run (no config exists). returns: true if first run",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L60"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_rationale_70",
+      "label": "Show welcome message for first run.",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "rationale",
+      "norm_label": "show welcome message for first run.",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L70"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_main_rationale_84",
+      "label": "Check if the database is reachable. Args: config: App configuration Returns:\u2026",
+      "_origin": "ast",
+      "community": 82,
+      "community_name": "SongsetIOService",
+      "file_type": "rationale",
+      "norm_label": "check if the database is reachable. args: config: app configuration returns:...",
+      "source_file": "lab/sow-app/src/sow_lab_app/main.py",
+      "source_location": "L84"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_songset_io_rationale_121",
@@ -236405,7 +236405,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "CONTEXT.md",
-      "source_location": "L52",
+      "source_location": "L53",
       "weight": 1.0
     },
     {
@@ -236416,7 +236416,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "CONTEXT.md",
-      "source_location": "L58",
+      "source_location": "L59",
       "weight": 1.0
     },
     {
@@ -236427,7 +236427,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "CONTEXT.md",
-      "source_location": "L64",
+      "source_location": "L65",
       "weight": 1.0
     },
     {
@@ -236449,7 +236449,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "CONTEXT.md",
-      "source_location": "L70",
+      "source_location": "L71",
       "weight": 1.0
     },
     {
@@ -338355,5 +338355,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "fc202d623c976eb110cb9c217f9558789afcf9ac"
+  "built_at_commit": "07ffafc65e1589cc88724c7068a74d2ac9fd800b"
 }
