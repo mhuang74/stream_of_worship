@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import HomePage from "@/app/page";
+import DocsPage from "@/app/docs/page";
 import { SongsetsClient } from "@/app/songsets/SongsetsClient";
 import SettingsPage from "@/app/settings/page";
 import { renderWithLocale as render } from "@/test/render";
@@ -77,5 +78,17 @@ describe("SettingsPage", () => {
   it("renders heading", () => {
     render(<SettingsPage />);
     expect(screen.getByRole("heading", { name: /settings/i })).toBeInTheDocument();
+  });
+});
+
+describe("DocsPage", () => {
+  it("renders the AirPlay section with the #airplay anchor", async () => {
+    const { container } = render(await DocsPage());
+    expect(
+      screen.getByRole("heading", { name: /airplay from iphone \/ ipad/i })
+    ).toBeInTheDocument();
+    // The controller chip links to /docs#airplay — the anchor must exist.
+    expect(container.querySelector("#airplay")).not.toBeNull();
+    expect(screen.getByText(/screen mirroring/i)).toBeInTheDocument();
   });
 });
