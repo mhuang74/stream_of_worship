@@ -1065,6 +1065,8 @@ export function ControllerPlayer({
               {showIphoneFallback && (
                 <a
                   href="/docs#airplay"
+                  target="_blank"
+                  rel="noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 text-white/80 rounded-full text-xs hover:bg-white/20"
                   data-testid="airplay-fallback"
                 >
