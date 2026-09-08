@@ -58,7 +58,7 @@ describe("RenderComplete", () => {
       render(<RenderComplete {...defaultProps} hasAudio={true} hasVideo={true} />, "zh-Hant")
       expect(screen.getByText("渲染完成！")).toBeInTheDocument()
       expect(screen.getByRole("button", { name: "下載音訊（MP3）" })).toBeInTheDocument()
-      expect(screen.getByRole("button", { name: "分享詩歌集" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "分享敬拜歌單" })).toBeInTheDocument()
       expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument()
     })
 

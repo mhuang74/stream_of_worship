@@ -35,7 +35,7 @@ describe("LocaleContext", () => {
       </LocaleProvider>
     );
     expect(screen.getByTestId("locale").textContent).toBe("zh-Hant");
-    expect(screen.getByTestId("nav").textContent).toBe("詩歌集");
+    expect(screen.getByTestId("nav").textContent).toBe("敬拜歌單");
   });
 
   it("switches language and updates the document lang attribute", () => {
@@ -49,7 +49,7 @@ describe("LocaleContext", () => {
     fireEvent.click(screen.getByText("toggle"));
 
     expect(screen.getByTestId("locale").textContent).toBe("zh-Hant");
-    expect(screen.getByTestId("nav").textContent).toBe("詩歌集");
+    expect(screen.getByTestId("nav").textContent).toBe("敬拜歌單");
     expect(document.documentElement.lang).toBe("zh-Hant");
   });
 
@@ -69,7 +69,7 @@ describe("LocaleContext", () => {
     );
 
     expect(screen.getByTestId("locale").textContent).toBe("zh-Hant");
-    expect(screen.getByTestId("nav").textContent).toBe("詩歌集");
+    expect(screen.getByTestId("nav").textContent).toBe("敬拜歌單");
     expect(document.documentElement.lang).toBe("zh-Hant");
   });
 });

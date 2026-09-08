@@ -60,7 +60,7 @@ describe("RenderSubmitted", () => {
   describe("zh-Hant", () => {
     it("renders zh-Hant title, estimate and cancel button", () => {
       render(<RenderSubmitted {...defaultProps} />, "zh-Hant")
-      expect(screen.getByText("渲染已開始")).toBeInTheDocument()
+      expect(screen.getByText("已開始渲染")).toBeInTheDocument()
       expect(screen.getByText(/約 5 分鐘/)).toBeInTheDocument()
       expect(screen.getByRole("button", { name: "取消渲染" })).toBeInTheDocument()
     })

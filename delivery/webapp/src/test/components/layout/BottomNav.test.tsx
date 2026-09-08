@@ -57,7 +57,7 @@ describe("BottomNav", () => {
 
   it("renders Traditional Chinese labels in zh-Hant", () => {
     renderNav("zh-Hant");
-    expect(screen.getByRole("link", { name: "詩歌集" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "敬拜歌單" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "我的最愛" })).toBeInTheDocument();
   });
 

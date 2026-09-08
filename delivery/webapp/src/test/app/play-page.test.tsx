@@ -79,7 +79,7 @@ describe("PlayPage", () => {
       render(<PlayPage />, "zh-Hant");
 
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /返回詩歌集/i })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /返回歌單/i })).toBeInTheDocument();
       });
     });
   });

@@ -105,7 +105,7 @@ export const audioBundle = bundle({
   },
   "zh-Hant": {
     // AudioPlayerBar — lyrics error fallback
-    "audio.lyrics.unavailable": "歌詞無法使用",
+    "audio.lyrics.unavailable": "歌詞載入失敗",
 
     // AudioPlayerBar — transport controls (aria-labels)
     "audio.skipBack": "倒轉 10 秒",
@@ -130,55 +130,55 @@ export const audioBundle = bundle({
 
     // PlayerLyricsPanel
     "audio.lyrics.loading": "載入歌詞中\u2026",
-    "audio.lyrics.noLyrics": "此錄音沒有可用的歌詞。",
+    "audio.lyrics.noLyrics": "這首歌目前沒有歌詞",
 
     // OfflineIndicator
-    "audio.offline.message": "您目前離線",
+    "audio.offline.message": "你目前離線",
 
     // OfflineStatus — toasts
-    "audio.offline.cachingNotAvailable": "離線快取無法使用",
-    "audio.offline.noArtifacts": "沒有可快取的檔案",
-    "audio.offline.downloaded": "已下載供離線播放",
-    "audio.offline.downloadFailed": "離線下載失敗",
+    "audio.offline.cachingNotAvailable": "這個瀏覽器不支援離線快取",
+    "audio.offline.noArtifacts": "還沒有可以離線保存的檔案",
+    "audio.offline.downloaded": "已下載，離線也能聽",
+    "audio.offline.downloadFailed": "下載失敗，請再試一次",
 
     // OfflineStatus — button / badge
-    "audio.offline.downloadForOffline": "下載供離線使用",
+    "audio.offline.downloadForOffline": "離線下載",
     "audio.offline.ready": "離線就緒",
-    "audio.offline.downloading": "下載中...",
+    "audio.offline.downloading": "下載中\u2026",
 
     // OfflineStatus — iOS unsupported
-    "audio.offline.updateIos": "更新 iOS 以使用離線功能",
+    "audio.offline.updateIos": "更新 iOS 才能離線使用",
     "audio.offline.iosTooltip": "離線快取需要 iOS 17.4 或更新版本",
 
     // LocateSongsetsPopover
-    "audio.locate.findButton": "尋找包含此詩歌的詩歌集",
-    "audio.locate.findTitle": "在詩歌集中尋找",
-    "audio.locate.loadFailed": "無法載入詩歌集",
-    "audio.locate.empty": "此詩歌不在您的任何詩歌集中。",
-    "audio.locate.listAria": "包含此詩歌的詩歌集",
+    "audio.locate.findButton": "找出收錄這首歌的敬拜歌單",
+    "audio.locate.findTitle": "在敬拜歌單中搜尋",
+    "audio.locate.loadFailed": "敬拜歌單載入失敗，請再試一次",
+    "audio.locate.empty": "這首歌還沒被加進任何敬拜歌單",
+    "audio.locate.listAria": "收錄這首歌的敬拜歌單",
     "audio.locate.songs": "首詩歌",
     "audio.locate.position": "位置",
     "audio.locate.origin": "來源",
 
     // SemanticSearch — input
-    "audio.search.placeholder": "以主題或感受描述詩歌...",
-    "audio.search.ariaLabel": "描述要搜尋的詩歌",
+    "audio.search.placeholder": "用主題或感受描述想找的詩歌\u2026",
+    "audio.search.ariaLabel": "描述想找的詩歌",
     "audio.search.helpTip":
-      "提示：以主題或感受描述 \u2014 例如「在神寶座前」、「standing before God\u2019s throne」· 按 Enter 搜尋",
+      "小提示：用主題或感受來描述，例如「在神寶座前」、「standing before God\u2019s throne」· 按 Enter 搜尋",
 
     // SemanticSearch — button
     "audio.search.searchButton": "搜尋",
-    "audio.search.searching": "搜尋中...",
-    "audio.search.searchSongsByDescription": "以描述搜尋詩歌",
+    "audio.search.searching": "搜尋中\u2026",
+    "audio.search.searchSongsByDescription": "用描述搜尋詩歌",
 
     // SemanticSearch — loading / empty states
-    "audio.search.searchingByMeaning": "按語意搜尋中...",
-    "audio.search.loadingSongs": "載入詩歌中...",
-    "audio.search.noSongsMatchFilters": "沒有符合篩選條件的詩歌",
+    "audio.search.searchingByMeaning": "語意搜尋中\u2026",
+    "audio.search.loadingSongs": "載入歌曲中\u2026",
+    "audio.search.noSongsMatchFilters": "沒有詩歌符合目前的篩選條件",
     "audio.search.noMatchingSongs": "找不到符合的詩歌",
-    "audio.search.tryRemovingFilters": "嘗試移除部分篩選條件以查看更多結果",
+    "audio.search.tryRemovingFilters": "試著移除部分篩選條件，可能會看到更多結果",
     "audio.search.tryDifferentDescription":
-      "嘗試使用不同的描述，或詩歌可能尚未產生嵌入向量",
+      "換個描述再搜一次，也可能這些詩歌還沒建立語意索引",
 
     // SemanticSearch — result count
     "audio.search.songsFoundLabel": "首詩歌",
@@ -187,16 +187,16 @@ export const audioBundle = bundle({
     "audio.search.matchSuffix": "相符",
 
     // SemanticSearch — why this match
-    "audio.search.whyThisMatch": "為何相符？",
+    "audio.search.whyThisMatch": "為什麼相符？",
 
     // SemanticSearch — errors / toasts
-    "audio.search.semanticUnavailable": "語意搜尋無法使用",
-    "audio.search.semanticUnavailableSwitch": "語意搜尋無法使用，切換至文字搜尋",
-    "audio.search.searchFailed": "搜尋失敗",
-    "audio.search.noAudioForSong": "此詩歌沒有可播放的音訊",
-    "audio.search.unknownArtist": "未知藝術家",
-    "audio.search.failedAudioUrl": "無法取得音訊網址",
-    "audio.search.failedLoadPreview": "無法載入音訊預覽",
+    "audio.search.semanticUnavailable": "語意搜尋目前不支援",
+    "audio.search.semanticUnavailableSwitch": "語意搜尋目前不支援，已切換為文字搜尋",
+    "audio.search.searchFailed": "搜尋失敗，請再試一次",
+    "audio.search.noAudioForSong": "這首歌沒有音訊檔",
+    "audio.search.unknownArtist": "演出者不詳",
+    "audio.search.failedAudioUrl": "取得音訊連結失敗，請再試一次",
+    "audio.search.failedLoadPreview": "預覽音訊載入失敗",
 
     // SemanticSearch — lyric line label
     "audio.search.lyric": "歌詞",

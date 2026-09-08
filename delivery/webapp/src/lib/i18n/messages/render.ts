@@ -142,23 +142,23 @@ export const renderBundle = bundle({
     // Render page (RenderPageClient)
     "render.heading": "渲染",
     "render.back.ariaLabel": "返回",
-    "render.songsetNotFound": "找不到詩歌集",
-    "render.backToSongsets": "返回詩歌集",
+    "render.songsetNotFound": "找不到這個敬拜歌單",
+    "render.backToSongsets": "回到敬拜歌單",
 
     // Render page toasts
-    "render.toast.alreadyInProgress": "已有渲染作業進行中",
-    "render.toast.started": "渲染已開始",
-    "render.toast.cancelled": "渲染已取消",
-    "render.toast.failedToStart": "無法開始渲染",
-    "render.toast.failedToCancel": "無法取消",
-    "render.toast.failedToCreateJob": "無法建立渲染作業",
-    "render.toast.failedToCancelJob": "無法取消渲染作業",
+    "render.toast.alreadyInProgress": "已經有渲染在進行了",
+    "render.toast.started": "已開始渲染",
+    "render.toast.cancelled": "已取消渲染",
+    "render.toast.failedToStart": "渲染啟動失敗，請再試一次",
+    "render.toast.failedToCancel": "取消失敗",
+    "render.toast.failedToCreateJob": "渲染工作建立失敗，請稍後再試",
+    "render.toast.failedToCancelJob": "取消渲染工作失敗",
     "render.toast.config.audio": "音訊",
     "render.toast.config.video": "影片",
 
     // RenderForm — output options
     "render.output.title": "輸出選項",
-    "render.output.description": "選擇要渲染的內容",
+    "render.output.description": "選擇要渲染的項目",
     "render.output.audioLabel": "音訊（MP3）",
     "render.output.audioDescription": "含轉場的混音音訊",
     "render.output.videoLabel": "影片（MP4）",
@@ -184,9 +184,9 @@ export const renderBundle = bundle({
     "render.titleCard.duration.25": "25 秒",
     "render.titleCard.duration.30": "30 秒",
     "render.titleCard.customText": "自訂標題卡文字",
-    "render.titleCard.customTextHint": "每行一個項目。留空則使用詩歌集名稱與詩歌標題。",
-    "render.titleCard.defaultLines": "預設標題卡內容：",
-    "render.titleCard.worshipSet": "敬拜詩歌集",
+    "render.titleCard.customTextHint": "每行一個項目，留空就用敬拜歌單名稱和詩歌標題。",
+    "render.titleCard.defaultLines": "預設的標題卡內容：",
+    "render.titleCard.worshipSet": "敬拜歌單",
     "render.titleCard.placeholder": "主日敬拜",
 
     // RenderForm — offline availability
@@ -194,25 +194,23 @@ export const renderBundle = bundle({
     "render.offline.description": "快取以供離線播放",
     "render.offline.makeAvailable": "設為離線可用",
     "render.offline.requiresIOS": "需要 iOS 17.4 或更新版本",
-    "render.offline.cacheHint": "快取已渲染的檔案以供離線播放",
+    "render.offline.cacheHint": "快取已渲染的檔案，離線也能播放",
 
     // RenderForm — marked lines warning
-    "render.markedLines.plural": "個標記行需要處理",
-    "render.markedLines.singular": "個標記行需要處理",
-    "render.markedLines.hint": "部分歌詞已標記待檢閱。渲染前請先確認。",
-    "render.markedLines.review": "檢閱",
+    "render.markedLines.plural": "處標記的歌詞需要確認",
+    "render.markedLines.singular": "處標記的歌詞需要確認",
+    "render.markedLines.hint": "有部分歌詞被標記待確認，渲染前先檢查一下。",
+    "render.markedLines.review": "前往確認",
 
     // RenderForm — action buttons
     "render.action.cancel": "取消",
     "render.action.start": "開始渲染",
-    "render.action.starting": "啟動中...",
+    "render.action.starting": "啟動中…",
 
     // RenderForm — previous render notice
-    "render.previousRender.notice": "先前的渲染時間為",
-
-    // RenderForm — confirmation dialog
-    "render.confirm.title": "開始新的渲染？",
-    "render.confirm.description": "此詩歌集已有先前的渲染。開始新的渲染前，請比較下方的參數。",
+    "render.previousRender.notice": "上次渲染時間：",
+    "render.confirm.title": "要開始新的渲染嗎？",
+    "render.confirm.description": "這個敬拜歌單之前已經渲染過了。開始新的渲染之前，先比一下下面的參數。",
     "render.confirm.parameter": "參數",
     "render.confirm.previous": "先前的渲染",
     "render.confirm.current": "目前請求",
@@ -225,44 +223,44 @@ export const renderBundle = bundle({
     "render.compare.resolution": "解析度",
     "render.compare.titleCard": "標題卡",
     "render.compare.songs": "詩歌",
-    "render.compare.songsetDuration": "詩歌集長度",
+    "render.compare.songsetDuration": "敬拜歌單長度",
     "render.compare.totalDuration": "總長度",
     "render.compare.titleCardOn": "開啟",
     "render.compare.titleCardOff": "關閉",
     "render.compare.estimatedPrefix": "約 ",
 
     // RenderSubmitted
-    "render.submitted.title": "渲染已開始",
+    "render.submitted.title": "已開始渲染",
     "render.submitted.estimatedTime": "預估時間",
     "render.submitted.estimatedMinutes": "分鐘",
     "render.submitted.estimatedPrefix": "約 ",
-    "render.submitted.leavePage": "您可以離開此頁面。稍後再回來查看詩歌集的結果。",
-    "render.submitted.submittedAt": "提交時間",
+    "render.submitted.leavePage": "可以先離開這頁，晚點再回來看結果就好。",
+    "render.submitted.submittedAt": "送出時間",
     "render.submitted.cancel": "取消渲染",
 
     // RenderComplete
     "render.complete.title": "渲染完成！",
-    "render.complete.description": "已可播放",
+    "render.complete.description": "已經可以播放了",
     "render.complete.totalTime": "總時間：",
     "render.complete.downloadFiles": "下載檔案",
     "render.complete.downloadAudio": "下載音訊（MP3）",
     "render.complete.downloadVideo": "下載影片（MP4）",
     "render.complete.downloadChapters": "下載章節（JSON）",
-    "render.complete.share": "分享詩歌集",
+    "render.complete.share": "分享敬拜歌單",
     "render.complete.done": "完成",
-    "render.complete.shareText": "來看看「",
-    "render.complete.shareTextSuffix": "」在 Stream of Worship 上",
+    "render.complete.shareText": "來聽聽看「",
+    "render.complete.shareTextSuffix": "」，在 Stream of Worship 上",
 
     // RenderComplete — downloads toasts
-    "render.download.preparing": "正在準備下載...",
-    "render.download.started": "下載已開始",
-    "render.download.failed": "下載失敗",
+    "render.download.preparing": "準備下載中…",
+    "render.download.started": "開始下載了",
+    "render.download.failed": "下載失敗，請再試一次",
 
     // RenderStatusBadge
-    "render.badge.unrendered": "未渲染",
+    "render.badge.unrendered": "還沒渲染",
     "render.badge.rendering": "渲染中",
     "render.badge.fresh": "已渲染",
-    "render.badge.stale": "需要重新渲染",
+    "render.badge.stale": "建議重新渲染",
     "render.badge.failed": "渲染失敗",
   },
 });

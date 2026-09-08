@@ -480,7 +480,7 @@ describe("SongsetList", () => {
     it("renders Traditional Chinese labels in zh-Hant locale", () => {
       renderWithLocale(<SongsetList {...defaultProps} />, "zh-Hant");
       // Search input aria-label is localized
-      expect(screen.getByLabelText(/搜尋詩歌集/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/搜尋敬拜歌單/i)).toBeInTheDocument();
       // Search button label is localized
       expect(screen.getByRole("button", { name: /搜尋/i })).toBeInTheDocument();
     });

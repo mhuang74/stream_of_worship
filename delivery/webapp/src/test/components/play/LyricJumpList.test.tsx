@@ -69,7 +69,7 @@ describe("LyricJumpList", () => {
     it("renders translated handle label in zh-Hant", () => {
       render(<LyricJumpList {...defaultProps} />, "zh-Hant");
 
-      expect(screen.getByRole("button", { name: /開啟歌詞跳轉列表/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /開啟歌詞清單/i })).toBeInTheDocument();
       expect(screen.getByText(/歌詞/i)).toBeInTheDocument();
     });
 

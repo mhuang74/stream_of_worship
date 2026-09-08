@@ -258,7 +258,7 @@ describe("SongCard", () => {
       render(<SongCard {...defaultProps} />, "zh-Hant");
       expect(screen.getByTestId("add-song-button")).toHaveAttribute(
         "aria-label",
-        "加入詩歌集"
+        "加入敬拜歌單"
       );
     });
   });
