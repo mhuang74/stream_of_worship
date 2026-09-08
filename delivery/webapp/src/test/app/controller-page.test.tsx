@@ -231,7 +231,7 @@ describe("ControllerPage (songset)", () => {
 
       render(<ControllerPage />, "zh-Hant");
 
-      expect(screen.getByText(/載入播放器中/i)).toBeInTheDocument();
+      expect(screen.getByText(/播放器載入中/i)).toBeInTheDocument();
     });
   });
 

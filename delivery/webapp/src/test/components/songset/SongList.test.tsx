@@ -195,7 +195,7 @@ describe("SongList", () => {
 
     it("localizes the empty state in zh-Hant", () => {
       render(<SongList {...defaultProps} items={[]} />, "zh-Hant");
-      expect(screen.getByText("此詩歌集中沒有詩歌")).toBeInTheDocument();
+      expect(screen.getByText("這個敬拜歌單還沒有詩歌")).toBeInTheDocument();
     });
   });
 

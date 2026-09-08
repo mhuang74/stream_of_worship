@@ -36,6 +36,7 @@ _Avoid_: voice, perspective, address
 **Songset**:
 An ordered list of songs a user curates and renders into a seamless audio/video deliverable.
 _Avoid_: playlist
+_Avoid_: 詩歌集 (old mechanical zh-Hant UI term; replaced by 敬拜歌單 per docs/translation-guidelines.md)
 
 **Transition**:
 The changeover between adjacent songs in a Songset, controlled by five parameters: gapBeats, crossfadeEnabled, crossfadeDurationSeconds, keyShiftSemitones, and tempoRatio.

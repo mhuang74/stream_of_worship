@@ -79,7 +79,7 @@ describe("OfflineStatus", () => {
       render(<OfflineStatus {...mockProps} />, "zh-Hant");
 
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /下載供離線使用/i })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /離線下載/i })).toBeInTheDocument();
       });
     });
 

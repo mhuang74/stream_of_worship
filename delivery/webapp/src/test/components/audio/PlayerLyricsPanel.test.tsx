@@ -125,6 +125,6 @@ describe("PlayerLyricsPanel", () => {
 
     render(<PlayerLyricsPanel recordingContentHash="abc123" />, "zh-Hant");
 
-    expect(screen.getByText("歌詞無法使用")).toBeInTheDocument();
+    expect(screen.getByText("歌詞載入失敗")).toBeInTheDocument();
   });
 });

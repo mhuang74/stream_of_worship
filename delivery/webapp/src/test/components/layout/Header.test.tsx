@@ -62,7 +62,7 @@ describe("Header", () => {
 
   it("renders Traditional Chinese navigation links in zh-Hant", () => {
     renderHeader("zh-Hant");
-    const songsetsLink = screen.getByRole("link", { name: "詩歌集" });
+    const songsetsLink = screen.getByRole("link", { name: "敬拜歌單" });
     const favoritesLink = screen.getByRole("link", { name: "我的最愛" });
     expect(songsetsLink).toHaveAttribute("href", "/songsets");
     expect(favoritesLink).toHaveAttribute("href", "/favorites");

@@ -154,7 +154,7 @@ describe("SemanticSearch", () => {
       expect(screen.getByTestId("semantic-search-button")).toHaveTextContent("搜尋");
       expect(screen.getByTestId("semantic-search-input")).toHaveAttribute(
         "placeholder",
-        "以主題或感受描述詩歌..."
+        "用主題或感受描述想找的詩歌…"
       );
     });
   });

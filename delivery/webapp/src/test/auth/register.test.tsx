@@ -216,7 +216,7 @@ describe("RegisterPage", () => {
       );
     });
     await waitFor(() => {
-      expect(screen.getByText("請檢查您的電子郵件")).toBeInTheDocument();
+      expect(screen.getByText("檢查一下你的電子郵件")).toBeInTheDocument();
     });
   });
 

@@ -58,8 +58,8 @@ describe("OfflineIndicator", () => {
 
     it("shows Traditional Chinese message in zh-Hant", () => {
       render(<OfflineIndicator />, "zh-Hant");
-      expect(screen.getByText("您目前離線")).toBeInTheDocument();
-      expect(screen.getByRole("status", { name: "您目前離線" })).toBeInTheDocument();
+      expect(screen.getByText("你目前離線")).toBeInTheDocument();
+      expect(screen.getByRole("status", { name: "你目前離線" })).toBeInTheDocument();
     });
   });
 
