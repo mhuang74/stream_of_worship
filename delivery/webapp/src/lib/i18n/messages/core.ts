@@ -349,7 +349,7 @@ export const core = bundle({
     "home.signedOut.step4": "敬拜不中斷",
     "home.signedOut.step4Desc": "詩歌一首接一首流暢唱下去——沒有尷尬的空檔，也不用趕著切影片。",
     "home.signedOut.ctaBottomTitle": "準備好安心帶敬拜了嗎？",
-    "home.signedOut.ctaBottomDesc": "加入已經在用 Stream of Worship 投放歌詞的主領行列。",
+    "home.signedOut.ctaBottomDesc": "使用 Stream of Worship 讓你的敬拜更有能力。",
     "home.signedOut.ctaBottomPrimary": "建立免費帳號",
     "home.signedOut.nav.features": "功能",
     "home.signedOut.nav.howItWorks": "怎麼用",
