@@ -42,6 +42,14 @@ _Avoid_: 詩歌集 (old mechanical zh-Hant UI term; replaced by 敬拜歌單 per
 The changeover between adjacent songs in a Songset, controlled by five parameters: gapBeats, crossfadeEnabled, crossfadeDurationSeconds, keyShiftSemitones, and tempoRatio.
 _Avoid_: crossfade, segue, bridge
 
+**Boundary Key**:
+The musical key a Song leaves through (its exit component) or arrives through (its entry component) — the transition between adjacent songs is judged on exit(A) vs entry(B), falling back to whole-Song key when a boundary component is missing.
+_Avoid_: component key, per-section key
+
+**Boundary BPM**:
+The tempo at a Song's entry or exit component. Adjacent-song tempo compatibility (and the opener-floor / closer-ceiling checks) read these boundary values first, falling back to whole-song tempo.
+_Avoid_: section BPM, per-segment tempo
+
 **Theme**:
 A fixed 12-value vocabulary classifying a song's worship theme: 讚美, 感恩, 敬拜, 奉獻, 認罪, 差遣, 信心, 祈禱, 復興, 聖靈, 十字架, 跟隨. Each theme maps to a Worship Arc phase; a ThemeAnchor is the reference embedding used to classify a song's themes by cosine similarity. At the recording level, the theme is aggregated from component-level classifications (most frequent, with chorus-preference tie-breaking) and persisted as `recordings.theme`.
 _Avoid_: tag, category, label
