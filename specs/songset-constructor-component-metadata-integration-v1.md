@@ -116,7 +116,7 @@ component_posture_confidence: float | None = None
 Add a third query alongside `POOL_QUERY`/`LINE_THEME_QUERY`, mirroring the existing second-query pattern (line scores fetched via `song_ids` + second query):
 
 ```sql
-SELECT sc.song_id, sc.role, sc.occurrence_index, sc.id,
+SELECT sc.song_id, sc.role, sc.component_type, sc.occurrence_index, sc.id,
        sc.bpm, sc.key, sc.key_confidence, sc.energy_level,
        sc.theme, sc.theme_confidence, sc.vocal_posture, sc.vocal_posture_confidence
 FROM song_components sc
@@ -131,8 +131,11 @@ WHERE sc.song_id = ANY(%s)
 - **Chorus preference:** among candidate rows, chorus rows outrank non-chorus rows (`component_type == 'chorus'` first), then highest `theme_confidence` / `vocal_posture_confidence`, then lowest `occurrence_index`, then lowest `id`. This mirrors `_aggregate_recording_theme`'s chorus-preference tie-break (`audio.py:2781-2865`) — reuse its tie-break ordering conceptually; do not import admin command code into the constructor package.
 - **Theme distribution:** for the 12 themes, collect component rows' `(theme, theme_confidence)`; weight each row's vote by `theme_confidence`; normalize to sum 1.0 → `component_theme_scores`. Missing theme on a row contributes no vote. If no votes → `component_theme_scores = None` (song falls back to fusion).
 - **Posture:** same weighting over `vocal_posture`/`vocal_posture_confidence` → argmax → `component_posture` + its confidence. Chorus rows outrank. No vote → None (fallback chain below).
+- **Chorus vote weighting:** the chorus-preference rule above governs which row wins per-boundary selection; for the theme/posture *distributions*, chorus-type rows contribute votes at full weight and non-chorus rows at half weight (chorus identity dominates without discarding verse testimony). Boundary-role filtering in the WHERE clause is retained: essential-role defaults guarantee entry/exit rows carry the LLM fields, and non-chorus boundary rows still contribute weighted votes.
 
 `has_components = (boundary rows found) or (component_theme_scores is not None) or (component_posture is not None)`.
+
+**Posture fallback fetch:** the fallback chain's middle rung — `recordings.vocal_posture` (and `recordings.theme` while the query is open) — is fetched in the same POOL_QUERY join (recording-level columns, `schema.py:91-95`), added to `SongCandidate` as `recording_posture: str | None = None`. Aggregate rows exist for 311/444 pool songs, nearly identical to entry-row coverage, so this fallback is rarely needed — but f_posture's chain must be total, so it is fetched rather than assumed.
 
 **Cache:** no changes needed — `model_dump(mode="json")` round-trips the new fields; old caches fill `None`/`False`.
 
@@ -212,13 +215,14 @@ def _boundary_pair(left, right):
     else:
         to_key, to_mode, to_conf = right.musical_key, right.musical_mode, right.key_confidence
         right_is_boundary = False
-    boundary_source = "component" if (left_is_boundary or right_is_boundary) else "song_level"
+    boundary_source = "component" if (left_is_boundary and right_is_boundary) else "song_level"
     return from_key, from_mode, from_conf, to_key, to_mode, to_conf, boundary_source
 ```
 
 Note: `SongCandidate` gains `exit_mode` / `entry_mode` alongside the key fields in 0.1 (component rows carry key only; mode defaults to the song's `musical_mode`, since boundary rows do not store a separate mode).
 
 - `cfd()` and `suggest_key_shift()` are called with the selected boundary keys/modes (their signatures already take key+mode strings — no change needed beyond the call site).
+- **`and` semantics (confirmed design):** a pair is boundary-sourced only when **both** sides have boundary components; any one-sided pair falls back to song-level on both sides. This keeps the matrix's `boundary_source` an honest statement about the pair, not a per-song flag — mixed pairs (boundary key on one side, song-level on the other) are explicitly not in v1 scope.
 - `key_compat` from the same `key_compatibility_score(distance)` table — unchanged.
 - `bpm_delta`: `abs(exit_bpm(A) − entry_bpm(B))` when both boundary BPMs exist, else today's `abs((to.tempo_bpm or 0) − (from.tempo_bpm or 0))`. **Fix the silent-0 trap while here:** when the winning path has a `None` BPM on either side, append a warning to `TransitionCandidate.warnings` ("missing boundary bpm on <song>, fell back to song-level" / "missing bpm on both sides — delta unreliable").
 
@@ -234,14 +238,7 @@ Note: `SongCandidate` gains `exit_mode` / `entry_mode` alongside the key fields 
 
 **File:** `rules/hard_constraints.py:106-108`
 
-Transposition of an adjacency is gated by the boundary row's confidence:
-
-```python
-effective_conf = transition_pair's to-side entry_key_confidence if boundary pair used component keys \
-                 else right.key_confidence
-```
-
-Concretely: when `boundary_source == "component"`, H8 checks `right.entry_key_confidence >= 0.6` (the row whose key is being transposed *into*); the from-side check uses `left.exit_key_confidence`. Fallback to song-level confidence when the boundary key is absent (boundary_source == "song_level"). `enrich_pool.py:108`'s range-shift gate stays song-level (singing-range shifts transpose the whole song, not a boundary).
+Concretely: when `boundary_source == "component"`, H8 checks the to-side `entry_key_confidence >= 0.6` of the destination song (the row whose key is being transposed *into*). Fallback to song-level confidence when the boundary key is absent (boundary_source == "song_level"). The from-side confidence is not separately gated in v1: the from-side boundary key is *departed*, not transposed-into, and `suggest_key_shift` already refuses shifts whose resulting CFD is worse (harmony.py:75-90). `enrich_pool.py:108`'s range-shift gate stays song-level (singing-range shifts transpose the whole song, not a boundary).
 
 #### 2.4 H4/H5 and fan-out
 
