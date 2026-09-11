@@ -47,7 +47,6 @@ def validate(
         phases = {item.phase}
         phases.update(item.secondary_phases)
         item_phases.append(phases)
-    bpms = [item.bpm for item in proposal.items]
 
     if len(proposal.items) != config.count:
         failures.append((
@@ -73,13 +72,16 @@ def validate(
     if h1_failed:
         failures.append(("H1", "Phase coverage must include one opener, worship/response, and phase 4/5 closer.", "Adjust ordering to follow phases 1-5."))
     opening_floor = config.opening_floor
-    if bpms[0] is None or bpms[0] < opening_floor:
+    opener = proposal.items[0]
+    opener_bpm = opener.entry_bpm if opener.entry_bpm is not None else opener.bpm
+    if opener_bpm is None or opener_bpm < opening_floor:
         failures.append(("H2", f"Opening tempo must be at least {opening_floor} BPM.", "Choose a stronger opener."))
     closing_limit = config.closing_limit
-    if bpms[-1] is None or bpms[-1] > closing_limit:
+    closer = proposal.items[-1]
+    closer_bpm = closer.exit_bpm if closer.exit_bpm is not None else closer.bpm
+    if closer_bpm is None or closer_bpm > closing_limit:
         failures.append(("H3", f"Closing tempo must be <= {closing_limit} BPM.", "Choose a calmer closer."))
 
-    h4_limit = config.h4_limit
     for left, right in zip(proposal.items, proposal.items[1:]):
         transition = matrix.get((left.recording_hash_prefix, right.recording_hash_prefix))
         bpm_delta = transition.bpm_delta if transition else abs((right.bpm or 0) - (left.bpm or 0))
@@ -103,8 +105,18 @@ def validate(
         right_phases = item_phases[i + 1]
         if not any(r >= l - 1 for l in left_phases for r in right_phases):
             failures.append(("H7", f"Phase drops too far from {proposal.items[i].phase} to {proposal.items[i + 1].phase}.", "Reorder to avoid a sharp backwards worship arc."))
-    for item in proposal.items:
-        if item.key_confidence is not None and item.key_confidence < 0.6 and item.key_shift_semitones != 0:
+    for index, item in enumerate(proposal.items):
+        if item.key_shift_semitones == 0:
+            continue
+        if index > 0:
+            transition = matrix.get(
+                (proposal.items[index - 1].recording_hash_prefix, item.recording_hash_prefix)
+            )
+            use_boundary = transition is not None and transition.boundary_source == "component"
+        else:
+            use_boundary = False
+        confidence = item.entry_key_confidence if use_boundary else item.key_confidence
+        if confidence is not None and confidence < 0.6:
             failures.append(("H8", f"{item.title} has low key confidence and cannot be transposed.", "Set key_shift_semitones to 0 or choose a song with reliable key analysis."))
 
     total_duration = sum(item.duration_seconds or 0.0 for item in proposal.items)

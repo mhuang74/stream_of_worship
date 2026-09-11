@@ -22,6 +22,10 @@ You are a worship songset constructor agent. Your job is to plan, validate, and 
 
 **Operating mode:** Agentic only. You ARE the LLM — no separate LLM API key needed.
 
+**Scope note:** This workflow applies to the skill scripts' pipeline; the deprecated
+`sow-admin songset construct` LangGraph command retains song-level-only behavior
+(no component metadata). The skill scripts are canonical.
+
 **Output:** A single `proposal_report.md` artifact. No DB writes.
 
 ## Script Invocation
@@ -124,7 +128,23 @@ uv run --project ops/admin-cli --extra admin --extra constructor python lab/skil
     | uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/enrich_pool.py --season christmas
 ```
 
-This applies theme fusion (title 35% + lyrics 25% + song embedding 25% + line embedding 15%), seasonal bias, and phase inference. Songs missing both tempo and key are dropped. The enriched pool has `themes` (dict[str,float]), `phase` (1-5), `secondary_phases` (list[int]), and `is_hymn` populated.
+This returns a JSON array of raw SongCandidate objects (pre-enrichment). Each song has: `song_id`, `title`, `title_pinyin`, `tempo_bpm`, `musical_key`, `musical_mode`, `key_confidence`, `duration_seconds` (from the latest-active recording), `lyrics_raw`, `song_theme_scores_raw`, `line_theme_scores_raw`, `recording_hash_prefix`, etc.
+
+Songs with analysis components also carry boundary + aggregate fields from
+`song_components` (with `has_components = true`; ~70% of the pool):
+- `entry_bpm`/`entry_key`/`entry_key_confidence`/`entry_energy_level_db` — the opener-boundary (role `entry`) values.
+- `exit_bpm`/`exit_key`/`exit_key_confidence`/`exit_energy_level_db` — the closer-boundary (role `exit`) values.
+- `component_theme_scores` (dense 12-key distribution, chorus-preference weighted), `component_posture` (`To God`/`About God`/`To Congregation`), `component_posture_confidence`.
+- `recording_theme`/`recording_posture` — recording-level aggregates (posture fallback rung).
+Component-less songs keep `has_components = false` and song-level values only; they are never dropped.
+
+Enrichment applies seasonal bias and phase inference. **Component themes are primary (ADR-0006):** when a song has `component_theme_scores`, the phase inference consumes that distribution and sets `theme_source = "component"`; the 4-source text/embedding fusion (title 35% + lyrics 25% + song embedding 25% + line embedding 15%) is the **fallback** for component-less songs (`theme_source = "fusion"`). Songs missing both tempo and key are dropped. The enriched pool has `themes` (dict[str,float]), `theme_source` (`component`/`fusion`/None), `phase` (1-5), `secondary_phases` (list[int]), and `is_hymn` populated.
+
+**Energy percentile normalization:** the enrichment pass also computes pool-relative
+`entry_energy_pct` / `exit_energy_pct` (0.0–1.0, ties-averaged midpoint percentile) from
+the boundary `entry_energy_level_db` / `exit_energy_level_db` values. Percentiles are
+computed within tonight's fetched pool only (not catalog-wide); songs with no energy data
+carry `None` percentiles and are skipped (not penalized) in f_energy.
 
 Review the enrichment summary printed to stderr:
 - **Phase distribution**: Are there enough phase-1 openers and phase 4/5 closers?
@@ -170,6 +190,23 @@ by `(from_hash_prefix, to_hash_prefix)`.
 
 This computes pairwise transition recommendations for all song pairs where circle-of-fifths distance (CFD) ≤ 6. Each transition includes: `cfd`, `bpm_delta`, `key_compat` (0-1), `suggested_key_shift` (semitones), `transition_technique` (pivot/direct/relative/transposition/vamp/direct_modulation), `crossfade_enabled`, `crossfade_duration_seconds`, `gap_beats`. Also computes `fan_out` (how many valid transitions each song has) and marks `is_dead_end` songs.
 
+**Boundary-first semantics:** when both songs of a pair have boundary keys
+(`exit_key` on the from-side, `entry_key` on the to-side), CFD, key compatibility,
+and the suggested shift are computed on those boundary keys and the transition
+carries `boundary_source = "component"`; otherwise the pair computes on song-level
+keys/modes (`boundary_source = "song_level"`) — keys never mix provenance within
+one pair. `bpm_delta` inside a component pair uses each side's boundary BPM when
+present, falling back per-side to song-level BPM (gaps surface as per-song
+warnings such as `missing exit bpm on <title>; used song-level bpm`). H2/H3 check
+the opener's *entry* BPM and the closer's *exit* BPM (song-level fallback).
+**H8 boundary gate:** when the incoming transition is component-sourced, a
+transposition is allowed only if the destination's `entry_key_confidence >= 0.6`
+(song-level `key_confidence >= 0.6` otherwise). Disclosed cost: the pool's
+transposable population drops from ~250 (56.3%) to ~201 (45.3%) — ~80 songs with
+confident song-level keys lose transposition because their boundary confidence is
+lower; ~31 gain it. The report's pool overview tracks both counts so the
+regression stays observable.
+
 ### Step 5 — Plan Songset(s)
 
 You are the LLM planner. Using the enriched pool and transition matrix, plan a songset that follows the 5-phase worship arc template:
@@ -203,7 +240,17 @@ You are the LLM planner. Using the enriched pool and transition matrix, plan a s
 - Ensure phase doesn't drop by more than 1 between adjacent songs (H7)
 - **Hard cap: `count ≤ 5`** (enforced by `SONGSET_MAX_SONGS`; exceeding this fails at `songset create` time, not earlier). Never draft a proposal with more than 5 songs.
 - **Duration tracking (H9):** Before adding a song to the draft, accumulate `running_duration_seconds` (sum of selected songs' `duration_seconds`). Reject any candidate that would push the running total past `SONGSET_MAX_DURATION_SECONDS` (1500s = 25 min). If `duration_seconds` is `None` for a song, do not block on it, but warn the user in the summary that durations were unknown.
-- **Singing range:** Prefer songs with `in_leader_range = True`. If a chosen song has `in_leader_range = False` and `recommended_key_shift_for_range != 0`, set the draft item's `key_shift_semitones` to `recommended_key_shift_for_range` (this also satisfies H5/H8 if the shifted CFD ≤ 3). If no in-range song fits a template slot, accept the out-of-range song — the soft penalty will reduce the score but not block the proposal.
+- **Component metadata (when present on the enriched pool JSON):** consider, per
+  song: boundary entry/exit BPM + key (the transition matrix already bakes boundary
+  compatibility into `cfd`/`bpm_delta`/`suggested_key_shift` — you cannot recompute
+  it at plan time), `theme_source`, `component_posture` (effective posture, already
+  resolved through the recording-level fallback), and `entry_energy_pct`/`exit_energy_pct`.
+  Prefer a soft energy arc: the set should generally land softer than it opens
+  (opener `entry_energy_pct` ≥ closer `exit_energy_pct`), with gentle adjacency
+  deltas. Prefer posture fit when choosing between otherwise-equal candidates
+  (direct address peaks in Worship/Response; testimony fits Call/Commission;
+  congregational exhortation fits Call/Response/Commission but not Worship). The
+  H-table is unchanged — no new H-codes; energy and posture are soft score terms only.
 - Maximize theme diversity across the set
 - Consider tempo arc: opener should be faster than closer
 
@@ -252,10 +299,19 @@ with open('/tmp/score_input.json', 'w') as f:
     json.dump(payload, f, ensure_ascii=False)
 EOF
 
-# Score the draft
-uv run --project ops/admin-cli --extra admin --extra constructor python lab/skills/songset-constructor/scripts/score_songset.py \
-    --input /tmp/score_input.json
 ```
+
+**Three-mode weight table (neutral redistribution):** f_energy/f_posture join the
+weighted sum only when their signal exists pool-wide; an absent term's 0.05 weight
+is redistributed proportionally across the four base terms (component-less pools
+score exactly like the four-way formula).
+
+| Mode | Active terms | Weights |
+|------|-------------|---------|
+| four-way (no energy, no posture data pool-wide) | theme/tempo/harmony/diversity | 0.40 / 0.30 / 0.20 / 0.10 |
+| five-way (+energy only) | base × 0.95 + 0.05·f_energy | 0.38 / 0.285 / 0.19 / 0.095 / 0.05 |
+| five-way (+posture only) | base × 0.95 + 0.05·f_posture | 0.38 / 0.285 / 0.19 / 0.095 / 0.05 |
+| six-way (+both) | base × 0.90 + 0.05 + 0.05 | 0.36 / 0.27 / 0.18 / 0.09 / 0.05 / 0.05 |
 
 Submit your draft songset to `scripts/score_songset.py`:
 ```bash
@@ -264,7 +320,7 @@ echo '{"items": [...], "pool": [...], "transitions": [...], "config": {"count": 
 ```
 
 The script returns:
-- `score`: ScoreBreakdown with `f_theme` (0.40 weight), `f_tempo` (0.30), `f_harmony` (0.20), `f_diversity` (0.10), and `total` (0-1)
+- `score`: ScoreBreakdown with `f_theme`, `f_tempo`, `f_harmony`, `f_diversity`, optional `f_energy`/`f_posture`, and `total` (0-1)
 - `validation`: ValidationFeedback with `passed` (bool), `violated` (list of H-codes), `errors` (list of messages), `repair_hints` (list of suggestions)
 - `proposal`: Full SongsetProposal with items, scores, and transition settings
 
@@ -276,10 +332,22 @@ The script returns:
 | f_tempo | ≥ 0.70 | ≥ 0.65 | < 0.60 (large BPM jumps) |
 | f_harmony | ≥ 0.70 | ≥ 0.50 | < 0.40 (key incompatibility) |
 | f_diversity | 1.00 | 1.00 | < 1.00 (duplicate songs) |
+| f_energy | ≥ 0.80 (smooth descent) | ≥ 0.65 | < 0.50 (energy clashes / rising arc) |
+| f_posture | ≥ 0.80 (fits the phase template) | ≥ 0.50 | < 0.40 (posture fights the phase) |
 | range_penalty | 0.00 | ≤ 0.05 | > 0.10 (out-of-range songs) |
 | **total** | **≥ 0.80** | **≥ 0.70** | **< 0.65** |
 
-**Range penalty:** Subtracted from `total` after the base components are summed. Weight: 0.05 per semitone of distance from the closest comfortable tonic PC, capped at 0.20 per song. Only applies if `--leader-range` was provided to `enrich_pool.py`.
+**H8 boundary gate (score-time effect):** a song whose incoming transition is
+component-sourced is gated on `entry_key_confidence ≥ 0.6` for transposition;
+song-level `key_confidence ≥ 0.6` otherwise (opener always song-level-gated).
+Disclosed regression: the pool's transposable population drops from ~250 (56.3%)
+to ~201 (45.3%) under the boundary gate — the accepted price of honest boundary
+data, tracked in the report.
+
+**Range penalty:** Subtracted from `total` after the weighted components are
+summed. Weight: 0.05 per semitone of distance from the closest comfortable tonic
+PC, capped at 0.20 per song. Only applies if `--leader-range` was provided to
+`enrich_pool.py`.
 
 ### Step 7 — Refine (if needed)
 
@@ -334,8 +402,9 @@ echo '{"proposals": [...], "pool": [...], "config": {...}, "transitions": [...],
 
 This writes a single `proposal_report.md` containing:
 - Run configuration (including leader range label and comfortable PCs)
-- Pool overview (phase distribution, theme coverage, tempo/key coverage, duration distribution)
-- Per-proposal details: song sequence, phase arc, BPM/key journey, duration per song, total duration vs. 25-min cap, score breakdown (including range_penalty), transition settings, singing-range status per song, warnings
+- Pool overview (phase distribution, theme coverage, tempo/key coverage, duration distribution, **component coverage**, **theme_source distribution**, **transposable-population counts** — song-level vs boundary-gated, making the H8 regression observable run-over-run)
+- Per-proposal details: song sequence, phase arc, BPM/key journey, duration per song, total duration vs. 25-min cap, score breakdown (**active weight mode** — four-way/five-way/six-way — plus f_energy/f_posture values or `(n/a)`, including range_penalty), transition settings, **boundary entry/exit BPM + key columns** alongside song-level values, **themes with theme_source**, singing-range status per song, **adjacency table** with per-pair `boundary_source` markers (component/song-level) and transition warnings (e.g. boundary-BPM fallbacks), **energy arc** (entry/exit pct per position), **posture sequence** vs phase with fit values, warnings
+- Component-metadata warnings: songs with `has_components = false` used in a proposal ("song-level fallback: theme via fusion, no energy/posture data") and per-adjacency boundary-BPM warnings
 - Diversity matrix: unique songs/themes/composers, song overlap matrix, song frequency table, theme coverage, bottlenecks
 
 ### Step 11 — Summary to User
@@ -352,8 +421,7 @@ After writing the report, provide a concise summary to the user:
 
 ### Step 12 — Persist Songset to DB (Optional)
 
-If the user wants to persist the top-ranked proposal as a songset in the
-database, use the Admin CLI `songset create` command.
+If the user wants to persist the winning songset, follow these steps:
 
 **Song ID format:** The `song_id` field in SongCandidate objects follows the
 format `{slug}_{8-char-hex}` (e.g., `wo_de_ye_su_4c27d159`). This is the

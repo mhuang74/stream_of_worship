@@ -24,6 +24,13 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from stream_of_worship.admin.constants import SONGSET_MAX_DURATION_SECONDS
+
+if TYPE_CHECKING:
+    from stream_of_worship.admin.songset_constructor.config import RunConfig
+    from stream_of_worship.admin.songset_constructor.models import TransitionCandidate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 ADMIN_CLI_SRC = PROJECT_ROOT / "ops" / "admin-cli" / "src"
@@ -32,7 +39,6 @@ if str(ADMIN_CLI_SRC) not in sys.path:
 
 PHASE_NAMES = {1: "call", 2: "thanksgiving", 3: "worship", 4: "response", 5: "commitment"}
 PC_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
-MAX_DURATION_SECONDS = 1500
 
 
 def _format_duration(seconds: float | None) -> str:
@@ -56,15 +62,18 @@ def main() -> None:
     data = json.load(sys.stdin)
 
     from stream_of_worship.admin.songset_constructor.config import RunConfig
-    from stream_of_worship.admin.songset_constructor.models import SongCandidate, SongsetProposal
-    from stream_of_worship.admin.songset_constructor.artifacts.writer import (
-        brief_summary_block,
-        _deterministic_arc_narrative,
-        _diversity_summary,
+    from stream_of_worship.admin.songset_constructor.models import (
+        SongCandidate,
+        SongsetProposal,
+        TransitionCandidate,
     )
 
     proposals = [SongsetProposal.model_validate(p) for p in data.get("proposals", [])]
     pool = [SongCandidate.model_validate(c) for c in data.get("pool", [])]
+    matrix: dict[tuple[str, str], object] = {}
+    for t_data in data.get("transitions", []):
+        t = TransitionCandidate.model_validate(t_data)
+        matrix[(t.from_hash_prefix, t.to_hash_prefix)] = t
     config_dict = data.get("config", {})
     summary_text = data.get("summary", "")
 
@@ -85,7 +94,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     report_path = output_dir / "proposal_report.md"
-    report_text = _build_report(proposals, pool, config, summary_text)
+    report_text = _build_report(proposals, pool, config, summary_text, matrix)
     report_path.write_text(report_text, encoding="utf-8")
 
     print(str(report_path))
@@ -94,16 +103,14 @@ def main() -> None:
 def _build_report(
     proposals: list,
     pool: list,
-    config: "RunConfig",
+    config: RunConfig,
     summary_text: str,
+    matrix: dict[tuple[str, str], TransitionCandidate] | None = None,
 ) -> str:
     """Build the full proposal_report.md content."""
     from stream_of_worship.admin.songset_constructor.artifacts.writer import (
-        brief_summary_block,
-        _deterministic_arc_narrative,
         _diversity_summary,
     )
-    from stream_of_worship.admin.songset_constructor.rules.themes import THEMES
 
     lines: list[str] = ["# Songset Proposals", ""]
 
@@ -117,7 +124,7 @@ def _build_report(
     if not proposals:
         lines.extend(["No valid proposals generated.", ""])
     for proposal in proposals:
-        lines.extend(_proposal_section(proposal, config, pool))
+        lines.extend(_proposal_section(proposal, config, pool, matrix))
 
     # Diversity Summary
     lines.extend(_diversity_summary(proposals, pool, config=config))
@@ -129,7 +136,7 @@ def _build_report(
     return "\n".join(lines)
 
 
-def _run_summary(config: "RunConfig", pool: list) -> list[str]:
+def _run_summary(config: RunConfig, pool: list) -> list[str]:
     """Generate the run summary section."""
     generated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     flags = []
@@ -214,11 +221,45 @@ def _pool_overview(pool: list) -> list[str]:
         max_dur = max(durations)
         lines.append(f"- Duration stats: avg {_format_duration(avg_dur)}, max {_format_duration(max_dur)}")
     lines.append(f"- Theme entropy: {theme_entropy:.2f} bits (max {max_theme_entropy:.3f})")
+
+    # Component coverage + theme source distribution + H8 transposable population
+    with_components = [c for c in pool if c.has_components]
+    component_count = len(with_components)
+    component_pct = (100.0 * component_count / total) if total else 0.0
+    lines.append(
+        f"- Component coverage: {component_count}/{total} ({component_pct:.1f}%) have song_components data"
+    )
+
+    source_counts: Counter[str] = Counter(c.theme_source for c in pool)
+    source_summary = ", ".join(
+        f"{source}={source_counts[source]}" for source in ("component", "fusion") if source_counts[source]
+    )
+    if source_summary:
+        lines.append(f"- Theme source: {source_summary}")
+
+    song_level_transposable = sum(
+        1 for c in pool if c.key_confidence is not None and c.key_confidence >= 0.6
+    )
+    boundary_transposable = sum(
+        1
+        for c in pool
+        if (c.entry_key_confidence if c.entry_key is not None else c.key_confidence) is not None
+        and (c.entry_key_confidence if c.entry_key is not None else c.key_confidence) >= 0.6
+    )
+    lines.append(
+        f"- Transposable population (key confidence >= 0.6): song-level {song_level_transposable}, "
+        f"boundary-gated {boundary_transposable} (H8 boundary-first regression)"
+    )
     lines.append("")
     return lines
 
 
-def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
+def _proposal_section(
+    proposal,
+    config: RunConfig,
+    pool: list,
+    matrix: dict[tuple[str, str], TransitionCandidate] | None = None,
+) -> list[str]:
     """Generate a per-proposal section."""
     from stream_of_worship.admin.songset_constructor.artifacts.writer import brief_summary_block
 
@@ -228,8 +269,8 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
         "",
         "### Details",
         "",
-        "| # | Title | Album | Phase | BPM | Key | Dur | Themes | Transition |",
-        "|---|---|---:|---:|---|---|---|---|---|",
+        "| # | Title | Album | Phase | BPM | Key | Entry/Exit BPM | Entry/Exit Key | Dur | Themes (source) | Transition |",
+        "|---|---|---:|---:|---|---|---|---|---|---|---|",
     ])
 
     for item in proposal.items:
@@ -239,23 +280,43 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
         if item.secondary_phases:
             phase_display += f" (+{','.join(str(p) for p in sorted(item.secondary_phases))})"
         themes = ", ".join(item.themes) if item.themes else "none"
+        source = f" ({item.theme_source})" if item.theme_source else ""
+        themes_display = f"{themes}{source}"
         bpm = f"{item.bpm:g}" if item.bpm is not None else ""
         dur = _format_duration(item.duration_seconds) if item.duration_seconds is not None else "?"
+        boundary_bpm = (
+            f"{item.entry_bpm:g}/{item.exit_bpm:g}"
+            if item.entry_bpm is not None and item.exit_bpm is not None
+            else (
+                f"{item.entry_bpm:g}/—"
+                if item.entry_bpm is not None
+                else f"—/{item.exit_bpm:g}" if item.exit_bpm is not None else "—"
+            )
+        )
+        boundary_key = (
+            f"{item.entry_key}/{item.exit_key}"
+            if item.entry_key is not None and item.exit_key is not None
+            else (
+                f"{item.entry_key}/—"
+                if item.entry_key is not None
+                else f"—/{item.exit_key}" if item.exit_key is not None else "—"
+            )
+        )
         lines.append(
-            f"| {item.position} | {item.title} | {item.album_name or ''} | {phase_display} | {bpm} | {key} | {dur} | {themes} | {transition} |"
+            f"| {item.position} | {item.title} | {item.album_name or ''} | {phase_display} | {bpm} | {key} | {boundary_bpm} | {boundary_key} | {dur} | {themes_display} | {transition} |"
         )
 
     # Total duration line
     total_duration = sum(item.duration_seconds or 0.0 for item in proposal.items)
     has_unknown = any(item.duration_seconds is None for item in proposal.items)
     dur_status = "✓"
-    if total_duration > MAX_DURATION_SECONDS:
+    if total_duration > SONGSET_MAX_DURATION_SECONDS:
         dur_status = "✗ H9 VIOLATED"
     elif has_unknown:
         dur_status = "⚠ unknown durations"
     lines.extend([
         "",
-        f"**Total duration:** {_format_duration(total_duration)} ({total_duration:.0f}s / {MAX_DURATION_SECONDS}s limit) {dur_status}",
+        f"**Total duration:** {_format_duration(total_duration)} ({total_duration:.0f}s / {SONGSET_MAX_DURATION_SECONDS}s limit) {dur_status}",
     ])
 
     # Singing range subsection
@@ -272,9 +333,7 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
         ])
         for item in proposal.items:
             in_range = "✓" if item.in_leader_range else "✗"
-            if item.in_leader_range and item.recommended_key_shift_for_range != 0:
-                in_range = "✓ (shifted)"
-            elif item.in_leader_range and item.key_shift_semitones != 0:
+            if item.in_leader_range and item.recommended_key_shift_for_range != 0 or item.in_leader_range and item.key_shift_semitones != 0:
                 in_range = "✓ (shifted)"
             applied_shift = item.key_shift_semitones if item.key_shift_semitones != 0 else (
                 item.recommended_key_shift_for_range if item.recommended_key_shift_for_range != 0 else 0
@@ -283,16 +342,63 @@ def _proposal_section(proposal, config: "RunConfig", pool: list) -> list[str]:
                 f"| {item.position} | {item.title} | {item.key or '?'} | {item.mode or '?'} | {in_range} | {applied_shift} | {item.leader_range_distance} |"
             )
 
-    # Score breakdown with range_penalty
+    # Component metadata: adjacency provenance + warnings, energy/posture arcs, coverage warnings
+    if matrix is not None:
+        lines.extend(["", "### Adjacency (component metadata)", "", "| From → To | Provenance | CFD | BPM Δ | Warnings |", "|---|---|---:|---:|---|"])
+        for left, right in zip(proposal.items, proposal.items[1:]):
+            transition = matrix.get((left.recording_hash_prefix, right.recording_hash_prefix))
+            if transition is None:
+                lines.append(f"| {left.title} → {right.title} | (no transition) | — | — | — |")
+                continue
+            source = "component" if transition.boundary_source == "component" else "song-level"
+            warnings = ", ".join(transition.warnings) if transition.warnings else "—"
+            lines.append(
+                f"| {left.title} → {right.title} | {source} | {transition.cfd} | {transition.bpm_delta:g} | {warnings} |"
+            )
+
+    energy_trajectory: list[str] = []
+    posture_sequence: list[str] = []
+    for item in proposal.items:
+        entry_pct = f"{item.entry_energy_pct:.2f}" if item.entry_energy_pct is not None else "—"
+        exit_pct = f"{item.exit_energy_pct:.2f}" if item.exit_energy_pct is not None else "—"
+        energy_trajectory.append(f"{item.position}:{entry_pct}→{exit_pct}")
+        posture = item.component_posture or "—"
+        fit = ""
+        if item.component_posture is not None:
+            from stream_of_worship.admin.songset_constructor.components import POSTURE_PHASE_FIT
+
+            fit = f" (fit {POSTURE_PHASE_FIT[item.component_posture].get(item.phase, 0.5):.1f})"
+        posture_sequence.append(f"{item.position}: {posture} @ P{item.phase}{fit}")
+    lines.extend(["", f"**Energy arc (entry→exit pct):** {' | '.join(energy_trajectory)}"])
+    lines.extend([f"**Posture sequence:** {' | '.join(posture_sequence)}", ""])
+
+    fallback_songs = [item.title for item in proposal.items if not item.has_components]
+    if fallback_songs:
+        lines.extend([f"Fallback (song-level): {', '.join(fallback_songs)} — theme via fusion, no energy/posture data", ""])
+    # Score breakdown with range_penalty + active weight mode (four/five/six-way)
+    active = (proposal.score.f_energy is not None) + (proposal.score.f_posture is not None)
+    mode = {
+        0: "four-way (0.40/0.30/0.20/0.10)",
+        1: "five-way (base × 0.95)",
+        2: "six-way (base × 0.90 + 0.05 + 0.05)",
+    }[active]
+    energy_part = (
+        f"f_energy {proposal.score.f_energy:.3f}" if proposal.score.f_energy is not None else "f_energy (n/a)"
+    )
+    posture_part = (
+        f"f_posture {proposal.score.f_posture:.3f}" if proposal.score.f_posture is not None else "f_posture (n/a)"
+    )
     score_parts = (
         f"f_theme {proposal.score.f_theme:.3f}, "
         f"f_tempo {proposal.score.f_tempo:.3f}, "
         f"f_harmony {proposal.score.f_harmony:.3f}, "
-        f"f_diversity {proposal.score.f_diversity:.3f}"
+        f"f_diversity {proposal.score.f_diversity:.3f}, "
+        f"{energy_part}, "
+        f"{posture_part}"
     )
     if proposal.score.range_penalty > 0:
         score_parts += f", range_penalty -{proposal.score.range_penalty:.3f}"
-    lines.extend(["", f"Score: {score_parts}.", ""])
+    lines.extend(["", f"Score ({mode}): {score_parts}.", ""])
 
     if proposal.hard_constraint_warnings:
         lines.extend([f"Warnings: {', '.join(proposal.hard_constraint_warnings)}", ""])

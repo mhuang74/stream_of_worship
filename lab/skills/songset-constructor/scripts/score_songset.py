@@ -58,7 +58,10 @@ def main() -> None:
     )
     from stream_of_worship.admin.songset_constructor.rules.fitness import score
     from stream_of_worship.admin.songset_constructor.rules.hard_constraints import validate
-    from stream_of_worship.admin.songset_constructor.rules.proposals import proposal_from_draft
+    from stream_of_worship.admin.songset_constructor.rules.proposals import (
+        proposal_from_draft,
+        stamp_boundary_sources,
+    )
 
     # Reconstruct pool
     pool = [SongCandidate.model_validate(item) for item in data.get("pool", [])]
@@ -89,6 +92,7 @@ def main() -> None:
 
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
     proposal = proposal_from_draft(draft, pool, placeholder, llm_origin=True)
+    proposal = stamp_boundary_sources(proposal, matrix)
     proposal = proposal.model_copy(update={"score": score(proposal, config, matrix)})
 
     # Apply soft range penalty if leader range was provided during enrichment

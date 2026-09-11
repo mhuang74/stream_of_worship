@@ -34,6 +34,29 @@ class SongCandidate(BaseModel):
     recommended_key_shift_for_range: int = 0
     leader_range_pcs: list[int] = Field(default_factory=list)
     leader_range_label: str | None = None
+    has_components: bool = False
+    # Boundary (role='entry') values, from song_components
+    entry_bpm: float | None = None
+    entry_key: str | None = None  # e.g. "G" (bare note name, never mode-suffixed)
+    entry_mode: str | None = None  # copied from the song's recording musical_mode at aggregation
+    entry_key_confidence: float | None = None
+    entry_energy_level_db: float | None = None
+    # Boundary (role='exit') values
+    exit_bpm: float | None = None
+    exit_key: str | None = None
+    exit_mode: str | None = None  # same rule: copied from recording musical_mode
+    exit_key_confidence: float | None = None
+    exit_energy_level_db: float | None = None
+    # Aggregates (chorus-preference, confidence-weighted)
+    component_theme_scores: dict[str, float] | None = None  # dense 12-key; None = no votes at all
+    component_posture: str | None = None  # To God | About God | To Congregation
+    component_posture_confidence: float | None = None
+    recording_posture: str | None = None  # recordings.vocal_posture (fallback rung)
+    recording_theme: str | None = None  # recordings.theme (unused in scoring; diagnostic only)
+    theme_source: str | None = None  # "component" | "fusion" | None; set during enrichment
+    # Energy percentiles (set by the enrichment pass, pool-wide)
+    entry_energy_pct: float | None = None
+    exit_energy_pct: float | None = None
 
 
 class TransitionCandidate(BaseModel):
@@ -48,6 +71,7 @@ class TransitionCandidate(BaseModel):
     crossfade_duration_seconds: float
     gap_beats: float
     warnings: list[str] = Field(default_factory=list)
+    boundary_source: str = "song_level"  # "component" | "song_level"
 
 
 class DraftItem(BaseModel):
@@ -79,8 +103,18 @@ class ProposalItem(DraftItem):
     duration_seconds: float | None = None
     tonic_pc: int = 0
     in_leader_range: bool = True
-    leader_range_distance: int = 0
     recommended_key_shift_for_range: int = 0
+    has_components: bool = False
+    theme_source: str | None = None
+    component_posture: str | None = None  # effective posture: component → recording → None
+    entry_energy_pct: float | None = None
+    exit_energy_pct: float | None = None
+    entry_bpm: float | None = None
+    exit_bpm: float | None = None
+    entry_key: str | None = None
+    exit_key: str | None = None
+    entry_key_confidence: float | None = None
+    incoming_boundary_source: str | None = None  # boundary_source of the transition INTO this item (opener: None)
 
 
 class ScoreBreakdown(BaseModel):
@@ -88,6 +122,8 @@ class ScoreBreakdown(BaseModel):
     f_tempo: float
     f_harmony: float
     f_diversity: float
+    f_energy: float | None = None  # None = term absent from the weighted sum
+    f_posture: float | None = None  # None = term absent from the weighted sum
     total: float
     range_penalty: float = 0.0
 

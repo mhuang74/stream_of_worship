@@ -18,6 +18,7 @@ from stream_of_worship.admin.songset_constructor.rules.proposals import (
     draft_from_candidates,
     proposal_from_draft,
     rank_proposals,
+    stamp_boundary_sources,
 )
 
 _TEMPLATES: dict[int, tuple[int, ...]] = {
@@ -87,7 +88,7 @@ def _sort_key_phase_tempo(seq: list[SongCandidate], target: tuple[int, ...]) -> 
 
 
 def _sort_key_theme_diverse(seq: list[SongCandidate], target: tuple[int, ...]) -> tuple:
-    theme_count = len({t for item in seq for t in (item.themes or {})})
+    theme_count = len({t for item in seq for t, v in (item.themes or {}).items() if v > 0})
     return (
         sum(_phase_score(item, target[index]) for index, item in enumerate(seq)),
         sum(abs((seq[index + 1].tempo_bpm or 0) - (seq[index].tempo_bpm or 0)) for index in range(len(seq) - 1)),
@@ -258,7 +259,9 @@ def _proposal_for_sequence(
                 updated_items.append(right)
         draft = draft.model_copy(update={"items": updated_items})
     placeholder = ScoreBreakdown(f_theme=0, f_tempo=0, f_harmony=0, f_diversity=0, total=0)
+
     proposal = proposal_from_draft(draft, sequence, placeholder, llm_origin=False, warnings=warnings)
+    proposal = stamp_boundary_sources(proposal, matrix)
     return proposal.model_copy(update={"score": score(proposal, config, matrix)})
 
 

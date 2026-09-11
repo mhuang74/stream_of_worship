@@ -139,16 +139,23 @@ def main() -> None:
             dropped += 1
             continue
 
-        title = classify_title_themes(candidate.title, candidate.title_pinyin)
-        lyrics = classify_lyrics_themes(candidate.lyrics_raw)
-        song_emb = normalise_cosine_scores(candidate.song_theme_scores_raw)
-        line_emb = normalise_cosine_scores(candidate.line_theme_scores_raw)
-        fused = apply_seasonal_bias(fuse_themes(title, lyrics, song_emb, line_emb), args.season)
+        if candidate.component_theme_scores:  # primary path (dense dict; truthy only when any vote exists)
+            fused = dict(candidate.component_theme_scores)
+            theme_source = "component"
+        else:  # fallback: component-less songs use the 4-source text/embedding fusion
+            title = classify_title_themes(candidate.title, candidate.title_pinyin)
+            lyrics = classify_lyrics_themes(candidate.lyrics_raw)
+            song_emb = normalise_cosine_scores(candidate.song_theme_scores_raw)
+            line_emb = normalise_cosine_scores(candidate.line_theme_scores_raw)
+            fused = fuse_themes(title, lyrics, song_emb, line_emb)
+            theme_source = "fusion"
+        fused = apply_seasonal_bias(fused, args.season)
         primary_phase = infer_phase(fused, candidate.tempo_bpm)
         secondary = infer_secondary_phases(fused, primary_phase, candidate.tempo_bpm)
 
         update = {
             "themes": fused,
+            "theme_source": theme_source,
             "phase": primary_phase,
             "secondary_phases": secondary,
             "is_hymn": candidate.album_series == "HYMN",
@@ -161,6 +168,39 @@ def main() -> None:
         enriched.append(candidate.model_copy(update=update))
 
     enriched_size = len(enriched)
+
+    # Energy percentile normalization (pool-relative; ties-averaged midpoint percentile)
+    energy_values = [
+        value
+        for candidate in enriched
+        for value in (candidate.entry_energy_level_db, candidate.exit_energy_level_db)
+        if value is not None
+    ]
+    if len(energy_values) < 2:
+        energy_updates: list[dict] = [{} for _ in enriched]
+    else:
+        n = len(energy_values)
+
+        def _percentile(value: float) -> float:
+            strict = sum(1 for other in energy_values if other < value)
+            equal = sum(1 for other in energy_values if other == value)
+            return (strict + 0.5 * equal) / n
+
+        energy_updates = [
+            {
+                "entry_energy_pct": _percentile(candidate.entry_energy_level_db)
+                if candidate.entry_energy_level_db is not None
+                else None,
+                "exit_energy_pct": _percentile(candidate.exit_energy_level_db)
+                if candidate.exit_energy_level_db is not None
+                else None,
+            }
+            for candidate in enriched
+        ]
+    enriched = [
+        candidate.model_copy(update=update) if update else candidate
+        for candidate, update in zip(enriched, energy_updates)
+    ]
 
     # Enrichment summary to stderr
     phase_counts: Counter[int] = Counter(c.phase for c in enriched)
@@ -187,6 +227,11 @@ def main() -> None:
     theme_entropy = _shannon_entropy(list(dominant_themes.values()))
     max_theme_entropy = math.log2(len(THEMES)) if THEMES else 0.0
 
+    source_counts: Counter[str] = Counter(c.theme_source for c in enriched)
+    source_summary = ", ".join(
+        f"{source}={source_counts[source]}" for source in ("component", "fusion") if source_counts[source]
+    )
+    print(f"Theme source: {source_summary or 'none'}", file=sys.stderr)
     print(f"Pool: {loaded_size} loaded → {enriched_size} enriched ({dropped} dropped)", file=sys.stderr)
     print(f"Phase distribution: {phase_dist}", file=sys.stderr)
     print(
