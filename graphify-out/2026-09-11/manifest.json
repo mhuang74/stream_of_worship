@@ -3222,26 +3222,26 @@
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/build_transitions.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8957138,
+    "mtime": 1789137072.1849613,
+    "seen": 1789137269.8345132,
     "ast_hash": "ee8ee684c028c69a69bbbd3b62fae82c",
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/enrich_pool.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8957171,
-    "ast_hash": "95c20f772f0eb102a5c775efbf7a68de",
+    "mtime": 1789137072.1849613,
+    "seen": 1789137269.8345158,
+    "ast_hash": "0959c96dcd9a2829d9e19f59c91391b1",
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/fetch_pool.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8957207,
+    "mtime": 1789135510.4486268,
+    "seen": 1789137269.8345177,
     "ast_hash": "8a572fb94465f1093d81ee417c824add",
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/get_lyrics.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8957243,
+    "mtime": 1789135510.4486268,
+    "seen": 1789137269.8345196,
     "ast_hash": "27fdbe5d8004b53dce076f649458ff27",
     "semantic_hash": ""
   },
@@ -3252,27 +3252,27 @@
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/score_songset.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8957312,
-    "ast_hash": "dee43a327bbfe4e5ca7452cd13e72edd",
+    "mtime": 1789137072.1849613,
+    "seen": 1789137269.8345833,
+    "ast_hash": "8a4dd5c70f6716f77f42b4e5eb3d97a4",
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/semantic_search.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8957348,
+    "mtime": 1789135510.4486268,
+    "seen": 1789137269.8345854,
     "ast_hash": "dda9d8db4e019df53c7c9b72a873c7e8",
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/voice_ranges.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8957384,
+    "mtime": 1789135510.4486268,
+    "seen": 1789137269.834587,
     "ast_hash": "371a6901ba5e83f338f4a1ae1e6cefd1",
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/scripts/write_report.py": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.895742,
-    "ast_hash": "5d5cc588dde7b734ec8a57815e6b7843",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.834589,
+    "ast_hash": "fa25f974864b217186c229934bc4f2e4",
     "semantic_hash": ""
   },
   "lab/sow-app/src/sow_lab_app/__init__.py": {
@@ -3768,8 +3768,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py": {
-    "mtime": 1786262820.968208,
-    "seen": 1787357371.8960378,
+    "mtime": 1789137177.0724978,
+    "seen": 1789137269.8398817,
     "ast_hash": "7336a7b8010cd451012e861298c698c9",
     "semantic_hash": ""
   },
@@ -3786,9 +3786,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/db.py": {
-    "mtime": 1786262820.969208,
-    "seen": 1787357371.8960488,
-    "ast_hash": "7ac3e0962ec084e695bfe6678a6ba021",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.8400254,
+    "ast_hash": "8ca56f103aef6bc9145564806f26cdf2",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py": {
@@ -3834,9 +3834,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py": {
-    "mtime": 1786262820.969208,
-    "seen": 1787357371.8960776,
-    "ast_hash": "53404eccb097fd6af8178a520c194e3b",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.840517,
+    "ast_hash": "07a655208e8ce92c786c7f6477f56ecc",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/persist.py": {
@@ -3858,9 +3858,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py": {
-    "mtime": 1786262820.969208,
-    "seen": 1787357371.896119,
-    "ast_hash": "31286c801af47659317c7a0a84e01384",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.8407238,
+    "ast_hash": "c4c93e4eae7eb84f2d869ab8aaa0c7d5",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py": {
@@ -3876,15 +3876,15 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py": {
-    "mtime": 1786262820.9702082,
-    "seen": 1787357371.8961241,
-    "ast_hash": "4203af056fe46ace195aa3f6e936d4f4",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.8408694,
+    "ast_hash": "1b975348564a2eb54c6db59448694acd",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/hard_constraints.py": {
-    "mtime": 1786262820.9702082,
-    "seen": 1787357371.8961258,
-    "ast_hash": "a3e85323f40e517b4f91a13d8fdd0996",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.8408716,
+    "ast_hash": "25d151ac0e075f0b224f35377736bb76",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/harmony.py": {
@@ -3900,9 +3900,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py": {
-    "mtime": 1786262820.9702082,
-    "seen": 1787357371.8961306,
-    "ast_hash": "124d42cd34fce3672d5b78cf78c39336",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.8410206,
+    "ast_hash": "bf1680bfe5f3881599bbcadcec6bfc91",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/themes.py": {
@@ -3912,9 +3912,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/transitions.py": {
-    "mtime": 1786262820.9702082,
-    "seen": 1787357371.896134,
-    "ast_hash": "fe83b9a3c6b4870965aa7d855446524b",
+    "mtime": 1789137072.1859612,
+    "seen": 1789137269.8410935,
+    "ast_hash": "992639b5fc13d9d0a5cc67fd5237ac37",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/runner.py": {
@@ -4320,9 +4320,9 @@
     "semantic_hash": ""
   },
   "CONTEXT.md": {
-    "mtime": 1789084627.2759955,
-    "seen": 1789084817.5037043,
-    "ast_hash": "d42420a3b7eed3ab531f1f5ef74386eb",
+    "mtime": 1789084968.5839744,
+    "seen": 1789137269.8452935,
+    "ast_hash": "164cba16dd8d72c8fa7c401353fc173b",
     "semantic_hash": ""
   },
   "DEVELOPER.md": {
@@ -4542,9 +4542,9 @@
     "semantic_hash": ""
   },
   "lab/skills/songset-constructor/SKILL.md": {
-    "mtime": 1786262820.964208,
-    "seen": 1787357371.8963046,
-    "ast_hash": "88ec2d3764fd9a159039ae9f91811e9f",
+    "mtime": 1789137072.1849613,
+    "seen": 1789137269.847184,
+    "ast_hash": "47d1bcf6049a68cf87df24e73975f4c4",
     "semantic_hash": ""
   },
   "lab/sow-app/src/sow_lab_app/README.md": {
@@ -4821,6 +4821,12 @@
     "mtime": 1789041982.3480043,
     "seen": 1789084817.4755657,
     "ast_hash": "eedb00c3694d1e6b02d963fa02fe7dab",
+    "semantic_hash": ""
+  },
+  "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/components.py": {
+    "mtime": 1789135768.4327736,
+    "seen": 1789137269.8399549,
+    "ast_hash": "922bb8d02356ff8df424528054af0673",
     "semantic_hash": ""
   }
 }
