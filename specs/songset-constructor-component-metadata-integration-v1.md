@@ -121,7 +121,8 @@ SELECT sc.song_id, sc.role, sc.component_type, sc.occurrence_index, sc.id,
        sc.theme, sc.theme_confidence, sc.vocal_posture, sc.vocal_posture_confidence
 FROM song_components sc
 WHERE sc.song_id = ANY(%s)
-  AND (sc.role IN ('entry', 'exit') OR (sc.role = 'entry_exit'))
+  AND (sc.role IN ('entry', 'exit', 'entry_exit', 'loop_target')
+       OR sc.theme IS NOT NULL OR sc.vocal_posture IS NOT NULL)
 ```
 
 `role = 'entry_exit'` rows satisfy both boundaries (single-chorus songs store entry+exit as two rows on occurrence_index=1, but some songs may hold the combined role) — treat an `entry_exit` row as both the entry and the exit candidate.
@@ -131,9 +132,7 @@ WHERE sc.song_id = ANY(%s)
 - **Chorus preference:** among candidate rows, chorus rows outrank non-chorus rows (`component_type == 'chorus'` first), then highest `theme_confidence` / `vocal_posture_confidence`, then lowest `occurrence_index`, then lowest `id`. This mirrors `_aggregate_recording_theme`'s chorus-preference tie-break (`audio.py:2781-2865`) — reuse its tie-break ordering conceptually; do not import admin command code into the constructor package.
 - **Theme distribution:** for the 12 themes, collect component rows' `(theme, theme_confidence)`; weight each row's vote by `theme_confidence`; normalize to sum 1.0 → `component_theme_scores`. Missing theme on a row contributes no vote. If no votes → `component_theme_scores = None` (song falls back to fusion).
 - **Posture:** same weighting over `vocal_posture`/`vocal_posture_confidence` → argmax → `component_posture` + its confidence. Chorus rows outrank. No vote → None (fallback chain below).
-- **Chorus vote weighting:** the chorus-preference rule above governs which row wins per-boundary selection; for the theme/posture *distributions*, chorus-type rows contribute votes at full weight and non-chorus rows at half weight (chorus identity dominates without discarding verse testimony). Boundary-role filtering in the WHERE clause is retained: essential-role defaults guarantee entry/exit rows carry the LLM fields, and non-chorus boundary rows still contribute weighted votes.
-
-`has_components = (boundary rows found) or (component_theme_scores is not None) or (component_posture is not None)`.
+- **Chorus vote weighting:** the chorus-preference rule above governs which row wins per-boundary selection; for the theme/posture *distributions*, chorus-type rows contribute votes at full weight and non-chorus rows at half weight (chorus identity dominates without discarding verse testimony). The WHERE admits every row that can vote (essential roles + any row with a non-null theme or posture); rows with no LLM fields contribute nothing and are harmless.
 
 **Posture fallback fetch:** the fallback chain's middle rung — `recordings.vocal_posture` (and `recordings.theme` while the query is open) — is fetched in the same POOL_QUERY join (recording-level columns, `schema.py:91-95`), added to `SongCandidate` as `recording_posture: str | None = None`. Aggregate rows exist for 311/444 pool songs, nearly identical to entry-row coverage, so this fallback is rarely needed — but f_posture's chain must be total, so it is fetched rather than assumed.
 
