@@ -103,6 +103,7 @@ class ProposalItem(DraftItem):
     duration_seconds: float | None = None
     tonic_pc: int = 0
     in_leader_range: bool = True
+    leader_range_distance: int = 0
     recommended_key_shift_for_range: int = 0
     has_components: bool = False
     theme_source: str | None = None
