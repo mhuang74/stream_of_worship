@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from stream_of_worship.admin.songset_constructor.components import aggregate_components
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import SongCandidate
 from stream_of_worship.db.app.read_client import ReadOnlyClient
@@ -14,7 +15,8 @@ CONSTRUCTOR_SONG_COLUMNS = (
 )
 CONSTRUCTOR_RECORDING_COLUMNS = (
     "r.hash_prefix, r.tempo_bpm, r.musical_key AS r_musical_key, "
-    "r.musical_mode, r.key_confidence, r.loudness_db, r.duration_seconds"
+    "r.musical_mode, r.key_confidence, r.loudness_db, r.duration_seconds, "
+    "r.theme AS r_recording_theme, r.vocal_posture AS r_recording_posture"
 )
 
 POOL_QUERY = f"""
@@ -52,6 +54,16 @@ FROM (
 GROUP BY song_id
 """
 
+COMPONENT_ROWS_QUERY = """
+SELECT sc.song_id, sc.role, sc.component_type, sc.occurrence_index, sc.id,
+       sc.bpm, sc.key, sc.key_confidence, sc.energy_level,
+       sc.theme, sc.theme_confidence, sc.vocal_posture, sc.vocal_posture_confidence
+FROM song_components sc
+WHERE sc.song_id = ANY(%s)
+  AND (sc.role IN ('entry', 'exit', 'entry_exit', 'loop_target')
+       OR sc.theme IS NOT NULL OR sc.vocal_posture IS NOT NULL)
+"""
+
 THEME_ANCHORS_COUNT_QUERY = "SELECT COUNT(*) FROM theme_anchors"
 
 
@@ -74,7 +86,8 @@ def _parse_json_scores(raw) -> dict[str, float]:
 
 
 def _candidate_from_row(row: tuple) -> SongCandidate:
-    song_theme_scores_raw = _parse_json_scores(row[16])
+    # Row layout (19 columns): 0-8 song columns, 9-17 recording columns, 18 song_theme_scores_raw
+    song_theme_scores_raw = _parse_json_scores(row[18])
     return SongCandidate(
         song_id=row[0],
         title=row[1],
@@ -92,6 +105,8 @@ def _candidate_from_row(row: tuple) -> SongCandidate:
         duration_seconds=row[15],
         lyrics_raw=row[8],
         song_theme_scores_raw=song_theme_scores_raw,
+        recording_theme=row[16],
+        recording_posture=row[17],
         is_hymn=row[6] == "HYMN",
     )
 
@@ -102,10 +117,25 @@ def fetch_catalog_pool(config: RunConfig, *, client: ReadOnlyClient) -> list[Son
     pool = [_candidate_from_row(tuple(row)) for row in cursor.fetchall()]
     song_ids = [c.song_id for c in pool]
     line_scores = fetch_line_theme_scores(song_ids, client=client)
-    return [
-        candidate.model_copy(update={"line_theme_scores_raw": line_scores.get(candidate.song_id, {})})
-        for candidate in pool
-    ]
+    component_rows = fetch_component_rows(song_ids, client=client)
+    updated = []
+    for candidate in pool:
+        update = {"line_theme_scores_raw": line_scores.get(candidate.song_id, {})}
+        update.update(aggregate_components(component_rows.get(candidate.song_id, []), musical_mode=candidate.musical_mode))
+        updated.append(candidate.model_copy(update=update))
+    return updated
+
+
+def fetch_component_rows(song_ids: list[str], *, client: ReadOnlyClient) -> dict[str, list[tuple]]:
+    """Component rows for each song_id; empty list when the song has none."""
+    if not song_ids:
+        return {}
+    cursor = client.connection.cursor()
+    cursor.execute(COMPONENT_ROWS_QUERY, (song_ids,))
+    result: dict[str, list[tuple]] = {song_id: [] for song_id in song_ids}
+    for row in cursor.fetchall():
+        result.setdefault(str(row[0]), []).append(tuple(row))
+    return result
 
 
 def fetch_line_theme_scores(song_ids: list[str], *, client: ReadOnlyClient) -> dict[str, dict[str, float]]:

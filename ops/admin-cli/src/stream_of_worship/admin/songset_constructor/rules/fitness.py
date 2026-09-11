@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from stream_of_worship.admin.songset_constructor.components import POSTURE_PHASE_FIT
 from stream_of_worship.admin.songset_constructor.config import RunConfig
 from stream_of_worship.admin.songset_constructor.models import (
     ScoreBreakdown,
@@ -68,10 +69,52 @@ def f_diversity(proposal: SongsetProposal) -> float:
     return _clamp(0.7 * song_part + 0.3 * theme_part)
 
 
+def f_energy(proposal: SongsetProposal) -> float | None:
+    """Ordinal energy score on pool-percentile ranks; None → neutral redistribution.
+
+    Arc energy value = ``entry_energy_pct`` (the energy the song arrives with);
+    the closer also contributes ``exit_energy_pct``. Returns None when fewer than
+    2 usable adjacency values and no closer-exit value exist (pool-wide absence).
+    """
+    items = proposal.items
+    adjacency: list[float] = []
+    for left, right in zip(items, items[1:]):  # noqa: RUF007 — matches module convention
+        if left.exit_energy_pct is not None and right.entry_energy_pct is not None:
+            adjacency.append(1.0 - abs(right.entry_energy_pct - left.exit_energy_pct))
+    closer_exit = items[-1].exit_energy_pct if items else None
+    opener_entry = items[0].entry_energy_pct if items else None
+    arc = None
+    if opener_entry is not None and closer_exit is not None:
+        # Sets should generally land softer than they open.
+        arc = 1.0 - max(0.0, opener_entry - closer_exit)
+    values = [*adjacency] + ([arc] if arc is not None else [])
+    if len(values) < 2:
+        return None
+    if arc is None:
+        return _clamp(sum(adjacency) / len(adjacency))
+    adjacency_part = sum(adjacency) / len(adjacency) if adjacency else arc
+    return _clamp(0.5 * adjacency_part + 0.5 * arc)
+
+
+def f_posture(proposal: SongsetProposal) -> float | None:
+    """Chorus-preference posture fit against the phase template; None when no item has posture."""
+    scored = [
+        POSTURE_PHASE_FIT[item.component_posture].get(item.phase, 0.5)
+        for item in proposal.items
+        if item.component_posture is not None
+    ]
+    if not scored:
+        return None
+    return _clamp(sum(scored) / len(scored))
+
+
 def middle_song_ids(proposal: SongsetProposal) -> set[str]:
     if len(proposal.items) <= 2:
         return set()
     return {item.song_id for item in proposal.items[1:-1]}
+
+
+W_BASE: dict[str, float] = {"theme": 0.40, "tempo": 0.30, "harmony": 0.20, "diversity": 0.10}
 
 
 def score(
@@ -83,12 +126,28 @@ def score(
     tempo = f_tempo(proposal)
     harmony = f_harmony(proposal, matrix)
     diversity = f_diversity(proposal)
-    total = 0.40 * theme + 0.30 * tempo + 0.20 * harmony + 0.10 * diversity
+    energy = f_energy(proposal)  # None when the signal is absent pool-wide
+    posture = f_posture(proposal)  # None when the signal is absent pool-wide
+    absent = (energy is None) + (posture is None)
+    scale = 1.0 - 0.05 * (2 - absent)
+    weights = {key: round(value * scale, 4) for key, value in W_BASE.items()}
+    total = (
+        weights["theme"] * theme
+        + weights["tempo"] * tempo
+        + weights["harmony"] * harmony
+        + weights["diversity"] * diversity
+    )
+    if energy is not None:
+        total += 0.05 * energy
+    if posture is not None:
+        total += 0.05 * posture
     return ScoreBreakdown(
         f_theme=round(theme, 4),
         f_tempo=round(tempo, 4),
         f_harmony=round(harmony, 4),
         f_diversity=round(diversity, 4),
+        f_energy=round(energy, 4) if energy is not None else None,
+        f_posture=round(posture, 4) if posture is not None else None,
         total=round(total, 4),
     )
 

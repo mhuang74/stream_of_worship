@@ -40,6 +40,16 @@ def item_from_candidate(candidate: SongCandidate, position: int) -> ProposalItem
         in_leader_range=candidate.in_leader_range,
         leader_range_distance=candidate.leader_range_distance,
         recommended_key_shift_for_range=candidate.recommended_key_shift_for_range,
+        has_components=candidate.has_components,
+        theme_source=candidate.theme_source,
+        component_posture=candidate.component_posture or candidate.recording_posture,
+        entry_energy_pct=candidate.entry_energy_pct,
+        exit_energy_pct=candidate.exit_energy_pct,
+        entry_bpm=candidate.entry_bpm,
+        exit_bpm=candidate.exit_bpm,
+        entry_key=candidate.entry_key,
+        exit_key=candidate.exit_key,
+        entry_key_confidence=candidate.entry_key_confidence,
     )
 
 
@@ -84,6 +94,16 @@ def proposal_from_draft(
                 in_leader_range=candidate.in_leader_range,
                 leader_range_distance=candidate.leader_range_distance,
                 recommended_key_shift_for_range=candidate.recommended_key_shift_for_range,
+                has_components=candidate.has_components,
+                theme_source=candidate.theme_source,
+                component_posture=candidate.component_posture or candidate.recording_posture,
+                entry_energy_pct=candidate.entry_energy_pct,
+                exit_energy_pct=candidate.exit_energy_pct,
+                entry_bpm=candidate.entry_bpm,
+                exit_bpm=candidate.exit_bpm,
+                entry_key=candidate.entry_key,
+                exit_key=candidate.exit_key,
+                entry_key_confidence=candidate.entry_key_confidence,
             )
         )
     return SongsetProposal(
@@ -93,6 +113,23 @@ def proposal_from_draft(
         hard_constraint_warnings=warnings or [],
         llm_origin=llm_origin,
     )
+
+
+def stamp_boundary_sources(
+    proposal: SongsetProposal,
+    matrix: dict[tuple[str, str], TransitionCandidate],
+) -> SongsetProposal:
+    """Stamp each item's incoming transition ``boundary_source`` (opener: None)."""
+    updated_items = []
+    for index, item in enumerate(proposal.items):
+        source = None
+        if index > 0:
+            transition = matrix.get(
+                (proposal.items[index - 1].recording_hash_prefix, item.recording_hash_prefix)
+            )
+            source = transition.boundary_source if transition else None
+        updated_items.append(item.model_copy(update={"incoming_boundary_source": source}))
+    return proposal.model_copy(update={"items": updated_items})
 
 
 def proposal_hash_sequence(proposal: SongsetProposal) -> tuple[str, ...]:

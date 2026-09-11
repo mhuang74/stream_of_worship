@@ -7,12 +7,12 @@ import json
 from stream_of_worship.admin.songset_constructor.db import _candidate_from_row
 from stream_of_worship.admin.songset_constructor.rules.themes import THEMES
 
-# Tuple layout (17 columns):
-# 0: s.id           5: s.album_name    10: r.tempo_bpm      15: r.duration_seconds
-# 1: s.title        6: s.album_series  11: r_musical_key     16: song_theme_scores_raw
-# 2: s.title_pinyin 7: s.musical_key   12: r.musical_mode
-# 3: s.composer     8: s.lyrics_raw    13: r.key_confidence
-# 4: s.lyricist     9: r.hash_prefix   14: r.loudness_db
+# Tuple layout (19 columns):
+# 0: s.id              5: s.album_name    10: r.tempo_bpm          15: r.duration_seconds
+# 1: s.title           6: s.album_series  11: r_musical_key        16: r.theme AS r_recording_theme
+# 2: s.title_pinyin    7: s.musical_key   12: r.musical_mode       17: r.vocal_posture AS r_recording_posture
+# 3: s.composer        8: s.lyrics_raw    13: r.key_confidence     18: song_theme_scores_raw
+# 4: s.lyricist        9: r.hash_prefix   14: r.loudness_db
 
 
 def test_candidate_from_row_basic():
@@ -33,7 +33,9 @@ def test_candidate_from_row_basic():
         0.95,                   # 13
         -12.5,                  # 14
         240.0,                  # 15 — r.duration_seconds
-        None,                   # 16 — song_theme_scores_raw
+        None,                   # 16 — r_recording_theme
+        None,                   # 17 — r_recording_posture
+        None,                   # 18 — song_theme_scores_raw
     )
     candidate = _candidate_from_row(row)
     assert candidate.song_id == "s1"
@@ -54,6 +56,7 @@ def test_candidate_from_row_with_scores():
         None, None, "D", "lyrics",
         "hash2", 100.0, "E", "min",
         0.8, -10.0, 180.0,
+        None, None,
         scores,
     )
     candidate = _candidate_from_row(row)
@@ -71,6 +74,7 @@ def test_candidate_from_row_with_scores_as_str():
         None, None, "D", "lyrics",
         "hash2b", 100.0, "E", "min",
         0.8, -10.0, 200.0,
+        None, None,
         scores,
     )
     candidate = _candidate_from_row(row)
@@ -85,6 +89,7 @@ def test_candidate_from_row_with_null_values():
         None, None, "D", "lyrics",
         "hash2c", 100.0, "E", "min",
         0.8, -10.0, None,
+        None, None,
         scores,
     )
     candidate = _candidate_from_row(row)
@@ -100,6 +105,7 @@ def test_candidate_from_row_key_fallback():
         None, None, "G", "lyrics",
         "hash3", 90.0, None, "maj",
         0.9, -8.0, 300.0,
+        None, None,
         None,
     )
     candidate = _candidate_from_row(row)
@@ -133,7 +139,7 @@ def test_bandwidth_validation():
     from unittest.mock import MagicMock, patch
 
     from stream_of_worship.admin.songset_constructor.config import RunConfig
-    from stream_of_worship.admin.songset_constructor.db import POOL_QUERY, LINE_THEME_QUERY
+    from stream_of_worship.admin.songset_constructor.db import LINE_THEME_QUERY, POOL_QUERY
 
     assert "embedding::text" not in POOL_QUERY
     assert "embedding::text" not in LINE_THEME_QUERY
@@ -150,6 +156,8 @@ def test_bandwidth_validation():
             "Album", "Series", "C", "lyrics",
             f"hash{i:04d}", 120.0, "D", "maj",
             0.95, -12.5, 240.0, None,
+            None, None,
+            None,
         )
         for i in range(200)
     ]
@@ -157,7 +165,10 @@ def test_bandwidth_validation():
     mock_read_client = MagicMock()
     mock_read_client.connection = mock_conn
 
-    with patch("stream_of_worship.admin.songset_constructor.db.fetch_line_theme_scores", return_value={}):
+    with (
+        patch("stream_of_worship.admin.songset_constructor.db.fetch_line_theme_scores", return_value={}),
+        patch("stream_of_worship.admin.songset_constructor.db.fetch_component_rows", return_value={}),
+    ):
         from stream_of_worship.admin.songset_constructor.db import fetch_catalog_pool
 
         pool = fetch_catalog_pool(config, client=mock_read_client)
@@ -169,8 +180,8 @@ def test_bandwidth_validation():
         sql = call_args[0][0] if call_args[0] else ""
         assert "embedding::text" not in sql, f"embedding::text found in: {sql[:100]}"
 
-    # Estimate bandwidth: 200 rows × 17 columns × average 40 bytes per value
-    estimated_bytes = 200 * 17 * 40
+    # Estimate bandwidth: 200 rows × 19 columns × average 40 bytes per value
+    estimated_bytes = 200 * 19 * 40
     assert estimated_bytes < 1_000_000, f"Estimated bandwidth {estimated_bytes} bytes exceeds 1 MB limit"
 
 
@@ -184,7 +195,9 @@ def test_bandwidth_theme_scores_12_keys():
         "s1", "Title", None, None, None,
         None, None, "C", "lyrics",
         "hash1", 120.0, "D", "maj",
-        0.95, -12.5, 250.0, scores,
+        0.95, -12.5, 250.0,
+        None, None,
+        scores,
     )
     candidate = _candidate_from_row(row)
     assert len(candidate.song_theme_scores_raw) == 12
