@@ -1,682 +1,717 @@
 # Agent Guide: Songset Constructor — Generating and Evaluating Diverse Songsets
 
-This guide explains how to use the songset constructor to generate diverse Chinese worship songsets and evaluate the quality of the results.
+The canonical path for songset construction is the **songset-constructor skill** at
+`lab/skills/songset-constructor/` (symlinked at `.agents/skills/songset-constructor`).
+Its `SKILL.md` is the operational 12-step workflow; the calling agent IS the LLM
+planner — agentic only, no `SOW_LLM_API_KEY` needed for the skill path. This guide is
+the conceptual + evaluation companion: it documents the component-metadata model
+introduced by `specs/songset-constructor-component-metadata-integration-v2.md` and
+ADR-0006 (`docs/adr/0006-component-theme-primary-for-phase-inference.md`), and how to
+evaluate results under the current constraint and scoring semantics.
 
-## Quick Start
+## Paths at a glance
 
-The production path is the `sow-admin songset construct` command in the admin CLI:
+| Path | Status | Component metadata? |
+|------|--------|---------------------|
+| Skill scripts (`lab/skills/songset-constructor/scripts/`) | **Canonical** | Yes — boundary keys/BPM, component themes, posture, energy |
+| `sow-admin songset construct` (LangGraph) | Deprecated | No — song-level only |
+| `lab/poc-scripts/construct_songset_agent.py` | Deprecated (reference only) | No |
+
+Why is the LangGraph path song-level only? The shared rules package
+(`ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/`) gained
+component awareness, but the graph's loader/nodes never populate component fields, so
+every song behaves component-less (four-way weights, song-level H2/H3/H8). This
+divergence is intentional per spec v2 ("skill-scripts-only scope").
+
+## Quick Start (skill path)
+
+**Prerequisite (one-time):** populate the `theme_anchors` table:
 
 ```bash
-# Prerequisite: populate theme_anchors table (one-time)
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin theme-anchors sync
-
-# Deterministic mode (no LLM required)
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache
-
-# Agentic mode (LLM planning + optional judge)
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 4 --pool 500 --proposals 20 --llm --llm-judge --yes
+uv run --project ops/admin-cli --extra admin sow-admin theme-anchors sync
 ```
 
-> **Deprecated:** The POC script `lab/poc-scripts/construct_songset_agent.py` is
-> retained for reference but is no longer the primary path. Use
-> `sow-admin songset construct` for all production work. The admin CLI
-> subpackage at `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/`
-> is the source of truth.
+This seeds 12 anchor rows from
+`ops/admin-cli/src/stream_of_worship/admin/songset_constructor/data/theme_anchors.json`.
 
-## Prerequisites
+**Pre-flight:**
 
-- Environment variables `SOW_LLM_API_KEY`, `SOW_LLM_MODEL`, `SOW_LLM_BASE_URL` must be set for agentic mode (`--llm-judge`). The CLI auto-loads `/opt/sow/.env` or accepts `--env-file`.
-- `--no-llm` mode requires no LLM credentials and runs fully deterministic.
-- The catalog database must be reachable (read-only `SELECT` queries via `ReadOnlyClient`).
+```bash
+bash lab/skills/songset-constructor/scripts/preflight.sh
+```
 
-## CLI Options
+Checks: DB URL (`SOW_DATABASE_URL` or `~/.config/stream-of-worship-admin/config.toml`),
+DB reachable + `theme_anchors` = 12 rows, R2 credentials, pool cache. DB-unreachable is
+a WARN (not FAIL) when a valid pool cache exists — proceed from cache and note the
+staleness in the run summary. No cache + no DB = the run cannot proceed.
 
-| Option | Default | Range | Purpose |
-|--------|---------|-------|---------|
-| `--songs` | 3 | 2–5 | Songs per songset |
-| `--top-k` | 3 | 1–20 | Number of ranked proposals to output |
-| `--pool-limit` | 200 | ≥4 | Max songs to load from catalog (use 500 for full catalog) |
-| `--no-llm` / `--llm` | `--llm` | — | Toggle deterministic vs agentic mode |
-| `--llm-judge` / `--no-llm-judge` | `--no-llm-judge` | — | Enable LLM re-ranking of finalists |
-| `--intimate` / `--no-intimate` | `--no-intimate` | — | Lower closer tempo ceiling from 90 to 80 BPM |
-| `--season` | None | advent, christmas, lent, easter, pentecost | Seasonal theme bias |
-| `--album-series` | None | repeatable | Filter catalog by album series (e.g., `--album-series "敬拜讚美 (1)"`) |
-| `--relax-h1` / `--no-relax-h1` | `--relax-h1` | — | Relax phase-1 opener requirement (allow phase 2 openers) |
-| `--auto-relax` / `--no-auto-relax` | `--auto-relax` | — | Auto-relax H2/H3/H4/H5 if no proposals found |
-| `--relax-h3-bpm` | None | ≥0 | Override closer tempo ceiling |
-| `--relax-h2-bpm` | None | ≥0 | Override opener tempo floor |
-| `--relax-h4` / `--no-relax-h4` | `--no-relax-h4` | — | Widen tempo jump limit from 35 to 40 BPM |
-| `--relax-h5` / `--no-relax-h5` | `--no-relax-h5` | — | Widen circle-of-fifths distance from 2 to 3 |
-| `--interactive-review` / `--no-interactive-review` | `--no-interactive-review` | — | Pause for human approve/reject of top proposal |
-| `--only-evaluate-pool-enrichment` / `--full-run` | `--full-run` | — | Run only through `enrich_pool` and write a distribution report (no LLM required) |
-| `--output-dir` | auto-timestamped | path | Override output directory |
+> **CRITICAL invocation note:** bare `python` is NOT on PATH. Every script MUST run
+> via:
+>
+> ```bash
+> uv run --project ops/admin-cli --extra admin --extra constructor python \
+>   lab/skills/songset-constructor/scripts/<script>.py [OPTIONS]
+> ```
+>
+> Omitting `uv run` silently leaves a 0-byte output file (the shell redirect creates
+> the file before `python` fails), which breaks downstream parsing with
+> `json.JSONDecodeError`.
 
-## Two Operating Modes
+**Example pool-prep chain** (deterministic baseline; planning/scoring is the agent's
+job — see SKILL.md Steps 5–9):
 
-The songset constructor is a LangGraph state machine that runs in two modes:
+```bash
+uv run --project ops/admin-cli --extra admin --extra constructor python \
+  lab/skills/songset-constructor/scripts/fetch_pool.py --pool-limit 500 --prefer-fresh \
+| uv run --project ops/admin-cli --extra admin --extra constructor python \
+  lab/skills/songset-constructor/scripts/enrich_pool.py --season christmas \
+| uv run --project ops/admin-cli --extra admin --extra constructor python \
+  lab/skills/songset-constructor/scripts/build_transitions.py \
+> /tmp/transitions_pool.json
+```
 
-| Mode | Flag | Behavior |
-|------|------|----------|
-| **Deterministic** | `--no-llm` | Pure beam search + scoring, no LLM needed |
-| **Agentic** | `--llm` (default) | LLM plans/refines a draft, validated against hard constraints |
+For the full operational workflow (Steps 0–12: leader-range interview, planning,
+scoring, refinement, ranking, report, summary, optional persistence), read
+`lab/skills/songset-constructor/SKILL.md` first — it is the canonical procedure.
 
-Both modes share the same pipeline stages (1–4, 7–11). Only stages 5–6 (`llm_plan`, `validate_score`, `llm_refine`) are exclusive to agentic mode.
+## Skill script reference
+
+| Script | Purpose | Flags |
+|--------|---------|-------|
+| `preflight.sh` | Env checks (DB, theme_anchors=12, R2, cache) | run via `bash .../preflight.sh` — no `uv run` prefix on the script itself |
+| `fetch_pool.py` | Fetch raw catalog pool (cached by default) | `--pool-limit` (int, default 500), `--album-series` (repeatable), `--use-cache`/`--no-cache`, `--prefer-fresh` (DB first, cache only on DB error), `--allow-stale` (default true), `--cache-dir` (default `~/.cache/sow/songset_constructor`) |
+| `enrich_pool.py` | Themes → phase, seasonal bias, energy percentiles, leader range | `--input`, `--season {advent,christmas,lent,easter,pentecost}`, `--leader-range '{"comfortable_pcs": [...], "label": "..."}'` |
+| `build_transitions.py` | Pairwise transition matrix + fan-out/dead-end | `--input`; emits wrapper `{"transitions": [...], "pool": [...]}` — NOT directly pipeable into `score_songset.py`; merge per SKILL.md Step 6 |
+| `score_songset.py` | Score + validate a draft | `--input`; stdin `{"items", "pool", "transitions", "config"}`; `config` keys are filtered against `RunConfig` fields (unknown keys silently dropped) |
+| `write_report.py` | Write `proposal_report.md` | `--output-dir` (default `output/songset_constructor/<timestamp>/`); stdin `{"proposals", "pool", "config", "transitions", "summary"}` |
+| `semantic_search.py` | Semantic/keyword song search | `--query` (required), `--limit` (default 20), `--field title\|lyrics\|composer\|all`, `--mode semantic\|keyword\|auto`, `--album-series` (repeatable) |
+| `get_lyrics.py` | Fetch LRC/raw lyrics for one recording | `--hash-prefix` (12-char hex) or `--song-id`; `--source lrc\|raw\|auto` (default auto) |
+| `voice_ranges.py` | Voice type → comfortable tonic PCs | library/helper: `normal male` → PCs 0–5 (A2–E4); free-form parser (`"A2 to G4"`) |
+
+Discover valid album-series values with:
+
+```bash
+uv run --project ops/admin-cli --extra admin sow-admin catalog list --albums --sort series
+```
+
+## Component metadata
+
+This branch's core change: per-section analysis data in `song_components` now flows
+into the pool and drives phase inference, transitions, and scoring.
+
+### What it is
+
+Per-section analysis rows in `song_components` carry BPM, key, confidence, energy dB,
+a 12-value theme distribution, and vocal posture. About 70% of the pool has components
+(312/444, measured 2026-09-11 per spec v2): `has_components = true`. Component-less
+songs keep their song-level values and are **never dropped**
+(`has_components = false`).
+
+### Boundary fields on each enriched song
+
+`entry_bpm` / `entry_key` / `entry_key_confidence` / `entry_energy_level_db` and the
+`exit_*` equivalents — the opener-boundary (role `entry`) and closer-boundary (role
+`exit`) values of the song's recording. Selection is deterministic: lowest
+`occurrence_index`, then lowest `id`. `entry_mode`/`exit_mode` are copied from the
+recording-level `musical_mode` because component rows store bare note names only.
+
+### Component theme distribution
+
+`component_theme_scores` is a dense 12-key dict. Chorus rows vote at weight 1.0,
+non-chorus rows at 0.5, and each vote is scaled by its `theme_confidence`; the result
+is normalized to sum 1.0.
+
+### Phase inference is component-primary (ADR-0006)
+
+When `component_theme_scores` is non-empty, phase comes from that distribution and
+`theme_source = "component"`. The 4-source text/embedding fusion (see below) is the
+**fallback** for component-less songs (`theme_source = "fusion"`). Seasonal bias is
+applied after either path. There is no confidence floor on the component path.
+
+### Posture
+
+`component_posture` ∈ {`To God`, `About God`, `To Congregation`} plus
+`component_posture_confidence`. The **effective posture** used downstream resolves
+`component_posture → recording_posture → None`.
+
+### Energy percentiles
+
+`entry_energy_pct` / `exit_energy_pct` ∈ [0, 1], computed **within the fetched pool
+only** (ties-averaged midpoint percentile) from the boundary `*_energy_level_db`
+values. There are no absolute dB thresholds anywhere. Songs without energy data carry
+`None` percentiles and are skipped (not penalized) in f_energy; fewer than 2 usable
+values pool-wide → all percentiles are `None`.
+
+### Boundary-first transitions
+
+A pair is `boundary_source = "component"` only when **both** sides have boundary keys
+(`exit_key` on the from-side, `entry_key` on the to-side); CFD, `key_compat`, and
+`suggested_key_shift` then compute on those boundary keys. Otherwise the whole pair
+computes on song-level keys (`boundary_source = "song_level"`) — **keys never mix
+provenance within one pair**.
+
+BPM is per-side best-available inside component pairs (each side: boundary BPM if
+present, else song-level `tempo_bpm`), with per-song warnings like
+`missing exit bpm on <title>; used song-level bpm`; both sides missing →
+`missing boundary bpm on both sides — delta unreliable`. Song-level pairs with a
+missing tempo also warn (`missing bpm on <title> — delta unreliable`) instead of
+silently collapsing to a delta of 0.
+
+### Technique ladder
+
+Verified in `rules/transitions.py` (CFD = circle-of-fifths distance):
+
+| CFD | Technique | Crossfade | Gap |
+|-----|-----------|-----------|-----|
+| ≤ 1 | pivot | 0 s | 2 beats |
+| ≤ 2 (mode differs) | relative | 0 s | 2 beats |
+| ≤ 2 (mode same) | direct | 0 s | 2 beats |
+| ≤ 2 with non-zero shift | transposition | 4 s | 4 beats |
+| 3 | vamp | 6 s | 4 beats |
+| else | direct_modulation | 8 s | 6 beats |
+
+### H2/H3/H8 boundary semantics
+
+- **H2** checks the opener's **entry** BPM (song-level fallback; both missing → fails).
+- **H3** checks the closer's **exit** BPM (song-level fallback).
+- **H8** gates transposition on the destination's `entry_key_confidence ≥ 0.6` when
+  the incoming transition is component-sourced; song-level `key_confidence ≥ 0.6`
+  otherwise. The opener is always song-level-gated; the from-side is not separately
+  gated.
+
+**Disclosed accepted regression:** under the boundary gate the transposable pool
+population drops from 250 (56.3%) to ~201 (45.3%) — component key detection is
+low-confidence far more often than song-level detection. The report's pool overview
+tracks both counts so this stays observable run-over-run. Singing-range shifts
+(`recommended_key_shift_for_range`) stay song-level-gated — they transpose the whole
+song, not a boundary.
+
+### Structural note
+
+The transition matrix is precomputed O(n²) in `build_transitions.py`;
+`score_songset.py` and the planner see only the matrix — pair compatibility cannot be
+recomputed at plan time. Trust `cfd`/`bpm_delta`/`suggested_key_shift` from the matrix.
 
 ## 5-Phase Worship Arc
 
-Songs are classified into 5 phases based on **fused theme scores** (title 35% + lyrics 25% + song embedding 25% + line embedding 15%):
+Theme → phase map (`rules/phases.py`):
 
-| Phase | Theme |
+| Theme | Phase |
 |-------|-------|
-| 1 | 讚美 (Praise) |
-| 2 | 感恩 (Thanksgiving) |
-| 3 | 敬拜/祈禱/信心/聖靈 (Worship) |
-| 4 | 奉獻/認罪/十字架 (Response) |
-| 5 | 差遣/跟隨/復興 (Commission) |
+| 讚美 | 1 |
+| 感恩 | 2 |
+| 敬拜 / 祈禱 / 信心 / 聖靈 | 3 |
+| 奉獻 / 認罪 / 十字架 | 4 |
+| 差遣 / 跟隨 / 復興 | 5 |
 
-**Seasonal bias** (`--season`) boosts relevant themes. For example:
-- `christmas` → 讚美/感恩
-- `lent` → 認罪/十字架
+Arc labels (matching SKILL.md): 1 Call, 2 Thanksgiving, 3 Worship, 4 Response,
+5 Commission.
 
-## 8 Hard Constraints (H0–H8)
+**Special case:** dominant theme 聖靈 with tempo < 70 BPM → phase 4 (slow Spirit song
+is a Response, not Worship).
 
-| Code | Rule | Default |
-|------|------|---------|
-| H0 | Correct song count | — |
-| H1 | One phase-1 opener, worship/response middle, phase 4/5 closer | — |
-| H2 | Opener tempo >= 90 BPM | 90 |
-| H3 | Closer tempo <= 90 BPM (80 intimate) | 90/80 |
-| H4 | Adjacent BPM delta <= 35 (25 without crossfade/gap) | 35/25 |
-| H5 | Circle-of-fifths distance <= 2 | 2 |
-| H6 | No duplicate song IDs | — |
-| H7 | Phase drops by at most 1 between adjacent songs | 1 |
-| H8 | Low key-confidence songs (<0.6) can't be transposed | 0.6 |
+**Tempo-only fallback** (fusion-path songs with zero theme hits): ≥ 100 → 1,
+≥ 90 → 2, ≥ 70 → 3, < 70 → 4; unknown tempo → 3.
 
-## Pipeline Architecture
+**`secondary_phases`:** themes scoring ≥ 0.85 × dominant contribute secondary phases,
+at most 2, excluding the primary. H1 middles/closers and H7 accept primary **or**
+secondary phases.
 
-The constructor runs as a LangGraph state machine with these stages:
+**Seasonal bias** (applied after the component or fusion path; values unchanged):
 
-```
-load_catalog → enrich_pool → build_transition_matrix → beam_seed_candidates
-                    │                                               ↓
-                    │                                     ┌─────────┴──────────┐
-                    │                                   --no-llm              LLM mode
-                    │                                     │                      │
-                    │                               finalize_rank          llm_plan → validate_score
-                    │                                     │                 ↓               ↓
-                    │                                Accepted         Refine (loop ≤3)
-                    │                                     ↓               ↓               ↓
-                    │                            finalize_rank ←────────┘
-                    │                                     ↓
-                    │                            ┌──────────┴──────────┐
-                    │                       --llm-judge         default
-                    │                            │                   │
-                    │                       llm_judge                │
-                    │                            │                   │
-                    └────────────────────────────┴───────────────────┘
-                                                               ↓
-                                                    interactive_review (optional)
-                                                               ↓
-                                                        write_artifacts
+| Season | Boosts |
+|--------|--------|
+| advent, christmas | 讚美 ≥ 0.7, 感恩 ≥ 0.5 |
+| lent | 認罪 ≥ 0.7, 十字架 ≥ 0.65 |
+| easter | 復興 ≥ 0.65, 讚美 ≥ 0.65 |
+| pentecost | 聖靈 ≥ 0.75 |
 
---only-evaluate-pool-enrichment:
-load_catalog → enrich_pool → write_enrichment_report → END
-```
+**Phase templates** (`rules/fitness.py`):
 
-### Stage Details
+| Songs | Template | Arc |
+|-------|----------|-----|
+| 2 | (1, 4) | Call → Response |
+| 3 | (1, 3, 5) | Call → Worship → Commission |
+| 4 | (1, 3, 4, 5) | Call → Worship → Response → Commission |
+| 5 | (1, 2, 3, 4, 5) | Full worship arc |
 
-1. **load_catalog** — Fetches songs from PostgreSQL via read-only `SELECT`. Loads songs with published/review recordings that have LRC lyrics. Pool size is bounded by `--pool-limit`.
+## Theme classification (fusion fallback) background
 
-2. **enrich_pool** — Classifies each song's themes (from title, lyrics, embeddings), infers worship phase (1=call, 2=adoration, 3=praise, 4=cross/response, 5=commitment), and applies seasonal bias. Drops songs lacking both tempo and key metadata. See [enrich_pool Deep Dive](#enrich_pool-deep-dive) below for implementation details.
+This fusion path now applies only to component-less songs. Each song is classified by
+**four independent sources**, each returning a `dict[str, float]` over the 12 themes:
 
-3. **build_transition_matrix** — Computes pairwise transition recommendations (BPM delta, circle-of-fifths distance, suggested key shift, crossfade/gap settings) for all song pairs where CFD ≤ 6. Also computes fan-out (how many valid transitions each song has) and marks dead-end songs.
+1. **Title keywords** — bilingual vocabulary (Chinese + pinyin + English) in
+   `rules/themes.py:THEME_VOCAB`; scores normalized by the max hit count.
+2. **Lyrics keywords** — 2-line sliding window over the lyrics, keyword hits per
+   theme, normalized by total hits.
+3. **Song embedding** — cosine similarity of the song-level embedding vs 1536-dim
+   theme anchor vectors.
+4. **Line embeddings** — best per-theme cosine over line-level embeddings.
 
-4. **beam_seed_candidates** — Runs diverse beam search (see below). Produces ranked candidate sequences following the phase template.
+Both embedding sources are min-max normalized so the best theme scores 1.0.
 
-5. **llm_plan** (LLM mode only) — LLM drafts a songset from the pool using structured output. Hallucinated hash prefixes are repaired via fuzzy matching.
+**Fusion weights** (`rules/phases.py:fuse_themes`) — reliability-ordered, with a twist
+the old guide got wrong:
 
-6. **validate_score** — Validates the LLM draft against hard constraints H0–H8. If it fails, routes to `llm_refine` (up to 3 iterations).
+| Case | Title | Lyrics | Song emb | Line emb |
+|------|-------|--------|----------|----------|
+| Title/lyrics top themes **agree** | 0.45 | 0.35 | 0.15 | 0.05 |
+| Top themes **disagree** | 0.35 | 0.25 | 0.25 | 0.15 |
 
-7. **finalize_rank** — Deduplicates proposals by song sequence, then applies greedy diverse selection with a middle-song diversity penalty (see below).
+When line embeddings are absent, the line weight is redistributed proportionally over
+the remaining sources. Only non-empty sources contribute (per-theme renormalization).
 
-8. **llm_judge** (optional) — LLM re-ranks finalists and adds judge reasons/scores without changing deterministic order.
+### Traditional Chinese Matching Rationale
 
-9. **write_artifacts** — Writes 5 output files (see below).
+All theme keys, matching terms, and embedding anchor texts in the songset constructor
+use **Traditional Chinese only**. This is because:
 
-### enrich_pool Deep Dive
+1. **Catalog lyrics are Traditional Chinese.** All SOP.org song lyrics are in
+   Traditional Chinese. Simplified-only keywords (e.g., `宝血`, `传扬`, `门徒`) would
+   never match the actual lyric text, resulting in missed theme classifications.
+2. **Eliminates duplicate term pairs.** The previous vocab had both Simplified and
+   Traditional forms of the same word (e.g., `赞美` and `讚美` in the same tuple),
+   creating redundant matching with no benefit.
+3. **Ensures correct matching.** With Traditional-only keywords, the title and lyrics
+   classifiers match against the actual character forms present in the catalog.
 
-The `enrich_pool` node (`poc/songset_constructor/graph/nodes.py:47-86`) enriches each raw `SongCandidate` with computed themes, inferred phase, and hymn flag. It runs four classification steps per song and fuses the results.
-
-#### Step 1: Drop songs with no metadata
-
-```python
-for candidate in state.get("pool", []):
-    if candidate.tempo_bpm is None and candidate.musical_key is None:
-        dropped += 1
-        continue
-```
-
-Songs missing both tempo and key metadata are dropped immediately — they cannot participate in transition scoring or phase inference.
-
-#### Step 2: Classify themes from four sources
-
-Each song is classified by **four independent theme classifiers**, each returning a `dict[str, float]` mapping 12 themes to scores in [0, 1]:
-
-```python
-title = classify_title_themes(candidate.title, candidate.title_pinyin)
-lyrics = classify_lyrics_themes(candidate.lyrics_raw)
-song_emb, line_emb = classify_embedding_themes(
-    candidate.song_embedding,
-    candidate.line_embeddings,
-    anchors,
-)
-```
-
-**Title classification** (`rules/themes.py:35-41`) — keyword matching against a bilingual vocabulary (Chinese + pinyin + English):
-
-```python
-THEME_VOCAB: dict[str, tuple[str, ...]] = {
-    "讚美": ("讚美", "讚美", "歌唱", "欢呼", "hallelujah", "praise", "zan mei"),
-    "感恩": ("感恩", "感谢", "謝謝", "恩典", "grace", "thanks", "gan en"),
-    "敬拜": ("敬拜", "俯伏", "尊崇", "荣耀", "worship", "adore", "jing bai"),
-    # ... 9 more themes
-}
-
-def classify_title_themes(title: str | None, title_pinyin: str | None = None) -> dict[str, float]:
-    text = " ".join(part for part in [title or "", title_pinyin or ""] if part)
-    hits = {theme: _matches(text, terms) for theme, terms in THEME_VOCAB.items()}
-    max_hits = max(hits.values(), default=0)
-    if max_hits == 0:
-        return {theme: 0.0 for theme in THEMES}
-    return {theme: value / max_hits for theme, value in hits.items()}
-```
-
-**Lyrics classification** (`rules/themes.py:44-56`) — sliding 2-line window over lyrics, counting keyword hits per theme, then normalizing by total hits:
-
-```python
-def classify_lyrics_themes(lyrics_raw: str | None) -> dict[str, float]:
-    lines = [line.strip() for line in lyrics_raw.splitlines() if line.strip()]
-    windows = [" ".join(lines[i : i + 2]) for i in range(max(1, len(lines) - 1))]
-    counter: Counter[str] = Counter()
-    for window in windows or [lyrics_raw]:
-        for theme, terms in THEME_VOCAB.items():
-            counter[theme] += _matches(window, terms)
-    total = sum(counter.values())
-    if total == 0:
-        return {theme: 0.0 for theme in THEMES}
-    return {theme: counter[theme] / total for theme in THEMES}
-```
-
-**Embedding classification** (`rules/themes.py:70-79`) — cosine similarity against 1536-dimensional theme anchor vectors (from `text-embedding-3-small`), for both the song-level embedding and the best line-level embedding per theme:
-
-```python
-def classify_embedding_themes(
-    song_vec: list[float] | np.ndarray | None,
-    line_vecs: list[list[float]] | list[np.ndarray] | None,
-    theme_anchors: dict[str, np.ndarray],
-) -> tuple[dict[str, float], dict[str, float]]:
-    song_scores = {theme: cosine(song_vec, anchor) for theme, anchor in theme_anchors.items()}
-    line_scores: dict[str, float] = {}
-    for theme, anchor in theme_anchors.items():
-        line_scores[theme] = max((cosine(vec, anchor) for vec in (line_vecs or [])), default=0.0)
-    return (_normalise_cosine_scores(song_scores), _normalise_cosine_scores(line_scores))
-```
-
-The cosine scores are min-max normalized (`_normalise_cosine_scores`) so the best theme scores 1.0 and the worst is shifted to 0.
-
-#### Step 3: Fuse themes with weighted averaging
-
-```python
-fused = apply_seasonal_bias(fuse_themes(title, lyrics, song_emb, line_emb), config.season)
-```
-
-**Theme fusion** (`rules/phases.py:23-45`) — reliability-ordered weighted average: title (35%) + lyrics (25%) + song embedding (25%) + line embedding (15%). Only non-empty sources contribute, and weights are dynamically normalized:
-
-```python
-def fuse_themes(
-    title: dict[str, float],
-    lyrics: dict[str, float],
-    song_emb: dict[str, float],
-    line_emb: dict[str, float],
-) -> dict[str, float]:
-    weighted_sources = [
-        (0.35, title),
-        (0.25, lyrics),
-        (0.25, song_emb),
-        (0.15, line_emb),
-    ]
-    totals = {theme: 0.0 for theme in THEMES}
-    weights = {theme: 0.0 for theme in THEMES}
-    for weight, source in weighted_sources:
-        if any(value > 0 for value in source.values()):
-            for theme in THEMES:
-                totals[theme] += weight * source.get(theme, 0.0)
-                weights[theme] += weight
-    return {
-        theme: (totals[theme] / weights[theme] if weights[theme] else 0.0)
-        for theme in THEMES
-    }
-```
-
-**Seasonal bias** (`rules/phases.py:48-63`) — after fusion, certain themes are boosted for liturgical seasons:
-
-```python
-def apply_seasonal_bias(fused: dict[str, float], season: str | None) -> dict[str, float]:
-    if season not in {"advent", "christmas", "lent", "easter", "pentecost"}:
-        return fused
-    biased = dict(fused)
-    if season in {"advent", "christmas"}:
-        biased["讚美"] = max(biased.get("讚美", 0.0), 0.7)
-        biased["感恩"] = max(biased.get("感恩", 0.0), 0.5)
-    elif season == "lent":
-        biased["認罪"] = max(biased.get("認罪", 0.0), 0.7)
-        biased["十字架"] = max(biased.get("十字架", 0.0), 0.65)
-    elif season == "easter":
-        biased["復興"] = max(biased.get("復興", 0.0), 0.65)
-        biased["讚美"] = max(biased.get("讚美", 0.0), 0.65)
-    elif season == "pentecost":
-        biased["聖靈"] = max(biased.get("聖靈", 0.0), 0.75)
-    return biased
-```
-
-#### Step 4: Infer phase from fused themes
-
-```python
-phase = infer_phase(fused, candidate.tempo_bpm)
-```
-
-**Phase inference** (`rules/phases.py:66-80`) — the dominant theme (highest fused score) maps to a phase via `THEME_TO_PHASE`. If no themes are active, tempo-based fallback is used:
-
-```python
-THEME_TO_PHASE = {
-    "讚美": 1, "感恩": 2,
-    "敬拜": 3, "祈禱": 3, "信心": 3, "聖靈": 3,
-    "奉獻": 4, "認罪": 4, "十字架": 4,
-    "差遣": 5, "跟隨": 5, "復興": 5,
-}
-
-def infer_phase(fused: dict[str, float], tempo_bpm: float | None = None) -> int:
-    if fused and max(fused.values(), default=0.0) > 0:
-        theme = max(fused.items(), key=lambda item: (item[1], item[0]))[0]
-        if theme == "聖靈" and tempo_bpm is not None and tempo_bpm < 70:
-            return 4  # slow 聖靈 → Response instead of Worship
-        return THEME_TO_PHASE.get(theme, 3)
-    # Fallback: tempo-only inference
-    if tempo_bpm is None:
-        return 3
-    if tempo_bpm >= 100:
-        return 1
-    if tempo_bpm >= 90:
-        return 2
-    if tempo_bpm >= 70:
-        return 3
-    return 4
-```
-
-#### Step 5: Enrich the candidate
-
-```python
-enriched.append(
-    candidate.model_copy(
-        update={
-            "themes": fused,
-            "phase": infer_phase(fused, candidate.tempo_bpm),
-            "is_hymn": candidate.album_series == "HYMN",
-        }
-    )
-)
-```
-
-The enriched `SongCandidate` now carries `themes`, `phase`, and `is_hymn` fields used by downstream stages.
-
-## Traditional Chinese Matching Rationale
-
-All theme keys, matching terms, and embedding anchor texts in the songset constructor use **Traditional Chinese only**. This is because:
-
-1. **Catalog lyrics are Traditional Chinese.** All SOP.org song lyrics are in Traditional Chinese. Simplified-only keywords (e.g., `宝血`, `传扬`, `门徒`) would never match the actual lyric text, resulting in missed theme classifications.
-2. **Eliminates duplicate term pairs.** The previous vocab had both Simplified and Traditional forms of the same word (e.g., `赞美` and `讚美` in the same tuple), creating redundant matching with no benefit.
-3. **Ensures correct matching.** With Traditional-only keywords, the title and lyrics classifiers match against the actual character forms present in the catalog.
-
-The conversion was validated by running `--only-evaluate-pool-enrichment` before and after the conversion. Results (documented in `reports/enrichment_eval_comparison.md`):
+The conversion was measured (historical facts of the Simplified→Traditional
+conversion, documented in `reports/enrichment_eval_comparison.md`):
 
 - **Title hits**: 76 → 106 (+30 songs now have title theme hits)
 - **Lyrics hits**: 342 → 372 (+30 songs now have lyrics theme hits)
 - **Zero-theme songs**: remained at 0 (all songs still get a theme via embeddings)
 
-The embedding anchor vectors in `data/theme_anchors.json` were key-renamed from Simplified to Traditional (vectors unchanged) because the embedding endpoint was unavailable. A full regeneration with Traditional anchor texts should happen when `SOW_EMBEDDING_API_KEY` / `SOW_EMBEDDING_BASE_URL` are available.
+The embedding anchor vectors in `data/theme_anchors.json` were key-renamed from
+Simplified to Traditional (vectors unchanged) because the embedding endpoint was
+unavailable. A full regeneration with Traditional anchor texts should happen when
+`SOW_EMBEDDING_API_KEY` / `SOW_EMBEDDING_BASE_URL` are available.
 
-## Pool Enrichment Evaluation
+**Anchor file role in the skill path:** `songset_constructor/data/theme_anchors.json`
+seeds the `theme_anchors` DB table via `theme-anchors sync`; in the skill path theme
+scores arrive DB-computed (the pool query joins `theme_anchors`), not from the JSON.
 
-The `--only-evaluate-pool-enrichment` flag runs the graph only through `load_catalog` → `enrich_pool` → `write_enrichment_report`, skipping all downstream stages (transition matrix, beam search, LLM, artifact writing). It requires no LLM credentials.
+## Hard Constraints H0–H9
 
-### What it reports
+One canonical table (verified in `rules/hard_constraints.py` + `config.py`):
 
-The enrichment report (`enrichment_report.md` + console summary) includes:
+| Code | Rule | Default | Relax knob (skill config key / CLI `--relax` token) |
+|------|------|---------|------------------------------------------------------|
+| H0 | Exactly `count` songs (2–5) | — | no |
+| H1 | Exactly one phase-1 **primary** opener (primary only, not secondary); ≥ 1 phase 3/4 (primary or secondary); closer phase 4/5 (primary or secondary) | — | `relax_h1` / `h1` — relaxed keeps only the phase-4/5 closer requirement |
+| H2 | Opener tempo ≥ 90 BPM, checked on **entry** BPM (song-level fallback; both missing → fails) | 90 | `relax_h2_bpm` / `h2:80` |
+| H3 | Closer tempo ≤ 90 BPM (80 intimate), checked on **exit** BPM (song-level fallback) | 90/80 | `relax_h3_bpm` / `h3:100` |
+| H4 | Adjacent BPM delta ≤ limit; limit = 45 when the transition carries crossfade or any gap (`gap_beats > 0`), 40 otherwise; boundary-aware delta | 45/40 | `relax_h4` → 55, or `relax_h4_bpm` / `h4` or `h4:50` |
+| H5 | Circle-of-fifths distance ≤ 3 between boundary keys unless the suggested key shift is applied | 3 | `relax_h5` → 4, or `relax_h5_cfd` / `h5` or `h5:4` |
+| H6 | No duplicate song IDs | — | no |
+| H7 | Phase may drop by at most 1 between adjacent songs (checked across primary + secondary phases) | — | no |
+| H8 | Transposition gate: key confidence ≥ 0.6 — boundary-sourced pairs gate on destination `entry_key_confidence`, others on song-level `key_confidence`; opener always song-level | 0.6 | no |
+| H9 | Total duration ≤ 1500 s (25 min; `SONGSET_MAX_DURATION_SECONDS`); unknown (`None`) durations contribute 0 and don't trigger H9 | 1500 | no |
 
-- **Pool Overview**: loaded count, enriched count, dropped count with reasons
-- **Phase Distribution**: count and percentage per phase (1–5), with underrepresented flags (< 15%)
-- **Theme Dominance**: how many songs have each theme as their dominant (highest fused score) theme, with underrepresented flags (< 2%)
-- **Phase Inference Source**: how many songs had phase inferred from themes vs tempo-only fallback
-- **Theme Signal Coverage**: how many songs have title hits, lyrics hits, song embeddings, line embeddings
-- **Tempo & Key Coverage**: known vs missing, BPM range, low-confidence keys
-- **Album Series Distribution**: count per album series
-- **Diversity Assessment**: unique theme coverage, Shannon theme entropy (max log₂(12) ≈ 3.585), Shannon phase entropy (max log₂(5) ≈ 2.322)
+Notes:
 
-### How to interpret the metrics
+- Matrix-backed transitions always carry `gap_beats ≥ 2`, so they use the 45 cap; only
+  matrix-missing pairs fall to the 40 cap (and those fail H5 anyway).
+- **CLI relax token syntax** (from `_parse_relax`, `commands/songset.py`):
+  `--relax "h1,h2:80,h3:100,h4,h5:4"`.
+- **Skill-side:** pass the same `RunConfig` field names in `score_songset.py`'s
+  `config` dict, e.g. `{"count": 4, "intimate": false, "relax_h1": true}`.
+- The LangGraph path auto-relaxes (`auto_relax` default true, order H4/H5 → H2/H3 →
+  H1). The skill planner relaxes manually after 3 failed refinement iterations and
+  labels relaxed proposals (e.g. `relaxed_H4_H5`).
+- **Suggested relax order** (SKILL.md Step 7): H4 → H5 → H2 → H3 → H1.
+- H9-violations alone → swap a long song for a shorter one (via `semantic_search`)
+  rather than reduce count.
+- High range penalty → apply the song's `recommended_key_shift_for_range`
+  (max ±2, requires song-level `key_confidence ≥ 0.6`).
+- **Draft-time guardrails:** never draft more than 5 songs (`SONGSET_MAX_SONGS` fails
+  at `songset create`); accumulate running duration while drafting; `None` duration →
+  don't block, warn.
 
-- **Phase 3 (敬拜) dominance > 40%**: indicates the 敬拜 theme is over-represented. Consider expanding THEME_VOCAB for underrepresented themes or adjusting fusion weights.
-- **Zero-theme songs > 10%**: indicates keyword gaps. Songs with no theme hits fall to tempo-only phase inference, creating artificial phase clusters.
-- **Theme entropy < 2.5 bits**: indicates low theme diversity. The ideal is close to max (3.585).
-- **Title hits < 25%**: many songs have titles that don't contain any theme keywords. This is expected for songs with metaphorical or poetic titles.
-- **Lyrics hits < 70%**: indicates THEME_VOCAB keyword gaps. Expanding the vocabulary with more Traditional Chinese worship terms will improve coverage.
+## Fitness scoring
 
-### Recipe
+**Base weights:** f_theme 0.40 / f_tempo 0.30 / f_harmony 0.20 / f_diversity 0.10.
+**f_energy** and **f_posture** join at 0.05 each **only when their signal exists
+pool-wide**; an absent term's 0.05 is redistributed proportionally across the base
+weights (verified `rules/fitness.py`).
 
-```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --pool-limit 500 --only-evaluate-pool-enrichment
-```
+| Mode | Weights |
+|------|---------|
+| four-way (no energy/posture pool-wide) | 0.40 / 0.30 / 0.20 / 0.10 |
+| five-way (+energy only) | 0.38 / 0.285 / 0.19 / 0.095 + 0.05·f_energy |
+| five-way (+posture only) | 0.38 / 0.285 / 0.19 / 0.095 + 0.05·f_posture |
+| six-way (+both) | 0.36 / 0.27 / 0.18 / 0.09 + 0.05·f_energy + 0.05·f_posture |
 
-The report is written to `lab/poc-scripts/output/songset_constructor/<timestamp>/enrichment_report.md` and a summary is printed to console.
+**f_energy** (`rules/fitness.py`): ordinal on pool percentiles, never absolute dB. Arc
+value = `entry_energy_pct`; the adjacency term penalizes |entry(B) − exit(A)|; the
+arc-shape term penalizes sets that land louder than they opened (max(0, opener-entry −
+closer-exit)). Score = 0.5·adjacency + 0.5·arc. Returns None (→ weight redistributed)
+with < 2 usable adjacency values and no closer-exit value.
 
-## How Diverse Beam Search Works
+**f_posture** (`rules/fitness.py`): mean of `POSTURE_PHASE_FIT[posture][phase]` over
+items with posture; items missing posture are skipped; None when no item has posture.
+Fit matrix (verified `components.py`):
 
-The beam search in `rules/beam.py` uses a **two-level round-robin diverse selection** to maximize song variety across proposals:
+| Posture | P1 | P2 | P3 | P4 | P5 |
+|---------|----|----|----|----|----|
+| To God | 0.5 | 1.0 | 1.0 | 1.0 | 0.5 |
+| About God | 1.0 | 0.5 | 0.5 | 0.0 | 1.0 |
+| To Congregation | 1.0 | 0.0 | 0.5 | 1.0 | 1.0 |
 
-### Phase Templates
+Liturgical rationale: direct address (To God) peaks in Worship/Response; testimony
+(About God) fits Call and Commission; congregational exhortation (To Congregation)
+fits Call/Response/Commission but not Worship.
 
-| Songs | Template | Arc |
-|-------|----------|-----|
-| 2 | (1, 4) | Call → Response |
-| 3 | (1, 3, 5) | Call → Praise → Commitment |
-| 4 | (1, 3, 4, 5) | Call → Praise → Cross → Commitment |
-| 5 | (1, 2, 3, 4, 5) | Full worship arc |
+**Range penalty** (`score_songset.py`): only when `--leader-range` was provided. 0.05
+per semitone from the closest comfortable tonic PC (circular distance on
+`(tonic_pc + key_shift) % 12`), capped 0.20/song; **subtracted from total after the
+weighted sum**.
 
-### Beam Expansion
+**Deliberate asymmetry:** f_tempo stays song-level (`item.bpm`) while H2/H3/H4 are
+boundary-aware. Whole-song tempo is the liturgical "feel"; boundary BPM only governs
+adjacency and the opener/closer floor/ceiling checks. Do not "fix" this without a user
+decision (spec v2 §3.2).
 
-At each position in the template, the beam expands all valid candidates. Validity is checked against:
-- **Phase match**: opener must be phase 1/2, closer must be phase 4/5
-- **Tempo floor/ceiling**: opener ≥ 90 BPM (configurable), closer ≤ 90 BPM (80 intimate)
-- **H4 tempo jump**: adjacent BPM delta ≤ 35 (25 without crossfade, 40 if relaxed)
-- **H5 circle-of-fifths**: CFD ≤ 2 (3 if relaxed) unless key shift is applied
-- **H7 phase arc**: phase may drop by at most 1 between adjacent songs
-- **Dead-end filtering**: non-closer positions skip songs with zero fan-out
-
-### Diverse Selection (Round-Robin)
-
-At each phase after the opener, sequences are grouped by:
-1. **Opener** (first song) — ensures different openers survive
-2. **Middle-song signature** (positions 1..-1) — ensures different middle combinations survive
-
-Within each opener group, middle-song groups are ranked by quality (phase score + tempo delta). A round-robin selection alternates between openers, and within each opener alternates between middle signatures, so no single opener or middle combination dominates the beam.
-
-At position 1 (opener), ALL valid openers are kept (up to beam width) to maximize starting-song diversity.
-
-### Beam Width
-
-Beam width is scaled to `max(top_k * 5, 40)`. For `--top-k 20`, the beam width is 100, allowing many diverse sequences to survive pruning.
-
-## How Diversity Penalty Works
-
-The `rank_proposals` function in `rules/proposals.py` uses a **greedy diverse selection with middle-song penalty**:
-
-1. Deduplicate proposals by song sequence hash
-2. Sort by score (descending)
-3. Greedily select proposals one at a time:
-   - For each candidate, compute `score_with_diversity_penalty(proposal, config, matrix, used_middle_songs)`
-   - The penalty reduces total score by `0.15 * (overlap_count / middle_count)` where overlap is the number of middle songs already used in higher-ranked proposals
-   - Pick the proposal with the highest penalized score
-   - Add its middle songs to the `used_middle_songs` set
-4. Repeat until `top_k` proposals are selected
-
-This spreads middle-slot variety across the final top-k, preventing all proposals from reusing the same 2–3 middle songs.
-
-## Hard Constraints (H0–H8)
-
-| Rule | Description | Relaxable |
-|------|-------------|-----------|
-| H0 | Cardinality: proposal must have exactly the requested song count | No |
-| H1 | Phase coverage: one phase-1 opener, at least one phase 3/4, ends on phase 4/5 | Yes (`--relax-h1`) |
-| H2 | Opening tempo ≥ 90 BPM | Yes (`--relax-h2-bpm`) |
-| H3 | Closing tempo ≤ 90 BPM (80 intimate) | Yes (`--relax-h3-bpm`) |
-| H4 | Adjacent BPM delta ≤ 35 (25 without crossfade, 40 if relaxed) | Yes (`--relax-h4`) |
-| H5 | Circle-of-fifths distance ≤ 2 (3 if relaxed) unless key shift applied | Yes (`--relax-h5`) |
-| H6 | No duplicate song IDs | No |
-| H7 | Phase may drop by at most 1 between adjacent songs | No |
-| H8 | Songs with key confidence < 0.6 cannot be transposed | No |
-
-When `--auto-relax` is enabled (default), the search automatically relaxes H4/H5, then H2/H3, then H1 if no proposals are found. Relaxed proposals carry warning labels (e.g., `relaxed_H4_H5`).
-
-## Fitness Scoring
-
-Each proposal is scored on four components:
-
-| Component | Weight | What It Measures |
-|-----------|-------:|-----------------|
-| `f_theme` | 0.40 | How well song phases match the template arc |
-| `f_tempo` | 0.30 | Tempo smoothness (low BPM delta between adjacent songs) + arc bonus (opener BPM ≥ closer BPM) |
-| `f_harmony` | 0.20 | Average key compatibility across adjacent transitions |
-| `f_diversity` | 0.10 | Unique songs (0.7 weight) + unique themes (0.3 weight) within the set |
-
-Total score = `0.40 * theme + 0.30 * tempo + 0.20 * harmony + 0.10 * diversity`, clamped to [0, 1].
-
-## Output Artifacts
-
-Each run writes 5 files to the output directory (default: `lab/poc-scripts/output/songset_constructor/<timestamp>/`):
-
-| File | Description |
-|------|-------------|
-| `proposals.json` | Machine-readable proposals with full metadata (songs, scores, transitions, config) |
-| `proposal_report.md` | Human-readable markdown table of all ranked proposals |
-| `candidate_pool.csv` | Full enriched pool with phase, BPM, key, themes per song |
-| `graph_trace.jsonl` | LangGraph execution trace (one JSON object per node event) |
-| `songset_review.md` | Auto-generated review summary with key findings, run config, and per-proposal details |
-
-## How to Evaluate Results
-
-### 1. Check Proposal Count
-
-The run log prints `candidates=N` after `beam_seed_candidates` and `proposals=N` after `finalize_rank`. If `proposals=0`, check the no-results summary printed by the CLI — it explains which stage blocked output.
-
-### 2. Read the Proposal Report
-
-Open `proposal_report.md`. For each proposal, check:
-
-- **Phase arc**: Does the phase sequence follow the template (e.g., 1→3→4→5 for 4 songs)?
-- **BPM arc**: Does the tempo generally decrease from opener to closer? Large jumps indicate weak transitions.
-- **Key compatibility**: Are adjacent keys close on the circle of fifths? Large key shifts (e.g., C major to F# major) reduce harmony score.
-- **Transition settings**: `shift 0, gap 2 beats` means a simple gap transition. `shift -2, gap 4 beats` means a 2-semitone transpose with a longer gap. Crossfade transitions allow larger BPM deltas.
-- **Warnings**: `relaxed_H4_H5` means the strict constraints were too tight and had to be relaxed. This is acceptable but indicates the catalog lacks perfectly compatible transitions.
-
-### 3. Assess Diversity
-
-Count unique songs per slot across all proposals:
-
-```bash
-uv run --project lab/poc-scripts --extra songset_constructor python -c "
-import json
-from pathlib import Path
-
-# Update path to your run's output directory
-data = json.loads(Path('lab/poc-scripts/output/songset_constructor/<TIMESTAMP>/proposals.json').read_text())
-proposals = data['proposals']
-
-for slot in range(len(proposals[0]['items'])):
-    songs = {p['items'][slot]['title'] for p in proposals}
-    print(f'Slot {slot + 1}: {len(songs)} unique songs')
-"
-```
-
-**Healthy diversity indicators:**
-- Openers: ≥ 50% of top_k should be unique (e.g., ≥ 10 unique openers for top_k=20)
-- Middle slots: ≥ 3 unique songs per slot
-- Closers: ≥ 2 unique songs
-
-**Limited diversity indicators:**
-- Slot 2 (first middle) often has only 2–3 unique songs because H4/H5 transition constraints limit compatible phase-3 songs per BPM group. This is a catalog constraint, not an algorithm bug.
-- If all proposals share the same opener, the beam search is converging. Increase `--top-k` or try different `--album-series` filters.
-
-### 4. Check Score Distribution
-
-Read the `Score:` line under each proposal. Typical ranges:
+**Interpretation table** (from SKILL.md):
 
 | Component | Good | Acceptable | Concern |
 |-----------|------|------------|---------|
-| theme | ≥ 0.90 | ≥ 0.80 | < 0.80 (phase mismatch) |
-| tempo | ≥ 0.70 | ≥ 0.65 | < 0.60 (large BPM jumps) |
-| harmony | ≥ 0.70 | ≥ 0.50 | < 0.40 (key incompatibility) |
-| diversity | 1.00 | 1.00 | < 1.00 (duplicate songs) |
+| f_theme | ≥ 0.90 | ≥ 0.80 | < 0.80 (phase mismatch) |
+| f_tempo | ≥ 0.70 | ≥ 0.65 | < 0.60 (large BPM jumps) |
+| f_harmony | ≥ 0.70 | ≥ 0.50 | < 0.40 (key incompatibility) |
+| f_diversity | 1.00 | 1.00 | < 1.00 (duplicate songs) |
+| f_energy | ≥ 0.80 (smooth descent) | ≥ 0.65 | < 0.50 (energy clashes / rising arc) |
+| f_posture | ≥ 0.80 (fits the phase template) | ≥ 0.50 | < 0.40 (posture fights the phase) |
+| range_penalty | 0.00 | ≤ 0.05 | > 0.10 (out-of-range songs) |
 | **total** | **≥ 0.80** | **≥ 0.70** | **< 0.65** |
 
-### 5. Review the Songset Review
+Note: the weight mode (four/five/six-way) differs between pools, so compare totals
+within a run, not across runs.
 
-Open `songset_review.md` for an auto-generated summary including:
-- Phase flow distribution in the pool (how many songs per phase)
-- Tempo coverage (known vs missing BPM values)
-- Relaxation/constraint warnings
-- Per-proposal score breakdowns
+## Output artifacts
 
-### 6. Compare Runs
+**Skill path:** a single `proposal_report.md`, written by `write_report.py`. Contents:
 
-To compare diversity across different configurations, run multiple times and compare the unique-song counts per slot. Useful comparisons:
+- **Run configuration** — including leader-range label + comfortable PCs.
+- **Pool overview** — phase distribution, theme coverage, tempo/key coverage, duration
+  distribution, **component coverage %**, **theme_source distribution**,
+  **transposable-population counts** (song-level vs boundary-gated — makes the H8
+  regression observable run-over-run).
+- **Per-proposal details** — song sequence (with `theme_source`), phase arc, BPM/key
+  journey with **boundary entry/exit BPM + key columns** alongside song-level values,
+  per-song + total duration vs the 1500 s cap, score breakdown with **active weight
+  mode** (four/five/six-way) and f_energy/f_posture values or `(n/a)` + range_penalty,
+  transition settings, singing-range status, **adjacency table** with per-pair
+  provenance (`component`/`song-level`), CFD, BPM Δ, warnings; **energy arc**
+  (entry/exit pct per position); **posture sequence** vs phase with fit values.
+- **Component-metadata warnings** — songs with `has_components = false` used in a
+  proposal ("song-level fallback: theme via fusion, no energy/posture data");
+  per-adjacency boundary-BPM warnings.
+- **Diversity matrix** — unique songs/themes/composers, overlap matrix, frequency
+  table, bottlenecks.
 
-- `--no-llm` vs `--llm-judge`: LLM mode adds LLM-drafted proposals with different song selections
-- `--intimate` vs default: Intimate mode selects slower closers (≤ 80 BPM)
-- `--season advent` vs default: Seasonal bias adjusts theme weights
-- Different `--album-series` filters: Narrows the pool to specific albums
+**Deprecated LangGraph path** writes 5 files (verified `artifacts/writer.py`):
+`proposals.json`, `proposal_report.md`, `candidate_pool.csv`, `graph_trace.jsonl`,
+`songset_review.md`, plus `diagnose_report.md` when `--report`.
 
-## Recipes
+## How to evaluate results
 
-> The recipes below use the production `sow-admin songset construct` command.
-> The POC script equivalents (`lab/poc-scripts/construct_songset_agent.py`)
-> are deprecated but still functional.
+### Read the report
 
-### Generate 20 diverse 4-song sets from the full catalog
+- **Phase arc** vs the template (e.g., 1→3→4→5 for 4 songs).
+- **BPM arc** generally decreasing opener → closer; large jumps indicate weak
+  transitions.
+- **Adjacency provenance**: `component` rows are the honest boundary math;
+  `song-level` rows mean at least one side lacked boundary keys.
+- **Warnings column**: boundary-BPM fallback = missing analysis data, not an algorithm
+  bug; `low_key_confidence` = transposition may be H8-blocked; `relaxed_*` labels =
+  strict constraints were relaxed for this proposal (acceptable, but note it).
+
+### Score distribution
+
+Use the interpretation table in [Fitness scoring](#fitness-scoring). Two extra rules:
+
+- Totals are only comparable **within a run** — the weight mode (four/five/six-way)
+  varies with pool coverage.
+- A six-way pool with f_energy ≥ 0.80 but f_posture < 0.40 means posture is fighting
+  the arc even though the set "flows" energetically.
+
+### Diversity targets (SKILL.md Step 8)
+
+- ≥ 50% unique openers across proposals.
+- ≥ 3 unique songs per middle slot.
+- ≥ 2 unique closers.
+- Subtract 0.15 × (overlap_count / middle_count) from a proposal's total when its
+  middle songs were already used by higher-ranked proposals.
+
+If slot-2 variety is only 2–3 songs, that's the H4/H5 catalog limit, not a bug — widen
+the pool, relax H4/H5, or use `semantic_search` for the thin slot.
+
+### Enrichment health checks (from `enrich_pool.py` stderr summary)
+
+- `Theme source: component=N, fusion=M` — all-fusion usually means a **stale pool
+  cache predating component integration** → refetch with `--prefer-fresh` or
+  `--no-cache`.
+- `Pool: X loaded → Y enriched (Z dropped)` — large dropped counts mean missing
+  tempo/key metadata.
+- `Phase distribution: P1..P5` — you need phase-1 openers AND phase-4/5 closers AND
+  phase-3 middles; a missing bucket blocks valid sets.
+- `Theme inference: N from themes, M from tempo fallback` — a large tempo-fallback
+  share means keyword/embedding gaps → artificial phase clusters.
+- `Title hits` / `Lyrics hits` — low lyrics hits = `THEME_VOCAB` gaps.
+- `Theme entropy: X bits (max 3.585)` — below 2.5 bits = low theme diversity.
+- Singing-range lines (when `--leader-range` given): in/out-of-range counts.
+
+### Transposable-population check
+
+Compare the pool overview's song-level vs boundary-gated counts. If the gap is much
+larger than ~250 → ~201, boundary key confidence regressed (data issue — report it).
+
+## Recipes (skill path)
+
+### Seasonal pool prep chain
+
+See [Quick Start](#quick-start-skill-path) — the `fetch_pool → enrich_pool →
+build_transitions` chain is the single deterministic baseline.
+
+### Leader-range enrichment
+
+```bash
+uv run --project ops/admin-cli --extra admin --extra constructor python \
+  lab/skills/songset-constructor/scripts/enrich_pool.py \
+  --leader-range '{"comfortable_pcs": [0, 1, 2, 3, 4, 5], "label": "normal male"}'
+```
+
+Resolve a voice type to PCs via `voice_ranges.py`. The map (verified):
+
+| Voice | Range | Comfortable PCs |
+|-------|-------|-----------------|
+| normal male | A2–E4 | 0, 1, 2, 3, 4, 5 |
+| low male | E2–B3 | 8, 9, 10, 11, 0, 1 |
+| high male | C3–G4 | 2, 3, 4, 5, 6, 7 |
+| normal female | G3–E5 | 0, 2, 3, 4, 5, 7 |
+| low female | E3–B4 | 9, 10, 11, 0, 2 |
+| high female | C4–G5 | 2, 4, 5, 7, 9 |
+
+Declining the range question → default to normal male and note it in the run summary.
+
+### Score a draft
+
+Merge the build_transitions output with your draft items and config using a quoted
+heredoc (the quoted sentinel `<<'EOF'` suppresses shell interpolation):
+
+```bash
+uv run --project ops/admin-cli --extra admin --extra constructor python <<'EOF'
+import json
+
+tp = json.load(open('/tmp/transitions_pool.json'))
+payload = {
+    'items': [
+        {'position': 1, 'recording_hash_prefix': 'a1b2c3d4e5f6', 'key_shift_semitones': 0},
+        # ... more draft items in position order ...
+    ],
+    'pool': tp['pool'],
+    'transitions': tp['transitions'],
+    'config': {'count': 4, 'intimate': False, 'relax_h1': True},
+}
+with open('/tmp/score_input.json', 'w') as f:
+    json.dump(payload, f, ensure_ascii=False)
+EOF
+
+uv run --project ops/admin-cli --extra admin --extra constructor python \
+  lab/skills/songset-constructor/scripts/score_songset.py --input /tmp/score_input.json
+```
+
+### Refine loop
+
+Read `repair_hints` from the validation feedback; swap songs, reorder, or adjust key
+shifts; re-score. At most 3 iterations — then relax in the H4 → H5 → H2 → H3 → H1
+order from [Hard Constraints](#hard-constraints-h0h9).
+
+### Fill a thin slot
+
+```bash
+uv run --project ops/admin-cli --extra admin --extra constructor python \
+  lab/skills/songset-constructor/scripts/semantic_search.py --query 感恩 --limit 20
+```
+
+Add `--album-series "敬拜讚美 (1)"` (repeatable) to restrict the search.
+
+### Inspect a transition
+
+When a pair has CFD > 2, inspect how each song ends/starts:
+
+```bash
+uv run --project ops/admin-cli --extra admin --extra constructor python \
+  lab/skills/songset-constructor/scripts/get_lyrics.py --hash-prefix <12hex>
+```
+
+Run it on both songs of the pair.
+
+### Write the report
+
+```bash
+echo '{"proposals": [...], "pool": [...], "config": {...}, "transitions": [...], "summary": "..."}' \
+  | uv run --project ops/admin-cli --extra admin --extra constructor python \
+      lab/skills/songset-constructor/scripts/write_report.py \
+      --output-dir output/songset_constructor/<timestamp>/
+```
+
+The `summary` field is a 3–5 sentence executive summary (per SKILL.md Step 9b).
+
+### Persist (optional)
+
+Song IDs use the format `{slug}_{8-char-hex}` (e.g. `wo_de_ye_su_4c27d159`) — extract
+the `song_id` tokens from proposal items. **NEVER** pass `recording_hash_prefix`
+(12-char hex; invalid as a song ID).
+
+```bash
+export SOW_DEFAULT_USER=alice@example.com
+
+# Extract song_ids from the top proposal (assumes /tmp/top_proposal.json).
+SONG_IDS=$(uv run --project ops/admin-cli --extra admin --extra constructor python <<'EOF'
+import json
+p = json.load(open('/tmp/top_proposal.json'))
+print(' '.join(item['song_id'] for item in sorted(p['items'], key=lambda x: x['position'])))
+EOF
+)
+
+# Defensive trim: keep first 5 if oversize slipped through
+SONG_IDS=$(echo "$SONG_IDS" | awk '{for(i=1;i<=5 && i<=NF;i++) printf "%s%s", $i, (i<5 && i<NF ? OFS : ORS)}')
+
+# Dry-run first to validate resolution
+uv run --project ops/admin-cli --extra admin sow-admin songset create \
+    $SONG_IDS --dry-run --yes
+
+# Persist for real
+uv run --project ops/admin-cli --extra admin sow-admin songset create \
+    $SONG_IDS --name "Sunday_Worship_Set_1" --yes
+```
+
+Notes:
+
+- Owner: `SOW_DEFAULT_USER` env var or `--user <email>`.
+- Dry-run first, then `--yes`.
+- Defensive trim to ≤ 5 items by `position` — enforced limits are 5 songs
+  (`SONGSET_MAX_SONGS`) / 1500 s (`SONGSET_MAX_DURATION_SECONDS`).
+- Latest-active recording is auto-selected.
+- Ambiguous title matches error in `--yes` mode → always use `song_id`.
+
+## Deprecated paths
+
+### LangGraph `sow-admin songset construct`
+
+Invocation:
 
 ```bash
 uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache
+  --user <email> [flags]
 ```
 
-### Generate 10 LLM-judged 5-song sets
+Real flags (verified typer signature):
 
-```bash
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 5 --pool 500 --proposals 10 --llm --llm-judge --yes
-```
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--count` / `-n` | 3 | 2–5 |
+| `--proposals` / `-k` | 3 | 1–20 |
+| `--pool` / `-p` | 200 | max pool size |
+| `--album-series` | none | repeatable |
+| `--include-cpw` | off | adds CPW series |
+| `--intimate` | off | closer ceiling 90 → 80 |
+| `--hymnal-mode` | off | adds HYMN series |
+| `--season` | none | advent, christmas, lent, easter, pentecost |
+| `--llm` / `--no-llm` | `--no-llm` | LLM planning mode |
+| `--llm-judge` | off | requires `--llm` |
+| `--llm-model` | `SOW_LLM_MODEL` | |
+| `--relax` | none | token string, e.g. `"h1,h2:80,h3:100,h4,h5:4"` |
+| `--constraints-file` | none | YAML/JSON relax overrides |
+| `--report` (+ `--report-dir`) | off | writes `diagnose_report.md` |
+| `--dry-run` | off | skip DB writes |
+| `--yes` | off | auto-save without prompting |
+| `--no-cache` | off | bypass pool cache |
+| `--cache-dir` | default cache dir | |
+| `--cache-ttl` | 24 | hours |
 
-### Generate intimate worship sets (slow closers)
+Caveats: song-level only (no component metadata, four-way weights, song-level
+H2/H3/H8); auto-relaxes by default (`auto_relax` true, order H4/H5 → H2/H3 → H1);
+persists via `persist_proposals` unless `--dry-run`; requires `theme_anchors` = 12.
 
-```bash
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --intimate --no-cache
-```
+Internals (deterministic mode): diverse beam search in `rules/beam.py` with beam width
+`max(top_k*5, 40)` and round-robin opener/middle grouping; `rank_proposals` in
+`rules/proposals.py` then applies greedy diverse selection with a 0.15
+middle-overlap penalty. This is deterministic machinery — in the skill path the agent
+does the planning, refinement, and ranking judgment itself.
 
-### Generate Christmas-season sets
+### POC script
 
-```bash
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --season christmas --no-cache
-```
+`lab/poc-scripts/construct_songset_agent.py` — retained for reference only.
 
-### Generate sets from a specific album series
+### Read-only guarantee
 
-```bash
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache \
-  --album-series "敬拜讚美 (1)" --album-series "敬拜讚美 (2)"
-```
-
-### Debug: strict-only mode (no auto-relax)
-
-```bash
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --count 4 --pool 500 --proposals 20 --no-llm --no-cache \
-  --relax h1
-```
-
-If this produces 0 proposals, the catalog lacks songs that satisfy all strict H1–H5 constraints simultaneously. Re-enable auto-relax (default) or manually relax specific constraints (e.g., `--relax h4,h5`).
-
-### Evaluate pool enrichment distribution
-
-```bash
-uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songset construct \
-  --user me@example.com --pool 500 --dry-run --no-cache --report
-```
-
-Runs `load_catalog` → `enrich_pool` → graph. No LLM required. Use `--report` to write a diagnose report. Use this to diagnose theme classification gaps and phase imbalance before running full construction.
-
-### Interactive review (human-in-the-loop)
-
-```bash
-set -a && source /opt/sow/.env && set +a
-uv run --project lab/poc-scripts --extra songset_constructor \
-  python lab/poc-scripts/construct_songset_agent.py \
-  --songs 4 --pool-limit 500 --top-k 5 --no-llm --interactive-review
-```
-
-The CLI pauses after ranking and prompts `Review action (approve/reject)`. Use `--resume-thread-id` to resume an interrupted interactive session.
+Skill scripts issue bounded `SELECT`s via `ReadOnlyClient` and write **no DB rows**;
+persistence happens only through explicit `songset create`. The deprecated `construct`
+path persists unless `--dry-run`.
 
 ## Troubleshooting
 
+### `json.JSONDecodeError` on a 0-byte file
+
+Missing `uv run` prefix — see the invocation note in
+[Quick Start](#quick-start-skill-path).
+
 ### No proposals generated
 
-1. Check the CLI output for the no-results summary — it explains which stage blocked output.
-2. Run with `--no-auto-relax` to see if strict constraints are too tight.
-3. Check pool size: if `pool_size=0`, the database query returned nothing. Verify the catalog has published/review recordings with LRC lyrics.
-4. Check phase distribution in `songset_review.md`: if phase 1 or phase 4/5 count is 0, no valid openers or closers exist.
+1. Check the report's warnings/relax labels — which stage blocked output.
+2. Relax in the H4 → H5 → H2 → H3 → H1 order (see Hard Constraints).
+3. `pool_size = 0` → the catalog lacks published/review recordings with LRC lyrics.
+4. Phase-1 or phase-4/5 count 0 → no valid openers/closers (check the enrichment
+   summary).
 
-### All proposals share the same opener
+### Stale cache symptoms
 
-This means the beam search is converging. The diverse beam search should prevent this, but if the catalog has very few valid openers (phase 1/2 with BPM ≥ 90), diversity is naturally limited. Check the phase distribution in `songset_review.md`.
+`duration_seconds = None`, no component fields, `Theme source: fusion=` for all songs
+→ refetch with `--prefer-fresh` or `--no-cache`. Old caches still validate (new fields
+default `None`/`False`), so the pipeline won't reject them — detect them by symptom.
 
-### All proposals share the same middle songs
+### All proposals share the opener / middle songs
 
-This is expected when the H4/H5 transition constraints limit compatible phase-3 songs per BPM group. The diversity penalty in `rank_proposals` spreads variety as much as possible, but it cannot create transitions that don't exist in the catalog. To increase middle-song diversity:
-- Relax H4: `--relax-h4` (widens BPM delta from 35 to 40)
-- Relax H5: `--relax-h5` (widens CFD from 2 to 3)
-- Use a larger pool: `--pool-limit 500`
+Catalog constraint under H4/H5: few compatible phase-3 songs per BPM group. Widen the
+pool, relax H4/H5, vary `--album-series`, or use `semantic_search`.
 
-### LLM mode produces fewer proposals than expected
+### H8 blocks more transpositions than before
 
-In LLM mode, `validate_score` replaces `beam_candidates` with the LLM draft (via `operator.add` append). The final proposal count = beam proposals + 1 LLM draft (if validation passes). If the LLM draft fails validation after 3 refinement iterations, only beam proposals survive.
+Expected boundary gate (see Component metadata → H2/H3/H8 boundary semantics). Check
+the transposable counts in the pool overview — accepted regression.
+
+### DB unreachable
+
+Preflight WARNs. `fetch_pool.py` serves the stale cache by default (`--allow-stale`);
+`--prefer-fresh` tries DB first. No cache + no DB = cannot proceed.
 
 ### Harmony scores are low
 
-Low harmony scores (< 0.50) indicate key incompatibility between adjacent songs. Check the `Key` column in the proposal report — large key jumps (e.g., C major to B major) reduce harmony. The transition matrix may suggest a key shift (`shift -2` etc.) to improve compatibility, but songs with low key confidence (< 0.6) cannot be transposed (H8 constraint).
+Large key jumps between adjacent songs. `suggested_key_shift` improves compatibility
+but H8 may block it — check boundary vs song-level key confidence in the report.
 
-## Key Source Files
-
-The production source of truth is the admin CLI subpackage at
-`ops/admin-cli/src/stream_of_worship/admin/songset_constructor/`.
+## Key source files
 
 | File | Purpose |
 |------|---------|
-| `commands/songset.py` | CLI command (`sow-admin songset construct`) |
-| `songset_constructor/config.py` | RunConfig dataclass, tempo/CFD limits |
-| `songset_constructor/graph/builder.py` | LangGraph state machine definition |
-| `songset_constructor/graph/nodes.py` | Graph node implementations |
-| `songset_constructor/rules/beam.py` | Diverse beam search with round-robin selection |
-| `songset_constructor/rules/fitness.py` | Scoring functions + diversity penalty |
-| `songset_constructor/rules/proposals.py` | Proposal ranking with greedy diverse selection |
-| `songset_constructor/rules/hard_constraints.py` | H0–H8 validation |
-| `songset_constructor/rules/transitions.py` | Pairwise transition recommendation |
-| `songset_constructor/rules/phases.py` | Theme fusion, seasonal bias, phase inference |
-| `songset_constructor/rules/themes.py` | Title/lyrics/embedding theme classification |
-| `songset_constructor/rules/embeddings.py` | Cosine similarity + anchor loading |
-| `songset_constructor/db.py` | Read-only catalog pool query (in-DB pgvector scoring) |
-| `songset_constructor/persist.py` | Atomic songset persistence |
-| `songset_constructor/cache.py` | Pool cache (atomic write, corruption-tolerant) |
-| `songset_constructor/data/theme_anchors.json` | 1536-dim theme anchor vectors (text-embedding-3-small) |
-
-> **Deprecated:** The POC files under `lab/poc-scripts/poc/songset_constructor/`
-> and `lab/poc-scripts/construct_songset_agent.py` are retained for reference
-> but are no longer the primary path.
-
-## Read-Only Guarantee
-
-The POC uses `ReadOnlyClient` and only issues bounded `SELECT` queries. It does not import `SongsetClient`, does not write `songsets` or `songset_items`, and does not run schema migrations.
+| `lab/skills/songset-constructor/SKILL.md` | Operational 12-step workflow (canonical; agent reads first) |
+| `lab/skills/songset-constructor/scripts/fetch_pool.py` | Raw pool fetch + cache |
+| `lab/skills/songset-constructor/scripts/enrich_pool.py` | Component-primary themes, phase, seasonal bias, energy percentiles, leader range |
+| `lab/skills/songset-constructor/scripts/build_transitions.py` | Boundary-first transition matrix + fan-out/dead-end |
+| `lab/skills/songset-constructor/scripts/score_songset.py` | Draft scoring + H1–H9 validation + range penalty |
+| `lab/skills/songset-constructor/scripts/write_report.py` | `proposal_report.md` writer |
+| `lab/skills/songset-constructor/scripts/semantic_search.py` / `get_lyrics.py` / `voice_ranges.py` / `preflight.sh` | Slot-filling search; lyric inspection; voice-range mapping; env checks |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py` | `SongCandidate` / `ProposalItem` / `TransitionCandidate` incl. component + boundary fields |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/db.py` | Read-only pool queries (song + line themes + component rows) |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/components.py` | Component-row aggregation + `POSTURE_PHASE_FIT` |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py` | `RunConfig` (H4/H5/H2/H3 limit properties, relax knobs) |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/hard_constraints.py` | H1–H9 + boundary-aware H2/H3/H8 |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py` | Weights, f_energy, f_posture, diversity penalty |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/transitions.py` | Boundary-first `recommend_transition` + technique ladder |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/phases.py` / `rules/themes.py` | Fusion fallback, seasonal bias, phase inference / keyword vocab |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py` + `rules/proposals.py` | LangGraph beam search + ranking (deprecated path) |
+| `ops/admin-cli/src/stream_of_worship/admin/songset_constructor/data/theme_anchors.json` | Seed vectors for `theme-anchors sync` |
+| `specs/songset-constructor-component-metadata-integration-v2.md` + `docs/adr/0006-component-theme-primary-for-phase-inference.md` | Design records for this integration |
