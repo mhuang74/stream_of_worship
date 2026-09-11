@@ -50,6 +50,10 @@ _Avoid_: component key, per-section key
 The tempo at a Song's entry or exit component. Adjacent-song tempo compatibility (and the opener-floor / closer-ceiling checks) read these boundary values first, falling back to whole-song tempo.
 _Avoid_: section BPM, per-segment tempo
 
+**Energy Arc**:
+The energy trajectory a Songset traces from opener to closer, judged ordinally against the other candidates in the pool (a Song arrives with its entry component's energy and leaves through its exit component's). The Energy Arc shapes intensity within the Worship Arc's phases; it never overrides the phase order.
+_Avoid_: energy curve, dB arc
+
 **Theme**:
 A fixed 12-value vocabulary classifying a song's worship theme: 讚美, 感恩, 敬拜, 奉獻, 認罪, 差遣, 信心, 祈禱, 復興, 聖靈, 十字架, 跟隨. Each theme maps to a Worship Arc phase; a ThemeAnchor is the reference embedding used to classify a song's themes by cosine similarity. At the recording level, the theme is aggregated from component-level classifications (most frequent, with chorus-preference tie-breaking) and persisted as `recordings.theme`.
 _Avoid_: tag, category, label

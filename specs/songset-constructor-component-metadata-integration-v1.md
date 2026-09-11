@@ -269,13 +269,15 @@ Per item, arc energy value = `entry_energy_pct` (the energy the song *arrives* w
 - **Adjacency smoothness:** for each adjacent pair, penalize `|entry_pct(B) − exit_pct(A)|` on the percentile scale.
 - **Arc shape:** opener arrival should not exceed closer departure by a wide margin for the default templates (i.e., sets should generally land softer than they open); encode as `max(0, entry_pct(first) − exit_pct(last))` penalized. No reward for matching an absolute level.
 
+**v1 simplification (explicit deviation from the R2 wording):** the arc-shape term above is a single opener-vs-closer constraint, not the full per-template ordinal expectations the R2 discussion sketched (e.g., phase-3 peak for the 5-song template). Implement exactly the two bullet terms above; the per-template extension is a deliberate deferral — add it only if score distributions on real pools show sets gaming the opener/closer check mid-arc.
+
 ```python
 def f_energy(items, n) -> float:
     # 0.5·adjacency smoothness + 0.5·arc-shape (ordinal, percentile inputs)
     # items lacking percentiles are skipped; <2 usable items → 0.5 (neutral)
 ```
 
-The `arc bonus` inside f_tempo (`fitness.py:40-47`) is **unchanged** — energy is a separate term (user decision), not folded.
+**Asymmetry note (deliberate):** f_tempo stays song-level (`item.bpm`, proposals.py:34,78) while H2/H3 are boundary-aware — whole-song tempo remains the liturgical "feel" for the arc term, boundary BPM only governs adjacency (H4) and the opener/closer floor/ceiling checks. Do not "fix" this asymmetry without a user decision.
 
 #### 3.3 f_posture
 
