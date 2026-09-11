@@ -87,8 +87,7 @@ def f_energy(proposal: SongsetProposal) -> float | None:
     if opener_entry is not None and closer_exit is not None:
         # Sets should generally land softer than they open.
         arc = 1.0 - max(0.0, opener_entry - closer_exit)
-    values = [*adjacency] + ([arc] if arc is not None else [])
-    if len(values) < 2:
+    if len(adjacency) < 2 and arc is None:
         return None
     if arc is None:
         return _clamp(sum(adjacency) / len(adjacency))

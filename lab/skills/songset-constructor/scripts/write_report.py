@@ -26,16 +26,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stream_of_worship.admin.constants import SONGSET_MAX_DURATION_SECONDS
-
-if TYPE_CHECKING:
-    from stream_of_worship.admin.songset_constructor.config import RunConfig
-    from stream_of_worship.admin.songset_constructor.models import TransitionCandidate
-
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 ADMIN_CLI_SRC = PROJECT_ROOT / "ops" / "admin-cli" / "src"
 if str(ADMIN_CLI_SRC) not in sys.path:
     sys.path.insert(0, str(ADMIN_CLI_SRC))
+
+from stream_of_worship.admin.constants import SONGSET_MAX_DURATION_SECONDS  # noqa: E402 — after sys.path bootstrap
+
+if TYPE_CHECKING:
+    from stream_of_worship.admin.songset_constructor.config import RunConfig
+    from stream_of_worship.admin.songset_constructor.models import TransitionCandidate
 
 PHASE_NAMES = {1: "call", 2: "thanksgiving", 3: "worship", 4: "response", 5: "commitment"}
 PC_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
