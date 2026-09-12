@@ -149,7 +149,7 @@ def process_song(song_id, index, total, yes_flag):
 
     # Build command
     yes_opt = "--yes" if yes_flag else ""
-    cmd = f"uv run --project ops/admin-cli --python 3.11 --extra admin python -m stream_of_worship.admin.main audio download --lrc {song_id} {yes_opt}"
+    cmd = f"uv run --project ops/admin-cli --python 3.11 --extra admin python -m stream_of_worship.admin.main audio download --generate-lyrics {song_id} {yes_opt}"
     cmd = cmd.strip()
 
     print(f"Running: {cmd}")

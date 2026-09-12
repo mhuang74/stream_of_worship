@@ -124,11 +124,11 @@ class TestAdaptiveInterval:
         assert adaptive_interval(time.time(), {}) == 5.0
 
     def test_recent_completion_returns_fast(self):
-        assert adaptive_interval(time.time(), {("s1", "lrc"): "job-1"}) == 5.0
+        assert adaptive_interval(time.time(), {("s1", "generate_lyrics"): "job-1"}) == 5.0
 
     def test_stale_returns_slow(self):
         old_time = time.time() - 200.0  # > 180s threshold
-        assert adaptive_interval(old_time, {("s1", "lrc"): "job-1"}) == 30.0
+        assert adaptive_interval(old_time, {("s1", "generate_lyrics"): "job-1"}) == 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -151,12 +151,12 @@ class TestAdvanceSong:
         r2_client = MagicMock()
         r2_client.lrc_exists.return_value = None
 
-        results = {song_id: {"lrc": "completed"}}
+        results = {song_id: {"generate_lyrics": "completed"}}
         active_jobs = {}
         lrc_attempted = {song_id}
 
         _advance_song(
-            song_id, "lrc", ["lrc", "analyze"],
+            song_id, "generate_lyrics", ["generate_lyrics", "analyze"],
             db_client, analysis_client, r2_client,
             force=False, analysis_tier="fast", stale_after_minutes=120,
             console=Console(quiet=True), results=results,
@@ -181,12 +181,12 @@ class TestAdvanceSong:
         )
         r2_client = MagicMock()
 
-        results = {song_id: {"lrc": "completed", "analyze": "completed"}}
+        results = {song_id: {"generate_lyrics": "completed", "analyze": "completed"}}
         active_jobs = {}
         lrc_attempted = {song_id}
 
         _advance_song(
-            song_id, "lrc", ["lrc", "analyze", "embedding"],
+            song_id, "generate_lyrics", ["generate_lyrics", "analyze", "embedding"],
             db_client, analysis_client, r2_client,
             force=False, analysis_tier="fast", stale_after_minutes=120,
             console=Console(quiet=True), results=results,
@@ -199,12 +199,12 @@ class TestAdvanceSong:
 
     def test_lrc_completed_but_analysis_not_selected_noop(self):
         song_id = "s1"
-        results = {song_id: {"lrc": "completed"}}
+        results = {song_id: {"generate_lyrics": "completed"}}
         active_jobs = {}
         lrc_attempted = {song_id}
 
         _advance_song(
-            song_id, "lrc", ["lrc"],
+            song_id, "generate_lyrics", ["generate_lyrics"],
             MagicMock(), MagicMock(), MagicMock(),
             force=False, analysis_tier="fast", stale_after_minutes=120,
             console=Console(quiet=True), results=results,
@@ -238,11 +238,11 @@ class TestAdvanceSong:
         """If (song_id, step) is already in active_jobs, _advance_song returns."""
         song_id = "s1"
         results = {song_id: {}}
-        active_jobs = {(song_id, "lrc"): "existing-job"}
+        active_jobs = {(song_id, "generate_lyrics"): "existing-job"}
         lrc_attempted = set()
 
         _advance_song(
-            song_id, "download", ["download", "lrc"],
+            song_id, "download", ["download", "generate_lyrics"],
             MagicMock(), MagicMock(), MagicMock(),
             force=False, analysis_tier="fast", stale_after_minutes=120,
             console=Console(quiet=True), results=results,
@@ -252,7 +252,7 @@ class TestAdvanceSong:
         )
 
         # Should not have submitted a new job
-        assert active_jobs[(song_id, "lrc")] == "existing-job"
+        assert active_jobs[(song_id, "generate_lyrics")] == "existing-job"
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ class TestHandleLrcCompletion:
 
         assert is_terminal is True
         assert new_job is None
-        assert results[song_id]["lrc"] == "completed"
+        assert results[song_id]["generate_lyrics"] == "completed"
 
     def test_failed_marks_lrc_failed(self):
         song_id = "s1"
@@ -303,7 +303,7 @@ class TestHandleLrcCompletion:
         )
 
         assert is_terminal is True
-        assert results[song_id]["lrc"] == "failed"
+        assert results[song_id]["generate_lyrics"] == "failed"
 
     def test_processing_returns_not_terminal(self):
         song_id = "s1"
@@ -569,7 +569,7 @@ class TestSubmitTraceLinesNameTheStep:
             _add_manifest_entry=_noop_manifest_entry,
         )
         assert status == "submitted"
-        assert "(submitted: lrc " in console.export_text()
+        assert "(submitted: LRC job " in console.export_text()
 
         # analysis
         db_client = MagicMock()
@@ -628,7 +628,7 @@ class TestPollOneCycle:
         r2_client = MagicMock()
 
         results = {song_id: {}}
-        active_jobs = {(song_id, "lrc"): "lrc-job-1"}
+        active_jobs = {(song_id, "generate_lyrics"): "lrc-job-1"}
         lrc_attempted = {song_id}
         resubmit_counts = {}
 
@@ -640,7 +640,7 @@ class TestPollOneCycle:
                 db_client=db_client,
                 analysis_client=analysis_client,
                 r2_client=r2_client,
-                selected_steps=["lrc", "analyze"],
+                selected_steps=["generate_lyrics", "analyze"],
                 force=False,
                 analysis_tier="fast",
                 stale_after_minutes=120,
@@ -655,9 +655,9 @@ class TestPollOneCycle:
             )
 
         # LRC job should be removed, analysis job should be added
-        assert (song_id, "lrc") not in active_jobs
+        assert (song_id, "generate_lyrics") not in active_jobs
         assert (song_id, "analyze") in active_jobs
-        assert results[song_id]["lrc"] == "completed"
+        assert results[song_id]["generate_lyrics"] == "completed"
 
     def test_no_phase_barrier_embedding_before_all_analysis(self):
         """Song A can have embedding submitted while Song B's analysis is still running."""
@@ -1045,13 +1045,13 @@ class TestAdvanceSongComponents:
         analysis_client.submit_component_analysis.return_value = JobInfo(
             job_id="comp-1", status="processing", job_type="component_analysis"
         )
-        results = {song_id: {"lrc": "completed", "analyze": "completed"}}
+        results = {song_id: {"generate_lyrics": "completed", "analyze": "completed"}}
         active_jobs: dict = {}
 
         _advance_song(
             song_id,
-            "lrc",
-            ["lrc", "components"],
+            "generate_lyrics",
+            ["generate_lyrics", "components"],
             db_client,
             analysis_client,
             MagicMock(),
@@ -1117,11 +1117,11 @@ class TestReconcileOnInterruptV3:
             audio, "_prepare_component_job_inputs", return_value=None
         ):
             results = self._reconcile(
-                {("s1", "components"): "c-1", ("s1", "lrc"): "l-1"}, db, r2
+                {("s1", "components"): "c-1", ("s1", "generate_lyrics"): "l-1"}, db, r2
             )
         # Both keys processed: components failed, lrc failed (no R2 file)
         assert results["s1"]["components"] == "failed"
-        assert results["s1"]["lrc"] == "failed"
+        assert results["s1"]["generate_lyrics"] == "failed"
 
 
 class TestDownloadStructuredLyrics:
@@ -1143,7 +1143,7 @@ class TestDownloadStructuredLyrics:
             patch.object(audio, "compute_file_hash", return_value="h" * 64),
             patch.object(audio, "get_hash_prefix", return_value="abc123def456"),
             patch.object(audio, "probe_duration", return_value=100.0),
-            patch.object(audio, "_fetch_structured_lyrics", **fetch_kwargs),
+            patch("stream_of_worship.admin.commands.audio.fetch_structured_lyrics", **fetch_kwargs),
         ):
             m_dl.return_value.download_with_info.return_value = (
                 audio_path,

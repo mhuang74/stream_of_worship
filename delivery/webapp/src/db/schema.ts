@@ -429,6 +429,35 @@ export const lyricMarks = pgTable(
   (t) => [unique().on(t.userId, t.recordingContentHash, t.timestampSeconds)]
 );
 
+// lyrics_feedback: per-user Lyrics Feedback on a Recording (issue #194).
+// Advisory signal for admins curating canonical Lyrics (ADR 0007): nothing
+// but an admin action writes resolved_at. One row per user per Recording;
+// re-submitting the same rating retracts, switching overwrites.
+export const lyricsFeedback = pgTable(
+  "lyrics_feedback",
+  {
+    id: text("id").primaryKey(),
+    userId: bigint("user_id", { mode: "number" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recordingContentHash: text("recording_content_hash")
+      .notNull()
+      .references(() => recordings.contentHash, { onDelete: "cascade" }),
+    rating: text("rating").notNull(),
+    reason: text("reason"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.userId, t.recordingContentHash),
+    index("idx_lyrics_feedback_recording_resolved").on(
+      t.recordingContentHash,
+      t.resolvedAt
+    ),
+  ]
+);
+
 // songset_shares: share tokens for songsets (table: songset_share)
 export const songsetShares = pgTable("songset_share", {
   token: text("token").primaryKey(),
@@ -564,6 +593,14 @@ export const lyricMarksRelations = relations(lyricMarks, ({ one }) => ({
   user: one(users, { fields: [lyricMarks.userId], references: [users.id] }),
   recording: one(recordings, {
     fields: [lyricMarks.recordingContentHash],
+    references: [recordings.contentHash],
+  }),
+}));
+
+export const lyricsFeedbackRelations = relations(lyricsFeedback, ({ one }) => ({
+  user: one(users, { fields: [lyricsFeedback.userId], references: [users.id] }),
+  recording: one(recordings, {
+    fields: [lyricsFeedback.recordingContentHash],
     references: [recordings.contentHash],
   }),
 }));

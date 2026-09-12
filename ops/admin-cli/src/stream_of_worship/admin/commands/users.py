@@ -105,6 +105,16 @@ def _print_cascade_preview(preview: dict[str, list[dict]]) -> None:
             ],
         ),
         (
+            "lyrics_feedback",
+            "Lyrics Feedback",
+            [
+                ("ID", "id"),
+                ("Rating", "rating"),
+                ("Reason", "reason"),
+                ("Created", "created_at"),
+            ],
+        ),
+        (
             "songset_share",
             "Songset Shares",
             [
@@ -245,8 +255,8 @@ def delete_user(
                     f"({user.email}, id={user.id}).\n"
                     "[yellow]This will CASCADE delete their songsets, "
                     "songset_items, user_settings, user_lrc_override, "
-                    "lyric_mark, songset_share rows, and Better Auth account/"
-                    "session rows.[/yellow]"
+                    "lyric_mark, lyrics_feedback, songset_share rows, and "
+                    "Better Auth account/session rows.[/yellow]"
                 )
                 _print_cascade_preview(client.preview_cascade_delete(user_id))
                 confirm = typer.confirm("Continue?", default=False)

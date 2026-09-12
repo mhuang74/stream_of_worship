@@ -69,6 +69,13 @@ export interface ControllerPlayerProps {
   onSendTransportCommand?: (command: PresentationCommand) => void;
   exitRoute?: string;
   autoFullscreen?: boolean;
+  /**
+   * Content hash per chapter position (index 0 = first chapter), from the
+   * songset detail API. Enables the Lyrics Feedback footer on the lyric
+   * jump list for the current chapter (issue #194). Omitted by the
+   * anonymous share-controller variant.
+   */
+  chapterRecordingHashes?: (string | null)[];
   className?: string;
 }
 
@@ -133,13 +140,14 @@ export function ControllerPlayer({
   presentationFallback,
   presentationMediaStatus,
   isCastSupported,
+  exitRoute,
+  autoFullscreen = true,
+  chapterRecordingHashes,
   castAvailability,
   isCastConnecting,
   onSendToTV,
   onStopPresentation,
   onSendTransportCommand,
-  exitRoute,
-  autoFullscreen = true,
   className,
 }: ControllerPlayerProps) {
   const router = useRouter();
@@ -216,8 +224,10 @@ export function ControllerPlayer({
   // receiver's reported currentTime when a Cast transport is connected (the
   // local video is paused + muted and its timeupdate is suppressed while
   // active). Derived during render so the song-change effect + LyricJumpList
-  // highlight stay in sync without a setState-in-effect.
-  const currentSongIndex = useMemo(() => {
+  // highlight stay in sync without a setState-in-effect. `fromPlayback`
+  // distinguishes a chapter made current by actual playback position from
+  // the initial local fallback (nothing is current before playback starts).
+  const currentSong = useMemo(() => {
     if (isRemotePlaybackActive) {
       const t = effectiveCurrentTime;
       const idx = chapters.findIndex(
@@ -225,10 +235,11 @@ export function ControllerPlayer({
           t >= chapter.startSeconds &&
           (i === chapters.length - 1 || t < chapters[i + 1].startSeconds)
       );
-      if (idx !== -1) return idx;
+      if (idx !== -1) return { index: idx, fromPlayback: true };
     }
-    return localSongIndex;
+    return { index: localSongIndex, fromPlayback: false };
   }, [isRemotePlaybackActive, effectiveCurrentTime, chapters, localSongIndex]);
+  const currentSongIndex = currentSong.index;
   const effectiveDuration = isCastTransportConnected
     ? transport?.duration || duration
     : isPresentationFallbackConnected
@@ -1189,6 +1200,9 @@ export function ControllerPlayer({
         currentTime={effectiveCurrentTime}
         currentSongIndex={currentSongIndex}
         onJumpToLine={handleJumpToLine}
+        currentRecordingContentHash={
+          (currentSong.fromPlayback ? chapterRecordingHashes?.[currentSong.index] : null) ?? null
+        }
       />
 
       {/* Diagnostic bottom sheet (Cast unavailable) */}

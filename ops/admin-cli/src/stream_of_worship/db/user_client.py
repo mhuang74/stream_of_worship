@@ -119,8 +119,9 @@ class UserClient:
         """Delete a user. Returns True if a row was deleted.
 
         Cascades to ``songsets`` (and their items), ``user_settings``,
-        ``user_lrc_override``, ``lyric_mark``, ``songset_share``,
-        ``account``, and ``session`` via FK ON DELETE CASCADE.
+        ``user_lrc_override``, ``lyric_mark``, ``lyrics_feedback``,
+        ``songset_share``, ``account``, and ``session`` via FK ON DELETE
+        CASCADE.
         """
         with self.transaction() as conn:
             cursor = conn.cursor()
@@ -177,6 +178,13 @@ class UserClient:
                 """
                 SELECT id, recording_content_hash, timestamp_seconds, created_at
                 FROM lyric_mark WHERE user_id = %s ORDER BY created_at
+                """,
+                (user_id,),
+            ),
+            "lyrics_feedback": (
+                """
+                SELECT id, rating, reason, created_at
+                FROM lyrics_feedback WHERE user_id = %s ORDER BY created_at
                 """,
                 (user_id,),
             ),

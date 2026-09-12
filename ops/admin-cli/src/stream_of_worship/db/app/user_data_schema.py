@@ -1,7 +1,8 @@
 """SQL schema for per-user app tables.
 
 Tables we own that are scoped to a user via FK to ``"user"."id"``:
-``user_settings``, ``user_lrc_override``, ``lyric_mark``, ``songset_share``.
+``user_settings``, ``user_lrc_override``, ``lyric_mark``, ``lyrics_feedback``,
+``songset_share``.
 
 ``songset_share`` is schema-only for now: the webapp will mint/revoke tokens
 and serve ``/share/[token]``. ``render_job_id`` is plain TEXT because the
@@ -55,6 +56,30 @@ CREATE TABLE IF NOT EXISTS songset_share (
 );
 """
 
+# Lyrics Feedback (issue #194): per-user happy/sad signal about a Recording's
+# Lyrics. Advisory per ADR 0007 — only an admin action writes resolved_at.
+CREATE_LYRICS_FEEDBACK_TABLE = """
+CREATE TABLE IF NOT EXISTS lyrics_feedback (
+    id                     TEXT PRIMARY KEY,
+    user_id                BIGINT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+    recording_content_hash TEXT NOT NULL REFERENCES recordings(content_hash) ON DELETE CASCADE,
+    rating                 TEXT NOT NULL,
+    reason                 TEXT,
+    resolved_at            TIMESTAMPTZ,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, recording_content_hash)
+);
+"""
+
+CREATE_LYRICS_FEEDBACK_UPDATE_TRIGGER = """
+DROP TRIGGER IF EXISTS trg_lyrics_feedback_updated_at ON lyrics_feedback;
+CREATE TRIGGER trg_lyrics_feedback_updated_at
+    BEFORE UPDATE ON lyrics_feedback
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+"""
+
 CREATE_USER_DATA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_user_lrc_override_user ON user_lrc_override(user_id);",
     "CREATE INDEX IF NOT EXISTS idx_user_lrc_override_recording "
@@ -62,6 +87,8 @@ CREATE_USER_DATA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_lyric_mark_user ON lyric_mark(user_id);",
     "CREATE INDEX IF NOT EXISTS idx_lyric_mark_recording "
     "ON lyric_mark(recording_content_hash);",
+    "CREATE INDEX IF NOT EXISTS idx_lyrics_feedback_recording_resolved "
+    "ON lyrics_feedback(recording_content_hash, resolved_at);",
     "CREATE INDEX IF NOT EXISTS idx_songset_share_songset ON songset_share(songset_id);",
     "CREATE INDEX IF NOT EXISTS idx_songset_share_creator "
     "ON songset_share(created_by_user_id);",
@@ -87,8 +114,10 @@ ALL_USER_DATA_SCHEMA_STATEMENTS = [
     CREATE_USER_SETTINGS_TABLE,
     CREATE_USER_LRC_OVERRIDE_TABLE,
     CREATE_LYRIC_MARK_TABLE,
+    CREATE_LYRICS_FEEDBACK_TABLE,
     CREATE_SONGSET_SHARE_TABLE,
     *CREATE_USER_DATA_INDEXES,
     CREATE_USER_SETTINGS_UPDATE_TRIGGER,
     CREATE_USER_LRC_OVERRIDE_UPDATE_TRIGGER,
+    CREATE_LYRICS_FEEDBACK_UPDATE_TRIGGER,
 ]

@@ -5,7 +5,6 @@ import pytest
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
 
-
 EXPECTED_TABLES = {
     # catalog
     "songs",
@@ -27,6 +26,7 @@ EXPECTED_TABLES = {
     "user_lrc_override",
     "lyric_mark",
     "songset_share",
+    "lyrics_feedback",
 }
 
 
@@ -56,7 +56,7 @@ class TestFullSchemaInit:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                DROP TABLE IF EXISTS songset_share, lyric_mark,
+                DROP TABLE IF EXISTS songset_share, lyric_mark, lyrics_feedback,
                     user_lrc_override, user_settings,
                     songset_items, songsets,
                     theme_anchors, song_line_embedding, song_embedding,
@@ -95,17 +95,16 @@ class TestFullSchemaInit:
                   AND tc.table_schema = 'public'
                 """
             )
-            fks = {
-                (r[0], r[1], r[2], r[3]) for r in cur.fetchall()
-            }
+            fks = {(r[0], r[1], r[2], r[3]) for r in cur.fetchall()}
 
         # FKs that MUST exist for multi-user isolation to work.
         required = [
             ("songsets", "user_id", "user", "id"),
             ("user_lrc_override", "user_id", "user", "id"),
-            ("user_lrc_override", "recording_content_hash",
-             "recordings", "content_hash"),
+            ("user_lrc_override", "recording_content_hash", "recordings", "content_hash"),
             ("lyric_mark", "user_id", "user", "id"),
+            ("lyrics_feedback", "user_id", "user", "id"),
+            ("lyrics_feedback", "recording_content_hash", "recordings", "content_hash"),
             ("songset_share", "songset_id", "songsets", "id"),
             ("songset_share", "created_by_user_id", "user", "id"),
         ]
@@ -117,7 +116,7 @@ class TestFullSchemaInit:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                DROP TABLE IF EXISTS songset_share, lyric_mark,
+                DROP TABLE IF EXISTS songset_share, lyric_mark, lyrics_feedback,
                     user_lrc_override, user_settings,
                     songset_items, songsets,
                     theme_anchors, song_line_embedding, song_embedding,
