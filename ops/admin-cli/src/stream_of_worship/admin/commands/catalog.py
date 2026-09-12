@@ -444,7 +444,7 @@ def edit_song(
 
     console.print(f"[green]Updated song {song_id}[/green]")
     if (existing.lyrics_raw or "") != (updated_song.lyrics_raw or ""):
-        console.print(f"[cyan]Follow-up:[/cyan] sow-admin audio lrc {song_id} --force")
+        console.print(f"[cyan]Follow-up:[/cyan] sow-admin lyrics generate {song_id} --force")
         console.print(f"[cyan]Follow-up:[/cyan] sow-admin audio embed {song_id}")
 
 

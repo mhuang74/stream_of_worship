@@ -186,7 +186,7 @@ uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3_force_align.py \
 Upload the finalized LRC file to the R2 storage and update the song database record. This must be done **before** evaluating quality so that the eval step uses the canonical LRC from the database.
 
 ```bash
-sow_admin audio upload-lrc <song_id> <lrc_file_path>
+sow_admin lyrics upload <song_id> <lrc_file_path>
 ```
 
 **Arguments:**
@@ -202,7 +202,7 @@ sow_admin audio upload-lrc <song_id> <lrc_file_path>
 
 ### Step 4: Evaluate LRC Quality
 
-Score the LRC quality using TTS round-trip comparison to detect content errors and alignment issues. The lyrics used for evaluation always come from the canonical LRC stored in the database (same source as `sow_admin audio view-lrc <song_id>`), ensuring the eval reflects what users will actually see.
+Score the LRC quality using TTS round-trip comparison to detect content errors and alignment issues. The lyrics used for evaluation always come from the canonical LRC stored in the database (same source as `sow_admin lyrics view <song_id>`), ensuring the eval reflects what users will actually see.
 
 ```bash
 uv run --extra score_lrc_base python poc/score_lrc_quality.py \
@@ -268,7 +268,7 @@ uv run --extra poc_qwen3_align python poc/gen_lrc_qwen3_force_align.py \
   dan_dan_ai_mi_249
 
 # Step 3: Upload to database (must be done before evaluating)
-sow_admin audio upload-lrc dan_dan_ai_mi_249 tmp_output/aligned.txt
+sow_admin lyrics upload dan_dan_ai_mi_249 tmp_output/aligned.txt
 
 # Step 4: Evaluate quality (uses canonical LRC from database)
 uv run --extra score_lrc_base python poc/score_lrc_quality.py \
@@ -280,7 +280,7 @@ uv run --extra score_lrc_base python poc/score_lrc_quality.py \
 cat tmp_output/quality.md
 
 # Verify the LRC content matches what was uploaded
-sow_admin audio view-lrc dan_dan_ai_mi_249
+sow_admin lyrics view dan_dan_ai_mi_249
 ```
 
 ---
@@ -361,7 +361,7 @@ uv pip install "mlx-audio>=0.4.0" --prerelease=allow
 
 5. **Context biasing:** Enable `--lyrics-context` when transcription might be uncertain, but disable it (`--no-lyrics-context`) when you want a fresh transcription.
 
-6. **Evaluate against canonical LRC:** Always upload the LRC before evaluating, so the scoring compares against the canonical version in the database (same as `sow_admin audio view-lrc <song_id>`).
+6. **Evaluate against canonical LRC:** Always upload the LRC before evaluating, so the scoring compares against the canonical version in the database (same as `sow_admin lyrics view <song_id>`).
 
 ---
 

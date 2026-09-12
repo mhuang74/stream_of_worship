@@ -300,7 +300,7 @@ sow-admin audio download SONG_ID
 sow-admin audio list [--status pending|completed|failed]
 sow-admin audio show HASH_PREFIX
 sow-admin audio analyze HASH_PREFIX [--force] [--no-stems]
-sow-admin audio lrc HASH_PREFIX [--force]
+sow-admin lyrics generate SONG_ID [--force]
 sow-admin audio components SONG_ID [v5 options]
 sow-admin audio status [JOB_ID]
 ```
@@ -418,7 +418,7 @@ sow-admin audio batch --analysis-status incomplete --analyze \
     --analysis-tier fast --limit 500
 
 # Only generate LRC for songs without it
-sow-admin audio batch --lrc-status incomplete --lrc
+sow-admin audio batch --lrc-status incomplete --generate-lyrics
 
 # Resume an interrupted batch from its manifest
 sow-admin audio batch --resume ~/.local/share/sow-admin/batch/<batch_id>_manifest.json
@@ -427,7 +427,7 @@ sow-admin audio batch --song-id <song_id> --all-steps   # remediate one failed s
 
 **Step gating is strict.** Each phase runs *only* when its step flag is
 present — no phase runs as a side effect of another. At least one of
-`--download`, `--lrc`, `--analyze`, `--embedding`, `--backfill-lyrics`, or
+`--download`, `--generate-lyrics`, `--analyze`, `--embedding`, `--backfill-lyrics`, or
 `--all-steps` is required.
 
 **Filtering** (`--album`, `--song`, `--lrc-status`, `--download-status`,
@@ -456,7 +456,7 @@ run. Status values:
 
 **`--force` constraints:**
 
-- Requires **exactly one** step flag (`--download`, `--lrc`, `--analyze`, or
+- Requires **exactly one** step flag (`--download`, `--generate-lyrics`, `--analyze`, or
   `--embedding`). Combining with `--all-steps` or multiple steps is rejected.
 - `--force --download` is **not supported** — re-downloading changes
   `content_hash`/`hash_prefix` and orphans downstream R2 artifacts. Use the
@@ -468,7 +468,7 @@ run. Status values:
   ```
 
 **`--backfill-lyrics`** fetches structured lyrics from YouTube for existing
-recordings and may only be combined with `--lrc` (it runs first so the freshly
+recordings and may only be combined with `--generate-lyrics` (it runs first so the freshly
 backfilled lyrics feed the LRC step). When used alone, it prints a backfill
 summary.
 

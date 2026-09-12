@@ -211,7 +211,7 @@ def test_catalog_edit_preserves_song_id_and_prints_follow_up(monkeypatch):
     updated = db.get_song("editable_song_deadbeef")
     assert updated is not None
     assert updated.title == "Editable Song Revised"
-    assert "audio lrc editable_song_deadbeef --force" in result.output
+    assert "lyrics generate editable_song_deadbeef --force" in result.output
 
 
 def test_catalog_list_deleted_only_shows_soft_deleted(monkeypatch):

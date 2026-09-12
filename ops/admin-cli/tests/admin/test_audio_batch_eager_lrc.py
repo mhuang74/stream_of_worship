@@ -1,6 +1,6 @@
 """Tests for the eager download→LRC handoff in ``_process_batch``.
 
-When both ``--download`` and ``--lrc`` are selected, the LRC job for a song
+When both ``--download`` and ``--generate-lyrics`` are selected, the LRC job for a song
 is submitted as soon as that song's download completes (inside the download
 worker thread), so the slow LRC step overlaps with remaining downloads
 instead of waiting for the whole download phase to finish. These tests
@@ -147,7 +147,7 @@ class TestEagerLrcHandoff:
                 r2_client=stubs["r2_client"],
                 analysis_client=stubs["analysis_client"],
                 song_ids=song_ids,
-                selected_steps=["download", "lrc"],
+                selected_steps=["download", "generate_lyrics"],
                 force=False,
                 analysis_tier="fast",
                 stale_after_minutes=120,
@@ -184,7 +184,7 @@ class TestEagerLrcHandoff:
                 r2_client=stubs["r2_client"],
                 analysis_client=stubs["analysis_client"],
                 song_ids=song_ids,
-                selected_steps=["download", "lrc"],
+                selected_steps=["download", "generate_lyrics"],
                 force=False,
                 analysis_tier="fast",
                 stale_after_minutes=120,
@@ -213,7 +213,7 @@ class TestEagerLrcHandoff:
                 r2_client=stubs["r2_client"],
                 analysis_client=stubs["analysis_client"],
                 song_ids=song_ids,
-                selected_steps=["download", "lrc"],
+                selected_steps=["download", "generate_lyrics"],
                 force=False,
                 analysis_tier="fast",
                 stale_after_minutes=120,
@@ -240,7 +240,7 @@ class TestEagerLrcHandoff:
                 r2_client=stubs["r2_client"],
                 analysis_client=stubs["analysis_client"],
                 song_ids=song_ids,
-                selected_steps=["download", "lrc"],
+                selected_steps=["download", "generate_lyrics"],
                 force=False,
                 analysis_tier="fast",
                 stale_after_minutes=120,
@@ -254,7 +254,7 @@ class TestEagerLrcHandoff:
 
 
 class TestLrcOnlyPath:
-    """--lrc without --download must behave as before (no eager calls)."""
+    """--generate-lyrics without --download must behave as before (no eager calls)."""
 
     def test_lrc_only_submits_via_advance_song(self, stubs):
         song_ids = ["s1", "s2"]
@@ -267,7 +267,7 @@ class TestLrcOnlyPath:
             r2_client=stubs["r2_client"],
             analysis_client=stubs["analysis_client"],
             song_ids=song_ids,
-            selected_steps=["lrc"],
+            selected_steps=["generate_lyrics"],
             force=False,
             analysis_tier="fast",
             stale_after_minutes=120,
@@ -314,7 +314,7 @@ class TestSubmitLrcForSongHelper:
         )
 
         assert status == "skipped_r2"
-        assert results[song_id]["lrc"] == "completed"
+        assert results[song_id]["generate_lyrics"] == "completed"
         assert song_id not in active
         stubs["analysis_client"].submit_lrc.assert_not_called()
 
@@ -385,7 +385,7 @@ class TestSubmitLrcForSongHelper:
         )
 
         assert status == "failed"
-        assert results[song_id]["lrc"] == "failed"
+        assert results[song_id]["generate_lyrics"] == "failed"
         assert song_id not in active
         assert song_id in attempted
 
@@ -445,7 +445,7 @@ class TestSubmitLrcForSongHelper:
         )
 
         assert status == "skipped_no_lyrics"
-        assert results[song_id]["lrc"] == "skipped_no_lyrics"
+        assert results[song_id]["generate_lyrics"] == "skipped_no_lyrics"
         stubs["analysis_client"].submit_lrc.assert_not_called()
 
     def test_no_recording_records_skip_in_results(self, stubs):
@@ -471,5 +471,5 @@ class TestSubmitLrcForSongHelper:
         )
 
         assert status == "skipped_no_recording"
-        assert results[song_id]["lrc"] == "skipped_no_recording"
+        assert results[song_id]["generate_lyrics"] == "skipped_no_recording"
         stubs["analysis_client"].submit_lrc.assert_not_called()

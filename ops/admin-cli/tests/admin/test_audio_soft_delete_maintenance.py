@@ -120,7 +120,7 @@ def test_download_force_replaces_after_new_recording_is_uploaded(tmp_path):
         patch("stream_of_worship.admin.commands.audio.compute_file_hash", return_value="f" * 64),
         patch("stream_of_worship.admin.commands.audio.probe_duration", return_value=180.0),
         patch(
-            "stream_of_worship.admin.commands.audio.extract_video_metadata",
+            "stream_of_worship.admin.services.lrc_jobs.extract_video_metadata",
             return_value=SimpleNamespace(description=""),
         ),
     ):

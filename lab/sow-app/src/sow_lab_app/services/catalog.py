@@ -448,7 +448,7 @@ class CatalogService:
                 "total_songs": total_songs,
                 "total_recordings": total_recordings,
                 "lrc_ready": 0,
-                "guidance": f"Found {total_songs} songs and {total_recordings} recording(s), but no LRC lyrics ready. Run: sow-admin audio lrc <song_id>",
+                "guidance": f"Found {total_songs} songs and {total_recordings} recording(s), but no LRC lyrics ready. Run: sow-admin lyrics generate <song_id>",
             }
 
         return {

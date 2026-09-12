@@ -239,7 +239,7 @@ def resolve_lrc_path(
 
     # Failed to download
     typer.echo(f"Error: LRC not found in local cache or R2: {song_id}", err=True)
-    typer.echo(f"Run 'sow-admin audio lrc {song_id}' to generate LRC first.", err=True)
+    typer.echo(f"Run 'sow-admin lyrics generate {song_id}' to generate LRC first.", err=True)
     raise typer.Exit(1)
 
 

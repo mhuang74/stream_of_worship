@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from rich.console import Console
 
 from stream_of_worship.admin.commands import audio
+from stream_of_worship.admin.services import lrc_jobs
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.services.analysis import AnalysisResult, JobInfo
 
@@ -70,7 +71,7 @@ def test_submit_lrc_wait_completion_forces_review_visibility():
     )
     analysis_client.wait_for_completion.return_value = _completed_lrc_job()
 
-    audio._submit_lrc_single(
+    lrc_jobs.submit_lrc_single(
         song_id="song_1",
         db_client=db_client,
         analysis_client=analysis_client,
@@ -227,7 +228,7 @@ def test_interrupt_reconciliation_preserves_visibility():
 
     results = {"song_1": {}}
     audio._reconcile_on_interrupt(
-        active_jobs={("song_1", "lrc"): "lrc-job-1"},
+        active_jobs={("song_1", "generate_lyrics"): "lrc-job-1"},
         results=results,
         db_client=db_client,
         r2_client=r2_client,
@@ -271,8 +272,8 @@ def test_submit_lrc_for_song_skip_r2_preserves_visibility():
     )
 
     assert status == "skipped_r2"
-    assert results["song_1"]["lrc"] == "completed"
-    assert results["song_1"]["lrc_source"] == "r2_preexisting"
+    assert results["song_1"]["generate_lyrics"] == "completed"
+    assert results["song_1"]["generate_lyrics_source"] == "r2_preexisting"
     analysis_client.submit_lrc.assert_not_called()
     db_client.update_recording_lrc.assert_called_once_with(
         "abc123def456",
@@ -309,7 +310,7 @@ def test_handle_lrc_404_lost_job_preserves_visibility():
 
     assert is_terminal is True
     assert new_job_id is None
-    assert results["song_1"]["lrc"] == "completed"
+    assert results["song_1"]["generate_lyrics"] == "completed"
     analysis_client.submit_lrc.assert_not_called()
     db_client.update_recording_lrc.assert_called_once_with(
         "abc123def456",

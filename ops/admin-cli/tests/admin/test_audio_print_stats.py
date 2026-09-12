@@ -37,11 +37,11 @@ class TestDownloadFailureInference:
                 "error": "no matching title in top 5 search results",
             }
         }
-        text = _render(results, selected_steps=["download", "lrc"])
+        text = _render(results, selected_steps=["download", "generate_lyrics"])
 
         assert "Requires manual intervention:" in text
         dl = text.index("download: failed — no matching title in top 5 search results")
-        lrc = text.index("lrc: skipped (download failed)")
+        lrc = text.index("generate_lyrics: skipped (download failed)")
         bullet = _bullet_index(text, "s_dl")
         assert bullet < dl < lrc, "both reasons must be sub-lines of the single song bullet"
 
@@ -55,47 +55,47 @@ class TestDownloadFailureInference:
         text = _render(results, selected_steps=["download"])
 
         assert "download: failed — no matching title in top 5 search results" in text
-        assert "lrc: skipped (download failed)" not in text
+        assert "generate_lyrics: skipped (download failed)" not in text
 
     def test_download_failed_with_unknown_selected_steps_infers_lrc_skip(self):
         results = {"s_dl": {"download": "failed", "error": "boom"}}
         text = _render(results, selected_steps=None)
 
         assert "download: failed — boom" in text
-        assert "lrc: skipped (download failed)" in text
+        assert "generate_lyrics: skipped (download failed)" in text
 
     def test_real_lrc_skip_wins_over_inferred_download_skip(self):
         results = {
             "s_dl": {
                 "download": "failed",
                 "error": "boom",
-                "lrc": "skipped_no_lyrics",
+                "generate_lyrics": "skipped_no_lyrics",
             }
         }
-        text = _render(results, selected_steps=["download", "lrc"])
+        text = _render(results, selected_steps=["download", "generate_lyrics"])
 
-        assert "lrc: skipped (no lyrics in catalog)" in text
-        assert "lrc: skipped (download failed)" not in text
+        assert "generate_lyrics: skipped (no lyrics in catalog)" in text
+        assert "generate_lyrics: skipped (download failed)" not in text
 
 
 class TestSkipStatuses:
     """Data-gap skips are surfaced with a human-readable reason."""
 
     def test_lrc_skipped_no_lyrics(self):
-        text = _render({"s1": {"lrc": "skipped_no_lyrics"}}, selected_steps=["lrc"])
+        text = _render({"s1": {"generate_lyrics": "skipped_no_lyrics"}}, selected_steps=["generate_lyrics"])
 
-        assert "lrc: skipped (no lyrics in catalog)" in text
+        assert "generate_lyrics: skipped (no lyrics in catalog)" in text
         assert _bullet_index(text, "s1")
 
     def test_lrc_skipped_no_recording(self):
-        text = _render({"s1": {"lrc": "skipped_no_recording"}}, selected_steps=["lrc"])
+        text = _render({"s1": {"generate_lyrics": "skipped_no_recording"}}, selected_steps=["generate_lyrics"])
 
-        assert "lrc: skipped (no recording)" in text
+        assert "generate_lyrics: skipped (no recording)" in text
 
     def test_components_skipped_no_sections(self):
         text = _render({"s1": {"components": "skipped_no_sections"}}, selected_steps=["components"])
 
-        assert "components: skipped (no sections or LRC — run 'audio lrc' first)" in text
+        assert "components: skipped (no sections or LRC — run 'lyrics generate' first)" in text
 
     def test_components_skipped_no_recording(self):
         text = _render({"s1": {"components": "skipped_no_recording"}}, selected_steps=["components"])
@@ -108,14 +108,14 @@ class TestCompletedSongsNotListed:
         results = {
             "s_ok": {
                 "download": "skipped_r2",
-                "lrc": "completed",
-                "lrc_source": "r2_preexisting",
+                "generate_lyrics": "completed",
+                "generate_lyrics_source": "r2_preexisting",
                 "analyze": "completed",
                 "embedding": "completed",
                 "components": "completed",
             }
         }
-        text = _render(results, selected_steps=["download", "lrc", "analyze", "embedding", "components"])
+        text = _render(results, selected_steps=["download", "generate_lyrics", "analyze", "embedding", "components"])
 
         assert "Requires manual intervention:" not in text
         assert "s_ok" not in text
@@ -172,10 +172,10 @@ class TestNeedsAttentionPanelRow:
     def test_count_row_matches_listed_songs(self):
         results = {
             "s1": {"download": "failed", "error": "boom"},
-            "s2": {"lrc": "skipped_no_lyrics"},
-            "s_ok": {"lrc": "completed"},
+            "s2": {"generate_lyrics": "skipped_no_lyrics"},
+            "s_ok": {"generate_lyrics": "completed"},
         }
-        text = _render(results, selected_steps=["download", "lrc"])
+        text = _render(results, selected_steps=["download", "generate_lyrics"])
 
         row = next(line for line in text.splitlines() if "Needs attention:" in line)
         assert row.split()[-2] == "2", f"count row should read 2: {row!r}"
