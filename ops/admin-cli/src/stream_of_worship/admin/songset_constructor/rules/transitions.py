@@ -43,7 +43,9 @@ def _boundary_pair(
     )
 
 
-def _bpm_pair(left: SongCandidate, right: SongCandidate, boundary_source: str) -> tuple[float, list[str]]:
+def _bpm_pair(
+    left: SongCandidate, right: SongCandidate, boundary_source: str
+) -> tuple[float, list[str]]:
     """BPM is per-side best-available within component pairs.
 
     Each side independently uses its boundary BPM when present, else that song's
