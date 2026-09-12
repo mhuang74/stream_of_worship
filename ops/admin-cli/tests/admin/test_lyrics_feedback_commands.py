@@ -183,6 +183,10 @@ class TestLyricsFeedbackListCommand:
         # Reason breakdown present
         assert "missing" in result.output
         assert "timing" in result.output
+        # Polarity column: mixed open happy+sad rows (R1) → 👎
+        assert "Feedback" in result.output
+        assert "Reasons (neg)" in result.output
+        assert "👎" in result.output
         _drop_all_tables(make_test_provider)
 
     def test_open_count_excludes_resolved(self, make_test_provider, postgres_url, tmp_path):
@@ -230,6 +234,23 @@ class TestLyricsFeedbackListCommand:
         # only R1 has an open happy row
         assert "hash-aa" in result.output
         assert "hash-bb" not in result.output
+
+    def test_positive_row_shown_as_positive(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        _seed_data(make_test_provider())
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--rating", "happy", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        # R1 under --rating happy: open_count == open_happy == 1 → 👍
+        assert "👍" in result.output
+        _drop_all_tables(make_test_provider)
 
     def test_songless_recording_still_listed(self, make_test_provider, postgres_url, tmp_path):
         """Feedback for a recording with NULL song_id must not vanish from the queue."""
