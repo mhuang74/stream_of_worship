@@ -110,6 +110,20 @@ export async function resolveLyricsSituation(
 }
 
 /**
+ * Whether a Recording with this content hash exists. The feedback route
+ * rejects unknown hashes with a clean 400 instead of letting the FK
+ * surface as a 500.
+ */
+export async function recordingExists(recordingContentHash: string): Promise<boolean> {
+  const [row] = await db
+    .select({ contentHash: recordings.contentHash })
+    .from(recordings)
+    .where(eq(recordings.contentHash, recordingContentHash))
+    .limit(1);
+  return Boolean(row);
+}
+
+/**
  * State-aware validation matrix (spec issue #194):
  * - happy accepted only when Lyrics exist (synced or unsynced);
  * - missing accepted only when no parseable synced Lyrics;

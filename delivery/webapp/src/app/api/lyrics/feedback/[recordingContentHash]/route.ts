@@ -5,6 +5,7 @@ import { lyricsFeedback } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
+  recordingExists,
   resolveLyricsSituation,
   validateFeedbackSubmission,
   type FeedbackRating,
@@ -55,6 +56,9 @@ export async function PUT(
 
     const { recordingContentHash } = await params;
 
+    if (!(await recordingExists(recordingContentHash))) {
+      return NextResponse.json({ error: "Recording not found" }, { status: 400 });
+    }
     let body: unknown;
     try {
       body = await request.json();

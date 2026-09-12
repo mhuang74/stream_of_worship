@@ -32,6 +32,9 @@ vi.mock("@/lib/lyrics/situation", async () => {
   return {
     ...actual,
     resolveLyricsSituation: (...args: unknown[]) => mockResolveLyricsSituation(...args),
+    recordingExists: (...args: unknown[]) =>
+      (globalThis as Record<string, unknown>).__mockRecordingExists?.(...args) ??
+      Promise.resolve(true),
   };
 });
 
@@ -147,6 +150,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   beforeEach(() => {
     vi.clearAllMocks();
     delete (globalThis as Record<string, unknown>).__mockResolveLyricsSituation;
+    delete (globalThis as Record<string, unknown>).__mockRecordingExists;
   });
 
   it("happy accepted when synced lyrics exist → upserts row with null reason", async () => {
@@ -363,7 +367,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
     expect(res.status).toBe(400);
   });
 
-  it("unknown recording (situation none) still allows sad+missing", async () => {
+  it("existing recording with no lyrics (situation none) allows sad+missing", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "none" });
     insertChain();
@@ -373,6 +377,19 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
       mockParams("hash123")
     );
     expect(res.status).toBe(200);
+  });
+
+  it("unknown recording hash returns 400 recording not found", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    (globalThis as Record<string, unknown>).__mockRecordingExists = vi.fn().mockResolvedValue(false);
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "happy" }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("Recording not found");
   });
 
   it("500 on database error", async () => {

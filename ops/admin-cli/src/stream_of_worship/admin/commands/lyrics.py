@@ -85,7 +85,7 @@ def feedback_list(
     reason: Optional[str] = typer.Option(
         None, "--reason", help="Filter: missing | timing | wrong_text | other"
     ),
-    all: bool = typer.Option(
+    include_all: bool = typer.Option(
         False, "--all", help="Include recordings whose feedback is fully resolved"
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
@@ -114,7 +114,7 @@ def feedback_list(
         clauses.append("(f.resolved_at IS NULL AND f.reason = %(reason)s)")
         params["reason"] = reason
     where = " AND ".join(clauses) if clauses else "TRUE"
-    having = "" if all else "HAVING COUNT(*) FILTER (WHERE f.resolved_at IS NULL) > 0"
+    having = "" if include_all else "HAVING COUNT(*) FILTER (WHERE f.resolved_at IS NULL) > 0"
 
     with conn.cursor() as cur:
         cur.execute(
@@ -133,8 +133,8 @@ def feedback_list(
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL AND f.rating = 'sad' AND f.reason = 'other') AS open_other,
                 MAX(f.created_at) FILTER (WHERE f.resolved_at IS NULL) AS latest_report
             FROM lyrics_feedback f
-            JOIN recordings r ON r.content_hash = f.recording_content_hash
-            JOIN songs s ON s.id = r.song_id
+            LEFT JOIN recordings r ON r.content_hash = f.recording_content_hash
+            LEFT JOIN songs s ON s.id = r.song_id
             WHERE {where}
             GROUP BY r.content_hash, r.hash_prefix, r.lrc_status, s.id, s.title
             {having}

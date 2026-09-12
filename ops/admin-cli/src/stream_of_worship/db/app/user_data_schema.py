@@ -87,7 +87,6 @@ CREATE_USER_DATA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_lyric_mark_user ON lyric_mark(user_id);",
     "CREATE INDEX IF NOT EXISTS idx_lyric_mark_recording "
     "ON lyric_mark(recording_content_hash);",
-    "CREATE INDEX IF NOT EXISTS idx_lyrics_feedback_user ON lyrics_feedback(user_id);",
     "CREATE INDEX IF NOT EXISTS idx_lyrics_feedback_recording_resolved "
     "ON lyrics_feedback(recording_content_hash, resolved_at);",
     "CREATE INDEX IF NOT EXISTS idx_songset_share_songset ON songset_share(songset_id);",
