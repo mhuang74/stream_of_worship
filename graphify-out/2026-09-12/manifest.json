@@ -4884,9 +4884,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py": {
-    "mtime": 1789195484.7789867,
-    "seen": 1789218740.698151,
-    "ast_hash": "6344a7a0880965472e73a6cdf2960561",
+    "mtime": 1789220509.6729102,
+    "seen": 1789220571.6120594,
+    "ast_hash": "88e08e7bd27dc1abd2e33d4b6a853a59",
     "semantic_hash": ""
   }
 }
