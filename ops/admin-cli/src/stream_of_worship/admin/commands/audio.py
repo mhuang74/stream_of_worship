@@ -1,7 +1,9 @@
 """Audio commands for sow-admin.
 
 Provides CLI commands for downloading audio from YouTube, listing
-recordings, and viewing recording details.
+recordings, and viewing recording details. LRC-file lifecycle commands
+live under ``sow-admin lyrics``; this module keeps download, backfill,
+and batch orchestration plus LRC job submission via services.lrc_jobs.
 """
 
 import json
@@ -55,11 +57,18 @@ from stream_of_worship.admin.services.lrc_parser import (
     serialize_lrc,
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
-from stream_of_worship.admin.services.structured_lyrics import (
-    flatten_structured_lyrics,
-    parse_structured_lyrics_smart,
+from stream_of_worship.admin.services.structured_lyrics import flatten_structured_lyrics
+from stream_of_worship.admin.services.lrc_jobs import (
+    display_lrc,
+    fetch_structured_lyrics,
+    resolve_lyrics_text,
+    submit_lrc_job,
 )
-from stream_of_worship.admin.services.zanmei import fetch_structured_lyrics_from_zanmei
+from stream_of_worship.admin.services.prompts import (
+    prompt_choice,
+    prompt_confirmation,
+    read_song_ids_from_stdin,
+)
 from stream_of_worship.admin.services.youtube import (
     DURATION_WARNING_THRESHOLD,
     OFFICIAL_LYRICS_SUFFIX,
@@ -153,20 +162,6 @@ def _display_video_preview(
     )
 
 
-def _prompt_confirmation(message: str) -> bool:
-    """Prompt for y/n confirmation, return True if accepted.
-
-    Args:
-        message: Prompt message to display
-
-    Returns:
-        True if user confirms (y), False otherwise
-    """
-    try:
-        response = input(f"{message} [y/n]: ").strip().lower()
-        return response in ("y", "yes")
-    except (EOFError, KeyboardInterrupt):
-        return False
 
 
 def _prompt_manual_url(max_attempts: int = 3) -> Optional[str]:
@@ -345,18 +340,6 @@ def _colorize_visibility(visibility: Optional[str]) -> str:
         return "[dim]·[/dim]"
 
 
-def _read_song_ids_from_stdin() -> list[str]:
-    """Read song IDs from stdin, one per line.
-
-    Returns:
-        List of non-empty, stripped song IDs
-    """
-    song_ids = []
-    for line in sys.stdin:
-        line = line.strip()
-        if line:
-            song_ids.append(line)
-    return song_ids
 
 
 def _read_albums_from_file(path: Path) -> list[str]:
@@ -461,246 +444,7 @@ def _display_truncate(value: str, cap: int) -> str:
     return out + "…"
 
 
-def _submit_lrc_single(
-    song_id: str,
-    db_client: DatabaseClient,
-    analysis_client: AnalysisClient,
-    force: bool,
-    whisper_model: str,
-    language: str,
-    no_vocals: bool,
-    no_youtube: bool,
-    no_whisper_cache: bool,
-    no_qwen3_asr: bool,
-    force_qwen3_asr: bool,
-    wait: bool,
-    console: Console,
-) -> None:
-    """Submit LRC for a single recording (original behavior with wait support)."""
-    # Look up recording by song_id
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(f"[red]No recording found for {song_id}.[/red]")
-        raise typer.Exit(1)
 
-    # Look up song for lyrics
-    song = db_client.get_song(song_id)
-    lyrics_text = _resolve_lyrics_text(song, recording) if song else None
-    if not song or not lyrics_text:
-        console.print(f"[red]No lyrics found for song {song_id}.[/red]")
-        raise typer.Exit(1)
-
-    # Validate r2_audio_url exists
-    if not recording.r2_audio_url:
-        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
-        raise typer.Exit(1)
-
-    # Check if already has LRC
-    if recording.lrc_status == "completed" and not force:
-        console.print(
-            f"[yellow]Recording {recording.hash_prefix} already has LRC. "
-            f"Use --force to re-generate.[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    # Check if already processing
-    skip_submission = False
-    job_id = None
-    if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
-        if not wait:
-            console.print(
-                f"[yellow]LRC generation already in progress for "
-                f"{recording.hash_prefix} (job: {recording.lrc_job_id})[/yellow]"
-            )
-            raise typer.Exit(0)
-        job_id = recording.lrc_job_id
-        skip_submission = True
-
-    # Submit LRC (unless we're polling an existing job)
-    if not skip_submission:
-        youtube_url = "" if no_youtube else (recording.youtube_url or "")
-        try:
-            job = analysis_client.submit_lrc(
-                audio_url=recording.r2_audio_url,
-                content_hash=recording.content_hash,
-                lyrics_text=lyrics_text,
-                song_title=song.title,
-                whisper_model=whisper_model,
-                language=language,
-                use_vocals_stem=not no_vocals,
-                force=force,
-                force_whisper=no_whisper_cache,
-                youtube_url=youtube_url,
-                use_qwen3_asr=not no_qwen3_asr,
-                force_qwen3_asr=force_qwen3_asr,
-            )
-        except AnalysisServiceError as e:
-            console.print(f"[red]Failed to submit LRC job: {e}[/red]")
-            raise typer.Exit(1)
-
-        job_id = job.job_id
-
-        # Update DB
-        db_client.update_recording_status(
-            hash_prefix=recording.hash_prefix,
-            lrc_status="processing",
-            lrc_job_id=job_id,
-        )
-
-        console.print(f"[green]LRC job submitted (job: {job_id})[/green]")
-    else:
-        console.print(f"[cyan]Polling existing job: {job_id}[/cyan]")
-
-    # Wait mode with progress
-    if wait:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TextColumn("{task.fields[stage]}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Generating LRC...", total=100, stage="", completed=0)
-
-            def update_progress(job_info: JobInfo) -> None:
-                pct = int(job_info.progress * 100)
-                progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
-
-            try:
-                final_job = analysis_client.wait_for_completion(
-                    job_id,
-                    poll_interval=30.0,
-                    timeout=600.0,
-                    callback=update_progress,
-                )
-            except AnalysisServiceError as e:
-                console.print(f"[red]{e}[/red]")
-                db_client.update_recording_status(
-                    hash_prefix=recording.hash_prefix,
-                    lrc_status="failed",
-                )
-                raise typer.Exit(1)
-
-        if final_job.status == "failed":
-            error_msg = final_job.error_message or "Unknown error"
-            console.print(f"[red]LRC generation failed: {error_msg}[/red]")
-            db_client.update_recording_status(
-                hash_prefix=recording.hash_prefix,
-                lrc_status="failed",
-            )
-            raise typer.Exit(1)
-
-        # Store results
-        if final_job.result and final_job.result.lrc_url:
-            db_client.update_recording_lrc(
-                hash_prefix=recording.hash_prefix,
-                r2_lrc_url=final_job.result.lrc_url,
-                visibility_status="review",
-            )
-
-        console.print(f"[green]LRC generation completed for {song_id}[/green]")
-        if final_job.result and final_job.result.lrc_url:
-            console.print(f"  LRC URL: {final_job.result.lrc_url}")
-
-
-def _submit_lrc_batch(
-    song_ids: list[str],
-    db_client: DatabaseClient,
-    analysis_client: AnalysisClient,
-    force: bool,
-    whisper_model: str,
-    language: str,
-    no_vocals: bool,
-    no_youtube: bool,
-    no_whisper_cache: bool,
-    no_qwen3_asr: bool,
-    force_qwen3_asr: bool,
-    console: Console,
-) -> None:
-    """Submit LRC for multiple recordings (batch mode, no wait)."""
-    submitted = 0
-    skipped = 0
-    errors = 0
-
-    for i, song_id in enumerate(song_ids, 1):
-        console.print(f"[{i}/{len(song_ids)}] Processing {song_id}...")
-
-        # Look up recording by song_id
-        recording = db_client.get_recording_by_song_id(song_id)
-        if not recording:
-            console.print("  [red]No recording found[/red]")
-            errors += 1
-            continue
-
-        # Look up song for lyrics
-        song = db_client.get_song(song_id)
-        lyrics_text = _resolve_lyrics_text(song, recording) if song else None
-        if not song or not lyrics_text:
-            console.print("  [red]No lyrics found[/red]")
-            errors += 1
-            continue
-
-        # Validate r2_audio_url exists
-        if not recording.r2_audio_url:
-            console.print("  [red]No audio URL[/red]")
-            errors += 1
-            continue
-
-        # Check if already has LRC
-        if recording.lrc_status == "completed" and not force:
-            console.print("  [yellow]Already has LRC (skipped)[/yellow]")
-            skipped += 1
-            continue
-
-        # Check if already processing
-        if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
-            console.print("  [yellow]Already in progress (skipped)[/yellow]")
-            skipped += 1
-            continue
-
-        # Submit LRC
-        youtube_url = "" if no_youtube else (recording.youtube_url or "")
-        try:
-            job = analysis_client.submit_lrc(
-                audio_url=recording.r2_audio_url,
-                content_hash=recording.content_hash,
-                lyrics_text=lyrics_text,
-                song_title=song.title,
-                whisper_model=whisper_model,
-                language=language,
-                use_vocals_stem=not no_vocals,
-                force=force,
-                force_whisper=no_whisper_cache,
-                youtube_url=youtube_url,
-                use_qwen3_asr=not no_qwen3_asr,
-                force_qwen3_asr=force_qwen3_asr,
-            )
-
-            # Update DB
-            db_client.update_recording_status(
-                hash_prefix=recording.hash_prefix,
-                lrc_status="processing",
-                lrc_job_id=job.job_id,
-            )
-
-            console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
-            submitted += 1
-
-        except AnalysisServiceError as e:
-            console.print(f"  [red]Failed to submit: {e}[/red]")
-            errors += 1
-        except Exception as e:
-            console.print(f"  [red]Unexpected error: {e}[/red]")
-            errors += 1
-
-    # Summary
-    console.print("")
-    console.print("[cyan]Batch Summary:[/cyan]")
-    console.print(f"  Submitted: {submitted}")
-    console.print(f"  Skipped: {skipped}")
-    console.print(f"  Errors: {errors}")
-    console.print(f"  Total: {len(song_ids)}")
 
 
 def _submit_analysis_job(
@@ -753,193 +497,7 @@ def _submit_analysis_job(
         return None
 
 
-def _resolve_lyrics_text(song: Song, recording: Recording) -> str | None:
-    """Pick the best lyrics payload for an LRC job.
 
-    Prefers structured lyrics (flattened, tags preserved) from the
-    recording; falls back to ``songs.lyrics_raw``. Returns ``None`` if
-    neither is available.
-    """
-    if recording.structured_lyrics:
-        try:
-            structured = json.loads(recording.structured_lyrics)
-            if structured and structured.get("sections"):
-                return flatten_structured_lyrics(structured)
-        except json.JSONDecodeError:
-            pass
-    return song.lyrics_raw
-
-
-def _submit_lrc_job(
-    song_id: str,
-    recording: Recording,
-    analysis_url: str,
-    db_client: DatabaseClient,
-    console: Console,
-    force: bool = False,
-    whisper_model: str = "large-v3",
-    language: str = "auto",
-    no_vocals: bool = False,
-    no_youtube: bool = False,
-    no_whisper_cache: bool = False,
-    use_qwen3_asr: bool = True,
-    force_qwen3_asr: bool = False,
-) -> Optional[str]:
-    """Submit LRC generation job for a recording.
-
-    Args:
-        song_id: Song ID for looking up lyrics
-        recording: Recording to generate LRC for
-        analysis_url: Analysis service URL
-        db_client: Database client for storing results
-        console: Rich console for output
-        force: Force re-generation if already completed
-        whisper_model: Whisper model to use
-        language: Language hint for Whisper
-        no_vocals: Don't use vocals stem
-        no_youtube: Skip YouTube transcript, use Whisper directly
-        no_whisper_cache: Bypass Whisper transcription cache
-        use_qwen3_asr: Use DashScope Qwen3 ASR before Whisper fallback
-        force_qwen3_asr: Bypass only the Qwen3 ASR cache
-
-    Returns:
-        Job ID if submission succeeded, None otherwise
-    """
-    # Look up song for lyrics
-    song = db_client.get_song(song_id)
-    lyrics_text = _resolve_lyrics_text(song, recording) if song else None
-    if not song or not lyrics_text:
-        console.print(
-            f"[yellow]⚠ No lyrics found for song {song_id}, skipping LRC generation[/yellow]"
-        )
-        return None
-
-    youtube_url = "" if no_youtube else (recording.youtube_url or "")
-
-    try:
-        client = AnalysisClient(analysis_url)
-        job = client.submit_lrc(
-            audio_url=recording.r2_audio_url,
-            content_hash=recording.content_hash,
-            lyrics_text=lyrics_text,
-            song_title=song.title,
-            whisper_model=whisper_model,
-            language=language,
-            use_vocals_stem=not no_vocals,
-            force=force,
-            force_whisper=no_whisper_cache,
-            youtube_url=youtube_url,
-            use_qwen3_asr=use_qwen3_asr,
-            force_qwen3_asr=force_qwen3_asr,
-        )
-
-        # Update DB
-        db_client.update_recording_status(
-            hash_prefix=recording.hash_prefix,
-            lrc_status="processing",
-            lrc_job_id=job.job_id,
-        )
-
-        console.print(f"[green]LRC job submitted (job: {job.job_id})[/green]")
-        return job.job_id
-    except AnalysisServiceError as e:
-        console.print(f"[yellow]⚠ Failed to submit LRC job: {e}[/yellow]")
-        return None
-    except ValueError as e:
-        console.print(f"[yellow]⚠ Analysis service not configured for LRC: {e}[/yellow]")
-        return None
-
-
-def _fetch_structured_lyrics(
-    *,
-    youtube_url: str | None,
-    song_title: str,
-    band: str | None,
-    source: str,
-    use_llm: bool,
-    console: Console,
-) -> tuple[str | None, str | None, str]:
-    """Fetch structured lyrics according to the ``source`` preference.
-
-    ``source`` is one of ``youtube`` (YouTube description only), ``zanmei``
-    (zanmei.ai only), or ``auto`` (YouTube first, then zanmei.ai fallback
-    when YouTube yields no section-tagged lyrics).
-
-    Returns ``(structured_raw, structured_json_str, source_used)``.
-    ``structured_raw`` is the raw text harvested from the winning source;
-    ``structured_json_str`` is the parsed structured-lyrics JSON (or None).
-
-    Matching the pre-existing YouTube-only path, a hard failure while parsing
-    YouTube lyrics with the LLM enabled raises ``typer.Exit(1)`` so callers
-    keep their historical error UX. Zanmei is best-effort: a fetch/parse
-    failure is reported and results in ``(None, None, zanmei)`` rather than
-    blocking the download.
-    """
-    if youtube_url:
-        try:
-            metadata = extract_video_metadata(youtube_url)
-        except RuntimeError as e:
-            console.print(
-                f"[yellow]Could not fetch YouTube metadata for structured lyrics: {e}[/yellow]"
-            )
-            yt_raw = None
-            yt_json = None
-        else:
-            yt_raw = metadata.description
-            try:
-                yt_structured = parse_structured_lyrics_smart(
-                    metadata.description,
-                    use_llm=use_llm,
-                    source_desc="a YouTube video description",
-                )
-            except RuntimeError as e:
-                if use_llm:
-                    console.print(f"[red]LLM lyrics extraction failed: {e}[/red]")
-                    console.print(
-                        "[dim]Use --no-llm to fall back to the regex heuristic only.[/dim]"
-                    )
-                    raise typer.Exit(1)
-                yt_structured = None
-            yt_json = (
-                json.dumps(yt_structured, ensure_ascii=False)
-                if yt_structured and yt_structured.get("sections")
-                else None
-            )
-    else:
-        yt_raw = None
-        yt_json = None
-
-    if source == "youtube":
-        return yt_raw, yt_json, "youtube"
-
-    # Zanmei needed (forced or auto-fallback when YouTube gave no sections).
-    if source == "auto" and yt_json is not None:
-        return yt_raw, yt_json, "youtube"
-
-    try:
-        lyrics_text = fetch_structured_lyrics_from_zanmei(song_title, band)
-    except RuntimeError as e:
-        console.print(f"[yellow]Zanmei lyrics fetch failed: {e}[/yellow]")
-        return (yt_raw if source == "auto" else None), yt_json, "zanmei"
-
-    if not lyrics_text:
-        console.print(
-            f"[yellow]No lyrics found on zanmei.ai for {song_title!r} "
-            f"{f'({band!r})' if band else ''}[/yellow]"
-        )
-        return (yt_raw if source == "auto" else None), yt_json, "zanmei"
-
-    try:
-        structured = parse_structured_lyrics_smart(
-            lyrics_text,
-            use_llm=use_llm,
-            source_desc="zanmei.ai song lyrics",
-        )
-    except RuntimeError as e:
-        console.print(f"[yellow]Zanmei lyrics parse failed: {e}[/yellow]")
-        structured = None
-    structured_json = json.dumps(structured, ensure_ascii=False) if structured else None
-    return lyrics_text, structured_json, "zanmei"
 
 
 def _backfill_lyrics_for_song(
@@ -994,7 +552,7 @@ def _backfill_lyrics_for_song(
     if yt_url:
         console.print(f"[cyan]YouTube URL:[/cyan] {yt_url}")
 
-    structured_raw, structured_json_str, source_used = _fetch_structured_lyrics(
+    structured_raw, structured_json_str, source_used = fetch_structured_lyrics(
         youtube_url=yt_url,
         song_title=song_title,
         band=band,
@@ -1026,7 +584,7 @@ def _backfill_lyrics_for_song(
 
     console.print(
         f"[dim]Run 'sow-admin audio show {song_id}' to verify or "
-        f"'sow-admin audio lrc {song_id}' to re-generate LRC.[/dim]"
+        f"'sow-admin lyrics generate {song_id}' to re-generate LRC.[/dim]"
     )
     return True
 
@@ -1041,7 +599,7 @@ def import_youtube_audio_for_song(
     force: bool = False,
     skip_video_confirm: bool = False,
     analyze: bool = False,
-    lrc: bool = False,
+    generate_lyrics: bool = False,
     components: bool = False,
     use_llm: bool = True,
     structured_lyrics_source: str = "auto",
@@ -1135,7 +693,7 @@ def import_youtube_audio_for_song(
 
     download_confirmed = skip_video_confirm
     if not skip_video_confirm and video_info is not None:
-        download_confirmed = _prompt_confirmation("Download this video?")
+        download_confirmed = prompt_confirmation("Download this video?")
 
     if not download_confirmed:
         if video_info is not None:
@@ -1165,7 +723,7 @@ def import_youtube_audio_for_song(
             )
             console.print("[yellow]  This may be the wrong video.[/yellow]")
 
-        if not _prompt_confirmation("Download this video?"):
+        if not prompt_confirmation("Download this video?"):
             console.print("[yellow]Download cancelled.[/yellow]")
             raise typer.Exit(0)
 
@@ -1182,7 +740,7 @@ def import_youtube_audio_for_song(
             youtube_for_lyrics = video_info["webpage_url"]
         elif search_or_url.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be")):
             youtube_for_lyrics = search_or_url
-    structured_raw, structured_json_str, lyrics_source_used = _fetch_structured_lyrics(
+    structured_raw, structured_json_str, lyrics_source_used = fetch_structured_lyrics(
         youtube_url=youtube_for_lyrics,
         song_title=song.title,
         band=song.composer,
@@ -1288,9 +846,9 @@ def import_youtube_audio_for_song(
             no_stems=False,
         )
 
-    if lrc:
-        console.print("[cyan]Submitting for LRC generation...[/cyan]")
-        _submit_lrc_job(
+    if generate_lyrics:
+        console.print("[cyan]Submitting for lyrics generation...[/cyan]")
+        submit_lrc_job(
             song_id=song_id,
             recording=recording,
             analysis_url=config.analysis_url,
@@ -1341,7 +899,7 @@ def _backfill_lyrics_batch(
     ``structured_lyrics_source``. Per-song failures are reported but do not
     abort the batch.
     """
-    song_ids = _read_song_ids_from_stdin()
+    song_ids = read_song_ids_from_stdin()
 
     if not song_ids:
         console.print("[yellow]No song IDs provided via stdin[/yellow]")
@@ -1351,7 +909,7 @@ def _backfill_lyrics_batch(
 
     # Batch-level confirmation so each per-song call doesn't prompt.
     if not skip_confirm:
-        confirmed = _prompt_confirmation(f"Backfill lyrics for {len(song_ids)} song(s)?")
+        confirmed = prompt_confirmation(f"Backfill lyrics for {len(song_ids)} song(s)?")
         if not confirmed:
             console.print("[yellow]Batch backfill cancelled.[/yellow]")
             raise typer.Exit(0)
@@ -1410,7 +968,7 @@ def _download_audio_batch(
     force: bool,
     skip_confirm: bool,
     analyze: bool,
-    lrc: bool,
+    generate_lyrics: bool,
     components: bool,
     use_llm: bool = True,
     structured_lyrics_source: str = "auto",
@@ -1422,7 +980,7 @@ def _download_audio_batch(
     Per-song video preview confirmations are bypassed; the batch-level
     confirmation (gated by --yes) is authoritative.
     """
-    song_ids = _read_song_ids_from_stdin()
+    song_ids = read_song_ids_from_stdin()
 
     if not song_ids:
         console.print("[yellow]No song IDs provided via stdin[/yellow]")
@@ -1506,8 +1064,8 @@ def _download_audio_batch(
     post_flags = []
     if analyze:
         post_flags.append("analyze")
-    if lrc:
-        post_flags.append("lrc")
+    if generate_lyrics:
+        post_flags.append("generate-lyrics")
     if components:
         post_flags.append("components")
     if post_flags:
@@ -1516,7 +1074,7 @@ def _download_audio_batch(
     console.print(Panel.fit("\n".join(info_lines), title="Batch Download", border_style="cyan"))
 
     if not skip_confirm:
-        confirmed = _prompt_confirmation(f"Download {len(to_download)} song(s)?")
+        confirmed = prompt_confirmation(f"Download {len(to_download)} song(s)?")
         if not confirmed:
             console.print("[yellow]Batch download cancelled.[/yellow]")
             raise typer.Exit(0)
@@ -1537,7 +1095,7 @@ def _download_audio_batch(
                 # confirmation above is authoritative.
                 skip_video_confirm=True,
                 analyze=analyze,
-                lrc=lrc,
+                generate_lyrics=generate_lyrics,
                 components=components,
                 use_llm=use_llm,
                 structured_lyrics_source=structured_lyrics_source,
@@ -1578,7 +1136,9 @@ def download_audio(
     analyze: bool = typer.Option(
         False, "--analyze", "-a", help="Submit for analysis after download"
     ),
-    lrc: bool = typer.Option(False, "--lrc", "-l", help="Submit for LRC generation after download"),
+    generate_lyrics: bool = typer.Option(
+        False, "--generate-lyrics", "-l", help="Submit for lyrics generation after download"
+    ),
     components: bool = typer.Option(
         False, "--components", help="Submit for component analysis after download"
     ),
@@ -1620,7 +1180,7 @@ def download_audio(
     the top result as MP3, hashes it, uploads to R2, and persists a
     recording entry in the local database.
 
-    Use --analyze, --lrc, --components, or --all to automatically submit for
+    Use --analyze, --generate-lyrics, --components, or --all to automatically submit for
     processing after successful download.
 
     Use --backfill-lyrics to fetch structured lyrics from the YouTube
@@ -1657,10 +1217,10 @@ def download_audio(
 
     # --backfill-lyrics short-circuit
     if backfill_lyrics:
-        if analyze or lrc or components or all:
+        if analyze or generate_lyrics or components or all:
             console.print(
                 "[red]--backfill-lyrics is mutually exclusive with "
-                "--analyze, --lrc, --components, --all.[/red]"
+                "--analyze, --generate-lyrics, --components, --all.[/red]"
             )
             raise typer.Exit(1)
         if dry_run:
@@ -1702,10 +1262,10 @@ def download_audio(
         )
         return
 
-    # If --all is set, enable analyze, lrc, and components
+    # If --all is set, enable analyze, generate-lyrics, and components
     if all:
         analyze = True
-        lrc = True
+        generate_lyrics = True
         components = True
 
     try:
@@ -1725,7 +1285,7 @@ def download_audio(
             force=force,
             skip_confirm=skip_confirm,
             analyze=analyze,
-            lrc=lrc,
+            generate_lyrics=generate_lyrics,
             components=components,
             use_llm=use_llm,
             structured_lyrics_source=structured_lyrics_source,
@@ -1754,7 +1314,7 @@ def download_audio(
         force=force,
         skip_video_confirm=skip_confirm,
         analyze=analyze,
-        lrc=lrc,
+        generate_lyrics=generate_lyrics,
         components=components,
         use_llm=use_llm,
         structured_lyrics_source=structured_lyrics_source,
@@ -1856,7 +1416,7 @@ def _delete_recording_single(
         console.print(
             "[yellow]This soft-deletes the DB row only; R2 assets remain for maintenance review.[/yellow]"
         )
-        confirmed = _prompt_confirmation("Soft-delete this recording?")
+        confirmed = prompt_confirmation("Soft-delete this recording?")
         if not confirmed:
             console.print("[yellow]Deletion cancelled.[/yellow]")
             raise typer.Exit(0)
@@ -1872,7 +1432,7 @@ def _delete_recordings_batch(
     console: Console,
 ) -> None:
     """Delete multiple recordings from stdin."""
-    song_ids = _read_song_ids_from_stdin()
+    song_ids = read_song_ids_from_stdin()
 
     if not song_ids:
         console.print("[yellow]No song IDs provided via stdin[/yellow]")
@@ -1925,7 +1485,7 @@ def _delete_recordings_batch(
         console.print(
             "[yellow]This soft-deletes DB rows only; R2 assets remain for maintenance review.[/yellow]"
         )
-        confirmed = _prompt_confirmation(f"Soft-delete {len(recordings_to_delete)} recording(s)?")
+        confirmed = prompt_confirmation(f"Soft-delete {len(recordings_to_delete)} recording(s)?")
         if not confirmed:
             console.print("[yellow]Deletion cancelled.[/yellow]")
             raise typer.Exit(0)
@@ -2285,7 +1845,7 @@ def show_recording(
                 truncated = "\n".join(raw_lines[:40])
                 if len(raw_lines) > 40:
                     truncated += (
-                        "\n[dim](… truncated, run 'sow-admin audio view-lrc "
+                        "\n[dim](… truncated, run 'sow-admin lyrics view "
                         f"{song_id}' for full)[/dim]"
                     )
                 console.print(
@@ -2300,7 +1860,7 @@ def show_recording(
         truncated = "\n".join(raw_lines[:40])
         if len(raw_lines) > 40:
             truncated += (
-                "\n[dim](… truncated, run 'sow-admin audio view-lrc "
+                "\n[dim](… truncated, run 'sow-admin lyrics view "
                 f"{song_id}' for full)[/dim]"
             )
         console.print(
@@ -2314,7 +1874,7 @@ def show_recording(
     # Synchronized LRC contents
     if recording.has_lrc:
         console.print("")
-        _display_lrc(
+        display_lrc(
             console=console,
             song=song,
             recording=recording,
@@ -2324,7 +1884,7 @@ def show_recording(
         )
     else:
         console.print(
-            f"\n[dim]LRC not yet generated (run 'sow-admin audio lrc {song_id}')[/dim]"
+            f"\n[dim]LRC not yet generated (run 'sow-admin lyrics generate {song_id}')[/dim]"
         )
 
     # Display component metadata if available.
@@ -3604,7 +3164,7 @@ def components_recording(
         out_console.print(
             f"[yellow]Song {song_id} has neither full analysis nor LRC. "
             f"Run 'sow-admin audio analyze {song_id} --analysis-tier full' or "
-            f"'sow-admin audio lrc {song_id}' first.[/yellow]"
+            f"'sow-admin lyrics generate {song_id}' first.[/yellow]"
         )
         raise typer.Exit(0)
 
@@ -3838,112 +3398,7 @@ def sync_components(
         console.print(f"[green]Synced {len(result)} component(s) for {song_id}.[/green]")
 
 
-@app.command("lrc")
-def lrc_recording(
-    song_id: Optional[str] = typer.Argument(None, help="Song ID to generate LRC for"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force re-generation"),
-    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
-    whisper_model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model to use"),
-    language: str = typer.Option("auto", "--lang", help="Language mode: auto, zh, or en"),
-    no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),
-    no_youtube: bool = typer.Option(
-        False, "--no-youtube", help="Skip YouTube transcript, use Whisper directly"
-    ),
-    no_whisper_cache: bool = typer.Option(
-        False, "--no-whisper-cache", help="Bypass cached Whisper transcription, re-run Whisper"
-    ),
-    no_qwen3_asr: bool = typer.Option(
-        False, "--no-qwen3-asr", help="Skip DashScope Qwen3 ASR and use Whisper fallback"
-    ),
-    force_qwen3_asr: bool = typer.Option(
-        False, "--force-qwen3-asr", help="Bypass cached Qwen3 ASR transcription only"
-    ),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for LRC generation to complete"),
-    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
-) -> None:
-    """Submit a recording for lyrics alignment (LRC generation).
 
-    By default, tries YouTube transcript first (if a YouTube URL is stored),
-    then falls back to DashScope Qwen3 ASR and finally Whisper transcription.
-    Use --no-youtube to skip the YouTube path and use Whisper directly.
-    Use --no-qwen3-asr to skip Qwen3 ASR and use Whisper.
-
-    For batch processing, pipe song IDs via stdin:
-        sow-admin audio list --lrc incomplete --format ids | sow-admin audio lrc --stdin
-    """
-    # Validate mutually exclusive inputs
-    if not song_id and not stdin:
-        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
-        raise typer.Exit(1)
-    if song_id and stdin:
-        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
-        raise typer.Exit(1)
-    if stdin and wait:
-        console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
-        raise typer.Exit(1)
-    if language not in {"auto", "zh", "en"}:
-        console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
-        raise typer.Exit(1)
-
-    # Standard config/db boilerplate
-    try:
-        config = AdminConfig.load(config_path)
-    except FileNotFoundError:
-        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
-        raise typer.Exit(1)
-
-    db_client = get_db_client(config)
-
-    # Create analysis client (shared for batch mode)
-    try:
-        analysis_client = AnalysisClient(config.analysis_url)
-    except ValueError as e:
-        console.print(f"[red]Analysis service not configured: {e}[/red]")
-        raise typer.Exit(1)
-
-    # Collect song IDs to process
-    if stdin:
-        song_ids = _read_song_ids_from_stdin()
-        if not song_ids:
-            console.print("[yellow]No song IDs provided via stdin[/yellow]")
-            raise typer.Exit(0)
-    else:
-        song_ids = [song_id]
-
-    # Process all songs
-    if len(song_ids) == 1:
-        # Single song mode - original behavior with wait support
-        _submit_lrc_single(
-            song_id=song_ids[0],
-            db_client=db_client,
-            analysis_client=analysis_client,
-            force=force,
-            whisper_model=whisper_model,
-            language=language,
-            no_vocals=no_vocals,
-            no_youtube=no_youtube,
-            no_whisper_cache=no_whisper_cache,
-            no_qwen3_asr=no_qwen3_asr,
-            force_qwen3_asr=force_qwen3_asr,
-            wait=wait,
-            console=console,
-        )
-    else:
-        # Batch mode - no wait support, process all
-        _submit_lrc_batch(
-            song_ids=song_ids,
-            db_client=db_client,
-            analysis_client=analysis_client,
-            force=force,
-            whisper_model=whisper_model,
-            language=language,
-            no_vocals=no_vocals,
-            no_youtube=no_youtube,
-            no_whisper_cache=no_whisper_cache,
-            no_qwen3_asr=no_qwen3_asr,
-            force_qwen3_asr=force_qwen3_asr,
-            console=console,
-        )
 
 
 def _compute_content_hash(
@@ -3953,332 +3408,6 @@ def _compute_content_hash(
 
     content = f"{title}\0{composer}\0{lyrics_raw}\0{'|'.join(lyrics_lines)}"
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-
-
-def _get_alignment_lyrics_text(
-    recording: "Recording",
-    song: "Song",
-    r2_client: Optional[R2Client],
-    console: Console,
-) -> str:
-    """Return lyrics text for forced alignment, preferring existing LRC over nominal lyrics.
-
-    If an official lyrics.lrc exists in R2, download and parse it to extract the
-    transcribed lyrics text (timestamps stripped). This ensures forced alignment
-    only updates timestamps without changing the lyrics text.
-
-    Falls back to song.lyrics_raw with a console warning if the LRC is missing
-    or cannot be parsed.
-    """
-    if r2_client and recording.r2_lrc_url:
-        try:
-            lrc_content = r2_client.download_lrc_content(recording.hash_prefix)
-            if lrc_content:
-                lrc_file = parse_lrc(lrc_content)
-                return "\n".join(line.text for line in lrc_file.lines)
-        except Exception as e:
-            console.print(
-                f"[yellow]Warning: Could not read existing LRC for {recording.hash_prefix} "
-                f"({e}), using nominal lyrics[/yellow]"
-            )
-    return song.lyrics_raw
-
-
-def _submit_forced_alignment_single(
-    song_id: str,
-    db_client: DatabaseClient,
-    analysis_client: AnalysisClient,
-    language: str,
-    force: bool,
-    use_vocals_stem: bool,
-    wait: bool,
-    console: Console,
-    r2_client: Optional[R2Client] = None,
-) -> None:
-    """Submit forced alignment for a single recording."""
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(f"[red]No recording found for {song_id}.[/red]")
-        raise typer.Exit(1)
-
-    song = db_client.get_song(song_id)
-    if not song or not song.lyrics_raw:
-        console.print(f"[red]No lyrics found for song {song_id}.[/red]")
-        raise typer.Exit(1)
-
-    if not recording.r2_audio_url:
-        console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
-        raise typer.Exit(1)
-
-    if recording.lrc_status == "completed" and not force:
-        console.print(
-            f"[yellow]Recording {recording.hash_prefix} already has LRC. "
-            f"Use --force to re-align.[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
-        console.print(
-            f"[yellow]LRC generation already in progress for "
-            f"{recording.hash_prefix} (job: {recording.lrc_job_id})[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    if recording.duration_seconds and recording.duration_seconds > 300:
-        console.print(
-            f"[red]Recording {recording.hash_prefix} is too long "
-            f"({recording.duration_seconds:.0f}s > 300s limit).[/red]"
-        )
-        raise typer.Exit(1)
-
-    lyrics_text = _get_alignment_lyrics_text(recording, song, r2_client, console)
-
-    try:
-        job = analysis_client.submit_forced_alignment(
-            audio_url=recording.r2_audio_url,
-            content_hash=recording.content_hash,
-            lyrics_text=lyrics_text,
-            song_title=song.title,
-            language=language,
-            force=force,
-            use_vocals_stem=use_vocals_stem,
-        )
-    except AnalysisServiceError as e:
-        console.print(f"[red]Failed to submit forced alignment job: {e}[/red]")
-        raise typer.Exit(1)
-
-    job_id = job.job_id
-
-    db_client.update_recording_status(
-        hash_prefix=recording.hash_prefix,
-        lrc_status="processing",
-        lrc_job_id=job_id,
-    )
-
-    console.print(f"[green]Forced alignment job submitted (job: {job_id})[/green]")
-
-    if wait:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TextColumn("{task.fields[stage]}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Forced aligning...", total=100, stage="", completed=0)
-
-            def update_progress(job_info: JobInfo) -> None:
-                pct = int(job_info.progress * 100)
-                progress.update(task, completed=pct, stage=f"[{job_info.stage}]")
-
-            try:
-                final_job = analysis_client.wait_for_completion(
-                    job_id,
-                    poll_interval=30.0,
-                    timeout=600.0,
-                    callback=update_progress,
-                )
-            except AnalysisServiceError as e:
-                console.print(f"[red]{e}[/red]")
-                db_client.update_recording_status(
-                    hash_prefix=recording.hash_prefix,
-                    lrc_status="failed",
-                )
-                raise typer.Exit(1)
-
-        if final_job.status == "failed":
-            error_msg = final_job.error_message or "Unknown error"
-            console.print(f"[red]Forced alignment failed: {error_msg}[/red]")
-            db_client.update_recording_status(
-                hash_prefix=recording.hash_prefix,
-                lrc_status="failed",
-            )
-            raise typer.Exit(1)
-
-        if final_job.result and final_job.result.lrc_url:
-            db_client.update_recording_lrc(
-                hash_prefix=recording.hash_prefix,
-                r2_lrc_url=final_job.result.lrc_url,
-                visibility_status="review",
-            )
-
-        console.print(f"[green]Forced alignment completed for {song_id}[/green]")
-        if final_job.result and final_job.result.lrc_url:
-            console.print(f"  LRC URL: {final_job.result.lrc_url}")
-
-
-def _submit_forced_alignment_batch(
-    song_ids: list[str],
-    db_client: DatabaseClient,
-    analysis_client: AnalysisClient,
-    language: str,
-    force: bool,
-    use_vocals_stem: bool,
-    console: Console,
-    r2_client: Optional[R2Client] = None,
-) -> None:
-    """Submit forced alignment for multiple recordings (batch mode, no wait)."""
-    submitted = 0
-    skipped = 0
-    errors = 0
-
-    for i, song_id in enumerate(song_ids, 1):
-        console.print(f"[{i}/{len(song_ids)}] Processing {song_id}...")
-
-        recording = db_client.get_recording_by_song_id(song_id)
-        if not recording:
-            console.print("  [red]No recording found[/red]")
-            errors += 1
-            continue
-
-        song = db_client.get_song(song_id)
-        if not song or not song.lyrics_raw:
-            console.print("  [red]No lyrics found[/red]")
-            errors += 1
-            continue
-
-        if not recording.r2_audio_url:
-            console.print("  [red]No audio URL[/red]")
-            errors += 1
-            continue
-
-        if recording.lrc_status == "completed" and not force:
-            console.print("  [yellow]Already has LRC (skipped)[/yellow]")
-            skipped += 1
-            continue
-
-        if recording.lrc_status == "processing" and recording.lrc_job_id and not force:
-            console.print("  [yellow]Already in progress (skipped)[/yellow]")
-            skipped += 1
-            continue
-
-        if recording.duration_seconds and recording.duration_seconds > 300:
-            console.print("  [yellow]Too long (>5 min, skipped)[/yellow]")
-            skipped += 1
-            continue
-
-        lyrics_text = _get_alignment_lyrics_text(recording, song, r2_client, console)
-
-        try:
-            job = analysis_client.submit_forced_alignment(
-                audio_url=recording.r2_audio_url,
-                content_hash=recording.content_hash,
-                lyrics_text=lyrics_text,
-                song_title=song.title,
-                language=language,
-                force=force,
-                use_vocals_stem=use_vocals_stem,
-            )
-
-            db_client.update_recording_status(
-                hash_prefix=recording.hash_prefix,
-                lrc_status="processing",
-                lrc_job_id=job.job_id,
-            )
-
-            console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
-            submitted += 1
-
-        except AnalysisServiceError as e:
-            console.print(f"  [red]Failed to submit: {e}[/red]")
-            errors += 1
-        except Exception as e:
-            console.print(f"  [red]Unexpected error: {e}[/red]")
-            errors += 1
-
-    console.print("")
-    console.print("[cyan]Batch Summary:[/cyan]")
-    console.print(f"  Submitted: {submitted}")
-    console.print(f"  Skipped: {skipped}")
-    console.print(f"  Errors: {errors}")
-
-
-@app.command("align-lrc")
-def align_lrc_recording(
-    song_id: Optional[str] = typer.Argument(None, help="Song ID to force-align LRC for"),
-    language: str = typer.Option("auto", "--lang", help="Language: auto, zh, en"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force re-alignment"),
-    use_vocals_stem: bool = typer.Option(
-        True,
-        "--use-vocals-stem/--no-vocals-stem",
-        help="Use clean vocal stem for better accuracy",
-    ),
-    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin"),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for alignment to complete"),
-    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
-) -> None:
-    """Submit a recording for forced LRC alignment using Qwen3ForcedAligner.
-
-    Uses the Qwen3ForcedAligner model to align lyrics to audio timestamps.
-    Best for songs with known lyrics that need precise timing.
-
-    For batch processing, pipe song IDs via stdin:
-        sow-admin audio list --lrc incomplete --format ids | sow-admin audio align-lrc --stdin
-    """
-    if not song_id and not stdin:
-        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
-        raise typer.Exit(1)
-    if song_id and stdin:
-        console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
-        raise typer.Exit(1)
-    if stdin and wait:
-        console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
-        raise typer.Exit(1)
-    if language not in {"auto", "zh", "en"}:
-        console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
-        raise typer.Exit(1)
-
-    try:
-        config = AdminConfig.load(config_path)
-    except FileNotFoundError:
-        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
-        raise typer.Exit(1)
-
-    db_client = get_db_client(config)
-
-    try:
-        analysis_client = AnalysisClient(config.analysis_url)
-    except ValueError as e:
-        console.print(f"[red]Analysis service not configured: {e}[/red]")
-        raise typer.Exit(1)
-
-    try:
-        r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
-    except ValueError:
-        r2_client = None
-
-    if stdin:
-        song_ids = _read_song_ids_from_stdin()
-        if not song_ids:
-            console.print("[yellow]No song IDs provided via stdin[/yellow]")
-            raise typer.Exit(0)
-    else:
-        song_ids = [song_id]
-
-    if len(song_ids) == 1:
-        _submit_forced_alignment_single(
-            song_id=song_ids[0],
-            db_client=db_client,
-            analysis_client=analysis_client,
-            language=language,
-            force=force,
-            use_vocals_stem=use_vocals_stem,
-            wait=wait,
-            console=console,
-            r2_client=r2_client,
-        )
-    else:
-        _submit_forced_alignment_batch(
-            song_ids=song_ids,
-            db_client=db_client,
-            analysis_client=analysis_client,
-            language=language,
-            force=force,
-            use_vocals_stem=use_vocals_stem,
-            console=console,
-            r2_client=r2_client,
-        )
 
 
 def _submit_embedding_single(
@@ -5104,7 +4233,7 @@ def _cancel_all_jobs(
         console.print(f"  ... and {len(cancellable_jobs) - 10} more")
 
     if not yes:
-        if not _prompt_confirmation(f"Cancel {len(cancellable_jobs)} job(s)?"):
+        if not prompt_confirmation(f"Cancel {len(cancellable_jobs)} job(s)?"):
             console.print("[yellow]Cancelled.[/yellow]")
             raise typer.Exit(0)
 
@@ -5256,222 +4385,10 @@ def _force_sync_all_pending(
         console.print(f"[dim]URL set: {force_url}[/dim]")
 
 
-def _display_lrc(
-    console: Console,
-    song: Song,
-    recording: Recording,
-    song_id: str,
-    raw: bool,
-    no_timestamps: bool,
-) -> bool:
-    """Display LRC content for a single recording.
-
-    Args:
-        console: Rich console for output
-        song: Song object for display
-        recording: Recording object with LRC URL
-        song_id: Song ID string
-        raw: Display raw LRC file
-        no_timestamps: Show lyrics text only
-
-    Returns:
-        True if successful, False if error occurred
-    """
-    # Get config for R2 access
-    try:
-        config = AdminConfig.load()
-    except Exception as e:
-        console.print(f"[red]Error loading config: {e}[/red]")
-        return False
-
-    # Initialize R2 client
-    r2_client = R2Client(
-        bucket=config.r2_bucket,
-        endpoint_url=config.r2_endpoint_url,
-        region=config.r2_region,
-    )
-
-    # Determine S3 key - use cached URL if available, otherwise construct from hash_prefix
-    if recording.r2_lrc_url:
-        try:
-            _, s3_key = R2Client.parse_s3_url(recording.r2_lrc_url)
-        except ValueError as e:
-            console.print(f"[red]Error parsing R2 URL: {e}[/red]")
-            return False
-    else:
-        # Construct S3 key directly from hash_prefix (predictable naming convention)
-        s3_key = f"{recording.hash_prefix}/lyrics.lrc"
-
-    # Download LRC file to temp location
-    temp_path: Optional[Path] = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w+", suffix=".lrc", delete=False) as temp_file:
-            temp_path = Path(temp_file.name)
-
-        # Download from R2
-        try:
-            r2_client.download_file(s3_key, temp_path)
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "404" or error_code == "NoSuchKey":
-                console.print(f"[yellow]No LRC file found in R2 for {song_id}[/yellow]")
-                console.print(f"[dim]Run 'sow-admin audio lrc {song_id}' to generate LRC[/dim]")
-            else:
-                console.print(f"[red]Error downloading LRC from R2: {e}[/red]")
-            return False
-
-        # Read content
-        content = temp_path.read_text(encoding="utf-8")
-
-        # Display based on mode
-        if raw:
-            console.print(content, end="")
-        elif no_timestamps:
-            # No timestamps mode: parse and display text only
-            try:
-                lrc_file = parse_lrc(content)
-                for line in lrc_file.lines:
-                    if line.text:  # Only show non-empty lines
-                        console.print(line.text)
-            except ValueError as e:
-                console.print(f"[red]Error parsing LRC file: {e}[/red]")
-                console.print("[dim]Try using --raw to view the file content[/dim]")
-                return False
-        else:
-            # Default mode: parse and display in table
-            try:
-                lrc_file = parse_lrc(content)
-
-                # Display header info
-                info_lines = [
-                    f"[cyan]Song:[/cyan]     {song.title}",
-                    f"[cyan]Song ID:[/cyan]  {song_id}",
-                    f"[cyan]Hash:[/cyan]     {recording.hash_prefix}",
-                    f"[cyan]Lines:[/cyan]    {lrc_file.line_count}",
-                    f"[cyan]Duration:[/cyan] {format_duration(lrc_file.duration_seconds)}",
-                ]
-                info_panel = Panel(
-                    "\n".join(info_lines),
-                    title="LRC File Info",
-                    border_style="cyan",
-                )
-                console.print(info_panel)
-                console.print()
-
-                # Display lyrics table
-                table = Table(title="Synchronized Lyrics", show_header=True, header_style="bold")
-                table.add_column("Time", style="dim", width=12)
-                table.add_column("Lyrics")
-
-                for line in lrc_file.lines:
-                    table.add_row(line.raw_timestamp, line.text)
-
-                console.print(table)
-
-            except ValueError as e:
-                console.print(f"[red]Error parsing LRC file: {e}[/red]")
-                console.print("[dim]Try using --raw to view the file content[/dim]")
-                return False
-
-        return True
-
-    finally:
-        # Cleanup temp file
-        if temp_path and temp_path.exists():
-            temp_path.unlink()
 
 
-@app.command("view-lrc")
-def view_lrc(
-    song_id: list[str] = typer.Argument(
-        ..., help="Song ID(s) to view LRC for. Use '-' to read from stdin."
-    ),
-    raw: bool = typer.Option(False, "--raw", "-r", help="Display raw LRC file"),
-    no_timestamps: bool = typer.Option(
-        False, "--no-timestamps", "-t", help="Show lyrics text only"
-    ),
-    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
-) -> None:
-    """View LRC (synchronized lyrics) contents for one or more recordings.
 
-    Accepts multiple song IDs to view LRC for multiple recordings:
 
-        sow-admin audio view-lrc song_001 song_002 song_003
-
-    Or pipe from audio list using '-' to read from stdin:
-
-        sow-admin audio list --visibility published --format ids | sow-admin audio view-lrc -
-    """
-
-    # Load config
-    try:
-        config = AdminConfig.load(config_path)
-    except FileNotFoundError:
-        console.print(
-            "[red]Config file not found. Please create it using 'sow-admin config init'[/red]"
-        )
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error loading config: {e}[/red]")
-        raise typer.Exit(1)
-
-    # Get database client
-    db_client = get_db_client(config)
-
-    # Handle stdin input if '-' is provided
-    song_ids = song_id
-    if song_id == ["-"]:
-        # Read song IDs from stdin using the helper function
-        song_ids = _read_song_ids_from_stdin()
-        if not song_ids:
-            console.print("[yellow]No song IDs provided via stdin[/yellow]")
-            raise typer.Exit(0)
-
-    # Track success/failure counts
-    success_count = 0
-    error_count = 0
-
-    # Process each song ID
-    for idx, sid in enumerate(song_ids):
-        if not raw:
-            if idx > 0:
-                console.print()
-                console.print(Rule(style="dim"))
-                console.print()
-
-        # Get recording
-        recording = db_client.get_recording_by_song_id(sid)
-        if not recording:
-            console.print(f"[red]No recording found for song ID: {sid}[/red]")
-            error_count += 1
-            continue
-
-        # Get song for display
-        song = db_client.get_song(recording.song_id)
-        if not song:
-            console.print(f"[red]No song found for ID: {recording.song_id}[/red]")
-            error_count += 1
-            continue
-
-        # Display LRC
-        if _display_lrc(console, song, recording, sid, raw, no_timestamps):
-            success_count += 1
-        else:
-            error_count += 1
-
-    # Summary
-    if len(song_id) > 1:
-        console.print()
-        console.print(Rule(style="dim"))
-        if error_count == 0:
-            console.print(
-                f"[green]✓ Successfully displayed LRC for {success_count} recording(s)[/green]"
-            )
-        else:
-            console.print(
-                f"[yellow]Completed: {success_count} succeeded, {error_count} failed[/yellow]"
-            )
-            raise typer.Exit(1)
 
 
 @app.command("cache")
@@ -5584,7 +4501,7 @@ def cache_assets(
                 console.print(f"[green]  ✓ {path.name}[/green]")
             else:
                 console.print(
-                    "[yellow]  ! No LRC available (run 'sow-admin audio lrc' first)[/yellow]"
+                    "[yellow]  ! No LRC available (run 'sow-admin lyrics generate' first)[/yellow]"
                 )
 
     # Summary
@@ -5607,342 +4524,10 @@ def cache_assets(
     console.print(f"[dim]Cache location: {cache_dir}[/dim]")
 
 
-@app.command("upload-lrc")
-def upload_lrc(
-    song_id: str = typer.Argument(..., help="Song ID to upload LRC for"),
-    lrc_file: Path = typer.Argument(..., help="Path to LRC file", exists=True),
-    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
-) -> None:
-    """Upload a manually created LRC file to R2.
-
-    Use this when:
-    1. The LRC generation service failed
-    2. You have a manually crafted/corrected LRC file
-    3. You want to override an existing LRC file
-
-    The LRC file format will be validated before upload.
-    """
-    try:
-        config = AdminConfig.load(config_path)
-    except FileNotFoundError:
-        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
-        raise typer.Exit(1)
-
-    db_client = get_db_client(config)
-
-    # Look up recording by song_id
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(
-            f"[red]No recording found for song: {song_id}. "
-            f"Run 'sow-admin audio download {song_id}' first.[/red]"
-        )
-        raise typer.Exit(1)
-
-    # Get song info for display
-    song = db_client.get_song(song_id)
-    song_title = song.title if song else "Unknown"
-
-    # Validate LRC file format
-    console.print(f"[cyan]Validating LRC file: {lrc_file.name}[/cyan]")
-    try:
-        content = lrc_file.read_text(encoding="utf-8")
-        lrc_data = parse_lrc(content)
-    except ValueError as e:
-        console.print(f"[red]Invalid LRC file: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error reading LRC file: {e}[/red]")
-        raise typer.Exit(1)
-
-    # Display LRC info preview
-    info_lines = [
-        f"[cyan]Song ID:[/cyan]     {song_id}",
-        f"[cyan]Song Title:[/cyan]  {song_title}",
-        f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
-        f"[cyan]LRC File:[/cyan]    {lrc_file}",
-        f"[cyan]Line Count:[/cyan]  {lrc_data.line_count}",
-        f"[cyan]Duration:[/cyan]    {format_duration(lrc_data.duration_seconds)}",
-    ]
-
-    # Show existing LRC status
-    if recording.r2_lrc_url:
-        info_lines.append("")
-        info_lines.append(f"[yellow]Existing LRC will be: {recording.r2_lrc_url}[/yellow]")
-    elif recording.lrc_status == "processing":
-        info_lines.append("")
-        info_lines.append(f"[yellow]Existing LRC job: {recording.lrc_job_id}[/yellow]")
-    elif recording.lrc_status == "failed":
-        info_lines.append("")
-        info_lines.append("[yellow]Previous LRC generation failed[/yellow]")
-
-    console.print(Panel.fit("\n".join(info_lines), title="LRC Upload Preview", border_style="cyan"))
-
-    # Confirm upload
-    if not _prompt_confirmation("Upload this LRC file?"):
-        console.print("[yellow]Upload cancelled.[/yellow]")
-        raise typer.Exit(0)
-
-    # Initialize R2 client
-    try:
-        r2_client = R2Client(
-            bucket=config.r2_bucket,
-            endpoint_url=config.r2_endpoint_url,
-            region=config.r2_region,
-        )
-    except ValueError as e:
-        console.print(f"[red]R2 configuration error: {e}[/red]")
-        raise typer.Exit(1)
-
-    # Capture ETag before upload for stale-object protection
-    expected_etag: Optional[str] = None
-    try:
-        identity = r2_client.get_lrc_identity(recording.hash_prefix)
-        if identity.exists:
-            expected_etag = identity.etag
-    except Exception as e:
-        console.print(
-            f"[yellow]Warning: Could not capture ETag for stale-object check: {e}[/yellow]"
-        )
-
-    # Upload to R2 with backup + ETag protection
-    console.print("[cyan]Uploading LRC to R2...[/cyan]")
-    try:
-        from stream_of_worship.admin.services.r2 import StaleObjectError, BackupFailedError
-
-        r2_url = r2_client.upload_official_lrc(
-            recording.hash_prefix, lrc_file, expected_etag=expected_etag
-        )
-        console.print(f"[green]Uploaded: {r2_url}[/green]")
-    except StaleObjectError as e:
-        console.print(
-            f"[red]Upload failed: {e}. The official LRC was modified after you started.[/red]"
-        )
-        raise typer.Exit(1)
-    except BackupFailedError as e:
-        console.print(f"[red]Upload failed: {e}. Backup of existing LRC failed.[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Upload failed: {e}[/red]")
-        raise typer.Exit(1)
-
-    # Update database
-    db_client.update_recording_lrc(
-        hash_prefix=recording.hash_prefix,
-        r2_lrc_url=r2_url,
-    )
-
-    # Display success summary
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[green]LRC uploaded successfully![/green]\n\n"
-            f"[cyan]Song:[/cyan] {song_title}\n"
-            f"[cyan]Lines:[/cyan] {lrc_data.line_count}\n"
-            f"[cyan]Duration:[/cyan] {format_duration(lrc_data.duration_seconds)}\n"
-            f"[cyan]R2 URL:[/cyan] {r2_url}",
-            title="Upload Complete",
-            border_style="green",
-        )
-    )
 
 
-@app.command("edit-lrc")
-def edit_lrc(
-    song_id: str = typer.Argument(..., help="Song ID to edit LRC for"),
-    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
-) -> None:
-    """Interactively edit LRC timestamps for a song recording.
 
-    Downloads/caches the song recording and transcribed LRC, then launches
-    a Textual TUI editor for live timestamp alignment, text editing, and
-    upload to R2.
-    """
-    try:
-        config = AdminConfig.load(config_path)
-    except FileNotFoundError:
-        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
-        raise typer.Exit(1)
 
-    db_client = get_db_client(config)
-    cache_dir = get_cache_dir()
-
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(
-            f"[red]No recording found for song: {song_id}. "
-            f"Run 'sow-admin audio download {song_id}' first.[/red]"
-        )
-        raise typer.Exit(1)
-
-    song = db_client.get_song(song_id)
-    song_title = song.title if song else "Unknown"
-
-    try:
-        r2_client = R2Client(
-            bucket=config.r2_bucket,
-            endpoint_url=config.r2_endpoint_url,
-            region=config.r2_region,
-        )
-    except ValueError as e:
-        console.print(f"[red]R2 configuration error: {e}[/red]")
-        raise typer.Exit(1)
-
-    console.print(f"[cyan]Downloading audio for: {song_title}[/cyan]")
-    audio_cache_dir = cache_dir / recording.hash_prefix / "audio"
-    audio_cache_dir.mkdir(parents=True, exist_ok=True)
-    audio_path = audio_cache_dir / "audio.mp3"
-
-    if not audio_path.exists():
-        try:
-            r2_client.download_audio(recording.hash_prefix, audio_path)
-        except Exception as e:
-            console.print(f"[red]Failed to download audio: {e}[/red]")
-            console.print(
-                "[red]Audio is required for timestamp alignment. Cannot open editor.[/red]"
-            )
-            raise typer.Exit(1)
-    else:
-        try:
-            r2_client.audio_exists(recording.hash_prefix)
-        except ClientError:
-            console.print(
-                f"[yellow]Warning: Could not verify audio in R2. Using cached file.[/yellow]"
-            )
-
-    transcribed_content: Optional[str] = None
-    transcribed_identity = r2_client.get_lrc_identity(recording.hash_prefix)
-    source_mode = "catalog"
-
-    if transcribed_identity.exists:
-        console.print("[cyan]Downloading transcribed LRC from R2...[/cyan]")
-        try:
-            transcribed_content = r2_client.download_lrc_content(recording.hash_prefix)
-            if transcribed_content:
-                source_mode = "r2"
-
-                lrc_cache_path = cache_dir / recording.hash_prefix / "lrc" / "lyrics.lrc"
-                lrc_cache_path.parent.mkdir(parents=True, exist_ok=True)
-                lrc_cache_path.write_text(transcribed_content, encoding="utf-8")
-        except Exception as e:
-            console.print(f"[red]Failed to download transcribed LRC: {e}[/red]")
-            raise typer.Exit(1)
-
-    from stream_of_worship.admin.editor.autosave import (
-        autosave_exists,
-        load_autosave,
-        AutosaveState,
-    )
-    from stream_of_worship.admin.editor.state import EditorState
-    from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
-
-    if autosave_exists(cache_dir, recording.hash_prefix):
-        console.print("[yellow]Autosave recovery file found![/yellow]")
-        console.print("[dim]Resume previous editing session, discard it, or save it aside?[/dim]")
-        choice = _prompt_choice("Choose:", ["Resume", "Discard", "Save aside and start fresh"])
-        if choice == 0:
-            autosave_state = load_autosave(cache_dir, recording.hash_prefix)
-            if autosave_state:
-                editor_state = EditorState(
-                    timed_lines=autosave_state.timed_lines,
-                    preserved_lines=autosave_state.preserved_lines,
-                    original_serialized=transcribed_content or "",
-                    original_preserved_lines=[],
-                    transcribed_identity=autosave_state.transcribed_identity,
-                    dirty=autosave_state.dirty,
-                    source_mode=autosave_state.source_mode,
-                    selected_index=autosave_state.selected_index,
-                    song_title=song_title,
-                    hash_prefix=recording.hash_prefix,
-                    audio_path=str(audio_path),
-                    audio_duration=recording.duration_seconds,
-                    tempo_bpm=autosave_state.tempo_bpm,
-                    padding_quarters=autosave_state.padding_quarters,
-                    original_timestamps=autosave_state.original_timestamps,
-                )
-                if editor_state.padding_quarters != 0:
-                    offset = editor_state.padding_offset_seconds
-                    for i, line in enumerate(editor_state.timed_lines):
-                        if i < len(editor_state.original_timestamps):
-                            line.time_seconds = max(
-                                0.0, editor_state.original_timestamps[i] + offset
-                            )
-            else:
-                console.print("[red]Failed to load autosave. Starting fresh.[/red]")
-                editor_state = _build_fresh_editor_state(
-                    transcribed_content,
-                    song,
-                    recording,
-                    song_title,
-                    audio_path,
-                    transcribed_identity,
-                    source_mode,
-                )
-        elif choice == 1:
-            from stream_of_worship.admin.editor.autosave import clear_autosave
-
-            clear_autosave(cache_dir, recording.hash_prefix)
-            editor_state = _build_fresh_editor_state(
-                transcribed_content,
-                song,
-                recording,
-                song_title,
-                audio_path,
-                transcribed_identity,
-                source_mode,
-            )
-        else:
-            from stream_of_worship.admin.editor.upload import save_local_draft
-
-            autosave_state = load_autosave(cache_dir, recording.hash_prefix)
-            if autosave_state:
-                draft_content = serialize_lrc(
-                    autosave_state.timed_lines, autosave_state.preserved_lines
-                )
-                save_local_draft(cache_dir, recording.hash_prefix, draft_content)
-                console.print("[green]Autosave saved as local draft.[/green]")
-            from stream_of_worship.admin.editor.autosave import clear_autosave
-
-            clear_autosave(cache_dir, recording.hash_prefix)
-            editor_state = _build_fresh_editor_state(
-                transcribed_content,
-                song,
-                recording,
-                song_title,
-                audio_path,
-                transcribed_identity,
-                source_mode,
-            )
-    else:
-        editor_state = _build_fresh_editor_state(
-            transcribed_content,
-            song,
-            recording,
-            song_title,
-            audio_path,
-            transcribed_identity,
-            source_mode,
-        )
-
-    console.print(f"[cyan]Launching LRC editor for: {song_title}[/cyan]")
-    console.print("[dim]Press Ctrl+C in the editor to quit.[/dim]")
-
-    from stream_of_worship.admin.editor.app import LRCEditorApp
-    from stream_of_worship.admin.services.playback import PlaybackService
-
-    playback = PlaybackService()
-    app = LRCEditorApp(
-        editor_state=editor_state,
-        playback_service=playback,
-        cache_dir=cache_dir,
-        r2_client=r2_client,
-        db_client=db_client,
-        hash_prefix=recording.hash_prefix,
-        original_transcribed_content=transcribed_content,
-    )
-    app.run()
-
-    playback.stop()
 
 
 @app.command("review-components")
@@ -5958,7 +4543,7 @@ def review_components(
 
     Loads the entry and exit Chorus component rows for each song (as produced by
     the Component Analysis job), downloads the song's audio for playback, and
-    opens an interactive editor mirroring ``audio edit-lrc`` hotkeys.
+    opens an interactive editor mirroring ``lyrics edit`` hotkeys.
     """
     try:
         config = AdminConfig.load(config_path)
@@ -6080,71 +4665,9 @@ def review_components(
     playback.stop()
 
 
-def _build_fresh_editor_state(
-    transcribed_content: Optional[str],
-    song: Optional[Song],
-    recording: Recording,
-    song_title: str,
-    audio_path: Path,
-    transcribed_identity: R2ObjectIdentity,
-    source_mode: str,
-) -> "EditorState":
-    """Build a fresh EditorState from transcribed content or catalog lyrics."""
-    from stream_of_worship.admin.editor.state import EditorState
-    from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
-
-    if transcribed_content:
-        parsed = parse_lrc_full(transcribed_content)
-        timed_lines = parsed.timed_lines
-        preserved_lines = parsed.preserved_lines
-        original_serialized = serialize_lrc(timed_lines, preserved_lines)
-        original_preserved_lines = list(preserved_lines)
-        dirty = False
-    else:
-        lyrics_lines = song.lyrics_lines if song else None
-        lyrics_raw = song.lyrics_raw if song else None
-        timed_lines = build_draft_from_catalog(lyrics_lines, lyrics_raw)
-        preserved_lines = []
-        original_serialized = ""
-        original_preserved_lines = []
-        dirty = True
-        source_mode = "catalog"
-
-    return EditorState(
-        timed_lines=timed_lines,
-        preserved_lines=preserved_lines,
-        original_serialized=original_serialized,
-        original_preserved_lines=original_preserved_lines,
-        transcribed_identity=transcribed_identity,
-        dirty=dirty,
-        source_mode=source_mode,
-        selected_index=0,
-        song_title=song_title,
-        hash_prefix=recording.hash_prefix,
-        audio_path=str(audio_path),
-        audio_duration=recording.duration_seconds,
-        tempo_bpm=recording.tempo_bpm,
-    )
 
 
-def _prompt_choice(prompt: str, choices: list[str]) -> int:
-    """Prompt the user to choose from a list of options.
 
-    Returns:
-        Index of the chosen option
-    """
-    console.print(f"\n[bold]{prompt}[/bold]")
-    for i, choice in enumerate(choices):
-        console.print(f"  [{i + 1}] {choice}")
-
-    while True:
-        try:
-            selection = int(input("Enter choice: ")) - 1
-            if 0 <= selection < len(choices):
-                return selection
-            console.print(f"[red]Please enter a number between 1 and {len(choices)}[/red]")
-        except (ValueError, EOFError):
-            console.print(f"[red]Please enter a number between 1 and {len(choices)}[/red]")
 
 
 def _read_key_nonblocking() -> Optional[str]:
@@ -6386,7 +4909,9 @@ def batch(
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (pipe-friendly)"),
     limit: Optional[int] = typer.Option(None, "--limit", help="Maximum number of songs to process"),
     download: bool = typer.Option(False, "--download", help="Run the download step"),
-    lrc: bool = typer.Option(False, "--lrc", help="Run the LRC step"),
+    generate_lyrics: bool = typer.Option(
+        False, "--generate-lyrics", help="Run the LRC generation step"
+    ),
     analyze: bool = typer.Option(False, "--analyze", help="Run the analysis step"),
     embedding: bool = typer.Option(False, "--embedding", help="Run the embedding step"),
     components: bool = typer.Option(
@@ -6432,7 +4957,7 @@ def batch(
 ) -> None:
     """Batch process songs: download audio, generate LRC, analyze, and embed.
 
-    Each phase is gated strictly by its step flag: --download, --lrc,
+    Each phase is gated strictly by its step flag: --download, --generate-lyrics,
     --analyze, --embedding, --components, or --all-steps. No phase runs as a
     side effect of another.
 
@@ -6452,7 +4977,7 @@ def batch(
         sow-admin audio batch --album 敬拜讚美15 --album 深愛耶穌 --all-steps
         sow-admin audio batch --album-file albums.txt --all-steps
         sow-admin audio batch --song-id <song_id> --all-steps
-        sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --lrc --components
+        sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --generate-lyrics --components
         sow-admin audio batch --album 深愛耶穌 --backfill-lyrics --force --components
         sow-admin audio batch --analysis-status incomplete --analyze \\
             --analysis-tier fast --limit 500
@@ -6513,7 +5038,7 @@ def batch(
             ("--limit", limit),
             ("--song-id", song_id),
             ("--download", download),
-            ("--lrc", lrc),
+            ("--generate-lyrics", generate_lyrics),
             ("--analyze", analyze),
             ("--embedding", embedding),
             ("--components", components),
@@ -6552,7 +5077,7 @@ def batch(
     # Resolve selected steps
     step_flags = {
         "download": download,
-        "lrc": lrc,
+        "generate_lyrics": generate_lyrics,
         "analyze": analyze,
         "embedding": embedding,
         "components": components,
@@ -6564,7 +5089,7 @@ def batch(
         selected_steps = [
             "download",
             "backfill_lyrics",
-            "lrc",
+            "generate_lyrics",
             "analyze",
             "embedding",
             "components",
@@ -6572,12 +5097,12 @@ def batch(
     elif not selected_steps and resume is None:
         console.print(
             "[red]No step flags selected. Specify at least one of "
-            "--download, --lrc, --analyze, --embedding, --components, "
+            "--download, --generate-lyrics, --analyze, --embedding, --components, "
             "--backfill-lyrics, or --all-steps.[/red]"
         )
         raise typer.Exit(1)
 
-    # --backfill-lyrics mutual exclusivity: only allowed with --lrc (and
+    # --backfill-lyrics mutual exclusivity: only allowed with --generate-lyrics (and
     # --components, a fill-missing pair). --all-steps bypasses this check.
     if "backfill_lyrics" in selected_steps and not all_steps:
         conflicting = {"download", "analyze", "embedding"} & set(selected_steps)
@@ -6585,7 +5110,7 @@ def batch(
             console.print(
                 f"[red]--backfill-lyrics cannot be combined with "
                 f"{', '.join(sorted(conflicting))}. "
-                f"Only --lrc and --components are allowed alongside "
+                f"Only --generate-lyrics and --components are allowed alongside "
                 f"--backfill-lyrics.[/red]"
             )
             raise typer.Exit(1)
@@ -6605,7 +5130,7 @@ def batch(
         if non_backfill_steps and len(non_backfill_steps) != 1:
             console.print(
                 "[red]--force requires exactly one step flag "
-                "(--download, --lrc, --analyze, --embedding, or --components).[/red]"
+                "(--download, --generate-lyrics, --analyze, --embedding, or --components).[/red]"
             )
             raise typer.Exit(1)
         if len(non_backfill_steps) == 1 and "download" in non_backfill_steps:
@@ -6709,7 +5234,7 @@ def batch(
 
     # --backfill-lyrics step: fetch structured lyrics for existing recordings.
     # Runs before any LRC step so the freshly-backfilled structured lyrics
-    # are available to _resolve_lyrics_text.
+    # are available to resolve_lyrics_text.
     if "backfill_lyrics" in selected_steps:
         console.print(
             f"[cyan]Backfilling structured lyrics for {len(song_ids)} song(s)...[/cyan]"
@@ -6863,7 +5388,7 @@ def _resolve_song_ids(
         List of song IDs to process
     """
     if stdin:
-        song_ids = _read_song_ids_from_stdin()
+        song_ids = read_song_ids_from_stdin()
         if limit:
             song_ids = song_ids[:limit]
         return song_ids
@@ -7125,7 +5650,7 @@ def _download_and_create_recording(
         structured_json_str: Optional[str] = None
         if youtube_url:
             try:
-                structured_raw, structured_json_str, src = _fetch_structured_lyrics(
+                structured_raw, structured_json_str, src = fetch_structured_lyrics(
                     youtube_url=youtube_url,
                     song_title=song.title,
                     band=song.composer,
@@ -7137,7 +5662,7 @@ def _download_and_create_recording(
                 # Non-fatal: download still succeeds; components will use
                 # fallback segmentation. User can --backfill-lyrics later.
                 # Catches typer.Exit(1) (subclass of Exception via
-                # click.exceptions.Exit) which _fetch_structured_lyrics raises
+                # click.exceptions.Exit) which services.lrc_jobs.fetch_structured_lyrics raises
                 # on LLM parse failure with use_llm=True — critical in the
                 # thread context where typer.Exit would otherwise propagate to
                 # _download_worker's except Exception and mark the download
@@ -7384,15 +5909,15 @@ def _submit_lrc_for_song(
 
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
-        console.print(f"  [yellow]→ {song_id} (skipped: lrc no recording)[/yellow]")
-        results[song_id]["lrc"] = "skipped_no_recording"
+        console.print(f"  [yellow]→ {song_id} (skipped: generate_lyrics no recording)[/yellow]")
+        results[song_id]["generate_lyrics"] = "skipped_no_recording"
         return "skipped_no_recording"
 
     song = db_client.get_song(song_id)
-    lyrics_text = _resolve_lyrics_text(song, recording) if song else None
+    lyrics_text = resolve_lyrics_text(song, recording) if song else None
     if not song or not lyrics_text:
-        console.print(f"  [yellow]→ {song_id} (skipped: lrc no lyrics)[/yellow]")
-        results[song_id]["lrc"] = "skipped_no_lyrics"
+        console.print(f"  [yellow]→ {song_id} (skipped: generate_lyrics no lyrics)[/yellow]")
+        results[song_id]["generate_lyrics"] = "skipped_no_lyrics"
         return "skipped_no_lyrics"
 
     # Check R2 (skip when force)
@@ -7404,8 +5929,8 @@ def _submit_lrc_for_song(
                 lrc_url,
                 visibility_status=None,
             )
-            results[song_id]["lrc"] = "completed"
-            results[song_id]["lrc_source"] = "r2_preexisting"
+            results[song_id]["generate_lyrics"] = "completed"
+            results[song_id]["generate_lyrics_source"] = "r2_preexisting"
             console.print(f"  [yellow]→ {song_id} (skipped: LRC on R2)[/yellow]")
             return "skipped_r2"
 
@@ -7421,14 +5946,14 @@ def _submit_lrc_for_song(
                 _add_manifest_entry(
                     song_id,
                     recording.hash_prefix,
-                    "lrc",
+                    "generate_lyrics",
                     "lrc",
                     recording.lrc_job_id,
                     "processing",
                     submitted_at=datetime.now(timezone.utc).isoformat(),
                 )
                 console.print(
-                    f"  [yellow]→ {song_id} (reusing lrc job: {recording.lrc_job_id})[/yellow]"
+                    f"  [yellow]→ {song_id} (reusing LRC job: {recording.lrc_job_id})[/yellow]"
                 )
                 return "reused"
 
@@ -7460,23 +5985,23 @@ def _submit_lrc_for_song(
         _add_manifest_entry(
             song_id,
             recording.hash_prefix,
-            "lrc",
+            "generate_lyrics",
             "lrc",
             job.job_id,
             "submitted",
             submitted_at=datetime.now(timezone.utc).isoformat(),
         )
-        console.print(f"  [green]→ {song_id} (submitted: lrc {job.job_id})[/green]")
+        console.print(f"  [green]→ {song_id} (submitted: LRC job {job.job_id})[/green]")
         return "submitted"
 
     except AnalysisServiceError as e:
-        console.print(f"  [red]✗ {song_id} lrc submit failed: {e}[/red]")
-        results[song_id]["lrc"] = "failed"
-        results[song_id]["lrc_error"] = str(e)
+        console.print(f"  [red]✗ {song_id} generate_lyrics submit failed: {e}[/red]")
+        results[song_id]["generate_lyrics"] = "failed"
+        results[song_id]["generate_lyrics_error"] = str(e)
         _add_manifest_entry(
             song_id,
             recording.hash_prefix if recording else "",
-            "lrc",
+            "generate_lyrics",
             "lrc",
             None,
             "failed",
@@ -7496,7 +6021,7 @@ def _submit_lrc_for_song(
 # independently through the step chain: download → lrc → analyze → embedding.
 # ---------------------------------------------------------------------------
 
-_STEP_CHAIN = ["download", "lrc", "analyze", "embedding", "components"]
+_STEP_CHAIN = ["download", "generate_lyrics", "analyze", "embedding", "components"]
 
 _FAST_INTERVAL = 5.0
 _SLOW_INTERVAL = 30.0
@@ -7811,7 +6336,7 @@ def _submit_components_for_song(
     # identification needs sections (analysis) or LRC to segment on.
     if not recording.has_full_analysis and not recording.has_lrc:
         console.print(
-            f"  [yellow]→ {song_id} (skipped: components no sections or LRC — run audio lrc first)[/yellow]"
+            f"  [yellow]→ {song_id} (skipped: components no sections or LRC — run lyrics generate first)[/yellow]"
         )
         results[song_id]["components"] = "skipped_no_sections"
         return (None, "skipped_no_sections")
@@ -8082,7 +6607,7 @@ def _submit_step(
 
     Returns ``(job_id, status)``.
     """
-    if step == "lrc":
+    if step == "generate_lyrics":
         # _submit_lrc_for_song uses a Dict[str, str] for active_lrc_jobs and
         # returns a bare status string; adapt to the (job_id, status) contract.
         tmp_active: Dict[str, str] = {}
@@ -8245,14 +6770,14 @@ def _handle_lrc_completion(
                 lrc_url,
                 visibility_status="review",
             )
-            results[song_id]["lrc"] = "completed"
+            results[song_id]["generate_lyrics"] = "completed"
             if job.result and job.result.lrc_source:
-                results[song_id]["lrc_source"] = job.result.lrc_source
+                results[song_id]["generate_lyrics_source"] = job.result.lrc_source
 
             _add_manifest_entry(
                 song_id,
                 recording.hash_prefix,
-                "lrc",
+                "generate_lyrics",
                 "lrc",
                 job_id,
                 "completed",
@@ -8277,13 +6802,13 @@ def _handle_lrc_completion(
             hash_prefix=hash_prefix,
             lrc_status="failed",
         )
-        results[song_id]["lrc"] = "failed"
-        results[song_id]["lrc_error"] = job.error_message or "Unknown error"
+        results[song_id]["generate_lyrics"] = "failed"
+        results[song_id]["generate_lyrics_error"] = job.error_message or "Unknown error"
 
         _add_manifest_entry(
             song_id,
             hash_prefix,
-            "lrc",
+            "generate_lyrics",
             "lrc",
             job_id,
             "failed",
@@ -8305,13 +6830,13 @@ def _handle_lrc_completion(
             hash_prefix=hash_prefix,
             lrc_status="failed",
         )
-        results[song_id]["lrc"] = "failed"
-        results[song_id]["lrc_error"] = "Job cancelled"
+        results[song_id]["generate_lyrics"] = "failed"
+        results[song_id]["generate_lyrics_error"] = "Job cancelled"
 
         _add_manifest_entry(
             song_id,
             hash_prefix,
-            "lrc",
+            "generate_lyrics",
             "lrc",
             job_id,
             "failed",
@@ -8351,12 +6876,12 @@ def _handle_lrc_404(
             lrc_url,
             visibility_status=None,
         )
-        results[song_id]["lrc"] = "completed"
+        results[song_id]["generate_lyrics"] = "completed"
 
         _add_manifest_entry(
             song_id,
             recording.hash_prefix,
-            "lrc",
+            "generate_lyrics",
             "lrc",
             job_id,
             "completed",
@@ -8375,9 +6900,9 @@ def _handle_lrc_404(
             f"  [red]✗ {song_id}: Job lost (404) after "
             f"{max_resubmits} resubmits, marking as failed[/red]"
         )
-        results[song_id]["lrc"] = "failed"
+        results[song_id]["generate_lyrics"] = "failed"
         results[song_id][
-            "lrc_error"
+            "generate_lyrics_error"
         ] = f"Job lost (404) and not found on R2 after {max_resubmits} resubmits"
         db_client.update_recording_status(
             hash_prefix=recording.hash_prefix,
@@ -8386,11 +6911,11 @@ def _handle_lrc_404(
         _add_manifest_entry(
             song_id,
             recording.hash_prefix,
-            "lrc",
+            "generate_lyrics",
             "lrc",
             job_id,
             "failed",
-            error_message=results[song_id]["lrc_error"],
+            error_message=results[song_id]["generate_lyrics_error"],
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
         return (True, None)
@@ -8402,8 +6927,10 @@ def _handle_lrc_404(
     try:
         song = db_client.get_song(song_id)
         if not song or not song.lyrics_raw:
-            results[song_id]["lrc"] = "failed"
-            results[song_id]["lrc_error"] = "Job lost and no lyrics available for resubmit"
+            results[song_id]["generate_lyrics"] = "failed"
+            results[song_id]["generate_lyrics_error"] = (
+                "Job lost and no lyrics available for resubmit"
+            )
             db_client.update_recording_status(
                 hash_prefix=recording.hash_prefix,
                 lrc_status="failed",
@@ -8411,11 +6938,11 @@ def _handle_lrc_404(
             _add_manifest_entry(
                 song_id,
                 recording.hash_prefix,
-                "lrc",
+                "generate_lyrics",
                 "lrc",
                 job_id,
                 "failed",
-                error_message=results[song_id]["lrc_error"],
+                error_message=results[song_id]["generate_lyrics_error"],
                 completed_at=datetime.now(timezone.utc).isoformat(),
             )
             return (True, None)
@@ -8442,7 +6969,7 @@ def _handle_lrc_404(
         _add_manifest_entry(
             song_id,
             recording.hash_prefix,
-            "lrc",
+            "generate_lyrics",
             "lrc",
             new_job.job_id,
             "submitted",
@@ -8453,8 +6980,8 @@ def _handle_lrc_404(
         return (False, new_job.job_id)
     except AnalysisServiceError as submit_err:
         console.print(f"  [red]✗ {song_id}: Resubmit failed: {submit_err}[/red]")
-        results[song_id]["lrc"] = "failed"
-        results[song_id]["lrc_error"] = f"Resubmit failed: {submit_err}"
+        results[song_id]["generate_lyrics"] = "failed"
+        results[song_id]["generate_lyrics_error"] = f"Resubmit failed: {submit_err}"
         db_client.update_recording_status(
             hash_prefix=recording.hash_prefix,
             lrc_status="failed",
@@ -8462,11 +6989,11 @@ def _handle_lrc_404(
         _add_manifest_entry(
             song_id,
             recording.hash_prefix,
-            "lrc",
+            "generate_lyrics",
             "lrc",
             job_id,
             "failed",
-            error_message=results[song_id]["lrc_error"],
+            error_message=results[song_id]["generate_lyrics_error"],
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
         return (True, None)
@@ -8740,13 +7267,13 @@ def _download_worker(
     lrc_attempted: set,
     _add_manifest_entry: Any,
     manifest_lock: threading.Lock,
-    eager_lrc: bool,
+    eager_generate_lyrics: bool,
     use_llm: bool = True,
 ) -> dict:
     """Download a single song in a worker thread.
 
     Wraps ``_download_and_create_recording`` (or ``_download_if_needed``) and,
-    when *eager_lrc* is True, eagerly submits the LRC job so the slow step
+    when *eager_generate_lyrics* is True, eagerly submits the LRC job so the slow step
     overlaps with remaining downloads.
 
     Returns a result dict with keys: ``song_id``, ``status``, ``updates``,
@@ -8782,8 +7309,8 @@ def _download_worker(
                 }
 
         # Eager LRC handoff
-        submitted_lrc = None
-        if eager_lrc and updates.get("download") in ("completed", "skipped_r2"):
+        submitted_generate_lyrics_job = None
+        if eager_generate_lyrics and updates.get("download") in ("completed", "skipped_r2"):
             with results_lock:
                 tmp_active: Dict[str, str] = {}
                 status = _submit_lrc_for_song(
@@ -8800,14 +7327,14 @@ def _download_worker(
                     _add_manifest_entry,
                 )
             if status == "submitted" and tmp_active.get(song_id):
-                submitted_lrc = tmp_active[song_id]
+                submitted_generate_lyrics_job = tmp_active[song_id]
 
         return {
             "song_id": song_id,
             "status": "ok",
             "updates": updates,
             "recording": recording,
-            "lrc_job_id": submitted_lrc,
+            "generate_lyrics_job_id": submitted_generate_lyrics_job,
         }
     except Exception as e:
         return {
@@ -8826,12 +7353,14 @@ def _print_unified_progress(
     console: Console,
 ) -> None:
     """Print a one-line progress summary for the unified loop."""
-    lrc_active = sum(1 for (_, s) in active_jobs if s == "lrc")
+    generate_lyrics_active = sum(1 for (_, s) in active_jobs if s == "generate_lyrics")
     analyze_active = sum(1 for (_, s) in active_jobs if s == "analyze")
     embedding_active = sum(1 for (_, s) in active_jobs if s == "embedding")
     components_active = sum(1 for (_, s) in active_jobs if s == "components")
 
-    lrc_done = sum(1 for r in results.values() if r.get("lrc") == "completed")
+    generate_lyrics_done = sum(
+        1 for r in results.values() if r.get("generate_lyrics") == "completed"
+    )
     analyze_done = sum(1 for r in results.values() if r.get("analyze") == "completed")
     embedding_done = sum(1 for r in results.values() if r.get("embedding") == "completed")
     components_done = sum(1 for r in results.values() if r.get("components") == "completed")
@@ -8840,9 +7369,9 @@ def _print_unified_progress(
 
     elapsed = time.time() - start_time
     console.print(
-        f"⏳ pending(down/lrc/ana/emb/comp)={len(pending_futures)}/{lrc_active}/"
+        f"⏳ pending(down/lrc/ana/emb/comp)={len(pending_futures)}/{generate_lyrics_active}/"
         f"{analyze_active}/{embedding_active}/{components_active}  "
-        f"✓(lrc/ana/emb/comp)={lrc_done}/{analyze_done}/{embedding_done}/{components_done}  "
+        f"✓(lrc/ana/emb/comp)={generate_lyrics_done}/{analyze_done}/{embedding_done}/{components_done}  "
         f"pipeline={completed}  "
         f"✗={failed}  "
         f"(elapsed: {int(elapsed // 60)}m {int(elapsed % 60)}s)"
@@ -8883,8 +7412,8 @@ def _poll_one_cycle(
             sid = result["song_id"]
             with results_lock:
                 results[sid].update(result["updates"])
-            if result.get("lrc_job_id"):
-                active_jobs[(sid, "lrc")] = result["lrc_job_id"]
+            if result.get("generate_lyrics_job_id"):
+                active_jobs[(sid, "generate_lyrics")] = result["generate_lyrics_job_id"]
             if result.get("recording") and result["status"] != "failed":
                 _advance_song(
                     sid,
@@ -8918,7 +7447,7 @@ def _poll_one_cycle(
         try:
             job = analysis_client.get_job(job_id)
 
-            if step == "lrc":
+            if step == "generate_lyrics":
                 is_terminal, new_job_id = _handle_lrc_completion(
                     song_id,
                     job_id,
@@ -8994,7 +7523,7 @@ def _poll_one_cycle(
                 active_jobs[key] = new_job_id
         except AnalysisServiceError as e:
             if e.status_code == 404:
-                if step == "lrc":
+                if step == "generate_lyrics":
                     is_terminal, new_job_id = _handle_lrc_404(
                         song_id,
                         job_id,
@@ -9181,8 +7710,9 @@ def _process_batch(
                     manifest_entries[i] = entry
                     return
             manifest_entries.append(entry)
-
-    eager_lrc = "download" in selected_steps and "lrc" in selected_steps
+    eager_generate_lyrics = (
+        "download" in selected_steps and "generate_lyrics" in selected_steps
+    )
     pending_futures: Set[Future] = set()
     batch_start_time = time.time()
     last_completion_time = time.time()
@@ -9222,7 +7752,7 @@ def _process_batch(
                     lrc_attempted,
                     _add_manifest_entry,
                     manifest_lock,
-                    eager_lrc,
+                    eager_generate_lyrics,
                     use_llm,
                 )
                 pending_futures.add(future)
@@ -9358,7 +7888,7 @@ def _reconcile_on_interrupt(
 
         hash_prefix = recording.hash_prefix
 
-        if step == "lrc":
+        if step == "generate_lyrics":
             # Check R2 for LRC
             lrc_url = r2_client.lrc_exists(hash_prefix)
             if lrc_url:
@@ -9367,7 +7897,7 @@ def _reconcile_on_interrupt(
                     lrc_url,
                     visibility_status=None,
                 )
-                results[song_id]["lrc"] = "completed"
+                results[song_id]["generate_lyrics"] = "completed"
 
                 song = db_client.get_song(song_id)
                 song_name = song.title if song else song_id
@@ -9377,8 +7907,8 @@ def _reconcile_on_interrupt(
                     hash_prefix=hash_prefix,
                     lrc_status="failed",
                 )
-                results[song_id]["lrc"] = "failed"
-                results[song_id]["lrc_error"] = "Batch interrupted, LRC not on R2"
+                results[song_id]["generate_lyrics"] = "failed"
+                results[song_id]["generate_lyrics_error"] = "Batch interrupted, LRC not on R2"
 
                 song = db_client.get_song(song_id)
                 song_name = song.title if song else song_id
@@ -9497,6 +8027,18 @@ def _resume_from_manifest(
         Results dict
     """
     songs = manifest_data.get("songs", [])
+    # Legacy-vocabulary migration: manifests written before the step rename
+    # use ``"lrc"`` as the step id; normalize to ``"generate_lyrics"`` on
+    # load (tier stays "lrc", the analysis-service job type). ``_flush()``
+    # writes the migrated vocabulary back to disk.
+    for entry in songs:
+        if entry.get("step") == "lrc":
+            entry["step"] = "generate_lyrics"
+    if "lrc" in manifest_data.get("selected_steps", []):
+        selected = manifest_data.get("selected_steps", [])
+        manifest_data["selected_steps"] = [
+            "generate_lyrics" if s == "lrc" else s for s in selected
+        ]
     results: Dict[str, dict] = {}
     manifest_entries: List[dict] = list(songs)
     active_jobs: Dict[Tuple[str, str], str] = {}
@@ -9666,7 +8208,7 @@ def _apply_manifest_writeback(
                 "completed",
             ):
                 return
-            if step == "lrc" and recording.lrc_status == "completed":
+            if step == "generate_lyrics" and recording.lrc_status == "completed":
                 return
             if step == "embedding":
                 existing_hash = db_client.get_embedding_content_hash(song_id)
@@ -9684,7 +8226,7 @@ def _apply_manifest_writeback(
         if job.status != "completed":
             return
 
-        if step == "lrc":
+        if step == "generate_lyrics":
             # LRC writeback is R2-driven; skip if no R2 URL in result
             pass
         elif step == "analyze":
@@ -9778,26 +8320,43 @@ def _print_stats(
     download_failed = sum(1 for r in results.values() if r.get("download") == "failed")
 
     # LRC stats
-    lrc_completed = sum(1 for r in results.values() if r.get("lrc") == "completed")
-    lrc_failed = sum(1 for r in results.values() if r.get("lrc") == "failed")
-    lrc_skipped_existing = sum(
-        1 for r in results.values() if r.get("lrc_source") == "r2_preexisting"
+    generate_lyrics_completed = sum(
+        1 for r in results.values() if r.get("generate_lyrics") == "completed"
+    )
+    generate_lyrics_failed = sum(
+        1 for r in results.values() if r.get("generate_lyrics") == "failed"
+    )
+    generate_lyrics_skipped_existing = sum(
+        1 for r in results.values()
+        if r.get("generate_lyrics_source") == "r2_preexisting"
     )
     lrc_skipped_download = sum(1 for r in results.values() if r.get("download") == "failed")
 
     # LRC source breakdown
-    lrc_youtube = sum(1 for r in results.values() if r.get("lrc_source") == "youtube_transcript")
-    lrc_qwen_asr = sum(1 for r in results.values() if r.get("lrc_source") == "qwen3_asr")
-    lrc_whisper_asr = sum(1 for r in results.values() if r.get("lrc_source") == "whisper_asr")
-    lrc_unknown = (
-        lrc_completed - lrc_skipped_existing - lrc_youtube - lrc_qwen_asr - lrc_whisper_asr
+    generate_lyrics_youtube = sum(
+        1 for r in results.values()
+        if r.get("generate_lyrics_source") == "youtube_transcript"
+    )
+    generate_lyrics_qwen_asr = sum(
+        1 for r in results.values() if r.get("generate_lyrics_source") == "qwen3_asr"
+    )
+    generate_lyrics_whisper_asr = sum(
+        1 for r in results.values()
+        if r.get("generate_lyrics_source") == "whisper_asr"
+    )
+    generate_lyrics_unknown = (
+        generate_lyrics_completed
+        - generate_lyrics_skipped_existing
+        - generate_lyrics_youtube
+        - generate_lyrics_qwen_asr
+        - generate_lyrics_whisper_asr
     )
 
     # LRC timing stats (only for ASR/Whisper jobs, not YouTube or R2 pre-existing)
     lrc_timings = []
     for song_id, t in results.items():
         # Only track timings for jobs that were generated by ASR, not YouTube or R2 pre-existing
-        if "elapsed" in t and t.get("lrc_source") in {"qwen3_asr", "whisper_asr"}:
+        if "elapsed" in t and t.get("generate_lyrics_source") in {"qwen3_asr", "whisper_asr"}:
             lrc_timings.append(t["elapsed"])
 
     if lrc_timings:
@@ -9814,13 +8373,21 @@ def _print_stats(
         reasons: list[tuple[str, str]] = []
         if r.get("download") == "failed":
             reasons.append(("download", f"failed — {r.get('error') or 'unknown error'}"))
-            if (selected_steps is None or "lrc" in selected_steps) and "lrc" not in r:
-                reasons.append(("lrc", "skipped (download failed)"))
-        if r.get("lrc") == "failed":
-            reasons.append(("lrc", f"failed — {r.get('lrc_error') or 'unknown error'}"))
-        elif r.get("lrc") in ("skipped_no_lyrics", "skipped_no_recording"):
-            label = "no lyrics in catalog" if r["lrc"] == "skipped_no_lyrics" else "no recording"
-            reasons.append(("lrc", f"skipped ({label})"))
+            if (
+                selected_steps is None or "generate_lyrics" in selected_steps
+            ) and "generate_lyrics" not in r:
+                reasons.append(("generate_lyrics", "skipped (download failed)"))
+        if r.get("generate_lyrics") == "failed":
+            reasons.append(
+                ("generate_lyrics", f"failed — {r.get('generate_lyrics_error') or 'unknown error'}")
+            )
+        elif r.get("generate_lyrics") in ("skipped_no_lyrics", "skipped_no_recording"):
+            label = (
+                "no lyrics in catalog"
+                if r["generate_lyrics"] == "skipped_no_lyrics"
+                else "no recording"
+            )
+            reasons.append(("generate_lyrics", f"skipped ({label})"))
         if r.get("analyze") == "failed":
             reasons.append(("analyze", f"failed — {r.get('analyze_error') or 'unknown error'}"))
         if r.get("embedding") == "failed":
@@ -9833,7 +8400,7 @@ def _print_stats(
             )
         elif r.get("components") in ("skipped_no_sections", "skipped_no_recording"):
             label = (
-                "no sections or LRC — run 'audio lrc' first"
+                "no sections or LRC — run 'lyrics generate' first"
                 if r["components"] == "skipped_no_sections"
                 else "no recording or audio"
             )
@@ -9855,25 +8422,30 @@ def _print_stats(
         f"│ {'  Failed:':<30} {download_failed:>18} │",
         f"│ {'':<30} {'':>18} │",
         f"│ {'LRC:':<30} {'':>18} │",
-        f"│ {'  Completed:':<30} {lrc_completed:>18} │",
-        f"│ {'  Failed:':<30} {lrc_failed:>18} │",
-        f"│ {'  Skipped (R2):':<30} {lrc_skipped_existing:>18} │",
+        f"│ {'  Completed:':<30} {generate_lyrics_completed:>18} │",
+        f"│ {'  Failed:':<30} {generate_lyrics_failed:>18} │",
+        f"│ {'  Skipped (R2):':<30} {generate_lyrics_skipped_existing:>18} │",
         f"│ {'  Skipped (dl failed):':<30} {lrc_skipped_download:>18} │",
     ]
 
-    if lrc_completed > 0 and lrc_skipped_existing < lrc_completed:
+    if (
+        generate_lyrics_completed > 0
+        and generate_lyrics_skipped_existing < generate_lyrics_completed
+    ):
         lines.extend(
             [
                 f"│ {'':<30} {'':>18} │",
                 f"│ {'LRC source:':<30} {'':>18} │",
-                f"│ {'  R2 pre-existing:':<30} {lrc_skipped_existing:>18} │",
-                f"│ {'  YouTube Transcription:':<30} {lrc_youtube:>18} │",
-                f"│ {'  ASR (Qwen3):':<30} {lrc_qwen_asr:>18} │",
-                f"│ {'  ASR (Whisper):':<30} {lrc_whisper_asr:>18} │",
+                f"│ {'  R2 pre-existing:':<30} {generate_lyrics_skipped_existing:>18} │",
+                f"│ {'  YouTube Transcription:':<30} {generate_lyrics_youtube:>18} │",
+                f"│ {'  ASR (Qwen3):':<30} {generate_lyrics_qwen_asr:>18} │",
+                f"│ {'  ASR (Whisper):':<30} {generate_lyrics_whisper_asr:>18} │",
             ]
         )
-        if lrc_unknown > 0:
-            lines.append(f"│ {'  Generated (unknown):':<30} {lrc_unknown:>18} │")
+        if generate_lyrics_unknown > 0:
+            lines.append(
+                f"│ {'  Generated (unknown):':<30} {generate_lyrics_unknown:>18} │"
+            )
 
     if avg_lrc_time is not None:
         lines.extend(

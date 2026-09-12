@@ -1,8 +1,8 @@
-"""Unit tests for _resolve_lyrics_text helper."""
+"""Unit tests for resolve_lyrics_text helper."""
 
 import json
 
-from stream_of_worship.admin.commands.audio import _resolve_lyrics_text
+from stream_of_worship.admin.services.lrc_jobs import resolve_lyrics_text
 from stream_of_worship.admin.db.models import Recording, Song
 
 
@@ -28,7 +28,7 @@ def _make_recording(structured_lyrics=None) -> Recording:
 
 
 class TestResolveLyricsText:
-    """Tests for _resolve_lyrics_text."""
+    """Tests for resolve_lyrics_text."""
 
     def test_prefers_structured_lyrics(self):
         """Recording with structured_lyrics JSON returns flattened tagged text."""
@@ -42,7 +42,7 @@ class TestResolveLyricsText:
         recording = _make_recording(structured_lyrics=json.dumps(structured))
         song = _make_song()
 
-        result = _resolve_lyrics_text(song, recording)
+        result = resolve_lyrics_text(song, recording)
 
         assert result is not None
         assert "[Verse]" in result
@@ -56,7 +56,7 @@ class TestResolveLyricsText:
         recording = _make_recording(structured_lyrics=None)
         song = _make_song()
 
-        result = _resolve_lyrics_text(song, recording)
+        result = resolve_lyrics_text(song, recording)
 
         assert result == "flat lyrics line 1\nflat lyrics line 2"
 
@@ -65,7 +65,7 @@ class TestResolveLyricsText:
         recording = _make_recording(structured_lyrics="{invalid json}")
         song = _make_song()
 
-        result = _resolve_lyrics_text(song, recording)
+        result = resolve_lyrics_text(song, recording)
 
         assert result == "flat lyrics line 1\nflat lyrics line 2"
 
@@ -75,7 +75,7 @@ class TestResolveLyricsText:
         recording = _make_recording(structured_lyrics=json.dumps(structured))
         song = _make_song()
 
-        result = _resolve_lyrics_text(song, recording)
+        result = resolve_lyrics_text(song, recording)
 
         assert result == "flat lyrics line 1\nflat lyrics line 2"
 
@@ -84,7 +84,7 @@ class TestResolveLyricsText:
         recording = _make_recording(structured_lyrics=None)
         song = _make_song(lyrics_raw=None)
 
-        result = _resolve_lyrics_text(song, recording)
+        result = resolve_lyrics_text(song, recording)
 
         assert result is None
 
@@ -94,6 +94,6 @@ class TestResolveLyricsText:
         recording = _make_recording(structured_lyrics=json.dumps(structured))
         song = _make_song()
 
-        result = _resolve_lyrics_text(song, recording)
+        result = resolve_lyrics_text(song, recording)
 
         assert result == "flat lyrics line 1\nflat lyrics line 2"

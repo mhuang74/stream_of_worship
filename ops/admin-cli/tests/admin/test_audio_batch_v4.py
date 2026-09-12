@@ -146,7 +146,7 @@ class TestForceScoping:
         config_path.write_text('[database]\nurl = "postgresql://invalid/invalid"\n')
         result = runner.invoke(
             app,
-            ["audio", "batch", "--lrc", "--analyze", "--force", "--config", str(config_path)],
+            ["audio", "batch", "--generate-lyrics", "--analyze", "--force", "--config", str(config_path)],
             env=WIDE_ENV,
         )
         assert result.exit_code == 1
@@ -352,7 +352,7 @@ class TestSongIdSelection:
         assert captured["selected_steps"] == [
             "download",
             "backfill_lyrics",
-            "lrc",
+            "generate_lyrics",
             "analyze",
             "embedding",
             "components",
@@ -1207,7 +1207,7 @@ class TestAllStepsIncludesComponentsV3:
         assert captured["selected_steps"] == [
             "download",
             "backfill_lyrics",
-            "lrc",
+            "generate_lyrics",
             "analyze",
             "embedding",
             "components",
@@ -1270,7 +1270,7 @@ class TestBackfillSkipIfPresentV3:
         with (
             patch("sys.stdin", io.StringIO("song_1\n")),
             patch.object(
-                audio_mod, "_prompt_confirmation", return_value=True
+                audio_mod, "prompt_confirmation", return_value=True
             ),
             patch.object(audio_mod, "_backfill_lyrics_for_song") as m_bf,
         ):

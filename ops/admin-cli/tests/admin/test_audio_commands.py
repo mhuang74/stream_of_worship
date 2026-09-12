@@ -3067,11 +3067,11 @@ region = "auto"
 
     @patch("stream_of_worship.admin.commands.audio.R2Client")
     @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
-    @patch("stream_of_worship.admin.commands.audio._submit_lrc_job")
+    @patch("stream_of_worship.admin.services.lrc_jobs.submit_lrc_job")
     def test_download_with_lrc_flag(
         self, mock_submit_lrc, mock_yt_class, mock_r2_class, setup, monkeypatch
     ):
-        """--lrc flag submits LRC job after download."""
+        """--generate-lyrics flag submits lyrics-generation job after download."""
         monkeypatch.setenv("SOW_R2_ACCESS_KEY_ID", "test-key")
         monkeypatch.setenv("SOW_R2_SECRET_ACCESS_KEY", "test-secret")
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-analysis-key")
@@ -3109,12 +3109,12 @@ region = "auto"
                 "--config",
                 str(setup["config_path"]),
                 "--yes",
-                "--lrc",
+                "--generate-lyrics",
             ],
         )
 
         assert result.exit_code == 0
-        assert "Submitting for LRC generation" in result.output
+        assert "Submitting for lyrics generation" in result.output
         mock_submit_lrc.assert_called_once()
         call_kwargs = mock_submit_lrc.call_args[1]
         assert call_kwargs["song_id"] == "song_001"
@@ -3123,7 +3123,7 @@ region = "auto"
     @patch("stream_of_worship.admin.commands.audio.R2Client")
     @patch("stream_of_worship.admin.commands.audio.YouTubeDownloader")
     @patch("stream_of_worship.admin.commands.audio._submit_analysis_job")
-    @patch("stream_of_worship.admin.commands.audio._submit_lrc_job")
+    @patch("stream_of_worship.admin.services.lrc_jobs.submit_lrc_job")
     def test_download_with_all_flag(
         self,
         mock_submit_lrc,
@@ -3177,7 +3177,7 @@ region = "auto"
 
         assert result.exit_code == 0
         assert "Submitting for analysis" in result.output
-        assert "Submitting for LRC generation" in result.output
+        assert "Submitting for lyrics generation" in result.output
         mock_submit_analysis.assert_called_once()
         mock_submit_lrc.assert_called_once()
 
@@ -3217,7 +3217,7 @@ region = "auto"
 
         assert result.exit_code == 0
         assert "Submitting for analysis" not in result.output
-        assert "Submitting for LRC" not in result.output
+        assert "Submitting for lyrics generation" not in result.output
         assert "Recording saved" in result.output
 
 
@@ -3469,7 +3469,7 @@ class TestAudioDownloadStdinBatch:
                 "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
             ) as mock_import,
             patch(
-                "stream_of_worship.admin.commands.audio._prompt_confirmation",
+                "stream_of_worship.admin.commands.audio.prompt_confirmation",
                 return_value=True,
             ),
         ):
@@ -3503,7 +3503,7 @@ class TestAudioDownloadStdinBatch:
                 "stream_of_worship.admin.commands.audio.import_youtube_audio_for_song"
             ) as mock_import,
             patch(
-                "stream_of_worship.admin.commands.audio._prompt_confirmation",
+                "stream_of_worship.admin.commands.audio.prompt_confirmation",
                 return_value=False,
             ),
         ):
@@ -3680,7 +3680,7 @@ class TestAudioDownloadStdinBatch:
                 "stream_of_worship.admin.commands.audio._backfill_lyrics_for_song"
             ) as mock_single,
             patch(
-                "stream_of_worship.admin.commands.audio._prompt_confirmation",
+                "stream_of_worship.admin.commands.audio.prompt_confirmation",
                 return_value=False,
             ),
         ):
@@ -4640,7 +4640,7 @@ class TestLlmLyricsFlags:
                 return_value=294.0,
             ),
             patch(
-                "stream_of_worship.admin.commands.audio._fetch_structured_lyrics",
+                "stream_of_worship.admin.commands.audio.fetch_structured_lyrics",
                 return_value=(None, None, "youtube"),
             ) as mock_fetch_lyrics,
         ):
@@ -4687,7 +4687,7 @@ class TestLlmLyricsFlags:
                 return_value=fake_db,
             ),
             patch(
-                "stream_of_worship.admin.commands.audio.extract_video_metadata",
+                "stream_of_worship.admin.services.lrc_jobs.extract_video_metadata",
                 return_value=fake_metadata,
             ),
         ):
@@ -4727,7 +4727,7 @@ class TestLlmLyricsFlags:
                 return_value=fake_db,
             ),
             patch(
-                "stream_of_worship.admin.commands.audio.extract_video_metadata",
+                "stream_of_worship.admin.services.lrc_jobs.extract_video_metadata",
                 return_value=fake_metadata,
             ),
         ):
@@ -4766,11 +4766,11 @@ class TestLlmLyricsFlags:
                 return_value=fake_db,
             ),
             patch(
-                "stream_of_worship.admin.commands.audio.extract_video_metadata",
+                "stream_of_worship.admin.services.lrc_jobs.extract_video_metadata",
                 return_value=fake_metadata,
             ),
             patch(
-                "stream_of_worship.admin.commands.audio.parse_structured_lyrics_smart"
+                "stream_of_worship.admin.services.lrc_jobs.parse_structured_lyrics_smart"
             ) as mock_smart,
         ):
             mock_smart.side_effect = RuntimeError("LLM network error")
@@ -4946,7 +4946,7 @@ class TestDownloadStructuredLyricsOutcome:
                 return_value=294.0,
             ),
             patch(
-                "stream_of_worship.admin.commands.audio._fetch_structured_lyrics",
+                "stream_of_worship.admin.commands.audio.fetch_structured_lyrics",
                 return_value=mock_fetch_return,
             ),
         ):
@@ -4975,7 +4975,7 @@ class TestDownloadStructuredLyricsOutcome:
         assert "--backfill-lyrics" in result.output
 
 class TestFetchStructuredLyricsSelect:
-    """Tests for the _fetch_structured_lyrics source-selection helper."""
+    """Tests for the fetch_structured_lyrics source-selection helper."""
 
     def _call(self, *, source, yt_desc=None, zanmei_text=None, use_llm=False):
         from stream_of_worship.admin.commands import audio as audio_mod
@@ -4994,11 +4994,14 @@ class TestFetchStructuredLyricsSelect:
                 raise RuntimeError("zanmei failed")
             return zanmei_text
 
+        from stream_of_worship.admin.services import lrc_jobs as lrc_jobs_mod
+
         with (
-            patch.object(audio_mod, "extract_video_metadata", side_effect=fake_extract),
-            patch.object(audio_mod, "fetch_structured_lyrics_from_zanmei", side_effect=fake_zanmei),
+            patch.object(lrc_jobs_mod, "extract_video_metadata", side_effect=fake_extract),
+            patch.object(lrc_jobs_mod, "fetch_structured_lyrics_from_zanmei", side_effect=fake_zanmei),
         ):
-            return audio_mod._fetch_structured_lyrics(
+            from stream_of_worship.admin.services.lrc_jobs import fetch_structured_lyrics as fsl
+            return fsl(
                 youtube_url="https://youtube.com/watch?v=x",
                 song_title="祢就是唯一",
                 band="赞美之泉",

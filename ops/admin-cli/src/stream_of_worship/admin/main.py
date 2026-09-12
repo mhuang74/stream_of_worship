@@ -35,7 +35,7 @@ app.add_typer(audio_commands.app, name="audio", help="Audio recording operations
 app.add_typer(maintenance_commands.app, name="maintenance", help="Maintenance operations")
 app.add_typer(songset_commands.app, name="songset", help="Songset operations")
 app.add_typer(theme_anchors_commands.app, name="theme-anchors", help="Theme anchors operations")
-app.add_typer(lyrics_commands.app, name="lyrics", help="Lyrics curation operations")
+app.add_typer(lyrics_commands.app, name="lyrics", help="Lyrics operations")
 
 
 def version_callback(value: bool) -> None:

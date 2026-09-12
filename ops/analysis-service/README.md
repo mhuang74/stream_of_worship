@@ -321,7 +321,7 @@ You can also run forced alignment directly from the CLI without submitting an AP
 
 ```bash
 # Align lyrics to audio using the forced aligner
-uv run --extra app sow-admin audio align-lrc --audio <audio-file> --lyrics <lyrics-text> --output <output.lrc>
+uv run --extra app sow-admin lyrics align --audio <audio-file> --lyrics <lyrics-text> --output <output.lrc>
 ```
 
 ## DashScope Qwen3 ASR Setup (Optional)
