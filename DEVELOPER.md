@@ -632,8 +632,7 @@ sow_cli_admin/                           # Repository root
 - [x] LLM line alignment (OpenAI-compatible API)
 - [x] Forced aligner refinement (Qwen3 Forced Aligner)
 - [x] LRC file generation and R2 upload
-- [x] `lyrics generate` command (submit LRC generation)
-- [x] `lyrics align` command (local forced alignment)
+- [x] `lyrics generate` command (via `lyrics generate`)
 - [x] DashScope Qwen3 ASR integration (optional)
 
 ### ✅ Phase 7: Database Migration to PostgreSQL/Neon (Complete)
