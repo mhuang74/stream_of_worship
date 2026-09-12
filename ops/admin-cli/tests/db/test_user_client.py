@@ -25,7 +25,7 @@ def user_client(postgres_url):
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute(
                 """
-                DROP TABLE IF EXISTS songset_share, lyric_mark,
+                DROP TABLE IF EXISTS songset_share, lyric_mark, lyrics_feedback,
                     user_lrc_override, user_settings,
                     songset_items, songsets,
                     theme_anchors, song_line_embedding, song_embedding,
@@ -122,7 +122,7 @@ class TestUserClient:
 
         assert set(preview.keys()) == {
             "songsets", "songset_items", "user_settings", "user_lrc_override",
-            "lyric_mark", "songset_share", "account", "session",
+            "lyric_mark", "lyrics_feedback", "songset_share", "account", "session",
         }
         assert len(preview["songsets"]) == 1
         assert preview["songsets"][0]["name"] == "Sunday"

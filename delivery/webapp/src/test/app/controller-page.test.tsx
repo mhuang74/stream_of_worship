@@ -102,6 +102,7 @@ interface CapturedControllerProps {
   playerId: string;
   videoSrc: string;
   chapters: unknown[];
+  chapterRecordingHashes?: (string | null)[];
   isPresentationActive: boolean;
   transport?: CastTransportResult;
   presentationFallback?: { isSupported: boolean; isConnected?: boolean };
@@ -167,6 +168,13 @@ const SONGSET_RESPONSE = {
   latestRenderJobId: "job-1",
   lastFailedRenderJobId: null,
   lastCompletedRenderJobId: "job-1",
+  // Position → Recording contentHash map (issue #194). Deliberately
+  // out of order to pin position-sorting; position 2 has no recording.
+  items: [
+    { position: 1, recording: { contentHash: "hash-b" } },
+    { position: 0, recording: { contentHash: "hash-a" } },
+    { position: 2, recording: null },
+  ],
 };
 
 const RENDER_JOB_RESPONSE = {
@@ -393,6 +401,24 @@ describe("ControllerPage (songset)", () => {
       await waitFor(() => {
         expect(screen.getByTestId("chapters-count")).toHaveTextContent("1");
       });
+    });
+
+    it("passes chapterRecordingHashes (content hashes by position) to ControllerPlayer", async () => {
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      // Optional prop: tsc cannot catch a missing page→player wiring, so
+      // pin it. Sorted by position; item without a recording maps to null.
+      expect(lastControllerProps?.chapterRecordingHashes).toEqual([
+        "hash-a",
+        "hash-b",
+        null,
+      ]);
     });
   });
 

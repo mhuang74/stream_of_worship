@@ -2,7 +2,8 @@
 
 Combines catalog (songs, recordings), auth (user, account, session,
 verification), app (songsets, songset_items), and per-user app tables
-(user_settings, user_lrc_override, lyric_mark, songset_share) into a
+(user_settings, user_lrc_override, lyric_mark, lyrics_feedback,
+songset_share) into a
 single ordered DDL list. Used by ``sow-admin db init``.
 
 This module re-exports constants from the per-component schema modules so

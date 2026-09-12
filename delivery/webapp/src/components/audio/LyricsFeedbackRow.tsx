@@ -5,11 +5,7 @@ import { Smile, Frown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n/messages";
-import {
-  useLyricsFeedback,
-  type FeedbackRating,
-  type FeedbackReason,
-} from "@/hooks/useLyricsFeedback";
+import { useLyricsFeedback, type FeedbackReason } from "@/hooks/useLyricsFeedback";
 
 export type LyricsSituationKind = "synced" | "unsynced" | "none";
 

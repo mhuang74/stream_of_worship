@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resolveLyricsSituation } from "@/lib/lyrics/situation";
 import { validateFeedbackSubmission } from "@/lib/lyrics/situation";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 // --------------------------------------------------------------------------
 // resolveLyricsSituation — mirrors the /api/lyrics/[recordingContentHash]
 // resolution order: R2 canonical LRC first (unless lrcStatus === "missing"),
@@ -166,7 +164,7 @@ describe("validateFeedbackSubmission", () => {
     expect(result.valid).toBe(false);
   });
 
-  it("sad+missing accepted when synced lyrics exist", () => {
+  it("sad+missing rejected when synced lyrics exist", () => {
     const result = validateFeedbackSubmission("sad", "missing", synced);
     expect(result.valid).toBe(false);
   });
