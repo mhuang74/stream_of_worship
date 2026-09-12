@@ -41,6 +41,7 @@ export const audioBundle = bundle({
     "audio.feedback.reasonTiming": "Timing is wrong",
     "audio.feedback.reasonWrongText": "Wrong text",
     "audio.feedback.reasonOther": "Other",
+    "audio.feedback.saveFailed": "Couldn't save your feedback. Please try again.",
 
     // OfflineIndicator
     "audio.offline.message": "You are offline",
@@ -147,6 +148,7 @@ export const audioBundle = bundle({
     "audio.feedback.reasonTiming": "時間軸不對",
     "audio.feedback.reasonWrongText": "文字有誤",
     "audio.feedback.reasonOther": "其他",
+    "audio.feedback.saveFailed": "回應沒有送出，請再試一次",
 
     // OfflineIndicator
     "audio.offline.message": "你目前離線",

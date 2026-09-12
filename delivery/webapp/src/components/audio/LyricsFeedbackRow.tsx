@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Smile, Frown } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n/messages";
@@ -53,18 +54,23 @@ export function LyricsFeedbackRow({
   const happyActive = feedback?.rating === "happy";
   const sadActive = feedback?.rating === "sad";
 
+  const runFeedback = (op: Promise<boolean>) =>
+    void op.then((ok) => {
+      if (!ok) toast.error(t("audio.feedback.saveFailed"));
+    });
+
   const handleHappy = () => {
     if (happyActive) {
-      void retract();
+      runFeedback(retract());
     } else {
       setSadExpanded(false);
-      void submit("happy");
+      runFeedback(submit("happy"));
     }
   };
 
   const handleSad = () => {
     if (sadActive) {
-      void retract();
+      runFeedback(retract());
       setSadExpanded(false);
     } else {
       setSadExpanded((open) => !open);
@@ -73,7 +79,7 @@ export function LyricsFeedbackRow({
 
   const handleChip = (reason: FeedbackReason) => {
     setSadExpanded(false);
-    void submit("sad", reason);
+    runFeedback(submit("sad", reason));
   };
 
   const chips = chipsForSituation(situation, t);
