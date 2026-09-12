@@ -69,6 +69,13 @@ export interface ControllerPlayerProps {
   onSendTransportCommand?: (command: PresentationCommand) => void;
   exitRoute?: string;
   autoFullscreen?: boolean;
+  /**
+   * Content hash per chapter position (index 0 = first chapter), from the
+   * songset detail API. Enables the Lyrics Feedback footer on the lyric
+   * jump list for the current chapter (issue #194). Omitted by the
+   * anonymous share-controller variant.
+   */
+  chapterRecordingHashes?: (string | null)[];
   className?: string;
 }
 
@@ -133,13 +140,14 @@ export function ControllerPlayer({
   presentationFallback,
   presentationMediaStatus,
   isCastSupported,
+  exitRoute,
+  autoFullscreen = true,
+  chapterRecordingHashes,
   castAvailability,
   isCastConnecting,
   onSendToTV,
   onStopPresentation,
   onSendTransportCommand,
-  exitRoute,
-  autoFullscreen = true,
   className,
 }: ControllerPlayerProps) {
   const router = useRouter();
@@ -1189,6 +1197,7 @@ export function ControllerPlayer({
         currentTime={effectiveCurrentTime}
         currentSongIndex={currentSongIndex}
         onJumpToLine={handleJumpToLine}
+        currentRecordingContentHash={chapterRecordingHashes?.[currentSongIndex] ?? null}
       />
 
       {/* Diagnostic bottom sheet (Cast unavailable) */}

@@ -4,16 +4,26 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronUp, Music } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import {
+  LyricsFeedbackRow,
+  type LyricsSituationKind,
+} from "@/components/audio/LyricsFeedbackRow";
+
 import type { Chapter } from "@/lib/render/chapters";
 import { isIOS } from "@/lib/platform";
-
-export type { Chapter, ChapterLine } from "@/lib/render/chapters";
 
 export interface LyricJumpListProps {
   chapters: Chapter[];
   currentTime: number;
   currentSongIndex: number;
   onJumpToLine: (chapterIndex: number, lineIndex: number) => void;
+  /**
+   * Content hash of the Recording behind the current chapter, when one is
+   * current. Feedback renders only when this is non-null (issue #194:
+   * never report against an ambiguous target). The anonymous share-controller
+   * variant omits it entirely.
+   */
+  currentRecordingContentHash?: string | null;
   className?: string;
 }
 
@@ -22,6 +32,7 @@ export function LyricJumpList({
   currentTime,
   currentSongIndex,
   onJumpToLine,
+  currentRecordingContentHash,
   className,
 }: LyricJumpListProps) {
   const { t } = useLocale();
@@ -290,6 +301,22 @@ export function LyricJumpList({
             })}
           </div>
         </div>
+
+        {/* Lyrics Feedback footer (issue #194): only when a chapter is
+            current, targeting the current chapter's Recording. The sheet
+            carries timestamped jump lines only when the manifest has them,
+            so the situation is synced/unsynced per chapter lines. */}
+        {currentRecordingContentHash && chapters[currentSongIndex] && (
+          <LyricsFeedbackRow
+            recordingContentHash={currentRecordingContentHash}
+            situation={
+              (chapters[currentSongIndex].lines.length > 0
+                ? "synced"
+                : "none") as LyricsSituationKind
+            }
+            className="border-t border-white/10"
+          />
+        )}
       </div>
 
       {/* Backdrop */}

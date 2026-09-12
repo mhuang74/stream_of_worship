@@ -16,6 +16,7 @@ import {
   userSettings,
   userLrcOverrides,
   lyricMarks,
+  lyricsFeedback,
   songsetShares,
 } from "@/db/schema";
 
@@ -182,6 +183,40 @@ describe("schema: per-user data tables", () => {
     expect(cols).toContain("recording_content_hash");
   });
 
+  it("lyricsFeedback maps to 'lyrics_feedback'", () =>
+    expect(getTableName(lyricsFeedback)).toBe("lyrics_feedback"));
+
+  it("lyricsFeedback has rating, reason, resolved_at, created_at, updated_at", () => {
+    const cols = columnNames(lyricsFeedback);
+    expect(cols).toEqual(
+      expect.arrayContaining([
+        "id",
+        "user_id",
+        "recording_content_hash",
+        "rating",
+        "reason",
+        "resolved_at",
+        "created_at",
+        "updated_at",
+      ])
+    );
+  });
+
+  it("lyricsFeedback has unique (user_id, recording_content_hash)", () => {
+    const uniques = getTableConfig(lyricsFeedback).uniqueConstraints;
+    const cols = uniques.flatMap((u) => u.columns.map((c) => c.name));
+    expect(cols).toEqual(expect.arrayContaining(["user_id", "recording_content_hash"]));
+  });
+
+  it("lyricsFeedback userId references users.id and recording references recordings", () => {
+    const userFk = findFkByColumnName(lyricsFeedback, "user_id");
+    expect(userFk).toBeDefined();
+    expect(getTableName(userFk!.reference().foreignTable)).toBe("user");
+    const recordingFk = findFkByColumnName(lyricsFeedback, "recording_content_hash");
+    expect(recordingFk).toBeDefined();
+    expect(getTableName(recordingFk!.reference().foreignTable)).toBe("recordings");
+  });
+
   it("songsetShares has token and allow_download", () => {
     const cols = columnNames(songsetShares);
     expect(cols).toContain("token");
@@ -241,6 +276,16 @@ describe("schema: foreign key references are defined", () => {
     const fk = findFkByColumnName(lyricMarks, "recording_content_hash");
     expect(fk).toBeDefined();
     expect(getTableName(fk!.reference().foreignTable)).toBe("recordings");
+  });
+
+  it("lyricsFeedback.recordingContentHash references recordings.contentHash", () => {
+    const fk = findFkByColumnName(lyricsFeedback, "recording_content_hash");
+    expect(fk).toBeDefined();
+    expect(getTableName(fk!.reference().foreignTable)).toBe("recordings");
+  });
+
+  it("lyricsFeedback has open-feedback admin-queue index", () => {
+    expect(indexNames(lyricsFeedback)).toContain("idx_lyrics_feedback_recording_resolved");
   });
 
   it("songEmbeddings.songId references songs.id", () => {
