@@ -40,7 +40,6 @@ def _boundary_row(rows: list[tuple], roles: set[str]) -> tuple | None:
     return min(candidates, key=lambda row: (row[3], row[4]))
 
 
-
 def _weighted_distribution(
     rows: list[tuple], value_index: int, confidence_index: int, vocab: tuple[str, ...]
 ) -> dict[str, float] | None:
@@ -49,9 +48,9 @@ def _weighted_distribution(
         value = row[value_index]
         if value is None:
             continue
-        weight = (
-            THEME_CHORUS_WEIGHT if row[2] == "chorus" else THEME_NON_CHORUS_WEIGHT
-        ) * (row[confidence_index] or 0.0)
+        weight = (THEME_CHORUS_WEIGHT if row[2] == "chorus" else THEME_NON_CHORUS_WEIGHT) * (
+            row[confidence_index] or 0.0
+        )
         votes[str(value)] += weight
     total = sum(votes.values())
     if total <= 0:
@@ -89,7 +88,9 @@ def aggregate_components(rows: list[tuple], *, musical_mode: str | None = None) 
         confidences = [row[12] or 0.0 for row in rows if row[11] == posture]
         base_total = sum(base_weights)
         posture_confidence = (
-            sum(w * c for w, c in zip(base_weights, confidences)) / base_total if base_total > 0 else None
+            sum(w * c for w, c in zip(base_weights, confidences)) / base_total
+            if base_total > 0
+            else None
         )
 
     def _boundary_fields(row: tuple | None, prefix: str) -> dict:
