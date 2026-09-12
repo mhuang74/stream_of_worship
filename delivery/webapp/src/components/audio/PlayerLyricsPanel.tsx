@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useSongLyrics } from "@/hooks/useSongLyrics";
+import { LyricsFeedbackRow, type LyricsSituationKind } from "@/components/audio/LyricsFeedbackRow";
 import { parseLRC, isValidLRC, type LRCLine } from "@/lib/render/lrc-parser";
 import { formatTimestamp } from "@/lib/render/lyrics-display";
 import { useLocale } from "@/hooks/useLocale";
@@ -52,9 +53,26 @@ export function PlayerLyricsPanel({ recordingContentHash }: PlayerLyricsPanelPro
     );
   }
 
+  // Situation mirrors the content chain above; also hidden entirely on
+  // loading/error states — nothing on screen to give feedback about.
+  const situation: LyricsSituationKind | null = loading || error
+    ? null
+    : lrcContent !== null && isValidLRC(lrcContent)
+      ? "synced"
+      : lines !== null && lines.length > 0
+        ? "unsynced"
+        : lrcContent !== null
+          ? "unsynced"
+          : "none";
+
   return (
-    <div className="max-h-[40dvh] md:max-h-[400px] overflow-y-auto overscroll-y-contain px-3 lg:px-4 py-2">
-      {content}
+    <div className="flex flex-col max-h-[40dvh] md:max-h-[400px]">
+      <div className="overflow-y-auto overscroll-y-contain px-3 lg:px-4 py-2">
+        {content}
+      </div>
+      {situation !== null && (
+        <LyricsFeedbackRow recordingContentHash={recordingContentHash} situation={situation} />
+      )}
     </div>
   );
 }

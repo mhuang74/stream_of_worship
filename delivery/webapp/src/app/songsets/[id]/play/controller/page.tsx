@@ -20,6 +20,10 @@ interface SongsetData {
   latestRenderJobId: string | null;
 }
 
+/** items[].recording.contentHash keyed by item position for the
+ * Lyrics Feedback affordance (issue #194). */
+type ChapterRecordingHashes = (string | null)[];
+
 export default function ControllerPage() {
   const params = useParams();
   const router = useRouter();
@@ -33,6 +37,8 @@ export default function ControllerPage() {
   const [error, setError] = useState<string | null>(null);
   const [presentationMediaStatus, setPresentationMediaStatus] =
     useState<PresentationMediaStatus | null>(null);
+  const [chapterRecordingHashes, setChapterRecordingHashes] =
+    useState<ChapterRecordingHashes>([]);
 
   // Load songset and render job data
   useEffect(() => {
@@ -65,6 +71,19 @@ export default function ControllerPage() {
           renderState: songsetData.renderState,
           latestRenderJobId: songsetData.latestRenderJobId,
         });
+
+        // Position → Recording content hash for the Lyrics Feedback
+        // affordance (issue #194). Songset items are sorted by position and
+        // chapters render in that order.
+        const items = Array.isArray(songsetData.items) ? songsetData.items : [];
+        const sortedItems = [...items].sort(
+          (a: { position: number }, b: { position: number }) => a.position - b.position
+        );
+        setChapterRecordingHashes(
+          sortedItems.map((item: { recording?: { contentHash: string } | null }) =>
+            item?.recording?.contentHash ?? null
+          )
+        );
 
         // Check if render artifacts exist
         if (!songsetData.latestRenderJobId) {
@@ -275,6 +294,7 @@ export default function ControllerPage() {
       playerId={songsetId}
       videoSrc={videoUrl}
       chapters={chapters}
+      chapterRecordingHashes={chapterRecordingHashes}
       isPresentationActive={isPresentationActive}
       transport={cast}
       presentationFallback={{

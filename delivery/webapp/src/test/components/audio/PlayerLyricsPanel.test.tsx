@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { PlayerLyricsPanel } from "@/components/audio/PlayerLyricsPanel";
 
@@ -10,9 +10,24 @@ vi.mock("@/hooks/useSongLyrics", () => ({
   clearLyricsCache: vi.fn(),
 }));
 
+const mockUseLyricsFeedback = vi.fn();
+vi.mock("@/hooks/useLyricsFeedback", () => ({
+  useLyricsFeedback: (...args: unknown[]) => mockUseLyricsFeedback(...args),
+}));
+
+function mockFeedbackOk() {
+  mockUseLyricsFeedback.mockReturnValue({
+    feedback: null,
+    loading: false,
+    submit: vi.fn().mockResolvedValue(true),
+    retract: vi.fn().mockResolvedValue(true),
+  });
+}
+
 describe("PlayerLyricsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFeedbackOk();
   });
 
   it("(a) loading: true → renders spinner + 'Loading lyrics…'", () => {
@@ -126,5 +141,77 @@ describe("PlayerLyricsPanel", () => {
     render(<PlayerLyricsPanel recordingContentHash="abc123" />, "zh-Hant");
 
     expect(screen.getByText("歌詞載入失敗")).toBeInTheDocument();
+  });
+});
+
+// --------------------------------------------------------------------------
+// Lyrics Feedback footer (issue #194)
+// --------------------------------------------------------------------------
+
+describe("PlayerLyricsPanel — Lyrics Feedback footer", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFeedbackOk();
+  });
+
+  it("loading state: no feedback row (nothing on screen yet)", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: null,
+      lines: null,
+      loading: true,
+      error: null,
+    });
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    expect(screen.queryByTestId("lyrics-feedback-row")).not.toBeInTheDocument();
+  });
+
+  it("error state: no feedback row", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: null,
+      lines: null,
+      loading: false,
+      error: "boom",
+    });
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    expect(screen.queryByTestId("lyrics-feedback-row")).not.toBeInTheDocument();
+  });
+
+  it("synced lyrics: feedback row with happy + sad, no sad chips open", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: "[00:01.00]Hello world\n[00:05.00]Second line",
+      lines: null,
+      loading: false,
+      error: null,
+    });
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    expect(screen.getByTestId("lyrics-feedback-row")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /serve me well/i })).toBeInTheDocument();
+    expect(screen.queryByText(/timing is wrong/i)).not.toBeInTheDocument();
+  });
+
+  it("no lyrics: feedback row present, happy hidden", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: null,
+      lines: null,
+      loading: false,
+      error: null,
+    });
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    expect(screen.getByTestId("lyrics-feedback-row")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /serve me well/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /report a problem/i })).toBeInTheDocument();
+  });
+
+  it("unsynced fallback (lines): feedback row shows missing chip, not timing", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: null,
+      lines: ["fallback line"],
+      loading: false,
+      error: null,
+    });
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    fireEvent.click(screen.getByRole("button", { name: /report a problem/i }));
+    expect(screen.getByText(/lyrics missing/i)).toBeInTheDocument();
+    expect(screen.queryByText(/timing is wrong/i)).not.toBeInTheDocument();
   });
 });

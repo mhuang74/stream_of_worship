@@ -34,6 +34,14 @@ export const audioBundle = bundle({
     "audio.lyrics.loading": "Loading lyrics\u2026",
     "audio.lyrics.noLyrics": "No lyrics available for this recording.",
 
+    // LyricsFeedbackRow (issue #194)
+    "audio.feedback.happyAriaLabel": "These lyrics serve me well",
+    "audio.feedback.sadAriaLabel": "Report a problem with these lyrics",
+    "audio.feedback.reasonMissing": "Lyrics missing",
+    "audio.feedback.reasonTiming": "Timing is wrong",
+    "audio.feedback.reasonWrongText": "Wrong text",
+    "audio.feedback.reasonOther": "Other",
+
     // OfflineIndicator
     "audio.offline.message": "You are offline",
 
@@ -131,6 +139,14 @@ export const audioBundle = bundle({
     // PlayerLyricsPanel
     "audio.lyrics.loading": "載入歌詞中\u2026",
     "audio.lyrics.noLyrics": "這首歌目前沒有歌詞",
+
+    // LyricsFeedbackRow (issue #194)
+    "audio.feedback.happyAriaLabel": "這份歌詞很好用",
+    "audio.feedback.sadAriaLabel": "回報歌詞問題",
+    "audio.feedback.reasonMissing": "歌詞缺失",
+    "audio.feedback.reasonTiming": "時間軸不對",
+    "audio.feedback.reasonWrongText": "文字有誤",
+    "audio.feedback.reasonOther": "其他",
 
     // OfflineIndicator
     "audio.offline.message": "你目前離線",
