@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { toast } from "sonner";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { LyricsFeedbackRow } from "@/components/audio/LyricsFeedbackRow";
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
 
 const mockUseLyricsFeedback = vi.fn();
 
@@ -157,6 +162,23 @@ describe("LyricsFeedbackRow", () => {
     fireEvent.click(screen.getByRole("button", { name: /serve me well/i }));
 
     await waitFor(() => expect(submit).toHaveBeenCalledWith("happy"));
+  });
+
+  it("(h2) submit failure shows error toast", async () => {
+    const submit = vi.fn().mockResolvedValue(false);
+    mockUseLyricsFeedback.mockReturnValue({
+      feedback: null,
+      loading: false,
+      submit,
+      retract: vi.fn(),
+    });
+
+    render(<LyricsFeedbackRow recordingContentHash={recordingHash} situation="synced" />);
+    fireEvent.click(screen.getByRole("button", { name: /serve me well/i }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't save your feedback. Please try again.")
+    );
   });
 
   it("(i) tap active happy again retracts", async () => {
