@@ -154,8 +154,9 @@ def feedback_list(
     table.add_column("Song", style="cyan")
     table.add_column("Recording", style="magenta")
     table.add_column("LRC", style="dim")
+    table.add_column("Feedback", justify="center")
     table.add_column("Open", justify="right")
-    table.add_column("Reasons")
+    table.add_column("Reasons (neg)")
     table.add_column("Latest report")
     table.add_column("Suggested action")
 
@@ -184,6 +185,7 @@ def feedback_list(
             _truncate(title),
             hash_prefix,
             lrc_status or "",
+            "👍" if open_happy == open_count else "👎",
             str(open_count),
             _reason_breakdown(open_counts),
             latest_report.strftime("%Y-%m-%d") if latest_report else "",
