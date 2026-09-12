@@ -86,7 +86,7 @@ def _init_schema(make_test_provider):
 
 
 def _seed_data(provider):
-    """Seed one song, three recordings, four users, and feedback rows.
+    """Seed one song, four recordings, four users, and feedback rows.
 
     One row per (user, recording) — the table's UNIQUE constraint.
 
@@ -95,6 +95,8 @@ def _seed_data(provider):
     tie → missing wins by REASON_ORDER → suggested action "generate".
     R2 (hash-bb...): 1 open sad other (u1) → "manual review".
     R3 (hash-cc...): 2 open sad timing (u2, u3) → "re-align".
+    R4 (hash-dd...): 1 open sad missing (u4) — songless recording
+    (song_id NULL) to prove the queue's LEFT JOIN keeps it visible.
     """
     conn = provider.get_connection()
     with conn.cursor() as cur:
@@ -111,10 +113,11 @@ def _seed_data(provider):
             VALUES ('song_001', '測試歌曲', 'https://example.com/1', '2024-01-01T00:00:00', '作曲')
             """
         )
-        for hash_, prefix, filename, lrc_status in [
-            ("hash-aaaaaaaaaaaaaaaa", "hash-aa", "one.mp3", "completed"),
-            ("hash-bbbbbbbbbbbbbbbb", "hash-bb", "two.mp3", "missing"),
-            ("hash-cccccccccccccccc", "hash-cc", "three.mp3", "completed"),
+        for hash_, prefix, filename, lrc_status, song_id in [
+            ("hash-aaaaaaaaaaaaaaaa", "hash-aa", "one.mp3", "completed", "song_001"),
+            ("hash-bbbbbbbbbbbbbbbb", "hash-bb", "two.mp3", "missing", "song_001"),
+            ("hash-cccccccccccccccc", "hash-cc", "three.mp3", "completed", "song_001"),
+            ("hash-dddddddddddddddd", "hash-dd", "four.mp3", "completed", None),
         ]:
             cur.execute(
                 """
@@ -122,9 +125,9 @@ def _seed_data(provider):
                     content_hash, hash_prefix, song_id, original_filename,
                     file_size_bytes, imported_at, lrc_status
                 )
-                VALUES (%s, %s, 'song_001', %s, 100, '2024-01-01T00:00:00', %s)
+                VALUES (%s, %s, %s, %s, 100, '2024-01-01T00:00:00', %s)
                 """,
-                (hash_, prefix, filename, lrc_status),
+                (hash_, prefix, song_id, filename, lrc_status),
             )
         cur.execute(
             """
@@ -145,7 +148,8 @@ def _seed_data(provider):
                 ('fb-4', 4, 'hash-aaaaaaaaaaaaaaaa', 'sad', 'missing'),
                 ('fb-5', 1, 'hash-bbbbbbbbbbbbbbbb', 'sad', 'other'),
                 ('fb-6', 2, 'hash-cccccccccccccccc', 'sad', 'timing'),
-                ('fb-7', 3, 'hash-cccccccccccccccc', 'sad', 'timing')
+                ('fb-7', 3, 'hash-cccccccccccccccc', 'sad', 'timing'),
+                ('fb-8', 4, 'hash-dddddddddddddddd', 'sad', 'missing')
             """
         )
         # mark fb-4 resolved
@@ -226,6 +230,20 @@ class TestLyricsFeedbackListCommand:
         # only R1 has an open happy row
         assert "hash-aa" in result.output
         assert "hash-bb" not in result.output
+
+    def test_songless_recording_still_listed(self, make_test_provider, postgres_url, tmp_path):
+        """Feedback for a recording with NULL song_id must not vanish from the queue."""
+        _init_schema(make_test_provider)
+        _seed_data(make_test_provider())
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "hash-dd" in result.output
         _drop_all_tables(make_test_provider)
 
     def test_all_flag_includes_fully_resolved_recordings(
@@ -321,7 +339,9 @@ class TestLyricsFeedbackResolveCommand:
         assert result.exit_code == 0, result.output
         with provider.get_connection().cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM lyrics_feedback WHERE resolved_at IS NULL")
-            assert cur.fetchone()[0] == 0
+            # Only the songless recording's feedback (fb-8, hash-dd) stays open:
+            # song-level resolve covers recordings of that song, nothing else.
+            assert cur.fetchone()[0] == 1
         _drop_all_tables(make_test_provider)
 
     def test_unresolve_by_content_hash(self, make_test_provider, postgres_url, tmp_path):

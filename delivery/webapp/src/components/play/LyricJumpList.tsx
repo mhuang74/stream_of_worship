@@ -300,9 +300,10 @@ export function LyricJumpList({
         </div>
 
         {/* Lyrics Feedback footer (issue #194): only when a chapter is
-            current, targeting the current chapter's Recording. The sheet
-            carries timestamped jump lines only when the manifest has them,
-            so the situation is synced/unsynced per chapter lines. */}
+            current, targeting the current chapter's Recording. Chapter
+            jump lines come only from parseable synced LRC (see
+            generateChaptersManifest), so lines.length > 0 means synced;
+            zero lines means no synced Lyrics on this sheet → "none". */}
         {currentRecordingContentHash && chapters[currentSongIndex] && (
           <LyricsFeedbackRow
             recordingContentHash={currentRecordingContentHash}

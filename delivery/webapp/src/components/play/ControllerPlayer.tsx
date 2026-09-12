@@ -224,8 +224,10 @@ export function ControllerPlayer({
   // receiver's reported currentTime when a Cast transport is connected (the
   // local video is paused + muted and its timeupdate is suppressed while
   // active). Derived during render so the song-change effect + LyricJumpList
-  // highlight stay in sync without a setState-in-effect.
-  const currentSongIndex = useMemo(() => {
+  // highlight stay in sync without a setState-in-effect. `fromPlayback`
+  // distinguishes a chapter made current by actual playback position from
+  // the initial local fallback (nothing is current before playback starts).
+  const currentSong = useMemo(() => {
     if (isRemotePlaybackActive) {
       const t = effectiveCurrentTime;
       const idx = chapters.findIndex(
@@ -233,10 +235,11 @@ export function ControllerPlayer({
           t >= chapter.startSeconds &&
           (i === chapters.length - 1 || t < chapters[i + 1].startSeconds)
       );
-      if (idx !== -1) return idx;
+      if (idx !== -1) return { index: idx, fromPlayback: true };
     }
-    return localSongIndex;
+    return { index: localSongIndex, fromPlayback: false };
   }, [isRemotePlaybackActive, effectiveCurrentTime, chapters, localSongIndex]);
+  const currentSongIndex = currentSong.index;
   const effectiveDuration = isCastTransportConnected
     ? transport?.duration || duration
     : isPresentationFallbackConnected
@@ -1197,7 +1200,9 @@ export function ControllerPlayer({
         currentTime={effectiveCurrentTime}
         currentSongIndex={currentSongIndex}
         onJumpToLine={handleJumpToLine}
-        currentRecordingContentHash={chapterRecordingHashes?.[currentSongIndex] ?? null}
+        currentRecordingContentHash={
+          (currentSong.fromPlayback ? chapterRecordingHashes?.[currentSong.index] : null) ?? null
+        }
       />
 
       {/* Diagnostic bottom sheet (Cast unavailable) */}
