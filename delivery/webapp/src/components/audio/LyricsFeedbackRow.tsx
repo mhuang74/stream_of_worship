@@ -101,7 +101,7 @@ export function LyricsFeedbackRow({
           )}
         >
           <Smile
-            className={cn("size-4", happyActive && "fill-current")}
+            className={cn("size-4", happyActive && "fill-current/35")}
             aria-hidden="true"
           />
         </button>
@@ -116,7 +116,7 @@ export function LyricsFeedbackRow({
           sadActive ? "text-destructive" : "text-muted-foreground hover:text-foreground"
         )}
       >
-        <Frown className={cn("size-4", sadActive && "fill-current")} aria-hidden="true" />
+        <Frown className={cn("size-4", sadActive && "fill-current/35")} aria-hidden="true" />
       </button>
       {sadExpanded && (
         <div className="flex items-center gap-1.5">
