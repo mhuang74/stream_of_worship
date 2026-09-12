@@ -80,6 +80,10 @@ _Avoid_: casting (generic), screen mirroring, chromecast, second screen
 Time-synced lyrics for a Recording, with timestamps in [mm:ss.xx] format. The canonical version is curated by admins; users may create personal overrides.
 _Avoid_: LRC, official LRC, synced lyrics
 
+**Lyrics Feedback**:
+A per-user signal about a Recording's Lyrics: positive (the user verifies the lyrics serve them) or negative with a reason from a fixed vocabulary — lyrics missing, timing wrong, text wrong, or other. One feedback per user per Recording; retractable and switchable by the user, resolvable by admins. Advisory input for curating the canonical Lyrics — it never changes pipeline state directly.
+_Avoid_: report, complaint, vote, LRC feedback
+
 ### User State
 
 **Favorite**:
