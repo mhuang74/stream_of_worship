@@ -4,6 +4,10 @@ import { renderWithLocale as render } from "@/test/render";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import type { CastTransportResult } from "@/hooks/useCast";
 
+const mockUseLyricsFeedback = vi.fn();
+vi.mock("@/hooks/useLyricsFeedback", () => ({
+  useLyricsFeedback: (...args: unknown[]) => mockUseLyricsFeedback(...args),
+}));
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -364,10 +368,69 @@ describe("ControllerPlayer", () => {
           />
         );
       });
-
       expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
     });
   });
+  // ── Lyrics Feedback gating (issue #194, story 20) ──────────────────────
+  describe("lyrics feedback gating", () => {
+    const openSheet = async () => {
+      const handle = screen.getByRole("button", { name: /open lyric jump list/i });
+      await act(async () => {
+        fireEvent.click(handle);
+      });
+    };
+
+    beforeEach(() => {
+      mockUseLyricsFeedback.mockReturnValue({
+        feedback: null,
+        loading: false,
+        submit: vi.fn().mockResolvedValue(true),
+        retract: vi.fn().mockResolvedValue(true),
+      });
+    });
+
+    it("hides the feedback row before any song is current", async () => {
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            chapterRecordingHashes={["hash-a", "hash-b"]}
+          />
+        );
+      });
+
+      await openSheet();
+
+      expect(screen.queryByTestId("lyrics-feedback-row")).not.toBeInTheDocument();
+      expect(mockUseLyricsFeedback).not.toHaveBeenCalled();
+    });
+
+    it("shows the feedback row once playback makes a chapter current", async () => {
+      const transport = makeTransport({
+        isConnected: true,
+        playerState: "playing",
+        currentTime: 120,
+      });
+
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            transport={transport}
+            chapterRecordingHashes={["hash-a", "hash-b"]}
+          />
+        );
+      });
+
+      await openSheet();
+
+      expect(screen.getByTestId("lyrics-feedback-row")).toBeInTheDocument();
+      expect(mockUseLyricsFeedback).toHaveBeenCalledWith("hash-a");
+    });
+  });
+
+
 
   // ── Command forwarding ─────────────────────────────────────────────────
   describe("command forwarding", () => {
