@@ -2,7 +2,7 @@
 
 Branch: `user_lyrics_feedback` (spec commit `041f703a`, ADR `f9311c01` already pushed)
 Date: 2026-09-12
-Status: Webapp complete and green (tsc 0 errors, 420 targeted tests passing). **Admin CLI not started.** Final verification/commit/push not done.
+Status: COMPLETE (2026-09-12). Webapp in 61cf155d; admin CLI + gap closure in cdf8e95f; review fixes in 70418c67; gating tests in 70748740. All pushed.
 
 Spec: `specs/collect_user_lyrics_feedback.md` · ADR: `docs/adr/0007-lyrics-feedback-is-advisory.md` (advisory-only; nothing but an admin action writes `resolved_at`) · Glossary: `CONTEXT.md` "Lyrics Feedback".
 
