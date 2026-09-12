@@ -4,10 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronUp, Music } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import {
-  LyricsFeedbackRow,
-  type LyricsSituationKind,
-} from "@/components/audio/LyricsFeedbackRow";
+import { LyricsFeedbackRow } from "@/components/audio/LyricsFeedbackRow";
 
 import type { Chapter } from "@/lib/render/chapters";
 import { isIOS } from "@/lib/platform";
@@ -310,9 +307,7 @@ export function LyricJumpList({
           <LyricsFeedbackRow
             recordingContentHash={currentRecordingContentHash}
             situation={
-              (chapters[currentSongIndex].lines.length > 0
-                ? "synced"
-                : "none") as LyricsSituationKind
+              chapters[currentSongIndex].lines.length > 0 ? "synced" : "none"
             }
             className="border-t border-white/10"
           />

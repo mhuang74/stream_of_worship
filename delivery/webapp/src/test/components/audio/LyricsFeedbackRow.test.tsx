@@ -2,23 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { LyricsFeedbackRow } from "@/components/audio/LyricsFeedbackRow";
-import { useLyricsFeedback } from "@/hooks/useLyricsFeedback";
 
 const mockUseLyricsFeedback = vi.fn();
 
 vi.mock("@/hooks/useLyricsFeedback", () => ({
   useLyricsFeedback: (...args: unknown[]) => mockUseLyricsFeedback(...args),
 }));
-
-function mockHook(overrides: Partial<Record<string, unknown>> = {}) {
-  mockUseLyricsFeedback.mockReturnValue({
-    feedback: null,
-    loading: false,
-    submit: vi.fn().mockResolvedValue(true),
-    retract: vi.fn().mockResolvedValue(true),
-    ...overrides,
-  });
-}
 
 // situation kinds: synced / unsynced / none
 describe("LyricsFeedbackRow", () => {

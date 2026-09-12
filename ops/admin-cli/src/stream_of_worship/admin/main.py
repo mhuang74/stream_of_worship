@@ -12,10 +12,12 @@ from stream_of_worship.admin import __version__
 from stream_of_worship.admin.commands import audio as audio_commands
 from stream_of_worship.admin.commands import catalog as catalog_commands
 from stream_of_worship.admin.commands import db as db_commands
+from stream_of_worship.admin.commands import lyrics as lyrics_commands
 from stream_of_worship.admin.commands import maintenance as maintenance_commands
 from stream_of_worship.admin.commands import songset as songset_commands
 from stream_of_worship.admin.commands import theme_anchors as theme_anchors_commands
 from stream_of_worship.admin.commands import users as users_commands
+
 console = Console()
 
 # Create the main Typer app
@@ -33,6 +35,7 @@ app.add_typer(audio_commands.app, name="audio", help="Audio recording operations
 app.add_typer(maintenance_commands.app, name="maintenance", help="Maintenance operations")
 app.add_typer(songset_commands.app, name="songset", help="Songset operations")
 app.add_typer(theme_anchors_commands.app, name="theme-anchors", help="Theme anchors operations")
+app.add_typer(lyrics_commands.app, name="lyrics", help="Lyrics curation operations")
 
 
 def version_callback(value: bool) -> None:

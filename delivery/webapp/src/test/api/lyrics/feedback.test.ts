@@ -185,6 +185,20 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
     expect(data.error).toMatch(/lyrics/i);
   });
 
+  it("happy accepted when unsynced lyrics exist → upserts row with null reason", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "unsynced" });
+    insertChain();
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "happy" }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.feedback).toEqual({ rating: "happy", reason: null });
+  });
+
   it("sad+missing accepted when lyrics are unsynced-only", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "unsynced" });
@@ -231,6 +245,39 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
       mockParams("hash123")
     );
     expect(res.status).toBe(200);
+  });
+
+  it("switch-overwrite: PUT sad+timing then PUT happy → latest opinion wins (upsert set carries updatedAt)", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
+    const { onConflictDoUpdate } = insertChain();
+
+    const first = await PUT(
+      makeRequest("hash123", "PUT", { rating: "sad", reason: "timing" }),
+      mockParams("hash123")
+    );
+    expect(first.status).toBe(200);
+
+    const second = await PUT(
+      makeRequest("hash123", "PUT", { rating: "happy" }),
+      mockParams("hash123")
+    );
+    expect(second.status).toBe(200);
+    const data = await second.json();
+    expect(data.feedback).toEqual({ rating: "happy", reason: null });
+
+    // Second call still upserts (overwrite, not a new row), and the deploy
+    // path has no updated_at trigger — the route must set it explicitly.
+    expect(onConflictDoUpdate).toHaveBeenCalledTimes(2);
+    expect(onConflictDoUpdate.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        set: {
+          rating: "happy",
+          reason: null,
+          updatedAt: expect.any(Date),
+        },
+      })
+    );
   });
 
   it("sad+wrong_text accepted in any state", async () => {

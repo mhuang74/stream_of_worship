@@ -11,6 +11,7 @@ _ALL_TABLES = [
     "user_settings",
     "user_lrc_override",
     "lyric_mark",
+    "lyrics_feedback",
     "songset_share",
     "account",
     "session",
