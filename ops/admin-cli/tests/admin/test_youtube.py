@@ -172,8 +172,10 @@ class TestDownload:
             downloader.download("query")
 
     @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
-    def test_download_passes_correct_ydl_options(self, mock_ydl_class, tmp_path):
+    def test_download_passes_correct_ydl_options(self, mock_ydl_class, tmp_path, monkeypatch):
         """YoutubeDL is constructed with the expected option keys."""
+        monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+        monkeypatch.delenv("SOW_YOUTUBE_PROXY_RETRIES", raising=False)
         mp3_file = tmp_path / "Song.mp3"
         mp3_file.write_bytes(b"data")
 
