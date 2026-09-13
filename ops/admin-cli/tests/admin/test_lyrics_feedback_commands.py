@@ -235,9 +235,7 @@ class TestLyricsFeedbackListCommand:
         assert "hash-aa" in result.output
         assert "hash-bb" not in result.output
 
-    def test_positive_row_shown_as_positive(
-        self, make_test_provider, postgres_url, tmp_path
-    ):
+    def test_positive_row_shown_as_positive(self, make_test_provider, postgres_url, tmp_path):
         _init_schema(make_test_provider)
         _seed_data(make_test_provider())
         config_path = _write_config(tmp_path, postgres_url)
@@ -250,6 +248,25 @@ class TestLyricsFeedbackListCommand:
         assert result.exit_code == 0, result.output
         # R1 under --rating happy: open_count == open_happy == 1 → 👍
         assert "👍" in result.output
+        _drop_all_tables(make_test_provider)
+
+    def test_positive_open_rows_clear_suggested_action(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        _seed_data(make_test_provider())
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--rating", "happy", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        # R1 under --rating happy: open_happy == open_count == 1 → no negative
+        # reasons → stale "manual text review" must be replaced by the clear state.
+        assert "none (Lyrics verified)" in result.output
+        assert "manual text review" not in result.output
         _drop_all_tables(make_test_provider)
 
     def test_songless_recording_still_listed(self, make_test_provider, postgres_url, tmp_path):
