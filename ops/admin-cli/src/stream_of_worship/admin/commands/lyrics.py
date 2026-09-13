@@ -64,6 +64,7 @@ SUGGESTED_ACTIONS = {
     "wrong_text": "manual text review",
     "other": "manual text review",
 }
+NO_NEGATIVE_ACTION = "none (Lyrics verified)"
 
 
 def _load_connection_provider(config_path: Optional[Path]) -> AdminConfig:
@@ -83,11 +84,14 @@ def _truncate(value, width: int = 30) -> str:
     return text
 
 
-def _suggested_action(reason_counts: dict[str, int]) -> str:
-    """Pick the suggested action from the dominant open reason.
+def _suggested_action(reason_counts: dict[str, int], open_neg: int) -> str:
+    """Pick the suggested action for a recording's open feedback.
 
-    Tie-break by REASON_ORDER; empty open rows → manual review.
+    open_neg == 0 → none (Lyrics verified); else dominant open reason →
+    its pipeline command; no known negative reason → manual review.
     """
+    if open_neg == 0:
+        return NO_NEGATIVE_ACTION
     if not reason_counts:
         return SUGGESTED_ACTIONS["other"]
     dominant = max(
@@ -219,7 +223,7 @@ def feedback_list(
             str(open_count),
             _reason_breakdown(open_counts),
             latest_report.strftime("%Y-%m-%d") if latest_report else "",
-            _suggested_action(open_counts),
+            _suggested_action(open_counts, open_count - open_happy),
         )
     console.print(table)
 
@@ -437,6 +441,7 @@ def lyrics_generate(
             force_qwen3_asr=force_qwen3_asr,
             console=console,
         )
+
 
 def _get_alignment_lyrics_text(
     recording: "Recording",
@@ -676,6 +681,7 @@ def _submit_forced_alignment_batch(
     console.print(f"  Skipped: {skipped}")
     console.print(f"  Errors: {errors}")
 
+
 @app.command("align")
 def lyrics_align(
     song_id: Optional[str] = typer.Argument(None, help="Song ID to force-align LRC for"),
@@ -761,6 +767,7 @@ def lyrics_align(
             console=console,
             r2_client=r2_client,
         )
+
 
 @app.command("view")
 def lyrics_view(
@@ -853,6 +860,7 @@ def lyrics_view(
                 f"[yellow]Completed: {success_count} succeeded, {error_count} failed[/yellow]"
             )
             raise typer.Exit(1)
+
 
 @app.command("upload")
 def lyrics_upload(
@@ -992,6 +1000,7 @@ def lyrics_upload(
             border_style="green",
         )
     )
+
 
 @app.command("edit")
 def lyrics_edit(
@@ -1189,6 +1198,7 @@ def lyrics_edit(
     app.run()
 
     playback.stop()
+
 
 def _build_fresh_editor_state(
     transcribed_content: Optional[str],
