@@ -26,6 +26,8 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisServiceError,
     JobInfo,
 )
+from stream_of_worship.admin.services.lrc_parser import format_duration, parse_lrc
+from stream_of_worship.admin.services.r2 import R2Client
 from stream_of_worship.admin.services.structured_lyrics import (
     flatten_structured_lyrics,
     parse_structured_lyrics_smart,
