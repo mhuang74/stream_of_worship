@@ -4884,21 +4884,75 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py": {
-    "mtime": 1789265049.623981,
-    "seen": 1789265171.6933236,
+    "mtime": 1789295364.5734293,
+    "seen": 1789345452.2953703,
     "ast_hash": "2a84d3687f0eebc1225267c187f80fc8",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/lrc_jobs.py": {
-    "mtime": 1789260476.2797751,
-    "seen": 1789260795.0831509,
-    "ast_hash": "747c115a1524e6e8e2793b06e11ea9a1",
+    "mtime": 1789298143.5797422,
+    "seen": 1789345452.297676,
+    "ast_hash": "ed2035a693c0373d7915f5bc916cc23f",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/prompts.py": {
     "mtime": 1789260476.2797751,
     "seen": 1789260795.0832841,
     "ast_hash": "2bff812265e3f4cb527e028dd674f207",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/fixtures/songs.example.json": {
+    "mtime": 1789342686.0523052,
+    "seen": 1789345452.2925954,
+    "ast_hash": "afe5578ed2265d6424598f48786b02d6",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/_common.py": {
+    "mtime": 1789343739.8646266,
+    "seen": 1789345452.292601,
+    "ast_hash": "e55afeaa167e6fd6f8c00ea1bc926ef3",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/build_report.py": {
+    "mtime": 1789345355.6531398,
+    "seen": 1789345452.2926033,
+    "ast_hash": "3f0d8ab431ed54c0cac2828178ba7c58",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/fetch_transcripts.py": {
+    "mtime": 1789343433.733981,
+    "seen": 1789345452.2926054,
+    "ast_hash": "8c0ad7fde6e5f6c8501755739b8fcc9e",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py": {
+    "mtime": 1789343471.4759178,
+    "seen": 1789345452.2926073,
+    "ast_hash": "25f48e0beb6c181cef20b1b5041b92e4",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/make_fixture.py": {
+    "mtime": 1789345367.4792876,
+    "seen": 1789345452.292609,
+    "ast_hash": "a28fb5bfbabfe7640d5dca0a77a6831c",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/preflight.py": {
+    "mtime": 1789343774.754605,
+    "seen": 1789345452.292611,
+    "ast_hash": "6e861d4c0d9de3237f6127a1ffbf97da",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/run_models.py": {
+    "mtime": 1789345383.1664793,
+    "seen": 1789345452.2926126,
+    "ast_hash": "f4b6dd2ba174d3c51092526f5dd3c3fa",
+    "semantic_hash": ""
+  },
+  "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md": {
+    "mtime": 1789343826.9865782,
+    "seen": 1789345452.306394,
+    "ast_hash": "76ab85bee2023da0e9076173623b6d36",
     "semantic_hash": ""
   }
 }
