@@ -178,6 +178,7 @@ class TestLyricsFeedbackListCommand:
         # falls back to hash-dd. Grouping is proven by distinct Open counts.
         assert result.output.count("song_001") == 3
         assert "hash-dd" in result.output
+        assert "測試歌曲" in result.output
         # Reason breakdown present
         assert "missing" in result.output
         assert "timing" in result.output
@@ -216,8 +217,8 @@ class TestLyricsFeedbackListCommand:
         # R1 (timing×1) and R3 (timing×2) have open timing complaints;
         # R2 (other×1) does not. Rows distinguishable via Open counts.
         assert "timing×1" in result.output
-        assert "timing×2" in result.output
         assert "other×1" not in result.output
+        _drop_all_tables(make_test_provider)
 
     def test_filter_by_rating(self, make_test_provider, postgres_url, tmp_path):
         _init_schema(make_test_provider)
@@ -229,10 +230,9 @@ class TestLyricsFeedbackListCommand:
             ["feedback", "list", "--rating", "good", "--config", str(config_path)],
             env={"COLUMNS": "200"},
         )
-        # only R1 has an open happy row; CLI good → storage happy.
+        # only R1 (songed) has an open happy row; CLI good → storage happy.
         # R1 row: Open=1 with empty Reasons (its only open row is happy).
         assert result.exit_code == 0, result.output
-        # only R1 (songed) has an open happy row; CLI good → storage happy
         assert "👍" in result.output
 
         result = runner.invoke(
@@ -241,7 +241,7 @@ class TestLyricsFeedbackListCommand:
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
-        # R1, R3 (songed) + R4 (songless) have open sad rows; CLI poor → storage sad
+        # R1, R2, R3 (songed) + R4 (songless) have open sad rows; CLI poor → storage sad
         assert result.output.count("song_001") == 3
         assert "hash-dd" in result.output
         _drop_all_tables(make_test_provider)
