@@ -57,14 +57,7 @@ app.add_typer(feedback_app, name="feedback")
 
 REASON_ORDER = ["missing", "timing", "wrong_text", "other"]
 
-# Presentation-only mapping: which pipeline command addresses the complaint.
-SUGGESTED_ACTIONS = {
-    "missing": "generate Lyrics (lyrics generate <song-id>)",
-    "timing": "re-align (lyrics align <song-id>)",
-    "wrong_text": "manual text review",
-    "other": "manual text review",
-}
-NO_NEGATIVE_ACTION = "none (Lyrics verified)"
+RATING_FILTER = {"good": "happy", "poor": "sad"}
 
 
 def _load_connection_provider(config_path: Optional[Path]) -> AdminConfig:
@@ -84,25 +77,6 @@ def _truncate(value, width: int = 30) -> str:
     return text
 
 
-def _suggested_action(reason_counts: dict[str, int], open_neg: int) -> str:
-    """Pick the suggested action for a recording's open feedback.
-
-    open_neg == 0 → none (Lyrics verified); else dominant open reason →
-    its pipeline command; no known negative reason → manual review.
-    """
-    if open_neg == 0:
-        return NO_NEGATIVE_ACTION
-    if not reason_counts:
-        return SUGGESTED_ACTIONS["other"]
-    dominant = max(
-        REASON_ORDER,
-        key=lambda r: (reason_counts.get(r, 0), -REASON_ORDER.index(r)),
-    )
-    if reason_counts.get(dominant, 0) == 0:
-        return SUGGESTED_ACTIONS["other"]
-    return SUGGESTED_ACTIONS[dominant]
-
-
 def _reason_breakdown(open_counts: dict[str, int]) -> str:
     """Render open reason counts as e.g. ``missing×2 timing×1``."""
     parts = []
@@ -115,7 +89,7 @@ def _reason_breakdown(open_counts: dict[str, int]) -> str:
 
 @feedback_app.command("list")
 def feedback_list(
-    rating: Optional[str] = typer.Option(None, "--rating", help="Filter: happy | sad"),
+    rating: Optional[str] = typer.Option(None, "--rating", help="Filter: good | poor"),
     reason: Optional[str] = typer.Option(
         None, "--reason", help="Filter: missing | timing | wrong_text | other"
     ),
@@ -129,8 +103,8 @@ def feedback_list(
     Default shows only recordings with OPEN (unresolved) feedback;
     --all includes fully resolved ones.
     """
-    if rating is not None and rating not in ("happy", "sad"):
-        console.print("[red]--rating must be happy or sad[/red]")
+    if rating is not None and rating not in ("good", "poor"):
+        console.print("[red]--rating must be good or poor[/red]")
         raise typer.Exit(1)
     if reason is not None and reason not in REASON_ORDER:
         console.print(f"[red]--reason must be one of: {', '.join(REASON_ORDER)}[/red]")
@@ -143,7 +117,7 @@ def feedback_list(
     params: dict = {}
     if rating is not None:
         clauses.append("f.rating = %(rating)s")
-        params["rating"] = rating
+        params["rating"] = RATING_FILTER[rating]
     if reason is not None:
         clauses.append("(f.resolved_at IS NULL AND f.reason = %(reason)s)")
         params["reason"] = reason
@@ -156,7 +130,6 @@ def feedback_list(
             SELECT
                 r.content_hash,
                 r.hash_prefix,
-                r.lrc_status,
                 s.id AS song_id,
                 s.title,
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL) AS open_count,
@@ -170,7 +143,7 @@ def feedback_list(
             LEFT JOIN recordings r ON r.content_hash = f.recording_content_hash
             LEFT JOIN songs s ON s.id = r.song_id
             WHERE {where}
-            GROUP BY r.content_hash, r.hash_prefix, r.lrc_status, s.id, s.title
+            GROUP BY r.content_hash, r.hash_prefix, s.id, s.title
             {having}
             ORDER BY MAX(f.created_at) FILTER (WHERE f.resolved_at IS NULL) DESC NULLS LAST,
                      r.hash_prefix
@@ -186,19 +159,16 @@ def feedback_list(
 
     table = Table(title="Lyrics Feedback Queue")
     table.add_column("Song", style="cyan")
-    table.add_column("Recording", style="magenta")
-    table.add_column("LRC", style="dim")
-    table.add_column("Feedback", justify="center")
+    table.add_column("Song ID", style="magenta")
+    table.add_column("Like", justify="center")
     table.add_column("Open", justify="right")
     table.add_column("Reasons (neg)")
-    table.add_column("Latest report")
-    table.add_column("Suggested action")
+    table.add_column("Latest")
 
     for row in rows:
         (
             content_hash,
             hash_prefix,
-            lrc_status,
             song_id,
             title,
             open_count,
@@ -217,13 +187,11 @@ def feedback_list(
         }
         table.add_row(
             _truncate(title),
-            hash_prefix,
-            lrc_status or "",
+            song_id if song_id else hash_prefix,
             "👍" if open_happy == open_count else "👎",
             str(open_count),
             _reason_breakdown(open_counts),
             latest_report.strftime("%Y-%m-%d") if latest_report else "",
-            _suggested_action(open_counts, open_count - open_happy),
         )
     console.print(table)
 

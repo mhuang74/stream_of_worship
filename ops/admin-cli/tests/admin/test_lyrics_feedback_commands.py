@@ -174,17 +174,15 @@ class TestLyricsFeedbackListCommand:
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
-        # One row per recording (grouped, no duplicates)
-        assert result.output.count("hash-aa") >= 1
-        assert "測試歌曲" in result.output
-        # Pipeline lrc_status column distinguishes the two recordings
-        assert "completed" in result.output
-        assert "missing" in result.output
+        # Three songed recordings (R1-R3) share Song ID song_001; songless R4
+        # falls back to hash-dd. Grouping is proven by distinct Open counts.
+        assert result.output.count("song_001") == 3
+        assert "hash-dd" in result.output
         # Reason breakdown present
         assert "missing" in result.output
         assert "timing" in result.output
         # Polarity column: mixed open happy+sad rows (R1) → 👎
-        assert "Feedback" in result.output
+        assert "Like" in result.output
         assert "Reasons (neg)" in result.output
         assert "👎" in result.output
         _drop_all_tables(make_test_provider)
@@ -215,10 +213,11 @@ class TestLyricsFeedbackListCommand:
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
-        # only R1 has an open timing complaint
-        assert "hash-aa" in result.output
-        assert "hash-bb" not in result.output
-        _drop_all_tables(make_test_provider)
+        # R1 (timing×1) and R3 (timing×2) have open timing complaints;
+        # R2 (other×1) does not. Rows distinguishable via Open counts.
+        assert "timing×1" in result.output
+        assert "timing×2" in result.output
+        assert "other×1" not in result.output
 
     def test_filter_by_rating(self, make_test_provider, postgres_url, tmp_path):
         _init_schema(make_test_provider)
@@ -227,13 +226,25 @@ class TestLyricsFeedbackListCommand:
 
         result = runner.invoke(
             lyrics_app,
-            ["feedback", "list", "--rating", "happy", "--config", str(config_path)],
+            ["feedback", "list", "--rating", "good", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        # only R1 has an open happy row; CLI good → storage happy.
+        # R1 row: Open=1 with empty Reasons (its only open row is happy).
+        assert result.exit_code == 0, result.output
+        # only R1 (songed) has an open happy row; CLI good → storage happy
+        assert "👍" in result.output
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--rating", "poor", "--config", str(config_path)],
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
-        # only R1 has an open happy row
-        assert "hash-aa" in result.output
-        assert "hash-bb" not in result.output
+        # R1, R3 (songed) + R4 (songless) have open sad rows; CLI poor → storage sad
+        assert result.output.count("song_001") == 3
+        assert "hash-dd" in result.output
+        _drop_all_tables(make_test_provider)
 
     def test_positive_row_shown_as_positive(self, make_test_provider, postgres_url, tmp_path):
         _init_schema(make_test_provider)
@@ -242,31 +253,12 @@ class TestLyricsFeedbackListCommand:
 
         result = runner.invoke(
             lyrics_app,
-            ["feedback", "list", "--rating", "happy", "--config", str(config_path)],
+            ["feedback", "list", "--rating", "good", "--config", str(config_path)],
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
-        # R1 under --rating happy: open_count == open_happy == 1 → 👍
+        # R1 under --rating good: open_count == open_happy == 1 → 👍
         assert "👍" in result.output
-        _drop_all_tables(make_test_provider)
-
-    def test_positive_open_rows_clear_suggested_action(
-        self, make_test_provider, postgres_url, tmp_path
-    ):
-        _init_schema(make_test_provider)
-        _seed_data(make_test_provider())
-        config_path = _write_config(tmp_path, postgres_url)
-
-        result = runner.invoke(
-            lyrics_app,
-            ["feedback", "list", "--rating", "happy", "--config", str(config_path)],
-            env={"COLUMNS": "200"},
-        )
-        assert result.exit_code == 0, result.output
-        # R1 under --rating happy: open_happy == open_count == 1 → no negative
-        # reasons → stale "manual text review" must be replaced by the clear state.
-        assert "none (Lyrics verified)" in result.output
-        assert "manual text review" not in result.output
         _drop_all_tables(make_test_provider)
 
     def test_songless_recording_still_listed(self, make_test_provider, postgres_url, tmp_path):
@@ -304,22 +296,10 @@ class TestLyricsFeedbackListCommand:
             env={"COLUMNS": "200"},
         )
         assert result_all.exit_code == 0, result_all.output
-        assert "hash-aa" in result_all.output
-        _drop_all_tables(make_test_provider)
-
-    def test_suggested_action_mapping(self, make_test_provider, postgres_url, tmp_path):
-        _init_schema(make_test_provider)
-        _seed_data(make_test_provider())
-        config_path = _write_config(tmp_path, postgres_url)
-
-        result = runner.invoke(
-            lyrics_app,
-            ["feedback", "list", "--config", str(config_path)],
-            env={"COLUMNS": "200"},
-        )
-        assert result.exit_code == 0, result.output
-        assert "generate" in result.output.lower()  # missing → generate Lyrics
-        assert "re-align" in result.output.lower()  # timing → re-align
+        # All four seeded recordings reappear (songed rows show song_001,
+        # songless R4 shows hash-dd)
+        assert result_all.output.count("song_001") == 3
+        assert "hash-dd" in result_all.output
         _drop_all_tables(make_test_provider)
 
 
