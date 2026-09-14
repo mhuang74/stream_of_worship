@@ -63,7 +63,7 @@ def _compute_lrc_cache_key(content_hash: str, lyrics_text: str, language: str = 
     """
     # Create a composite string of both inputs
     lyrics_hash = hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest()[:16]
-    composite = f"{content_hash}:{lyrics_hash}:{language}:lrc-lang-v3"
+    composite = f"{content_hash}:{lyrics_hash}:{language}:lrc-lang-v4"
     # Return a shorter hash of the composite
     return hashlib.sha256(composite.encode("utf-8")).hexdigest()[:32]
 
@@ -124,6 +124,7 @@ try:
     )
     from ..services.qwen3_asr_client import Qwen3AsrError, Qwen3AsrQuotaExhaustedError
 except ImportError:
+
     class _DummyLRCWorkerError(Exception):
         pass
 
@@ -1015,21 +1016,15 @@ class JobQueue:
                     )
 
                 # v5: LLM theme/posture classification.
-                if (
-                    request.options.classify_theme
-                    or request.options.classify_vocal_posture
-                ):
+                if request.options.classify_theme or request.options.classify_vocal_posture:
                     with step_timer("LLM theme/posture classification", logger):
                         from .classifier import has_cached_llm_fields
 
-                        if (
-                            not request.options.force
-                            and has_cached_llm_fields(
-                                components,
-                                classify_theme=request.options.classify_theme,
-                                classify_vocal_posture=request.options.classify_vocal_posture,
-                                all_components=request.options.all_components,
-                            )
+                        if not request.options.force and has_cached_llm_fields(
+                            components,
+                            classify_theme=request.options.classify_theme,
+                            classify_vocal_posture=request.options.classify_vocal_posture,
+                            all_components=request.options.all_components,
                         ):
                             logger.info(
                                 "LLM classification skipped — cached results found in components.json"
@@ -1558,9 +1553,7 @@ class JobQueue:
                                 if closed:
                                     break
                                 # Heartbeat: refresh updated_at
-                                await self._update_stage(
-                                    job, "waiting_for_youtube_rate_limit", 0.2
-                                )
+                                await self._update_stage(job, "waiting_for_youtube_rate_limit", 0.2)
                             youtube_breaker_cycles_waited += 1
                             # Breaker closed — retry YouTube transcript
                             continue
@@ -2487,7 +2480,9 @@ class JobQueue:
                     job.updated_at = datetime.now(timezone.utc)
                     job.stage = "cancelled"
                     try:
-                        await self.job_store.update_job(job.id, status="cancelled", stage="cancelled")
+                        await self.job_store.update_job(
+                            job.id, status="cancelled", stage="cancelled"
+                        )
                     except Exception as e:
                         logger.error(f"Failed to update cancelled job {job.id} in database: {e}")
                     self._jobs[job.id] = job
@@ -2525,11 +2520,15 @@ class JobQueue:
                 and (now.replace(tzinfo=None) - job.updated_at.replace(tzinfo=None)).total_seconds()
                 <= FINISHED_JOB_MEMORY_RETENTION_SECONDS
             )
-            is_finished = job.status in (
-                JobStatus.COMPLETED,
-                JobStatus.FAILED,
-                JobStatus.CANCELLED,
-            ) and not is_recent_failed
+            is_finished = (
+                job.status
+                in (
+                    JobStatus.COMPLETED,
+                    JobStatus.FAILED,
+                    JobStatus.CANCELLED,
+                )
+                and not is_recent_failed
+            )
             if is_finished:
                 continue
             # Active (reportable) job: QUEUED, WAITING, PROCESSING, or recently FAILED
@@ -2557,9 +2556,7 @@ class JobQueue:
                 queued_wait_times[job.type].append((now - job.created_at).total_seconds())
                 has_reportable_jobs = True
             elif job.status == JobStatus.WAITING:
-                queued_wait_times[job.type].append(
-                    (now - job.created_at).total_seconds()
-                )
+                queued_wait_times[job.type].append((now - job.created_at).total_seconds())
                 has_reportable_jobs = True
             elif job.status == JobStatus.PROCESSING:
                 processing_durations[job.type].append((now - job.updated_at).total_seconds())
@@ -2674,9 +2671,7 @@ class JobQueue:
             if pd:
                 avg_dur = sum(pd) / len(pd)
                 segments.append(f"processing={avg_dur:.0f}s")
-            wait_lines.append(
-                f"  {jt.name.ljust(max_name_width)}  {'  '.join(segments)}"
-            )
+            wait_lines.append(f"  {jt.name.ljust(max_name_width)}  {'  '.join(segments)}")
 
         if wait_lines:
             lines.append("Wait times:")
