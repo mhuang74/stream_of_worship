@@ -278,9 +278,7 @@ class _YouTubeRateLimiter:
                 min_interval = random.uniform(min_interval - jitter, min_interval + jitter)
             if elapsed < min_interval:
                 wait = min_interval - elapsed
-                logger.debug(
-                    "YouTube rate limit: spacing request, sleeping %.2fs", wait
-                )
+                logger.debug("YouTube rate limit: spacing request, sleeping %.2fs", wait)
                 await asyncio.sleep(wait)
             self._last_request_time = time.monotonic()
 
@@ -371,7 +369,7 @@ class _YouTubeRateLimiter:
 
                     # Retry with exponential backoff + jitter (if attempts remain)
                     if attempt < max_retries:
-                        delay = min(base_delay * (2 ** attempt), 60.0)
+                        delay = min(base_delay * (2**attempt), 60.0)
                         delay += random.uniform(0, delay * 0.25)
                         logger.info(
                             "Retrying YouTube API call for %s in %.1fs",
@@ -391,7 +389,7 @@ class _YouTubeRateLimiter:
                     # SSL/connection errors from rotating proxy — retry with
                     # backoff. These are proxy-level, not YouTube rate limiting,
                     # so the circuit breaker is NOT tripped.
-                    delay = min(base_delay * (2 ** attempt), 30.0)
+                    delay = min(base_delay * (2**attempt), 30.0)
                     delay += random.uniform(0, delay * 0.25)
                     logger.info(
                         "YouTube API transient connection error for %s, "
@@ -512,10 +510,57 @@ STRICT_REQUIREMENTS_BLOCK = """\
    Lyrics, merge them into a SINGLE output line using the FIRST merged line's timestamp.
 2. If several transcribed lines share the exact same timestamp, merge them into one
    output line at that timestamp.
-3. Never emit a partial phrase: each output line's text must be exactly one full
-   lyric line from the Official Lyrics (repeated phrases allowed).
+3. Never emit a partial phrase: each output line's text must be one full lyric line
+   from the Official Lyrics — or, when one transcribed cue covers two or more official
+   lyric lines, those complete lines joined with a single space (repeated phrases
+   allowed).
 4. Lines in the Official Lyrics consisting entirely of a [bracketed] label are
    section tags (metadata), not sung phrases — never emit them as lyric lines."""
+WORKED_EXAMPLE_ZH = """\
+## Worked Example
+
+This example is from a different song. Learn the merge and drop behavior it shows;
+never copy its lyric text into your output.
+
+Transcribed subtitle (excerpt):
+
+```
+00:05.23
+“A New Beginning”
+
+00:08.24
+Lyrics and Music by David Yu
+
+00:15.91
+Laying down all my sorrow and shame
+Laying down all my sin and my pain
+
+00:23.25
+Lord, I come to You, as I am
+```
+
+Official lyrics (excerpt):
+
+```
+[Verse]
+放下一切憂傷和羞愧
+放下一切痛苦和纏累
+主我來到祢施恩座前
+```
+
+Correct output:
+
+```
+[00:15.91] 放下一切憂傷和羞愧 放下一切痛苦和纏累
+[00:23.25] 主我來到祢施恩座前
+```
+
+Why: the 00:05.23 and 00:08.24 cues are a song title and a credits card — they match
+no lyric line, so they produce NO output lines. The 00:15.91 cue holds two
+transcribed lines that share one timestamp and together cover TWO official lyric
+lines, so they merge into ONE output line at 00:15.91, both texts joined with a
+single space. The 00:23.25 cue covers one official line and keeps its own
+timestamp."""
 
 
 def build_correction_prompt(
@@ -525,8 +570,10 @@ def build_correction_prompt(
 ) -> str:
     """Build LLM prompt for lyrics correction.
     Embeds the "Additional Requirements" block (merge fragment runs, dedup
-    identical timestamps, full phrases only, never emit section tags) adopted
-    from the eval-models-for-fixing-youtube-transcription bake-off.
+    identical timestamps, full phrases or cue-covered joins, never emit section
+    tags) adopted from the eval-models-for-fixing-youtube-transcription
+    bake-off. The zh template also embeds a grounded worked example
+    (WORKED_EXAMPLE_ZH) demonstrating merge and drop behavior.
 
     Args:
         transcript_text: Formatted transcript with timestamps
@@ -590,6 +637,8 @@ Compare the auto-generated subtitle transcription (which may be in the wrong lan
 ```
 
 {STRICT_REQUIREMENTS_BLOCK}
+
+{WORKED_EXAMPLE_ZH}
 
 ## Output Format
 Output ONLY corrected lines in LRC format, one per line:

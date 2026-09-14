@@ -19,8 +19,9 @@ unchanged against cached YouTube transcripts.
 Each candidate is evaluated under **two prompt variants**:
 
 - `prod` — the production correction prompt, verbatim, which embeds the
-  "Additional Requirements" block (merged 2026-09-14 from this skill's
-  bake-off).
+  "Additional Requirements" block and the zh worked example (merged 2026-09-14
+  from this skill's bake-off; example from the 2026-09-14 ground-truth
+  clarification).
 - `strict` — machinery for future prompt iteration; a no-op today.
 
 Running both separates prompt-induced failures from model-capability failures
@@ -31,12 +32,18 @@ variant) + up to 2 judge calls (one per ok variant item), plus `N+1` preflight
 pings (1 per candidate + judge), multiplied by retries under provider 429s.
 
 
-The judge scores each model's corrected LRC on three criteria:
+The judge scores each model's corrected LRC on four criteria:
 
-1. Every timestamp carries a complete lyrics phrase, not a partial.
+1. Every timestamp carries complete lyrics — exactly one full official line, or two
+   or more complete official lines joined with single spaces when one transcript cue
+   covers several (repeated phrases allowed); a partial phrase fails.
 2. Timestamps are unique — a phrase is never split across multiple identical
    timestamps.
 3. The last timestamp falls within 60 seconds of total song duration (60s: the instrumental tail after the last lyric line can exceed 30s).
+4. Placement — each output line's timestamp is the start of the transcript cue
+   containing the matching sung content. **LLM-judge only** (mechanical checks
+   cannot see cues); marked pass when the transcript is unavailable and under
+   `--mechanical-only`.
 
 ### Artifact layout
 

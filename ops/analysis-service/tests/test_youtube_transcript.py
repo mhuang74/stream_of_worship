@@ -99,6 +99,26 @@ class TestBuildCorrectionPrompt:
         assert "## Additional Requirements" in prompt
         assert prompt.index("## Additional Requirements") < prompt.index("## Output Format")
 
+    def test_includes_worked_example_zh(self):
+        prompt = build_correction_prompt("00:00.00\ntest\n", ["測試"])
+        assert "## Worked Example" in prompt
+        assert "放下一切憂傷和羞愧 放下一切痛苦和纏累" in prompt
+        assert "主我來到祢施恩座前" in prompt
+        assert (
+            prompt.index("## Additional Requirements")
+            < prompt.index("## Worked Example")
+            < prompt.index("## Output Format")
+        )
+
+    def test_worked_example_absent_from_en_prompt(self):
+        prompt = build_correction_prompt("00:00.00\ntest\n", ["Test"], language="en")
+        assert "## Worked Example" not in prompt
+
+    def test_rule3_allows_joined_lines(self):
+        prompt = build_correction_prompt("00:00.00\ntest\n", ["測試"])
+        assert "Never emit a partial phrase" in prompt
+        assert "joined with a single space" in prompt
+
 
 class TestParseLrcResponse:
     """Tests for parse_lrc_response()."""

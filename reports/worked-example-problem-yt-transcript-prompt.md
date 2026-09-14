@@ -99,3 +99,47 @@ rather than the plan's "re-time to next snippet start" narrative — which also
 - Cache key bumped `lrc-lang-v2` → `lrc-lang-v3`; eval skill guarded against double
   injection.
 - Pushed: `96b8d7e1` (code) + `f3ef5e38` (graphify chore).
+
+## Update — 2026-09-14 clarification (decision overturned)
+
+The user supplied a **ground-truth ruling** for the first two cues of
+全新的生命 (FAmBStYXv6I, snippet starts 15.914 and 23.254): the correct LRC output is
+**one line per cue**, merging official-lyrics lines that share one cue:
+
+```
+[00:15.91] 放下一切憂傷和羞愧 放下一切痛苦和纏累
+[00:23.25] 主我來到祢施恩座前
+```
+
+This overturns the drop decision: **Option A's dilemma dissolves** because it assumed
+a **3-line** output (two 放下 lines + 主我…) needing a timestamp that exists nowhere
+in the input. Under the clarified 2-line ground truth the two fragments of the
+00:15.91 cue merge into ONE line at that cue's timestamp; no borrowed timestamp is
+needed, and the 00:05.23/00:08.24 title/credits cues produce NO output.
+
+Two defects were found this session (proven by running the eval skill's
+`mechanical_checks` on both shapes):
+
+1. **Rule 3 forbade the correct output** — "each output line's text must be exactly
+   one full lyric line" rejected a two-line join that matches no single official line.
+2. **The judge was blind to the real defect** — the shift-parked outputs (both PASS
+   artifacts put lyric lines on the 00:05.23/00:08.24 title/credits cues, ~10s early)
+   passed every check, while the correct merged output failed
+   (`unmatched_line_indexes [0]`, `complete_phrases False`). The bake-off's "100%
+   pass" validated the wrong behavior for this case.
+
+New decision (implemented this session):
+
+- Worked example added to the **zh** prompt only (`WORKED_EXAMPLE_ZH`, above
+  `build_correction_prompt` in `youtube_transcript.py`); rule 3 amended to allow
+  cue-covered joins (single-space join of complete official lines). Rules 1, 2, 4
+  byte-identical to the validated block.
+- LRC cache key bumped `lrc-lang-v3` → `lrc-lang-v4` (cached LRCs regenerate).
+- Eval-skill `STRICT_BLOCK` copy kept in sync.
+- Judge: joined lines count as complete (`_is_official_line_or_join`); new
+  **criterion 4 — placement** (LLM-judged only; pass when transcript unavailable or
+  under `--mechanical-only`); judge prompt gains a transcript section; report gains a
+  `placement fails` column (old runs default placement to pass).
+- **Re-bake-off required before ship** (deepseek-v4-flash prod on
+  `quan_xin_de_sheng_ming_5a797042`; success gate = merged 00:15.91 first line, no
+  00:05.23/00:08.24 lines, all four criteria true).

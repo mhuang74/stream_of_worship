@@ -94,6 +94,7 @@ def main() -> None:
             "complete_phrases_fails": 0,
             "unique_timestamps_fails": 0,
             "ending_window_fails": 0,
+            "placement_fails": 0,
             "partial_phrase_lines": 0,
             "unmatched_lines": 0,
             "duplicate_timestamps": 0,
@@ -117,9 +118,10 @@ def main() -> None:
                 row["unique_timestamps_fails"] += 1
             if not c["ending_window"]:
                 row["ending_window_fails"] += 1
+            if not c.get("placement", True):
+                row["placement_fails"] += 1
             m = v.get("mechanical") or {}
             row["partial_phrase_lines"] += len(m.get("partial_phrase_line_indexes", []))
-            row["unmatched_lines"] += len(m.get("unmatched_line_indexes", []))
             row["duplicate_timestamps"] += len(m.get("duplicate_pairs", []))
             row["order_violations"] += m.get("order_violations", 0)
             coverage += m.get("exact_match_coverage", 0.0)
@@ -174,6 +176,7 @@ def main() -> None:
                             "complete_phrases_fails",
                             "unique_timestamps_fails",
                             "ending_window_fails",
+                            "placement_fails",
                             "partial_phrase_lines",
                             "unmatched_lines",
                             "duplicate_timestamps",
@@ -244,9 +247,9 @@ def _render_report(
         lines.append(f"## Ranking — {variant}")
         lines.append("")
         lines.append(
-            "| model | songs | pass_rate | complete fails | unique fails | ending fails | partial lines | unmatched lines | dup timestamps | order violations | avg coverage | judge errors | errors | criteria source |"
+            "| model | songs | pass_rate | complete fails | unique fails | ending fails | placement fails | partial lines | unmatched lines | dup timestamps | order violations | avg coverage | judge errors | errors | criteria source |"
         )
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for r in ranking.get(variant, []):
             pr = f"{r['pass_rate']:.0%}" if r["pass_rate"] is not None else "N/A (ranked last)"
             cov = (
@@ -257,7 +260,8 @@ def _render_report(
             src = r["criteria_source_counts"]
             lines.append(
                 f"| {r['model']} | {r['songs']} | {pr} | {r['complete_phrases_fails']} | "
-                f"{r['unique_timestamps_fails']} | {r['ending_window_fails']} | {r['partial_phrase_lines']} | "
+                f"{r['unique_timestamps_fails']} | {r['ending_window_fails']} | {r['placement_fails']} | "
+                f"{r['partial_phrase_lines']} | "
                 f"{r['unmatched_lines']} | {r['duplicate_timestamps']} | {r['order_violations']} | {cov} | "
                 f"{r['judge_errors']} | {r['errors']} | judge {src.get('judge', 0)} / mech {src.get('mechanical', 0)} |"
             )
@@ -335,7 +339,7 @@ def _render_report(
                 if j.get("notes"):
                     lines.append(f"- judge notes: {j['notes']}")
                 crit = j.get("criteria", {})
-                for name in ("complete_phrases", "unique_timestamps", "ending_window"):
+                for name in ("complete_phrases", "unique_timestamps", "ending_window", "placement"):
                     cd = crit.get(name) or {}
                     issues = cd.get("issues") or []
                     mark = "✅" if cd.get("pass") else "❌"

@@ -19,6 +19,7 @@ import asyncio
 import json
 import os
 import sys
+from functools import cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -29,9 +30,12 @@ from _common import (
     judge_official_lines,
     load_fixture,
     load_skill_env,
+    load_transcript,
     parse_judge_json,
     read_jsonl,
     slugify,
+    snippets_to_namespace,
+    transcript_cache_path,
 )
 
 JUDGE_SCHEMA_HINT = """\
@@ -40,7 +44,8 @@ Output ONLY a JSON object with exactly this schema (no markdown, no commentary):
   "criteria": {
     "complete_phrases": {"pass": true, "issues": [{"index": 3, "timestamp": "01:23.45", "text": "...", "reason": "..."}]},
     "unique_timestamps": {"pass": true, "issues": [{"detail": "..."}]},
-    "ending_window": {"pass": true, "gap_seconds": 12.4, "detail": "..."}
+    "ending_window": {"pass": true, "gap_seconds": 12.4, "detail": "..."},
+    "placement": {"pass": true, "issues": [{"index": 0, "timestamp": "00:05.23", "text": "...", "reason": "..."}]}
   },
   "overall_pass": true,
   "notes": "one short line"
@@ -50,20 +55,41 @@ Issues arrays are empty when a criterion passes."""
 ENDING_WINDOW_SECONDS = 60
 
 JUDGE_CRITERIA = f"""\
-Judge the candidate LRC against the official lyrics by exactly these criteria:
-1. Each timestamp must carry a complete lyrics phrase — its text must be exactly one
-   full line from the official lyrics (repeated phrases allowed); a partial/fragment
-   phrase is a failure.
+1. Each timestamp must carry complete lyrics — its text must be exactly one full line
+   from the official lyrics, or two or more complete official lines joined with single
+   spaces when one transcript cue covers several (repeated phrases allowed); a
+   partial/fragment phrase is a failure.
 2. Each timestamp must be unique — no two lines may share the same timestamp, and one
    lyric phrase must never be split across multiple lines with identical timestamps
    whose texts together form one official phrase.
 3. The last timestamp must be within {ENDING_WINDOW_SECONDS} seconds of the total song duration:
-   0 <= duration_seconds - max(timestamp) <= {ENDING_WINDOW_SECONDS}."""
+   0 <= duration_seconds - max(timestamp) <= {ENDING_WINDOW_SECONDS}.
+4. Placement: each output line's timestamp must be the start of the transcript cue
+   that contains the matching sung content. A lyric line placed on a cue whose text
+   is a title, credits card, spoken introduction, or a different lyric line's content
+   is a failure."""
 
 
-def build_judge_prompt(official: list[str], lrc_lines, duration_seconds: float) -> str:
+def build_judge_prompt(
+    official: list[str],
+    lrc_lines,
+    duration_seconds: float,
+    transcript_text: str | None = None,
+) -> str:
     official_block = "\n".join(f"{i + 1}. {ln}" for i, ln in enumerate(official))
     candidate_block = "\n".join(f"{i + 1}. {ln.format()}" for i, ln in enumerate(lrc_lines))
+    if transcript_text is not None:
+        transcript_section = f"""## Transcript (timestamped cues)
+```
+{transcript_text}
+```
+
+"""
+    else:
+        transcript_section = (
+            "(Transcript unavailable — criterion 4 cannot be assessed; "
+            "mark placement pass with a note.)\n\n"
+        )
     return f"""{JUDGE_CRITERIA}
 
 Total song duration: {duration_seconds:.2f} seconds
@@ -71,10 +97,32 @@ Total song duration: {duration_seconds:.2f} seconds
 ## Official Lyrics (numbered)
 {official_block}
 
-## Candidate LRC (numbered)
+{transcript_section}## Candidate LRC (numbered)
 {candidate_block}
 
 {JUDGE_SCHEMA_HINT}"""
+
+
+def _is_official_line_or_join(text: str, official_stripped: list[str]) -> bool:
+    """True if text is one official line, or >=2 official lines joined by single spaces."""
+    if text in set(official_stripped):
+        return True
+    n = len(text)
+
+    @cache
+    def match_from(i: int) -> bool:
+        if i == n:
+            return True
+        for off in official_stripped:
+            end = i + len(off)
+            if end <= n and text.startswith(off, i):
+                if end == n:
+                    return True
+                if text[end] == " " and match_from(end + 1):
+                    return True
+        return False
+
+    return match_from(0)
 
 
 def mechanical_checks(official: list[str], lrc_lines, duration_seconds: float) -> dict:
@@ -108,7 +156,7 @@ def mechanical_checks(official: list[str], lrc_lines, duration_seconds: float) -
     unmatched_idx: list[int] = []
     for i, line in enumerate(lrc_lines):
         text = line.text.strip()
-        if text in official_set:
+        if text in official_set or _is_official_line_or_join(text, official_stripped):
             exact_idx.append(i)
         elif any(text in off and text != off for off in official_stripped):
             partial_idx.append(i)
@@ -180,7 +228,11 @@ def main() -> None:
         sys.exit(1)
 
     bootstrap_analysis_src()
-    from sow_analysis.workers.youtube_transcript import parse_lrc_response
+    from sow_analysis.workers.youtube_transcript import (
+        _format_transcript_text,
+        extract_video_id,
+        parse_lrc_response,
+    )
 
     fixture_path = meta.get("fixture_path")
     if not fixture_path or not Path(fixture_path).is_file():
@@ -226,6 +278,7 @@ def main() -> None:
                 retry = judge_call(prompt + "\n\nOutput ONLY the JSON object.")
                 return parse_judge_json(retry)  # JudgeParseError propagates -> judge_error
 
+    transcripts_dir = meta.get("transcripts_dir")
     verdicts_dir = run_dir / "verdicts"
     n = len(ok_rows)
     judge_errors = 0
@@ -252,12 +305,33 @@ def main() -> None:
             mech = mechanical_checks(official, lrc_lines, entry["duration_seconds"])
             verdict["mechanical"] = mech
 
+            # Placement evidence: build transcript text from the cached transcript.
+            transcript_text = None
+            if transcripts_dir:
+                try:
+                    video_id = extract_video_id(entry["youtube_url"])
+                    if video_id:
+                        tpath = transcript_cache_path(
+                            transcripts_dir, video_id, entry.get("language", "zh")
+                        )
+                        if tpath.is_file():
+                            snippets = load_transcript(tpath)["snippets"]
+                            transcript_text = _format_transcript_text(
+                                snippets_to_namespace(snippets)
+                            )
+                except Exception:  # noqa: BLE001 — transcript is best-effort evidence
+                    transcript_text = None
+
             if args.mechanical_only:
                 verdict["criteria"] = derive_mechanical_criteria(mech)
+                # Placement is LLM-assessed only; mechanical checks cannot see cues.
+                verdict["criteria"]["placement"] = True
             else:
                 try:
                     judge_verdict = judge_with_parse_retry(
-                        build_judge_prompt(official, lrc_lines, entry["duration_seconds"])
+                        build_judge_prompt(
+                            official, lrc_lines, entry["duration_seconds"], transcript_text
+                        )
                     )
                 except Exception as e:  # noqa: BLE001 — judge failure is per-item
                     judge_errors += 1
@@ -280,12 +354,19 @@ def main() -> None:
                         "ending_window": bool(judge_verdict["criteria"]["ending_window"]["pass"]),
                         "overall_pass": bool(judge_verdict.get("overall_pass", False)),
                     }
+                    placement = bool(
+                        judge_verdict["criteria"].get("placement", {}).get("pass", False)
+                    )
+                    if transcript_text is None:
+                        placement = True
+                    verdict["criteria"]["placement"] = placement
         except Exception as e:  # noqa: BLE001 — per-item catch-all, continue
             judge_errors += 1
             verdict["criteria"] = {
                 "complete_phrases": False,
                 "unique_timestamps": False,
                 "ending_window": False,
+                "placement": True,
                 "overall_pass": False,
             }
             verdict["judge_error"] = f"{type(e).__name__}: {e}"

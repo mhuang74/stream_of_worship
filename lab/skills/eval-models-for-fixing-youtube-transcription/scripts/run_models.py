@@ -47,8 +47,10 @@ STRICT_BLOCK = """\
    Lyrics, merge them into a SINGLE output line using the FIRST merged line's timestamp.
 2. If several transcribed lines share the exact same timestamp, merge them into one
    output line at that timestamp.
-3. Never emit a partial phrase: each output line's text must be exactly one full
-   lyric line from the Official Lyrics (repeated phrases allowed).
+3. Never emit a partial phrase: each output line's text must be one full lyric line
+   from the Official Lyrics — or, when one transcribed cue covers two or more official
+   lyric lines, those complete lines joined with a single space (repeated phrases
+   allowed).
 4. Lines in the Official Lyrics consisting entirely of a [bracketed] label are
    section tags (metadata), not sung phrases — never emit them as lyric lines."""
 
