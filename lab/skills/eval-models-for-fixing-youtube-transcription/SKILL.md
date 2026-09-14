@@ -18,22 +18,25 @@ unchanged against cached YouTube transcripts.
 
 Each candidate is evaluated under **two prompt variants**:
 
-- `prod` — the production correction prompt, verbatim.
-- `strict` — the production prompt with an appended "Additional Requirements"
-  block (merge fragment runs, dedup identical timestamps, never emit partial
-  phrases, never emit `[bracketed]` section tags).
+- `prod` — the production correction prompt, verbatim, which embeds the
+  "Additional Requirements" block (merged 2026-09-14 from this skill's
+  bake-off).
+- `strict` — machinery for future prompt iteration; a no-op today.
 
-Running both separates prompt-induced failures from model-capability failures.
+Running both separates prompt-induced failures from model-capability failures
+(both variants are identical today; run prod-only for screening).
+
 **Cost: doubles LLM spend** — per song×model ≈ 2 correction calls (one per
 variant) + up to 2 judge calls (one per ok variant item), plus `N+1` preflight
 pings (1 per candidate + judge), multiplied by retries under provider 429s.
+
 
 The judge scores each model's corrected LRC on three criteria:
 
 1. Every timestamp carries a complete lyrics phrase, not a partial.
 2. Timestamps are unique — a phrase is never split across multiple identical
    timestamps.
-3. The last timestamp falls within 30 seconds of total song duration.
+3. The last timestamp falls within 60 seconds of total song duration (60s: the instrumental tail after the last lyric line can exceed 30s).
 
 ### Artifact layout
 
