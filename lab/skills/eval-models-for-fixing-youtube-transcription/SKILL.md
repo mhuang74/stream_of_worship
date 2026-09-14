@@ -64,13 +64,14 @@ output/eval-models-for-fixing-youtube-transcription/
 
 - cwd = **repo root** (all scripts resolve `PROJECT_ROOT` from their own path,
   but output dirs are relative to cwd).
-- `SOW_LLM_API_KEY` and `SOW_LLM_BASE_URL` exported. **Never paste key values
-  into files** — if missing, ask the user and pass per-invocation via
-  `VAR=... cmd` or `env: {...}`.
-  - Env resolution (all scripts): already-exported `os.environ` wins → then
-    `lab/skills/eval-models-for-fixing-youtube-transcription/fixtures/.env`
+- `SOW_LLM_API_KEY` and `SOW_LLM_BASE_URL`. **Never paste key values into
+  files** — if both env files are absent, ask the user for values and pass
+  per-invocation via `VAR=... cmd` or `env: {...}`.
+  - Env resolution (all scripts, per key): already-exported `os.environ`
+    wins → then `lab/skills/eval-models-for-fixing-youtube-transcription/fixtures/.env`
     (per-run override, optional, never commit real keys) → then the host
-    default `/opt/sow/.env`. Values are never echoed.
+    default `/opt/sow/.env`. Later files only fill keys not yet set; values
+    are never echoed.
 - `openai` package available in the analysis env (it is, via production deps).
 - For DB fixtures: `SOW_DATABASE_URL` / `SOW_DATABASE_PASSWORD` (via
   `AdminConfig`, i.e. `/opt/sow/.env` on this host).
@@ -85,10 +86,11 @@ uv run --project ops/admin-cli --extra admin python lab/skills/eval-models-for-f
 ```
 
 ## Step 0 — Interview (ask tool)
-
-1. **Credentials:** confirm `SOW_LLM_API_KEY` / `SOW_LLM_BASE_URL` are exported
-   (`os.environ.get(...)` presence check only — never echo values). If absent,
-   ask for values and pass per-invocation without writing files.
+1. **Credentials:** the scripts auto-load `SOW_LLM_API_KEY` / `SOW_LLM_BASE_URL`
+   via the env resolution order below (`os.environ` → `fixtures/.env` →
+   `/opt/sow/.env`). Presence-check only (`os.environ.get(...)`) — never echo
+   values. If both env files are missing the keys, ask the user for values and
+   pass per-invocation without writing files.
 2. **Candidate models:** first check `SOW_TRANSCRIPT_LLM_MODELS` (comma-
    separated model IDs, or a path to a file with one ID per line — `#`
    comments allowed, leading `@` accepted). If unset, ask the user for a
