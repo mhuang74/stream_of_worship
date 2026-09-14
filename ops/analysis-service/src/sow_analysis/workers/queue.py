@@ -63,7 +63,7 @@ def _compute_lrc_cache_key(content_hash: str, lyrics_text: str, language: str = 
     """
     # Create a composite string of both inputs
     lyrics_hash = hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest()[:16]
-    composite = f"{content_hash}:{lyrics_hash}:{language}:lrc-lang-v2"
+    composite = f"{content_hash}:{lyrics_hash}:{language}:lrc-lang-v3"
     # Return a shorter hash of the composite
     return hashlib.sha256(composite.encode("utf-8")).hexdigest()[:32]
 

@@ -7,9 +7,9 @@ Analysis env:
         --fixtures <path> --models "<comma list or @file>" \
         [--variants prod,strict] [--run-dir DIR]
 
-The production file stays untouched: the `strict` variant injects an
-"Additional Requirements" block into the prompt at run time, immediately
-before the `## Output Format` heading.
+The `strict` variant injects the "Additional Requirements" block only when
+the production prompt doesn't already contain it (prod has embedded the block
+since 2026-09-14, making `strict` a no-op today).
 """
 
 from __future__ import annotations
@@ -167,7 +167,7 @@ def main() -> None:
                         resolve_lyrics_lines(entry),
                         language=entry["language"],
                     )
-                    if variant == "strict":
+                    if variant == "strict" and "## Additional Requirements" not in prompt:
                         prompt = prompt.replace(
                             "## Output Format", STRICT_BLOCK + "\n\n## Output Format", 1
                         )

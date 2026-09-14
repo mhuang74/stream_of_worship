@@ -504,12 +504,29 @@ def _format_transcript_text(transcript: list) -> str:
     return "\n".join(lines)
 
 
+STRICT_REQUIREMENTS_BLOCK = """\
+## Additional Requirements
+
+1. Transcript lines are frequently fragments of one sung phrase. Whenever a run of
+   consecutive transcribed lines together forms ONE lyric line from the Official
+   Lyrics, merge them into a SINGLE output line using the FIRST merged line's timestamp.
+2. If several transcribed lines share the exact same timestamp, merge them into one
+   output line at that timestamp.
+3. Never emit a partial phrase: each output line's text must be exactly one full
+   lyric line from the Official Lyrics (repeated phrases allowed).
+4. Lines in the Official Lyrics consisting entirely of a [bracketed] label are
+   section tags (metadata), not sung phrases — never emit them as lyric lines."""
+
+
 def build_correction_prompt(
     transcript_text: str,
     official_lyrics: list[str],
     language: str = "zh",
 ) -> str:
     """Build LLM prompt for lyrics correction.
+    Embeds the "Additional Requirements" block (merge fragment runs, dedup
+    identical timestamps, full phrases only, never emit section tags) adopted
+    from the eval-models-for-fixing-youtube-transcription bake-off.
 
     Args:
         transcript_text: Formatted transcript with timestamps
@@ -543,6 +560,8 @@ Compare the subtitle transcription against the official English lyrics. Correct 
 {lyrics_str}
 ```
 
+{STRICT_REQUIREMENTS_BLOCK}
+
 ## Output Format
 Output ONLY corrected lines in LRC format, one per line:
 [mm:ss.xx] English lyric
@@ -569,6 +588,8 @@ Compare the auto-generated subtitle transcription (which may be in the wrong lan
 ```
 {lyrics_str}
 ```
+
+{STRICT_REQUIREMENTS_BLOCK}
 
 ## Output Format
 Output ONLY corrected lines in LRC format, one per line:
