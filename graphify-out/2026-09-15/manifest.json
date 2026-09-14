@@ -1122,8 +1122,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/play/LyricJumpList.tsx": {
-    "mtime": 1789260476.178775,
-    "seen": 1789260795.0565226,
+    "mtime": 1789423899.1017544,
+    "seen": 1789425193.767839,
     "ast_hash": "02a53ab1f4740540563db1677f275811",
     "semantic_hash": ""
   },
@@ -1776,9 +1776,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/chapters.ts": {
-    "mtime": 1783999248.0294144,
-    "seen": 1787357371.8948505,
-    "ast_hash": "13423ae2e051b0754c18df215ec3e543",
+    "mtime": 1789425563.9856474,
+    "seen": 1789426120.9643948,
+    "ast_hash": "3e1134d62601bbf85f091a79e5bb7584",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/dispatcher.ts": {
@@ -1800,9 +1800,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/lrc-parser.ts": {
-    "mtime": 1786262820.888206,
-    "seen": 1787357371.8948643,
-    "ast_hash": "ba3ea23c20de5522a82b0636f0bfae76",
+    "mtime": 1789425563.9866476,
+    "seen": 1789426120.9646454,
+    "ast_hash": "b525f944be732d223dfe010ab31ade9b",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/lyrics-display.ts": {
@@ -2562,9 +2562,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/render/lrc-parser.test.ts": {
-    "mtime": 1786262820.8892062,
-    "seen": 1787357371.8953245,
-    "ast_hash": "225a2aa9920a9f6fcff75e93024e75b8",
+    "mtime": 1789425563.9866476,
+    "seen": 1789426120.9743004,
+    "ast_hash": "1c088b4a8c0d43fd2d2b73ef4187de31",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/render/render-defaults.test.ts": {
@@ -3462,9 +3462,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py": {
-    "mtime": 1789260476.277775,
-    "seen": 1789260795.0808942,
-    "ast_hash": "25cfd2897e900d123854a7a67cace569",
+    "mtime": 1789424998.5961304,
+    "seen": 1789425193.8098118,
+    "ast_hash": "1c5b170d173292b1a75acb0f0f5f50c7",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/catalog.py": {
@@ -3660,9 +3660,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/analysis.py": {
-    "mtime": 1787032917.85112,
-    "seen": 1787357371.895973,
-    "ast_hash": "0ccfb3f9390c2e294e3fc25ef2d609ad",
+    "mtime": 1789425563.9866476,
+    "seen": 1789426120.9854734,
+    "ast_hash": "bf68a0db7860ab42d59239ded4cd209d",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/asset_cache.py": {
@@ -4026,9 +4026,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/config.py": {
-    "mtime": 1787032917.85812,
-    "seen": 1787357371.8961642,
-    "ast_hash": "0096e0908e3c40ebb945d7f56c158eca",
+    "mtime": 1789425563.9876475,
+    "seen": 1789426120.989657,
+    "ast_hash": "bf032d3491746568d0c3d96cac9ef679",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/logging_config.py": {
@@ -4044,9 +4044,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/models.py": {
-    "mtime": 1787032917.8591201,
-    "seen": 1787357371.8961687,
-    "ast_hash": "f19c15b4809d41dc7d4b963a41b6f3e3",
+    "mtime": 1789425563.9876475,
+    "seen": 1789426120.989777,
+    "ast_hash": "ecd8051962c567a5a0321e0cfb9e50ef",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/routes/__init__.py": {
@@ -4182,9 +4182,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/lrc.py": {
-    "mtime": 1783999248.2314155,
-    "seen": 1787357371.8962097,
-    "ast_hash": "24aa2670c5c88c240d82c36733cc88cf",
+    "mtime": 1789425563.9876475,
+    "seen": 1789426120.991149,
+    "ast_hash": "7c0533554d4fe2cf6350803dfc50575a",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/lrc_parser.py": {
@@ -4194,9 +4194,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/queue.py": {
-    "mtime": 1789387208.7843082,
-    "seen": 1789387333.4774725,
-    "ast_hash": "fa1381fe4045225e509d1d67441c3b56",
+    "mtime": 1789425563.9886475,
+    "seen": 1789426120.9912143,
+    "ast_hash": "6c2063d77ac444a66e699ccfc532e78f",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py": {
@@ -4278,9 +4278,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py": {
-    "mtime": 1789387208.7853084,
-    "seen": 1789387333.4783397,
-    "ast_hash": "b68096309026173d7b23868c610efa00",
+    "mtime": 1789425563.9896474,
+    "seen": 1789426120.9920504,
+    "ast_hash": "6436aefabe01c86235ad9ec941562f62",
     "semantic_hash": ""
   },
   "ops/analysis-service/start-dev.sh": {
@@ -4320,9 +4320,9 @@
     "semantic_hash": ""
   },
   "CONTEXT.md": {
-    "mtime": 1789260476.176775,
-    "seen": 1789260795.0900755,
-    "ast_hash": "82dcb737f1174bc56ae1613613c41998",
+    "mtime": 1789425277.6171947,
+    "seen": 1789426120.992355,
+    "ast_hash": "6c2c01fa0822a6d94c6f7bacf02fc6ad",
     "semantic_hash": ""
   },
   "DEVELOPER.md": {
@@ -4890,9 +4890,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/lrc_jobs.py": {
-    "mtime": 1789298143.5797422,
-    "seen": 1789345452.297676,
-    "ast_hash": "ed2035a693c0373d7915f5bc916cc23f",
+    "mtime": 1789425563.9866476,
+    "seen": 1789426120.9857445,
+    "ast_hash": "2da3c2af5f5cd62ad45f8468be0d48f7",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/prompts.py": {
