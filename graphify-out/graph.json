@@ -2162,19 +2162,6 @@
       "source_location": "L14"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter",
-      "label": "QuotaWaiter",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "code",
-      "norm_label": "quotawaiter",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L30"
-    },
-    {
       "id": "ops_analysis_service_src_sow_analysis_workers_separator_wrapper_audioseparatorwrapper",
       "label": "AudioSeparatorWrapper",
       "_callable": true,
@@ -2589,6 +2576,19 @@
       "norm_label": "mockconnection",
       "source_file": "delivery/webapp/src/test/hooks/usePresentationSender.test.ts",
       "source_location": "L7"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter",
+      "label": "QuotaWaiter",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "code",
+      "norm_label": "quotawaiter",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L30"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_stem_separation_stemseparationworkererror",
@@ -4034,6 +4034,58 @@
       "source_location": "L25"
     },
     {
+      "id": "delivery_webapp_src_components_play_offlinestatus_offlinestatusprops",
+      "label": "OfflineStatusProps",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "offlinestatusprops",
+      "source_file": "delivery/webapp/src/components/play/OfflineStatus.tsx",
+      "source_location": "L25"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_artifactcachestatus",
+      "label": "ArtifactCacheStatus",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "artifactcachestatus",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L11"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_cacheableartifacts",
+      "label": "CacheableArtifacts",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "cacheableartifacts",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_storagebudget",
+      "label": "StorageBudget",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "storagebudget",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L16"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_app_sowapp",
       "label": "SowApp",
       "_callable": true,
@@ -4071,6 +4123,19 @@
       "norm_label": "settingsscreen",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/settings.py",
       "source_location": "L16"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authscreenmode",
+      "label": "AuthScreenMode",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "authscreenmode",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L347"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_render_renderviewmodel_renderuistate",
@@ -5600,7 +5665,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "apierrorkind",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/ApiError.kt",
@@ -5613,7 +5678,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "authuser",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/AuthApi.kt",
@@ -5626,7 +5691,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "authcontroller",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -5639,7 +5704,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "authstate",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -5652,7 +5717,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "error",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -5665,7 +5730,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "restoring",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -5678,24 +5743,11 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "unauthenticated",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
       "source_location": "L16"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authscreenmode",
-      "label": "AuthScreenMode",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "authscreenmode",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L347"
     },
     {
       "id": "delivery_android_app_src_test_java_org_streamofworship_android_feature_auth_authscreenstest_authscreenstest",
@@ -5704,7 +5756,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "authscreenstest",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -5717,7 +5769,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "fakeauthcontroller",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -5943,19 +5995,6 @@
       "norm_label": "vadsegment",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L216"
-    },
-    {
-      "id": "delivery_webapp_src_components_lyrics_lyricseditor_lyricseditorprops",
-      "label": "LyricsEditorProps",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "cn",
-      "file_type": "code",
-      "norm_label": "lyricseditorprops",
-      "source_file": "delivery/webapp/src/components/lyrics/LyricsEditor.tsx",
-      "source_location": "L9"
     },
     {
       "id": "delivery_webapp_src_components_lyrics_lyricsreviewsheet_lyricsreviewsheetprops",
@@ -7349,17 +7388,17 @@
       "source_location": "L24"
     },
     {
-      "id": "delivery_webapp_src_components_play_offlinestatus_offlinestatusprops",
-      "label": "OfflineStatusProps",
+      "id": "delivery_webapp_src_components_lyrics_lyricseditor_lyricseditorprops",
+      "label": "LyricsEditorProps",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 54,
       "community_name": "SongsetEditor.tsx",
       "file_type": "code",
-      "norm_label": "offlinestatusprops",
-      "source_file": "delivery/webapp/src/components/play/OfflineStatus.tsx",
-      "source_location": "L25"
+      "norm_label": "lyricseditorprops",
+      "source_file": "delivery/webapp/src/components/lyrics/LyricsEditor.tsx",
+      "source_location": "L9"
     },
     {
       "id": "delivery_webapp_src_components_share_sharedialog_sharedialogprops",
@@ -7438,45 +7477,6 @@
       "norm_label": "songsetlistprops",
       "source_file": "delivery/webapp/src/components/songset/SongsetList.tsx",
       "source_location": "L39"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_artifactcachestatus",
-      "label": "ArtifactCacheStatus",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "artifactcachestatus",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L11"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_cacheableartifacts",
-      "label": "CacheableArtifacts",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "cacheableartifacts",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L5"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_storagebudget",
-      "label": "StorageBudget",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "storagebudget",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L16"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentheropanel",
@@ -17840,7 +17840,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "log()",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -17852,11 +17852,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_all_transitions()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L993"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
+      "label": "generate_transition_filename()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_transition_filename()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_load_all_song_sections",
@@ -17864,7 +17876,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "load_all_song_sections()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17876,11 +17888,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1424"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
+      "label": "parse_args()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "parse_args()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1366"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_print_summary_report",
@@ -17888,7 +17912,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "print_summary_report()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17900,7 +17924,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "save_summary_csv()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17912,7 +17936,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "save_transitions_index()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17924,7 +17948,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "select_transition_candidates()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -18301,6 +18325,18 @@
       "norm_label": ".compose()",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/transition_detail.py",
       "source_location": "L43"
+    },
+    {
+      "id": "delivery_webapp_src_components_audio_globalaudioplayer_globalaudioplayer",
+      "label": "GlobalAudioPlayer()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "Header.tsx",
+      "file_type": "code",
+      "norm_label": "globalaudioplayer()",
+      "source_file": "delivery/webapp/src/components/audio/GlobalAudioPlayer.tsx",
+      "source_location": "L24"
     },
     {
       "id": "delivery_webapp_src_components_layout_bottomnav_bottomnav",
@@ -22359,78 +22395,6 @@
       "source_location": "L156"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_init",
-      "label": ".__init__()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "code",
-      "norm_label": ".__init__()",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L44"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_mark_exhausted",
-      "label": ".mark_exhausted()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "code",
-      "norm_label": ".mark_exhausted()",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L66"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_poll_loop",
-      "label": "._poll_loop()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "code",
-      "norm_label": "._poll_loop()",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L154"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_start_poller",
-      "label": "._start_poller()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "code",
-      "norm_label": "._start_poller()",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L148"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_stop",
-      "label": ".stop()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "code",
-      "norm_label": ".stop()",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L179"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_wait",
-      "label": ".wait()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "code",
-      "norm_label": ".wait()",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L76"
-    },
-    {
       "id": "ops_analysis_service_src_sow_analysis_workers_separator_wrapper_audioseparatorwrapper_cleanup",
       "label": ".cleanup()",
       "_callable": true,
@@ -26245,6 +26209,78 @@
       "norm_label": "optional_semaphore()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/queue.py",
       "source_location": "L39"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L44"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_mark_exhausted",
+      "label": ".mark_exhausted()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "code",
+      "norm_label": ".mark_exhausted()",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L66"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_poll_loop",
+      "label": "._poll_loop()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "code",
+      "norm_label": "._poll_loop()",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L154"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_start_poller",
+      "label": "._start_poller()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "code",
+      "norm_label": "._start_poller()",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L148"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_stop",
+      "label": ".stop()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "code",
+      "norm_label": ".stop()",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L179"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_quotawaiter_wait",
+      "label": ".wait()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "code",
+      "norm_label": ".wait()",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L76"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_stem_separation_compute_mvsep_backoff",
@@ -30188,7 +30224,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_all_variants()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -30200,7 +30236,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_drum_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -30212,7 +30248,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_medium_silence_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -30224,23 +30260,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_medium_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L202"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
-      "label": "generate_transition_filename()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_transition_filename()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_generate_vocal_fade_transition",
@@ -30248,7 +30272,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "generate_vocal_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -30260,23 +30284,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "code",
       "norm_label": "load_stems_for_section()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L73"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
-      "label": "parse_args()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "parse_args()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1366"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_catalog_songsetitemwithdetails_display_key",
@@ -33807,6 +33819,138 @@
       "source_location": "L415"
     },
     {
+      "id": "delivery_webapp_src_components_play_offlinestatus_offlinestatus",
+      "label": "OfflineStatus()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "offlinestatus()",
+      "source_file": "delivery/webapp/src/components/play/OfflineStatus.tsx",
+      "source_location": "L33"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_artifactcachekey",
+      "label": "artifactCacheKey()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "artifactcachekey()",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L24"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_cacheartifacts",
+      "label": "cacheArtifacts()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "cacheartifacts()",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L123"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_getartifactcachestatus",
+      "label": "getArtifactCacheStatus()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "getartifactcachestatus()",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L91"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_getstoragebudget",
+      "label": "getStorageBudget()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "getstoragebudget()",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L63"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_invalidateartifactcache",
+      "label": "invalidateArtifactCache()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "invalidateartifactcache()",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L168"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_isofflinesupportedoncurrentdevice",
+      "label": "isOfflineSupportedOnCurrentDevice()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "isofflinesupportedoncurrentdevice()",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L32"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_requestpersistentstorage",
+      "label": "requestPersistentStorage()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "requestpersistentstorage()",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L51"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test_makecachemock",
+      "label": "makeCacheMock()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "makecachemock()",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
+      "source_location": "L18"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test_setstorageestimate",
+      "label": "setStorageEstimate()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "setstorageestimate()",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
+      "source_location": "L43"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test_setuseragent",
+      "label": "setUserAgent()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "setuseragent()",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
+      "source_location": "L35"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_app_sowapp_action_back",
       "label": ".action_back()",
       "_callable": true,
@@ -34057,6 +34201,78 @@
       "norm_label": ".on_button_pressed()",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/settings.py",
       "source_location": "L69"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authenticatedappgate",
+      "label": "AuthenticatedAppGate()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "authenticatedappgate()",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L62"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authformscaffold",
+      "label": "AuthFormScaffold()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "authformscaffold()",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L319"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_loginscreen",
+      "label": "LoginScreen()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "loginscreen()",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L125"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_passwordfield",
+      "label": "PasswordField()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "passwordfield()",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L299"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_registerscreen",
+      "label": "RegisterScreen()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "registerscreen()",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L200"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_rememberauthcontroller",
+      "label": "rememberAuthController()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "rememberauthcontroller()",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L42"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_render_renderviewmodel_renderviewmodel_cancelrender",
@@ -35595,18 +35811,6 @@
       "source_location": "L26"
     },
     {
-      "id": "delivery_webapp_src_components_audio_globalaudioplayer_globalaudioplayer",
-      "label": "GlobalAudioPlayer()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 30,
-      "community_name": "AudioPlayerContext.tsx",
-      "file_type": "code",
-      "norm_label": "globalaudioplayer()",
-      "source_file": "delivery/webapp/src/components/audio/GlobalAudioPlayer.tsx",
-      "source_location": "L24"
-    },
-    {
       "id": "delivery_webapp_src_components_audio_globalaudioplayer_playbarrouteguard",
       "label": "PlaybarRouteGuard()",
       "_callable": true,
@@ -36672,7 +36876,7 @@
       "file_type": "code",
       "norm_label": "build_judge_prompt()",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L62"
+      "source_location": "L64"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_chat",
@@ -36684,7 +36888,7 @@
       "file_type": "code",
       "norm_label": "_chat()",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L303"
+      "source_location": "L305"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_derive_mechanical_criteria",
@@ -36696,7 +36900,7 @@
       "file_type": "code",
       "norm_label": "derive_mechanical_criteria()",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L127"
+      "source_location": "L129"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_main",
@@ -36708,7 +36912,7 @@
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L143"
+      "source_location": "L145"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_mechanical_checks",
@@ -36720,7 +36924,7 @@
       "file_type": "code",
       "norm_label": "mechanical_checks()",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L78"
+      "source_location": "L80"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_make_fixture_main",
@@ -36948,7 +37152,7 @@
       "file_type": "code",
       "norm_label": "build_correction_prompt()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L507"
+      "source_location": "L521"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_build_proxy_config",
@@ -36960,7 +37164,7 @@
       "file_type": "code",
       "norm_label": "_build_proxy_config()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L625"
+      "source_location": "L646"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_extract_video_id",
@@ -36984,7 +37188,7 @@
       "file_type": "code",
       "norm_label": "fetch_youtube_transcript()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L677"
+      "source_location": "L698"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_find_best_transcript",
@@ -36996,7 +37200,7 @@
       "file_type": "code",
       "norm_label": "_find_best_transcript()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L640"
+      "source_location": "L661"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_format_transcript_text",
@@ -37056,7 +37260,7 @@
       "file_type": "code",
       "norm_label": "language_preference_codes()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L619"
+      "source_location": "L640"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_llm_correct",
@@ -37068,7 +37272,7 @@
       "file_type": "code",
       "norm_label": "_llm_correct()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L773"
+      "source_location": "L794"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_parse_lrc_response",
@@ -37080,7 +37284,7 @@
       "file_type": "code",
       "norm_label": "parse_lrc_response()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L580"
+      "source_location": "L601"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rotatingproxyconfig_init",
@@ -37152,7 +37356,7 @@
       "file_type": "code",
       "norm_label": "youtube_transcript_to_lrc()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L861"
+      "source_location": "L882"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_youtuberatelimiter_call",
@@ -39824,7 +40028,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".onsessionexpired()",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -39836,7 +40040,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".register()",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -39848,7 +40052,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".restoresession()",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -39860,7 +40064,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".signin()",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -39872,83 +40076,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".signout()",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
       "source_location": "L43"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authenticatedappgate",
-      "label": "AuthenticatedAppGate()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "authenticatedappgate()",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L62"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authformscaffold",
-      "label": "AuthFormScaffold()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "authformscaffold()",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L319"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_loginscreen",
-      "label": "LoginScreen()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "loginscreen()",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L125"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_passwordfield",
-      "label": "PasswordField()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "passwordfield()",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L299"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_registerscreen",
-      "label": "RegisterScreen()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "registerscreen()",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L200"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_rememberauthcontroller",
-      "label": "rememberAuthController()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "rememberauthcontroller()",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L42"
     },
     {
       "id": "delivery_android_app_src_test_java_org_streamofworship_android_feature_auth_authscreenstest_authscreenstest_auth_gate_renders_login_screen_for_unauthenticated_state",
@@ -39956,7 +40088,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".`auth gate renders login screen for unauthenticated state`()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -39968,7 +40100,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".`auth gate restores session and renders protected content when authenticated`()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -39980,7 +40112,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".`auth gate routes non-401 sign in failures back to login form`()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -39992,7 +40124,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".`login screen validates required fields before submit`()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -40004,7 +40136,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".onsessionexpired()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -40016,7 +40148,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".register()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -40028,7 +40160,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".restoresession()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -40040,7 +40172,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".signin()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -40052,7 +40184,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": ".signout()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -41355,18 +41487,6 @@
       "source_location": "L685"
     },
     {
-      "id": "delivery_webapp_src_components_lyrics_lyricseditor_lyricseditor",
-      "label": "LyricsEditor()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "cn",
-      "file_type": "code",
-      "norm_label": "lyricseditor()",
-      "source_file": "delivery/webapp/src/components/lyrics/LyricsEditor.tsx",
-      "source_location": "L15"
-    },
-    {
       "id": "delivery_webapp_src_components_lyrics_lyricsreviewsheet_formattime",
       "label": "formatTime()",
       "_callable": true,
@@ -41773,18 +41893,6 @@
       "norm_label": "cn()",
       "source_file": "delivery/webapp/src/lib/utils.ts",
       "source_location": "L4"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_lyrics_lyricseditor_test_rendereditor",
-      "label": "renderEditor()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "cn",
-      "file_type": "code",
-      "norm_label": "rendereditor()",
-      "source_file": "delivery/webapp/src/test/components/lyrics/LyricsEditor.test.tsx",
-      "source_location": "L16"
     },
     {
       "id": "delivery_webapp_src_test_components_lyrics_lyricsreviewsheet_test_rendersheet",
@@ -46419,16 +46527,16 @@
       "source_location": "L88"
     },
     {
-      "id": "delivery_webapp_src_components_play_offlinestatus_offlinestatus",
-      "label": "OfflineStatus()",
+      "id": "delivery_webapp_src_components_lyrics_lyricseditor_lyricseditor",
+      "label": "LyricsEditor()",
       "_callable": true,
       "_origin": "ast",
       "community": 54,
       "community_name": "SongsetEditor.tsx",
       "file_type": "code",
-      "norm_label": "offlinestatus()",
-      "source_file": "delivery/webapp/src/components/play/OfflineStatus.tsx",
-      "source_location": "L33"
+      "norm_label": "lyricseditor()",
+      "source_file": "delivery/webapp/src/components/lyrics/LyricsEditor.tsx",
+      "source_location": "L15"
     },
     {
       "id": "delivery_webapp_src_components_share_sharedialog_formatbytes",
@@ -46719,124 +46827,16 @@
       "source_location": "L21"
     },
     {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_artifactcachekey",
-      "label": "artifactCacheKey()",
+      "id": "delivery_webapp_src_test_components_lyrics_lyricseditor_test_rendereditor",
+      "label": "renderEditor()",
       "_callable": true,
       "_origin": "ast",
       "community": 54,
       "community_name": "SongsetEditor.tsx",
       "file_type": "code",
-      "norm_label": "artifactcachekey()",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L24"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_cacheartifacts",
-      "label": "cacheArtifacts()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "cacheartifacts()",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L123"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_getartifactcachestatus",
-      "label": "getArtifactCacheStatus()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "getartifactcachestatus()",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L91"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_getstoragebudget",
-      "label": "getStorageBudget()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "getstoragebudget()",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L63"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_invalidateartifactcache",
-      "label": "invalidateArtifactCache()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "invalidateartifactcache()",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L168"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_isofflinesupportedoncurrentdevice",
-      "label": "isOfflineSupportedOnCurrentDevice()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "isofflinesupportedoncurrentdevice()",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L32"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_requestpersistentstorage",
-      "label": "requestPersistentStorage()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "requestpersistentstorage()",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L51"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test_makecachemock",
-      "label": "makeCacheMock()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "makecachemock()",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
-      "source_location": "L18"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test_setstorageestimate",
-      "label": "setStorageEstimate()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "setstorageestimate()",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
-      "source_location": "L43"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test_setuseragent",
-      "label": "setUserAgent()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "setuseragent()",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
-      "source_location": "L35"
+      "norm_label": "rendereditor()",
+      "source_file": "delivery/webapp/src/test/components/lyrics/LyricsEditor.test.tsx",
+      "source_location": "L16"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_compose",
@@ -65571,11 +65571,22 @@
       "source_location": "L69"
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions",
+      "label": "generate_section_transitions.py",
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_section_transitions.py",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1"
+    },
+    {
       "id": "lab_poc_scripts_analyze_sections_rationale_69",
       "label": "Print message if verbose mode is enabled.",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "print message if verbose mode is enabled.",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -65586,7 +65597,7 @@
       "label": "Save master transitions index (v2.0) - single source of truth. Args:\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "save master transitions index (v2.0) - single source of truth. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65597,29 +65608,51 @@
       "label": "Save summary CSV for quick reference (v2.0). Exports flattened view of\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "save summary csv for quick reference (v2.0). exports flattened view of...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1267"
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
+      "label": "Create descriptive filename for section transition audio. Format:\u2026",
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "create descriptive filename for section transition audio. format:...",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L131"
+    },
+    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1312",
       "label": "Print final summary report (v2.1).",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "print final summary report (v2.1).",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1312"
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
+      "label": "Parse command-line arguments.",
+      "_origin": "ast",
+      "community": 144,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "parse command-line arguments.",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1367"
+    },
+    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1425",
       "label": "Main execution function.",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "main execution function.",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65630,7 +65663,7 @@
       "label": "Filter compatible section pairs worthy of transition generation. Args:\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "filter compatible section pairs worthy of transition generation. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65641,7 +65674,7 @@
       "label": "Load all song sections from allin1 analysis. Optimization: First checks for\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "load all song sections from allin1 analysis. optimization: first checks for...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65652,7 +65685,7 @@
       "label": "Generate all section transition audio files for candidate pairs (v2.1). This\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "log",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "generate all section transition audio files for candidate pairs (v2.1). this...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -72487,72 +72520,6 @@
       "source_location": "L54"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_149",
-      "label": "Lazily start background poller task. Guards against double-start.",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "rationale",
-      "norm_label": "lazily start background poller task. guards against double-start.",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L149"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_155",
-      "label": "Background task: every poll_interval, call probe_fn. Set event when True.\u2026",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "rationale",
-      "norm_label": "background task: every poll_interval, call probe_fn. set event when true....",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L155"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_180",
-      "label": "Called during shutdown. Cancels poller task.",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "rationale",
-      "norm_label": "called during shutdown. cancels poller task.",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L180"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_31",
-      "label": "Block jobs until free-tier API quota resets. One instance per API type (MVSEP,\u2026",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "rationale",
-      "norm_label": "block jobs until free-tier api quota resets. one instance per api type (mvsep,...",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L31"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_67",
-      "label": "Called when a job detects quota exhaustion. Clears event, starts poller.",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "rationale",
-      "norm_label": "called when a job detects quota exhaustion. clears event, starts poller.",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L67"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_82",
-      "label": "Block until quota available, job cancelled, or max_wait_seconds elapsed. Self-\u2026",
-      "_origin": "ast",
-      "community": 18,
-      "community_name": "sow_analysis/main.py",
-      "file_type": "rationale",
-      "norm_label": "block until quota available, job cancelled, or max_wait_seconds elapsed. self-...",
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
-      "source_location": "L82"
-    },
-    {
       "id": "ops_analysis_service_src_sow_analysis_workers_separator_wrapper_rationale_1",
       "label": "Async wrapper for audio-separator with lazy initialization. Mirrors the\u2026",
       "_origin": "ast",
@@ -77059,6 +77026,72 @@
       "norm_label": "shared quota waiter for free-only patient mode. one instance per api type...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
       "source_location": "L1"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_149",
+      "label": "Lazily start background poller task. Guards against double-start.",
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "rationale",
+      "norm_label": "lazily start background poller task. guards against double-start.",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L149"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_155",
+      "label": "Background task: every poll_interval, call probe_fn. Set event when True.\u2026",
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "rationale",
+      "norm_label": "background task: every poll_interval, call probe_fn. set event when true....",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L155"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_180",
+      "label": "Called during shutdown. Cancels poller task.",
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "rationale",
+      "norm_label": "called during shutdown. cancels poller task.",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L180"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_31",
+      "label": "Block jobs until free-tier API quota resets. One instance per API type (MVSEP,\u2026",
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "rationale",
+      "norm_label": "block jobs until free-tier api quota resets. one instance per api type (mvsep,...",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L31"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_67",
+      "label": "Called when a job detects quota exhaustion. Clears event, starts poller.",
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "rationale",
+      "norm_label": "called when a job detects quota exhaustion. clears event, starts poller.",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L67"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_workers_quota_waiter_rationale_82",
+      "label": "Block until quota available, job cancelled, or max_wait_seconds elapsed. Self-\u2026",
+      "_origin": "ast",
+      "community": 198,
+      "community_name": "stem_separation.py",
+      "file_type": "rationale",
+      "norm_label": "block until quota available, job cancelled, or max_wait_seconds elapsed. self-...",
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py",
+      "source_location": "L82"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_stem_separation_rationale_1",
@@ -82920,44 +82953,11 @@
       "source_location": "L609"
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions",
-      "label": "generate_section_transitions.py",
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_section_transitions.py",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
-      "label": "Create descriptive filename for section transition audio. Format:\u2026",
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "create descriptive filename for section transition audio. format:...",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L131"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
-      "label": "Parse command-line arguments.",
-      "_origin": "ast",
-      "community": 226,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "parse command-line arguments.",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1367"
-    },
-    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_203",
       "label": "Create medium transition: Full section A + crossfade + Full section B. Args:\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create medium transition: full section a + crossfade + full section b. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82968,7 +82968,7 @@
       "label": "Create medium transition with silence gap between sections. Algorithm: 1. Load\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create medium transition with silence gap between sections. algorithm: 1. load...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82979,7 +82979,7 @@
       "label": "Create vocal-fade transition: sections connected by vocal-only bridge with\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create vocal-fade transition: sections connected by vocal-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82990,7 +82990,7 @@
       "label": "Create drum-fade transition: sections connected by drum-only bridge with\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "create drum-fade transition: sections connected by drum-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -83001,7 +83001,7 @@
       "label": "Load all 4 stems (bass, drums, other, vocals) for a specific section. Args:\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "load all 4 stems (bass, drums, other, vocals) for a specific section. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -83012,7 +83012,7 @@
       "label": "Generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "generate_all_variants",
       "file_type": "rationale",
       "norm_label": "generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -83463,7 +83463,7 @@
       "node_kind": "heading",
       "norm_label": "artifact layout",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L38"
+      "source_location": "L41"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_eval_models_for_fixing_youtube_transcription",
@@ -83487,7 +83487,7 @@
       "node_kind": "heading",
       "norm_label": "operations notes",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L54"
+      "source_location": "L57"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_overview",
@@ -83511,7 +83511,7 @@
       "node_kind": "heading",
       "norm_label": "prerequisites",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L63"
+      "source_location": "L66"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_standing_notes",
@@ -83523,7 +83523,7 @@
       "node_kind": "heading",
       "norm_label": "standing notes",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L178"
+      "source_location": "L181"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_step_0_interview_ask_tool",
@@ -83535,7 +83535,7 @@
       "node_kind": "heading",
       "norm_label": "step 0 \u2014 interview (ask tool)",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L88"
+      "source_location": "L91"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_step_1_preflight",
@@ -83547,7 +83547,7 @@
       "node_kind": "heading",
       "norm_label": "step 1 \u2014 preflight",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L111"
+      "source_location": "L114"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_step_2_fixtures",
@@ -83559,7 +83559,7 @@
       "node_kind": "heading",
       "norm_label": "step 2 \u2014 fixtures",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L123"
+      "source_location": "L126"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_step_3_fetch_transcripts",
@@ -83571,7 +83571,7 @@
       "node_kind": "heading",
       "norm_label": "step 3 \u2014 fetch transcripts",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L135"
+      "source_location": "L138"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_step_4_run_models",
@@ -83583,7 +83583,7 @@
       "node_kind": "heading",
       "norm_label": "step 4 \u2014 run models",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L146"
+      "source_location": "L149"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_step_5_judge",
@@ -83595,7 +83595,7 @@
       "node_kind": "heading",
       "norm_label": "step 5 \u2014 judge",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L157"
+      "source_location": "L160"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_skill_step_6_report",
@@ -83607,7 +83607,7 @@
       "node_kind": "heading",
       "norm_label": "step 6 \u2014 report",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L168"
+      "source_location": "L171"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_screens_browse_py_pressed",
@@ -87642,6 +87642,83 @@
       "source_location": "L416"
     },
     {
+      "id": "delivery_webapp_src_components_play_offlinestatus",
+      "label": "OfflineStatus.tsx",
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "offlinestatus.tsx",
+      "source_file": "delivery/webapp/src/components/play/OfflineStatus.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache",
+      "label": "artifact-cache.ts",
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "artifact-cache.ts",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_artifact_cache_name",
+      "label": "ARTIFACT_CACHE_NAME",
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "artifact_cache_name",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_hard_limit_bytes",
+      "label": "HARD_LIMIT_BYTES",
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "hard_limit_bytes",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L3"
+    },
+    {
+      "id": "delivery_webapp_src_lib_offline_artifact_cache_warn_storage_bytes",
+      "label": "WARN_STORAGE_BYTES",
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "warn_storage_bytes",
+      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
+      "source_location": "L2"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_play_offlinestatus_test",
+      "label": "OfflineStatus.test.tsx",
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "offlinestatus.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/play/OfflineStatus.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test",
+      "label": "artifact-cache.test.ts",
+      "_origin": "ast",
+      "community": 275,
+      "community_name": "OfflineStatus.tsx",
+      "file_type": "code",
+      "norm_label": "artifact-cache.test.ts",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_app_py_app",
       "label": "App",
       "_origin": "ast",
@@ -87948,6 +88025,72 @@
       "norm_label": "handle button presses.",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/settings.py",
       "source_location": "L70"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens",
+      "label": "AuthScreens.kt",
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "authscreens.kt",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authscreenmode_login",
+      "label": "Login",
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "login",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L348"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authscreenmode_register",
+      "label": "Register",
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "register",
+      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
+      "source_location": "L349"
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_kt_appconfig",
+      "label": "AppConfig",
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "appconfig",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_kt_context",
+      "label": "Context",
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "context",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_kt_modifier",
+      "label": "Modifier",
+      "_origin": "ast",
+      "community": 277,
+      "community_name": "AuthScreens.kt",
+      "file_type": "code",
+      "norm_label": "modifier",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "delivery_android_gradlew",
@@ -90700,6 +90843,28 @@
       "source_location": "L1"
     },
     {
+      "id": "delivery_webapp_package_dependencies_aws_sdk_s3_request_presigner",
+      "label": "@aws-sdk/s3-request-presigner",
+      "_origin": "ast",
+      "community": 308,
+      "community_name": "@aws-sdk/s3-request-presigner",
+      "file_type": "code",
+      "norm_label": "@aws-sdk/s3-request-presigner",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L22"
+    },
+    {
+      "id": "aws_sdk_s3_request_presigner",
+      "label": "@aws-sdk/s3-request-presigner",
+      "_origin": "ast",
+      "community": 308,
+      "community_name": "@aws-sdk/s3-request-presigner",
+      "file_type": "concept",
+      "norm_label": "@aws-sdk/s3-request-presigner",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L22"
+    },
+    {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_core_network_apierror",
       "label": "ApiError.kt",
       "_origin": "ast",
@@ -91571,7 +91736,7 @@
       "source_location": "L63"
     },
     {
-      "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_128",
+      "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_130",
       "label": "Strengthened mechanical verdict \u2014 matches judge criterion 1.",
       "_origin": "ast",
       "community": 32,
@@ -91579,10 +91744,10 @@
       "file_type": "rationale",
       "norm_label": "strengthened mechanical verdict \u2014 matches judge criterion 1.",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L128"
+      "source_location": "L130"
     },
     {
-      "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_304",
+      "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_306",
       "label": "Sync OpenAI chat call (passed into the production retry util).",
       "_origin": "ast",
       "community": 32,
@@ -91590,10 +91755,10 @@
       "file_type": "rationale",
       "norm_label": "sync openai chat call (passed into the production retry util).",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L304"
+      "source_location": "L306"
     },
     {
-      "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_79",
+      "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_81",
       "label": "Mechanical checks on tag-excluded official lines.",
       "_origin": "ast",
       "community": 32,
@@ -91601,7 +91766,7 @@
       "file_type": "rationale",
       "norm_label": "mechanical checks on tag-excluded official lines.",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L79"
+      "source_location": "L81"
     },
     {
       "id": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_run_models_rationale_200",
@@ -91613,28 +91778,6 @@
       "norm_label": "run a coroutine to completion from sync code.",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/run_models.py",
       "source_location": "L200"
-    },
-    {
-      "id": "delivery_webapp_package_dependencies_next",
-      "label": "next",
-      "_origin": "ast",
-      "community": 320,
-      "community_name": "next",
-      "file_type": "code",
-      "norm_label": "next",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L38"
-    },
-    {
-      "id": "next",
-      "label": "next",
-      "_origin": "ast",
-      "community": 320,
-      "community_name": "next",
-      "file_type": "concept",
-      "norm_label": "next",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L38"
     },
     {
       "id": "delivery_webapp_package_dependencies_react",
@@ -92110,15 +92253,15 @@
       "source_location": "L489"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_512",
-      "label": "Build LLM prompt for lyrics correction. Args: transcript_text: Formatted\u2026",
+      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_526",
+      "label": "Build LLM prompt for lyrics correction. Embeds the \"Additional Requirements\"\u2026",
       "_origin": "ast",
       "community": 33,
       "community_name": "youtube_transcript.py",
       "file_type": "rationale",
-      "norm_label": "build llm prompt for lyrics correction. args: transcript_text: formatted...",
+      "norm_label": "build llm prompt for lyrics correction. embeds the \"additional requirements\"...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L512"
+      "source_location": "L526"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_55",
@@ -92132,7 +92275,7 @@
       "source_location": "L55"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_581",
+      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_602",
       "label": "Parse LLM response into LRCLine objects. Extracts valid LRC-formatted lines\u2026",
       "_origin": "ast",
       "community": 33,
@@ -92140,7 +92283,7 @@
       "file_type": "rationale",
       "norm_label": "parse llm response into lrcline objects. extracts valid lrc-formatted lines...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L581"
+      "source_location": "L602"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_61",
@@ -92154,7 +92297,7 @@
       "source_location": "L61"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_626",
+      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_647",
       "label": "Build proxy config from settings if proxy is configured. Returns:\u2026",
       "_origin": "ast",
       "community": 33,
@@ -92162,10 +92305,10 @@
       "file_type": "rationale",
       "norm_label": "build proxy config from settings if proxy is configured. returns:...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L626"
+      "source_location": "L647"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_641",
+      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_662",
       "label": "Find the best available transcript from a TranscriptList. Priority order\u2026",
       "_origin": "ast",
       "community": 33,
@@ -92173,7 +92316,7 @@
       "file_type": "rationale",
       "norm_label": "find the best available transcript from a transcriptlist. priority order...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L641"
+      "source_location": "L662"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_68",
@@ -92187,7 +92330,7 @@
       "source_location": "L68"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_682",
+      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_703",
       "label": "Download captions from YouTube via youtube-transcript-api. Two-phase approach:\u2026",
       "_origin": "ast",
       "community": 33,
@@ -92195,10 +92338,10 @@
       "file_type": "rationale",
       "norm_label": "download captions from youtube via youtube-transcript-api. two-phase approach:...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L682"
+      "source_location": "L703"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_777",
+      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_798",
       "label": "Call LLM to correct YouTube transcript against official lyrics. Uses the shared\u2026",
       "_origin": "ast",
       "community": 33,
@@ -92206,10 +92349,10 @@
       "file_type": "rationale",
       "norm_label": "call llm to correct youtube transcript against official lyrics. uses the shared...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L777"
+      "source_location": "L798"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_867",
+      "id": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_888",
       "label": "End-to-end: YouTube transcript -> LLM correction -> LRC lines. Args:\u2026",
       "_origin": "ast",
       "community": 33,
@@ -92217,7 +92360,7 @@
       "file_type": "rationale",
       "norm_label": "end-to-end: youtube transcript -> llm correction -> lrc lines. args:...",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L867"
+      "source_location": "L888"
     },
     {
       "id": "delivery_webapp_postcss_config",
@@ -96928,7 +97071,7 @@
       "label": "Malformed",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "malformed",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/ApiError.kt",
@@ -96939,7 +97082,7 @@
       "label": "Network",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "network",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/ApiError.kt",
@@ -96950,7 +97093,7 @@
       "label": "Server",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "server",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/ApiError.kt",
@@ -96961,7 +97104,7 @@
       "label": "Unauthorized",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "unauthorized",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/ApiError.kt",
@@ -96972,7 +97115,7 @@
       "label": "Unknown",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "unknown",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/ApiError.kt",
@@ -96983,7 +97126,7 @@
       "label": "Validation",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "validation",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/network/ApiError.kt",
@@ -96994,7 +97137,7 @@
       "label": "AuthSessionManager.kt",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "authsessionmanager.kt",
       "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/core/session/AuthSessionManager.kt",
@@ -97005,75 +97148,9 @@
       "label": "StateFlow",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "stateflow",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens",
-      "label": "AuthScreens.kt",
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "authscreens.kt",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authscreenmode_login",
-      "label": "Login",
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "login",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L348"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_authscreenmode_register",
-      "label": "Register",
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "register",
-      "source_file": "delivery/android/app/src/main/java/org/streamofworship/android/feature/auth/AuthScreens.kt",
-      "source_location": "L349"
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_kt_appconfig",
-      "label": "AppConfig",
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "appconfig",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_kt_context",
-      "label": "Context",
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "context",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authscreens_kt_modifier",
-      "label": "Modifier",
-      "_origin": "ast",
-      "community": 396,
-      "community_name": "AuthScreens.kt",
-      "file_type": "code",
-      "norm_label": "modifier",
       "source_file": "",
       "source_location": ""
     },
@@ -97082,7 +97159,7 @@
       "label": "AuthScreensTest.kt",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "authscreenstest.kt",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/auth/AuthScreensTest.kt",
@@ -97093,7 +97170,7 @@
       "label": "StateFlow",
       "_origin": "ast",
       "community": 396,
-      "community_name": "AuthScreens.kt",
+      "community_name": "AuthController",
       "file_type": "code",
       "norm_label": "stateflow",
       "source_file": "",
@@ -98205,17 +98282,6 @@
       "source_location": "L395"
     },
     {
-      "id": "delivery_webapp_src_components_lyrics_lyricseditor",
-      "label": "LyricsEditor.tsx",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "cn",
-      "file_type": "code",
-      "norm_label": "lyricseditor.tsx",
-      "source_file": "delivery/webapp/src/components/lyrics/LyricsEditor.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "delivery_webapp_src_components_lyrics_lyricsreviewsheet",
       "label": "LyricsReviewSheet.tsx",
       "_origin": "ast",
@@ -98356,17 +98422,6 @@
       "file_type": "code",
       "norm_label": "switch.tsx",
       "source_file": "delivery/webapp/src/components/ui/switch.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_lyrics_lyricseditor_test",
-      "label": "LyricsEditor.test.tsx",
-      "_origin": "ast",
-      "community": 42,
-      "community_name": "cn",
-      "file_type": "code",
-      "norm_label": "lyricseditor.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/lyrics/LyricsEditor.test.tsx",
       "source_location": "L1"
     },
     {
@@ -101901,14 +101956,14 @@
       "source_location": ""
     },
     {
-      "id": "delivery_webapp_src_components_play_offlinestatus",
-      "label": "OfflineStatus.tsx",
+      "id": "delivery_webapp_src_components_lyrics_lyricseditor",
+      "label": "LyricsEditor.tsx",
       "_origin": "ast",
       "community": 54,
       "community_name": "SongsetEditor.tsx",
       "file_type": "code",
-      "norm_label": "offlinestatus.tsx",
-      "source_file": "delivery/webapp/src/components/play/OfflineStatus.tsx",
+      "norm_label": "lyricseditor.tsx",
+      "source_file": "delivery/webapp/src/components/lyrics/LyricsEditor.tsx",
       "source_location": "L1"
     },
     {
@@ -102066,50 +102121,6 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache",
-      "label": "artifact-cache.ts",
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "artifact-cache.ts",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_artifact_cache_name",
-      "label": "ARTIFACT_CACHE_NAME",
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "artifact_cache_name",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_hard_limit_bytes",
-      "label": "HARD_LIMIT_BYTES",
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "hard_limit_bytes",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L3"
-    },
-    {
-      "id": "delivery_webapp_src_lib_offline_artifact_cache_warn_storage_bytes",
-      "label": "WARN_STORAGE_BYTES",
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "warn_storage_bytes",
-      "source_file": "delivery/webapp/src/lib/offline/artifact-cache.ts",
-      "source_location": "L2"
-    },
-    {
       "id": "delivery_webapp_src_lib_utils",
       "label": "utils.ts",
       "_origin": "ast",
@@ -102121,25 +102132,14 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_test_components_play_offlinestatus_test",
-      "label": "OfflineStatus.test.tsx",
+      "id": "delivery_webapp_src_test_components_lyrics_lyricseditor_test",
+      "label": "LyricsEditor.test.tsx",
       "_origin": "ast",
       "community": 54,
       "community_name": "SongsetEditor.tsx",
       "file_type": "code",
-      "norm_label": "offlinestatus.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/play/OfflineStatus.test.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test",
-      "label": "artifact-cache.test.ts",
-      "_origin": "ast",
-      "community": 54,
-      "community_name": "SongsetEditor.tsx",
-      "file_type": "code",
-      "norm_label": "artifact-cache.test.ts",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache.test.ts",
+      "norm_label": "lyricseditor.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/lyrics/LyricsEditor.test.tsx",
       "source_location": "L1"
     },
     {
@@ -113291,17 +113291,6 @@
       "source_location": "L19"
     },
     {
-      "id": "delivery_webapp_package_dependencies_aws_sdk_s3_request_presigner",
-      "label": "@aws-sdk/s3-request-presigner",
-      "_origin": "ast",
-      "community": 97,
-      "community_name": "dependencies",
-      "file_type": "code",
-      "norm_label": "@aws-sdk/s3-request-presigner",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L22"
-    },
-    {
       "id": "delivery_webapp_package_dependencies_base_ui_react",
       "label": "@base-ui/react",
       "_origin": "ast",
@@ -113355,6 +113344,17 @@
       "norm_label": "@neondatabase/serverless",
       "source_file": "delivery/webapp/package.json",
       "source_location": "L27"
+    },
+    {
+      "id": "delivery_webapp_package_dependencies_next",
+      "label": "next",
+      "_origin": "ast",
+      "community": 97,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "next",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L38"
     },
     {
       "id": "delivery_webapp_package_dependencies_next_themes",
@@ -113467,17 +113467,6 @@
       "source_location": "L49"
     },
     {
-      "id": "aws_sdk_s3_request_presigner",
-      "label": "@aws-sdk/s3-request-presigner",
-      "_origin": "ast",
-      "community": 97,
-      "community_name": "dependencies",
-      "file_type": "concept",
-      "norm_label": "@aws-sdk/s3-request-presigner",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L22"
-    },
-    {
       "id": "base_ui_react",
       "label": "@base-ui/react",
       "_origin": "ast",
@@ -113553,6 +113542,17 @@
       "norm_label": "@neondatabase/serverless",
       "source_file": "delivery/webapp/package.json",
       "source_location": "L27"
+    },
+    {
+      "id": "next",
+      "label": "next",
+      "_origin": "ast",
+      "community": 97,
+      "community_name": "dependencies",
+      "file_type": "concept",
+      "norm_label": "next",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L38"
     },
     {
       "id": "next_themes",
@@ -140044,7 +140044,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L151",
+      "source_location": "L153",
       "weight": 1.0
     },
     {
@@ -140056,7 +140056,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L180",
+      "source_location": "L182",
       "weight": 1.0
     },
     {
@@ -140068,7 +140068,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L187",
+      "source_location": "L189",
       "weight": 1.0
     },
     {
@@ -140080,7 +140080,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L189",
+      "source_location": "L191",
       "weight": 1.0
     },
     {
@@ -140092,7 +140092,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L222",
+      "source_location": "L224",
       "weight": 1.0
     },
     {
@@ -140104,7 +140104,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L232",
+      "source_location": "L234",
       "weight": 1.0
     },
     {
@@ -140116,7 +140116,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L247",
+      "source_location": "L249",
       "weight": 1.0
     },
     {
@@ -140128,7 +140128,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L250",
+      "source_location": "L252",
       "weight": 1.0
     },
     {
@@ -140140,7 +140140,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L254",
+      "source_location": "L256",
       "weight": 1.0
     },
     {
@@ -140152,7 +140152,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L258",
+      "source_location": "L260",
       "weight": 1.0
     },
     {
@@ -166264,7 +166264,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L633",
+      "source_location": "L654",
       "weight": 1.0
     },
     {
@@ -166276,7 +166276,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L702",
+      "source_location": "L723",
       "weight": 1.0
     },
     {
@@ -166288,7 +166288,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L704",
+      "source_location": "L725",
       "weight": 1.0
     },
     {
@@ -166300,7 +166300,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L739",
+      "source_location": "L760",
       "weight": 1.0
     },
     {
@@ -166312,7 +166312,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L744",
+      "source_location": "L765",
       "weight": 1.0
     },
     {
@@ -166324,7 +166324,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L803",
+      "source_location": "L824",
       "weight": 1.0
     },
     {
@@ -166336,7 +166336,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L844",
+      "source_location": "L865",
       "weight": 1.0
     },
     {
@@ -166348,7 +166348,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L850",
+      "source_location": "L871",
       "weight": 1.0
     },
     {
@@ -166360,7 +166360,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L851",
+      "source_location": "L872",
       "weight": 1.0
     },
     {
@@ -166372,7 +166372,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L854",
+      "source_location": "L875",
       "weight": 1.0
     },
     {
@@ -166384,7 +166384,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L605",
+      "source_location": "L626",
       "weight": 1.0
     },
     {
@@ -166396,7 +166396,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L605",
+      "source_location": "L626",
       "weight": 1.0
     },
     {
@@ -166408,7 +166408,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L883",
+      "source_location": "L904",
       "weight": 1.0
     },
     {
@@ -166420,7 +166420,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L885",
+      "source_location": "L906",
       "weight": 1.0
     },
     {
@@ -166432,7 +166432,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L889",
+      "source_location": "L910",
       "weight": 1.0
     },
     {
@@ -166444,7 +166444,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L892",
+      "source_location": "L913",
       "weight": 1.0
     },
     {
@@ -166456,7 +166456,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L894",
+      "source_location": "L915",
       "weight": 1.0
     },
     {
@@ -166468,7 +166468,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L905",
+      "source_location": "L926",
       "weight": 1.0
     },
     {
@@ -166480,7 +166480,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L917",
+      "source_location": "L938",
       "weight": 1.0
     },
     {
@@ -176416,7 +176416,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L640",
+      "source_location": "L661",
       "weight": 1.0
     },
     {
@@ -176428,7 +176428,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L861",
+      "source_location": "L882",
       "weight": 1.0
     },
     {
@@ -209784,7 +209784,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L796",
+      "source_location": "L817",
       "weight": 1.0
     },
     {
@@ -209796,7 +209796,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L796",
+      "source_location": "L817",
       "weight": 1.0
     },
     {
@@ -209808,7 +209808,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L796",
+      "source_location": "L817",
       "weight": 1.0
     },
     {
@@ -272702,7 +272702,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L127",
+      "source_location": "L129",
       "weight": 1.0
     },
     {
@@ -272713,7 +272713,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L143",
+      "source_location": "L145",
       "weight": 1.0
     },
     {
@@ -272724,7 +272724,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L303",
+      "source_location": "L305",
       "weight": 1.0
     },
     {
@@ -272735,7 +272735,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L62",
+      "source_location": "L64",
       "weight": 1.0
     },
     {
@@ -272746,7 +272746,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L78",
+      "source_location": "L80",
       "weight": 1.0
     },
     {
@@ -272834,7 +272834,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L111",
+      "source_location": "L114",
       "weight": 1.0
     },
     {
@@ -272856,7 +272856,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L123",
+      "source_location": "L126",
       "weight": 1.0
     },
     {
@@ -272867,7 +272867,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L135",
+      "source_location": "L138",
       "weight": 1.0
     },
     {
@@ -272878,7 +272878,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L146",
+      "source_location": "L149",
       "weight": 1.0
     },
     {
@@ -272889,7 +272889,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L157",
+      "source_location": "L160",
       "weight": 1.0
     },
     {
@@ -272900,7 +272900,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L168",
+      "source_location": "L171",
       "weight": 1.0
     },
     {
@@ -272911,7 +272911,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L178",
+      "source_location": "L181",
       "weight": 1.0
     },
     {
@@ -272922,7 +272922,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L63",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -272933,7 +272933,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L88",
+      "source_location": "L91",
       "weight": 1.0
     },
     {
@@ -272944,7 +272944,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L38",
+      "source_location": "L41",
       "weight": 1.0
     },
     {
@@ -272955,7 +272955,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/SKILL.md",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 1.0
     },
     {
@@ -285286,7 +285286,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L507",
+      "source_location": "L521",
       "weight": 1.0
     },
     {
@@ -285302,17 +285302,6 @@
     },
     {
       "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript",
-      "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_parse_lrc_response",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L580",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_youtuberatelimitederror",
       "relation": "contains",
       "_origin": "ast",
@@ -285324,13 +285313,24 @@
     },
     {
       "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript",
+      "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_parse_lrc_response",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
+      "source_location": "L601",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_language_preference_codes",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L619",
+      "source_location": "L640",
       "weight": 1.0
     },
     {
@@ -285341,7 +285341,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L625",
+      "source_location": "L646",
       "weight": 1.0
     },
     {
@@ -285352,7 +285352,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L640",
+      "source_location": "L661",
       "weight": 1.0
     },
     {
@@ -285374,7 +285374,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L677",
+      "source_location": "L698",
       "weight": 1.0
     },
     {
@@ -285385,7 +285385,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L773",
+      "source_location": "L794",
       "weight": 1.0
     },
     {
@@ -285396,7 +285396,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L861",
+      "source_location": "L882",
       "weight": 1.0
     },
     {
@@ -319115,36 +319115,36 @@
       "weight": 1.0
     },
     {
-      "source": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_128",
+      "source": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_130",
       "target": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_derive_mechanical_criteria",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L128",
+      "source_location": "L130",
       "weight": 1.0
     },
     {
-      "source": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_304",
+      "source": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_306",
       "target": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_chat",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L304",
+      "source_location": "L306",
       "weight": 1.0
     },
     {
-      "source": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_79",
+      "source": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_rationale_81",
       "target": "lab_skills_eval_models_for_fixing_youtube_transcription_scripts_judge_results_mechanical_checks",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L79",
+      "source_location": "L81",
       "weight": 1.0
     },
     {
@@ -335736,14 +335736,14 @@
       "weight": 1.0
     },
     {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_512",
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_526",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_build_correction_prompt",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L512",
+      "source_location": "L526",
       "weight": 1.0
     },
     {
@@ -335758,14 +335758,14 @@
       "weight": 1.0
     },
     {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_581",
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_602",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_parse_lrc_response",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L581",
+      "source_location": "L602",
       "weight": 1.0
     },
     {
@@ -335780,25 +335780,25 @@
       "weight": 1.0
     },
     {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_626",
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_647",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_build_proxy_config",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L626",
+      "source_location": "L647",
       "weight": 1.0
     },
     {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_641",
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_662",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_find_best_transcript",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L641",
+      "source_location": "L662",
       "weight": 1.0
     },
     {
@@ -335813,36 +335813,36 @@
       "weight": 1.0
     },
     {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_682",
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_703",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_fetch_youtube_transcript",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L682",
+      "source_location": "L703",
       "weight": 1.0
     },
     {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_777",
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_798",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_llm_correct",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L777",
+      "source_location": "L798",
       "weight": 1.0
     },
     {
-      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_867",
+      "source": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_rationale_888",
       "target": "ops_analysis_service_src_sow_analysis_workers_youtube_transcript_youtube_transcript_to_lrc",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L867",
+      "source_location": "L888",
       "weight": 1.0
     },
     {
@@ -339596,7 +339596,7 @@
       "confidence_score": 0.85,
       "context": "call",
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L249",
+      "source_location": "L251",
       "weight": 1.0
     },
     {
@@ -343062,7 +343062,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "lab/skills/eval-models-for-fixing-youtube-transcription/scripts/judge_results.py",
-      "source_location": "L223",
+      "source_location": "L225",
       "weight": 0.8
     },
     {
@@ -346021,10 +346021,10 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py",
-      "source_location": "L866",
+      "source_location": "L887",
       "weight": 0.8
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "fcec2c24b3e48f0dd72c2f72a596d6f2c6ea8404"
+  "built_at_commit": "a2b97825374bcd0585bcfbc6d31be62b7574bd9e"
 }
