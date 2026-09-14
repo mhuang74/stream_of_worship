@@ -206,3 +206,15 @@ and link `report.md`.**
 - **Language fallback is normal:** requested `zh` may fetch `en-US`
   auto-generated captions; the prompt still carries the official zh lyrics, so
   models map English transcript lines onto Chinese phrases.
+- **Candidates are NOT auto-loaded from `fixtures/.env`:** `load_skill_env`
+  (scripts/_common.py:312) only fills `SOW_LLM_API_KEY` / `SOW_LLM_BASE_URL` /
+  `SOW_LLM_MODEL` / `SOW_YOUTUBE_PROXY`. `SOW_TRANSCRIPT_LLM_MODELS` stored in
+  `fixtures/.env` is silently ignored — read it from the file and pass
+  `--models` explicitly. Also never `sed|export` the quoted `.env` value
+  yourself: surrounding `"`/`'` leak into the model IDs and the provider 404s
+  (`model_not_found`); scripts strip quotes only when they load `fixtures/.env`
+  internally. Strip them (`tr -d '"'`) if exporting manually.
+- **Recovery ground truth:** after a truncation, the pre-truncate
+  `results.jsonl` backup (if it exists) is the authoritative row source — copy
+  it back verbatim; artifact re-parsing is only the fallback when no backup
+  survived.
