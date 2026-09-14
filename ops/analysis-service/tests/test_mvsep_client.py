@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
@@ -11,65 +12,6 @@ from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 
 import httpx
 
-
-# Create mock settings class for tests
-class MockSettings:
-    """Mock settings for testing."""
-
-    SOW_MVSEP_API_KEY = ""
-    SOW_MVSEP_ENABLED = True
-
-    # Stage 1 (Vocal Separation)
-    SOW_MVSEP_STAGE1_SEP_TYPE = 48
-    SOW_MVSEP_STAGE1_ADD_OPT1 = 11
-    SOW_MVSEP_STAGE1_ADD_OPT2 = None
-
-    # Stage 2 (Reverb Removal) — None = skip Stage 2
-    SOW_MVSEP_STAGE2_SEP_TYPE = 22
-    SOW_MVSEP_STAGE2_ADD_OPT1 = 0
-    SOW_MVSEP_STAGE2_ADD_OPT2 = 1
-
-    SOW_MVSEP_HTTP_TIMEOUT = 60
-    SOW_MVSEP_STAGE_TIMEOUT = 300
-    SOW_MVSEP_STAGE2_TIMEOUT = 900
-    SOW_MVSEP_TOTAL_TIMEOUT = 1800
-    SOW_MVSEP_MAX_CONCURRENT = 1
-
-    # YouTube Transcript Rate Limiting
-    SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
-    SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
-    SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
-    SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.1
-    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
-    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
-
-    # YouTube Transcript Free-Only-Mode Overrides
-    SOW_FREE_ONLY_MODE = False
-    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD_FREE = 10
-    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE = 300
-    SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES_FREE = 5
-    SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY_FREE = 10.0
-    SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS_FREE = 30.0
-    SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES = 3
-
-    # YouTube Proxy
-    SOW_YOUTUBE_PROXY = ""
-    SOW_YOUTUBE_PROXY_RETRIES = 3
-
-
-# Mock the config module before importing mvsep_client
-import types
-config_module = types.ModuleType("sow_analysis.config")
-config_module.settings = MockSettings()
-sys.modules["sow_analysis.config"] = config_module
-
-# Ensure sow_analysis is importable as a real package but with mocked config
-# We need sow_analysis.__path__ set so Python can find subpackages
-import sow_analysis
-sow_analysis.config = config_module
-sys.modules["sow_analysis.config"] = config_module
-
-# Now import mvsep_client — it will resolve the config import from our mock
 from sow_analysis.services.mvsep_client import (
     MvsepClient,
     MvsepClientError,
@@ -120,7 +62,10 @@ def mock_post(client):
 @pytest.mark.asyncio
 async def test_submit_success(client, mock_response):
     """Test successful job submission returns job hash."""
-    mock_response.json.return_value = {"success": True, "data": {"hash": "abc123", "link": "https://mvsep.com/..."}}
+    mock_response.json.return_value = {
+        "success": True,
+        "data": {"hash": "abc123", "link": "https://mvsep.com/..."},
+    }
 
     with patch.object(client._client, "post", new_callable=AsyncMock) as mock_post:
         mock_post.return_value = mock_response
@@ -288,7 +233,11 @@ async def test_poll_timeout(client):
 @pytest.mark.asyncio
 async def test_poll_failed_status(client, mock_response):
     """Test polling raises MvsepNonRetriableError on failed status."""
-    mock_response.json.return_value = {"success": True, "status": "failed", "data": {"message": "Job failed"}}
+    mock_response.json.return_value = {
+        "success": True,
+        "status": "failed",
+        "data": {"message": "Job failed"},
+    }
 
     with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
@@ -317,6 +266,7 @@ def test_is_available_false_when_quota_exhausted(client):
 def test_quota_resets_on_new_utc_day(client):
     """Test quota-exhausted flag resets on new UTC day."""
     from datetime import datetime, timezone, timedelta
+
     client._quota_exhausted = True
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     client._quota_reset_utc = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -414,7 +364,11 @@ async def test_poll_not_found_status(client, mock_response):
 @pytest.mark.asyncio
 async def test_poll_error_status(client, mock_response):
     """Test polling raises MvsepNonRetriableError on error status."""
-    mock_response.json.return_value = {"success": False, "status": "error", "data": {"message": "Server error"}}
+    mock_response.json.return_value = {
+        "success": False,
+        "status": "error",
+        "data": {"message": "Server error"},
+    }
 
     with patch.object(client._client, "get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
@@ -444,16 +398,16 @@ async def test_separate_vocals_handles_other_type(client, tmp_path, mock_respons
                     {
                         "type": "Vocals",
                         "url": "https://mvsep.com/storage/processed/20260430153526-ff12686013-audio_melroformer_mt_11_vocals.flac",
-                        "download": "audio_melroformer_mt_11_vocals.flac"
+                        "download": "audio_melroformer_mt_11_vocals.flac",
                     },
                     {
                         "type": "Other",
                         "url": "https://mvsep.com/storage/processed/20260430153526-ff12686013-audio_melroformer_mt_11_other.flac",
-                        "download": "audio_melroformer_mt_11_other.flac"
-                    }
-                ]
-            }
-        }
+                        "download": "audio_melroformer_mt_11_other.flac",
+                    },
+                ],
+            },
+        },
     ]
 
     output_dir = tmp_path / "output"
@@ -503,7 +457,11 @@ async def test_separate_vocals_semaphore_serializes_calls(client, tmp_path, mock
         return {
             "success": True,
             "status": "done",
-            "data": {"files": [{"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}]},
+            "data": {
+                "files": [
+                    {"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}
+                ]
+            },
         }
 
     async def mock_download(file_entries, output_dir):
@@ -550,7 +508,11 @@ async def test_separate_vocals_semaphore_blocks_2nd(client, tmp_path, mock_respo
         return {
             "success": True,
             "status": "done",
-            "data": {"files": [{"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}]},
+            "data": {
+                "files": [
+                    {"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}
+                ]
+            },
         }
 
     async def mock_download(file_entries, output_dir):
@@ -599,7 +561,11 @@ async def test_mvsep_semaphore_serializes_stage1_and_stage2(client, tmp_path, mo
         return {
             "success": True,
             "status": "done",
-            "data": {"files": [{"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}]},
+            "data": {
+                "files": [
+                    {"type": "vocals", "url": "http://example.com/v.flac", "download": "v.flac"}
+                ]
+            },
         }
 
     async def mock_download(file_entries, output_dir):
@@ -748,7 +714,11 @@ async def test_separate_vocals_classification_failure_raises_non_retriable(clien
     output_dir.mkdir()
 
     file_entries = [
-        {"type": "unknown_type", "url": "http://example.com/unknown.flac", "download": "unknown.flac"},
+        {
+            "type": "unknown_type",
+            "url": "http://example.com/unknown.flac",
+            "download": "unknown.flac",
+        },
     ]
     downloaded_file = output_dir / "unknown.flac"
     downloaded_file.write_text("fake")

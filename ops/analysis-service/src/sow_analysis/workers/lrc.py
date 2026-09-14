@@ -884,6 +884,7 @@ async def try_youtube_transcript_lrc(
             lyrics_text=lyrics_text,
             llm_model=options.llm_model,
             language=resolved_language,
+            tempo_bpm=options.tempo_bpm,
         )
         line_count = _write_lrc(lrc_lines, output_path)
         total_elapsed = time.time() - lrc_start

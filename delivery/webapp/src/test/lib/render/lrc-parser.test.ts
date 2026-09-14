@@ -35,12 +35,14 @@ describe("parseLRC", () => {
     expect(result[2].text).toBe("End");
   });
 
-  it("skips lines without text", () => {
+  it("keeps empty-text lines as gap placeholders", () => {
     const lrc = "[00:00.00]Start\n[00:05.50]\n[00:10.00]End";
     const result = parseLRC(lrc);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3);
     expect(result[0].text).toBe("Start");
-    expect(result[1].text).toBe("End");
+    expect(result[1].text).toBe("");
+    expect(result[1].timeSeconds).toBeCloseTo(5.5);
+    expect(result[2].text).toBe("End");
   });
 
   it("sorts by timestamp", () => {
@@ -84,16 +86,18 @@ describe("parseLRC", () => {
     expect(result[0].text).toBe("Valid");
   });
 
-  it("handles zero-length text after bracket", () => {
+  it("keeps zero-length text after bracket as placeholder", () => {
     const lrc = "[00:00.00]\n[00:10.50]Text";
     const result = parseLRC(lrc);
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
+    expect(result[0].text).toBe("");
   });
 
-  it("handles lines with only whitespace as text", () => {
+  it("keeps whitespace-only text as placeholder after trim", () => {
     const lrc = "[00:00.00]   \n[00:10.50]Text";
     const result = parseLRC(lrc);
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
+    expect(result[0].text).toBe("");
   });
 
   it("handles multiple consecutive malformed lines", () => {
