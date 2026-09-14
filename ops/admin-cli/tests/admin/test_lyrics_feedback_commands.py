@@ -217,6 +217,7 @@ class TestLyricsFeedbackListCommand:
         # R1 (timing×1) and R3 (timing×2) have open timing complaints;
         # R2 (other×1) does not. Rows distinguishable via Open counts.
         assert "timing×1" in result.output
+        assert "timing×2" in result.output
         assert "other×1" not in result.output
         _drop_all_tables(make_test_provider)
 
