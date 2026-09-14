@@ -47,7 +47,9 @@ Output ONLY a JSON object with exactly this schema (no markdown, no commentary):
 }
 Issues arrays are empty when a criterion passes."""
 
-JUDGE_CRITERIA = """\
+ENDING_WINDOW_SECONDS = 60
+
+JUDGE_CRITERIA = f"""\
 Judge the candidate LRC against the official lyrics by exactly these criteria:
 1. Each timestamp must carry a complete lyrics phrase — its text must be exactly one
    full line from the official lyrics (repeated phrases allowed); a partial/fragment
@@ -55,8 +57,8 @@ Judge the candidate LRC against the official lyrics by exactly these criteria:
 2. Each timestamp must be unique — no two lines may share the same timestamp, and one
    lyric phrase must never be split across multiple lines with identical timestamps
    whose texts together form one official phrase.
-3. The last timestamp must be within 30 seconds of the total song duration:
-   0 <= duration_seconds - max(timestamp) <= 30."""
+3. The last timestamp must be within {ENDING_WINDOW_SECONDS} seconds of the total song duration:
+   0 <= duration_seconds - max(timestamp) <= {ENDING_WINDOW_SECONDS}."""
 
 
 def build_judge_prompt(official: list[str], lrc_lines, duration_seconds: float) -> str:
@@ -131,7 +133,7 @@ def derive_mechanical_criteria(mech: dict) -> dict:
     )
     unique_fail = bool(mech["duplicate_pairs"])
     gap = mech["ending_gap_seconds"]
-    ending_fail = gap is None or gap < 0 or gap > 30
+    ending_fail = gap is None or gap < 0 or gap > ENDING_WINDOW_SECONDS
     return {
         "complete_phrases": not complete_fail,
         "unique_timestamps": not unique_fail,
