@@ -13,6 +13,7 @@ import logging
 import random
 import re
 import time
+from dataclasses import dataclass
 from typing import Any, Callable, List, Optional
 
 from ..config import settings
@@ -20,6 +21,8 @@ from ..workers.exceptions import LLMConfigError
 from .lrc import LRCLine, LRCWorkerError
 
 logger = logging.getLogger(__name__)
+
+_TIMESTAMP_MATCH_TOLERANCE = 0.011  # LRC timestamps are 2-decimal truncated
 
 
 class RotatingProxyConfig:
@@ -680,6 +683,137 @@ def parse_lrc_response(response: str) -> List[LRCLine]:
     return lines
 
 
+@dataclass(frozen=True)
+class TranscriptCue:
+    """A single transcript cue with timing (seconds) from YouTube."""
+
+    start: float
+    duration: float
+
+    @property
+    def end(self) -> float:
+        return self.start + self.duration
+
+
+def _extract_cue_timings(transcript: Any) -> List[TranscriptCue]:
+    """Extract (start, duration) timings from a fetched YouTube transcript.
+
+    Tolerates both snippet objects (.start/.duration attributes) and raw dicts.
+    Durations <= 0 are clamped to 0 so cue ends never precede their starts.
+    """
+    snippets: Any = transcript
+    if hasattr(transcript, "snippets"):
+        snippets = transcript.snippets
+    cues: List[TranscriptCue] = []
+    for snippet in snippets:
+        if isinstance(snippet, dict):
+            start = float(snippet.get("start", 0.0))
+            duration = float(snippet.get("duration", 0.0))
+        else:
+            start = float(getattr(snippet, "start", 0.0))
+            duration = float(getattr(snippet, "duration", 0.0))
+        cues.append(TranscriptCue(start=start, duration=max(0.0, duration)))
+    return cues
+
+
+def insert_gap_placeholder_lines(
+    lrc_lines: List[LRCLine],
+    cues: List[TranscriptCue],
+    tempo_bpm: Optional[float],
+) -> List[LRCLine]:
+    """Insert blank placeholder lines into long instrumental gaps.
+
+    For each pair of consecutive LRC lines, computes the previous line's audible
+    end as the end of the last transcript cue starting before the next LRC
+    timestamp (span semantics: merged and dropped cues are all covered). When
+    the gap next_start - line_end exceeds SOW_LRC_GAP_THRESHOLD_BEATS, inserts
+    an empty-text LRCLine at line_end + SOW_LRC_GAP_PLACEHOLDER_BEATS. The
+    rendered lyrics video treats an empty-text line as a blank-screen marker
+    (previous lyric fades, next lyric previews 4 beats before its timestamp).
+
+    Skips insertion when tempo_bpm is absent or non-positive, when fewer than
+    two LRC lines exist, or when no cues match a line's timestamp (duration
+    unknown). Only interior gaps are handled — intro and outro tails have no
+    previous/next line and are already handled by the render worker's intro
+    card and last-lyric fade.
+
+    Args:
+        lrc_lines: Corrected LRC lines from the LLM (start timestamps only).
+        cues: Transcript cue timings (start, duration in seconds).
+        tempo_bpm: Recording tempo; None/<=0 disables insertion.
+
+    Returns:
+        New list of LRCLine objects sorted by timestamp, placeholders included.
+    """
+    if not lrc_lines or len(lrc_lines) < 2:
+        return list(lrc_lines)
+    if not cues:
+        logger.warning("Gap placeholder: no transcript cues available — skipping")
+        return list(lrc_lines)
+    if not tempo_bpm or tempo_bpm <= 0:
+        logger.info("Gap placeholder: no tempo_bpm provided — skipping insertion")
+        return list(lrc_lines)
+    threshold_seconds = settings.SOW_LRC_GAP_THRESHOLD_BEATS * 60.0 / tempo_bpm
+    placeholder_seconds = settings.SOW_LRC_GAP_PLACEHOLDER_BEATS * 60.0 / tempo_bpm
+    if threshold_seconds <= 0:
+        return list(lrc_lines)
+
+    sorted_lines = sorted(lrc_lines, key=lambda ln: ln.time_seconds)
+    sorted_cues = sorted(cues, key=lambda cue: cue.start)
+
+    out: List[LRCLine] = []
+    inserted = 0
+    for i, line in enumerate(sorted_lines):
+        out.append(line)
+        if i + 1 >= len(sorted_lines):
+            continue
+        next_start = sorted_lines[i + 1].time_seconds
+
+        # Line end = last cue-end among cues starting in [line_start, next_start).
+        line_end: Optional[float] = None
+        for cue in sorted_cues:
+            if cue.start < line.time_seconds - _TIMESTAMP_MATCH_TOLERANCE:
+                continue
+            if cue.start >= next_start - _TIMESTAMP_MATCH_TOLERANCE:
+                break
+            line_end = cue.end
+        if line_end is None:
+            logger.warning(
+                "Gap placeholder: no cue matches timestamp %.2fs — skipping gap",
+                line.time_seconds,
+            )
+            continue
+
+        gap = next_start - line_end
+        if gap <= threshold_seconds + 1e-6:
+            continue
+
+        placeholder_time = line_end + placeholder_seconds
+        if placeholder_time >= next_start - 1e-6:
+            placeholder_time = next_start - 0.01
+
+        if placeholder_time <= line.time_seconds:
+            continue
+        out.append(LRCLine(time_seconds=placeholder_time, text=""))
+        inserted += 1
+        logger.info(
+            "Gap placeholder inserted at %.2fs (line end %.2fs, next %.2fs, gap %.2fs > %.2fs beats-threshold)",
+            placeholder_time,
+            line_end,
+            next_start,
+            gap,
+            threshold_seconds,
+        )
+
+    logger.info(
+        "Gap placeholder: %d inserted across %d LRC lines (tempo %.1f BPM)",
+        inserted,
+        len(lrc_lines),
+        tempo_bpm,
+    )
+    return out
+
+
 ZH_LANG_CODES = ["zh-Hant", "zh-TW", "zh-Hans", "zh-CN", "zh-HK", "zh"]
 EN_LANG_CODES = ["en-US", "en"]
 
@@ -933,6 +1067,7 @@ async def youtube_transcript_to_lrc(
     lyrics_text: str,
     llm_model: str,
     language: str = "zh",
+    tempo_bpm: Optional[float] = None,
 ) -> List[LRCLine]:
     """End-to-end: YouTube transcript -> LLM correction -> LRC lines.
 
@@ -940,6 +1075,9 @@ async def youtube_transcript_to_lrc(
         youtube_url: YouTube video URL
         lyrics_text: Official lyrics text (newline-separated)
         llm_model: LLM model identifier
+        language: LRC language ("zh" or "en")
+        tempo_bpm: Recording tempo for gap placeholder insertion. None/<=0 skips
+            insertion (output matches pre-gap-feature behavior).
 
     Returns:
         List of LRCLine objects with corrected timestamps
@@ -963,8 +1101,6 @@ async def youtube_transcript_to_lrc(
     lyrics_lines = [line for line in lyrics_text.split("\n") if line.strip()]
     prompt = build_correction_prompt(transcript_text, lyrics_lines, language=language)
 
-    # Log the prompt
-    logger.debug("=" * 80)
     logger.debug("YOUTUBE TRANSCRIPT LLM PROMPT")
     logger.debug("=" * 80)
     for line in prompt.split("\n"):
@@ -987,6 +1123,10 @@ async def youtube_transcript_to_lrc(
         lrc_lines = parse_lrc_response(response_text)
     except ValueError as e:
         raise YouTubeTranscriptError(f"Failed to parse LLM response: {e}") from e
+
+    # Step 6: Insert blank placeholder lines into long instrumental gaps
+    cues = _extract_cue_timings(transcript)
+    lrc_lines = insert_gap_placeholder_lines(lrc_lines, cues, tempo_bpm)
 
     elapsed = time.time() - start_time
     logger.info(f"YouTube transcript -> LRC completed: {len(lrc_lines)} lines in {elapsed:.2f}s")

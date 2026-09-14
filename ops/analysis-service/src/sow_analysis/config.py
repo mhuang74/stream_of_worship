@@ -115,6 +115,15 @@ class Settings(BaseSettings):
     SOW_LLM_BASE_URL: str = ""  # e.g., "https://openrouter.ai/api/v1"
     SOW_LLM_MODEL: str = ""  # e.g., "openai/gpt-4o-mini" for OpenRouter
 
+    # LRC Gap Placeholder Insertion (YouTube transcript path)
+    SOW_LRC_GAP_THRESHOLD_BEATS: float = 12.0
+    # Minimum silent gap (beats) between the end of one lyric line and the start
+    # of the next before a placeholder line is inserted. 0 disables insertion.
+
+    SOW_LRC_GAP_PLACEHOLDER_BEATS: float = 4.0
+    # Offset (beats) after the previous line's end where the placeholder timestamp
+    # lands. Mirrors the render worker's blank-line preview window.
+
     # LLM Rate-Limit Retry Configuration
     SOW_LLM_MAX_CONCURRENT: int = 3
     # Module-level semaphore limiting concurrent LLM calls across all LRC jobs.
@@ -280,7 +289,9 @@ class Settings(BaseSettings):
     SOW_MVSEP_STAGE_TIMEOUT: int = 300
     SOW_MVSEP_STAGE2_TIMEOUT: int = 900  # Dedicated budget for Stage 2 + retries
     SOW_MVSEP_TOTAL_TIMEOUT: int = 1800  # Outer cap: Stage 1 + Stage 2 combined
-    SOW_MVSEP_MAX_CONCURRENT: int = 1  # Max concurrent MVSEP API operations (MVSEP free-tier allows 1 pending job per token)
+    SOW_MVSEP_MAX_CONCURRENT: int = (
+        1  # Max concurrent MVSEP API operations (MVSEP free-tier allows 1 pending job per token)
+    )
 
     @field_validator(
         "SOW_MVSEP_STAGE1_ADD_OPT2",

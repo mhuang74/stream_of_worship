@@ -164,13 +164,10 @@ def _cached_components_have_llm_fields(
     essential_roles = {"entry", "exit", "loop_target", "entry_exit"}
     for comp in components:
         is_essential_bridge = (
-            comp.get("component_type") == "bridge"
-            and comp.get("occurrence_index") == 1
+            comp.get("component_type") == "bridge" and comp.get("occurrence_index") == 1
         )
         is_candidate = (
-            all_components
-            or comp.get("role", "none") in essential_roles
-            or is_essential_bridge
+            all_components or comp.get("role", "none") in essential_roles or is_essential_bridge
         )
         if not is_candidate:
             continue
@@ -411,6 +408,7 @@ class AnalysisClient:
         youtube_url: str = "",
         use_qwen3_asr: bool = True,
         force_qwen3_asr: bool = False,
+        tempo_bpm: Optional[float] = None,
     ) -> JobInfo:
         """Submit an audio file for LRC generation.
 
@@ -427,9 +425,12 @@ class AnalysisClient:
             youtube_url: YouTube URL for transcript-based LRC (primary path)
             use_qwen3_asr: Whether to use DashScope Qwen3 ASR before Whisper fallback
             force_qwen3_asr: Bypass only the Qwen3 ASR cache
+            tempo_bpm: Recording tempo for LRC gap placeholder insertion
+            (None disables placeholder insertion)
 
         Returns:
             JobInfo for the submitted job
+
 
         Raises:
             AnalysisServiceError: If submission fails
@@ -448,6 +449,7 @@ class AnalysisClient:
                 "force_whisper": force_whisper,
                 "use_qwen3_asr": use_qwen3_asr,
                 "force_qwen3_asr": force_qwen3_asr,
+                "tempo_bpm": tempo_bpm,
             },
         }
 
@@ -458,11 +460,6 @@ class AnalysisClient:
                 headers=self._auth_headers(),
                 timeout=self.timeout,
             )
-
-            if response.status_code == 401:
-                raise AnalysisServiceError(
-                    "Authentication failed: Invalid API key", status_code=401
-                )
 
             response.raise_for_status()
             data = response.json()

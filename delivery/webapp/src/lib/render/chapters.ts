@@ -92,10 +92,12 @@ export async function generateChaptersManifest(
         const lrcContent = await assetFetcher.downloadLrc(hashPrefix);
         if (lrcContent) {
           const localLyrics = parseLRC(lrcContent);
-          return localLyrics.map((line) => ({
-            text: line.text,
-            startSeconds: startSeconds + line.timeSeconds,
-          }));
+          return localLyrics
+            .filter((line) => line.text.trim() !== '')
+            .map((line) => ({
+              text: line.text,
+              startSeconds: startSeconds + line.timeSeconds,
+            }));
         }
       } catch (error) {
         console.warn(`Failed to load LRC for chapter:`, error);

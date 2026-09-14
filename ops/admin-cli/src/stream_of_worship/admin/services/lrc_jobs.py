@@ -125,6 +125,7 @@ def submit_lrc_single(
                 youtube_url=youtube_url,
                 use_qwen3_asr=not no_qwen3_asr,
                 force_qwen3_asr=force_qwen3_asr,
+                tempo_bpm=recording.tempo_bpm,
             )
         except AnalysisServiceError as e:
             console.print(f"[red]Failed to submit LRC job: {e}[/red]")
@@ -252,7 +253,6 @@ def submit_lrc_batch(
             continue
 
         # Submit LRC
-        youtube_url = "" if no_youtube else (recording.youtube_url or "")
         try:
             job = analysis_client.submit_lrc(
                 audio_url=recording.r2_audio_url,
@@ -267,6 +267,7 @@ def submit_lrc_batch(
                 youtube_url=youtube_url,
                 use_qwen3_asr=not no_qwen3_asr,
                 force_qwen3_asr=force_qwen3_asr,
+                tempo_bpm=recording.tempo_bpm,
             )
 
             # Update DB
@@ -340,7 +341,6 @@ def submit_lrc_job(
         return None
 
     youtube_url = "" if no_youtube else (recording.youtube_url or "")
-
     try:
         client = AnalysisClient(analysis_url)
         job = client.submit_lrc(
@@ -356,6 +356,7 @@ def submit_lrc_job(
             youtube_url=youtube_url,
             use_qwen3_asr=use_qwen3_asr,
             force_qwen3_asr=force_qwen3_asr,
+            tempo_bpm=recording.tempo_bpm,
         )
 
         # Update DB
@@ -526,7 +527,9 @@ def display_lrc(
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "404" or error_code == "NoSuchKey":
                 console.print(f"[yellow]No LRC file found in R2 for {song_id}[/yellow]")
-                console.print(f"[dim]Run 'sow-admin lyrics generate {song_id}' to generate LRC[/dim]")
+                console.print(
+                    f"[dim]Run 'sow-admin lyrics generate {song_id}' to generate LRC[/dim]"
+                )
             else:
                 console.print(f"[red]Error downloading LRC from R2: {e}[/red]")
             return False

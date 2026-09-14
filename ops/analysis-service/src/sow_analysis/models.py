@@ -127,6 +127,7 @@ class LrcOptions(BaseModel):
     qwen3_asr_context_max_chars: int = 10000
     qwen3_asr_snap_threshold: float = 0.60
     qwen3_asr_min_usable_segments: int = 3
+    tempo_bpm: Optional[float] = None  # Recording tempo for gap placeholder insertion
 
     @model_validator(mode="before")
     @classmethod
@@ -226,7 +227,9 @@ class ComponentAnalysisJobRequest(BaseModel):
     beats: Optional[List[float]] = None  # Cached beat timestamps
     downbeats: Optional[List[float]] = None  # Cached downbeat timestamps
     lrc_content: Optional[str] = None  # Cached LRC text
-    structured_lyrics: Optional[str] = None  # v8: parsed structured lyrics JSON (from recordings.structured_lyrics)
+    structured_lyrics: Optional[str] = (
+        None  # v8: parsed structured lyrics JSON (from recordings.structured_lyrics)
+    )
     options: ComponentAnalysisOptions = Field(default_factory=ComponentAnalysisOptions)
 
 
@@ -306,7 +309,9 @@ class JobResult(BaseModel):
     component_source: Optional[str] = None
     # v7: echo of the resolved segmentation_mode the worker applied, for
     # CLI-side version-skew detection (old backends drop the field → None).
-    segmentation_mode_resolved: Optional[Literal["llm", "repetition", "allin1", "structured_lyrics"]] = None
+    segmentation_mode_resolved: Optional[
+        Literal["llm", "repetition", "allin1", "structured_lyrics"]
+    ] = None
 
 
 class JobResponse(BaseModel):

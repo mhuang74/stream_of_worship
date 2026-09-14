@@ -162,8 +162,6 @@ def _display_video_preview(
     )
 
 
-
-
 def _prompt_manual_url(max_attempts: int = 3) -> Optional[str]:
     """Prompt for manual URL, validate format, return URL or None.
 
@@ -340,8 +338,6 @@ def _colorize_visibility(visibility: Optional[str]) -> str:
         return "[dim]·[/dim]"
 
 
-
-
 def _read_albums_from_file(path: Path) -> list[str]:
     """Read album name filters from a file, one per line.
 
@@ -371,9 +367,7 @@ def _read_albums_from_file(path: Path) -> list[str]:
     return albums
 
 
-def _list_column_caps(
-    width: int, extra_col: bool = False
-) -> tuple[int, int, Optional[int], int]:
+def _list_column_caps(width: int, extra_col: bool = False) -> tuple[int, int, Optional[int], int]:
     """Compute column caps for the audio list table so no column collapses or wraps.
 
     All list-table columns render ``no_wrap=True`` and every column is capped,
@@ -444,9 +438,6 @@ def _display_truncate(value: str, cap: int) -> str:
     return out + "…"
 
 
-
-
-
 def _submit_analysis_job(
     recording: Recording,
     analysis_url: str,
@@ -495,9 +486,6 @@ def _submit_analysis_job(
     except ValueError as e:
         console.print(f"[yellow]⚠ Analysis service not configured: {e}[/yellow]")
         return None
-
-
-
 
 
 def _backfill_lyrics_for_song(
@@ -954,9 +942,7 @@ def _backfill_lyrics_batch(
             console.print(f"[red]✗ Failed: {sid}: {e}[/red]")
 
     console.print()
-    console.print(
-        f"[bold]Summary:[/bold] {success} backfilled, {skipped} skipped, {failed} failed"
-    )
+    console.print(f"[bold]Summary:[/bold] {success} backfilled, {skipped} skipped, {failed} failed")
 
 
 def _download_audio_batch(
@@ -1042,7 +1028,9 @@ def _download_audio_batch(
             if len(to_download) > 10:
                 console.print(f"  ... and {len(to_download) - 10} more")
         else:
-            console.print("[yellow]No songs would be downloaded (recordings already present).[/yellow]")
+            console.print(
+                "[yellow]No songs would be downloaded (recordings already present).[/yellow]"
+            )
         console.print(
             f"\n[bold]Summary:[/bold] {len(to_download)} to download, "
             f"{len(already_present)} skipped (already present), "
@@ -1224,9 +1212,7 @@ def download_audio(
             )
             raise typer.Exit(1)
         if dry_run:
-            console.print(
-                "[red]--backfill-lyrics is mutually exclusive with --dry-run.[/red]"
-            )
+            console.print("[red]--backfill-lyrics is mutually exclusive with --dry-run.[/red]")
             raise typer.Exit(1)
 
         try:
@@ -1239,9 +1225,7 @@ def download_audio(
 
         if stdin:
             if url:
-                console.print(
-                    "[red]--url is not supported with --stdin (batch mode).[/red]"
-                )
+                console.print("[red]--url is not supported with --stdin (batch mode).[/red]")
                 raise typer.Exit(1)
             _backfill_lyrics_batch(
                 db_client=db_client,
@@ -1642,9 +1626,13 @@ def list_recordings(
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
         # Caps keep the flexible text columns from collapsing: Rich gives
         # no_wrap columns their max content width first, starving Album/Title.
-        text_cap, id_cap, updated_cap, filename_cap = _list_column_caps(console.width, sort == "updated")
+        text_cap, id_cap, updated_cap, filename_cap = _list_column_caps(
+            console.width, sort == "updated"
+        )
         table = Table(title=f"Recordings ({len(enriched)} total){filter_str}")
-        table.add_column("Album", style="yellow", no_wrap=True, max_width=text_cap, overflow="ellipsis")
+        table.add_column(
+            "Album", style="yellow", no_wrap=True, max_width=text_cap, overflow="ellipsis"
+        )
         table.add_column(
             "Song Title",
             style="green",
@@ -1656,7 +1644,9 @@ def list_recordings(
         table.add_column("Duration", style="cyan", no_wrap=True)
         table.add_column("Key", style="cyan", no_wrap=True)
         table.add_column("BPM", style="magenta", justify="right", no_wrap=True)
-        table.add_column("Song ID", style="dim", no_wrap=True, max_width=id_cap, overflow="ellipsis")
+        table.add_column(
+            "Song ID", style="dim", no_wrap=True, max_width=id_cap, overflow="ellipsis"
+        )
         if filename_cap is not None:
             table.add_column(
                 "Filename",
@@ -1860,8 +1850,7 @@ def show_recording(
         truncated = "\n".join(raw_lines[:40])
         if len(raw_lines) > 40:
             truncated += (
-                "\n[dim](… truncated, run 'sow-admin lyrics view "
-                f"{song_id}' for full)[/dim]"
+                "\n[dim](… truncated, run 'sow-admin lyrics view " f"{song_id}' for full)[/dim]"
             )
         console.print(
             Panel(
@@ -1936,14 +1925,14 @@ def set_visibility(
     # Resolve the list of song IDs
     if stdin:
         raw = sys.stdin.read().splitlines()
-        song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
+        song_ids = [
+            line.strip() for line in raw if line.strip() and not line.strip().startswith("#")
+        ]
         if not song_ids:
             console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
             raise typer.Exit(1)
     elif song_id is None:
-        console.print(
-            "[red]A song ID is required, or use --stdin to read IDs from stdin[/red]"
-        )
+        console.print("[red]A song ID is required, or use --stdin to read IDs from stdin[/red]")
         raise typer.Exit(1)
     else:
         song_ids = [song_id]
@@ -1971,7 +1960,9 @@ def set_visibility(
 
         try:
             db_client.update_recording_visibility(recording.hash_prefix, status)
-            console.print(f"[green]{sid}: Updated visibility to {_colorize_visibility(status)}[/green]")
+            console.print(
+                f"[green]{sid}: Updated visibility to {_colorize_visibility(status)}[/green]"
+            )
             succeeded.append(sid)
         except ValueError as e:
             console.print(f"[red]{sid}: {e}[/red]")
@@ -1979,9 +1970,7 @@ def set_visibility(
 
     # Summary for batch mode
     if len(song_ids) > 1:
-        console.print(
-            f"\n[bold]Summary:[/bold] {len(succeeded)} succeeded, {len(failed)} failed"
-        )
+        console.print(f"\n[bold]Summary:[/bold] {len(succeeded)} succeeded, {len(failed)} failed")
         if failed:
             console.print("[red]Failed:[/red]")
             for sid, msg in failed:
@@ -1998,7 +1987,9 @@ def analyze_recording(
         "fast", "--analysis-tier", help="Analysis tier: fast (default) or full"
     ),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis"),
-    no_stems: bool = typer.Option(False, "--no-stems", help="Skip stem separation (full tier only)"),
+    no_stems: bool = typer.Option(
+        False, "--no-stems", help="Skip stem separation (full tier only)"
+    ),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for analysis to complete"),
     components: bool = typer.Option(
         False, "--components", help="Submit component analysis after full analysis completes"
@@ -2231,9 +2222,7 @@ def analyze_recording(
                 loudness_db=result.loudness_db,
                 # Full-tier-only fields: only write for full tier
                 beats=(
-                    json.dumps(result.beats)
-                    if effective_tier == "full" and result.beats
-                    else None
+                    json.dumps(result.beats) if effective_tier == "full" and result.beats else None
                 ),
                 downbeats=(
                     json.dumps(result.downbeats)
@@ -2323,7 +2312,11 @@ def _render_components_table(
             c.component_type,
             str(c.occurrence_index),
             c.role,
-            f"{c.line_start}-{c.line_end}" if c.line_start is not None and c.line_end is not None else "-",
+            (
+                f"{c.line_start}-{c.line_end}"
+                if c.line_start is not None and c.line_end is not None
+                else "-"
+            ),
             f"{start_str}-{end_str}",
             bpm_str,
             key_str,
@@ -2405,9 +2398,7 @@ def _aggregate_recording_theme(
         avg_conf: dict[str, float] = {}
         for v in tied:
             confs = [
-                getattr(c, f"{attr}_confidence") or 0.0
-                for c in items
-                if getattr(c, attr) == v
+                getattr(c, f"{attr}_confidence") or 0.0 for c in items if getattr(c, attr) == v
             ]
             avg_conf[v] = sum(confs) / len(confs) if confs else 0.0
         best_conf = max(avg_conf.values())
@@ -2556,9 +2547,7 @@ def _prepare_component_job_inputs(
         try:
             r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
             client = AnalysisClient(analysis_url, timeout=300)
-            cached = client.get_cached_component_result(
-                recording.hash_prefix, r2_client=r2_client
-            )
+            cached = client.get_cached_component_result(recording.hash_prefix, r2_client=r2_client)
         except ValueError as e:
             # Misconfigured R2 creds — surface loudly. Do NOT fall through to a
             # job submission that nobody asked to gate on cache.
@@ -2676,16 +2665,11 @@ def _submit_component_analysis_job(
     cached_result = inputs["cached_result"]
     if cached_result is not None:
         cached_components = cached_result.get("components", [])
-        components = _parse_component_results(
-            cached_components, song_id, recording.content_hash
-        )
+        components = _parse_component_results(cached_components, song_id, recording.content_hash)
         if components:  # guard against empty = no-op upsert wipe
-            db_client.upsert_song_components(
-                song_id, recording.content_hash, components
-            )
+            db_client.upsert_song_components(song_id, recording.content_hash, components)
             _persist_recording_theme(recording, components, db_client)
         return components
-
 
     # Submit the job.
     try:
@@ -2728,8 +2712,7 @@ def _submit_component_analysis_job(
         )
         console.print(
             "[yellow]Job submitted in fire-and-forget mode. "
-            "song_components DB table will NOT be updated until you run:[/yellow]\n"
-            + recovery_hint
+            "song_components DB table will NOT be updated until you run:[/yellow]\n" + recovery_hint
         )
         return None
 
@@ -2753,9 +2736,7 @@ def _submit_component_analysis_job(
     # Echo verification: detect backend version-skew. If the backend is OLD
     # and silently dropped the segmentation_mode field, the echoed value will
     # be None (or differ from the request). Refuse to persist in that case.
-    resolved = (
-        final_job.result.segmentation_mode_resolved if final_job.result else None
-    )
+    resolved = final_job.result.segmentation_mode_resolved if final_job.result else None
     if segmentation_mode is not None and resolved != segmentation_mode:
         console.print(
             f"[red]WARNING: requested segmentation_mode={segmentation_mode!r} "
@@ -2847,7 +2828,9 @@ def components_recording(
     ),
     # v5 options
     snap_to_downbeat: bool = typer.Option(
-        False, "--snap-to-downbeat", help="Snap component boundaries to downbeats (madmom if needed)"
+        False,
+        "--snap-to-downbeat",
+        help="Snap component boundaries to downbeats (madmom if needed)",
     ),
     energy_roles: bool = typer.Option(
         False, "--energy-roles", help="Use energy-based entry/exit role assignment"
@@ -2960,9 +2943,7 @@ def components_recording(
 
     # Validate --segmentation-mode option.
     if segmentation_mode is not None:
-        _validate_choice(
-            segmentation_mode, SEGMENTATION_MODE_VALUES, "--segmentation-mode"
-        )
+        _validate_choice(segmentation_mode, SEGMENTATION_MODE_VALUES, "--segmentation-mode")
 
     # In JSON mode, route all progress/error messages to stderr.
     out_console = progress_console if format_ == "json" else console
@@ -3001,9 +2982,7 @@ def components_recording(
                 line.strip() for line in raw if line.strip() and not line.strip().startswith("#")
             ]
             if not song_ids:
-                out_console.print(
-                    "[red]No song IDs read from stdin (expected one per line)[/red]"
-                )
+                out_console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
                 raise typer.Exit(1)
         else:
             song_ids = [song_id]
@@ -3064,11 +3043,13 @@ def components_recording(
                 f"║ Each song runs ONLY the '{segmentation_mode}' source. Empty [] results are{' ' * (3 if len(segmentation_mode) == 3 else 2)}║\n"
                 f"║ EXPECTED when the source is unavailable (no LRC, unset API key,{' ' * 1}║\n"
                 f"║ LLM error, invalid JSON). There is NO fallback to allin1 or{' ' * 3}║\n"
-                f"║ lyrics-repetition. Do NOT interpret [] as \"song has no components.\"║\n"
+                f'║ lyrics-repetition. Do NOT interpret [] as "song has no components."║\n'
                 f"╚══════════════════════════════════════════════════════════════════╝[/yellow]"
             )
         raw = sys.stdin.read().splitlines()
-        song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
+        song_ids = [
+            line.strip() for line in raw if line.strip() and not line.strip().startswith("#")
+        ]
         if not song_ids:
             out_console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
             raise typer.Exit(1)
@@ -3091,8 +3072,14 @@ def components_recording(
             if no_wait:
                 try:
                     _submit_component_analysis_job(
-                        recording, sid, config.analysis_url, db_client, out_console,
-                        config=config, force=force, wait=False,
+                        recording,
+                        sid,
+                        config.analysis_url,
+                        db_client,
+                        out_console,
+                        config=config,
+                        force=force,
+                        wait=False,
                         snap_to_downbeat=snap_to_downbeat,
                         energy_aware_roles=energy_roles,
                         use_stems=use_stems,
@@ -3107,8 +3094,14 @@ def components_recording(
                     results.append({"song_id": sid, "status": "failed", "error": str(e)})
             else:
                 result = _submit_component_analysis_job(
-                    recording, sid, config.analysis_url, db_client, out_console,
-                    config=config, force=force, wait=True,
+                    recording,
+                    sid,
+                    config.analysis_url,
+                    db_client,
+                    out_console,
+                    config=config,
+                    force=force,
+                    wait=True,
                     snap_to_downbeat=snap_to_downbeat,
                     energy_aware_roles=energy_roles,
                     use_stems=use_stems,
@@ -3169,8 +3162,14 @@ def components_recording(
         raise typer.Exit(0)
 
     result = _submit_component_analysis_job(
-        recording, song_id, config.analysis_url, db_client, out_console,
-        config=config, force=force, wait=not no_wait,
+        recording,
+        song_id,
+        config.analysis_url,
+        db_client,
+        out_console,
+        config=config,
+        force=force,
+        wait=not no_wait,
         snap_to_downbeat=snap_to_downbeat,
         energy_aware_roles=energy_roles,
         use_stems=use_stems,
@@ -3225,9 +3224,7 @@ def _sync_components_from_r2(
     r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
     analysis_client = AnalysisClient(config.analysis_url, timeout=300)
 
-    cached = analysis_client.get_cached_component_result(
-        recording.hash_prefix, r2_client=r2_client
-    )
+    cached = analysis_client.get_cached_component_result(recording.hash_prefix, r2_client=r2_client)
     if cached is None:
         console.print(
             f"[red]No schema_version=2 components.json in R2 for "
@@ -3240,9 +3237,7 @@ def _sync_components_from_r2(
     has_llm = _cached_components_have_llm_fields(
         cached_components, classify_theme=True, classify_vocal_posture=True
     )
-    components = _parse_component_results(
-        cached_components, song_id, recording.content_hash
-    )
+    components = _parse_component_results(cached_components, song_id, recording.content_hash)
 
     existing = db_client.get_song_components(song_id)
     console.print(
@@ -3286,7 +3281,8 @@ def sync_components(
         False, "--dry-run", help="Show what would change without writing to DB"
     ),
     yes: bool = typer.Option(
-        False, "--yes",
+        False,
+        "--yes",
         help="Confirm destructive sync when new row count < existing (applies globally, including --stdin batch)",
     ),
     format_: str = typer.Option("table", "--format", help="Output format (table|json)"),
@@ -3333,7 +3329,9 @@ def sync_components(
 
     if stdin:
         raw = sys.stdin.read().splitlines()
-        song_ids = [line.strip() for line in raw if line.strip() and not line.strip().startswith("#")]
+        song_ids = [
+            line.strip() for line in raw if line.strip() and not line.strip().startswith("#")
+        ]
         if not song_ids:
             console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
             raise typer.Exit(1)
@@ -3346,11 +3344,22 @@ def sync_components(
                 continue
             try:
                 result = _sync_components_from_r2(
-                    recording, sid, config, db_client, console,
-                    dry_run=dry_run, yes=yes,
+                    recording,
+                    sid,
+                    config,
+                    db_client,
+                    console,
+                    dry_run=dry_run,
+                    yes=yes,
                 )
                 if result is None:
-                    results.append({"song_id": sid, "status": "failed", "error": "No cache / stale / shrink refused"})
+                    results.append(
+                        {
+                            "song_id": sid,
+                            "status": "failed",
+                            "error": "No cache / stale / shrink refused",
+                        }
+                    )
                 else:
                     results.append({"song_id": sid, "status": "synced", "components": len(result)})
             except Exception as e:
@@ -3382,8 +3391,13 @@ def sync_components(
 
     try:
         result = _sync_components_from_r2(
-            recording, song_id, config, db_client, console,
-            dry_run=dry_run, yes=yes,
+            recording,
+            song_id,
+            config,
+            db_client,
+            console,
+            dry_run=dry_run,
+            yes=yes,
         )
     except Exception as e:
         console.print(f"[red]Sync failed: {e}[/red]")
@@ -3396,9 +3410,6 @@ def sync_components(
         print(json.dumps([c.to_dict() for c in result], ensure_ascii=False, indent=2))
     else:
         console.print(f"[green]Synced {len(result)} component(s) for {song_id}.[/green]")
-
-
-
 
 
 def _compute_content_hash(
@@ -4030,7 +4041,8 @@ def check_status(
 
     # List pending recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
-    cursor.execute(f"""
+    cursor.execute(
+        f"""
         SELECT {RECORDING_COLUMNS_FOR_JOIN}, s.title as song_title
         FROM recordings r
         LEFT JOIN songs s ON r.song_id = s.id
@@ -4038,7 +4050,8 @@ def check_status(
           AND r.deleted_at IS NULL
           AND (s.deleted_at IS NULL OR s.id IS NULL)
         ORDER BY r.imported_at DESC
-        """)
+        """
+    )
 
     rows = cursor.fetchall()
     if not rows:
@@ -4338,12 +4351,14 @@ def _force_sync_all_pending(
     """Force update all pending recordings."""
     # Get all non-completed recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
-    cursor.execute(f"""
+    cursor.execute(
+        f"""
         SELECT {RECORDING_COLUMNS_SELECT} FROM recordings
         WHERE (analysis_status IN ('pending', 'processing', 'failed')
            OR lrc_status IN ('pending', 'processing', 'failed'))
           AND deleted_at IS NULL
-        """)
+        """
+    )
     rows = cursor.fetchall()
 
     if not rows:
@@ -4387,12 +4402,6 @@ def _force_sync_all_pending(
     console.print(f"[green]Force updated {updated} recording(s) to status '{status}'[/green]")
     if force_url:
         console.print(f"[dim]URL set: {force_url}[/dim]")
-
-
-
-
-
-
 
 
 @app.command("cache")
@@ -4528,20 +4537,12 @@ def cache_assets(
     console.print(f"[dim]Cache location: {cache_dir}[/dim]")
 
 
-
-
-
-
-
-
 @app.command("review-components")
 def review_components(
     song_ids: List[str] = typer.Argument(
         ..., help="One or more song IDs whose entry/exit Chorus metadata to review"
     ),
-    config_path: Optional[Path] = typer.Option(
-        None, "--config", "-c", help="Path to config file"
-    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Launch a Textual TUI to view / review / compare / edit component metadata.
 
@@ -4574,15 +4575,11 @@ def review_components(
     for song_id in song_ids:
         song = db_client.get_song(song_id)
         if not song:
-            console.print(
-                f"[yellow]No song found for id: {song_id}; skipping.[/yellow]"
-            )
+            console.print(f"[yellow]No song found for id: {song_id}; skipping.[/yellow]")
             continue
         recording = db_client.get_recording_by_song_id(song_id)
         if not recording:
-            console.print(
-                f"[yellow]No recording found for song: {song_id}; skipping.[/yellow]"
-            )
+            console.print(f"[yellow]No recording found for song: {song_id}; skipping.[/yellow]")
             continue
         entry, exit_comp = db_client.get_song_components_entry_exit(song_id)
         if entry is None and exit_comp is None:
@@ -4603,9 +4600,7 @@ def review_components(
                 components[editor_role] = comp
 
         if not components:
-            console.print(
-                f"[yellow]No essential components for {song_id}; skipping.[/yellow]"
-            )
+            console.print(f"[yellow]No essential components for {song_id}; skipping.[/yellow]")
             continue
 
         # Ensure audio cached under {cache_dir}/{hash_prefix}/audio/audio.mp3
@@ -4667,11 +4662,6 @@ def review_components(
     app.run()
 
     playback.stop()
-
-
-
-
-
 
 
 def _read_key_nonblocking() -> Optional[str]:
@@ -4925,7 +4915,9 @@ def batch(
         "LLM theme + vocal posture classification)",
     ),
     backfill_lyrics: bool = typer.Option(
-        False, "--backfill-lyrics", help="Backfill structured lyrics from YouTube for existing recordings"
+        False,
+        "--backfill-lyrics",
+        help="Backfill structured lyrics from YouTube for existing recordings",
     ),
     use_llm: bool = typer.Option(
         True,
@@ -5200,7 +5192,10 @@ def batch(
             config=config,
         )
         _print_stats(
-            results, db_client, console, format,
+            results,
+            db_client,
+            console,
+            format,
             selected_steps=manifest_data.get("selected_steps", []),
         )
 
@@ -5240,9 +5235,7 @@ def batch(
     # Runs before any LRC step so the freshly-backfilled structured lyrics
     # are available to resolve_lyrics_text.
     if "backfill_lyrics" in selected_steps:
-        console.print(
-            f"[cyan]Backfilling structured lyrics for {len(song_ids)} song(s)...[/cyan]"
-        )
+        console.print(f"[cyan]Backfilling structured lyrics for {len(song_ids)} song(s)...[/cyan]")
         backfill_results: Dict[str, dict] = {sid: {} for sid in song_ids}
         for i, sid in enumerate(song_ids, 1):
             console.print(f"[{i}/{len(song_ids)}] Backfilling {sid}...")
@@ -5313,9 +5306,7 @@ def batch(
     # input data changed, so components are re-identified even when existing
     # component rows already carry theme/posture (surgical, no --force needed).
     newly_backfilled: set[str] = {
-        sid
-        for sid, r in results.items()
-        if r.get("backfill_lyrics") == "completed"
+        sid for sid, r in results.items() if r.get("backfill_lyrics") == "completed"
     }
 
     # Initialize R2 and Analysis clients
@@ -5538,7 +5529,9 @@ def _print_dry_run_v4(
                         has_structured = bool(parsed and parsed.get("sections"))
                     except (json.JSONDecodeError, TypeError):
                         has_structured = False
-                console.print(f"    [dim]Structured lyrics:[/dim] {'yes' if has_structured else 'no'}")
+                console.print(
+                    f"    [dim]Structured lyrics:[/dim] {'yes' if has_structured else 'no'}"
+                )
             if "components" in selected_steps:
                 console.print(
                     f"    [dim]Components:[/dim] {len(db_client.get_song_components(song.id))} row(s)"
@@ -5671,9 +5664,7 @@ def _download_and_create_recording(
                 # thread context where typer.Exit would otherwise propagate to
                 # _download_worker's except Exception and mark the download
                 # failed.
-                console.print(
-                    f"  [yellow]Structured lyrics fetch failed (non-fatal): {e}[/yellow]"
-                )
+                console.print(f"  [yellow]Structured lyrics fetch failed (non-fatal): {e}[/yellow]")
             else:
                 structured_json = json.loads(structured_json_str)
                 if structured_json and structured_json.get("sections"):
@@ -6293,8 +6284,7 @@ def _db_components_have_llm_fields(comps: list[SongComponent]) -> bool:
     candidates = [
         c
         for c in comps
-        if c.role in essential_roles
-        or (c.component_type == "bridge" and c.occurrence_index == 1)
+        if c.role in essential_roles or (c.component_type == "bridge" and c.occurrence_index == 1)
     ]
     return bool(candidates) and all(c.theme and c.vocal_posture for c in candidates)
 
@@ -6353,9 +6343,7 @@ def _submit_components_for_song(
             # Always re-aggregate: self-guarding, idempotent, and refreshes a
             # stale recordings.theme even when non-None.
             _persist_recording_theme(recording, comps, db_client)
-            console.print(
-                f"  [dim]→ {song_id} (skipped: components already classified)[/dim]"
-            )
+            console.print(f"  [dim]→ {song_id} (skipped: components already classified)[/dim]")
             results[song_id]["components"] = "completed"
             results[song_id]["components_source"] = "db_existing"
             _add_manifest_entry(
@@ -6412,9 +6400,7 @@ def _submit_components_for_song(
     # Cached fast path (only reachable when not force and not newly_backfilled).
     if inputs["cached_result"]:
         cached_components = inputs["cached_result"].get("components", [])
-        components = _parse_component_results(
-            cached_components, song_id, recording.content_hash
-        )
+        components = _parse_component_results(cached_components, song_id, recording.content_hash)
         if components:  # guard against empty = no-op upsert wipe
             db_client.upsert_song_components(song_id, recording.content_hash, components)
             _persist_recording_theme(recording, components, db_client)
@@ -6585,7 +6571,9 @@ def _handle_components_completion(
         )
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
-        console.print(f"  [red]✗[/red] {song_name} — components failed: {results[song_id]['components_error']}")
+        console.print(
+            f"  [red]✗[/red] {song_name} — components failed: {results[song_id]['components_error']}"
+        )
         return (True, None)
 
     # Still processing
@@ -6898,7 +6886,6 @@ def _handle_lrc_404(
         console.print(f"  [green]✓[/green] {song_name} — LRC found on R2 (job was lost)")
         return (True, None)
 
-
     resubmit_count = resubmit_counts.get(song_id, 0)
     if resubmit_count >= max_resubmits:
         console.print(
@@ -6933,9 +6920,9 @@ def _handle_lrc_404(
         song = db_client.get_song(song_id)
         if not song or not song.lyrics_raw:
             results[song_id]["generate_lyrics"] = "failed"
-            results[song_id]["generate_lyrics_error"] = (
-                "Job lost and no lyrics available for resubmit"
-            )
+            results[song_id][
+                "generate_lyrics_error"
+            ] = "Job lost and no lyrics available for resubmit"
             db_client.update_recording_status(
                 hash_prefix=recording.hash_prefix,
                 lrc_status="failed",
@@ -7715,9 +7702,8 @@ def _process_batch(
                     manifest_entries[i] = entry
                     return
             manifest_entries.append(entry)
-    eager_generate_lyrics = (
-        "download" in selected_steps and "generate_lyrics" in selected_steps
-    )
+
+    eager_generate_lyrics = "download" in selected_steps and "generate_lyrics" in selected_steps
     pending_futures: Set[Future] = set()
     batch_start_time = time.time()
     last_completion_time = time.time()
@@ -7948,9 +7934,7 @@ def _reconcile_on_interrupt(
                 db_client.upsert_song_components(song_id, recording.content_hash, components)
                 _persist_recording_theme(recording, components, db_client)
                 results[song_id]["components"] = "completed"
-                console.print(
-                    f"  [green]✓[/green] {song_id}: cached components restored from R2"
-                )
+                console.print(f"  [green]✓[/green] {song_id}: cached components restored from R2")
             else:
                 results[song_id]["components"] = "failed"
                 results[song_id]["components_error"] = "Batch interrupted"
@@ -8041,9 +8025,7 @@ def _resume_from_manifest(
             entry["step"] = "generate_lyrics"
     if "lrc" in manifest_data.get("selected_steps", []):
         selected = manifest_data.get("selected_steps", [])
-        manifest_data["selected_steps"] = [
-            "generate_lyrics" if s == "lrc" else s for s in selected
-        ]
+        manifest_data["selected_steps"] = ["generate_lyrics" if s == "lrc" else s for s in selected]
     results: Dict[str, dict] = {}
     manifest_entries: List[dict] = list(songs)
     active_jobs: Dict[Tuple[str, str], str] = {}
@@ -8332,22 +8314,19 @@ def _print_stats(
         1 for r in results.values() if r.get("generate_lyrics") == "failed"
     )
     generate_lyrics_skipped_existing = sum(
-        1 for r in results.values()
-        if r.get("generate_lyrics_source") == "r2_preexisting"
+        1 for r in results.values() if r.get("generate_lyrics_source") == "r2_preexisting"
     )
     lrc_skipped_download = sum(1 for r in results.values() if r.get("download") == "failed")
 
     # LRC source breakdown
     generate_lyrics_youtube = sum(
-        1 for r in results.values()
-        if r.get("generate_lyrics_source") == "youtube_transcript"
+        1 for r in results.values() if r.get("generate_lyrics_source") == "youtube_transcript"
     )
     generate_lyrics_qwen_asr = sum(
         1 for r in results.values() if r.get("generate_lyrics_source") == "qwen3_asr"
     )
     generate_lyrics_whisper_asr = sum(
-        1 for r in results.values()
-        if r.get("generate_lyrics_source") == "whisper_asr"
+        1 for r in results.values() if r.get("generate_lyrics_source") == "whisper_asr"
     )
     generate_lyrics_unknown = (
         generate_lyrics_completed
@@ -8396,9 +8375,7 @@ def _print_stats(
         if r.get("analyze") == "failed":
             reasons.append(("analyze", f"failed — {r.get('analyze_error') or 'unknown error'}"))
         if r.get("embedding") == "failed":
-            reasons.append(
-                ("embedding", f"failed — {r.get('embedding_error') or 'unknown error'}")
-            )
+            reasons.append(("embedding", f"failed — {r.get('embedding_error') or 'unknown error'}"))
         if r.get("components") == "failed":
             reasons.append(
                 ("components", f"failed — {r.get('components_error') or 'unknown error'}")
@@ -8448,9 +8425,7 @@ def _print_stats(
             ]
         )
         if generate_lyrics_unknown > 0:
-            lines.append(
-                f"│ {'  Generated (unknown):':<30} {generate_lyrics_unknown:>18} │"
-            )
+            lines.append(f"│ {'  Generated (unknown):':<30} {generate_lyrics_unknown:>18} │")
 
     if avg_lrc_time is not None:
         lines.extend(
