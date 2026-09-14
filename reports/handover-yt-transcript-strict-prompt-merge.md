@@ -1,6 +1,10 @@
 # Session handover: LRC correction prompt strict-block merge
 
 Date: 2026-09-14. Branch: `admin_cli_fixes_0913`. Pushed: `96b8d7e1` (code), `f3ef5e38` (graphify), `7c25baba` (report).
+Commit attribution note: SKILL.md's variant-doc edits landed in `a2b97825`
+(mid-session concurrent commit, together with the judge ending-window widening),
+NOT in `96b8d7e1` — the feature commit carries the other 4 files. Content is
+committed and pushed either way.
 
 ## What shipped
 
