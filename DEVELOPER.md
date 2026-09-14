@@ -14,6 +14,7 @@ This document contains technical details for developers and contributors. For us
 6. [Development Roadmap](#development-roadmap)
 7. [Advanced Configuration](#advanced-configuration)
 8. [Troubleshooting](#troubleshooting)
+9. [Agent Skills](#agent-skills)
 
 ---
 
@@ -569,6 +570,15 @@ sow_cli_admin/                           # Repository root
 ├── specs/                               # Design documents
 ├── reports/                             # Implementation plans
 ├── pyproject.toml                       # Root project config
+├── lab/skills/                                      # 🧠 Agent skills (SKILL.md + scripts)
+│   ├── songset-constructor/                         #    Worship songset constructor
+│   └── eval-models-for-fixing-youtube-transcription/#    LLM bake-off for LRC correction
+│
+├── .agents/skills/                                  # Agent skill discovery (symlinks)
+│   ├── songset-constructor -> ../../lab/skills/songset-constructor
+│   ├── eval-models-for-fixing-youtube-transcript -> ../../lab/skills/eval-models-for-fixing-youtube-transcription
+│   └── langgraph-docs/                              #    Regular directory
+│
 ├── README.md                            # User-facing documentation
 └── DEVELOPER.md                         # This file
 ```
@@ -584,6 +594,43 @@ sow_cli_admin/                           # Repository root
 | `delivery/android/` | `stream-of-worship-android` | Native mobile client | End users (mobile) | Webapp JSON APIs only (no direct DB/R2/SQS) | `cd delivery/android && ./gradlew assembleDebug` |
 | `delivery/render-worker/` | `sow-render-worker` | Render processing | Internal service | PostgreSQL (Neon) + R2 | Lambda container |
 | `lab/poc-scripts/` | N/A (scripts) | Experimental validation | Developers | Local files only | Local scripts |
+
+## Agent Skills
+
+Agent-consumable skills live under `lab/skills/`. Each is a directory with a
+`SKILL.md` (frontmatter: `name`, `description`, optional flags such as
+`disable-model-invocation`) plus `scripts/` and supporting files.
+
+| Skill | Location | Purpose |
+|-------|----------|---------|
+| `songset-constructor` | `lab/skills/songset-constructor/` | Agentic worship songset constructor: plans multi-song sets following a 5-phase arc (Call → Thanksgiving → Worship → Response → Commission), selects from the catalog pool with smooth tempo/key transitions, scores and ranks proposals, writes `proposal_report.md`. Scripts run via `uv run --project ops/admin-cli --extra admin --extra constructor`. |
+| `eval-models-for-fixing-youtube-transcription` | `lab/skills/eval-models-for-fixing-youtube-transcription/` | LLM bake-off for the YouTube-transcript → timed-LRC correction task, using the production `_llm_correct` prompt path from the Analysis Service. Outputs a ranked report. |
+
+### Linking into Agent Skill Discovery
+
+Agent runtimes discover project skills from the repo root `.agents/skills/`
+directory. Skills under `lab/skills/` are exposed to agents via relative
+symlinks:
+
+```
+.agents/skills/
+├── langgraph-docs/                                     # regular directory
+├── songset-constructor -> ../../lab/skills/songset-constructor
+└── eval-models-for-fixing-youtube-transcript -> ../../lab/skills/eval-models-for-fixing-youtube-transcription
+```
+
+- The **real skill content lives in `lab/skills/<name>/`** — edit files there;
+  `.agents/skills/` holds only links.
+- `songset-constructor` links as `songset-constructor` (target name preserved).
+  The eval skill's link is named `eval-models-for-fixing-youtube-transcript`
+  (truncated) — the symlink name, not the target directory name, is the skill
+  ID agents invoke by. If you rename a link, the skill's invocation name
+  changes with it.
+- To add a new skill: create `lab/skills/<name>/` with a `SKILL.md`, then
+  symlink it from `.agents/skills/`:
+  `ln -s ../../lab/skills/<name> .agents/skills/<name>`
+
+**Reference:** [lab/skills/songset-constructor/SKILL.md](lab/skills/songset-constructor/SKILL.md)
 
 ---
 
@@ -900,4 +947,4 @@ peaks = librosa.util.peak_pick(
 
 ---
 
-**Last Updated:** 2026-07-04
+**Last Updated:** 2026-09-14
