@@ -317,3 +317,90 @@ def test_handle_lrc_404_lost_job_preserves_visibility():
         "s3://bucket/abc123def456/lyrics.lrc",
         visibility_status=None,
     )
+
+
+def test_status_reconcile_skips_pending_table():
+    """--reconcile prints its summary and returns without the pending recordings table."""
+    db_client = MagicMock()
+    rec = _recording(lrc_status="failed")
+
+    def list_recordings(**kwargs):
+        if kwargs.get("lrc_status") == "incomplete":
+            return [rec]
+        return []
+
+    db_client.list_recordings.side_effect = list_recordings
+    db_client.connection.cursor.return_value = _empty_pending_cursor()
+
+    r2_client = MagicMock()
+    r2_client.lrc_exists.return_value = "s3://bucket/abc123def456/lyrics.lrc"
+
+    config = SimpleNamespace(
+        analysis_url="http://analysis.example",
+        r2_bucket="bucket",
+        r2_endpoint_url="https://r2.example",
+        r2_region="auto",
+    )
+
+    output = io.StringIO()
+    with (
+        patch.object(audio.AdminConfig, "load", return_value=config),
+        patch.object(audio, "get_db_client", return_value=db_client),
+        patch.object(audio, "R2Client", return_value=r2_client),
+        patch.object(audio, "console", Console(file=output, force_terminal=False)),
+    ):
+        audio.check_status(
+            job_id=None,
+            sync=False,
+            force_status=None,
+            force_url=None,
+            reconcile=True,
+            config_path=None,
+        )
+
+    text = output.getvalue()
+    assert "Reconciled 1 LRC" in text
+    assert "Pending Recordings" not in text
+    db_client.connection.cursor.return_value.execute.assert_not_called()
+
+
+def test_status_sync_skips_pending_table():
+    """--sync prints its summary and returns without the pending recordings table."""
+    db_client = MagicMock()
+    db_client.list_recordings.return_value = []
+    db_client.get_recording_by_hash.return_value = _recording()
+
+    cursor = MagicMock()
+    cursor.fetchall.side_effect = [[("abc123def456",)]]
+    db_client.connection.cursor.return_value = cursor
+
+    analysis_client = MagicMock()
+    analysis_client.get_job.return_value = _completed_lrc_job()
+
+    config = SimpleNamespace(
+        analysis_url="http://analysis.example",
+        r2_bucket="bucket",
+        r2_endpoint_url="https://r2.example",
+        r2_region="auto",
+    )
+
+    output = io.StringIO()
+    with (
+        patch.object(audio.AdminConfig, "load", return_value=config),
+        patch.object(audio, "get_db_client", return_value=db_client),
+        patch.object(audio, "AnalysisClient", return_value=analysis_client),
+        patch.object(audio, "console", Console(file=output, force_terminal=False)),
+    ):
+        audio.check_status(
+            job_id=None,
+            sync=True,
+            force_status=None,
+            force_url=None,
+            reconcile=False,
+            config_path=None,
+        )
+
+    text = output.getvalue()
+    assert "Synced 1 job(s)" in text
+    assert "Pending Recordings" not in text
+    assert cursor.execute.call_count == 1

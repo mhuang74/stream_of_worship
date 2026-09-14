@@ -3612,9 +3612,10 @@ def check_status(
     """Check analysis status.
 
     With JOB_ID: query the service for that job's status.
-    Without: list all recordings with pending/processing/failed status.
+    Without flags: list all recordings with pending/processing/failed status.
     Use --reconcile to update LRC and analysis status by scanning R2 (robust against service restarts).
     Use --sync to poll the analysis service (unreliable if service restarted).
+    --reconcile and --sync print a summary and exit without listing pending recordings.
     Use --force-status when you need to manually override status.
     """
     # Standard config/db boilerplate
@@ -3818,7 +3819,7 @@ def check_status(
                     f"[yellow]{error_count} R2 error(s) encountered (see above).[/yellow]"
                 )
             console.print("")
-    # Fall through to list pending recordings table
+        return
 
     # Mode A: Query specific job
     if job_id:
@@ -4023,6 +4024,9 @@ def check_status(
             if failed_count > 0:
                 console.print(f"[yellow]Failed to sync {failed_count} job(s)[/yellow]")
             console.print("")
+        else:
+            console.print("[green]No pending jobs to sync.[/green]")
+        return
 
     # List pending recordings (exclude soft-deleted)
     cursor = db_client.connection.cursor()
@@ -5973,6 +5977,7 @@ def _submit_lrc_for_song(
             youtube_url=youtube_url,
             use_qwen3_asr=True,
             force_qwen3_asr=False,
+            tempo_bpm=recording.tempo_bpm,
         )
 
         db_client.update_recording_status(
@@ -6946,7 +6951,6 @@ def _handle_lrc_404(
                 completed_at=datetime.now(timezone.utc).isoformat(),
             )
             return (True, None)
-
         new_job = analysis_client.submit_lrc(
             audio_url=recording.r2_audio_url,
             content_hash=recording.content_hash,
@@ -6960,6 +6964,7 @@ def _handle_lrc_404(
             youtube_url=recording.youtube_url or "",
             use_qwen3_asr=True,
             force_qwen3_asr=False,
+            tempo_bpm=recording.tempo_bpm,
         )
         db_client.update_recording_status(
             hash_prefix=recording.hash_prefix,
