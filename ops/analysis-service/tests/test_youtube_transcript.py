@@ -87,6 +87,18 @@ class TestBuildCorrectionPrompt:
         assert "Preserve casing" in prompt
         assert "I'll Sing" in prompt
 
+    def test_includes_strict_requirements_zh(self):
+        prompt = build_correction_prompt("00:00.00\ntest\n", ["測試"])
+        assert "## Additional Requirements" in prompt
+        assert "Never emit a partial phrase" in prompt
+        assert "never emit them as lyric lines" in prompt
+        assert prompt.index("## Additional Requirements") < prompt.index("## Output Format")
+
+    def test_includes_strict_requirements_en(self):
+        prompt = build_correction_prompt("00:00.00\ntest\n", ["Test"], language="en")
+        assert "## Additional Requirements" in prompt
+        assert prompt.index("## Additional Requirements") < prompt.index("## Output Format")
+
 
 class TestParseLrcResponse:
     """Tests for parse_lrc_response()."""
