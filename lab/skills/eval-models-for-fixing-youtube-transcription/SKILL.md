@@ -190,3 +190,19 @@ and link `report.md`.**
 - **Duration anomalies:** if EVERY model×variant item for a song fails the
   ending window, the report flags the song `duration_suspect` (fixture
   artifact, not model failure).
+- **Rerun destroys run state:** re-invoking `run_models.py` with `--run-dir`
+  pointing at an existing run truncates `results.jsonl` and rewrites
+  `meta.json` at phase start (scripts/run_models.py:133, :128) — a make-up
+  rerun for one model×variant wipes every other row. Back up `results.jsonl`
+  first. Recovery: rebuild rows from surviving `raw/` + `parsed/` artifacts
+  (re-parse with production `parse_lrc_response`, verify `parsed/*.lrc` round-trips)
+  and restore `meta.json` models/variants/judge_model before `build_report.py`.
+- **Gateway per-attempt timeout:** Cloudflare-fronted providers (e.g.
+  api.neuralwatt.com) return 524 at a hard 120s proxy-read ceiling — a single
+  LLM call needing >120s fails every retry regardless of
+  `SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS`. Observed: `qwen-3.8-27b` under the
+  strict prompt 524s across 3 attempts and two runs while its prod call passed.
+  Mark the cell unmeasurable instead of retry-looping.
+- **Language fallback is normal:** requested `zh` may fetch `en-US`
+  auto-generated captions; the prompt still carries the official zh lyrics, so
+  models map English transcript lines onto Chinese phrases.
