@@ -1,0 +1,11 @@
+[
+  {
+    "song_id": "example_song_0000000000",
+    "title": "範例歌曲",
+    "language": "zh",
+    "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
+    "duration_seconds": 245.0,
+    "lyrics": ["第一句歌詞", "第二句歌詞"],
+    "lyrics_source": "structured"
+  }
+]
