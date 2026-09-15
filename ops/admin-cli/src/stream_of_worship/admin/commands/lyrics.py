@@ -96,18 +96,26 @@ def feedback_list(
     include_all: bool = typer.Option(
         False, "--all", help="Include recordings whose feedback is fully resolved"
     ),
+    format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
     """List recordings with lyrics feedback, grouped by Recording.
 
     Default shows only recordings with OPEN (unresolved) feedback;
     --all includes fully resolved ones.
+
+    Use --format ids to print one song ID per line (pipeable):
+        sow-admin lyrics feedback list --rating poor --format ids | sow-admin lyrics generate --force --stdin
+        sow-admin lyrics feedback list --rating good --format ids | sow-admin audio set-visibility --status published --stdin
     """
     if rating is not None and rating not in ("good", "poor"):
         console.print("[red]--rating must be good or poor[/red]")
         raise typer.Exit(1)
     if reason is not None and reason not in REASON_ORDER:
         console.print(f"[red]--reason must be one of: {', '.join(REASON_ORDER)}[/red]")
+        raise typer.Exit(1)
+    if format not in ("table", "ids"):
+        console.print(f"[red]Invalid format: {format}. Must be one of: table, ids[/red]")
         raise typer.Exit(1)
 
     config = _load_connection_provider(config_path)
@@ -153,6 +161,15 @@ def feedback_list(
         rows = cur.fetchall()
     provider.close()
 
+    if format == "ids":
+        seen: set[str] = set()
+        for row in rows:
+            song_id = row[2]
+            target = song_id if song_id else row[1]
+            if target not in seen:
+                seen.add(target)
+                console.print(target)
+        return
     if not rows:
         console.print("[yellow]No lyrics feedback found.[/yellow]")
         return
