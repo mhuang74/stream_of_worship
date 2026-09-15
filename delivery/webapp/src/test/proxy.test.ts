@@ -55,3 +55,26 @@ describe("proxy locale cookie", () => {
     expect(res.cookies.get("sow_locale")?.value).toBe("en");
   });
 });
+
+describe("public path rules", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // The SW scripts are fetched by register()/importScripts outside the page
+  // navigation: a 307 to /login makes them fail with "script resource is
+  // behind a redirect" and the worker never installs. A new importScripts()
+  // target belongs in PUBLIC_PATHS too.
+  it.each(["/sw.js", "/sw-artifact-serving.js", "/sw-artifact-serving.js?v=abc123"])(
+    "does not redirect the unauthenticated service worker script %s",
+    async (path) => {
+      vi.mocked(auth.api.getSession).mockResolvedValue(null);
+      const res = await proxy(req(path));
+      expect(res.status).not.toBe(307);
+    }
+  );
+
+  it("still redirects an unauthenticated app path", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(null);
+    const res = await proxy(req("/songsets"));
+    expect(res.status).toBe(307);
+  });
+});
