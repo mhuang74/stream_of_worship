@@ -1,16 +1,16 @@
 # Graph Report - stream_of_worship  (2026-09-15)
 
 ## Corpus Check
-- 833 files · ~701,039 words
+- 833 files · ~701,135 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 9847 nodes · 19973 edges · 448 communities (365 shown, 83 thin omitted)
+- 9847 nodes · 19973 edges · 449 communities (366 shown, 83 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 867 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `744b0906`
+- Built from commit: `02fc5ae5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -84,7 +84,7 @@
 - validation.py
 - gen_lrc_qwen3_asr_mvsep_force_align_v2.py
 - CacheManager
-- transcribe_audio
+- resolve_song_audio_path
 - PlayerLyricsPanel.tsx
 - schema.ts
 - GenerationScreen
@@ -159,7 +159,7 @@
 - Qwen3-ASR Phase 0 POC Documentation
 - paths.py
 - .update_display
-- generate_section_transitions.py
+- log
 - aws-up.sh
 - Stream of Worship Web App
 - SongsetItem
@@ -241,10 +241,10 @@
 - lambda_handler.py
 - ErrorLogger
 - ShareViewModel
-- generate_all_variants
+- generate_section_transitions.py
 - SongsetItemWithDetails
 - VADSegment
-- convert
+- gen_lrc_qwen3_asr_pytorch.py
 - eval-models-for-fixing-youtube-transcription
 - ._get_selected_song
 - ParametersPanel
@@ -399,7 +399,7 @@
 - chapters.py
 - GroupedFooter
 - compare_asr_backends.py
-- gen_lrc_qwen3_asr.py
+- convert
 - OfflinePlaybackState
 - {
   signIn,
@@ -412,7 +412,7 @@
   updateUser,
   sendVerificationEmail: requestVerificationEmail,
 }
-- resolve_song_audio_path
+- main
 - song
 - .on_screen_resume
 - LRCEditorApp
@@ -436,6 +436,7 @@
 - next
 - Troubleshooting
 - .seek
+- main
 - .exit_modify_mode
 - .action_preview
 - .action_noop
@@ -479,7 +480,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (448 total, 83 thin omitted)
+## Communities (449 total, 83 thin omitted)
 
 ### Community 0 - "Header.tsx"
 Cohesion: 0.06
@@ -757,9 +758,9 @@ Nodes (64): align_chunk(), align_lyrics(), assign_text_to_chunks(), build_aligne
 Cohesion: 0.08
 Nodes (23): CacheManager, Path, Check if fast analysis result exists in cache. Distinct from the full-tier…, Save fast analysis result to cache atomically. Uses a NamedTemporaryFile in the…, Copy stems to cache directory. Args: content_hash: Full SHA-256 content hash…, Check if LRC result exists in cache. Args: content_hash: Full SHA-256 content…, Save LRC result to cache. Args: content_hash: Full SHA-256 content hash result:…, Manages local disk cache for analysis results and stems. (+15 more)
 
-### Community 69 - "transcribe_audio"
-Cohesion: 0.20
-Nodes (14): main(), merge_vad_segments(), phrases_to_lrc(), command, Path, Run SenseVoice transcription on audio file. Args: audio_path: Path to audio…, Merge nearby VAD segments into longer spans., Convert phrases to LRC format. Args: phrases: List of (start, end, text) tuples… (+6 more)
+### Community 69 - "resolve_song_audio_path"
+Cohesion: 0.10
+Nodes (25): extract_vocals_two_stage(), main(), Path, Two-stage vocal extraction pipeline. Stage 1: Extract vocals from the mix using…, main(), merge_vad_segments(), phrases_to_lrc(), command (+17 more)
 
 ### Community 70 - "PlayerLyricsPanel.tsx"
 Cohesion: 0.06
@@ -1057,9 +1058,9 @@ Nodes (30): Configuration management for Stream of Worship. This module handles 
 Cohesion: 0.40
 Nodes (3): PlaybackPosition, Update the progress bar display. Called by the parent screen from its…, Format seconds as M:SS.
 
-### Community 144 - "generate_section_transitions.py"
-Cohesion: 0.16
-Nodes (20): log(), Print message if verbose mode is enabled., generate_all_transitions(), generate_transition_filename(), load_all_song_sections(), main(), parse_args(), print_summary_report() (+12 more)
+### Community 144 - "log"
+Cohesion: 0.17
+Nodes (16): log(), Print message if verbose mode is enabled., generate_all_transitions(), load_all_song_sections(), main(), print_summary_report(), Save master transitions index (v2.0) - single source of truth. Args:…, Save summary CSV for quick reference (v2.0). Exports flattened view of… (+8 more)
 
 ### Community 145 - "aws-up.sh"
 Cohesion: 0.34
@@ -1385,9 +1386,9 @@ Nodes (31): Handle play button press., Transition generation service for TUI. Ha
 Cohesion: 0.27
 Nodes (8): DownloadOutcome, CoroutineScope, StateFlow, ViewModel, ShareUiState, ShareViewModel, statusMessage(), PlaybackRepository
 
-### Community 226 - "generate_all_variants"
-Cohesion: 0.18
-Nodes (12): generate_all_variants(), generate_drum_fade_transition(), generate_medium_silence_transition(), generate_medium_transition(), generate_vocal_fade_transition(), load_stems_for_section(), Create medium transition: Full section A + crossfade + Full section B. Args:…, Create medium transition with silence gap between sections. Algorithm: 1. Load… (+4 more)
+### Community 226 - "generate_section_transitions.py"
+Cohesion: 0.16
+Nodes (16): generate_all_variants(), generate_drum_fade_transition(), generate_medium_silence_transition(), generate_medium_transition(), generate_transition_filename(), generate_vocal_fade_transition(), load_stems_for_section(), parse_args() (+8 more)
 
 ### Community 227 - "SongsetItemWithDetails"
 Cohesion: 0.25
@@ -1397,9 +1398,9 @@ Nodes (5): Get the title to display., Get the key to display., Songset item with
 Cohesion: 0.17
 Nodes (9): build_lrc_segments(), merge_vad_segments(), Build segments from LRC line timestamps. Args: lrc_lines: List of (timestamp,…, A voice activity detection segment. Attributes: start_ms: Start time in…, Start time in seconds., Run Voice Activity Detection to segment audio. Uses FunASR fsmn-vad model to…, Merge nearby VAD segments into longer spans. Merges adjacent segments with…, run_vad_segmentation() (+1 more)
 
-### Community 229 - "convert"
+### Community 229 - "gen_lrc_qwen3_asr_pytorch.py"
 Cohesion: 0.09
-Nodes (37): cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), extract_segments(), _get_field(), _is_filler() (+29 more)
+Nodes (36): cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), extract_segments(), _get_field(), _is_filler() (+28 more)
 
 ### Community 230 - "eval-models-for-fixing-youtube-transcription"
 Cohesion: 0.14
@@ -1749,17 +1750,17 @@ Nodes (7): _BindingGroup, format_key_display(), GroupedFooter, ComposeResult, St
 Cohesion: 0.13
 Nodes (22): compute_character_accuracy(), compute_completeness(), count_segments(), extract_output_lines(), format_duration(), generate_markdown_report(), get_memory_usage(), has_timestamps() (+14 more)
 
-### Community 405 - "gen_lrc_qwen3_asr.py"
+### Community 405 - "convert"
 Cohesion: 0.14
-Nodes (22): call_qwen3_asr(), _call_qwen3_asr_filetrans(), canonical_line_snap(), detect_chinese_script(), extract_segments(), _extract_segments_filetrans(), main(), command (+14 more)
+Nodes (23): call_qwen3_asr(), _call_qwen3_asr_filetrans(), canonical_line_snap(), detect_chinese_script(), extract_segments(), _extract_segments_filetrans(), main(), command (+15 more)
 
 ### Community 406 - "OfflinePlaybackState"
 Cohesion: 0.22
 Nodes (8): Activity, findActivity(), OfflinePlaybackState, Cached, ExpiredSignedUrl, Missing, Remote, Unknown
 
-### Community 408 - "resolve_song_audio_path"
-Cohesion: 0.09
-Nodes (27): extract_vocals_two_stage(), main(), Path, Two-stage vocal extraction pipeline. Stage 1: Extract vocals from the mix using…, main(), phrases_to_lrc(), command, Path (+19 more)
+### Community 408 - "main"
+Cohesion: 0.31
+Nodes (8): main(), phrases_to_lrc(), command, Path, Convert phrases to LRC format., Run OmniSenseVoice transcription on a song and output LRC format., Run OmniSenseVoice transcription on audio file., transcribe_audio()
 
 ### Community 409 - "song"
 Cohesion: 0.43
@@ -1804,6 +1805,10 @@ Nodes (5): API Endpoints, Check Job Status, Submit Analysis Job, Submit LRC Gene
 ### Community 430 - "Troubleshooting"
 Cohesion: 0.50
 Nodes (4): Analysis-Specific Issues, Database Issues, Service Issues, Troubleshooting
+
+### Community 432 - "main"
+Cohesion: 0.31
+Nodes (8): main(), phrases_to_lrc(), command, Path, Convert phrases to LRC format. Args: phrases: List of (start, end, text) tuples…, Run Whisper transcription on a song and output LRC format. By default, the…, Run Whisper transcription on audio file. Args: audio_path: Path to audio file…, transcribe_audio()
 
 ### Community 453 - "AssetFetcher"
 Cohesion: 0.10

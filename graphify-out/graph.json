@@ -12373,7 +12373,7 @@
       "file_type": "code",
       "norm_label": "_build_fresh_editor_state()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1171"
+      "source_location": "L1188"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_list",
@@ -12397,7 +12397,7 @@
       "file_type": "code",
       "norm_label": "feedback_resolve()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L266"
+      "source_location": "L283"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_unresolve",
@@ -12409,7 +12409,7 @@
       "file_type": "code",
       "norm_label": "feedback_unresolve()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L288"
+      "source_location": "L305"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_get_alignment_lyrics_text",
@@ -12421,7 +12421,7 @@
       "file_type": "code",
       "norm_label": "_get_alignment_lyrics_text()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L414"
+      "source_location": "L431"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_load_connection_provider",
@@ -12445,7 +12445,7 @@
       "file_type": "code",
       "norm_label": "lyrics_align()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L654"
+      "source_location": "L671"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
@@ -12457,7 +12457,7 @@
       "file_type": "code",
       "norm_label": "lyrics_edit()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L974"
+      "source_location": "L991"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_generate",
@@ -12469,7 +12469,7 @@
       "file_type": "code",
       "norm_label": "lyrics_generate()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L307"
+      "source_location": "L324"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_upload",
@@ -12481,7 +12481,7 @@
       "file_type": "code",
       "norm_label": "lyrics_upload()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L834"
+      "source_location": "L851"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_view",
@@ -12493,7 +12493,7 @@
       "file_type": "code",
       "norm_label": "lyrics_view()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L741"
+      "source_location": "L758"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_reason_breakdown",
@@ -12517,7 +12517,7 @@
       "file_type": "code",
       "norm_label": "_resolve_target()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L199"
+      "source_location": "L216"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_set_resolved",
@@ -12529,7 +12529,7 @@
       "file_type": "code",
       "norm_label": "_set_resolved()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L225"
+      "source_location": "L242"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_submit_forced_alignment_batch",
@@ -12541,7 +12541,7 @@
       "file_type": "code",
       "norm_label": "_submit_forced_alignment_batch()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L567"
+      "source_location": "L584"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_submit_forced_alignment_single",
@@ -12553,7 +12553,7 @@
       "file_type": "code",
       "norm_label": "_submit_forced_alignment_single()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L443"
+      "source_location": "L460"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_truncate",
@@ -17253,7 +17253,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "log()",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -17265,23 +17265,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "generate_all_transitions()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L993"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
-      "label": "generate_transition_filename()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 144,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_transition_filename()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_load_all_song_sections",
@@ -17289,7 +17277,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "load_all_song_sections()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17301,23 +17289,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1424"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
-      "label": "parse_args()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 144,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "parse_args()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1366"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_print_summary_report",
@@ -17325,7 +17301,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "print_summary_report()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17337,7 +17313,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "save_summary_csv()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17349,7 +17325,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "save_transitions_index()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -17361,7 +17337,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "select_transition_candidates()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29685,7 +29661,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_all_variants()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29697,7 +29673,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_drum_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29709,7 +29685,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_medium_silence_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29721,11 +29697,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_medium_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L202"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
+      "label": "generate_transition_filename()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 226,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_transition_filename()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_generate_vocal_fade_transition",
@@ -29733,7 +29721,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_vocal_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -29745,11 +29733,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "load_stems_for_section()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L73"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
+      "label": "parse_args()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 226,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "parse_args()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1366"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_catalog_songsetitemwithdetails_display_key",
@@ -29865,7 +29865,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "cache_file_name()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29877,7 +29877,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "canonical_line_snap()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29889,7 +29889,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "_combined_score()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29901,7 +29901,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "compute_params_hash()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29913,7 +29913,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "detect_chinese_script()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29925,7 +29925,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "extract_segments()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29937,7 +29937,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "_get_field()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29949,7 +29949,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "_is_filler()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29961,7 +29961,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "load_cached_transcription()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29973,7 +29973,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29985,7 +29985,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "_normalize_text()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -29997,7 +29997,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "results_to_lrc()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -30009,7 +30009,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "save_cached_transcription()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -30021,7 +30021,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "_score()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -30033,7 +30033,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "_text_to_pinyin()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -30045,7 +30045,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "transcribe_pytorch()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -30057,23 +30057,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "write_diagnostic()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
       "source_location": "L635"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_services_canonical_snap_convert",
-      "label": "convert()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 229,
-      "community_name": "convert",
-      "file_type": "code",
-      "norm_label": "convert()",
-      "source_file": "ops/analysis-service/src/sow_analysis/services/canonical_snap.py",
-      "source_location": "L25"
     },
     {
       "id": "delivery_webapp_src_app_api_signed_url_route_get",
@@ -40821,7 +40809,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "call_qwen3_asr()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40833,7 +40821,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "_call_qwen3_asr_filetrans()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40845,7 +40833,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "canonical_line_snap()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40857,7 +40845,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "detect_chinese_script()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40869,7 +40857,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "extract_segments()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40881,7 +40869,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "_extract_segments_filetrans()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40893,7 +40881,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40905,7 +40893,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "results_to_lrc()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40917,7 +40905,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "_upload_to_oss()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -40929,11 +40917,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "write_diagnostic()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
       "source_location": "L369"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_services_canonical_snap_convert",
+      "label": "convert()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 405,
+      "community_name": "convert",
+      "file_type": "code",
+      "norm_label": "convert()",
+      "source_file": "ops/analysis-service/src/sow_analysis/services/canonical_snap.py",
+      "source_location": "L25"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_core_util_activityext_findactivity",
@@ -40948,36 +40948,12 @@
       "source_location": "L12"
     },
     {
-      "id": "lab_poc_scripts_gen_clean_vocal_stem_extract_vocals_two_stage",
-      "label": "extract_vocals_two_stage()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "extract_vocals_two_stage()",
-      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
-      "source_location": "L21"
-    },
-    {
-      "id": "lab_poc_scripts_gen_clean_vocal_stem_main",
-      "label": "main()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "main()",
-      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
-      "source_location": "L208"
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_omnisensevoice_main",
       "label": "main()",
       "_callable": true,
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/gen_lrc_omnisensevoice.py",
@@ -40989,7 +40965,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "code",
       "norm_label": "phrases_to_lrc()",
       "source_file": "lab/poc-scripts/gen_lrc_omnisensevoice.py",
@@ -41001,83 +40977,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "code",
       "norm_label": "transcribe_audio()",
       "source_file": "lab/poc-scripts/gen_lrc_omnisensevoice.py",
       "source_location": "L22"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_main",
-      "label": "main()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "main()",
-      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
-      "source_location": "L135"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_phrases_to_lrc",
-      "label": "phrases_to_lrc()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "phrases_to_lrc()",
-      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
-      "source_location": "L118"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_transcribe_audio",
-      "label": "transcribe_audio()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "transcribe_audio()",
-      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
-      "source_location": "L20"
-    },
-    {
-      "id": "lab_poc_scripts_utils_extract_audio_segment",
-      "label": "extract_audio_segment()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "extract_audio_segment()",
-      "source_file": "lab/poc-scripts/utils.py",
-      "source_location": "L27"
-    },
-    {
-      "id": "lab_poc_scripts_utils_format_timestamp",
-      "label": "format_timestamp()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "format_timestamp()",
-      "source_file": "lab/poc-scripts/utils.py",
-      "source_location": "L20"
-    },
-    {
-      "id": "lab_poc_scripts_utils_resolve_song_audio_path",
-      "label": "resolve_song_audio_path()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "resolve_song_audio_path()",
-      "source_file": "lab/poc-scripts/utils.py",
-      "source_location": "L76"
     },
     {
       "id": "delivery_android_app_src_test_java_org_streamofworship_android_feature_songsets_songsetsviewmodeltest_fakesongsrepository_listsongs",
@@ -42278,6 +42182,42 @@
       "norm_label": ".seek_relative()",
       "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/services/playback.py",
       "source_location": "L144"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_main",
+      "label": "main()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "code",
+      "norm_label": "main()",
+      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
+      "source_location": "L135"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_phrases_to_lrc",
+      "label": "phrases_to_lrc()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "code",
+      "norm_label": "phrases_to_lrc()",
+      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
+      "source_location": "L118"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_transcribe_audio",
+      "label": "transcribe_audio()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "code",
+      "norm_label": "transcribe_audio()",
+      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
+      "source_location": "L20"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_state_appstate_exit_modify_mode",
@@ -50584,12 +50524,36 @@
       "source_location": "L44"
     },
     {
+      "id": "lab_poc_scripts_gen_clean_vocal_stem_extract_vocals_two_stage",
+      "label": "extract_vocals_two_stage()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "extract_vocals_two_stage()",
+      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
+      "source_location": "L21"
+    },
+    {
+      "id": "lab_poc_scripts_gen_clean_vocal_stem_main",
+      "label": "main()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "main()",
+      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
+      "source_location": "L208"
+    },
+    {
       "id": "lab_poc_scripts_gen_lrc_sensevoice_main",
       "label": "main()",
       "_callable": true,
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -50601,7 +50565,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "merge_vad_segments()",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -50613,7 +50577,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "phrases_to_lrc()",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -50625,7 +50589,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "split_segments()",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -50637,7 +50601,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "split_segments_on_silence()",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -50649,11 +50613,47 @@
       "_callable": true,
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "transcribe_audio()",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
       "source_location": "L101"
+    },
+    {
+      "id": "lab_poc_scripts_utils_extract_audio_segment",
+      "label": "extract_audio_segment()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "extract_audio_segment()",
+      "source_file": "lab/poc-scripts/utils.py",
+      "source_location": "L27"
+    },
+    {
+      "id": "lab_poc_scripts_utils_format_timestamp",
+      "label": "format_timestamp()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "format_timestamp()",
+      "source_file": "lab/poc-scripts/utils.py",
+      "source_location": "L20"
+    },
+    {
+      "id": "lab_poc_scripts_utils_resolve_song_audio_path",
+      "label": "resolve_song_audio_path()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "resolve_song_audio_path()",
+      "source_file": "lab/poc-scripts/utils.py",
+      "source_location": "L76"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_brief_summaries_prompt",
@@ -58831,7 +58831,7 @@
       "source_location": "L1"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_101",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_102",
       "label": "List recordings with lyrics feedback, grouped by Recording. Default shows only\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58839,10 +58839,10 @@
       "file_type": "rationale",
       "norm_label": "list recordings with lyrics feedback, grouped by recording. default shows only...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L101"
+      "source_location": "L102"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1180",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1197",
       "label": "Build a fresh EditorState from transcribed content or catalog lyrics.",
       "_origin": "ast",
       "community": 109,
@@ -58850,10 +58850,10 @@
       "file_type": "rationale",
       "norm_label": "build a fresh editorstate from transcribed content or catalog lyrics.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1180"
+      "source_location": "L1197"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_200",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_217",
       "label": "Resolve the CLI target to a recording content_hash filter. Returns\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58861,10 +58861,10 @@
       "file_type": "rationale",
       "norm_label": "resolve the cli target to a recording content_hash filter. returns...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L200"
+      "source_location": "L217"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_230",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_247",
       "label": "Bulk set/clear resolved_at for open (or resolved) rows of the target. Returns\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58872,10 +58872,10 @@
       "file_type": "rationale",
       "norm_label": "bulk set/clear resolved_at for open (or resolved) rows of the target. returns...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L230"
+      "source_location": "L247"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_272",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_289",
       "label": "Mark all open feedback for a Recording (or Song) as resolved. Advisory only\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58883,10 +58883,10 @@
       "file_type": "rationale",
       "norm_label": "mark all open feedback for a recording (or song) as resolved. advisory only...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L272"
+      "source_location": "L289"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_294",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_311",
       "label": "Reopen (clear resolved_at on) feedback for a Recording (or Song).",
       "_origin": "ast",
       "community": 109,
@@ -58894,10 +58894,10 @@
       "file_type": "rationale",
       "norm_label": "reopen (clear resolved_at on) feedback for a recording (or song).",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L294"
+      "source_location": "L311"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_329",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_346",
       "label": "Submit a recording for lyrics alignment (LRC generation). By default, tries\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58905,10 +58905,10 @@
       "file_type": "rationale",
       "norm_label": "submit a recording for lyrics alignment (lrc generation). by default, tries...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L329"
+      "source_location": "L346"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_420",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_437",
       "label": "Return lyrics text for forced alignment, preferring existing LRC over nominal\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58916,10 +58916,10 @@
       "file_type": "rationale",
       "norm_label": "return lyrics text for forced alignment, preferring existing lrc over nominal...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L420"
+      "source_location": "L437"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_454",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_471",
       "label": "Submit forced alignment for a single recording.",
       "_origin": "ast",
       "community": 109,
@@ -58927,10 +58927,10 @@
       "file_type": "rationale",
       "norm_label": "submit forced alignment for a single recording.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L454"
+      "source_location": "L471"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_577",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_594",
       "label": "Submit forced alignment for multiple recordings (batch mode, no wait).",
       "_origin": "ast",
       "community": 109,
@@ -58938,10 +58938,10 @@
       "file_type": "rationale",
       "norm_label": "submit forced alignment for multiple recordings (batch mode, no wait).",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L577"
+      "source_location": "L594"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_667",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_684",
       "label": "Submit a recording for forced LRC alignment using Qwen3ForcedAligner. Uses the\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58949,10 +58949,10 @@
       "file_type": "rationale",
       "norm_label": "submit a recording for forced lrc alignment using qwen3forcedaligner. uses the...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L667"
+      "source_location": "L684"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_751",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_768",
       "label": "View LRC (synchronized lyrics) contents for one or more recordings. Accepts\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58960,7 +58960,7 @@
       "file_type": "rationale",
       "norm_label": "view lrc (synchronized lyrics) contents for one or more recordings. accepts...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L751"
+      "source_location": "L768"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_81",
@@ -58974,7 +58974,7 @@
       "source_location": "L81"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_839",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_856",
       "label": "Upload a manually created LRC file to R2. Use this when: 1. The LRC generation\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58982,10 +58982,10 @@
       "file_type": "rationale",
       "norm_label": "upload a manually created lrc file to r2. use this when: 1. the lrc generation...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L839"
+      "source_location": "L856"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_978",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_995",
       "label": "Interactively edit LRC timestamps for a song recording. Downloads/caches the\u2026",
       "_origin": "ast",
       "community": 109,
@@ -58993,7 +58993,7 @@
       "file_type": "rationale",
       "norm_label": "interactively edit lrc timestamps for a song recording. downloads/caches the...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L978"
+      "source_location": "L995"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_autosave_rationale_1",
@@ -65302,22 +65302,11 @@
       "source_location": "L69"
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions",
-      "label": "generate_section_transitions.py",
-      "_origin": "ast",
-      "community": 144,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_section_transitions.py",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1"
-    },
-    {
       "id": "lab_poc_scripts_analyze_sections_rationale_69",
       "label": "Print message if verbose mode is enabled.",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "print message if verbose mode is enabled.",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -65328,7 +65317,7 @@
       "label": "Save master transitions index (v2.0) - single source of truth. Args:\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "save master transitions index (v2.0) - single source of truth. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65339,51 +65328,29 @@
       "label": "Save summary CSV for quick reference (v2.0). Exports flattened view of\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "save summary csv for quick reference (v2.0). exports flattened view of...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1267"
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
-      "label": "Create descriptive filename for section transition audio. Format:\u2026",
-      "_origin": "ast",
-      "community": 144,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "create descriptive filename for section transition audio. format:...",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L131"
-    },
-    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1312",
       "label": "Print final summary report (v2.1).",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "print final summary report (v2.1).",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1312"
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
-      "label": "Parse command-line arguments.",
-      "_origin": "ast",
-      "community": 144,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "parse command-line arguments.",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1367"
-    },
-    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1425",
       "label": "Main execution function.",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "main execution function.",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65394,7 +65361,7 @@
       "label": "Filter compatible section pairs worthy of transition generation. Args:\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "filter compatible section pairs worthy of transition generation. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65405,7 +65372,7 @@
       "label": "Load all song sections from allin1 analysis. Optimization: First checks for\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "load all song sections from allin1 analysis. optimization: first checks for...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -65416,7 +65383,7 @@
       "label": "Generate all section transition audio files for candidate pairs (v2.1). This\u2026",
       "_origin": "ast",
       "community": 144,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "generate all section transition audio files for candidate pairs (v2.1). this...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82695,11 +82662,44 @@
       "source_location": ""
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions",
+      "label": "generate_section_transitions.py",
+      "_origin": "ast",
+      "community": 226,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_section_transitions.py",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
+      "label": "Create descriptive filename for section transition audio. Format:\u2026",
+      "_origin": "ast",
+      "community": 226,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "create descriptive filename for section transition audio. format:...",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L131"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
+      "label": "Parse command-line arguments.",
+      "_origin": "ast",
+      "community": 226,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "parse command-line arguments.",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1367"
+    },
+    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_203",
       "label": "Create medium transition: Full section A + crossfade + Full section B. Args:\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create medium transition: full section a + crossfade + full section b. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82710,7 +82710,7 @@
       "label": "Create medium transition with silence gap between sections. Algorithm: 1. Load\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create medium transition with silence gap between sections. algorithm: 1. load...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82721,7 +82721,7 @@
       "label": "Create vocal-fade transition: sections connected by vocal-only bridge with\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create vocal-fade transition: sections connected by vocal-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82732,7 +82732,7 @@
       "label": "Create drum-fade transition: sections connected by drum-only bridge with\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create drum-fade transition: sections connected by drum-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82743,7 +82743,7 @@
       "label": "Load all 4 stems (bass, drums, other, vocals) for a specific section. Args:\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "load all 4 stems (bass, drums, other, vocals) for a specific section. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82754,7 +82754,7 @@
       "label": "Generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)\u2026",
       "_origin": "ast",
       "community": 226,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -82864,7 +82864,7 @@
       "label": "gen_lrc_qwen3_asr_pytorch.py",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "gen_lrc_qwen3_asr_pytorch.py",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82875,7 +82875,7 @@
       "label": "command",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "command",
       "source_file": "",
@@ -82886,7 +82886,7 @@
       "label": "Path",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "code",
       "norm_label": "path",
       "source_file": "",
@@ -82897,7 +82897,7 @@
       "label": "Get field from item, trying dict access first then getattr.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "get field from item, trying dict access first then getattr.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82908,7 +82908,7 @@
       "label": "Extract phrase-level segments from per-character ASR output. Reconstructs\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "extract phrase-level segments from per-character asr output. reconstructs...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82919,7 +82919,7 @@
       "label": "Compute 8-char SHA256 prefix of canonical JSON for params.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "compute 8-char sha256 prefix of canonical json for params.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82930,7 +82930,7 @@
       "label": "Generate cache file name for transcription. Args: cache_dir: Cache directory\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "generate cache file name for transcription. args: cache_dir: cache directory...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82941,7 +82941,7 @@
       "label": "Load cached raw transcription dict. Args: cache_path: Path to cache file\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "load cached raw transcription dict. args: cache_path: path to cache file...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82952,7 +82952,7 @@
       "label": "Save raw transcription to cache. Args: cache_path: Path to cache file raw: Raw\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "save raw transcription to cache. args: cache_path: path to cache file raw: raw...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82963,7 +82963,7 @@
       "label": "Check if text is only filler interjections.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "check if text is only filler interjections.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82974,7 +82974,7 @@
       "label": "Normalize text by mapping variant characters.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "normalize text by mapping variant characters.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82985,7 +82985,7 @@
       "label": "Convert Chinese characters to pinyin with tone markers.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "convert chinese characters to pinyin with tone markers.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -82996,7 +82996,7 @@
       "label": "Score ASR text against a canonical line.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "score asr text against a canonical line.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -83007,7 +83007,7 @@
       "label": "Score combining char and pinyin.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "score combining char and pinyin.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -83018,7 +83018,7 @@
       "label": "Detect whether Chinese text is traditional or simplified.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "detect whether chinese text is traditional or simplified.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -83029,7 +83029,7 @@
       "label": "Run transcription using qwen-asr PyTorch backend. Args: audio_path: Path to\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "run transcription using qwen-asr pytorch backend. args: audio_path: path to...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -83040,7 +83040,7 @@
       "label": "Snap ASR segments to canonical lyrics using fuzzy matching. Implements greedy\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "snap asr segments to canonical lyrics using fuzzy matching. implements greedy...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -83051,7 +83051,7 @@
       "label": "Convert results to LRC format. Args: results: List of (start, text, replaced,\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "convert results to lrc format. args: results: list of (start, text, replaced,...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -83062,7 +83062,7 @@
       "label": "Write diagnostic markdown file.",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "write diagnostic markdown file.",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -83073,7 +83073,7 @@
       "label": "Run Qwen3-ASR PyTorch transcription on a song and output LRC format. This\u2026",
       "_origin": "ast",
       "community": 229,
-      "community_name": "convert",
+      "community_name": "gen_lrc_qwen3_asr_pytorch.py",
       "file_type": "rationale",
       "norm_label": "run qwen3-asr pytorch transcription on a song and output lrc format. this...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_pytorch.py",
@@ -97530,7 +97530,7 @@
       "label": "gen_lrc_qwen3_asr.py",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "gen_lrc_qwen3_asr.py",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97541,7 +97541,7 @@
       "label": "command",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "command",
       "source_file": "",
@@ -97552,7 +97552,7 @@
       "label": "Path",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "code",
       "norm_label": "path",
       "source_file": "",
@@ -97563,7 +97563,7 @@
       "label": "Call Qwen3-ASR-Flash-FileTrans API (async file transcription). This model uses\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "call qwen3-asr-flash-filetrans api (async file transcription). this model uses...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97574,7 +97574,7 @@
       "label": "Extract segments from Qwen3-ASR response. Handles both qwen3-asr-flash\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "extract segments from qwen3-asr response. handles both qwen3-asr-flash...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97585,7 +97585,7 @@
       "label": "Extract segments from QwenTranscription (filetrans) response. The filetrans\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "extract segments from qwentranscription (filetrans) response. the filetrans...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97596,7 +97596,7 @@
       "label": "Detect whether Chinese text is traditional or simplified. Args: text: Chinese\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "detect whether chinese text is traditional or simplified. args: text: chinese...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97607,7 +97607,7 @@
       "label": "Snap ASR segments to canonical lyrics using fuzzy matching. Automatically\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "snap asr segments to canonical lyrics using fuzzy matching. automatically...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97618,7 +97618,7 @@
       "label": "Upload a local audio file to DashScope OSS and return the oss:// URL. Args:\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "upload a local audio file to dashscope oss and return the oss:// url. args:...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97629,7 +97629,7 @@
       "label": "Convert results to LRC format. Args: results: List of (start, text, replaced)\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "convert results to lrc format. args: results: list of (start, text, replaced)...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97640,7 +97640,7 @@
       "label": "Write diagnostic markdown file. Args: segments: List of (start, end, asr_text)\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "write diagnostic markdown file. args: segments: list of (start, end, asr_text)...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97651,7 +97651,7 @@
       "label": "Run Qwen3-ASR-Flash transcription on a song and output LRC format. By default,\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "run qwen3-asr-flash transcription on a song and output lrc format. by default,...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97662,7 +97662,7 @@
       "label": "Call Qwen3-ASR-Flash API. For qwen3-asr-flash: Uses MultiModalConversation API\u2026",
       "_origin": "ast",
       "community": 405,
-      "community_name": "gen_lrc_qwen3_asr.py",
+      "community_name": "convert",
       "file_type": "rationale",
       "norm_label": "call qwen3-asr-flash api. for qwen3-asr-flash: uses multimodalconversation api...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr.py",
@@ -97757,33 +97757,11 @@
       "source_location": "L7"
     },
     {
-      "id": "lab_poc_scripts_gen_clean_vocal_stem",
-      "label": "gen_clean_vocal_stem.py",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "gen_clean_vocal_stem.py",
-      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "lab_poc_scripts_gen_clean_vocal_stem_py_path",
-      "label": "Path",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "path",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_omnisensevoice",
       "label": "gen_lrc_omnisensevoice.py",
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "code",
       "norm_label": "gen_lrc_omnisensevoice.py",
       "source_file": "lab/poc-scripts/gen_lrc_omnisensevoice.py",
@@ -97794,7 +97772,7 @@
       "label": "command",
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "code",
       "norm_label": "command",
       "source_file": "",
@@ -97805,84 +97783,18 @@
       "label": "Path",
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "code",
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper",
-      "label": "gen_lrc_whisper.py",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "gen_lrc_whisper.py",
-      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_py_command",
-      "label": "command",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "command",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_py_path",
-      "label": "Path",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "path",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "lab_poc_scripts_utils",
-      "label": "utils.py",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "utils.py",
-      "source_file": "lab/poc-scripts/utils.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "lab_poc_scripts_utils_py_path",
-      "label": "Path",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "code",
-      "norm_label": "path",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "lab_poc_scripts_gen_clean_vocal_stem_rationale_28",
-      "label": "Two-stage vocal extraction pipeline. Stage 1: Extract vocals from the mix using\u2026",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "rationale",
-      "norm_label": "two-stage vocal extraction pipeline. stage 1: extract vocals from the mix using...",
-      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
-      "source_location": "L28"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_omnisensevoice_rationale_217",
       "label": "Convert phrases to LRC format.",
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "rationale",
       "norm_label": "convert phrases to lrc format.",
       "source_file": "lab/poc-scripts/gen_lrc_omnisensevoice.py",
@@ -97893,7 +97805,7 @@
       "label": "Run OmniSenseVoice transcription on a song and output LRC format.",
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "rationale",
       "norm_label": "run omnisensevoice transcription on a song and output lrc format.",
       "source_file": "lab/poc-scripts/gen_lrc_omnisensevoice.py",
@@ -97904,77 +97816,11 @@
       "label": "Run OmniSenseVoice transcription on audio file.",
       "_origin": "ast",
       "community": 408,
-      "community_name": "resolve_song_audio_path",
+      "community_name": "main",
       "file_type": "rationale",
       "norm_label": "run omnisensevoice transcription on audio file.",
       "source_file": "lab/poc-scripts/gen_lrc_omnisensevoice.py",
       "source_location": "L35"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_rationale_119",
-      "label": "Convert phrases to LRC format. Args: phrases: List of (start, end, text) tuples\u2026",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "rationale",
-      "norm_label": "convert phrases to lrc format. args: phrases: list of (start, end, text) tuples...",
-      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
-      "source_location": "L119"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_rationale_163",
-      "label": "Run Whisper transcription on a song and output LRC format. By default, the\u2026",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "rationale",
-      "norm_label": "run whisper transcription on a song and output lrc format. by default, the...",
-      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
-      "source_location": "L163"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_whisper_rationale_32",
-      "label": "Run Whisper transcription on audio file. Args: audio_path: Path to audio file\u2026",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "rationale",
-      "norm_label": "run whisper transcription on audio file. args: audio_path: path to audio file...",
-      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
-      "source_location": "L32"
-    },
-    {
-      "id": "lab_poc_scripts_utils_rationale_21",
-      "label": "Format seconds as [mm:ss.xx] timestamp.",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "rationale",
-      "norm_label": "format seconds as [mm:ss.xx] timestamp.",
-      "source_file": "lab/poc-scripts/utils.py",
-      "source_location": "L21"
-    },
-    {
-      "id": "lab_poc_scripts_utils_rationale_32",
-      "label": "Extract a segment of audio to a temporary file. Args: audio_path: Path to\u2026",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "rationale",
-      "norm_label": "extract a segment of audio to a temporary file. args: audio_path: path to...",
-      "source_file": "lab/poc-scripts/utils.py",
-      "source_location": "L32"
-    },
-    {
-      "id": "lab_poc_scripts_utils_rationale_80",
-      "label": "Resolve a song ID to a local audio path. This function handles both direct\u2026",
-      "_origin": "ast",
-      "community": 408,
-      "community_name": "resolve_song_audio_path",
-      "file_type": "rationale",
-      "norm_label": "resolve a song id to a local audio path. this function handles both direct...",
-      "source_file": "lab/poc-scripts/utils.py",
-      "source_location": "L80"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_core_model_songmodels",
@@ -99079,6 +98925,72 @@
       "norm_label": "seek relative to current position. args: delta_seconds: seconds to seek...",
       "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/services/playback.py",
       "source_location": "L145"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper",
+      "label": "gen_lrc_whisper.py",
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "code",
+      "norm_label": "gen_lrc_whisper.py",
+      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_py_command",
+      "label": "command",
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "code",
+      "norm_label": "command",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_py_path",
+      "label": "Path",
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "code",
+      "norm_label": "path",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_rationale_119",
+      "label": "Convert phrases to LRC format. Args: phrases: List of (start, end, text) tuples\u2026",
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "rationale",
+      "norm_label": "convert phrases to lrc format. args: phrases: list of (start, end, text) tuples...",
+      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
+      "source_location": "L119"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_rationale_163",
+      "label": "Run Whisper transcription on a song and output LRC format. By default, the\u2026",
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "rationale",
+      "norm_label": "run whisper transcription on a song and output lrc format. by default, the...",
+      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
+      "source_location": "L163"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_whisper_rationale_32",
+      "label": "Run Whisper transcription on audio file. Args: audio_path: Path to audio file\u2026",
+      "_origin": "ast",
+      "community": 432,
+      "community_name": "main",
+      "file_type": "rationale",
+      "norm_label": "run whisper transcription on audio file. args: audio_path: path to audio file...",
+      "source_file": "lab/poc-scripts/gen_lrc_whisper.py",
+      "source_location": "L32"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_state_rationale_158",
@@ -106317,11 +106229,33 @@
       "source_location": "L99"
     },
     {
+      "id": "lab_poc_scripts_gen_clean_vocal_stem",
+      "label": "gen_clean_vocal_stem.py",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "gen_clean_vocal_stem.py",
+      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "lab_poc_scripts_gen_clean_vocal_stem_py_path",
+      "label": "Path",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "path",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "lab_poc_scripts_gen_lrc_sensevoice",
       "label": "gen_lrc_sensevoice.py",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "gen_lrc_sensevoice.py",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -106332,7 +106266,7 @@
       "label": "command",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "command",
       "source_file": "",
@@ -106343,18 +106277,51 @@
       "label": "Path",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "code",
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
     },
     {
+      "id": "lab_poc_scripts_utils",
+      "label": "utils.py",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "utils.py",
+      "source_file": "lab/poc-scripts/utils.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "lab_poc_scripts_utils_py_path",
+      "label": "Path",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "code",
+      "norm_label": "path",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "lab_poc_scripts_gen_clean_vocal_stem_rationale_28",
+      "label": "Two-stage vocal extraction pipeline. Stage 1: Extract vocals from the mix using\u2026",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "rationale",
+      "norm_label": "two-stage vocal extraction pipeline. stage 1: extract vocals from the mix using...",
+      "source_file": "lab/poc-scripts/gen_clean_vocal_stem.py",
+      "source_location": "L28"
+    },
+    {
       "id": "lab_poc_scripts_gen_lrc_sensevoice_rationale_121",
       "label": "Run SenseVoice transcription on audio file. Args: audio_path: Path to audio\u2026",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "rationale",
       "norm_label": "run sensevoice transcription on audio file. args: audio_path: path to audio...",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -106365,7 +106332,7 @@
       "label": "Merge nearby VAD segments into longer spans.",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "rationale",
       "norm_label": "merge nearby vad segments into longer spans.",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -106376,7 +106343,7 @@
       "label": "Convert phrases to LRC format. Args: phrases: List of (start, end, text) tuples\u2026",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "rationale",
       "norm_label": "convert phrases to lrc format. args: phrases: list of (start, end, text) tuples...",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -106387,7 +106354,7 @@
       "label": "Run SenseVoice transcription on a song and output LRC format. By default, the\u2026",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "rationale",
       "norm_label": "run sensevoice transcription on a song and output lrc format. by default, the...",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -106398,7 +106365,7 @@
       "label": "Split segments into fixed-size chunks.",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "rationale",
       "norm_label": "split segments into fixed-size chunks.",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
@@ -106409,11 +106376,44 @@
       "label": "Split segments based on detected silence gaps.",
       "_origin": "ast",
       "community": 69,
-      "community_name": "transcribe_audio",
+      "community_name": "resolve_song_audio_path",
       "file_type": "rationale",
       "norm_label": "split segments based on detected silence gaps.",
       "source_file": "lab/poc-scripts/gen_lrc_sensevoice.py",
       "source_location": "L72"
+    },
+    {
+      "id": "lab_poc_scripts_utils_rationale_21",
+      "label": "Format seconds as [mm:ss.xx] timestamp.",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "rationale",
+      "norm_label": "format seconds as [mm:ss.xx] timestamp.",
+      "source_file": "lab/poc-scripts/utils.py",
+      "source_location": "L21"
+    },
+    {
+      "id": "lab_poc_scripts_utils_rationale_32",
+      "label": "Extract a segment of audio to a temporary file. Args: audio_path: Path to\u2026",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "rationale",
+      "norm_label": "extract a segment of audio to a temporary file. args: audio_path: path to...",
+      "source_file": "lab/poc-scripts/utils.py",
+      "source_location": "L32"
+    },
+    {
+      "id": "lab_poc_scripts_utils_rationale_80",
+      "label": "Resolve a song ID to a local audio path. This function handles both direct\u2026",
+      "_origin": "ast",
+      "community": 69,
+      "community_name": "resolve_song_audio_path",
+      "file_type": "rationale",
+      "norm_label": "resolve a song id to a local audio path. this function handles both direct...",
+      "source_file": "lab/poc-scripts/utils.py",
+      "source_location": "L80"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer",
@@ -147145,7 +147145,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1185",
+      "source_location": "L1202",
       "weight": 1.0
     },
     {
@@ -147157,7 +147157,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1188",
+      "source_location": "L1205",
       "weight": 1.0
     },
     {
@@ -147169,7 +147169,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1194",
+      "source_location": "L1211",
       "weight": 1.0
     },
     {
@@ -147181,7 +147181,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1201",
+      "source_location": "L1218",
       "weight": 1.0
     },
     {
@@ -147193,7 +147193,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L113",
+      "source_location": "L121",
       "weight": 1.0
     },
     {
@@ -147205,7 +147205,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L114",
+      "source_location": "L122",
       "weight": 1.0
     },
     {
@@ -147217,7 +147217,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L189",
+      "source_location": "L206",
       "weight": 1.0
     },
     {
@@ -147229,7 +147229,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L193",
+      "source_location": "L210",
       "weight": 1.0
     },
     {
@@ -147241,7 +147241,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L276",
+      "source_location": "L293",
       "weight": 1.0
     },
     {
@@ -147253,36 +147253,12 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L277",
+      "source_location": "L294",
       "weight": 1.0
     },
     {
       "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_resolve",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_set_resolved",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L279",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_unresolve",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_load_connection_provider",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L295",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_unresolve",
-      "target": "ops_admin_cli_src_stream_of_worship_db_connection_connectionprovider",
       "relation": "calls",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -147294,6 +147270,30 @@
     },
     {
       "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_unresolve",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_load_connection_provider",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L312",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_unresolve",
+      "target": "ops_admin_cli_src_stream_of_worship_db_connection_connectionprovider",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L313",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_unresolve",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_set_resolved",
       "relation": "calls",
       "_origin": "ast",
@@ -147301,7 +147301,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L298",
+      "source_location": "L315",
       "weight": 1.0
     },
     {
@@ -147313,7 +147313,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L433",
+      "source_location": "L450",
       "weight": 1.0
     },
     {
@@ -147337,7 +147337,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L689",
+      "source_location": "L706",
       "weight": 1.0
     },
     {
@@ -147349,7 +147349,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L694",
+      "source_location": "L711",
       "weight": 1.0
     },
     {
@@ -147361,7 +147361,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L697",
+      "source_location": "L714",
       "weight": 1.0
     },
     {
@@ -147373,7 +147373,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L703",
+      "source_location": "L720",
       "weight": 1.0
     },
     {
@@ -147385,7 +147385,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L708",
+      "source_location": "L725",
       "weight": 1.0
     },
     {
@@ -147397,7 +147397,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L716",
+      "source_location": "L733",
       "weight": 1.0
     },
     {
@@ -147409,139 +147409,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L728",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_py_r2client",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1005",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_autosave_autosave_exists",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1062",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_services_prompts_prompt_choice",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1065",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_autosave_load_autosave",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1067",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_state_editorstate",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1069",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_build_fresh_editor_state",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1095",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_autosave_clear_autosave",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1107",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_services_lrc_parser_serialize_lrc",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1122",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_upload_save_local_draft",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1125",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_services_playback_playbackservice",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1156",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_app_lrceditorapp",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1157",
+      "source_location": "L745",
       "weight": 1.0
     },
     {
@@ -147553,7 +147421,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L985",
+      "source_location": "L1002",
       "weight": 1.0
     },
     {
@@ -147565,7 +147433,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L990",
+      "source_location": "L1007",
       "weight": 1.0
     },
     {
@@ -147577,7 +147445,139 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L991",
+      "source_location": "L1008",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_py_r2client",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1022",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_autosave_autosave_exists",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1079",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_services_prompts_prompt_choice",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1082",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_autosave_load_autosave",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1084",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_state_editorstate",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1086",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_build_fresh_editor_state",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1112",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_autosave_clear_autosave",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1124",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_services_lrc_parser_serialize_lrc",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1139",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_upload_save_local_draft",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1142",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_services_playback_playbackservice",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1173",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_editor_app_lrceditorapp",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1174",
       "weight": 1.0
     },
     {
@@ -147589,7 +147589,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L355",
+      "source_location": "L372",
       "weight": 1.0
     },
     {
@@ -147601,7 +147601,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L360",
+      "source_location": "L377",
       "weight": 1.0
     },
     {
@@ -147613,7 +147613,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L364",
+      "source_location": "L381",
       "weight": 1.0
     },
     {
@@ -147625,7 +147625,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L371",
+      "source_location": "L388",
       "weight": 1.0
     },
     {
@@ -147637,7 +147637,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L381",
+      "source_location": "L398",
       "weight": 1.0
     },
     {
@@ -147649,7 +147649,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L398",
+      "source_location": "L415",
       "weight": 1.0
     },
     {
@@ -147661,7 +147661,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L849",
+      "source_location": "L866",
       "weight": 1.0
     },
     {
@@ -147673,7 +147673,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L854",
+      "source_location": "L871",
       "weight": 1.0
     },
     {
@@ -147685,7 +147685,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L873",
+      "source_location": "L890",
       "weight": 1.0
     },
     {
@@ -147697,7 +147697,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L888",
+      "source_location": "L905",
       "weight": 1.0
     },
     {
@@ -147709,7 +147709,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L905",
+      "source_location": "L922",
       "weight": 1.0
     },
     {
@@ -147721,7 +147721,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L911",
+      "source_location": "L928",
       "weight": 1.0
     },
     {
@@ -147733,7 +147733,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L764",
+      "source_location": "L781",
       "weight": 1.0
     },
     {
@@ -147745,7 +147745,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L775",
+      "source_location": "L792",
       "weight": 1.0
     },
     {
@@ -147757,7 +147757,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L781",
+      "source_location": "L798",
       "weight": 1.0
     },
     {
@@ -147769,7 +147769,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L813",
+      "source_location": "L830",
       "weight": 1.0
     },
     {
@@ -147781,7 +147781,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L236",
+      "source_location": "L253",
       "weight": 1.0
     },
     {
@@ -147793,7 +147793,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L617",
+      "source_location": "L634",
       "weight": 1.0
     },
     {
@@ -147805,7 +147805,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L490",
+      "source_location": "L507",
       "weight": 1.0
     },
     {
@@ -167785,7 +167785,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L265",
+      "source_location": "L282",
       "weight": 1.0
     },
     {
@@ -167797,7 +167797,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L287",
+      "source_location": "L304",
       "weight": 1.0
     },
     {
@@ -167809,7 +167809,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L653",
+      "source_location": "L670",
       "weight": 1.0
     },
     {
@@ -167821,7 +167821,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L973",
+      "source_location": "L990",
       "weight": 1.0
     },
     {
@@ -167833,7 +167833,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L306",
+      "source_location": "L323",
       "weight": 1.0
     },
     {
@@ -167845,7 +167845,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L833",
+      "source_location": "L850",
       "weight": 1.0
     },
     {
@@ -167857,7 +167857,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L740",
+      "source_location": "L757",
       "weight": 1.0
     },
     {
@@ -172909,7 +172909,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1171",
+      "source_location": "L1188",
       "weight": 1.0
     },
     {
@@ -172933,7 +172933,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L266",
+      "source_location": "L283",
       "weight": 1.0
     },
     {
@@ -172945,7 +172945,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L288",
+      "source_location": "L305",
       "weight": 1.0
     },
     {
@@ -172957,7 +172957,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L414",
+      "source_location": "L431",
       "weight": 1.0
     },
     {
@@ -172981,7 +172981,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L654",
+      "source_location": "L671",
       "weight": 1.0
     },
     {
@@ -172993,7 +172993,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L974",
+      "source_location": "L991",
       "weight": 1.0
     },
     {
@@ -173005,7 +173005,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L307",
+      "source_location": "L324",
       "weight": 1.0
     },
     {
@@ -173017,7 +173017,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L834",
+      "source_location": "L851",
       "weight": 1.0
     },
     {
@@ -173029,7 +173029,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L741",
+      "source_location": "L758",
       "weight": 1.0
     },
     {
@@ -173041,7 +173041,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L567",
+      "source_location": "L584",
       "weight": 1.0
     },
     {
@@ -173053,7 +173053,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L443",
+      "source_location": "L460",
       "weight": 1.0
     },
     {
@@ -203745,7 +203745,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1054",
+      "source_location": "L1071",
       "weight": 1.0
     },
     {
@@ -203757,7 +203757,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1054",
+      "source_location": "L1071",
       "weight": 1.0
     },
     {
@@ -203769,7 +203769,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1054",
+      "source_location": "L1071",
       "weight": 1.0
     },
     {
@@ -203781,7 +203781,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1059",
+      "source_location": "L1076",
       "weight": 1.0
     },
     {
@@ -203793,7 +203793,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1060",
+      "source_location": "L1077",
       "weight": 1.0
     },
     {
@@ -203805,7 +203805,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1105",
+      "source_location": "L1122",
       "weight": 1.0
     },
     {
@@ -203817,7 +203817,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1118",
+      "source_location": "L1135",
       "weight": 1.0
     },
     {
@@ -203829,7 +203829,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1153",
+      "source_location": "L1170",
       "weight": 1.0
     },
     {
@@ -203841,7 +203841,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1154",
+      "source_location": "L1171",
       "weight": 1.0
     },
     {
@@ -204141,7 +204141,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L934",
+      "source_location": "L951",
       "weight": 1.0
     },
     {
@@ -204153,7 +204153,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L934",
+      "source_location": "L951",
       "weight": 1.0
     },
     {
@@ -234597,7 +234597,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1171",
+      "source_location": "L1188",
       "weight": 1.0
     },
     {
@@ -234609,7 +234609,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1171",
+      "source_location": "L1188",
       "weight": 1.0
     },
     {
@@ -234621,7 +234621,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L414",
+      "source_location": "L431",
       "weight": 1.0
     },
     {
@@ -234633,7 +234633,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L567",
+      "source_location": "L584",
       "weight": 1.0
     },
     {
@@ -234645,7 +234645,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L443",
+      "source_location": "L460",
       "weight": 1.0
     },
     {
@@ -276704,7 +276704,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1171",
+      "source_location": "L1188",
       "weight": 1.0
     },
     {
@@ -276715,7 +276715,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L199",
+      "source_location": "L216",
       "weight": 1.0
     },
     {
@@ -276726,7 +276726,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L225",
+      "source_location": "L242",
       "weight": 1.0
     },
     {
@@ -276737,7 +276737,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L266",
+      "source_location": "L283",
       "weight": 1.0
     },
     {
@@ -276748,7 +276748,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L288",
+      "source_location": "L305",
       "weight": 1.0
     },
     {
@@ -276759,7 +276759,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L307",
+      "source_location": "L324",
       "weight": 1.0
     },
     {
@@ -276770,7 +276770,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L414",
+      "source_location": "L431",
       "weight": 1.0
     },
     {
@@ -276781,7 +276781,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L443",
+      "source_location": "L460",
       "weight": 1.0
     },
     {
@@ -276792,7 +276792,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L567",
+      "source_location": "L584",
       "weight": 1.0
     },
     {
@@ -276814,7 +276814,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L654",
+      "source_location": "L671",
       "weight": 1.0
     },
     {
@@ -276836,7 +276836,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L741",
+      "source_location": "L758",
       "weight": 1.0
     },
     {
@@ -276858,7 +276858,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L834",
+      "source_location": "L851",
       "weight": 1.0
     },
     {
@@ -276880,7 +276880,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L974",
+      "source_location": "L991",
       "weight": 1.0
     },
     {
@@ -324701,135 +324701,135 @@
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_101",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_102",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_list",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L101",
+      "source_location": "L102",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1180",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1197",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_build_fresh_editor_state",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1180",
+      "source_location": "L1197",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_200",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_217",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_resolve_target",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L200",
+      "source_location": "L217",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_230",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_247",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_set_resolved",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L230",
+      "source_location": "L247",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_272",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_289",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_resolve",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L272",
+      "source_location": "L289",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_294",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_311",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_unresolve",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L294",
+      "source_location": "L311",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_329",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_346",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_generate",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L329",
+      "source_location": "L346",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_420",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_437",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_get_alignment_lyrics_text",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L420",
+      "source_location": "L437",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_454",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_471",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_submit_forced_alignment_single",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L454",
+      "source_location": "L471",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_577",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_594",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_submit_forced_alignment_batch",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L577",
+      "source_location": "L594",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_667",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_684",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_align",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L667",
+      "source_location": "L684",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_751",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_768",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_view",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L751",
+      "source_location": "L768",
       "weight": 1.0
     },
     {
@@ -324844,25 +324844,25 @@
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_839",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_856",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_upload",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L839",
+      "source_location": "L856",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_978",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_995",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_lyrics_edit",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L978",
+      "source_location": "L995",
       "weight": 1.0
     },
     {
@@ -342092,7 +342092,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1177",
+      "source_location": "L1194",
       "weight": 0.8
     },
     {
@@ -342104,7 +342104,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L226",
+      "source_location": "L243",
       "weight": 0.8
     },
     {
@@ -342116,7 +342116,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L569",
+      "source_location": "L586",
       "weight": 0.8
     },
     {
@@ -342128,7 +342128,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L570",
+      "source_location": "L587",
       "weight": 0.8
     },
     {
@@ -342140,7 +342140,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L445",
+      "source_location": "L462",
       "weight": 0.8
     },
     {
@@ -342152,7 +342152,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L446",
+      "source_location": "L463",
       "weight": 0.8
     },
     {
@@ -345119,7 +345119,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1173",
+      "source_location": "L1190",
       "weight": 0.8
     },
     {
@@ -345130,7 +345130,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1174",
+      "source_location": "L1191",
       "weight": 0.8
     },
     {
@@ -345141,7 +345141,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L417",
+      "source_location": "L434",
       "weight": 0.8
     },
     {
@@ -345152,7 +345152,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L703",
+      "source_location": "L720",
       "weight": 0.8
     },
     {
@@ -345163,7 +345163,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1005",
+      "source_location": "L1022",
       "weight": 0.8
     },
     {
@@ -345174,7 +345174,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1156",
+      "source_location": "L1173",
       "weight": 0.8
     },
     {
@@ -345185,7 +345185,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L911",
+      "source_location": "L928",
       "weight": 0.8
     },
     {
@@ -345196,7 +345196,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L940",
+      "source_location": "L957",
       "weight": 0.8
     },
     {
@@ -345207,7 +345207,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L945",
+      "source_location": "L962",
       "weight": 0.8
     },
     {
@@ -345218,7 +345218,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L575",
+      "source_location": "L592",
       "weight": 0.8
     },
     {
@@ -345229,7 +345229,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L639",
+      "source_location": "L656",
       "weight": 0.8
     },
     {
@@ -345240,7 +345240,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L452",
+      "source_location": "L469",
       "weight": 0.8
     },
     {
@@ -345251,7 +345251,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L502",
+      "source_location": "L519",
       "weight": 0.8
     },
     {
@@ -345262,7 +345262,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L527",
+      "source_location": "L544",
       "weight": 0.8
     },
     {
@@ -346422,5 +346422,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "744b0906977270b392b59f6e44a19a1b6054aaf5"
+  "built_at_commit": "02fc5ae53fac5139272e4c0cbd789a0c3911f7d0"
 }
