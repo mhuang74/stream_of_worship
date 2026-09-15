@@ -41,7 +41,7 @@ describe("precaching", () => {
     it("registers /sw.js and returns success", async () => {
       const result = await registerServiceWorker();
 
-      expect(registerMock).toHaveBeenCalledWith("/sw.js");
+      expect(registerMock).toHaveBeenCalledWith("/sw.js", { updateViaCache: "none" });
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
     });

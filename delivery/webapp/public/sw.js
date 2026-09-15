@@ -12,7 +12,14 @@ importScripts(
 
 // Range-serving primitives + route handler, unit-tested at
 // public/sw-artifact-serving.js.
-importScripts("/sw-artifact-serving.js");
+//
+// The query string is a cache-buster that MUST be bumped whenever that module
+// changes: a browser only installs a new worker when the bytes of *this* file
+// differ, and importScripts is only re-fetched during install — so editing the
+// module alone would never reach an existing client. registration passes
+// updateViaCache: "none" (see src/lib/offline/precaching.ts) so the versioned
+// URL is resolved against the network rather than the HTTP cache.
+importScripts("/sw-artifact-serving.js?v=1");
 const { artifactHandler: artifactHandlerRoute } = self.artifactRangeServing;
 
 workbox.setConfig({ debug: false });
@@ -77,7 +84,10 @@ workbox.routing.registerRoute(
 );
 
 // Artifact proxy endpoint: the single offline-artifact route (mapped cache
-// keys + Range support). Registered last so it is evaluated first.
+// keys + Range support). Registration order is irrelevant here — workbox
+// matches routes in registration order and nothing above matches an artifact
+// URL — but keep it after the API routes so the reading order mirrors the
+// specificity order.
 workbox.routing.registerRoute(
   ({ url }) => url.pathname.startsWith("/api/r2/artifact/"),
   artifactHandlerRoute

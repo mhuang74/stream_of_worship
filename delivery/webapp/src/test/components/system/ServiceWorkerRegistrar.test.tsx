@@ -27,7 +27,7 @@ describe("ServiceWorkerRegistrar", () => {
   it("registers /sw.js on mount", async () => {
     render(<ServiceWorkerRegistrar />);
 
-    expect(registerMock).toHaveBeenCalledWith("/sw.js");
+    expect(registerMock).toHaveBeenCalledWith("/sw.js", { updateViaCache: "none" });
   });
 
   it("renders nothing", () => {
