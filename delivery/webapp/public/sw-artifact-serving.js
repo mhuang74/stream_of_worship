@@ -122,10 +122,32 @@ async function artifactHandler({ request, caches: cachesRef = caches, fetchFn = 
     return fetchFn(request);
   }
 
-  const cache = await cachesRef.open(ARTIFACT_CACHE_NAME);
-  const cached = await cache.match(mappedKey);
+  // Cache Storage is best effort: it can be unavailable (blocked storage,
+  // private sessions) or reject a write (quota, eviction). None of that may
+  // turn an artifact request into a media error when the network is right
+  // there — degrade to the plain network passthrough that this route had
+  // before the cache existed.
+  let cache;
+  try {
+    cache = await cachesRef.open(ARTIFACT_CACHE_NAME);
+  } catch {
+    return fetchFn(request);
+  }
+
+  let cached;
+  try {
+    cached = await cache.match(mappedKey);
+  } catch {
+    cached = undefined;
+  }
+
   if (cached) {
-    return rangeResponseFrom(cached, request.headers.get("range"));
+    try {
+      return await rangeResponseFrom(cached, request.headers.get("range"));
+    } catch {
+      // The entry was evicted between match() and the body read — fall
+      // through and serve from the network instead of failing the request.
+    }
   }
 
   // Cache miss: always fetch WITHOUT the Range header so the response is a
@@ -138,7 +160,11 @@ async function artifactHandler({ request, caches: cachesRef = caches, fetchFn = 
     // total, and a 206 must never be stored.
     return fullResponse;
   }
-  await cache.put(mappedKey, fullResponse.clone());
+  try {
+    await cache.put(mappedKey, fullResponse.clone());
+  } catch {
+    // Storage full or unavailable: still serve the response we fetched.
+  }
   return rangeResponseFrom(fullResponse, request.headers.get("range"));
 }
 

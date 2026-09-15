@@ -3,7 +3,13 @@ import { auth } from "@/lib/auth";
 import { isLocale } from "@/lib/i18n/messages";
 import { parseAcceptLanguage } from "@/lib/i18n/accept-language";
 
-const PUBLIC_PATHS = ["/", "/about", "/docs", "/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/share", "/api/share"];
+const PUBLIC_PATHS = ["/", "/about", "/docs", "/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/share", "/api/share", "/sw.js", "/sw-artifact-serving.js"];
+// The service worker scripts must stay reachable unauthenticated: they are
+// fetched outside the page's own navigation (register() + importScripts), and
+// an auth redirect would fail installation with "script resource is behind a
+// redirect". Registered here rather than in the matcher's static-asset
+// exemption so the rule is exercisable through proxy() (src/test/proxy.test.ts).
+// A new importScripts() target must be added here too.
 // Allow projection pages — matched by suffix to cover both songset and
 // share projection routes.
 function isPublicPath(pathname: string) {
@@ -78,6 +84,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|sw(?:-artifact-serving)?\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

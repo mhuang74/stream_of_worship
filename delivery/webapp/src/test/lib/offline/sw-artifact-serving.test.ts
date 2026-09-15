@@ -52,10 +52,6 @@ function fullBodyResponse(body: string, contentType = "video/mp4"): Response {
   });
 }
 
-async function textOf(response: Response): Promise<string> {
-  return response.text();
-}
-
 // --------------------------------------------------------------------------
 // parseRangeHeader
 // --------------------------------------------------------------------------
@@ -201,7 +197,7 @@ describe("artifactHandler", () => {
 
     expect(response.status).toBe(206);
     expect(response.headers.get("Content-Range")).toBe("bytes 3-6/10");
-    expect(await textOf(response)).toBe("3456");
+    expect(await response.text()).toBe("3456");
     // Cache hit: no network fetch, nothing written.
     expect(cache._puts).toHaveLength(0);
   });
@@ -217,7 +213,7 @@ describe("artifactHandler", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await textOf(response)).toBe("audio-bytes");
+    expect(await response.text()).toBe("audio-bytes");
     expect(cache._puts).toHaveLength(0);
   });
 
@@ -238,10 +234,10 @@ describe("artifactHandler", () => {
     // The Range header was NOT forwarded: the network fetch is a full 200.
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const storedRequest = fetchFn.mock.calls[0][0] as Request;
-    expect(storedRequestUrl(storedRequest)).toBe(
+    expect(storedRequest.url).toBe(
       "https://app.example.com/api/r2/artifact/job-1/output.mp4"
     );
-    expect(storedRequestHasRangeHeader(storedRequest)).toBe(false);
+    expect(storedRequest.headers.get("range")).toBeNull();
 
     // The stored entry is a full 200 under the mapped key — never a 206.
     expect(cache._puts).toHaveLength(1);
@@ -251,7 +247,7 @@ describe("artifactHandler", () => {
     // And the caller still receives the requested slice.
     expect(response.status).toBe(206);
     expect(response.headers.get("Content-Range")).toBe("bytes 2-4/10");
-    expect(await textOf(response)).toBe("234");
+    expect(await response.text()).toBe("234");
   });
 
   it("passes an upstream 206 on a ranged miss through untouched", async () => {
@@ -292,7 +288,7 @@ describe("artifactHandler", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(await textOf(response)).toBe("nope");
+    expect(await response.text()).toBe("nope");
     expect(cache._puts).toHaveLength(0);
   });
 
@@ -311,7 +307,7 @@ describe("artifactHandler", () => {
     expect(cache._puts).toHaveLength(1);
     expect(cache._puts[0].key).toBe("/sow-artifact-cache/job-1/chapters");
     expect(response.status).toBe(200);
-    expect(await textOf(response)).toBe("0123456789");
+    expect(await response.text()).toBe("0123456789");
   });
 
   it("passes ?download=1 through to the network without touching the cache", async () => {
@@ -330,7 +326,7 @@ describe("artifactHandler", () => {
     });
 
     expect(fetchFn).toHaveBeenCalledTimes(1);
-    expect(storedRequestUrl(fetchFn.mock.calls[0][0] as Request)).toBe(
+    expect((fetchFn.mock.calls[0][0] as Request).url).toBe(
       "https://app.example.com/api/r2/artifact/job-1/output.mp4?download=1"
     );
     expect(response).toBe(networkResponse);
@@ -357,6 +353,84 @@ describe("artifactHandler", () => {
     expect(cache._puts).toHaveLength(0);
   });
 
+  // Cache Storage failures must never turn a request into a media error while
+  // the network is available: before this route existed every artifact request
+  // was a plain network passthrough, and a blocked/over-quota/evicting cache
+  // must not regress that.
+  it("falls back to the network when Cache Storage cannot be opened", async () => {
+    const networkResponse = fullBodyResponse("from-network");
+    const fetchFn = vi.fn().mockResolvedValue(networkResponse);
+    const cachesRef = {
+      open: vi.fn().mockRejectedValue(new Error("Cache Storage disabled")),
+    };
+
+    const response = await artifactHandler({
+      request: artifactRequest("/api/r2/artifact/job-1/output.mp4", { Range: "bytes=0-3" }),
+      caches: cachesRef,
+      fetchFn,
+    });
+
+    expect(response).toBe(networkResponse);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    // The original request is passed through untouched, Range header included.
+    expect(fetchFn.mock.calls[0][0]).toBeInstanceOf(Request);
+  });
+
+  it("serves the fetched body when storing it fails (quota)", async () => {
+    const cache = makeCacheMock();
+    cache.put = vi.fn().mockRejectedValue(new Error("QuotaExceededError"));
+    const cachesRef = makeCachesMock(cache);
+    const fetchFn = vi.fn().mockResolvedValue(fullBodyResponse("0123456789"));
+
+    const response = await artifactHandler({
+      request: artifactRequest("/api/r2/artifact/job-1/output.mp4", { Range: "bytes=3-6" }),
+      caches: cachesRef,
+      fetchFn,
+    });
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Range")).toBe("bytes 3-6/10");
+    expect(await response.text()).toBe("3456");
+  });
+
+  it("treats a failing cache lookup as a miss and serves from the network", async () => {
+    const cache = makeCacheMock();
+    cache.match = vi.fn().mockRejectedValue(new Error("cache read failed"));
+    const cachesRef = makeCachesMock(cache);
+    const fetchFn = vi.fn().mockResolvedValue(fullBodyResponse("0123456789"));
+
+    const response = await artifactHandler({
+      request: artifactRequest("/api/r2/artifact/job-1/output.mp4", { Range: "bytes=0-3" }),
+      caches: cachesRef,
+      fetchFn,
+    });
+
+    expect(response.status).toBe(206);
+    expect(await response.text()).toBe("0123");
+    expect(cache._puts).toHaveLength(1);
+  });
+
+  it("re-fetches when the cached entry becomes unreadable after the lookup", async () => {
+    const cache = makeCacheMock();
+    // A response whose body is already consumed stands in for an entry evicted
+    // between match() and the body read: reading it throws.
+    const consumed = fullBodyResponse("0123456789");
+    await consumed.text();
+    cache._store.set("/sow-artifact-cache/job-1/mp4", consumed);
+    const cachesRef = makeCachesMock(cache);
+    const fetchFn = vi.fn().mockResolvedValue(fullBodyResponse("fedcba9876"));
+
+    const response = await artifactHandler({
+      request: artifactRequest("/api/r2/artifact/job-1/output.mp4", { Range: "bytes=0-3" }),
+      caches: cachesRef,
+      fetchFn,
+    });
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(206);
+    expect(await response.text()).toBe("fedc");
+  });
+
   // Regression: the browser failed this exact request with "TypeError: Failed
   // to fetch" because rangeResponseFrom drained the cached body via blob()
   // before returning the response unchanged.
@@ -373,7 +447,7 @@ describe("artifactHandler", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await textOf(response)).toBe("0123456789");
+    expect(await response.text()).toBe("0123456789");
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -396,7 +470,7 @@ describe("artifactHandler", () => {
 
       expect(response.status).toBe(206);
       expect(response.headers.get("Content-Range")).toBe("bytes 3-6/10");
-      expect(await textOf(response)).toBe("3456");
+      expect(await response.text()).toBe("3456");
       expect(fetchFn).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
@@ -404,10 +478,3 @@ describe("artifactHandler", () => {
   });
 });
 
-function storedRequestUrl(request: Request): string {
-  return request.url;
-}
-
-function storedRequestHasRangeHeader(request: Request): boolean {
-  return request.headers.get("range") !== null;
-}

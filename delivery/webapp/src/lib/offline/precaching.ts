@@ -1,12 +1,5 @@
 const SW_URL = "/sw.js";
 
-export type ServiceWorkerStatus =
-  | "unsupported"
-  | "registering"
-  | "registered"
-  | "activated"
-  | "error";
-
 export interface ServiceWorkerRegistrationResult {
   success: boolean;
   error?: string;

@@ -13,14 +13,26 @@ importScripts(
 // Range-serving primitives + route handler, unit-tested at
 // public/sw-artifact-serving.js.
 //
-// The query string is a cache-buster that MUST be bumped whenever that module
-// changes: a browser only installs a new worker when the bytes of *this* file
-// differ, and importScripts is only re-fetched during install — so editing the
-// module alone would never reach an existing client. registration passes
-// updateViaCache: "none" (see src/lib/offline/precaching.ts) so the versioned
-// URL is resolved against the network rather than the HTTP cache.
-importScripts("/sw-artifact-serving.js?v=1");
-const { artifactHandler: artifactHandlerRoute } = self.artifactRangeServing;
+// The query string is a cache-buster whose value is the module's own content
+// hash — a browser only installs a new worker when the bytes of *this* file
+// differ, and importScripts is resolved during install, so editing the module
+// without changing this token would leave every existing client on the old
+// module (sw-artifact-serving.test.ts asserts the token matches the module
+// hash; regenerate it with: sha256sum public/sw-artifact-serving.js). The
+// registration passes updateViaCache: "none" (src/lib/offline/precaching.ts)
+// so the token is resolved against the network rather than the HTTP cache.
+let artifactHandlerRoute = null;
+try {
+  importScripts("/sw-artifact-serving.js?v=20954d42d8d3");
+  artifactHandlerRoute = self.artifactRangeServing?.artifactHandler ?? null;
+  if (!artifactHandlerRoute) {
+    console.error("[sw] sw-artifact-serving.js did not publish artifactHandler");
+  }
+} catch (err) {
+  // A failed import must not take the whole worker down: the static-asset and
+  // API routes below keep working, artifacts fall back to the network.
+  console.error("[sw] failed to load sw-artifact-serving.js", err);
+}
 
 workbox.setConfig({ debug: false });
 
@@ -87,11 +99,14 @@ workbox.routing.registerRoute(
 // keys + Range support). Registration order is irrelevant here — workbox
 // matches routes in registration order and nothing above matches an artifact
 // URL — but keep it after the API routes so the reading order mirrors the
-// specificity order.
-workbox.routing.registerRoute(
-  ({ url }) => url.pathname.startsWith("/api/r2/artifact/"),
-  artifactHandlerRoute
-);
+// specificity order. Skipped when the module failed to load, in which case
+// artifact requests fall through to the network (pre-#204 behaviour).
+if (artifactHandlerRoute) {
+  workbox.routing.registerRoute(
+    ({ url }) => url.pathname.startsWith("/api/r2/artifact/"),
+    artifactHandlerRoute
+  );
+}
 
 // Take control of already-open clients (e.g. the document that registered
 // this SW mid-session) without waiting for a reload.
