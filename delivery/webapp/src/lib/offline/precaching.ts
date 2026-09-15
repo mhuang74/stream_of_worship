@@ -1,6 +1,4 @@
-import { Workbox } from "workbox-window";
-
-let wb: Workbox | null = null;
+const SW_URL = "/sw.js";
 
 export type ServiceWorkerStatus =
   | "unsupported"
@@ -14,22 +12,19 @@ export interface ServiceWorkerRegistrationResult {
   error?: string;
 }
 
-export async function registerServiceWorker(
-  swUrl = "/sw.js"
-): Promise<ServiceWorkerRegistrationResult> {
+/**
+ * Registers /sw.js at app boot (issue #204). Plain navigator.serviceWorker
+ * registration — the SW handles its own activation (workbox.core.skipWaiting
+ * + clientsClaim in sw.js), so the Workbox window wrapper's
+ * waiting→messageSkipWaiting dance has nothing to talk to.
+ */
+export async function registerServiceWorker(): Promise<ServiceWorkerRegistrationResult> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
     return { success: false, error: "Service workers not supported" };
   }
 
   try {
-    wb = new Workbox(swUrl);
-
-    wb.addEventListener("waiting", () => {
-      // New SW is waiting; skip waiting to activate immediately.
-      wb?.messageSkipWaiting();
-    });
-
-    await wb.register();
+    await navigator.serviceWorker.register(SW_URL);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -45,13 +40,8 @@ export async function unregisterServiceWorker(): Promise<boolean> {
   try {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((r) => r.unregister()));
-    wb = null;
     return true;
   } catch {
     return false;
   }
-}
-
-export function getWorkboxInstance(): Workbox | null {
-  return wb;
 }

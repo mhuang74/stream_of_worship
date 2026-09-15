@@ -7,6 +7,7 @@ import { GlobalAudioPlayer } from "@/components/audio/GlobalAudioPlayer";
 import { Toaster } from "@/components/ui/sonner";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { resolveUserLocale } from "@/lib/i18n/server";
+import { ServiceWorkerRegistrar } from "@/components/system/ServiceWorkerRegistrar";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -49,6 +50,7 @@ export default async function RootLayout({
             <BottomNav />
           </GlobalAudioPlayer>
           <Toaster />
+          <ServiceWorkerRegistrar />
         </LocaleProvider>
         <Analytics />
         <SpeedInsights />
