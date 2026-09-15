@@ -2,12 +2,20 @@ importScripts(
   "https://storage.googleapis.com/workbox-cdn/releases/7.0.0/workbox-sw.js"
 );
 
-workbox.setConfig({ debug: false });
+// Offline artifact serving (issue #204): the single custom route for
+// /api/r2/artifact/* maps the proxy URL onto the client-managed cache key
+// (/sow-artifact-cache/<renderJobId>/{mp3,mp4,chapters}, see
+// src/lib/offline/artifact-cache.ts) and serves Range requests by slicing
+// the cached full body. Those keys are NOT request URLs: Workbox
+// strategies can never hit them, and URL-matching range plugins would miss
+// too — no range plugin is registered anywhere.
 
-// Precache static Next.js build assets injected at build time.
-// __WB_MANIFEST is replaced by workbox-webpack-plugin; fall back to [] for
-// the development/CDN-only setup used here.
-workbox.precaching.precacheAndRoute(self.__WB_MANIFEST || []);
+// Range-serving primitives + route handler, unit-tested at
+// public/sw-artifact-serving.js.
+importScripts("/sw-artifact-serving.js");
+const { artifactHandler: artifactHandlerRoute } = self.artifactRangeServing;
+
+workbox.setConfig({ debug: false });
 
 // Cache static assets (JS, CSS, fonts, images) – serve from cache, refresh in background.
 workbox.routing.registerRoute(
@@ -68,11 +76,17 @@ workbox.routing.registerRoute(
   new workbox.strategies.NetworkOnly()
 );
 
-// R2 proxy endpoint serves large binary files – never cache.
+// Artifact proxy endpoint: the single offline-artifact route (mapped cache
+// keys + Range support). Registered last so it is evaluated first.
 workbox.routing.registerRoute(
-  ({ url }) => url.pathname.startsWith("/api/r2/"),
-  new workbox.strategies.NetworkOnly()
+  ({ url }) => url.pathname.startsWith("/api/r2/artifact/"),
+  artifactHandlerRoute
 );
+
+// Take control of already-open clients (e.g. the document that registered
+// this SW mid-session) without waiting for a reload.
+workbox.core.skipWaiting();
+workbox.core.clientsClaim();
 
 // Offline fallback: return a minimal JSON error for uncached API requests.
 workbox.routing.setCatchHandler(async ({ event }) => {
@@ -81,6 +95,11 @@ workbox.routing.setCatchHandler(async ({ event }) => {
       "<!DOCTYPE html><html><body><p>You are offline. Please reconnect.</p></body></html>",
       { headers: { "Content-Type": "text/html" } }
     );
+  }
+  if (event.request.destination === "video") {
+    // Let the <video> element surface its own error event; the player UI
+    // reacts to it (media-failure overlay).
+    return Response.error();
   }
   if (event.request.headers.get("Accept")?.includes("application/json")) {
     return new Response(
