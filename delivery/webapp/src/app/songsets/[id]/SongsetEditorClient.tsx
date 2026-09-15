@@ -10,8 +10,9 @@ import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
-import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { useSongsetListBack } from "@/hooks/useSongsetListBack";
+import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
+import { removeOfflineSongset } from "@/lib/offline/offline-index";
 
 const BrowseSheet = dynamic(
   () => import("@/components/songset/BrowseSheet").then((m) => ({ default: m.BrowseSheet })),
@@ -414,6 +415,9 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     if (!response.ok) {
       throw new Error(t("songsets.error.deleteFailed"));
     }
+
+    // Best-effort: clear the songset's offline cache copy (issue #203).
+    await removeOfflineSongset(songsetId);
   }, [songsetId, t]);
 
   // Handle share

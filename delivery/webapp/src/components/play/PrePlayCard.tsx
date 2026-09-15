@@ -254,6 +254,8 @@ export function PrePlayCard({
         {/* Offline Status */}
         {hasRenderArtifacts && (
           <OfflineStatus
+            songsetId={songset.id}
+            songsetName={songset.name}
             renderJobId={renderJob?.id || null}
             mp3R2Key={renderJob?.mp3R2Key}
             mp4R2Key={renderJob?.mp4R2Key}

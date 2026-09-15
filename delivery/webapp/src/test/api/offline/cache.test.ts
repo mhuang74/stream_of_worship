@@ -12,6 +12,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const mockFindFirst = vi.fn();
+const mockSelectHashes = vi.fn();
 
 vi.mock("@/db", () => ({
   db: {
@@ -20,6 +21,15 @@ vi.mock("@/db", () => ({
         findFirst: (...args: unknown[]) => mockFindFirst(...args),
       },
     },
+    select: () => ({
+      from: () => ({
+        leftJoin: () => ({
+          where: () => ({
+            orderBy: () => mockSelectHashes(),
+          }),
+        }),
+      }),
+    }),
   },
 }));
 
@@ -44,6 +54,7 @@ const completedJob = {
 describe("GET /api/offline/cache", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSelectHashes.mockResolvedValue([]);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -119,6 +130,36 @@ describe("GET /api/offline/cache", () => {
 
     const data = await res.json();
     expect(data.chaptersUrl).toBeNull();
+  });
+
+  it("returns chapterContentHashes position-ordered with nulls for recording-less items", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirst.mockResolvedValue(completedJob);
+    // Left join keeps one row per item; a recording-less middle item maps
+    // to null so later hashes never shift across positions.
+    mockSelectHashes.mockResolvedValue([
+      { contentHash: "hash-a" },
+      { contentHash: null },
+      { contentHash: "hash-c" },
+    ]);
+
+    const res = await GET(makeRequest("http://localhost/api/offline/cache?renderJobId=job-123"));
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.chapterContentHashes).toEqual(["hash-a", null, "hash-c"]);
+  });
+
+  it("returns empty chapterContentHashes when the songset has no items", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockFindFirst.mockResolvedValue(completedJob);
+    mockSelectHashes.mockResolvedValue([]);
+
+    const res = await GET(makeRequest("http://localhost/api/offline/cache?renderJobId=job-123"));
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.chapterContentHashes).toEqual([]);
   });
 
   it("returns 500 on unexpected error", async () => {
