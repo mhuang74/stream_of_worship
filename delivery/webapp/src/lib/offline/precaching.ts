@@ -17,6 +17,11 @@ export interface ServiceWorkerRegistrationResult {
  * registration — the SW handles its own activation (workbox.core.skipWaiting
  * + clientsClaim in sw.js), so the Workbox window wrapper's
  * waiting→messageSkipWaiting dance has nothing to talk to.
+ *
+ * updateViaCache: "none" keeps the worker script and its importScripts()
+ * module out of the HTTP cache. With the default ("imports") a stale
+ * sw-artifact-serving.js would survive an update check that saw unchanged
+ * sw.js bytes — the module is only fetched during install.
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistrationResult> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
@@ -24,7 +29,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 
   try {
-    await navigator.serviceWorker.register(SW_URL);
+    await navigator.serviceWorker.register(SW_URL, { updateViaCache: "none" });
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
