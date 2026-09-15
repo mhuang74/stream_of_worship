@@ -1,13 +1,22 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronUp, Music } from "lucide-react";
+import { findCurrentLyricIndex } from "@/lib/render/lrc-parser";
 import { useLocale } from "@/hooks/useLocale";
 import { LyricsFeedbackRow } from "@/components/audio/LyricsFeedbackRow";
 
 import type { Chapter } from "@/lib/render/chapters";
 import { isIOS } from "@/lib/platform";
+
+// Cursor highlight (worship-arc phase-3 blue, user-picked). Local to this
+// sheet — deliberately NOT THEME_PHASE_COLORS, whose pairs are pinned for
+// WCAG AA contrast on ThemeLabel badges (light surfaces), not a dark sheet.
+const CURSOR_COLORS = { bg: "#bfdbfe", text: "#1e3a8a" };
+// Highlight 0.3s before the line's timestamp so the cursor visibly leads the
+// sung line.
+const CURSOR_LEAD_SECONDS = 0.3;
 
 export interface LyricJumpListProps {
   chapters: Chapter[];
@@ -46,6 +55,26 @@ export function LyricJumpList({
   const lastToggleTimeRef = useRef(0);
 
   const isSwipeEnabled = isIOS();
+  const chapterLineRefs = useMemo(
+    () =>
+      chapters.map((chapter) =>
+        chapter.lines.map((line) => ({
+          text: line.text,
+          localTimeSeconds: line.startSeconds,
+          globalTimeSeconds: line.startSeconds,
+          title: "",
+        }))
+      ),
+    [chapters]
+  );
+  const activeLineIndex =
+    currentSongIndex >= 0 && chapterLineRefs[currentSongIndex]
+      ? findCurrentLyricIndex(
+          chapterLineRefs[currentSongIndex],
+          currentTime + CURSOR_LEAD_SECONDS
+        )
+      : -1;
+
   const expandedChapterIndex = explicitExpandedChapterIndex ?? currentSongIndex;
 
   useEffect(() => {
@@ -54,6 +83,20 @@ export function LyricJumpList({
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  // Auto-scroll the active row to the vertical center of the sheet. Instant
+  // (no smooth scrolling). Skipped when the user pinned a different chapter.
+  useEffect(() => {
+    if (!isOpen || activeLineIndex < 0) return;
+    const container = contentRef.current;
+    const row = container?.querySelector<HTMLButtonElement>(
+      `[data-lyric-row="${currentSongIndex}-${activeLineIndex}"]`
+    );
+    if (!row || !container) return;
+    container.scrollTo({
+      top: row.offsetTop - (container.clientHeight - row.offsetHeight) / 2,
+    });
+  }, [isOpen, currentSongIndex, activeLineIndex]);
 
   const handleToggle = useCallback(() => {
     setContentInteractive(false);
@@ -136,16 +179,6 @@ export function LyricJumpList({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Find current line in a chapter
-  const getCurrentLineIndex = (chapter: Chapter): number => {
-    for (let i = chapter.lines.length - 1; i >= 0; i--) {
-      if (currentTime >= chapter.lines[i].startSeconds) {
-        return i;
-      }
-    }
-    return -1;
-  };
-
   return (
     <>
       {/* Swipe handle */}
@@ -209,7 +242,7 @@ export function LyricJumpList({
         <div
           ref={contentRef}
           className={cn(
-            "bg-black/90 backdrop-blur-sm max-h-[60vh] overflow-y-auto",
+            "relative bg-black/90 backdrop-blur-sm max-h-[60vh] overflow-y-auto",
             !contentInteractive && "pointer-events-none",
             isSwipeEnabled && "overscroll-y-contain"
           )}
@@ -218,9 +251,7 @@ export function LyricJumpList({
             {chapters.map((chapter, chapterIndex) => {
               const isCurrentChapter = chapterIndex === currentSongIndex;
               const isExpandedChapter = chapterIndex === expandedChapterIndex;
-              const currentLineIndex = isCurrentChapter
-                ? getCurrentLineIndex(chapter)
-                : -1;
+              const currentLineIndex = isCurrentChapter ? activeLineIndex : -1;
 
               return (
                 <div
@@ -265,7 +296,7 @@ export function LyricJumpList({
                     <div className="px-3 pb-3">
                       <div className="space-y-1">
                         {chapter.lines.map((line, lineIndex) => {
-                          const isCurrentLine = lineIndex === currentLineIndex;
+                          const isActive = lineIndex === currentLineIndex;
                           const isPastLine = lineIndex < currentLineIndex;
 
                           return (
@@ -273,18 +304,27 @@ export function LyricJumpList({
                               key={lineIndex}
                               className={cn(
                                 "w-full text-left px-3 py-2 rounded transition-all",
-                                isCurrentLine
-                                  ? "bg-primary/20 text-white"
-                                  : isPastLine
+                                !isActive &&
+                                  (isPastLine
                                     ? "text-white/40"
-                                    : "text-white/70 hover:bg-white/5"
+                                    : "text-white/70 hover:bg-white/5")
                               )}
+                              data-active={isActive || undefined}
+                              data-lyric-row={`${chapterIndex}-${lineIndex}`}
+                              style={
+                                isActive
+                                  ? {
+                                      backgroundColor: CURSOR_COLORS.bg,
+                                      color: CURSOR_COLORS.text,
+                                    }
+                                  : undefined
+                              }
                               onClick={() =>
                                 onJumpToLine(chapterIndex, lineIndex)
                               }
                             >
                               <p className="text-sm truncate">{line.text}</p>
-                              <p className="text-xs text-white/40">
+                              <p className={cn("text-xs", isActive ? "opacity-80" : "text-white/40")}>
                                 {formatTime(line.startSeconds)}
                               </p>
                             </button>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { LyricJumpList } from "@/components/play/LyricJumpList";
 
@@ -57,6 +57,11 @@ describe("LyricJumpList", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // The playback-cursor auto-scroll effect calls container.scrollTo on
+    // open/line-change; jsdom has none. Tests that don't assert scrolling
+    // get a no-op so the effect can't throw; the cursor describe overrides
+    // this with a recording spy.
+    Element.prototype.scrollTo = () => {};
   });
 
   describe("rendering", () => {
@@ -249,29 +254,104 @@ describe("LyricJumpList", () => {
     });
   });
 
-  describe("current line highlighting", () => {
-    it("highlights current line based on time", async () => {
-      render(<LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />);
+  describe("playback cursor", () => {
+    let scrollSpy: ReturnType<typeof vi.fn>;
 
-      await openList();
-
-      await waitFor(() => {
-        // At 25 seconds, the second line (20s) should be current
-        const lines = screen.getAllByText(/That saved a wretch like me/);
-        expect(lines.length).toBeGreaterThan(0);
-      });
+    beforeEach(() => {
+      vi.clearAllMocks();
+      // jsdom has no scrollTo; install a recording spy on the container
+      // prototype (mirrors PlayerLyricsPanel.test.tsx).
+      scrollSpy = vi.fn();
+      Element.prototype.scrollTo = scrollSpy as unknown as typeof Element.prototype.scrollTo;
     });
 
-    it("shows past lines with different styling", async () => {
-      render(<LyricJumpList {...defaultProps} currentTime={35} currentSongIndex={0} />);
-
+    it("highlights current line with the blue inline cursor", async () => {
+      render(<LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />);
       await openList();
 
-      await waitFor(() => {
-        // At 35 seconds, first two lines are past
-        expect(screen.getByText("Amazing grace, how sweet the sound")).toBeInTheDocument();
-        expect(screen.getByText("That saved a wretch like me")).toBeInTheDocument();
+      const activeRow = document.querySelector('[data-lyric-row="0-1"]');
+      expect(activeRow).toHaveAttribute("data-active");
+      expect(activeRow).toHaveStyle({ backgroundColor: "#bfdbfe", color: "#1e3a8a" });
+      expect(document.querySelector('[data-lyric-row="0-0"]')).not.toHaveAttribute(
+        "data-active"
+      );
+      expect(document.querySelector('[data-lyric-row="0-2"]')).not.toHaveAttribute(
+        "data-active"
+      );
+      // Active row's timestamp inherits the dark cursor color via opacity-80
+      // (mirrors PR 200); inactive rows keep the dimmed white timestamp.
+      expect(within(activeRow as HTMLElement).getByText("0:20")).toHaveClass("opacity-80");
+      expect(within(activeRow as HTMLElement).getByText("0:20")).not.toHaveClass(
+        "text-white/40"
+      );
+      const inactiveRow = document.querySelector('[data-lyric-row="0-0"]') as HTMLElement;
+      expect(within(inactiveRow).getByText("0:10")).toHaveClass("text-white/40");
+      expect(within(inactiveRow).getByText("0:10")).not.toHaveClass("opacity-80");
+    });
+
+    it("cursor leads: highlights next line 0.3s before its timestamp", async () => {
+      // Line 2 starts at 20s; at 19.8s the 0.3s lead must already select it.
+      render(<LyricJumpList {...defaultProps} currentTime={19.8} currentSongIndex={0} />);
+      await openList();
+
+      expect(document.querySelector('[data-lyric-row="0-1"]')).toHaveAttribute(
+        "data-active"
+      );
+      expect(document.querySelector('[data-lyric-row="0-0"]')).not.toHaveAttribute(
+        "data-active"
+      );
+    });
+
+    it("before first line: no row highlighted", async () => {
+      render(<LyricJumpList {...defaultProps} currentTime={5} currentSongIndex={0} />);
+      await openList();
+
+      expect(document.querySelector("[data-active]")).not.toBeInTheDocument();
+    });
+
+    it("past lines are dimmed while active line is not", async () => {
+      render(<LyricJumpList {...defaultProps} currentTime={35} currentSongIndex={0} />);
+      await openList();
+
+      // At 35s, lines 0 and 1 are past (dimmed); line 2 (30s) is active.
+      expect(document.querySelector('[data-lyric-row="0-0"]')).toHaveClass("text-white/40");
+      expect(document.querySelector('[data-lyric-row="0-1"]')).toHaveClass("text-white/40");
+      expect(document.querySelector('[data-lyric-row="0-2"]')).not.toHaveClass(
+        "text-white/40"
+      );
+      expect(document.querySelector('[data-lyric-row="0-2"]')).toHaveAttribute(
+        "data-active"
+      );
+    });
+
+    it("scrolls to center the active row on open", async () => {
+      render(<LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />);
+      scrollSpy.mockClear();
+      await openList();
+
+      expect(scrollSpy).toHaveBeenCalledWith({ top: expect.any(Number) });
+    });
+
+    it("scrolls again when the active line changes", async () => {
+      const { rerender } = render(
+        <LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />
+      );
+      await openList();
+      scrollSpy.mockClear();
+
+      await act(async () => {
+        rerender(
+          <LyricJumpList {...defaultProps} currentTime={35} currentSongIndex={0} />
+        );
       });
+
+      expect(scrollSpy).toHaveBeenCalledWith({ top: expect.any(Number) });
+    });
+
+    it("does not scroll while the sheet is closed", async () => {
+      render(<LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />);
+
+      expect(scrollSpy).not.toHaveBeenCalled();
     });
   });
 
