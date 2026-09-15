@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { PlayerLyricsPanel } from "@/components/audio/PlayerLyricsPanel";
@@ -14,6 +14,16 @@ const mockUseLyricsFeedback = vi.fn();
 vi.mock("@/hooks/useLyricsFeedback", () => ({
   useLyricsFeedback: (...args: unknown[]) => mockUseLyricsFeedback(...args),
 }));
+
+const mockUseAudioPlayer = vi.fn();
+vi.mock("@/hooks/useAudioPlayer", () => ({
+  useAudioPlayer: (...args: unknown[]) => mockUseAudioPlayer(...args),
+}));
+
+// Default player state for tests that don't drive playback. Set at module
+// scope so it survives `vi.clearAllMocks()` (mockClear keeps implementations);
+// cursor tests override per-test via mockPlayerTime.
+mockUseAudioPlayer.mockReturnValue({ currentTime: 0, seek: vi.fn() });
 
 function mockFeedbackOk() {
   mockUseLyricsFeedback.mockReturnValue({
@@ -213,5 +223,78 @@ describe("PlayerLyricsPanel — Lyrics Feedback footer", () => {
     fireEvent.click(screen.getByRole("button", { name: /report a problem/i }));
     expect(screen.getByText(/lyrics missing/i)).toBeInTheDocument();
     expect(screen.queryByText(/timing is wrong/i)).not.toBeInTheDocument();
+  });
+});
+
+// --------------------------------------------------------------------------
+// Playback cursor: highlight, click-to-seek, auto-scroll
+// --------------------------------------------------------------------------
+
+describe("PlayerLyricsPanel — playback cursor", () => {
+
+  let scrollSpy: Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFeedbackOk();
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: "[00:01.00]Hello world\n[00:05.00]Second line\n[00:09.00]Third line",
+      lines: null,
+      loading: false,
+      error: null,
+    });
+    // jsdom has no scrollTo; install a recording spy on the container prototype.
+    scrollSpy = vi.fn();
+    Element.prototype.scrollTo = scrollSpy;
+  });
+
+  function mockPlayerTime(currentTime: number) {
+    mockUseAudioPlayer.mockReturnValue({ currentTime, seek: vi.fn() });
+  }
+
+  it("currentTime 6 → second line highlighted", () => {
+    mockPlayerTime(6);
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    const row1 = document.querySelector('[data-lyric-index="1"]');
+    expect(row1).toHaveStyle({ backgroundColor: "#fef3c7", color: "#92400e" });
+    expect(document.querySelector('[data-lyric-index="0"]')).not.toHaveAttribute("data-active");
+    expect(document.querySelector('[data-lyric-index="2"]')).not.toHaveAttribute("data-active");
+  });
+
+  it("cursor leads: highlights next line 0.3s before its timestamp", () => {
+    // Line 2 starts at 5.0s; at 4.8s the 0.3s lead must already select it.
+    mockPlayerTime(4.8);
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    expect(document.querySelector('[data-lyric-index="1"]')).toHaveAttribute("data-active");
+    expect(document.querySelector('[data-lyric-index="0"]')).not.toHaveAttribute("data-active");
+  });
+
+  it("currentTime 0 (before first line) → no row highlighted", () => {
+    mockPlayerTime(0);
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    expect(document.querySelector("[data-active]")).not.toBeInTheDocument();
+  });
+
+  it("clicking a lyric row seeks to that line's timestamp", () => {
+    mockPlayerTime(6);
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    const seekFn = mockUseAudioPlayer.mock.results.at(-1)!.value.seek;
+    fireEvent.click(document.querySelector('[data-lyric-index="2"]')!);
+    expect(seekFn).toHaveBeenCalledWith(9);
+  });
+
+  it("active line change → container scrollTo centers the row", () => {
+    mockPlayerTime(6);
+    const { rerender } = render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    scrollSpy.mockClear();
+
+    mockPlayerTime(10);
+    rerender(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    expect(scrollSpy).toHaveBeenCalledWith({ top: expect.any(Number) });
   });
 });
