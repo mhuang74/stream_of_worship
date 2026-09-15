@@ -59,11 +59,29 @@ Online, seeded cache key (synthetic job → a 206 can only come from the SW cach
 | Offline: uncached `<video>` | `error` event (AC 7 video branch) |
 | Offline: uncached JSON API / plain | `503 {"error":"offline"}` / `TypeError` (AC 7) |
 
-`/api/songs`, `/api/songsets`, `/api/signed-url` route bodies are byte-identical to pre-fix; no precache route remains (AC 6). Full webapp suite 2333 passed / 1 file skipped; `tsc --noEmit` clean; `pnpm lint` shows only the 4 pre-existing warnings.
+`/api/songs`, `/api/songsets`, `/api/signed-url` route bodies are byte-identical to pre-fix; no precache route remains (AC 6). Full webapp suite 2343 passed / 1 file skipped; `tsc --noEmit` exit 0; `pnpm lint` exit 0 with only the 4 pre-existing warnings.
+
+A two-axis review ran over `610df41b..HEAD`; its fixes are in `93c882c2`. The two that are easiest to reintroduce:
+
+- Cache Storage is best effort (handler degrades on `open`/`match`/`put`/body-read failure and serves from the network). Before that guard, a blocked or over-quota cache turned an *online* artifact request into `Response.error()` — a media-failure overlay for bytes already in hand.
+- The `importScripts` token is the module's content hash and `artifact-cache-sw-parity.test.ts` asserts it. It is load-bearing, not cosmetic: a browser re-runs `importScripts` only when `sw.js`'s own bytes change, so a module-only edit with a stale token never reaches an installed client.
 
 ---
 
-## 5. Follow-ups (not done here)
+## 5. Known limitations (deliberately not addressed here)
+
+- **Ranged serving reads the cached body through `blob()` before slicing** — the approach the parent spec's own snippet prescribes, and the same one workbox's `RangeRequestsPlugin` uses. It keeps the artifact out of the *page*; whether Chrome's blob backing keeps it off the SW's heap is **unmeasured**, so the issue's "seeks without holding the file in memory" motivation is not demonstrated, and each ranged request re-materializes the body (disk I/O, not necessarily memory). Measure before optimising; the fallback worth benchmarking is streaming the cached body through a `TransformStream` that discards to `start` and ends at `end`, taking the total from the cached response's `Content-Length`. Do **not** add a per-key Blob cache in the SW global (pins the body across requests, dies with the worker), and note `URL.createObjectURL` is unavailable in service workers.
+- **The catch handler's `document` branch is unreachable.** No route in this SW matches a navigation, and workbox-routing 7 applies the catch handler only to a matched handler that rejects, so an offline navigation gets the browser's offline page, not our HTML fallback. Pre-existing, unchanged by #204; AC 7's "keeps" is satisfied syntactically only.
+
+---
+
+## 6. Follow-ups (not done here)
 
 - `auth.ts` could trust `http://localhost:<port>` / `http://127.0.0.1:<port>` when `NODE_ENV !== "production"` — removes the dev-login landmine above.
-- The proxy matcher currently allows `sw(?:-artifact-serving)?\.js`; any future SW sub-script needs adding there, otherwise registration dies on a 307.
+- The SW scripts stay reachable unauthenticated through `PUBLIC_PATHS` (`/sw.js`, `/sw-artifact-serving.js`), not the matcher. A **new** `importScripts()` target must be added there too, or registration dies on a 307 — verify with a cookie-less `curl -sI` (`200`, no `location:`) rather than from a signed-in browser, whose session branch returns `next()` and hides the failure.
+
+---
+
+## 7. Verification environment, condensed
+
+Headless Chrome through the hub with a throwaway profile, dev server on `http://localhost:8080`, session obtained by `curl` sign-in and injected with `page.setCookie`. The full battery was driven from a **page-served script** writing results into the DOM, read back by polling `textContent`; the upstream was stopped with `hub stop sow-webapp-dev` for the offline half. Details of why that shape is required are in §3.
