@@ -303,6 +303,75 @@ class TestLyricsFeedbackListCommand:
         assert "hash-dd" in result_all.output
         _drop_all_tables(make_test_provider)
 
+    def test_format_ids_prints_pipeable_song_ids(self, make_test_provider, postgres_url, tmp_path):
+        _init_schema(make_test_provider)
+        _seed_data(make_test_provider())
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--format", "ids", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        # Three songed recordings dedup to one song_001 line; songless R4 falls
+        # back to hash_prefix. No table chrome in ids mode.
+        lines = [ln for ln in result.output.splitlines() if ln.strip()]
+        assert lines == ["song_001", "hash-dd"]
+        _drop_all_tables(make_test_provider)
+
+    def test_format_ids_empty_feedback_prints_nothing(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--format", "ids", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        # Pipe contract: empty queue emits zero stdout lines so the downstream
+        # --stdin consumer sees clean EOF (set-visibility errors on stray text).
+        assert result.output.strip() == ""
+        _drop_all_tables(make_test_provider)
+
+    def test_rating_good_ids_pipeable_for_set_visibility(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """Pipe-consumer contract for `audio set-visibility --stdin`:
+        --rating good emits exactly R1's song ID; songless R4 has only sad
+        open rows, so the good filter excludes it."""
+        _init_schema(make_test_provider)
+        _seed_data(make_test_provider())
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            [
+                "feedback",
+                "list",
+                "--rating",
+                "good",
+                "--format",
+                "ids",
+                "--config",
+                str(config_path),
+            ],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        lines = [ln for ln in result.output.splitlines() if ln.strip()]
+        assert lines == ["song_001"]
+        _drop_all_tables(make_test_provider)
+
+
+def test_feedback_list_rejects_unknown_format():
+    result = runner.invoke(lyrics_app, ["feedback", "list", "--format", "json"])
+    assert result.exit_code == 1
+    assert "Invalid format" in result.output
+
 
 def _seed_and_resolve_all(make_test_provider):
     provider = make_test_provider()
