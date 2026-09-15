@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { buildSongsetsUrl, saveSongsetListState } from "@/lib/songset-list-state";
+import { removeOfflineSongset } from "@/lib/offline/offline-index";
 
 const ShareDialog = dynamic(
   () => import("@/components/share/ShareDialog").then((m) => ({ default: m.ShareDialog })),
@@ -305,12 +306,14 @@ export function SongsetsClient({
         throw new Error(data.error || t("songsets.error.deleteFailed"));
       }
 
+      // Best-effort: clear the songset's offline cache copy (issue #203).
+      await removeOfflineSongset(id);
+
       refreshSongsets();
       toast.success(t("songsets.toast.deleted"));
     },
     [refreshSongsets, t]
   );
-
   return (
     <div className="px-4 py-6 pb-24 lg:pb-6">
       <div className="mb-6">

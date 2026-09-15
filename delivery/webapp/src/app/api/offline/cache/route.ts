@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { renderJobs } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { renderJobs, songsetItems, recordings } from "@/db/schema";
+import { eq, and, asc, isNotNull } from "drizzle-orm";
 
 /**
  * GET /api/offline/cache?renderJobId=<id>
@@ -57,11 +57,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Per-chapter recording contentHashes, position-aligned with the
+    // chapters manifest: entry i is songset item i's recording contentHash
+    // (the Lyrics Feedback key); null when an item has no recording. A
+    // left join keeps the array length equal to the item count so hashes
+    // never shift across items. Lets the offline index persist the hashes
+    // so lyrics feedback survives offline.
+    const hashRows = await db
+      .select({ contentHash: recordings.contentHash })
+      .from(songsetItems)
+      .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+      .where(eq(songsetItems.songsetId, job.songsetId))
+      .orderBy(asc(songsetItems.position));
+
     return NextResponse.json({
       renderJobId: job.id,
       mp3Url: job.mp3R2Key ? `/api/r2/artifact/${renderJobId}/output.mp3` : null,
       mp4Url: job.mp4R2Key ? `/api/r2/artifact/${renderJobId}/output.mp4` : null,
       chaptersUrl: job.chaptersR2Key ? `/api/r2/artifact/${renderJobId}/chapters.json` : null,
+      chapterContentHashes: hashRows.map((row) => row.contentHash ?? null),
     });
   } catch (error) {
     console.error("Error generating offline cache URLs:", error);

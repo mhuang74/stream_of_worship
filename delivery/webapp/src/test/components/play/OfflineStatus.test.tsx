@@ -18,9 +18,20 @@ vi.mock("@/lib/offline/artifact-cache", () => ({
   requestPersistentStorage: vi.fn().mockResolvedValue(true),
 }));
 
+import { NoArtifactsError, downloadOfflineArtifacts } from "@/lib/offline/download-offline";
+
+vi.mock("@/lib/offline/download-offline", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/offline/download-offline")>();
+  return {
+    ...actual,
+    downloadOfflineArtifacts: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 describe("OfflineStatus", () => {
   const mockProps = {
     songsetId: "test-songset",
+    songsetName: "Test Songset",
     renderJobId: "test-job",
     mp3R2Key: "renders/test-job/output.mp3",
     mp4R2Key: "renders/test-job/output.mp4",
@@ -103,9 +114,9 @@ describe("OfflineStatus", () => {
   });
 
   describe("caching", () => {
-    it("fetches proxy URLs and caches artifacts when download button clicked", async () => {
+    it("delegates download to the shared helper with songset context", async () => {
       const { toast } = await import("sonner");
-      const { cacheArtifacts } = await import("@/lib/offline/artifact-cache");
+      const { downloadOfflineArtifacts } = await import("@/lib/offline/download-offline");
 
       render(<OfflineStatus {...mockProps} />);
 
@@ -113,17 +124,8 @@ describe("OfflineStatus", () => {
       fireEvent.click(downloadButton);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith("/api/offline/cache?renderJobId=test-job");
-      });
-
-      await waitFor(() => {
-        expect(cacheArtifacts).toHaveBeenCalledWith(
-          "test-job",
-          {
-            mp3Url: "/api/r2/artifact/test-job/output.mp3",
-            mp4Url: "/api/r2/artifact/test-job/output.mp4",
-            chaptersUrl: "/api/r2/artifact/test-job/chapters.json",
-          },
+        expect(downloadOfflineArtifacts).toHaveBeenCalledWith(
+          { songsetId: "test-songset", songsetName: "Test Songset", renderJobId: "test-job" },
           expect.any(Function)
         );
       });
@@ -133,10 +135,26 @@ describe("OfflineStatus", () => {
       });
     });
 
-    it("shows error when caching fails", async () => {
+    it("shows noArtifacts toast when the helper throws NoArtifactsError", async () => {
       const { toast } = await import("sonner");
-      const { cacheArtifacts } = await import("@/lib/offline/artifact-cache");
-      vi.mocked(cacheArtifacts).mockRejectedValueOnce(new Error("Network error"));
+      const { NoArtifactsError } = await import("@/lib/offline/download-offline");
+      const { downloadOfflineArtifacts } = await import("@/lib/offline/download-offline");
+      vi.mocked(downloadOfflineArtifacts).mockRejectedValueOnce(new NoArtifactsError());
+
+      render(<OfflineStatus {...mockProps} />);
+
+      const downloadButton = await screen.findByRole("button", { name: /download for offline/i });
+      fireEvent.click(downloadButton);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("No artifacts available to cache");
+      });
+    });
+
+    it("shows downloadFailed when the helper fails for another reason", async () => {
+      const { toast } = await import("sonner");
+      const { downloadOfflineArtifacts } = await import("@/lib/offline/download-offline");
+      vi.mocked(downloadOfflineArtifacts).mockRejectedValueOnce(new Error("Network error"));
 
       render(<OfflineStatus {...mockProps} />);
 
@@ -184,8 +202,9 @@ describe("OfflineStatus", () => {
   });
 
   describe("storage persistence", () => {
-    it("requests persistent storage on first cache", async () => {
+    it("download click delegates to helper without a component-level persist call", async () => {
       const { requestPersistentStorage } = await import("@/lib/offline/artifact-cache");
+      const { downloadOfflineArtifacts } = await import("@/lib/offline/download-offline");
 
       render(<OfflineStatus {...mockProps} />);
 
@@ -193,8 +212,10 @@ describe("OfflineStatus", () => {
       fireEvent.click(downloadButton);
 
       await waitFor(() => {
-        expect(requestPersistentStorage).toHaveBeenCalled();
+        expect(downloadOfflineArtifacts).toHaveBeenCalled();
       });
+      expect(requestPersistentStorage).not.toHaveBeenCalled();
     });
   });
+
 });

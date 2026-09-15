@@ -15,14 +15,15 @@ import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import {
   ARTIFACT_CACHE_NAME,
-  cacheArtifacts,
   getArtifactCacheStatus,
   isOfflineSupportedOnCurrentDevice,
-  requestPersistentStorage,
   type CacheableArtifacts,
 } from "@/lib/offline/artifact-cache";
+import { downloadOfflineArtifacts, NoArtifactsError } from "@/lib/offline/download-offline";
 
 export interface OfflineStatusProps {
+  songsetId: string;
+  songsetName: string;
   renderJobId: string | null;
   mp3R2Key?: string | null;
   mp4R2Key?: string | null;
@@ -31,6 +32,8 @@ export interface OfflineStatusProps {
 }
 
 export function OfflineStatus({
+  songsetId,
+  songsetName,
   renderJobId,
   mp3R2Key,
   mp4R2Key,
@@ -43,6 +46,8 @@ export function OfflineStatus({
   const [cacheProgress, setCacheProgress] = useState(0);
   const [isSupported] = useState(isOfflineSupportedOnCurrentDevice);
 
+  // Legacy cache entries (pre-stable /sow-artifact-cache/<renderJobId>/{...}
+  // keys) could never be matched or deleted by name; remove them once.
   useEffect(() => {
     const cleanupStaleEntries = async () => {
       if (!("caches" in window)) return;
@@ -58,7 +63,6 @@ export function OfflineStatus({
     };
     cleanupStaleEntries();
   }, []);
-
   useEffect(() => {
     const checkCacheStatus = async () => {
       if (!renderJobId || !("caches" in window)) {
@@ -88,47 +92,31 @@ export function OfflineStatus({
       return;
     }
 
-    await requestPersistentStorage();
-
     setIsDownloading(true);
     setCacheProgress(0);
 
     try {
-      const apiUrl = `/api/offline/cache?renderJobId=${encodeURIComponent(renderJobId)}`;
-      const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to get download URLs");
-      }
-
-      const proxyUrls = await response.json();
-      const artifacts: CacheableArtifacts = {
-        mp3Url: proxyUrls.mp3Url,
-        mp4Url: proxyUrls.mp4Url,
-        chaptersUrl: proxyUrls.chaptersUrl,
-      };
-
-      if (!artifacts.mp3Url && !artifacts.mp4Url && !artifacts.chaptersUrl) {
-        toast.error(t("audio.offline.noArtifacts"));
-        setIsDownloading(false);
-        return;
-      }
-
-      await cacheArtifacts(renderJobId, artifacts, (percent) => {
-        setCacheProgress(percent);
-      });
+      await downloadOfflineArtifacts(
+        { songsetId, songsetName, renderJobId },
+        (percent) => {
+          setCacheProgress(percent);
+        }
+      );
 
       setIsCached(true);
       toast.success(t("audio.offline.downloaded"));
     } catch (error) {
-      console.error("Cache error:", error);
-      toast.error(t("audio.offline.downloadFailed"));
+      if (error instanceof NoArtifactsError) {
+        toast.error(t("audio.offline.noArtifacts"));
+      } else {
+        console.error("Cache error:", error);
+        toast.error(t("audio.offline.downloadFailed"));
+      }
     } finally {
       setIsDownloading(false);
       setCacheProgress(0);
     }
-  }, [renderJobId, t]);
+  }, [songsetId, songsetName, renderJobId, t]);
 
   const hasArtifacts = !!(mp3R2Key || mp4R2Key);
 
