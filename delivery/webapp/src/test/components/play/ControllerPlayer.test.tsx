@@ -88,6 +88,9 @@ describe("ControllerPlayer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+    // LyricJumpList's playback-cursor auto-scroll calls container.scrollTo
+    // when the sheet opens or the active line changes; jsdom has none.
+    Element.prototype.scrollTo = () => {};
 
     // Mock sessionStorage
     const sessionStorageMock = {

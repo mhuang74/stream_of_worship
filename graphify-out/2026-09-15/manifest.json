@@ -1056,8 +1056,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/audio/PlayerLyricsPanel.tsx": {
-    "mtime": 1789454829.970847,
-    "seen": 1789454842.59468,
+    "mtime": 1789455696.7879524,
+    "seen": 1789457550.9196136,
     "ast_hash": "5dc65f7c3db10f8ac336e83b1c277f43",
     "semantic_hash": ""
   },
@@ -1122,9 +1122,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/play/LyricJumpList.tsx": {
-    "mtime": 1789423899.1017544,
-    "seen": 1789425193.767839,
-    "ast_hash": "02a53ab1f4740540563db1677f275811",
+    "mtime": 1789456720.1796749,
+    "seen": 1789457550.9203157,
+    "ast_hash": "442a9cc2384aa8f02f279a29e799d303",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/play/OfflineStatus.tsx": {
@@ -2136,9 +2136,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/audio/PlayerLyricsPanel.test.tsx": {
-    "mtime": 1789454742.1525774,
-    "seen": 1789454842.625589,
-    "ast_hash": "557633fd566917adf936c81be9e28566",
+    "mtime": 1789455696.7879524,
+    "seen": 1789457550.9358752,
+    "ast_hash": "e870c19198c6a35defe99fa0a2cb9123",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/layout/BottomNav.test.tsx": {
@@ -2178,15 +2178,15 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/play/ControllerPlayer.test.tsx": {
-    "mtime": 1789260476.179775,
-    "seen": 1789260795.068387,
-    "ast_hash": "3b3c2a6e9904ae39a4e598bf5ffa39bf",
+    "mtime": 1789456810.4542906,
+    "seen": 1789457550.9362895,
+    "ast_hash": "951d27a1728bd3a38fd2294e28f3e482",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/play/LyricJumpList.test.tsx": {
-    "mtime": 1789041982.3500042,
-    "seen": 1789084817.4811623,
-    "ast_hash": "c98ddd60f7c58d4d8570463ceea557f1",
+    "mtime": 1789456759.5824947,
+    "seen": 1789457550.936292,
+    "ast_hash": "6fb92d03fd99e0df0475b7fbde9c9e67",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/play/OfflineStatus.test.tsx": {
@@ -4866,9 +4866,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/play/LyricJumpListFeedback.test.tsx": {
-    "mtime": 1789260476.179775,
-    "seen": 1789260795.0684566,
-    "ast_hash": "9e7e636b1a7cd9c4907e44def9dd08d3",
+    "mtime": 1789457113.2867856,
+    "seen": 1789457550.9362938,
+    "ast_hash": "af5c6e2f79b93f413c1ccd36afc28409",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/hooks/useLyricsFeedback.test.ts": {

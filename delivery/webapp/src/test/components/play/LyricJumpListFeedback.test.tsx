@@ -49,6 +49,10 @@ describe("LyricJumpList — Lyrics Feedback footer (issue #194)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // The playback-cursor auto-scroll effect calls container.scrollTo when
+    // the sheet opens; jsdom has none. These tests assert the feedback
+    // footer, not scrolling.
+    Element.prototype.scrollTo = () => {};
     mockSubmit.mockClear();
     mockRetract.mockClear();
     mockUseLyricsFeedback.mockReturnValue({
