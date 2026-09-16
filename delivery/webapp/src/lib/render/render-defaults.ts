@@ -11,7 +11,6 @@ export const APP_RENDER_DEFAULTS: Partial<RenderFormData> = {
   includeTitleCard: false,
   titleCardDurationSeconds: 10,
   titleCardLines: [],
-  offlineEnabled: false,
 }
 
 export interface UserSettingsData {

@@ -12,12 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,7 +40,6 @@ export interface RenderFormData {
   includeTitleCard: boolean
   titleCardDurationSeconds: number
   titleCardLines: string[]
-  offlineEnabled: boolean
 }
 
 interface RenderFormProps {
@@ -77,25 +71,6 @@ export interface PreviousRenderJobData {
 }
 
 const TITLE_CARD_DURATIONS = [5, 10, 15, 20, 25, 30] as const
-
-function isIOS174OrLater(): boolean {
-  if (typeof navigator === "undefined") return false
-  const userAgent = navigator.userAgent
-  
-  // Check if iOS
-  const isIOS = /iPad|iPhone|iPod/.test(userAgent)
-  if (!isIOS) return true // Not iOS, so no restriction
-  
-  // Extract iOS version
-  const match = userAgent.match(/OS (\d+)_(\d+)/)
-  if (!match) return false
-  
-  const major = parseInt(match[1], 10)
-  const minor = parseInt(match[2], 10)
-  
-  // iOS 17.4 or later
-  return major > 17 || (major === 17 && minor >= 4)
-}
 
 function formatDurationSafe(seconds: number | null | undefined): string {
   if (seconds == null || seconds <= 0) return "—"
@@ -137,12 +112,9 @@ export function RenderForm({
     includeTitleCard: initialData?.includeTitleCard ?? false,
     titleCardDurationSeconds: initialData?.titleCardDurationSeconds ?? 10,
     titleCardLines: initialData?.titleCardLines ?? [],
-    offlineEnabled: initialData?.offlineEnabled ?? false,
   })
 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-
-  const iosSupportsOffline = isIOS174OrLater()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -395,49 +367,6 @@ export function RenderForm({
                 )}
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Offline Availability */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("render.offline.title")}</CardTitle>
-            <CardDescription>{t("render.offline.description")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-start space-x-2">
-              <Checkbox
-                id="offlineEnabled"
-                checked={formData.offlineEnabled}
-                onCheckedChange={(checked) =>
-                  updateField("offlineEnabled", checked as boolean)
-                }
-                disabled={!iosSupportsOffline}
-              />
-              <div className="space-y-1 leading-none">
-                <div className="flex items-center gap-2">
-                  <Label
-                    htmlFor="offlineEnabled"
-                    className={!iosSupportsOffline ? "text-muted-foreground" : ""}
-                  >
-                    {t("render.offline.makeAvailable")}
-                  </Label>
-                  {!iosSupportsOffline && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="size-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{t("render.offline.requiresIOS")}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {t("render.offline.cacheHint")}
-                </p>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
