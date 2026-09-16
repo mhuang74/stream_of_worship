@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { buildSongsetsUrl, saveSongsetListState } from "@/lib/songset-list-state";
-import { removeOfflineSongset } from "@/lib/offline/offline-index";
+import { removeOfflineSongset, listOfflineRecords } from "@/lib/offline/offline-index";
 
 const ShareDialog = dynamic(
   () => import("@/components/share/ShareDialog").then((m) => ({ default: m.ShareDialog })),
@@ -36,6 +36,34 @@ interface ApiSongset {
 interface ApiResponse {
   songsets: ApiSongset[];
   total: number;
+}
+
+/**
+ * Offline badge merge (issue #207): the offline index lives client-side
+ * (IndexedDB), so it merges into the freshly fetched rows. Staleness is the
+ * row's existing value (renderState out of date) OR the cached copy's
+ * renderJobId no longer matching the songset's latest renderJobId. Runs
+ * inside the fetch choke point so every setSongsets (refetch, search,
+ * pagination) re-merges; rows without an index record keep the transform's
+ * defaults untouched.
+ */
+async function transformSongsetsWithOffline(
+  songsets: ApiSongset[]
+): Promise<Songset[]> {
+  const rows = transformSongsets(songsets);
+  const records = await listOfflineRecords();
+  if (records.length === 0) return rows;
+  return rows.map((songset) => {
+    const record = records.find((r) => r.songsetId === songset.id);
+    if (!record) return songset;
+    return {
+      ...songset,
+      isOfflineAvailable: true,
+      isArtifactsStale:
+        songset.isArtifactsStale ||
+        record.renderJobId !== songset.latestRenderJobId,
+    };
+  });
 }
 
 function transformSongsets(songsets: ApiSongset[]): Songset[] {
@@ -72,7 +100,9 @@ export function SongsetsClient({
 }: SongsetsClientProps) {
   const router = useRouter();
   const { t } = useLocale();
-  const [songsets, setSongsets] = useState<Songset[]>(() => transformSongsets(initialData.songsets));
+  const [songsets, setSongsets] = useState<Songset[]>(() =>
+    transformSongsets(initialData.songsets)
+  );
   const [total, setTotal] = useState(initialData.total);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,9 +143,11 @@ export function SongsetsClient({
 
         const data: ApiResponse = await response.json();
 
+        const rows = await transformSongsetsWithOffline(data.songsets);
+
         if (cancelled) return;
 
-        setSongsets(transformSongsets(data.songsets));
+        setSongsets(rows);
         setTotal(data.total);
       } catch (err) {
         if (!cancelled) {
@@ -295,6 +327,35 @@ export function SongsetsClient({
     }
   }, [songsets, t]);
 
+  const handleRemoveOffline = useCallback(
+    async (id: string) => {
+      try {
+        // removeOfflineSongset invalidates the cached artifacts, then deletes
+        // the index record (issue #203 semantics).
+        await removeOfflineSongset(id);
+        setSongsets((prev) =>
+          prev.map((songset) =>
+            songset.id === id
+              ? {
+                  ...songset,
+                  isOfflineAvailable: false,
+                  // Back to the no-record default (transformSongsets): the
+                  // render's own staleness survives, offline staleness goes.
+                  isArtifactsStale: songset.renderState === "stale",
+                }
+              : songset
+          )
+        );
+        toast.success(t("songsets.toast.offlineRemoved"));
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : t("songsets.error.removeOfflineFailed")
+        );
+      }
+    },
+    [t]
+  );
+
   const handleDelete = useCallback(
     async (id: string) => {
       const response = await fetch(`/api/songsets/${id}`, {
@@ -336,6 +397,7 @@ export function SongsetsClient({
         onShare={handleShare}
         onDownloadAudio={handleDownloadAudio}
         onDownloadVideo={handleDownloadVideo}
+        onRemoveOffline={handleRemoveOffline}
         onDelete={handleDelete}
         currentPage={page}
         totalPages={Math.max(1, Math.ceil(total / pageSize))}

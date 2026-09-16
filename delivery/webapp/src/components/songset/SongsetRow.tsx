@@ -30,6 +30,7 @@ import {
   Trash2,
   AlertTriangle,
   WifiOff,
+  CloudOff,
   Music,
   Clock,
   FileAudio,
@@ -57,6 +58,7 @@ export interface SongsetRowProps {
   onShare?: () => void;
   onDownloadAudio?: () => void;
   onDownloadVideo?: () => void;
+  onRemoveOffline?: () => void;
   onDelete?: () => void;
   className?: string;
   themes?: string[];
@@ -82,6 +84,7 @@ export function SongsetRow({
   onShare,
   onDownloadAudio,
   onDownloadVideo,
+  onRemoveOffline,
   onDelete,
   className,
   themes,
@@ -197,6 +200,12 @@ export function SongsetRow({
                       <FileVideo className="size-4 mr-2" />
                       {t("songsets.action.downloadVideo")}
                     </DropdownMenuItem>
+                    {isOfflineAvailable && onRemoveOffline && (
+                      <DropdownMenuItem onClick={onRemoveOffline}>
+                        <CloudOff className="size-4 mr-2" />
+                        {t("songsets.menu.removeOffline")}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={onDelete}
@@ -240,7 +249,13 @@ export function SongsetRow({
                   <ThemeArcSpan themes={arcThemes} />
                 )}
                 {isOfflineAvailable && (
-                  <Badge variant="secondary" className="text-xs gap-1">
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-xs gap-1",
+                      isArtifactsStale && "text-amber-600 border-amber-500/50"
+                    )}
+                  >
                     <WifiOff className="size-3" />
                     {t("songsets.badge.offline")}
                   </Badge>

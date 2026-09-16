@@ -221,6 +221,21 @@ describe("SongsetList", () => {
   });
 
   describe("callbacks", () => {
+    it("calls onRemoveOffline when remove-from-offline is triggered", async () => {
+      const onRemoveOffline = vi.fn();
+      renderList({ onRemoveOffline });
+
+      const menuButtons = screen.getAllByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButtons[0]);
+
+      await waitFor(() => {
+        const item = screen.getByRole("menuitem", { name: /remove from offline/i });
+        fireEvent.click(item);
+      });
+
+      expect(onRemoveOffline).toHaveBeenCalledWith("songset-1");
+    });
+
     it("calls onRender when render is triggered", async () => {
       const onRender = vi.fn();
       renderList({ onRender });

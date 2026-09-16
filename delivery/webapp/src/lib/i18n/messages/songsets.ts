@@ -27,6 +27,7 @@ export const songsetsBundle = bundle({
     "songsets.error.addSongFailed": "Failed to add song to songset",
     "songsets.error.downloadAudioFailed": "Failed to download audio",
     "songsets.error.downloadVideoFailed": "Failed to download video",
+    "songsets.error.removeOfflineFailed": "Failed to remove offline copy",
 
     // Toasts (success)
     "songsets.toast.created": "Songset created successfully",
@@ -59,6 +60,8 @@ export const songsetsBundle = bundle({
     "songsets.action.share": "Share",
     "songsets.action.downloadAudio": "Download Audio",
     "songsets.action.downloadVideo": "Download Video",
+    "songsets.menu.removeOffline": "Remove from offline",
+    "songsets.toast.offlineRemoved": "Removed offline copy — storage reclaimed",
     "songsets.action.delete": "Delete",
     "songsets.action.search": "Search",
     "songsets.action.retry": "Retry",
@@ -165,6 +168,7 @@ export const songsetsBundle = bundle({
     "songsets.error.addSongFailed": "加入詩歌失敗，請再試一次",
     "songsets.error.downloadAudioFailed": "音訊下載失敗，請再試一次",
     "songsets.error.downloadVideoFailed": "影片下載失敗，請再試一次",
+    "songsets.error.removeOfflineFailed": "離線副本移除失敗",
 
     // Toasts (success)
     "songsets.toast.created": "已建立敬拜歌單",
@@ -197,6 +201,8 @@ export const songsetsBundle = bundle({
     "songsets.action.share": "分享",
     "songsets.action.downloadAudio": "下載音訊",
     "songsets.action.downloadVideo": "下載影片",
+    "songsets.menu.removeOffline": "移除離線副本",
+    "songsets.toast.offlineRemoved": "已移除離線副本，釋放儲存空間",
     "songsets.action.delete": "刪除",
     "songsets.action.search": "搜尋",
     "songsets.action.retry": "重試",
