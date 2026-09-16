@@ -95,6 +95,40 @@ workbox.routing.registerRoute(
   new workbox.strategies.NetworkOnly()
 );
 
+// Offline navigation (issue #206): full document loads and Next.js RSC
+// payload fetches (RSC: 1 header). Network-first — online users get the
+// fresh document, zero behavioral change — with sow-pages as the offline
+// fallback. The controller document is pre-cached here at download time
+// (src/lib/offline/document-cache.ts); RSC payloads are NOT pre-cached
+// (runtime _rsc hashes can't be predicted) and accumulate from warmed
+// sessions instead.
+//
+// cacheWillUpdate drops redirect responses: a navigation answered with a
+// 307 (e.g. the auth proxy redirecting to /login) resolves through fetch()
+// to the FINAL page, and caching it would store the login HTML under the
+// original URL — an offline visit to that URL would then show the login
+// page instead of the document the user asked for.
+workbox.routing.registerRoute(
+  ({ request }) =>
+    request.mode === "navigate" || request.headers.get("RSC") === "1",
+  new workbox.strategies.NetworkFirst({
+    cacheName: "sow-pages",
+    networkTimeoutSeconds: 10,
+    plugins: [
+      {
+        cacheWillUpdate: ({ response }) => (response.redirected ? null : response),
+      },
+      new workbox.expiration.ExpirationPlugin({
+        maxEntries: 50,
+        maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+      }),
+      new workbox.cacheableResponse.CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+    ],
+  })
+);
+
 // Artifact proxy endpoint: the single offline-artifact route (mapped cache
 // keys + Range support). Registration order is irrelevant here — workbox
 // matches routes in registration order and nothing above matches an artifact

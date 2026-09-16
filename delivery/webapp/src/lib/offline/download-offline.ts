@@ -16,6 +16,7 @@ import {
   type CacheableArtifacts,
 } from "./artifact-cache";
 import { putOfflineRecord, type OfflineSongsetRecord } from "./offline-index";
+import { cacheControllerDocument } from "./document-cache";
 
 export class NoArtifactsError extends Error {
   constructor() {
@@ -96,4 +97,12 @@ export async function downloadOfflineArtifacts(
     // Index write is bookkeeping: the artifacts are already cached, so a
     // failing IndexedDB write must not fail the download.
   }
+
+  // Pre-cache the controller document + its assets (issue #206): the offline
+  // Start Worship tap is a full document navigation, which needs the HTML and
+  // its scripts/styles already in the SW's sow-pages cache. Best-effort —
+  // playback works without it, so a failure here degrades the cold start to
+  // the offline fallback page rather than failing a download whose artifacts
+  // are already in place.
+  await cacheControllerDocument(input.songsetId).catch(() => {});
 }
