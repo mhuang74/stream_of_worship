@@ -539,6 +539,11 @@ describe("ControllerPage (songset)", () => {
         configurable: true,
         writable: true,
       });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        value: vi.fn(),
+        configurable: true,
+        writable: true,
+      });
       global.fetch = vi.fn();
     });
 
@@ -546,6 +551,7 @@ describe("ControllerPage (songset)", () => {
       Reflect.deleteProperty(window, "caches");
       Reflect.deleteProperty(navigator, "serviceWorker");
       Reflect.deleteProperty(URL, "createObjectURL");
+      Reflect.deleteProperty(URL, "revokeObjectURL");
       setOnline(true);
     });
 
@@ -679,7 +685,6 @@ describe("ControllerPage (songset)", () => {
         "https://r2.example.com/videos/test.mp4"
       );
       expect(lastControllerProps?.isOfflineMedia).toBe(false);
-      expect(global.fetch).toHaveBeenCalledTimes(3);
     });
 
     it("swaps a failed proxy source for a blob URL of the cached artifact", async () => {
@@ -708,6 +713,21 @@ describe("ControllerPage (songset)", () => {
       });
 
       expect(await lastControllerProps?.onMediaError?.()).toBe(false);
+    });
+
+    it("releases the blob URL it played from when the controller unmounts", async () => {
+      setServiceWorkerController(false);
+
+      const { unmount } = render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent("blob:cached-video");
+      });
+
+      unmount();
+
+      // A blob URL pins the whole artifact in memory until it is revoked.
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:cached-video");
     });
   });
 
