@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, X, Info, Maximize, Monitor, MonitorOff, Loader2 } from "lucide-react";
+import { ArrowLeft, X, Info, Maximize, Monitor, MonitorOff, Loader2, WifiOff, AlertTriangle } from "lucide-react";
 
 /**
  * Surface for the dev-only Presentation API sender fallback (used only when
@@ -39,10 +39,21 @@ export interface PresentationFallback {
   isConnected?: boolean;
 }
 
-export interface ControllerPlayerProps {
+interface ControllerPlayerBaseProps {
   playerId: string;
-  videoSrc: string;
   chapters: Chapter[];
+  /**
+   * Offline boot (the controller's cache-first branches): renders the offline
+   * hint and hides every transport entry point — with no network and no
+   * session the receiver cannot reach the artifacts.
+   */
+  isOfflineMedia?: boolean;
+  /**
+   * Host hook for a media load failure. Resolve `true` when the host has taken
+   * over the recovery (e.g. swapping the offline proxy URL for a blob URL of
+   * the cached artifact) — the player then withholds its failure overlay.
+   */
+  onMediaError?: () => Promise<boolean>;
   isPresentationActive?: boolean;
   /**
    * Unified Cast transport surface. When the controller page mounts
@@ -79,6 +90,15 @@ export interface ControllerPlayerProps {
   className?: string;
 }
 
+/**
+ * Exactly one media source. `audioSrc` is the offline audio-only boot (an
+ * MP3-only render): the element is an <audio>, chapters and the custom
+ * controls render as usual, and the visuals stay local.
+ */
+export type ControllerPlayerProps =
+  | (ControllerPlayerBaseProps & { videoSrc: string; audioSrc?: never })
+  | (ControllerPlayerBaseProps & { videoSrc?: never; audioSrc: string });
+
 const IOS_INFO_KEY = "sow-ios-info-shown";
 
 // iOS WebKit exposes native fullscreen on <video> (AVPlayer UI) even where the
@@ -113,6 +133,9 @@ function canVideoFullscreenSnapshot(): boolean {
 
 const SEEK_DEBOUNCE_MS = 200;
 const BUFFERING_ACTIONABLE_MS = 15_000;
+// A local media stall surfaces an overlay only after this long: a transient
+// stall on a healthy network must not flash a "playback failed" panel.
+const MEDIA_STALL_TIMEOUT_MS = 15_000;
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -134,12 +157,15 @@ interface PendingResume {
 export function ControllerPlayer({
   playerId,
   videoSrc,
+  audioSrc,
   chapters,
   isPresentationActive = false,
   transport,
   presentationFallback,
   presentationMediaStatus,
   isCastSupported,
+  isOfflineMedia = false,
+  onMediaError,
   exitRoute,
   autoFullscreen = true,
   chapterRecordingHashes,
@@ -152,7 +178,16 @@ export function ControllerPlayer({
 }: ControllerPlayerProps) {
   const router = useRouter();
   const { t } = useLocale();
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // One element ref for both media elements: <video> online, <audio> on the
+  // offline audio-only boot. Everything the player does with the element
+  // (time, duration, volume, play/pause, load) lives on HTMLMediaElement; the
+  // one video-only member (WebKit fullscreen) narrows at its call site.
+  const mediaRef = useRef<HTMLMediaElement | null>(null);
+  const setMediaElement = useCallback((element: HTMLMediaElement | null) => {
+    mediaRef.current = element;
+  }, []);
+  const mediaSrc = videoSrc ?? audioSrc;
+  const isAudioOnly = audioSrc !== undefined;
   const controlsRef = useRef<HTMLDivElement>(null);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const seekDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,6 +221,10 @@ export function ControllerPlayer({
   const [showDiagnosticSheet, setShowDiagnosticSheet] = useState(false);
   const [pendingResume, setPendingResume] = useState<PendingResume | null>(null);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
+  // Local media failure surface: a hard `error`, or a stall that outlived
+  // MEDIA_STALL_TIMEOUT_MS. Cleared as soon as the element plays again.
+  const [mediaFailure, setMediaFailure] = useState<"error" | "stalled" | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs to the latest transport forwarding props so effect/handler closures
   // never go stale without forcing re-renders.
@@ -201,6 +240,10 @@ export function ControllerPlayer({
   useEffect(() => {
     onSendTransportCommandRef.current = onSendTransportCommand;
   }, [onSendTransportCommand]);
+  const onMediaErrorRef = useRef(onMediaError);
+  useEffect(() => {
+    onMediaErrorRef.current = onMediaError;
+  }, [onMediaError]);
 
   // Wake lock hook
   const { isSupported: wakeLockSupported } = useWakeLock();
@@ -326,23 +369,30 @@ export function ControllerPlayer({
     }
   }, [isPresentationActive]);
 
-  // Video event handlers
+  // Media element event handlers (works for <video> and the offline <audio>)
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    const media = mediaRef.current;
+    if (!media) return;
+
+    const clearStallTimer = () => {
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
+    };
 
     const handleTimeUpdate = () => {
       // While the transport is connected, the receiver is the source of
       // truth — don't let local timeupdate events fight the mirrored state.
       if (isPresentationActive) return;
-      setCurrentTime(video.currentTime);
+      setCurrentTime(media.currentTime);
 
       // Update current song index based on time
       const newIndex = chapters.findIndex(
         (chapter, i) =>
-          video.currentTime >= chapter.startSeconds &&
+          media.currentTime >= chapter.startSeconds &&
           (i === chapters.length - 1 ||
-            video.currentTime < chapters[i + 1].startSeconds)
+            media.currentTime < chapters[i + 1].startSeconds)
       );
       if (newIndex !== -1 && newIndex !== currentSongIndex) {
         setLocalSongIndex(newIndex);
@@ -350,7 +400,7 @@ export function ControllerPlayer({
     };
 
     const handleLoadedMetadata = () => {
-      setDuration(video.duration);
+      setDuration(media.duration);
     };
 
     const handlePlay = () => {
@@ -361,25 +411,75 @@ export function ControllerPlayer({
     };
     const handleVolumeChange = () => {
       if (!isPresentationActive) {
-        setVolume(video.volume);
-        setIsMuted(video.muted);
+        setVolume(media.volume);
+        setIsMuted(media.muted);
       }
     };
 
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    video.addEventListener("loadedmetadata", handleLoadedMetadata);
-    video.addEventListener("play", handlePlay);
-    video.addEventListener("pause", handlePause);
-    video.addEventListener("volumechange", handleVolumeChange);
+    // Stalling is how a dropped network or a stalled cache read shows up: the
+    // element keeps "playing" but stops advancing. Only a stall that outlives
+    // MEDIA_STALL_TIMEOUT_MS is worth an overlay — transient stalls must not
+    // flash one. `playing`/`progress` mean bytes are flowing again, so they
+    // both cancel the timer and clear an overlay already on screen (which is
+    // also what makes Retry recover visibly).
+    const handleStalled = () => {
+      if (isPresentationActive) return;
+      clearStallTimer();
+      stallTimerRef.current = setTimeout(() => {
+        stallTimerRef.current = null;
+        setMediaFailure("stalled");
+      }, MEDIA_STALL_TIMEOUT_MS);
+    };
+
+    const handleProgress = () => {
+      if (isPresentationActive) return;
+      clearStallTimer();
+    };
+
+    const handlePlaying = () => {
+      if (isPresentationActive) return;
+      clearStallTimer();
+      setMediaFailure(null);
+    };
+
+    const handleError = () => {
+      if (isPresentationActive) return;
+      clearStallTimer();
+      // The element exposes no failure reason, so log the source it failed on.
+      console.error("Media element failed:", media.currentSrc || media.src);
+      // The host may own the recovery (the controller swaps a failed offline
+      // proxy URL for a blob URL of the cached artifact). Only surface the
+      // overlay when it cannot.
+      void (onMediaErrorRef.current?.() ?? Promise.resolve(false)).then((handled) => {
+        if (handled) return;
+        setMediaFailure("error");
+        toast.error(t("controller.mediaFailed"));
+      });
+    };
+
+    media.addEventListener("timeupdate", handleTimeUpdate);
+    media.addEventListener("loadedmetadata", handleLoadedMetadata);
+    media.addEventListener("play", handlePlay);
+    media.addEventListener("pause", handlePause);
+    media.addEventListener("volumechange", handleVolumeChange);
+    media.addEventListener("stalled", handleStalled);
+    media.addEventListener("progress", handleProgress);
+    media.addEventListener("playing", handlePlaying);
+    media.addEventListener("error", handleError);
 
     return () => {
-      video.removeEventListener("timeupdate", handleTimeUpdate);
-      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      video.removeEventListener("play", handlePlay);
-      video.removeEventListener("pause", handlePause);
-      video.removeEventListener("volumechange", handleVolumeChange);
+      clearStallTimer();
+      media.removeEventListener("timeupdate", handleTimeUpdate);
+      media.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      media.removeEventListener("play", handlePlay);
+      media.removeEventListener("pause", handlePause);
+      media.removeEventListener("volumechange", handleVolumeChange);
+      media.removeEventListener("stalled", handleStalled);
+      media.removeEventListener("progress", handleProgress);
+      media.removeEventListener("playing", handlePlaying);
+      media.removeEventListener("error", handleError);
     };
-  }, [chapters, currentSongIndex, isPresentationActive]);
+  }, [chapters, currentSongIndex, isPresentationActive, t]);
 
   // Auto-hide controls in mirror mode
   const startHideTimer = useCallback(() => {
@@ -440,7 +540,7 @@ export function ControllerPlayer({
       onSendTransportCommandRef.current?.(cmd);
       return;
     }
-    const video = videoRef.current;
+    const video = mediaRef.current;
     if (!video) return;
 
     if (isPlaying) {
@@ -507,7 +607,7 @@ export function ControllerPlayer({
         return;
       }
 
-      const video = videoRef.current;
+      const video = mediaRef.current;
       if (!video) return;
       const localUpper = effectiveDuration > 0 ? effectiveDuration : time;
       const localClamped = clamp(time, 0, localUpper);
@@ -550,7 +650,7 @@ export function ControllerPlayer({
         onSendTransportCommandRef.current?.({ type: "volume", level: clamped });
         return;
       }
-      const video = videoRef.current;
+      const video = mediaRef.current;
       if (!video) return;
       video.volume = clamped;
       video.muted = clamped === 0;
@@ -567,7 +667,7 @@ export function ControllerPlayer({
       });
       return;
     }
-    const video = videoRef.current;
+    const video = mediaRef.current;
     if (!video) return;
     video.muted = !video.muted;
   }, [isPresentationActive, effectiveIsMuted]);
@@ -630,7 +730,7 @@ export function ControllerPlayer({
     // Fall back to the <video> element's native WebKit fullscreen. Requires a
     // user gesture — satisfied because this runs from a button tap.
     try {
-      (videoRef.current as VideoElementWithIOSFullscreen | null)?.webkitEnterFullscreen?.();
+      (mediaRef.current as VideoElementWithIOSFullscreen | null)?.webkitEnterFullscreen?.();
     } catch {
       // Best-effort; capability detection hides this button when absent.
     }
@@ -743,7 +843,7 @@ export function ControllerPlayer({
   // Mute (+ pause) local video when presentation is active (audio plays on the
   // receiver). Composes with the disconnect→resume effect below.
   useEffect(() => {
-    const video = videoRef.current;
+    const video = mediaRef.current;
     if (!video) return;
 
     if (isPresentationActive) {
@@ -815,7 +915,7 @@ export function ControllerPlayer({
     //      iOS / non-Cast path (P0 disconnect-resume must not be silently
     //      absent on the Presentation API path).
     const proposal = transport?.resumeProposal ?? null;
-    const video = videoRef.current;
+    const video = mediaRef.current;
     if (!video) return;
 
     // This effect synchronizes the local <video> element with the transport's
@@ -863,7 +963,7 @@ export function ControllerPlayer({
 
   const handleTapToResume = useCallback(() => {
     if (!pendingResume) return;
-    const video = videoRef.current;
+    const video = mediaRef.current;
     if (!video) return;
     const t = pendingResume.time;
     try {
@@ -882,6 +982,30 @@ export function ControllerPlayer({
         /* keep the prompt visible */
       });
   }, [pendingResume]);
+
+  // ── Media failure recovery ──────────────────────────────────────────────
+  // Retry re-issues the load on the current source: `load()` re-runs the
+  // resource selection algorithm (picking up a source the host swapped in
+  // after the failure), then playback resumes. `playing` clears the overlay.
+  const handleRetryMedia = useCallback(() => {
+    const element = mediaRef.current;
+    if (!element) return;
+    setMediaFailure(null);
+    try {
+      element.load();
+    } catch {
+      /* best-effort: reload can throw on a detached element */
+    }
+    element
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+      })
+      .catch((err) => {
+        console.error("Play failed:", err);
+        toast.error(t("controller.toastPlaybackFailed"));
+      });
+  }, [t]);
 
   // ── Song-change effect (keyed on currentSongIndex while active) ─────────
   // Push the new song title to the receiver. No-op for Cast (the title is set
@@ -905,7 +1029,12 @@ export function ControllerPlayer({
   // disabled-but-tappable button never renders and the diagnostic UX is dead
   // code in production. When availability is still "unknown" (SDK load window),
   // no Cast UI renders to avoid premature taps.
-  const showCastButton = castAvailability !== "unknown" && !isPresentationActive;
+  //
+  // Offline media hides every transport entry point: the receiver fetches the
+  // artifacts itself, and in an offline boot neither the network nor the
+  // session that mints a signed URL is available — the player is local-only.
+  const showCastButton =
+    !isOfflineMedia && castAvailability !== "unknown" && !isPresentationActive;
   // Presentation API fallback launch button: rendered when Cast is confirmed
   // unsupported (not during the SDK load window, where `isCastSupported` is
   // false but `castAvailability` is still "unknown"). Gating on
@@ -915,12 +1044,14 @@ export function ControllerPlayer({
   // start a Presentation session that the Cast transport would later
   // shadow once `isSupported` flips to true.
   const showPresentationFallbackButton =
+    !isOfflineMedia &&
     isCastSupported === false &&
     castAvailability !== "unknown" &&
     (presentationFallback?.isSupported ?? false) === true &&
     !isPresentationActive;
   const castUnavailable = castAvailability === "unavailable";
   const showIphoneFallback =
+    !isOfflineMedia &&
     isCastSupported === false &&
     castAvailability !== "unknown" &&
     (presentationFallback?.isSupported ?? false) === false;
@@ -943,22 +1074,33 @@ export function ControllerPlayer({
       onTouchStart={handleInteraction}
       onMouseMove={handleInteraction}
     >
-      {/* Video */}
+      {/* Media: <video> normally, <audio> for an offline audio-only render
+          (an MP3-only songset has no video track to show). */}
       <div className="flex-1 relative">
-        <video
-          ref={videoRef}
-          src={videoSrc}
-          className="w-full h-full object-contain"
-          playsInline
-          muted={isPresentationActive}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleInteraction();
-          }}
-          onDoubleClick={(e) => {
-            e.preventDefault();
-          }}
-        />
+        {isAudioOnly ? (
+          <audio
+            ref={setMediaElement}
+            src={mediaSrc}
+            className="hidden"
+            muted={isPresentationActive}
+            data-testid="audio-element"
+          />
+        ) : (
+          <video
+            ref={setMediaElement}
+            src={mediaSrc}
+            className="w-full h-full object-contain"
+            playsInline
+            muted={isPresentationActive}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleInteraction();
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+            }}
+          />
+        )}
 
         {/* Top bar */}
         <div
@@ -1018,6 +1160,17 @@ export function ControllerPlayer({
                 >
                   <MonitorOff className="size-5" />
                 </Button>
+              )}
+
+              {/* Offline hint: the controller booted from the downloaded copy */}
+              {isOfflineMedia && (
+                <div
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white/10 text-white/80 rounded-full text-xs"
+                  data-testid="offline-hint"
+                >
+                  <WifiOff className="size-3" />
+                  <span>{t("controller.offlinePlayback")}</span>
+                </div>
               )}
 
               {/* Buffering chip (non-blocking; controls stay enabled) */}
@@ -1115,6 +1268,41 @@ export function ControllerPlayer({
                 : `${t("controller.tapToResume")} ${formatTime(pendingResume.time)}`}
             </span>
           </button>
+        )}
+
+        {/* Media failure overlay: a hard element error, or a stall that
+            outlived MEDIA_STALL_TIMEOUT_MS. Actionable — Retry re-issues the
+            load on whatever source the host has in place by then. */}
+        {mediaFailure && (
+          <div
+            role="alert"
+            className="absolute inset-0 z-[85] flex items-center justify-center bg-black/85 p-6"
+            data-testid="media-failure-overlay"
+          >
+            <div className="w-full max-w-sm rounded-lg bg-amber-500/95 text-black p-5 text-center shadow-lg">
+              <div className="flex items-center justify-center gap-2 font-medium">
+                <AlertTriangle className="size-5 shrink-0" />
+                <span data-testid="media-failure-title">
+                  {mediaFailure === "stalled"
+                    ? t("controller.mediaStalled")
+                    : t("controller.mediaFailed")}
+                </span>
+              </div>
+              <p className="mt-2 text-sm">
+                {isOfflineMedia
+                  ? t("controller.mediaFailedOfflineDesc")
+                  : t("controller.mediaFailedDesc")}
+              </p>
+              <Button
+                size="sm"
+                className="mt-4 bg-black text-white hover:bg-black/80"
+                onClick={handleRetryMedia}
+                data-testid="media-retry-button"
+              >
+                {t("controller.retry")}
+              </Button>
+            </div>
+          </div>
         )}
 
         {/* iOS Info Toast */}

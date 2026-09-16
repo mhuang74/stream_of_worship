@@ -30,7 +30,8 @@ export interface OfflineSongsetRecord {
   cachedMp4: boolean;
   cachedChapters: boolean;
   cachedAt: string;
-  chapterContentHashes: string[];
+  /** Entry i is songset item i's recording contentHash; null when the item has no recording. */
+  chapterContentHashes: (string | null)[];
 }
 
 function isOfflineIndexAvailable(): boolean {

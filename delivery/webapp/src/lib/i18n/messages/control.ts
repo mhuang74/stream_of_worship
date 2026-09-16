@@ -21,6 +21,9 @@ export const controlBundle = bundle({
     "control.connectedTo": "Connected to",
     "control.tv": "TV",
     "control.disconnectedFromTV": "Disconnected from TV",
+    "control.offlineBooting": "Starting offline playback…",
+    "control.offlineUnavailable":
+      "This songset has not been downloaded for offline playback",
 
     // --- Share landing page (app/share/[token]/page.tsx) -----------------
     "control.loading": "Loading",
@@ -160,6 +163,8 @@ export const controlBundle = bundle({
     "control.connectedTo": "已連線到",
     "control.tv": "電視",
     "control.disconnectedFromTV": "已與電視斷線",
+    "control.offlineBooting": "正在以離線模式啟動…",
+    "control.offlineUnavailable": "這個敬拜歌單還沒下載到本機，無法離線播放",
 
     // --- Share landing page (app/share/[token]/page.tsx) -----------------
     "control.loading": "載入中",

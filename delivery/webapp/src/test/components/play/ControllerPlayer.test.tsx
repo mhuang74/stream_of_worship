@@ -3,6 +3,7 @@ import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import type { CastTransportResult } from "@/hooks/useCast";
+import { toast } from "sonner";
 
 const mockUseLyricsFeedback = vi.fn();
 vi.mock("@/hooks/useLyricsFeedback", () => ({
@@ -1775,6 +1776,226 @@ describe("ControllerPlayer", () => {
       expect(
         screen.queryByRole("button", { name: /fullscreen/i })
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Offline media (audio-only boot, hint, transport gating) ─────────────
+  describe("offline media", () => {
+    const audioOnlyProps = {
+      playerId: "test-songset",
+      audioSrc: "/api/r2/artifact/job-1/output.mp3",
+      chapters: mockChapters,
+      isPresentationActive: false,
+      isOfflineMedia: true,
+    };
+
+    it("renders an <audio> element (and no <video>) for an audio-only render", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...audioOnlyProps} />);
+      });
+
+      const audio = document.querySelector("audio");
+      expect(audio).toBeInTheDocument();
+      expect(audio).toHaveAttribute("src", "/api/r2/artifact/job-1/output.mp3");
+      expect(document.querySelector("video")).not.toBeInTheDocument();
+    });
+
+    it("tracks chapters from the audio element's playback position", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...audioOnlyProps} />);
+      });
+
+      expect(screen.getByText("1/2")).toBeInTheDocument();
+
+      const audio = document.querySelector("audio") as HTMLAudioElement;
+      audio.currentTime = 200; // chapter 2 starts at 180s
+      await act(async () => {
+        fireEvent.timeUpdate(audio);
+      });
+
+      expect(screen.getByText("2/2")).toBeInTheDocument();
+    });
+
+    it("shows the offline hint and hides the Cast entry points", async () => {
+      const transport = makeTransport({ availability: "available" });
+
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isOfflineMedia={true}
+            castAvailability="available"
+            transport={transport}
+          />
+        );
+      });
+
+      expect(screen.getByTestId("offline-hint")).toHaveTextContent(/offline playback/i);
+      expect(screen.queryByTestId("cast-button")).not.toBeInTheDocument();
+    });
+
+    it("keeps the Cast button when the media is not an offline boot", async () => {
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isOfflineMedia={false}
+            castAvailability="available"
+          />
+        );
+      });
+
+      expect(screen.getByTestId("cast-button")).toBeInTheDocument();
+      expect(screen.queryByTestId("offline-hint")).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Media failure overlay ───────────────────────────────────────────────
+  describe("media failure overlay", () => {
+    function getVideo(): HTMLVideoElement {
+      return document.querySelector("video") as HTMLVideoElement;
+    }
+
+    it("surfaces an actionable overlay when the media element errors", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.error(getVideo());
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("media-failure-overlay")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("media-failure-title")).toHaveTextContent(
+        /playback stopped/i
+      );
+      expect(screen.getByTestId("media-retry-button")).toBeInTheDocument();
+      expect(vi.mocked(toast.error)).toHaveBeenCalled();
+    });
+
+    it("withholds the overlay when the host takes over the recovery", async () => {
+      const onMediaError = vi.fn().mockResolvedValue(true);
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} onMediaError={onMediaError} />);
+      });
+
+      await act(async () => {
+        fireEvent.error(getVideo());
+      });
+
+      expect(onMediaError).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
+    });
+
+    it("waits 15 seconds before surfacing a stall", async () => {
+      vi.useFakeTimers();
+      try {
+        render(<ControllerPlayer {...defaultProps} />);
+
+        fireEvent.stalled(getVideo());
+        await act(async () => {
+          vi.advanceTimersByTime(14_000);
+        });
+        expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
+
+        await act(async () => {
+          vi.advanceTimersByTime(1_000);
+        });
+        expect(screen.getByTestId("media-failure-title")).toHaveTextContent(
+          /playback stalled/i
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("drops a pending stall when bytes flow again", async () => {
+      vi.useFakeTimers();
+      try {
+        render(<ControllerPlayer {...defaultProps} />);
+
+        fireEvent.stalled(getVideo());
+        await act(async () => {
+          vi.advanceTimersByTime(10_000);
+        });
+        fireEvent.progress(getVideo());
+        await act(async () => {
+          vi.advanceTimersByTime(20_000);
+        });
+
+        expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("clears a surfaced stall once the media plays again", async () => {
+      vi.useFakeTimers();
+      try {
+        render(<ControllerPlayer {...defaultProps} />);
+
+        fireEvent.stalled(getVideo());
+        await act(async () => {
+          vi.advanceTimersByTime(15_000);
+        });
+        expect(screen.getByTestId("media-failure-overlay")).toBeInTheDocument();
+
+        fireEvent.playing(getVideo());
+        await act(async () => {});
+
+        expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("retry re-issues load/play and clears the overlay", async () => {
+      const load = vi.fn();
+      Object.defineProperty(window.HTMLMediaElement.prototype, "load", {
+        value: load,
+        writable: true,
+        configurable: true,
+      });
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.error(getVideo());
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("media-retry-button")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("media-retry-button"));
+      });
+
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalled();
+      expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
+    });
+
+    it("does not overlay media failures while a remote session is active", async () => {
+      await act(async () => {
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            isPresentationActive={true}
+            presentationFallback={{ isSupported: true, isConnected: true }}
+          />
+        );
+      });
+
+      await act(async () => {
+        fireEvent.error(getVideo());
+      });
+
+      expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
     });
   });
 });

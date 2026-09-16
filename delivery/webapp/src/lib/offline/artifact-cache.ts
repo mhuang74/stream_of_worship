@@ -87,6 +87,28 @@ export async function getStorageBudget(): Promise<StorageBudget> {
   }
 }
 
+/**
+ * Returns the cached response for one artifact, or null when it is not cached
+ * (or Cache Storage is unavailable). The read side of the artifact cache:
+ * offline boot uses it to decide what it can actually play — the offline
+ * index's `cached*` flags are bookkeeping and may be stale.
+ */
+export async function matchCachedArtifact(
+  renderJobId: string,
+  type: "mp3" | "mp4" | "chapters"
+): Promise<Response | null> {
+  if (typeof window === "undefined" || !("caches" in window)) {
+    return null;
+  }
+
+  try {
+    const cache = await caches.open(ARTIFACT_CACHE_NAME);
+    return (await cache.match(artifactCacheKey(renderJobId, type))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Returns true if the render job's primary artifact (mp3, then mp4) is cached. */
 export async function getArtifactCacheStatus(
   renderJobId: string,
