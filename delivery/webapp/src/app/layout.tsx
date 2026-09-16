@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { resolveUserLocale } from "@/lib/i18n/server";
 import { ServiceWorkerRegistrar } from "@/components/system/ServiceWorkerRegistrar";
+import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -49,6 +50,7 @@ export default async function RootLayout({
             <main className="flex-1 pb-16 lg:pb-0">{children}</main>
             <BottomNav />
           </GlobalAudioPlayer>
+          <OfflineIndicator />
           <Toaster />
           <ServiceWorkerRegistrar />
         </LocaleProvider>

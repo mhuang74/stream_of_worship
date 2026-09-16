@@ -15,6 +15,10 @@ export const playBundle = bundle({
     "play.loadFailed": "Failed to load songset",
     "play.backToSongsets": "Back to songsets",
 
+    // OfflineAvailableCard — play page offline entry (issue #206)
+    "play.offline.heading": "Ready for offline playback",
+    "play.offline.hint": "You are offline. This worship set was downloaded and can start without a network.",
+
     // Projection page (app/songsets/[id]/play/projection/page.tsx)
     "projection.loadingAriaLabel": "Loading projection",
     "projection.errorAuthRequired": "Authentication required",
@@ -124,6 +128,10 @@ export const playBundle = bundle({
     "play.notFound": "找不到這個敬拜歌單",
     "play.loadFailed": "敬拜歌單載入失敗，請再試一次",
     "play.backToSongsets": "返回歌單",
+
+    // OfflineAvailableCard — play page offline entry (issue #206)
+    "play.offline.heading": "離線播放已就緒",
+    "play.offline.hint": "你目前離線。這個敬拜歌單已下載到本機，不需要網路也能開始。",
 
     // Projection page
     "projection.loadingAriaLabel": "投影載入中",

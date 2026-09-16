@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { ARTIFACT_CACHE_NAME, cacheArtifacts } from "@/lib/offline/artifact-cache";
+import { SOW_PAGES_CACHE_NAME } from "@/lib/offline/document-cache";
 import {
   artifactCacheKeyForUrl,
   artifactHandler,
@@ -105,5 +106,20 @@ describe("service worker artifact module version token", () => {
       token,
       `public/sw-artifact-serving.js changed — set its importScripts() token in public/sw.js to ${digest.slice(0, 12)}`
     ).toBe(digest.slice(0, 12));
+  });
+});
+
+describe("service worker ↔ app document cache contract (issue #206)", () => {
+  // The download path pre-caches the controller document into the SW's
+  // navigation cache. If the two sides stop naming the same cache, the
+  // offline Start Worship tap dead-ends at the SW's offline fallback page —
+  // invisible until the network is actually gone.
+  it("pre-caches documents into the cache the SW document route reads", () => {
+    const script = readFileSync(SW_SCRIPT_PATH, "utf8");
+
+    expect(
+      script.includes(`cacheName: "${SOW_PAGES_CACHE_NAME}"`),
+      `sw.js's document route must use the app's cache name (${SOW_PAGES_CACHE_NAME}) — see src/lib/offline/document-cache.ts and the NetworkFirst route in public/sw.js`
+    ).toBe(true);
   });
 });

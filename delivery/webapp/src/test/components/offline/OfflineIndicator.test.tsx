@@ -76,7 +76,13 @@ describe("OfflineIndicator", () => {
       render(<OfflineIndicator />);
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
+      // A real browser flips navigator.onLine atomically with the events.
       act(() => {
+        Object.defineProperty(navigator, "onLine", {
+          value: false,
+          writable: true,
+          configurable: true,
+        });
         window.dispatchEvent(new Event("offline"));
       });
 
@@ -94,6 +100,11 @@ describe("OfflineIndicator", () => {
       expect(screen.getByRole("status")).toBeInTheDocument();
 
       act(() => {
+        Object.defineProperty(navigator, "onLine", {
+          value: true,
+          writable: true,
+          configurable: true,
+        });
         window.dispatchEvent(new Event("online"));
       });
 

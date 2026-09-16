@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
@@ -9,26 +9,27 @@ export interface OfflineIndicatorProps {
   className?: string;
 }
 
+// Connectivity via useSyncExternalStore: the server snapshot renders the
+// online state (null), so an offline cold start hydrates without a mismatch
+// and the client snapshot upgrades to the banner in the same commit.
+function subscribeConnectivity(onChange: () => void): () => void {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
 export function OfflineIndicator({ className }: OfflineIndicatorProps) {
   const { t } = useLocale();
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== "undefined" ? navigator.onLine : true
+  const isOffline = useSyncExternalStore(
+    subscribeConnectivity,
+    () => typeof navigator !== "undefined" && navigator.onLine === false,
+    () => false
   );
 
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
-
-  if (isOnline) return null;
+  if (!isOffline) return null;
 
   return (
     <div
