@@ -133,6 +133,94 @@ describe("SongsetRow", () => {
     });
   });
 
+  describe("remove from offline menu item", () => {
+    it("renders Remove from offline menu item when offline available", async () => {
+      renderRow({ isOfflineAvailable: true, onRemoveOffline: vi.fn() });
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButton);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("menuitem", { name: /remove from offline/i })
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("does not render Remove from offline when offline unavailable", async () => {
+      renderRow({ isOfflineAvailable: false, onRemoveOffline: vi.fn() });
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButton);
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByRole("menuitem", { name: /remove from offline/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render Remove from offline when handler missing", async () => {
+      renderRow({ isOfflineAvailable: true });
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButton);
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByRole("menuitem", { name: /remove from offline/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("calls onRemoveOffline when clicked", async () => {
+      const onRemoveOffline = vi.fn();
+      renderRow({ isOfflineAvailable: true, onRemoveOffline });
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButton);
+      await waitFor(() => {
+        const item = screen.getByRole("menuitem", { name: /remove from offline/i });
+        fireEvent.click(item);
+      });
+      expect(onRemoveOffline).toHaveBeenCalled();
+    });
+
+    it("renders Traditional Chinese label in zh-Hant locale", () => {
+      renderWithLocale(
+        <SongsetRow {...defaultProps} isOfflineAvailable onRemoveOffline={() => {}} />,
+        "zh-Hant"
+      );
+      fireEvent.click(screen.getByRole("button", { name: /開啟選單/i }));
+      // item content is checked after opening
+      return waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /離線/ })).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("offline badge stale tint", () => {
+    it("tints the offline badge amber when artifacts are stale", () => {
+      const { container } = renderRow({
+        isOfflineAvailable: true,
+        isArtifactsStale: true,
+      });
+      const badge = container.querySelector(
+        '[data-songset-id] span[data-slot="badge"][data-variant="secondary"]'
+      );
+      expect(badge).not.toBeNull();
+      expect(badge!.className).toContain("text-amber-600");
+      expect(badge!.className).toContain("border-amber-500/50");
+    });
+
+    it("keeps the neutral offline badge when artifacts are fresh", () => {
+      const { container } = renderRow({
+        isOfflineAvailable: true,
+        isArtifactsStale: false,
+      });
+      const badge = container.querySelector(
+        '[data-songset-id] span[data-slot="badge"][data-variant="secondary"]'
+      );
+      expect(badge).not.toBeNull();
+      expect(badge!.className).not.toContain("text-amber-600");
+    });
+  });
+
   describe("context menu", () => {
     it("opens context menu when menu button clicked", async () => {
       renderRow();
