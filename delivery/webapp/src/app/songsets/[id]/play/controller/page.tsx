@@ -9,6 +9,11 @@ import { dispatchCast } from "@/lib/cast/dispatch";
 import type { PresentationCommand, PresentationMediaStatus } from "@/types/presentation-api";
 import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
+import {
+  createOfflineBlobUrl,
+  resolveOfflinePlayback,
+  type OfflineMediaKind,
+} from "@/lib/offline/offline-playback";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
@@ -20,9 +25,35 @@ interface SongsetData {
   latestRenderJobId: string | null;
 }
 
+/**
+ * Media the controller boots with: the online chain's presigned URL, or an
+ * offline artifact (service-worker-served proxy URL, or a blob URL over the
+ * cached bytes).
+ */
+interface ControllerMedia {
+  src: string;
+  kind: OfflineMediaKind;
+  /** Offline boot: the offline hint renders and Cast is hidden. */
+  isOffline: boolean;
+  /** True while `src` is the proxy URL the service worker serves from cache;
+   * a blob fallback is still possible. */
+  viaProxy: boolean;
+  renderJobId: string;
+}
+
 /** items[].recording.contentHash keyed by item position for the
  * Lyrics Feedback affordance (issue #194). */
 type ChapterRecordingHashes = (string | null)[];
+
+/** Control-flow signal: the songset fetch answered 401 and the page is
+ * navigating to /login. Never a reason to fall back to the offline index. */
+class AuthRedirectError extends Error {}
+
+/** True when the device reports no network — the controller then boots
+ * straight from the offline index instead of hanging on API fetches. */
+function isOfflineAtBoot(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
 
 export default function ControllerPage() {
   const params = useParams();
@@ -31,7 +62,7 @@ export default function ControllerPage() {
   const songsetId = params.id as string;
 
   const [songset, setSongset] = useState<SongsetData | null>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [media, setMedia] = useState<ControllerMedia | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,103 +71,172 @@ export default function ControllerPage() {
   const [chapterRecordingHashes, setChapterRecordingHashes] =
     useState<ChapterRecordingHashes>([]);
 
-  // Load songset and render job data
+  // Load songset and render job data.
+  //
+  // Connectivity-aware three-branch boot (issue #205):
+  //   1. online → the existing four-fetch chain verbatim (freshness and Cast
+  //      preserved for a downloaded-but-online leader);
+  //   2. chain fails while nominally online (mid-session drop: a rejected
+  //      fetch, or the service worker's 503 for an uncached API route) →
+  //      boot cache-first from the offline index, Cast hidden;
+  //   3. offline at boot → cache-first directly, zero API fetches.
+  // `isOffline` media only ever comes out of branches 2/3, so Cast gating on
+  // it is correct: online never skips the API chain, and never silently plays
+  // a stale download.
   useEffect(() => {
     let cancelled = false;
+
+    // Boots the player from the offline index + artifact cache. Returns false
+    // when this songset has no usable offline copy (the caller then surfaces
+    // the chain's own error).
+    async function loadOffline(): Promise<boolean> {
+      const offline = await resolveOfflinePlayback(songsetId);
+      if (cancelled || !offline) return false;
+
+      // Cache-first boot needs a songset shape for the player props; the
+      // record carries everything it renders (name + render job).
+      setSongset({
+        id: songsetId,
+        name: offline.songsetName,
+        renderState: "fresh",
+        latestRenderJobId: offline.renderJobId,
+      });
+      setChapterRecordingHashes(offline.chapterRecordingHashes);
+      setChapters(offline.chapters);
+      setMedia({
+        src: offline.src,
+        kind: offline.kind,
+        isOffline: true,
+        viaProxy: offline.viaProxy,
+        renderJobId: offline.renderJobId,
+      });
+      return true;
+    }
+
+    // Chapters are a per-artifact best-effort: the player is already booted on
+    // its media source when this runs, and neither a failed fetch nor an
+    // unparseable manifest may take the media down with it.
+    async function loadChapters(renderJobId: string): Promise<void> {
+      try {
+        const response = await fetch(`/api/r2/artifact/${renderJobId}/chapters.json`);
+        if (!response.ok || cancelled) return;
+        const manifest = normalizeChaptersManifest(await response.json());
+        if (cancelled) return;
+        setChapters(manifest.chapters);
+      } catch (e) {
+        console.error("Failed to load chapters:", e);
+      }
+    }
+
+    async function loadOnline(): Promise<void> {
+      // Load songset
+      const songsetResponse = await fetch(`/api/songsets/${songsetId}`);
+      if (!songsetResponse.ok) {
+        if (songsetResponse.status === 401) {
+          router.push("/login");
+          throw new AuthRedirectError();
+        }
+        if (songsetResponse.status === 404) {
+          throw new Error(t("control.songsetNotFound"));
+        }
+        throw new Error(t("control.failedToLoadSongset"));
+      }
+
+      const songsetData = await songsetResponse.json();
+      if (cancelled) return;
+
+      setSongset({
+        id: songsetData.id,
+        name: songsetData.name,
+        renderState: songsetData.renderState,
+        latestRenderJobId: songsetData.latestRenderJobId,
+      });
+
+      // Position → Recording content hash for the Lyrics Feedback
+      // affordance (issue #194). Songset items are sorted by position and
+      // chapters render in that order.
+      const items = Array.isArray(songsetData.items) ? songsetData.items : [];
+      const sortedItems = [...items].sort(
+        (a: { position: number }, b: { position: number }) => a.position - b.position
+      );
+      setChapterRecordingHashes(
+        sortedItems.map((item: { recording?: { contentHash: string } | null }) =>
+          item?.recording?.contentHash ?? null
+        )
+      );
+
+      // Check if render artifacts exist
+      if (!songsetData.latestRenderJobId) {
+        throw new Error(t("control.notRenderedYet"));
+      }
+
+      // Load render job
+      const jobResponse = await fetch(
+        `/api/render-jobs/${songsetData.latestRenderJobId}`
+      );
+      if (!jobResponse.ok) {
+        throw new Error(t("control.failedToLoadRenderJob"));
+      }
+
+      const jobData = await jobResponse.json();
+      if (cancelled) return;
+
+      if (!jobData.mp4R2Key) {
+        throw new Error(t("control.noVideoForSongset"));
+      }
+
+      // Get signed URL for video. The logged-in phone mints the presigned
+      // R2 URL with its own session and hands it to the TV receiver (the TV
+      // only hits R2, never the webapp). `cast=true` mints the 4-hour
+      // Cast-playback expiry so the URL survives a full service + setup.
+      const signedUrlResponse = await fetch(
+        `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=video&cast=true`
+      );
+      if (!signedUrlResponse.ok) {
+        throw new Error(t("control.failedToGetVideoUrl"));
+      }
+
+      const { url } = await signedUrlResponse.json();
+      if (cancelled) return;
+
+      setMedia({
+        src: url,
+        kind: "video",
+        isOffline: false,
+        viaProxy: false,
+        renderJobId: jobData.id,
+      });
+
+      // Load chapters via the proxy URL — independently of the media boot.
+      if (jobData.chaptersR2Key) {
+        void loadChapters(jobData.id);
+      }
+    }
 
     async function loadData() {
       try {
         setIsLoading(true);
         setError(null);
 
-        // Load songset
-        const songsetResponse = await fetch(`/api/songsets/${songsetId}`);
-        if (!songsetResponse.ok) {
-          if (songsetResponse.status === 401) {
-            router.push("/login");
-            return;
-          }
-          if (songsetResponse.status === 404) {
-            throw new Error(t("control.songsetNotFound"));
-          }
-          throw new Error(t("control.failedToLoadSongset"));
+        // Offline at boot: no API fetch is even attempted — the offline index
+        // and the artifact cache are the only sources.
+        if (isOfflineAtBoot()) {
+          if (await loadOffline()) return;
+          throw new Error(t("control.offlineUnavailable"));
         }
 
-        const songsetData = await songsetResponse.json();
-        if (cancelled) return;
-
-        setSongset({
-          id: songsetData.id,
-          name: songsetData.name,
-          renderState: songsetData.renderState,
-          latestRenderJobId: songsetData.latestRenderJobId,
-        });
-
-        // Position → Recording content hash for the Lyrics Feedback
-        // affordance (issue #194). Songset items are sorted by position and
-        // chapters render in that order.
-        const items = Array.isArray(songsetData.items) ? songsetData.items : [];
-        const sortedItems = [...items].sort(
-          (a: { position: number }, b: { position: number }) => a.position - b.position
-        );
-        setChapterRecordingHashes(
-          sortedItems.map((item: { recording?: { contentHash: string } | null }) =>
-            item?.recording?.contentHash ?? null
-          )
-        );
-
-        // Check if render artifacts exist
-        if (!songsetData.latestRenderJobId) {
-          throw new Error(t("control.notRenderedYet"));
-        }
-
-        // Load render job
-        const jobResponse = await fetch(
-          `/api/render-jobs/${songsetData.latestRenderJobId}`
-        );
-        if (!jobResponse.ok) {
-          throw new Error(t("control.failedToLoadRenderJob"));
-        }
-
-        const jobData = await jobResponse.json();
-        if (cancelled) return;
-
-        if (!jobData.mp4R2Key) {
-          throw new Error(t("control.noVideoForSongset"));
-        }
-
-        // Get signed URL for video. The logged-in phone mints the presigned
-        // R2 URL with its own session and hands it to the TV receiver (the TV
-        // only hits R2, never the webapp). `cast=true` mints the 4-hour
-        // Cast-playback expiry so the URL survives a full service + setup.
-        const signedUrlResponse = await fetch(
-          `/api/signed-url?renderJobId=${encodeURIComponent(jobData.id)}&fileType=video&cast=true`
-        );
-        if (!signedUrlResponse.ok) {
-          throw new Error(t("control.failedToGetVideoUrl"));
-        }
-
-        const { url } = await signedUrlResponse.json();
-        if (cancelled) return;
-
-        setVideoUrl(url);
-
-        // Load chapters if available via proxy URL
-        if (jobData.chaptersR2Key) {
-          const chaptersProxyUrl = `/api/r2/artifact/${jobData.id}/chapters.json`;
-          const chaptersDataResponse = await fetch(chaptersProxyUrl);
-          if (chaptersDataResponse.ok) {
-            const chaptersData = await chaptersDataResponse.json();
-            try {
-              const manifest = normalizeChaptersManifest(chaptersData);
-              setChapters(manifest.chapters);
-            } catch (e) {
-              console.error("Failed to parse chapters:", e);
-            }
-          }
+        try {
+          await loadOnline();
+        } catch (err) {
+          if (err instanceof AuthRedirectError) throw err;
+          // Nominally online but the chain did not complete: prefer the
+          // downloaded copy over the error screen.
+          if (await loadOffline()) return;
+          throw err;
         }
       } catch (err) {
         if (!cancelled) {
+          if (err instanceof AuthRedirectError) return;
           const message =
             err instanceof Error ? err.message : t("control.failedToLoadPlayer");
           setError(message);
@@ -158,6 +258,28 @@ export default function ControllerPage() {
     };
   }, [songsetId, router, t]);
 
+  // ── Media failure → blob fallback ───────────────────────────────────────
+  // The offline proxy URL is served by the service worker from Cache Storage.
+  // When it is not (worker no longer controlling the document, entry evicted
+  // between boot and play), the media element errors — re-issue the load
+  // against a blob URL of the cached artifact rather than going straight to
+  // the failure overlay. One attempt per boot: a blob URL already holds the
+  // whole artifact, there is no cheaper source to fall back to after it.
+  const blobFallbackTriedRef = useRef(false);
+
+  const handleMediaError = useCallback(async (): Promise<boolean> => {
+    if (!media?.isOffline || !media.viaProxy || blobFallbackTriedRef.current) {
+      return false;
+    }
+    blobFallbackTriedRef.current = true;
+
+    const src = await createOfflineBlobUrl(media.renderJobId, media.kind);
+    if (!src) return false;
+
+    setMedia({ ...media, src, viaProxy: false });
+    return true;
+  }, [media]);
+
   // Cast + Presentation transport wiring.
   //
   // The Cast Web Sender SDK is the production transport. The dev-only
@@ -168,31 +290,32 @@ export default function ControllerPage() {
   // R2 URL with `cast=true` and passes it via the `v` query param so the
   // receiver (a Presentation-API context with no session cookies) can boot
   // without calling any authenticated API. `t` carries the songset name for
-  // the title overlay. When `videoUrl` is not yet loaded the URL falls back
-  // to the bare path; the controller's render guards prevent `handleSendToTV`
-  // from running before data is ready.
+  // the title overlay. When no media is loaded yet the URL falls back to the
+  // bare path; the controller's render guards prevent `handleSendToTV` from
+  // running before data is ready.
   const songsetName = songset?.name;
+  const mediaSrc = media?.src;
   const presentationUrl = useMemo(() => {
     const params = new URLSearchParams();
-    if (videoUrl) params.set("v", videoUrl);
+    if (mediaSrc) params.set("v", mediaSrc);
     if (songsetName) params.set("t", songsetName);
     const qs = params.toString();
     return qs
       ? `/songsets/${songsetId}/play/projection?${qs}`
       : `/songsets/${songsetId}/play/projection`;
-  }, [songsetId, videoUrl, songsetName]);
-  const media = useMemo<CastMedia>(
+  }, [songsetId, mediaSrc, songsetName]);
+  const castMedia = useMemo<CastMedia>(
     () => ({
-      videoUrl: videoUrl ?? "",
+      videoUrl: mediaSrc ?? "",
       title: songset?.name ?? t("control.worshipSet"),
       source: { kind: "songset", idOrToken: songsetId },
       startSeconds: 0,
     }),
-    [videoUrl, songset?.name, songsetId, t],
+    [mediaSrc, songset?.name, songsetId, t],
   );
 
   const cast = useCastTransport({
-    media,
+    media: castMedia,
     onError: (m) => toast.error(m),
   });
 
@@ -265,13 +388,17 @@ export default function ControllerPage() {
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-8 animate-spin text-white" />
-          <p className="text-white/70">{t("control.loadingPlayer")}</p>
+          <p className="text-white/70">
+            {isOfflineAtBoot()
+              ? t("control.offlineBooting")
+              : t("control.loadingPlayer")}
+          </p>
         </div>
       </div>
     );
   }
 
-  if (error || !songset || !videoUrl) {
+  if (error || !songset || !media) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <div className="text-center">
@@ -292,9 +419,11 @@ export default function ControllerPage() {
   return (
     <ControllerPlayer
       playerId={songsetId}
-      videoSrc={videoUrl}
+      {...(media.kind === "audio" ? { audioSrc: media.src } : { videoSrc: media.src })}
       chapters={chapters}
       chapterRecordingHashes={chapterRecordingHashes}
+      isOfflineMedia={media.isOffline}
+      onMediaError={handleMediaError}
       isPresentationActive={isPresentationActive}
       transport={cast}
       presentationFallback={{

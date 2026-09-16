@@ -36,7 +36,7 @@ interface ProxyUrlResponse {
   mp3Url?: string | null;
   mp4Url?: string | null;
   chaptersUrl?: string | null;
-  chapterContentHashes?: string[] | null;
+  chapterContentHashes?: (string | null)[] | null;
 }
 
 async function fetchProxyResponse(renderJobId: string): Promise<ProxyUrlResponse> {

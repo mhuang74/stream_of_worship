@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import type { CastTransportResult, CastMedia } from "@/hooks/useCast";
+import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
 
 // Mock next/navigation
 const mockPush = vi.fn();
@@ -30,6 +31,16 @@ vi.mock("sonner", () => ({
     error: toastError,
     info: toastInfo,
   },
+}));
+
+// The controller's offline boot reads the offline index; the cache lookup
+// underneath it runs for real against the Cache Storage stub in the offline
+// tests below.
+const { mockGetOfflineRecord } = vi.hoisted(() => ({
+  mockGetOfflineRecord: vi.fn(),
+}));
+vi.mock("@/lib/offline/offline-index", () => ({
+  getOfflineRecord: mockGetOfflineRecord,
 }));
 
 import ControllerPage from "@/app/songsets/[id]/play/controller/page";
@@ -100,9 +111,12 @@ vi.mock("@/hooks/usePresentation", () => ({
 
 interface CapturedControllerProps {
   playerId: string;
-  videoSrc: string;
+  videoSrc?: string;
+  audioSrc?: string;
   chapters: unknown[];
   chapterRecordingHashes?: (string | null)[];
+  isOfflineMedia?: boolean;
+  onMediaError?: () => Promise<boolean>;
   isPresentationActive: boolean;
   transport?: CastTransportResult;
   presentationFallback?: { isSupported: boolean; isConnected?: boolean };
@@ -122,7 +136,11 @@ vi.mock("@/components/play/ControllerPlayer", () => ({
     lastControllerProps = props;
     return (
       <div data-testid="controller-player">
-        <div data-testid="video-src">{props.videoSrc}</div>
+        <div data-testid="video-src">{props.videoSrc ?? ""}</div>
+        <div data-testid="audio-src">{props.audioSrc ?? ""}</div>
+        <div data-testid="offline-media">
+          {props.isOfflineMedia ? "true" : "false"}
+        </div>
         <div data-testid="chapters-count">{props.chapters.length}</div>
         <div data-testid="presentation-active">
           {props.isPresentationActive ? "true" : "false"}
@@ -434,6 +452,262 @@ describe("ControllerPage (songset)", () => {
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith("/login");
       });
+    });
+  });
+
+  describe("offline boot", () => {
+    const OFFLINE_RECORD: OfflineSongsetRecord = {
+      songsetId: "test-songset",
+      renderJobId: "job-offline",
+      songsetName: "Offline Set",
+      cachedMp3: true,
+      cachedMp4: true,
+      cachedChapters: true,
+      cachedAt: "2026-09-15T00:00:00.000Z",
+      chapterContentHashes: ["hash-a", "hash-b", null],
+    };
+
+    const OFFLINE_CHAPTERS = {
+      chapters: [
+        {
+          position: 0,
+          songTitle: "Amazing Grace",
+          startSeconds: 0,
+          endSeconds: 180,
+          lines: [],
+        },
+      ],
+      totalDurationSeconds: 180,
+      generatedAt: "2026-09-15T00:00:00.000Z",
+    };
+
+    const MP4_PROXY_SRC = "/api/r2/artifact/job-offline/output.mp4";
+    const MP3_PROXY_SRC = "/api/r2/artifact/job-offline/output.mp3";
+
+    function setOnline(online: boolean) {
+      Object.defineProperty(navigator, "onLine", {
+        value: online,
+        configurable: true,
+      });
+    }
+
+    function setServiceWorkerController(controlling: boolean) {
+      Object.defineProperty(navigator, "serviceWorker", {
+        value: controlling ? { controller: { scriptURL: "/sw.js" } } : undefined,
+        configurable: true,
+      });
+    }
+
+    /** Cache Storage stub holding the download path's keys (sow-artifacts). */
+    function installArtifactCache(bodies: {
+      mp4?: string;
+      mp3?: string;
+      chapters?: unknown;
+    }) {
+      const entries = new Map<string, Response>();
+      if (bodies.mp4 !== undefined) {
+        entries.set("/sow-artifact-cache/job-offline/mp4", new Response(bodies.mp4));
+      }
+      if (bodies.mp3 !== undefined) {
+        entries.set("/sow-artifact-cache/job-offline/mp3", new Response(bodies.mp3));
+      }
+      if (bodies.chapters !== undefined) {
+        entries.set(
+          "/sow-artifact-cache/job-offline/chapters",
+          Response.json(bodies.chapters)
+        );
+      }
+
+      Object.defineProperty(window, "caches", {
+        value: {
+          open: () =>
+            Promise.resolve({
+              match: (key: string) => Promise.resolve(entries.get(key)),
+            }),
+        },
+        configurable: true,
+      });
+    }
+
+    beforeEach(() => {
+      mockGetOfflineRecord.mockResolvedValue(OFFLINE_RECORD);
+      installArtifactCache({ mp4: "video-bytes", chapters: OFFLINE_CHAPTERS });
+      setServiceWorkerController(true);
+      setOnline(false);
+      Object.defineProperty(URL, "createObjectURL", {
+        value: vi.fn(() => "blob:cached-video"),
+        configurable: true,
+        writable: true,
+      });
+      global.fetch = vi.fn();
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(window, "caches");
+      Reflect.deleteProperty(navigator, "serviceWorker");
+      Reflect.deleteProperty(URL, "createObjectURL");
+      setOnline(true);
+    });
+
+    it("boots from the index with the proxy media source and zero API fetches", async () => {
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(screen.getByTestId("chapters-count")).toHaveTextContent("1");
+      expect(lastControllerProps?.isOfflineMedia).toBe(true);
+      expect(lastControllerProps?.chapterRecordingHashes).toEqual([
+        "hash-a",
+        "hash-b",
+        null,
+      ]);
+    });
+
+    it("boots the media even when the cached chapters manifest cannot be parsed", async () => {
+      installArtifactCache({ mp4: "video-bytes", chapters: "{ not json" });
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      });
+      expect(screen.getByTestId("chapters-count")).toHaveTextContent("0");
+    });
+
+    it("plays a blob URL of the cached MP4 when no service worker controls the document", async () => {
+      setServiceWorkerController(false);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent("blob:cached-video");
+      });
+    });
+
+    it("boots audio playback when only the MP3 was cached", async () => {
+      installArtifactCache({ mp3: "audio-bytes" });
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("audio-src")).toHaveTextContent(MP3_PROXY_SRC);
+      expect(lastControllerProps?.videoSrc).toBeUndefined();
+    });
+
+    it("shows the offline hint while it boots", () => {
+      mockGetOfflineRecord.mockReturnValue(new Promise(() => {}));
+
+      render(<ControllerPage />);
+
+      expect(screen.getByText(/starting offline playback/i)).toBeInTheDocument();
+    });
+
+    it("reports nothing downloaded when offline with no index record", async () => {
+      mockGetOfflineRecord.mockResolvedValue(null);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/has not been downloaded for offline playback/i)
+        ).toBeInTheDocument();
+      });
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the index when the online chain fails", async () => {
+      setOnline(true);
+      global.fetch = vi
+        .fn()
+        .mockRejectedValue(new TypeError("Failed to fetch"));
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      expect(lastControllerProps?.isOfflineMedia).toBe(true);
+    });
+
+    it("shows the error screen when the chain fails and nothing is downloaded", async () => {
+      setOnline(true);
+      mockGetOfflineRecord.mockResolvedValue(null);
+      global.fetch = vi
+        .fn()
+        .mockRejectedValue(new TypeError("Failed to fetch"));
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/go back/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
+    });
+
+    it("still redirects to login on a 401 instead of booting offline", async () => {
+      setOnline(true);
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/login");
+      });
+      expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
+    });
+
+    it("runs the online chain when online, even with a downloaded copy", async () => {
+      setOnline(true);
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("video-src")).toHaveTextContent(
+        "https://r2.example.com/videos/test.mp4"
+      );
+      expect(lastControllerProps?.isOfflineMedia).toBe(false);
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it("swaps a failed proxy source for a blob URL of the cached artifact", async () => {
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      });
+
+      let handled: boolean | undefined;
+      await act(async () => {
+        handled = await lastControllerProps?.onMediaError?.();
+      });
+
+      expect(handled).toBe(true);
+      expect(screen.getByTestId("video-src")).toHaveTextContent("blob:cached-video");
+    });
+
+    it("leaves the media error unhandled when already playing a blob URL", async () => {
+      setServiceWorkerController(false);
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent("blob:cached-video");
+      });
+
+      expect(await lastControllerProps?.onMediaError?.()).toBe(false);
     });
   });
 
