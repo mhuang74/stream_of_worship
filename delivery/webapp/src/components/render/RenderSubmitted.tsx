@@ -7,12 +7,12 @@ import { Clock } from "lucide-react"
 import { useLocale } from "@/hooks/useLocale"
 
 /** How often the submitted screen re-reads its render job. */
-const RENDER_JOB_POLL_INTERVAL_MS = 10_000
+export const RENDER_JOB_POLL_INTERVAL_MS = 10_000
 
 /** The slice of GET /api/render-jobs/[id] the render screen consumes. */
 export interface RenderCompletionJob {
   id: string
-  status: string
+  status: "queued" | "running" | "completed" | "failed" | "cancelled"
   mp3R2Key: string | null
   mp4R2Key: string | null
 }
@@ -66,8 +66,19 @@ export function RenderSubmitted({
     const poll = async () => {
       try {
         const response = await fetch(`/api/render-jobs/${jobId}`)
-        // A failed poll is transient here (offline venue, dropped request):
-        // the next tick retries.
+
+        // Transient (offline venue, dropped request): the next tick retries.
+        // Permanent failures are terminal, or the screen would poll a job it
+        // can never read forever.
+        if (response.status === 401 || response.status === 403) {
+          stopPolling()
+          return
+        }
+        if (response.status === 404 || response.status === 410) {
+          stopPolling()
+          onFailedRef.current?.()
+          return
+        }
         if (!response.ok) return
 
         const job = (await response.json()) as RenderCompletionJob

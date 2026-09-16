@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { screen, act } from "@testing-library/react"
+import { screen, act, fireEvent } from "@testing-library/react"
 import { renderWithLocale as render } from "@/test/render"
 import { RenderPageClient } from "@/app/songsets/[id]/render/RenderPageClient"
 
@@ -42,8 +42,9 @@ import {
 } from "@/lib/offline/artifact-cache"
 import { putOfflineRecord } from "@/lib/offline/offline-index"
 import { t } from "@/lib/i18n/messages"
+import { RENDER_JOB_POLL_INTERVAL_MS } from "@/components/render/RenderSubmitted"
 
-const POLL_INTERVAL_MS = 10_000
+const POLL_INTERVAL_MS = RENDER_JOB_POLL_INTERVAL_MS
 
 const SONGSET = {
   id: "test-songset",
@@ -348,6 +349,42 @@ describe("RenderPageClient", () => {
 
     expect(toast.error).toHaveBeenCalledWith(t("en", "audio.offline.noArtifacts"))
     expect(cacheArtifacts).not.toHaveBeenCalled()
+  })
+
+  it("does not report our own cancel as a render failure", async () => {
+    vi.useFakeTimers()
+
+    // The DELETE hangs; meanwhile a poll tick observes the cancelled status.
+    const deleteCall = Promise.withResolvers<unknown>()
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === "DELETE") return deleteCall.promise
+      if (url.startsWith("/api/render-jobs/")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ id: "job-1", status: "cancelled" }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ settings: { offlineAutoCache: false } }),
+      })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    renderSubmitted()
+    await waitForText("Render Started")
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel render/i }))
+    await runOnePoll()
+
+    expect(toast.error).not.toHaveBeenCalledWith(t("en", "render.toast.failed"))
+
+    await act(async () => {
+      deleteCall.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+    await waitForText("Output Options")
+
+    expect(toast.info).toHaveBeenCalledWith(t("en", "render.toast.cancelled"))
   })
 
   it("returns to the form with a toast when the render fails", async () => {
