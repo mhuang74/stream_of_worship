@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { screen, fireEvent, act } from "@testing-library/react"
 import { renderWithLocale as render } from "@/test/render"
-import { RenderSubmitted } from "@/components/render/RenderSubmitted"
+import { RenderSubmitted, RENDER_JOB_POLL_INTERVAL_MS } from "@/components/render/RenderSubmitted"
 
-const POLL_INTERVAL_MS = 10_000
+const POLL_INTERVAL_MS = RENDER_JOB_POLL_INTERVAL_MS
 
 function jobResponse(status: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -197,6 +197,41 @@ describe("RenderSubmitted", () => {
       })
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it("stops polling when the job is gone", async () => {
+      vi.useFakeTimers()
+      const fetchMock = stubFetch({ ok: false, status: 404, json: () => Promise.resolve({}) })
+      render(<RenderSubmitted {...defaultProps} />)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+      })
+
+      expect(mockFailed).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+      })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it("stops polling without claiming failure when the session expired", async () => {
+      vi.useFakeTimers()
+      const fetchMock = stubFetch({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      render(<RenderSubmitted {...defaultProps} />)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+      })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(mockFailed).not.toHaveBeenCalled()
+      expect(mockComplete).not.toHaveBeenCalled()
     })
 
     it("ignores a completion that lands after unmount", async () => {

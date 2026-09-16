@@ -110,6 +110,9 @@ export function RenderPageClient({
   // state: nothing renders from it, and the completion callback must see the
   // value the moment the fetch lands rather than after a re-render.
   const offlineAutoCacheRef = useRef(false)
+  // True between a Cancel tap and the DELETE settling, so a poll tick that
+  // lands in that window cannot report the cancellation as a failure.
+  const isCancellingRef = useRef(false)
 
   const handleSubmit = useCallback(
     async (formData: RenderFormData) => {
@@ -177,6 +180,7 @@ export function RenderPageClient({
   const handleCancel = useCallback(async () => {
     if (!jobId || isCancelling) return
     setIsCancelling(true)
+    isCancellingRef.current = true
     try {
       const response = await fetch(`/api/render-jobs/${jobId}`, { method: "DELETE" })
       if (!response.ok) {
@@ -188,6 +192,7 @@ export function RenderPageClient({
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("render.toast.failedToCancel"))
     } finally {
+      isCancellingRef.current = false
       setIsCancelling(false)
     }
   }, [jobId, isCancelling, t])
@@ -212,6 +217,10 @@ export function RenderPageClient({
 
   const handleRenderComplete = useCallback(
     (job: RenderCompletionJob) => {
+      // Auto-cache is tab-contingent: the render worker writes the database
+      // directly, so a completed job is only observable from a live page that
+      // is polling for it. Closing the render page before completion means no
+      // auto-cache — the songset list's download/manual path stays the fallback.
       toast.success(t("render.toast.completed"))
 
       if (!offlineAutoCacheRef.current) return
@@ -241,6 +250,9 @@ export function RenderPageClient({
   )
 
   const handleRenderFailed = useCallback(() => {
+    // A poll tick can observe the cancelled status while our own DELETE is in
+    // flight; the cancel path owns that transition (and its toast).
+    if (isCancellingRef.current) return
     toast.error(t("render.toast.failed"))
     setScreenState("form")
     setJobId(null)
