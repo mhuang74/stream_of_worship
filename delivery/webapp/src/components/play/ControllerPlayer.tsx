@@ -419,9 +419,15 @@ export function ControllerPlayer({
     // Stalling is how a dropped network or a stalled cache read shows up: the
     // element keeps "playing" but stops advancing. Only a stall that outlives
     // MEDIA_STALL_TIMEOUT_MS is worth an overlay — transient stalls must not
-    // flash one. `playing`/`progress` mean bytes are flowing again, so they
-    // both cancel the timer and clear an overlay already on screen (which is
+    // flash one. `playing`/`progress` both mean bytes are flowing again, so
+    // they cancel the timer and clear an overlay already on screen (which is
     // also what makes Retry recover visibly).
+    const handleBytesFlowing = () => {
+      if (isPresentationActive) return;
+      clearStallTimer();
+      setMediaFailure(null);
+    };
+
     const handleStalled = () => {
       if (isPresentationActive) return;
       clearStallTimer();
@@ -431,30 +437,22 @@ export function ControllerPlayer({
       }, MEDIA_STALL_TIMEOUT_MS);
     };
 
-    const handleProgress = () => {
-      if (isPresentationActive) return;
-      clearStallTimer();
-    };
-
-    const handlePlaying = () => {
-      if (isPresentationActive) return;
-      clearStallTimer();
-      setMediaFailure(null);
-    };
-
     const handleError = () => {
       if (isPresentationActive) return;
       clearStallTimer();
       // The element exposes no failure reason, so log the source it failed on.
       console.error("Media element failed:", media.currentSrc || media.src);
-      // The host may own the recovery (the controller swaps a failed offline
-      // proxy URL for a blob URL of the cached artifact). Only surface the
-      // overlay when it cannot.
-      void (onMediaErrorRef.current?.() ?? Promise.resolve(false)).then((handled) => {
-        if (handled) return;
+      const showFailure = () => {
         setMediaFailure("error");
         toast.error(t("controller.mediaFailed"));
-      });
+      };
+      // The host may own the recovery (the controller swaps a failed offline
+      // proxy URL for a blob URL of the cached artifact); when it declines, or
+      // its own recovery rejects, the overlay is the answer.
+      const handled = onMediaErrorRef.current?.() ?? Promise.resolve(false);
+      void handled.then((isHandled) => {
+        if (!isHandled) showFailure();
+      }).catch(showFailure);
     };
 
     media.addEventListener("timeupdate", handleTimeUpdate);
@@ -463,8 +461,8 @@ export function ControllerPlayer({
     media.addEventListener("pause", handlePause);
     media.addEventListener("volumechange", handleVolumeChange);
     media.addEventListener("stalled", handleStalled);
-    media.addEventListener("progress", handleProgress);
-    media.addEventListener("playing", handlePlaying);
+    media.addEventListener("progress", handleBytesFlowing);
+    media.addEventListener("playing", handleBytesFlowing);
     media.addEventListener("error", handleError);
 
     return () => {
@@ -475,8 +473,8 @@ export function ControllerPlayer({
       media.removeEventListener("pause", handlePause);
       media.removeEventListener("volumechange", handleVolumeChange);
       media.removeEventListener("stalled", handleStalled);
-      media.removeEventListener("progress", handleProgress);
-      media.removeEventListener("playing", handlePlaying);
+      media.removeEventListener("progress", handleBytesFlowing);
+      media.removeEventListener("playing", handleBytesFlowing);
       media.removeEventListener("error", handleError);
     };
   }, [chapters, currentSongIndex, isPresentationActive, t]);
@@ -986,15 +984,29 @@ export function ControllerPlayer({
   // ── Media failure recovery ──────────────────────────────────────────────
   // Retry re-issues the load on the current source: `load()` re-runs the
   // resource selection algorithm (picking up a source the host swapped in
-  // after the failure), then playback resumes. `playing` clears the overlay.
+  // after the failure), then playback resumes. `load()` also rewinds the
+  // element to 0:00, so the position is restored as soon as the new resource
+  // has metadata — a mid-service stall must not restart the whole set.
   const handleRetryMedia = useCallback(() => {
     const element = mediaRef.current;
     if (!element) return;
+    const resumeAt = Number.isFinite(element.currentTime) ? element.currentTime : 0;
     setMediaFailure(null);
     try {
       element.load();
     } catch {
       /* best-effort: reload can throw on a detached element */
+    }
+    if (resumeAt > 0) {
+      const restorePosition = () => {
+        element.removeEventListener("loadedmetadata", restorePosition);
+        try {
+          element.currentTime = resumeAt;
+        } catch {
+          /* best-effort: seeking can throw while the resource is unavailable */
+        }
+      };
+      element.addEventListener("loadedmetadata", restorePosition);
     }
     element
       .play()

@@ -83,6 +83,20 @@ export async function createOfflineBlobUrl(
   return cached ? blobUrlFor(cached) : null;
 }
 
+/**
+ * Releases a blob URL from createOfflineBlobUrl / resolveOfflinePlayback. A
+ * blob URL keeps the whole artifact (hundreds of MB) alive for as long as it
+ * exists, so it must be revoked when the controller stops using it.
+ */
+export function revokeOfflineBlobUrl(src: string): void {
+  if (typeof URL.revokeObjectURL !== "function") return;
+  try {
+    URL.revokeObjectURL(src);
+  } catch {
+    /* not an object URL — nothing to release */
+  }
+}
+
 /** Cached chapters manifest; empty when it was never cached or fails to parse. */
 async function cachedChapters(renderJobId: string): Promise<Chapter[]> {
   const cached = await matchCachedArtifact(renderJobId, "chapters");
@@ -133,6 +147,6 @@ export async function resolveOfflinePlayback(
     src: source.src,
     viaProxy: source.viaProxy,
     chapters: await cachedChapters(record.renderJobId),
-    chapterRecordingHashes: record.chapterContentHashes.map((hash) => hash ?? null),
+    chapterRecordingHashes: record.chapterContentHashes,
   };
 }

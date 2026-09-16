@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import { useCastTransport, type CastMedia } from "@/hooks/useCast";
@@ -12,6 +12,7 @@ import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import {
   createOfflineBlobUrl,
   resolveOfflinePlayback,
+  revokeOfflineBlobUrl,
   type OfflineMediaKind,
 } from "@/lib/offline/offline-playback";
 import { Loader2 } from "lucide-react";
@@ -49,17 +50,29 @@ type ChapterRecordingHashes = (string | null)[];
  * navigating to /login. Never a reason to fall back to the offline index. */
 class AuthRedirectError extends Error {}
 
-/** True when the device reports no network — the controller then boots
- * straight from the offline index instead of hanging on API fetches. */
-function isOfflineAtBoot(): boolean {
+/** True when the device reports no network. Read at boot (effect time) for
+ * the branch decision, and as the render-time snapshot for the boot hint. */
+function isOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
+
+// Connectivity for the boot hint is the one render-time read of navigator
+// state, so it goes through useSyncExternalStore with a `false` server
+// snapshot: SSR and the hydration pass render the online copy, and the client
+// snapshot upgrades it to the offline hint in the same commit. The loading
+// screen lives for milliseconds, so there is nothing to subscribe to.
+const subscribeConnectivityNever = () => () => {};
 
 export default function ControllerPage() {
   const params = useParams();
   const router = useRouter();
   const { t } = useLocale();
   const songsetId = params.id as string;
+  const offlineNow = useSyncExternalStore(
+    subscribeConnectivityNever,
+    isOffline,
+    () => false
+  );
 
   const [songset, setSongset] = useState<SongsetData | null>(null);
   const [media, setMedia] = useState<ControllerMedia | null>(null);
@@ -103,6 +116,7 @@ export default function ControllerPage() {
       });
       setChapterRecordingHashes(offline.chapterRecordingHashes);
       setChapters(offline.chapters);
+      if (!offline.viaProxy) blobUrlsRef.current.push(offline.src);
       setMedia({
         src: offline.src,
         kind: offline.kind,
@@ -220,7 +234,7 @@ export default function ControllerPage() {
 
         // Offline at boot: no API fetch is even attempted — the offline index
         // and the artifact cache are the only sources.
-        if (isOfflineAtBoot()) {
+        if (isOffline()) {
           if (await loadOffline()) return;
           throw new Error(t("control.offlineUnavailable"));
         }
@@ -258,6 +272,18 @@ export default function ControllerPage() {
     };
   }, [songsetId, router, t]);
 
+  // Blob URLs keep the whole artifact resident; release every one this page
+  // created when it unmounts. (A swap replaces a proxy URL, never a blob URL,
+  // so unmount is the only release point.)
+  const blobUrlsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const blobUrls = blobUrlsRef.current;
+    return () => {
+      for (const src of blobUrls) revokeOfflineBlobUrl(src);
+      blobUrls.length = 0;
+    };
+  }, []);
+
   // ── Media failure → blob fallback ───────────────────────────────────────
   // The offline proxy URL is served by the service worker from Cache Storage.
   // When it is not (worker no longer controlling the document, entry evicted
@@ -276,6 +302,7 @@ export default function ControllerPage() {
     const src = await createOfflineBlobUrl(media.renderJobId, media.kind);
     if (!src) return false;
 
+    blobUrlsRef.current.push(src);
     setMedia({ ...media, src, viaProxy: false });
     return true;
   }, [media]);
@@ -389,7 +416,7 @@ export default function ControllerPage() {
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-8 animate-spin text-white" />
           <p className="text-white/70">
-            {isOfflineAtBoot()
+            {offlineNow
               ? t("control.offlineBooting")
               : t("control.loadingPlayer")}
           </p>
