@@ -22,6 +22,8 @@ export const renderBundle = bundle({
     "render.toast.failedToCancel": "Failed to cancel",
     "render.toast.failedToCreateJob": "Failed to create render job",
     "render.toast.failedToCancelJob": "Failed to cancel render job",
+    "render.toast.completed": "Render completed",
+    "render.toast.failed": "Render failed",
     "render.toast.config.audio": "audio",
     "render.toast.config.video": "video",
 
@@ -58,13 +60,6 @@ export const renderBundle = bundle({
     "render.titleCard.defaultLines": "Default title card lines:",
     "render.titleCard.worshipSet": "Worship Set",
     "render.titleCard.placeholder": "Sunday Morning Worship",
-
-    // RenderForm — offline availability
-    "render.offline.title": "Offline Availability",
-    "render.offline.description": "Cache for offline playback",
-    "render.offline.makeAvailable": "Make available offline",
-    "render.offline.requiresIOS": "Requires iOS 17.4 or later",
-    "render.offline.cacheHint": "Cache rendered files for offline playback",
 
     // RenderForm — marked lines warning
     "render.markedLines.plural": "marked lines need attention",
@@ -153,6 +148,8 @@ export const renderBundle = bundle({
     "render.toast.failedToCancel": "取消失敗",
     "render.toast.failedToCreateJob": "渲染工作建立失敗，請稍後再試",
     "render.toast.failedToCancelJob": "取消渲染工作失敗",
+    "render.toast.completed": "已完成渲染",
+    "render.toast.failed": "渲染失敗",
     "render.toast.config.audio": "音訊",
     "render.toast.config.video": "影片",
 
@@ -188,13 +185,6 @@ export const renderBundle = bundle({
     "render.titleCard.defaultLines": "預設的標題卡內容：",
     "render.titleCard.worshipSet": "敬拜歌單",
     "render.titleCard.placeholder": "主日敬拜",
-
-    // RenderForm — offline availability
-    "render.offline.title": "離線可用性",
-    "render.offline.description": "快取以供離線播放",
-    "render.offline.makeAvailable": "設為離線可用",
-    "render.offline.requiresIOS": "需要 iOS 17.4 或更新版本",
-    "render.offline.cacheHint": "快取已渲染的檔案，離線也能播放",
 
     // RenderForm — marked lines warning
     "render.markedLines.plural": "處標記的歌詞需要確認",

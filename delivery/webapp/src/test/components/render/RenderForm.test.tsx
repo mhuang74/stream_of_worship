@@ -53,12 +53,6 @@ describe("RenderForm", () => {
       expect(screen.getByRole("checkbox", { name: /include title card/i })).toBeInTheDocument()
     })
 
-    it("renders offline availability section", () => {
-      render(<RenderForm {...defaultProps} />)
-      expect(screen.getByText("Offline Availability")).toBeInTheDocument()
-      expect(screen.getByRole("checkbox", { name: /make available offline/i })).toBeInTheDocument()
-    })
-
     it("renders action buttons", () => {
       render(<RenderForm {...defaultProps} />)
       expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
@@ -163,7 +157,6 @@ describe("RenderForm", () => {
             fontFamily: "noto_serif_tc",
             includeTitleCard: false,
             titleCardDurationSeconds: 10,
-            offlineEnabled: false,
           })
         )
       })
@@ -203,7 +196,6 @@ describe("RenderForm", () => {
         fontFamily: "lxgw_wenkai_tc",
         includeTitleCard: true,
         titleCardDurationSeconds: 15,
-        offlineEnabled: true,
       }
       
       render(<RenderForm {...defaultProps} initialData={initialData} />)
@@ -222,7 +214,6 @@ describe("RenderForm", () => {
             fontFamily: "lxgw_wenkai_tc",
             includeTitleCard: true,
             titleCardDurationSeconds: 15,
-            offlineEnabled: true,
           })
         )
       })

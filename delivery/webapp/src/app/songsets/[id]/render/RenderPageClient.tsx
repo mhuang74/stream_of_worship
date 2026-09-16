@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,12 @@ import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets"
 import type { RenderFormData } from "@/components/render/RenderForm"
+import type { RenderCompletionJob } from "@/components/render/RenderSubmitted"
+import { isOfflineSupportedOnCurrentDevice } from "@/lib/offline/artifact-cache"
+import {
+  downloadOfflineArtifacts,
+  NoArtifactsError,
+} from "@/lib/offline/download-offline"
 import { useLocale } from "@/hooks/useLocale"
 import { useSongsetListBack } from "@/hooks/useSongsetListBack"
 
@@ -98,6 +104,12 @@ export function RenderPageClient({
   )
   const [isCancelling, setIsCancelling] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // The auto-cache switch lives in settings (settings page owns it). Read once
+  // the submitted screen is up; an unreadable setting counts as off — nobody
+  // should discover a surprise hundred-megabyte download. Kept in a ref, not
+  // state: nothing renders from it, and the completion callback must see the
+  // value the moment the fetch lands rather than after a re-render.
+  const offlineAutoCacheRef = useRef(false)
 
   const handleSubmit = useCallback(
     async (formData: RenderFormData) => {
@@ -179,6 +191,60 @@ export function RenderPageClient({
       setIsCancelling(false)
     }
   }, [jobId, isCancelling, t])
+
+  useEffect(() => {
+    if (screenState !== "submitted" || !jobId) return
+
+    let cancelled = false
+    fetch("/api/settings")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { settings?: { offlineAutoCache?: boolean } } | null) => {
+        if (!cancelled && data) {
+          offlineAutoCacheRef.current = data.settings?.offlineAutoCache === true
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [screenState, jobId])
+
+  const handleRenderComplete = useCallback(
+    (job: RenderCompletionJob) => {
+      toast.success(t("render.toast.completed"))
+
+      if (!offlineAutoCacheRef.current) return
+      if (!job.mp3R2Key && !job.mp4R2Key) return
+      if (!isOfflineSupportedOnCurrentDevice() || !("caches" in window)) return
+
+      // Fire-and-forget: a worship video is hundreds of megabytes, and the
+      // screen is already done telling the user what happened.
+      downloadOfflineArtifacts({
+        songsetId,
+        songsetName: songset?.name ?? "",
+        renderJobId: job.id,
+      })
+        .then(() => {
+          toast.success(t("audio.offline.downloaded"))
+        })
+        .catch((error: unknown) => {
+          console.error("Auto-cache error:", error)
+          toast.error(
+            error instanceof NoArtifactsError
+              ? t("audio.offline.noArtifacts")
+              : t("audio.offline.downloadFailed")
+          )
+        })
+    },
+    [songset, songsetId, t]
+  )
+
+  const handleRenderFailed = useCallback(() => {
+    toast.error(t("render.toast.failed"))
+    setScreenState("form")
+    setJobId(null)
+  }, [t])
 
   if (isLoading) {
     return (
@@ -265,6 +331,9 @@ export function RenderPageClient({
 
         {screenState === "submitted" && jobId && (
           <RenderSubmitted
+            jobId={jobId}
+            onComplete={handleRenderComplete}
+            onFailed={handleRenderFailed}
             estimatedMinutes={estimatedMinutes}
             onCancel={handleCancel}
             isCancelling={isCancelling}
