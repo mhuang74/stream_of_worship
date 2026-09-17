@@ -237,6 +237,14 @@ export function SongsetsClient({
   }, [router]);
 
   const handlePlay = useCallback((id: string) => {
+    // Offline: a full document navigation is the deterministic path — the SW
+    // document route serves the page from sow-pages. SPA navigation needs an
+    // RSC fetch that cannot be pre-cached and dead-ends offline (issue #206's
+    // trap, at list granularity).
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      window.location.assign(`/songsets/${id}/play`);
+      return;
+    }
     router.push(`/songsets/${id}/play`);
   }, [router]);
 

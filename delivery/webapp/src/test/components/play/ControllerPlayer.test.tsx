@@ -1890,6 +1890,59 @@ describe("ControllerPlayer", () => {
       expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
     });
 
+    // Online boot → network drop mid-playback: the host recovers by swapping
+    // the src prop to the offline copy. The player must re-issue the load on
+    // the new source and resume at the failure position — not leave the set
+    // paused at 0:00, and not show the overlay (the dead-end that shipped).
+    it("auto-resumes at the failure position when the host recovers", async () => {
+      // The real load() rewinds the element; the stub must too, or the test
+      // could not tell a restored position from an untouched one.
+      vi.spyOn(window.HTMLMediaElement.prototype, "load").mockImplementation(function (
+        this: HTMLMediaElement
+      ) {
+        this.currentTime = 0;
+      });
+      const onMediaError = vi.fn().mockResolvedValue(true);
+
+      const { rerender } = await act(async () =>
+        render(
+          <ControllerPlayer
+            {...defaultProps}
+            videoSrc="https://r2.example.com/videos/test.mp4"
+            onMediaError={onMediaError}
+          />
+        )
+      );
+
+      const video = getVideo();
+      video.currentTime = 120;
+      await act(async () => {
+        fireEvent.playing(video);
+      });
+      await act(async () => {
+        fireEvent.error(video);
+      });
+
+      // Host recovery: swap the failed online source for the offline copy.
+      await act(async () => {
+        rerender(
+          <ControllerPlayer
+            {...defaultProps}
+            videoSrc="/api/r2/artifact/job-offline/output.mp4"
+            onMediaError={onMediaError}
+            isOfflineMedia={true}
+          />
+        );
+      });
+      await act(async () => {
+        fireEvent.loadedMetadata(video);
+      });
+
+      expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
+      expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalled();
+      expect(video.currentTime).toBe(120);
+    });
+
     it("waits 15 seconds before surfacing a stall", async () => {
       vi.useFakeTimers();
       try {
