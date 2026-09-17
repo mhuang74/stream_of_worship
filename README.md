@@ -10,6 +10,8 @@ A seamless Chinese worship music transition system designed to analyze songs (te
 
 **Note:** This repository contains both lightweight tools such as `sow-admin` and heavier delivery/analysis services. They are architecturally separate but co-located in a monorepo.
 
+> **Worship leaders:** see [USER_GUIDE.md](USER_GUIDE.md) for preparing a worship set for offline playback and starting it without Wi-Fi.
+
 ---
 
 ## Quick Start
@@ -123,7 +125,7 @@ The Web App is the primary end-user interface for worship leaders and media team
 **Playback**
 - Built-in controller player (audio + synchronized lyrics)
 - Second-screen projection via W3C Presentation API or Google Cast
-- Offline caching of rendered files via Service Worker
+- Offline caching of rendered files via Service Worker (see [Offline Playback](USER_GUIDE.md#offline-worship-playback))
 - Full keyboard shortcuts and Media Session API integration
 
 **Content Review**
@@ -554,6 +556,7 @@ ls poc_audio/
 ## Resources
 
 - **Developer Documentation:** [DEVELOPER.md](DEVELOPER.md) - Architecture, roadmap, advanced configuration
+- **User Guide:** [USER_GUIDE.md](USER_GUIDE.md) - Worship leader workflows, including offline playback
 - **POC Script Guide:** [lab/poc-scripts/README.md](lab/poc-scripts/README.md)
 - **Design Document:** [specs/worship-music-transition-system-design.md](specs/worship-music-transition-system-design.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
