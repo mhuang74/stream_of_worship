@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:integration": "SOW_RUN_NEON_INTEGRATION=1 vitest run src/test/lib/db/search.integration.test.ts",
     "test:postgres-smoke": "vitest run --config vitest.postgres-smoke.config.ts",
+    "test:e2e:offline": "node scripts/e2e/offline-playback.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

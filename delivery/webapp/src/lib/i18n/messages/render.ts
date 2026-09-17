@@ -24,6 +24,8 @@ export const renderBundle = bundle({
     "render.toast.failedToCancelJob": "Failed to cancel render job",
     "render.toast.completed": "Render completed",
     "render.toast.failed": "Render failed",
+    "render.toast.authExpired":
+      "Your session expired — sign in again to see the render result.",
     "render.toast.config.audio": "audio",
     "render.toast.config.video": "video",
 
@@ -105,6 +107,8 @@ export const renderBundle = bundle({
     "render.submitted.estimatedPrefix": "~",
     "render.submitted.leavePage":
       "You can leave this page. Check your songset later for the result.",
+    "render.submitted.authExpired":
+      "Your session has expired. Sign in again to see the render result — the render is still running.",
     "render.submitted.submittedAt": "Submitted at",
     "render.submitted.cancel": "Cancel Render",
 
@@ -150,6 +154,7 @@ export const renderBundle = bundle({
     "render.toast.failedToCancelJob": "取消渲染工作失敗",
     "render.toast.completed": "已完成渲染",
     "render.toast.failed": "渲染失敗",
+    "render.toast.authExpired": "你的登入已經過期——請重新登入查看渲染結果。",
     "render.toast.config.audio": "音訊",
     "render.toast.config.video": "影片",
 
@@ -225,6 +230,8 @@ export const renderBundle = bundle({
     "render.submitted.estimatedMinutes": "分鐘",
     "render.submitted.estimatedPrefix": "約 ",
     "render.submitted.leavePage": "可以先離開這頁，晚點再回來看結果就好。",
+    "render.submitted.authExpired":
+      "你的登入已經過期，請重新登入查看渲染結果——渲染仍在進行中。",
     "render.submitted.submittedAt": "送出時間",
     "render.submitted.cancel": "取消渲染",
 

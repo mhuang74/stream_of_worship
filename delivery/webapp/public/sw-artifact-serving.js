@@ -58,8 +58,11 @@ function parseRangeHeader(header) {
 
 /**
  * Builds a 206 response sliced from a cached full 200 body. Without a
- * parsable, satisfiable range this returns the cached response untouched
- * (a full 200 — degrades gracefully rather than erroring).
+ * parsable Range header this returns the cached response untouched (a full
+ * 200 — degrades gracefully rather than erroring; RFC 9110: an invalid Range
+ * header MUST be ignored). A parsable range that starts past the end of the
+ * body is unsatisfiable: a 416 whose Content-Range is `bytes /<size>` with the
+ * asterisk (the media element recovers from 416 instead of failing the fetch).
  */
 async function rangeResponseFrom(cachedResponse, rangeHeader) {
   if (!rangeHeader) return cachedResponse;
@@ -81,7 +84,15 @@ async function rangeResponseFrom(cachedResponse, rangeHeader) {
     start = range.start;
     end = range.end === undefined ? size - 1 : Math.min(range.end, size - 1);
   }
-  if (start >= size) return cachedResponse;
+  if (start >= size) {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "Content-Range": `bytes */${size}`,
+        "Accept-Ranges": "bytes",
+      },
+    });
+  }
 
   const slice = blob.slice(start, end + 1);
   return new Response(slice, {

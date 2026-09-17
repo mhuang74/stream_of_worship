@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Clock } from "lucide-react"
@@ -22,6 +22,10 @@ interface RenderSubmittedProps {
   jobId: string
   onComplete: (job: RenderCompletionJob) => void
   onFailed?: () => void
+  /** The poll answered 401/403: the session is permanently expired and the
+   * poll can never succeed. Distinct from onFailed — the job did not fail;
+   * the screen shows a sign-in-to-see-it message instead. */
+  onAuthExpired?: () => void
   onCancel: () => void
   isCancelling?: boolean
   submittedAt?: string
@@ -37,19 +41,27 @@ export function RenderSubmitted({
   jobId,
   onComplete,
   onFailed,
+  onAuthExpired,
   onCancel,
   isCancelling = false,
   submittedAt,
 }: RenderSubmittedProps) {
   const { t } = useLocale()
 
+  // The screen keeps its layout when the session expires mid-render — only
+  // the status line changes to the 401-appropriate copy. Declared before the
+  // poll effect (the poll's 401/403 branch sets it).
+  const [authExpired, setAuthExpired] = useState(false)
+
   // Latest-callback refs: the poll is keyed on jobId alone, so a parent
   // re-render (toasts, auto-cache setting) never restarts the interval.
   const onCompleteRef = useRef(onComplete)
   const onFailedRef = useRef(onFailed)
+  const onAuthExpiredRef = useRef(onAuthExpired)
   useEffect(() => {
     onCompleteRef.current = onComplete
     onFailedRef.current = onFailed
+    onAuthExpiredRef.current = onAuthExpired
   })
 
   useEffect(() => {
@@ -72,6 +84,9 @@ export function RenderSubmitted({
         // can never read forever.
         if (response.status === 401 || response.status === 403) {
           stopPolling()
+          if (disposed) return
+          setAuthExpired(true)
+          onAuthExpiredRef.current?.()
           return
         }
         if (response.status === 404 || response.status === 410) {
@@ -117,9 +132,15 @@ export function RenderSubmitted({
             {estimatedMinutes} {t("render.submitted.estimatedMinutes")}
           </span>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {t("render.submitted.leavePage")}
-        </p>
+        {authExpired ? (
+          <p className="text-sm text-destructive" data-testid="auth-expired-message">
+            {t("render.submitted.authExpired")}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("render.submitted.leavePage")}
+          </p>
+        )}
         {submittedAt && (
           <p className="text-sm text-muted-foreground">
             {t("render.submitted.submittedAt")}{" "}

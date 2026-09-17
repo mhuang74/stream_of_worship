@@ -644,6 +644,40 @@ describe("ControllerPage (songset)", () => {
       expect(lastControllerProps?.isOfflineMedia).toBe(true);
     });
 
+    // Issue #210: a branch-2 boot (chain failed while nominally online) used
+    // to land on the downloaded copy silently — the leader had no way to know
+    // playback came from the offline copy (Cast included). The toast carries
+    // no behavioral weight (isOfflineMedia stays the sole Cast gate); it only
+    // surfaces the state. Branch 3 (offline at boot) stays silent: the
+    // offline hint during boot already said so.
+    it("toasts the cached-copy hint when the chain fails onto the offline copy", async () => {
+      setOnline(true);
+      global.fetch = vi
+        .fn()
+        .mockRejectedValue(new TypeError("Failed to fetch"));
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(toastInfo).toHaveBeenCalledWith(
+        expect.stringMatching(/playing the downloaded copy/i)
+      );
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it("does not toast the cached-copy hint on an offline boot", async () => {
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(toastInfo).not.toHaveBeenCalled();
+    });
+
     it("shows the error screen when the chain fails and nothing is downloaded", async () => {
       setOnline(true);
       mockGetOfflineRecord.mockResolvedValue(null);

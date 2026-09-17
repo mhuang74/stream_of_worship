@@ -12,6 +12,7 @@
  */
 
 import { invalidateArtifactCache } from "./artifact-cache";
+import { deleteControllerDocument } from "./document-cache";
 
 export const OFFLINE_INDEX_DB_NAME = "sow-offline-index";
 export const OFFLINE_INDEX_STORE_NAME = "songsets";
@@ -123,6 +124,10 @@ export async function putOfflineRecord(record: OfflineSongsetRecord): Promise<vo
   const prior = await getOfflineRecord(record.songsetId);
   if (prior && prior.renderJobId !== record.renderJobId) {
     await invalidateArtifactCache(prior.renderJobId);
+    // The old copy's pre-cached controller document is stale (superseded
+    // render, possibly different RSC hashes) — a re-download writes a fresh
+    // one afterwards (issue #210).
+    await deleteControllerDocument(record.songsetId);
   }
 
   await withIndexDb(async (db) => {
@@ -146,6 +151,9 @@ export async function removeOfflineSongset(songsetId: string): Promise<void> {
   const prior = await getOfflineRecord(songsetId);
   if (prior) {
     await invalidateArtifactCache(prior.renderJobId);
+    // The pre-cached controller document is part of the offline copy — it
+    // must not outlive the record (issue #210).
+    await deleteControllerDocument(songsetId);
   }
 
   await withIndexDb(async (db) => {

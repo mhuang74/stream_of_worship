@@ -34,6 +34,7 @@ describe("RenderSubmitted", () => {
   const mockCancel = vi.fn()
   const mockComplete = vi.fn()
   const mockFailed = vi.fn()
+  const mockAuthExpired = vi.fn()
 
   const defaultProps = {
     estimatedMinutes: 5,
@@ -232,6 +233,44 @@ describe("RenderSubmitted", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(mockFailed).not.toHaveBeenCalled()
       expect(mockComplete).not.toHaveBeenCalled()
+    })
+
+    // Issue #210: a permanently-expired session used to swallow the poll's
+    // 401 with zero user feedback — "Rendering…" on screen forever. The poll
+    // still stops (it can never succeed), but the screen now says why, and
+    // the parent learns through a callback named distinctly from job-failed.
+    it("signals auth expiry and shows the session-expired message on a 401", async () => {
+      vi.useFakeTimers()
+      const fetchMock = stubFetch({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      render(<RenderSubmitted {...defaultProps} onAuthExpired={mockAuthExpired} />)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+      })
+
+      expect(mockAuthExpired).toHaveBeenCalledTimes(1)
+      expect(mockFailed).not.toHaveBeenCalled()
+      expect(mockComplete).not.toHaveBeenCalled()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/session.*expired/i)).toBeInTheDocument()
+    })
+
+    it("signals auth expiry on a 403 as well", async () => {
+      vi.useFakeTimers()
+      stubFetch({ ok: false, status: 403, json: () => Promise.resolve({}) })
+      render(<RenderSubmitted {...defaultProps} onAuthExpired={mockAuthExpired} />)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+      })
+
+      expect(mockAuthExpired).toHaveBeenCalledTimes(1)
+      expect(mockFailed).not.toHaveBeenCalled()
+      expect(screen.getByText(/session.*expired/i)).toBeInTheDocument()
     })
 
     it("ignores a completion that lands after unmount", async () => {

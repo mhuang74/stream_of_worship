@@ -87,6 +87,22 @@ function preload({ href, as }: PreloadTarget): Promise<void> {
 }
 
 /**
+ * False when the response is the auth proxy's login page rather than the
+ * controller document: a 307 to /login (expired session) resolves through
+ * fetch() to a 200 login HTML, and caching it under the controller path would
+ * dead-end the offline Start Worship tap. Behavioral twin of the document
+ * route's cacheWillUpdate guard in public/sw.js — keep the two in lockstep.
+ *
+ * The identity of the trap is the redirect or the /login final URL — the
+ * genuine controller document is itself text/html, so content type cannot
+ * discriminate (it only confirms the redirected page is the login HTML).
+ */
+function isLoginPage(response: Response): boolean {
+  if (response.redirected) return true;
+  return new URL(response.url, window.location.href).pathname === "/login";
+}
+
+/**
  * Fetches the controller document, stores it in the sow-pages cache, and
  * preloads the same-origin assets it references. Resolves true only when the
  * document itself is cached; asset warming is attempted but never fatal.
@@ -101,6 +117,7 @@ export async function cacheControllerDocument(songsetId: string): Promise<boolea
   try {
     const response = await fetch(path);
     if (!response.ok) return false;
+    if (isLoginPage(response)) return false;
 
     const cache = await window.caches.open(SOW_PAGES_CACHE_NAME);
     await cache.put(path, response.clone());
@@ -109,6 +126,26 @@ export async function cacheControllerDocument(songsetId: string): Promise<boolea
     return true;
   } catch (err) {
     console.warn("Failed to pre-cache the controller document:", err);
+    return false;
+  }
+}
+
+/**
+ * Deletes the pre-cached controller document from the sow-pages cache.
+ * Called when a download is removed, superseded by a re-download, or the
+ * songset is deleted, so stale or orphaned controller pages never linger
+ * (issue #210). The document path is derived from the songsetId — the
+ * offline index stores no field for it. Best-effort: false on any failure.
+ */
+export async function deleteControllerDocument(songsetId: string): Promise<boolean> {
+  if (typeof window === "undefined" || !("caches" in window) || !window.caches) {
+    return false;
+  }
+
+  try {
+    const cache = await window.caches.open(SOW_PAGES_CACHE_NAME);
+    return await cache.delete(controllerDocumentPath(songsetId));
+  } catch {
     return false;
   }
 }

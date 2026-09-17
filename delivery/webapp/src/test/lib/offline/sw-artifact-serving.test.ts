@@ -140,15 +140,16 @@ describe("rangeResponseFrom", () => {
     expect(await result.text()).toBe("56789");
   });
 
-  it("degrades to the full 200 when the range starts past the body", async () => {
+  it("answers an unsatisfiable range with 416 and the unsatisfied Content-Range (issue #210)", async () => {
     const cached = fullBodyResponse("0123456789");
     const result = await rangeResponseFrom(cached, "bytes=10-19");
-    expect(result).toBe(cached);
-    expect(result.status).toBe(200);
+    expect(result).not.toBe(cached);
+    expect(result.status).toBe(416);
+    expect(result.headers.get("Content-Range")).toBe("bytes */10");
     // The returned response must still be readable by the consumer: a body
     // drained by this function makes the browser fail the fetch with a
-    // TypeError instead of streaming the file.
-    expect(await result.text()).toBe("0123456789");
+    // TypeError instead of streaming the error.
+    expect(await result.text()).toBe("");
   });
 });
 
@@ -433,8 +434,11 @@ describe("artifactHandler", () => {
 
   // Regression: the browser failed this exact request with "TypeError: Failed
   // to fetch" because rangeResponseFrom drained the cached body via blob()
-  // before returning the response unchanged.
-  it("serves a readable full body from cache when the Range starts past the stored size", async () => {
+  // before returning the response unchanged. Issue #210 changed the shape:
+  // an unsatisfiable range is now a 416 (the media element recovers instead
+  // of rejecting the fetch), while malformed ranges keep the full-200
+  // degradation (RFC 9110: an invalid Range header MUST be ignored).
+  it("answers an unsatisfiable range on a cache hit with 416 and bytes */size", async () => {
     const cache = makeCacheMock();
     cache._store.set("/sow-artifact-cache/job-1/mp4", fullBodyResponse("0123456789"));
     const cachesRef = makeCachesMock(cache);
@@ -446,9 +450,42 @@ describe("artifactHandler", () => {
       fetchFn,
     });
 
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(response.status).toBe(416);
+    expect(response.headers.get("Content-Range")).toBe("bytes */10");
+  });
+
+  it("answers an unsatisfiable range on a cache miss with 416 after storing the full body", async () => {
+    const cache = makeCacheMock();
+    const cachesRef = makeCachesMock(cache);
+    const fetchFn = vi.fn().mockResolvedValue(fullBodyResponse("0123456789"));
+
+    const response = await artifactHandler({
+      request: artifactRequest("/api/r2/artifact/job-1/output.mp4", { Range: "bytes=10-" }),
+      caches: cachesRef,
+      fetchFn,
+    });
+
+    expect(response.status).toBe(416);
+    expect(response.headers.get("Content-Range")).toBe("bytes */10");
+    // The self-warm still happened: the full 200 was cached before slicing.
+    expect(cache._puts).toHaveLength(1);
+    expect(cache._puts[0].response.status).toBe(200);
+  });
+
+  it("keeps the graceful full-200 degradation for a malformed Range on a cache hit", async () => {
+    const cache = makeCacheMock();
+    cache._store.set("/sow-artifact-cache/job-1/mp4", fullBodyResponse("0123456789"));
+    const cachesRef = makeCachesMock(cache);
+
+    const response = await artifactHandler({
+      request: artifactRequest("/api/r2/artifact/job-1/output.mp4", { Range: "bytes=not-a-range" }),
+      caches: cachesRef,
+      fetchFn: vi.fn(),
+    });
+
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("0123456789");
-    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   // Regression: workbox-routing 7 calls handlers as
