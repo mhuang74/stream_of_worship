@@ -224,7 +224,13 @@ export function ControllerPlayer({
   // Local media failure surface: a hard `error`, or a stall that outlived
   // MEDIA_STALL_TIMEOUT_MS. Cleared as soon as the element plays again.
   const [mediaFailure, setMediaFailure] = useState<"error" | "stalled" | null>(null);
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stallTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Host-takeover recovery (the controller swaps the failed src prop for the
+  // offline copy): capture the failure position at error time — the swap
+  // re-runs resource selection and can reset currentTime to 0 before the
+  // host's promise resolves — and resume there once the new source is in.
+  const recoveryResumeAtRef = useRef(0);
+  const recoveryPendingRef = useRef(false);
 
   // Refs to the latest transport forwarding props so effect/handler closures
   // never go stale without forcing re-renders.
@@ -442,17 +448,27 @@ export function ControllerPlayer({
       clearStallTimer();
       // The element exposes no failure reason, so log the source it failed on.
       console.error("Media element failed:", media.currentSrc || media.src);
-      const showFailure = () => {
-        setMediaFailure("error");
-        toast.error(t("controller.mediaFailed"));
-      };
+      // Capture the failure position immediately: the host's recovery (a src
+      // swap) re-runs resource selection and can reset currentTime to 0
+      // before the host promise resolves.
+      const resumeAt = Number.isFinite(media.currentTime) ? media.currentTime : 0;
       // The host may own the recovery (the controller swaps a failed offline
-      // proxy URL for a blob URL of the cached artifact); when it declines, or
-      // its own recovery rejects, the overlay is the answer.
+      // proxy URL for a blob URL of the cached artifact, or a failed online
+      // presigned URL for the offline copy); when it declines, or its own
+      // recovery rejects, the overlay is the answer.
       const handled = onMediaErrorRef.current?.() ?? Promise.resolve(false);
       void handled.then((isHandled) => {
-        if (!isHandled) showFailure();
-      }).catch(showFailure);
+        if (!isHandled) {
+          setMediaFailure("error");
+          toast.error(t("controller.mediaFailed"));
+        } else {
+          recoveryResumeAtRef.current = resumeAt;
+          recoveryPendingRef.current = true;
+        }
+      }).catch(() => {
+        setMediaFailure("error");
+        toast.error(t("controller.mediaFailed"));
+      });
     };
 
     media.addEventListener("timeupdate", handleTimeUpdate);
@@ -992,10 +1008,11 @@ export function ControllerPlayer({
   // path: a retry whose play() rejects leaves the overlay up, and an
   // orphaned listener would seek a LATER successful load back to this
   // failure's position (issue #210).
-  const handleRetryMedia = useCallback(() => {
+  const handleRetryMedia = useCallback((resumeAtOverride?: number) => {
     const element = mediaRef.current;
     if (!element) return;
-    const resumeAt = Number.isFinite(element.currentTime) ? element.currentTime : 0;
+    const resumeAt =
+      resumeAtOverride ?? (Number.isFinite(element.currentTime) ? element.currentTime : 0);
     setMediaFailure(null);
     try {
       element.load();
@@ -1037,6 +1054,17 @@ export function ControllerPlayer({
         });
     }
   }, [t]);
+
+  // Host-takeover recovery: when the host resolved a media error with a src
+  // swap, this effect fires on the new `mediaSrc` and re-issues the load +
+  // play on it, resuming at the captured failure position via the same
+  // once-only loadedmetadata restore path Retry uses. Refs are false/0 on
+  // mount, so the effect is a no-op on boot — no autoplay.
+  useEffect(() => {
+    if (!recoveryPendingRef.current) return;
+    recoveryPendingRef.current = false;
+    handleRetryMedia(recoveryResumeAtRef.current);
+  }, [mediaSrc, handleRetryMedia]);
 
   // ── Song-change effect (keyed on currentSongIndex while active) ─────────
   // Push the new song title to the receiver. No-op for Cast (the title is set
@@ -1327,7 +1355,7 @@ export function ControllerPlayer({
               <Button
                 size="sm"
                 className="mt-4 bg-black text-white hover:bg-black/80"
-                onClick={handleRetryMedia}
+                onClick={() => handleRetryMedia()}
                 data-testid="media-retry-button"
               >
                 {t("controller.retry")}

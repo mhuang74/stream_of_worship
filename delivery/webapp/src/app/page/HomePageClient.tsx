@@ -104,6 +104,13 @@ export function HomePageClient({
 
   const handleSongsetPlay = useCallback(
     (songsetId: string) => {
+      // Offline: full document navigation — the SW document route serves the
+      // page; SPA navigation needs an RSC fetch that dead-ends offline
+      // (issue #206's trap, at dashboard granularity).
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        window.location.assign(`/songsets/${songsetId}/play`);
+        return;
+      }
       router.push(`/songsets/${songsetId}/play`);
     },
     [router]

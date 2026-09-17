@@ -291,28 +291,67 @@ export default function ControllerPage() {
     };
   }, []);
 
-  // ── Media failure → blob fallback ───────────────────────────────────────
+  // ── Media failure → recovery ────────────────────────────────────────────
   // The offline proxy URL is served by the service worker from Cache Storage.
   // When it is not (worker no longer controlling the document, entry evicted
   // between boot and play), the media element errors — re-issue the load
   // against a blob URL of the cached artifact rather than going straight to
   // the failure overlay. One attempt per boot: a blob URL already holds the
   // whole artifact, there is no cheaper source to fall back to after it.
+  //
+  // An online boot has no offline source to fail FROM, but it may still have
+  // a downloaded copy to fail TO: when the presigned R2 URL dies mid-playback
+  // (Airplane Mode, 4-hour expiry), swap to the offline artifact once per
+  // boot. Unhandled failures keep the overlay + Retry behavior.
   const blobFallbackTriedRef = useRef(false);
+  const offlineRecoveryTriedRef = useRef(false);
 
   const handleMediaError = useCallback(async (): Promise<boolean> => {
-    if (!media?.isOffline || !media.viaProxy || blobFallbackTriedRef.current) {
-      return false;
+    if (!media) return false;
+
+    if (media.isOffline) {
+      // A blob URL holds the whole artifact — no cheaper source after it.
+      // The online-recovery branch below consumes the boot's single
+      // offline-recovery attempt: after it, a failing recovered source is
+      // terminal (no swap loop when the cached copy itself is broken).
+      if (
+        !media.viaProxy ||
+        blobFallbackTriedRef.current ||
+        offlineRecoveryTriedRef.current
+      ) {
+        return false;
+      }
+      blobFallbackTriedRef.current = true;
+
+      const src = await createOfflineBlobUrl(media.renderJobId, media.kind);
+      if (!src) return false;
+
+      blobUrlsRef.current.push(src);
+      setMedia({ ...media, src, viaProxy: false });
+      return true;
     }
-    blobFallbackTriedRef.current = true;
 
-    const src = await createOfflineBlobUrl(media.renderJobId, media.kind);
-    if (!src) return false;
+    // Online source failed: one attempt per boot at the downloaded copy.
+    if (offlineRecoveryTriedRef.current) return false;
+    offlineRecoveryTriedRef.current = true;
 
-    blobUrlsRef.current.push(src);
-    setMedia({ ...media, src, viaProxy: false });
+    const offline = await resolveOfflinePlayback(songsetId);
+    if (!offline) return false;
+
+    // The cached manifest/hashes are at least as good as what the online
+    // chain loaded — and they describe the artifact we are swapping to.
+    setChapters(offline.chapters);
+    setChapterRecordingHashes(offline.chapterRecordingHashes);
+    if (!offline.viaProxy) blobUrlsRef.current.push(offline.src);
+    setMedia({
+      src: offline.src,
+      kind: offline.kind,
+      isOffline: true,
+      viaProxy: offline.viaProxy,
+      renderJobId: offline.renderJobId,
+    });
     return true;
-  }, [media]);
+  }, [media, songsetId]);
 
   // Cast + Presentation transport wiring.
   //

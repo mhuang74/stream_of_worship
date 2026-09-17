@@ -737,6 +737,62 @@ describe("ControllerPage (songset)", () => {
       expect(screen.getByTestId("video-src")).toHaveTextContent("blob:cached-video");
     });
 
+    // Online boot → Airplane Mode mid-playback: the presigned R2 URL dies and
+    // the media element fires `error`. The host must recover by swapping to
+    // the downloaded copy (issue: offline playback dead-end on online boot).
+    it("recovers a failed online source by swapping to the offline copy", async () => {
+      setOnline(true);
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(
+          "https://r2.example.com/videos/test.mp4"
+        );
+      });
+
+      let handled: boolean | undefined;
+      await act(async () => {
+        handled = await lastControllerProps?.onMediaError?.();
+      });
+
+      expect(handled).toBe(true);
+      expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      expect(screen.getByTestId("offline-media")).toHaveTextContent("true");
+
+      expect(lastControllerProps?.chapterRecordingHashes).toEqual([
+        "hash-a",
+        "hash-b",
+        null,
+      ]);
+    });
+
+    it("attempts the online-boot offline recovery only once per boot", async () => {
+      setOnline(true);
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(
+          "https://r2.example.com/videos/test.mp4"
+        );
+      });
+
+      let first: boolean | undefined;
+      let second: boolean | undefined;
+      await act(async () => {
+        first = await lastControllerProps?.onMediaError?.();
+      });
+      await act(async () => {
+        second = await lastControllerProps?.onMediaError?.();
+      });
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+    });
+
     it("leaves the media error unhandled when already playing a blob URL", async () => {
       setServiceWorkerController(false);
 
