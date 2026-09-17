@@ -15,25 +15,34 @@ Every code block below is quoted **verbatim** from this repository, and the fenc
 
 ---
 
-## 1. The problem in one page
+## 1. What offline worship playback is
 
-The download half of offline playback always worked; the playback half did not.
+A worship set is prepared at home and played at the meeting place, where the Wi-Fi is the least reliable thing in the room. Offline worship playback is what makes that preparation survive the venue: the rendered set is downloaded to the device once — **Download for offline**, on the play page, while the network is up — and from then on it plays from the device with no network at all.
 
-A worship leader could press **Download for offline**, and the rendered MP3/MP4/chapters were fetched and stored in the browser's Cache Storage. But opening the controller page ran four live, auth-gated fetches — songset, render job, signed URL, chapters — plus a presigned R2 URL for the video. With the network gone, **nothing read the cache**:
+Once a set shows **Offline ready**, a leader gets:
 
-- `GET /api/songsets/<id>` rejected (or was answered by nothing at all) → error screen.
-- The `<video>` got a presigned R2 URL that could only be minted online, and expired after four hours anyway.
-- `delivery/webapp/public/sw.js` existed in the repo but **was never registered**, so it was inert: no `fetch` handler, no offline navigation, no cache serving. A file in `delivery/webapp/public/` is not a running program.
+- **Start Worship works with the network gone.** The play page and the controller are pages this device already loaded while downloading, so they come from storage rather than from the server — a dead access point is an ordinary page load, not an error screen.
+- **The whole set plays, and it is seekable.** A video render plays with its burned-in lyrics; an MP3-only render plays as audio with the same chapter list; and jumping to song 6 is a byte-range seek on a cached 500 MB file, not a re-download and not a whole file held in memory.
+- **A mid-service network drop is survivable from either side.** Lose the network while the live version is playing and playback moves to the downloaded copy at the position where it failed; a downloaded copy that fails mid-playback recovers the same way.
+- **Staleness is visible before it matters.** Re-rendering a set after downloading it tints the **Offline** badge amber, so nobody plays last week's render believing it is this week's.
 
-So the cached bytes sat there. The feature that was supposed to make a Sunday-morning Wi-Fi failure survivable had exactly the failure mode it was meant to remove.
+The copy is per device and per browser, capped at 1 GB across all downloaded sets (warned at 500 MB), and local-only: Cast and projection are unavailable while playing it (§7, §10).
 
-The fix has three parts, and they are separate enough that it is worth naming them up front:
+### 1.1 What it is made of
+
+Two storage systems and a service worker, and each is load-bearing:
+
+- **Cache Storage holds the bytes.** The download stores the artifact responses under keys the client invents — `/sow-artifact-cache/<renderJobId>/{mp3,mp4,chapters}`, identifiers rather than request URLs — and only the worker can serve them, by slicing the byte range the media element asks for out of the cached full body.
+- **IndexedDB holds the record.** Cache Storage is keyed by request, so no page can ask it "is this set downloaded?". The page reads a record instead — songset → which render, what was cached, the per-chapter content hashes — with no network, and that record is what decides what is playable.
+- **A pre-cached controller document** makes the offline tap an ordinary page load: its HTML and hashed scripts were fetched at download time, so the document route has an answer.
+
+The design is three pieces, separate enough to be worth naming up front:
 
 1. **Register the worker** (`ServiceWorkerRegistrar` → `registerServiceWorker`), so a `fetch` handler exists at all.
 2. **Serve the bytes**: a custom route that maps the artifact proxy URL onto the cache key the download wrote, with HTTP Range support so a 500 MB MP4 can be seeked without being held in memory.
 3. **Boot without the API chain**: an IndexedDB *index* the page can read with no network, which decides what is playable, plus a pre-cached controller document so the tap is a normal page load.
 
-Everything that follows is those three parts in detail.
+Everything that follows is those three pieces in detail.
 
 ---
 
