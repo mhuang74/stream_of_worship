@@ -44,6 +44,7 @@ vi.mock("@/lib/offline/offline-index", () => ({
 }));
 
 import ControllerPage from "@/app/songsets/[id]/play/controller/page";
+import { setConnectivityProbe } from "@/hooks/useConnectivity";
 import ShareControllerPage from "@/app/share/[token]/play/controller/page";
 import SharePage from "@/app/share/[token]/page";
 
@@ -553,6 +554,9 @@ describe("ControllerPage (songset)", () => {
       Reflect.deleteProperty(URL, "createObjectURL");
       Reflect.deleteProperty(URL, "revokeObjectURL");
       setOnline(true);
+      // Tests that simulate an unreachable server inject a failing probe via
+      // the connectivity seam; the default must not leak into other suites.
+      setConnectivityProbe(null);
     });
 
     it("boots from the index with the proxy media source and zero API fetches", async () => {
@@ -719,6 +723,51 @@ describe("ControllerPage (songset)", () => {
         "https://r2.example.com/videos/test.mp4"
       );
       expect(lastControllerProps?.isOfflineMedia).toBe(false);
+    });
+
+    // Issue #211: an in-flight/failed probe is Unknown, NOT Offline — the
+    // boot must not silently go cache-first on a cold load before the probe
+    // has answered. Unknown boots the online chain; a genuinely-unreachable
+    // server makes the chain fail onto the downloaded copy (branch 2, with
+    // its toast). Only definitive Offline (navigator.onLine false) is silent
+    // branch 3.
+    it("still runs the online chain at boot while the probe has not confirmed online", async () => {
+      setOnline(true);
+      setConnectivityProbe(() => Promise.resolve(false)); // server unreachable
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      // The chain ran (zero-fetch cache-first would have hidden Cast).
+      expect(screen.getByTestId("video-src")).toHaveTextContent(
+        "https://r2.example.com/videos/test.mp4"
+      );
+      expect(lastControllerProps?.isOfflineMedia).toBe(false);
+    });
+
+    it("lands on the downloaded copy with the toast when the probe cannot confirm online and the chain fails", async () => {
+      setOnline(true);
+      setConnectivityProbe(() => Promise.resolve(false));
+      global.fetch = vi
+        .fn()
+        .mockRejectedValue(new TypeError("Failed to fetch"));
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      expect(lastControllerProps?.isOfflineMedia).toBe(true);
+      expect(toastInfo).toHaveBeenCalledWith(
+        expect.stringMatching(/playing the downloaded copy/i)
+      );
+      expect(toastError).not.toHaveBeenCalled();
     });
 
     it("swaps a failed proxy source for a blob URL of the cached artifact", async () => {

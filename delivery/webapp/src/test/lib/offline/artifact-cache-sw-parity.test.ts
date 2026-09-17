@@ -189,3 +189,38 @@ describe("service worker ↔ app controller-document route contract (issue #210)
     expect(genericBlock).toContain("maxEntries: 50");
   });
 });
+
+describe("service worker ↔ app health-probe contract (issue #211)", () => {
+  // The client's Connectivity probe (HEAD /api/health) must reflect a
+  // genuine network round trip: if any Workbox strategy cached or timed out
+  // around the health endpoint, a stale cache hit would report Online while
+  // the network is actually gone. sw.js therefore registers a NetworkOnly
+  // carve-out for the path BEFORE any catch-all/other API routes could
+  // match it. On network failure Workbox falls to setCatchHandler → 503
+  // {"error":"offline"} → the probe sees a non-204 → Offline. Correct.
+  it("serves the health endpoint network-only and never caches it", () => {
+    const script = readFileSync(SW_SCRIPT_PATH, "utf8");
+
+    // Isolate the carve-out's registration: from its marker comment to the
+    // next route comment (the static-assets route).
+    const probeBlock = script.slice(
+      script.indexOf("// Reachability probe (issue #211)"),
+      script.indexOf("// Cache static assets")
+    );
+
+    expect(probeBlock, "sw.js must register the health-probe carve-out").toContain(
+      "/api/health"
+    );
+    expect(probeBlock, "the health probe must always hit the network").toContain(
+      "NetworkOnly"
+    );
+    expect(
+      probeBlock.includes("CacheableResponsePlugin"),
+      "the health probe must not gate responses on cacheability"
+    ).toBe(false);
+    expect(
+      probeBlock.includes("cacheName"),
+      "the health probe must not write to any cache"
+    ).toBe(false);
+  });
+});

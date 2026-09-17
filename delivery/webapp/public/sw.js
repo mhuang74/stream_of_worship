@@ -36,6 +36,14 @@ try {
 
 workbox.setConfig({ debug: false });
 
+// Reachability probe (issue #211): the client's Connectivity check must
+// always reflect a genuine round trip — no strategy may ever cache or
+// time out around the health endpoint.
+workbox.routing.registerRoute(
+  ({ url }) => url.pathname === "/api/health",
+  new workbox.strategies.NetworkOnly()
+);
+
 // Cache static assets (JS, CSS, fonts, images) – serve from cache, refresh in background.
 workbox.routing.registerRoute(
   ({ request }) =>

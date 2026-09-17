@@ -3,7 +3,10 @@ import { auth } from "@/lib/auth";
 import { isLocale } from "@/lib/i18n/messages";
 import { parseAcceptLanguage } from "@/lib/i18n/accept-language";
 
-const PUBLIC_PATHS = ["/", "/about", "/docs", "/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/share", "/api/share", "/sw.js", "/sw-artifact-serving.js"];
+const PUBLIC_PATHS = ["/", "/about", "/docs", "/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/api/health", "/share", "/api/share", "/sw.js", "/sw-artifact-serving.js"];
+// /api/health stays public: the client's reachability probe (issue #211) must
+// never depend on session state, so a stale session cannot produce a false
+// "Offline"; see src/hooks/useConnectivity.ts.
 // The service worker scripts must stay reachable unauthenticated: they are
 // fetched outside the page's own navigation (register() + importScripts), and
 // an auth redirect would fail installation with "script resource is behind a
