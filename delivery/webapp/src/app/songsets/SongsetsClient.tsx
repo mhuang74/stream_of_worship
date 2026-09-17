@@ -7,6 +7,7 @@ import { SongsetList, Songset } from "@/components/songset/SongsetList";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
+import { useConnectivity } from "@/hooks/useConnectivity";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { buildSongsetsUrl, saveSongsetListState } from "@/lib/songset-list-state";
 import { removeOfflineSongset, listOfflineRecords } from "@/lib/offline/offline-index";
@@ -100,6 +101,7 @@ export function SongsetsClient({
 }: SongsetsClientProps) {
   const router = useRouter();
   const { t } = useLocale();
+  const connectivity = useConnectivity();
   const [songsets, setSongsets] = useState<Songset[]>(() =>
     transformSongsets(initialData.songsets)
   );
@@ -237,16 +239,17 @@ export function SongsetsClient({
   }, [router]);
 
   const handlePlay = useCallback((id: string) => {
-    // Offline: a full document navigation is the deterministic path — the SW
-    // document route serves the page from sow-pages. SPA navigation needs an
-    // RSC fetch that cannot be pre-cached and dead-ends offline (issue #206's
-    // trap, at list granularity).
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    // Not positively online (probed Offline, or Unknown — issue #211's
+    // fail-toward-offline): a full document navigation is the deterministic
+    // path — the SW document route serves the page from sow-pages. SPA
+    // navigation needs an RSC fetch that cannot be pre-cached and dead-ends
+    // offline (issue #206's trap, at list granularity).
+    if (connectivity !== "online") {
       window.location.assign(`/songsets/${id}/play`);
       return;
     }
     router.push(`/songsets/${id}/play`);
-  }, [router]);
+  }, [connectivity, router]);
 
   const handleRetry = useCallback((id: string) => {
     router.push(`/songsets/${id}/render`);

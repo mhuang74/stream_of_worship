@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from "vitest";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { HomePageClient } from "@/app/page/HomePageClient";
+import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
 import type { DashboardSongset } from "@/components/dashboard/DashboardSongsetCard";
 import type { SongCardData } from "@/components/songset/SongCard";
 
@@ -84,9 +85,41 @@ const defaultProps = {
 };
 
 describe("HomePageClient", () => {
-  beforeEach(() => {
+  const probe = vi.fn<() => Promise<boolean>>();
+  let locationAssignMock: Mock;
+  let onLineDescriptor: PropertyDescriptor | undefined;
+
+  function stubOnline(online: boolean): void {
+    Object.defineProperty(navigator, "onLine", {
+      value: online,
+      configurable: true,
+    });
+  }
+
+  // Fail toward offline: Connectivity stays Unknown until the probe
+  // positively confirms Online — settle one successful probe first.
+  async function confirmOnline(): Promise<void> {
+    await act(async () => {
+      await probeConnectivity();
+    });
+  }
+
+  beforeEach(async () => {
     mockPush.mockClear();
     vi.clearAllMocks();
+    probe.mockReset();
+    probe.mockResolvedValue(true);
+    setConnectivityProbe(probe);
+    onLineDescriptor = Object.getOwnPropertyDescriptor(navigator, "onLine");
+    stubOnline(true);
+    await confirmOnline();
+  });
+
+  afterEach(() => {
+    setConnectivityProbe(null);
+    if (onLineDescriptor) {
+      Object.defineProperty(navigator, "onLine", onLineDescriptor);
+    }
   });
 
   it("renders greeting with name interpolation", () => {
@@ -122,6 +155,29 @@ describe("HomePageClient", () => {
     render(<HomePageClient {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
     expect(mockPush).toHaveBeenCalledWith("/songsets/s1/play");
+  });
+
+  // Fail toward offline (issue #211): navigator.onLine false → definitive
+  // Offline → the deterministic full-document path, never SPA navigation.
+  it("offline play is a full document navigation", () => {
+    stubOnline(false);
+    locationAssignMock = vi.fn();
+    const locationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
+    Object.defineProperty(window, "location", {
+      value: { assign: locationAssignMock },
+      configurable: true,
+    });
+    try {
+      render(<HomePageClient {...defaultProps} />);
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+
+      expect(locationAssignMock).toHaveBeenCalledWith("/songsets/s1/play");
+      expect(mockPush).not.toHaveBeenCalledWith("/songsets/s1/play");
+    } finally {
+      if (locationDescriptor) {
+        Object.defineProperty(window, "location", locationDescriptor);
+      }
+    }
   });
 
   it("renders favorite songs and community favorites with favorited-by badge", () => {

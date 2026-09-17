@@ -10,6 +10,7 @@ import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
+import { useConnectivity } from "@/hooks/useConnectivity";
 import { useSongsetListBack } from "@/hooks/useSongsetListBack";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { removeOfflineSongset } from "@/lib/offline/offline-index";
@@ -117,6 +118,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const router = useRouter();
   const backToList = useSongsetListBack();
   const { t } = useLocale();
+  const connectivity = useConnectivity();
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
   const highlightSongParam = searchParams.get("highlightSong");
@@ -334,15 +336,16 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
 
   // Handle play
   const handlePlay = useCallback(() => {
-    // Offline: full document navigation — the SW document route serves the
-    // page; SPA navigation needs an RSC fetch that dead-ends offline
-    // (issue #206's trap, at editor granularity).
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    // Not positively online (probed Offline, or Unknown — issue #211's
+    // fail-toward-offline): full document navigation — the SW document route
+    // serves the page; SPA navigation needs an RSC fetch that dead-ends
+    // offline (issue #206's trap, at editor granularity).
+    if (connectivity !== "online") {
       window.location.assign(`/songsets/${songsetId}/play`);
       return;
     }
     router.push(`/songsets/${songsetId}/play`);
-  }, [songsetId, router]);
+  }, [connectivity, songsetId, router]);
 
   // Handle retry
   const handleRetry = useCallback(() => {

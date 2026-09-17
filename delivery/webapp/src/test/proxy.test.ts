@@ -72,6 +72,19 @@ describe("public path rules", () => {
     }
   );
 
+  // The reachability probe (issue #211) must never depend on session state:
+  // an unauthenticated /api/health answers 204, not a 307 to /login, so a
+  // stale session on the device cannot produce a false "Offline".
+  it.each(["/api/health"])(
+    "does not redirect the unauthenticated health probe %s",
+    async (path) => {
+      vi.mocked(auth.api.getSession).mockResolvedValue(null);
+      const res = await proxy(req(path));
+      expect(res.status).not.toBe(307);
+      expect(res.status).not.toBe(401);
+    }
+  );
+
   it("still redirects an unauthenticated app path", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null);
     const res = await proxy(req("/songsets"));

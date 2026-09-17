@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useLocale } from "@/hooks/useLocale";
+import { probeConnectivity, useConnectivity } from "@/hooks/useConnectivity";
 import { useSongsetListBack } from "@/hooks/useSongsetListBack";
 import { PrePlayCard } from "@/components/play/PrePlayCard";
 import { OfflineAvailableCard } from "@/components/play/OfflineAvailableCard";
@@ -56,6 +57,7 @@ export default function PlayPage() {
   const router = useRouter();
   const backToList = useSongsetListBack();
   const { t } = useLocale();
+  const connectivity = useConnectivity();
   const songsetId = params.id as string;
 
   const [songset, setSongset] = useState<SongsetData | null>(null);
@@ -147,6 +149,7 @@ export default function PlayPage() {
           }
           // Network-level failure (airplane mode, server unreachable): the
           // downloaded copy may still play (issue #206).
+          void probeConnectivity();
           if (await offerOfflineEntry()) return;
           setError(err instanceof Error ? err.message : t("play.loadFailed"));
         }
@@ -167,21 +170,23 @@ export default function PlayPage() {
   }, [songsetId, router, t]);
 
   const handleStartWorship = useCallback(() => {
-    // Offline: a full document navigation is the deterministic path — the
-    // SW document route serves the pre-cached controller HTML. SPA
-    // navigation to a never-visited route needs RSC fetches that cannot be
-    // pre-cached reliably (issue #206).
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    // Not positively online (probed Offline, or Unknown — probe failed or
+    // in flight; issue #211's fail-toward-offline): a full document
+    // navigation is the deterministic path — the SW document route serves
+    // the pre-cached controller HTML. SPA navigation to a never-visited
+    // route needs RSC fetches that cannot be pre-cached reliably
+    // (issue #206).
+    if (connectivity !== "online") {
       window.location.assign(`/songsets/${songsetId}/play/controller`);
       return;
     }
     // Online: SPA navigation, unchanged.
     router.push(`/songsets/${songsetId}/play/controller`);
-  }, [router, songsetId]);
+  }, [connectivity, router, songsetId]);
 
   // The offline card only renders after the songset fetch already failed, so
   // its tap always takes the deterministic full-document path regardless of
-  // what navigator.onLine reports.
+  // what Connectivity reports.
   const handleOfflineCardStartWorship = useCallback(() => {
     window.location.assign(`/songsets/${songsetId}/play/controller`);
   }, [songsetId]);

@@ -13,6 +13,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { FileMusic, Heart, Library, Share2, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
+import { useConnectivity } from "@/hooks/useConnectivity";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import type { DashboardStats } from "@/lib/db/dashboard";
 import { t } from "@/lib/i18n/messages";
@@ -41,6 +42,7 @@ export function HomePageClient({
   communityFavorites,
 }: HomePageClientProps) {
   const router = useRouter();
+  const connectivity = useConnectivity();
   const [songs, setSongs] = useState<SongCardData[]>(recentFavoriteSongs);
   const { favoriteIds, toggleFavorite } = useFavoriteToggle(
     useMemo(() => new Set(recentFavoriteSongs.map((s) => s.id)), [recentFavoriteSongs])
@@ -104,16 +106,17 @@ export function HomePageClient({
 
   const handleSongsetPlay = useCallback(
     (songsetId: string) => {
-      // Offline: full document navigation — the SW document route serves the
-      // page; SPA navigation needs an RSC fetch that dead-ends offline
-      // (issue #206's trap, at dashboard granularity).
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      // Not positively online (probed Offline, or Unknown — issue #211's
+      // fail-toward-offline): full document navigation — the SW document
+      // route serves the page; SPA navigation needs an RSC fetch that
+      // dead-ends offline (issue #206's trap, at dashboard granularity).
+      if (connectivity !== "online") {
         window.location.assign(`/songsets/${songsetId}/play`);
         return;
       }
       router.push(`/songsets/${songsetId}/play`);
     },
-    [router]
+    [connectivity, router]
   );
 
   const handleSongsetShare = useCallback(

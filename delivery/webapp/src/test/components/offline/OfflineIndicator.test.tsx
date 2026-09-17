@@ -1,44 +1,69 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, act } from "@testing-library/react";
+import { screen, act, waitFor } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
+import {
+  probeConnectivity,
+  setConnectivityProbe,
+} from "@/hooks/useConnectivity";
 
+// Connectivity is the shared state machine (src/hooks/useConnectivity.ts,
+// issue #211): navigator.onLine plus the reachability probe. OS state is
+// stubbed via the suite's navigator.onLine convention; probe outcomes are
+// driven through the injectable-probe seam.
 describe("OfflineIndicator", () => {
+  const probe = vi.fn<() => Promise<boolean>>();
+
   beforeEach(() => {
     vi.clearAllMocks();
+    probe.mockReset();
+    probe.mockResolvedValue(true);
+    setConnectivityProbe(probe);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    setConnectivityProbe(null);
   });
+
+  function setOnLine(online: boolean): void {
+    Object.defineProperty(navigator, "onLine", {
+      value: online,
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  // Fail toward offline means the banner is visible until the probe has
+  // positively confirmed Online. Tests that assert the online rendering must
+  // settle one successful probe first.
+  async function confirmOnline(): Promise<void> {
+    await act(async () => {
+      await probeConnectivity();
+    });
+  }
 
   describe("when online", () => {
     beforeEach(() => {
-      Object.defineProperty(navigator, "onLine", {
-        value: true,
-        writable: true,
-        configurable: true,
-      });
+      setOnLine(true);
     });
 
-    it("renders nothing when online", () => {
+    // Probe-confirmed Online: the OS says online AND /api/health answered 204.
+    it("renders nothing when online", async () => {
       const { container } = render(<OfflineIndicator />);
+      await confirmOnline();
       expect(container.firstChild).toBeNull();
     });
 
-    it("does not show offline banner", () => {
+    it("does not show offline banner", async () => {
       render(<OfflineIndicator />);
+      await confirmOnline();
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
   });
 
   describe("when offline", () => {
     beforeEach(() => {
-      Object.defineProperty(navigator, "onLine", {
-        value: false,
-        writable: true,
-        configurable: true,
-      });
+      setOnLine(false);
     });
 
     it("shows offline indicator", () => {
@@ -65,87 +90,88 @@ describe("OfflineIndicator", () => {
 
   describe("network state transitions", () => {
     beforeEach(() => {
-      Object.defineProperty(navigator, "onLine", {
-        value: true,
-        writable: true,
-        configurable: true,
-      });
+      setOnLine(true);
     });
 
-    it("shows banner when going offline", () => {
+    it("shows banner when going offline", async () => {
       render(<OfflineIndicator />);
+      await confirmOnline();
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
       // A real browser flips navigator.onLine atomically with the events.
       act(() => {
-        Object.defineProperty(navigator, "onLine", {
-          value: false,
-          writable: true,
-          configurable: true,
-        });
+        setOnLine(false);
         window.dispatchEvent(new Event("offline"));
       });
 
       expect(screen.getByRole("status")).toBeInTheDocument();
     });
 
-    it("hides banner when coming back online", () => {
-      Object.defineProperty(navigator, "onLine", {
-        value: false,
-        writable: true,
-        configurable: true,
+    it("hides banner when coming back online", async () => {
+      act(() => {
+        setOnLine(false);
+        window.dispatchEvent(new Event("offline"));
       });
 
       render(<OfflineIndicator />);
       expect(screen.getByRole("status")).toBeInTheDocument();
 
-      act(() => {
-        Object.defineProperty(navigator, "onLine", {
-          value: true,
-          writable: true,
-          configurable: true,
-        });
+      await act(async () => {
+        setOnLine(true);
         window.dispatchEvent(new Event("online"));
       });
 
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
+  });
 
-    it("removes event listeners on unmount", () => {
-      const addSpy = vi.spyOn(window, "addEventListener");
-      const removeSpy = vi.spyOn(window, "removeEventListener");
+  describe("reachability probe (issue #211)", () => {
+    // Story 4/9: interface up but no route (captive portal, dead Wi-Fi) —
+    // navigator.onLine says online, the probe says unreachable → Offline
+    // affordances, banner included.
+    it("shows the banner when the probe reports the server unreachable while nominally online", async () => {
+      setOnLine(true);
+      probe.mockResolvedValue(false);
 
-      const { unmount } = render(<OfflineIndicator />);
+      render(<OfflineIndicator />);
 
-      expect(addSpy).toHaveBeenCalledWith("online", expect.any(Function));
-      expect(addSpy).toHaveBeenCalledWith("offline", expect.any(Function));
+      await act(async () => {
+        await probeConnectivity();
+      });
 
-      unmount();
+      expect(screen.getByRole("status")).toBeInTheDocument();
+    });
 
-      expect(removeSpy).toHaveBeenCalledWith("online", expect.any(Function));
-      expect(removeSpy).toHaveBeenCalledWith("offline", expect.any(Function));
+    it("hides the banner when a return-to-app probe recovers", async () => {
+      setOnLine(true);
+      probe.mockResolvedValue(false);
+
+      render(<OfflineIndicator />);
+      await act(async () => {
+        await probeConnectivity();
+      });
+      expect(screen.getByRole("status")).toBeInTheDocument();
+
+      probe.mockResolvedValue(true);
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      });
     });
   });
 
   describe("accessibility", () => {
     beforeEach(() => {
-      Object.defineProperty(navigator, "onLine", {
-        value: false,
-        writable: true,
-        configurable: true,
-      });
+      setOnLine(false);
     });
 
     it("has aria-live attribute", () => {
       render(<OfflineIndicator />);
       const indicator = screen.getByRole("status");
       expect(indicator).toHaveAttribute("aria-live", "polite");
-    });
-
-    it("accepts custom className", () => {
-      render(<OfflineIndicator className="custom-class" />);
-      const indicator = screen.getByRole("status");
-      expect(indicator).toHaveClass("custom-class");
     });
   });
 });

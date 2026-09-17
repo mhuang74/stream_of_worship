@@ -1,35 +1,26 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
+import { useConnectivity } from "@/hooks/useConnectivity";
 
 export interface OfflineIndicatorProps {
   className?: string;
 }
 
-// Connectivity via useSyncExternalStore: the server snapshot renders the
-// online state (null), so an offline cold start hydrates without a mismatch
-// and the client snapshot upgrades to the banner in the same commit.
-function subscribeConnectivity(onChange: () => void): () => void {
-  window.addEventListener("online", onChange);
-  window.addEventListener("offline", onChange);
-  return () => {
-    window.removeEventListener("online", onChange);
-    window.removeEventListener("offline", onChange);
-  };
-}
-
+// Connectivity comes from the shared state machine (src/hooks/
+// useConnectivity.ts): navigator.onLine plus an active reachability probe
+// against /api/health (issue #211). Fail toward offline: the banner shows
+// unless the state is positively "online" — unknown (never probed, in-flight,
+// or failed) counts as Offline. The server snapshot renders the online state
+// ("online"), so an offline cold start hydrates without a mismatch and the
+// client snapshot upgrades to the banner in the same commit.
 export function OfflineIndicator({ className }: OfflineIndicatorProps) {
   const { t } = useLocale();
-  const isOffline = useSyncExternalStore(
-    subscribeConnectivity,
-    () => typeof navigator !== "undefined" && navigator.onLine === false,
-    () => false
-  );
+  const connectivity = useConnectivity();
 
-  if (!isOffline) return null;
+  if (connectivity === "online") return null;
 
   return (
     <div

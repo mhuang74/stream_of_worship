@@ -88,6 +88,16 @@ _Avoid_: report, complaint, vote, LRC feedback
 An intentionally blank, timestamped Lyrics line marking a long instrumental passage (gap > 12 beats); rendered as a blank screen moment rather than lingering lyrics. Inserted deterministically after LLM correction (see ADR-0008) — the LLM never emits them.
 _Avoid_: empty line, spacer
 
+### Offline
+
+**Offline**:
+The device has no usable network path to the webapp's server — determined by connectivity state (see below), not merely by an interface being down. In Offline, playback and navigation serve from device-cached copies (artifact cache, document cache).
+_Avoid_: airplane mode (that's one way to cause it), no internet (vague), disconnected (ambiguous)
+
+**Connectivity**:
+The app-level judgment of whether the server is reachable, maintained as a single shared state: `Online` (navigator.onLine true AND a health probe succeeds), `Offline` (navigator.onLine false — the OS verdict is definitive downward), or `Unknown` (probe in flight, never run, or inconclusive). Unknown is treated as Offline for all offline affordances (fail toward offline), with one deliberate exception: the controller's cache-first boot branch gates on definitive Offline only. Not the same as navigator.onLine, which reports interface state and can claim Online while Airplane-style no-route conditions persist.
+_Avoid_: network status, online flag, navigator.onLine (implementation detail)
+
 ### User State
 
 **Favorite**:

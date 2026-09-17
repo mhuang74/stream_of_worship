@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vite
 import { screen, waitFor, act } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import PlayPage from "@/app/songsets/[id]/play/page";
+import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
 
 // Mock next/navigation. The router object must keep a stable identity across
 // renders: the play page's load effect depends on it, and a fresh object per
@@ -46,12 +47,20 @@ vi.mock("@/components/play/PrePlayCard", () => ({
 }));
 
 describe("PlayPage", () => {
+  const probe = vi.fn<() => Promise<boolean>>();
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetOfflineRecord.mockResolvedValue(null);
+    // Connectivity (issue #211) must be positively confirmed online for SPA
+    // navigation; stub the probe so tests are deterministic.
+    probe.mockReset();
+    probe.mockResolvedValue(true);
+    setConnectivityProbe(probe);
   });
 
   afterEach(() => {
+    setConnectivityProbe(null);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -253,6 +262,11 @@ describe("PlayPage", () => {
 
     it("online Start Worship keeps SPA navigation", async () => {
       stubOnline(true);
+      // Fail toward offline: Connectivity stays Unknown until the probe
+      // positively confirms Online — settle one successful probe first.
+      await act(async () => {
+        await probeConnectivity();
+      });
       global.fetch = vi
         .fn()
         .mockResolvedValueOnce({
@@ -295,6 +309,52 @@ describe("PlayPage", () => {
     it("offline Start Worship is a full document navigation", async () => {
       stubLocation();
       stubOnline(false);
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "test-songset",
+              name: "Sunday Set",
+              description: null,
+              renderState: "fresh",
+              latestRenderJobId: "job-1",
+              lastFailedRenderJobId: null,
+              items: [],
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "job-1",
+              status: "completed",
+              mp3R2Key: "audio/a.mp3",
+              mp4R2Key: "video/a.mp4",
+              chaptersR2Key: null,
+            }),
+        });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("start-worship-btn")).toBeInTheDocument();
+      });
+      act(() => {
+        screen.getByTestId("start-worship-btn").click();
+      });
+
+      expect(locationAssignMock).toHaveBeenCalledWith("/songsets/test-songset/play/controller");
+      expect(mockPush).not.toHaveBeenCalledWith("/songsets/test-songset/play/controller");
+    });
+
+    // Fail toward offline (issue #211 story 9): onLine true but the
+    // reachability probe fails → Unknown → full document path.
+    it("probe-failure Start Worship is a full document navigation", async () => {
+      stubLocation();
+      stubOnline(true);
+      probe.mockResolvedValue(false);
       global.fetch = vi
         .fn()
         .mockResolvedValueOnce({

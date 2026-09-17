@@ -4,6 +4,7 @@ import { renderWithLocale as render } from "@/test/render";
 import { SongsetsClient } from "@/app/songsets/SongsetsClient";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
+import { setConnectivityProbe } from "@/hooks/useConnectivity";
 
 const {
   mockListOfflineRecords,
@@ -112,6 +113,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
   });
 
   afterEach(() => {
+    setConnectivityProbe(null);
     if (realFetch) globalThis.fetch = realFetch;
   });
 
@@ -249,5 +251,28 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     });
     // Badge still present — the copy remains.
     expect(screen.getByText(/offline/i)).toBeInTheDocument();
+  });
+
+  // Fail toward offline (issue #211): probe unstubbed → Unknown, onLine
+  // false → definitive Offline. Play must take the deterministic
+  // full-document path, never SPA navigation.
+  it("offline Play is a full document navigation", async () => {
+    const locationAssignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { assign: locationAssignMock },
+      configurable: true,
+    });
+    const onLineDescriptor = Object.getOwnPropertyDescriptor(navigator, "onLine");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    try {
+      renderClient();
+      const playButton = await screen.findByRole("button", { name: "Play" });
+      fireEvent.click(playButton);
+      expect(locationAssignMock).toHaveBeenCalledWith("/songsets/songset-1/play");
+    } finally {
+      if (onLineDescriptor) {
+        Object.defineProperty(navigator, "onLine", onLineDescriptor);
+      }
+    }
   });
 });

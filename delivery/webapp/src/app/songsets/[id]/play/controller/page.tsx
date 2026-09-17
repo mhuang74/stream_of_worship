@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import { useCastTransport, type CastMedia } from "@/hooks/useCast";
@@ -18,6 +18,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
+import { getConnectivity, probeConnectivity, useConnectivity } from "@/hooks/useConnectivity";
 
 interface SongsetData {
   id: string;
@@ -50,29 +51,18 @@ type ChapterRecordingHashes = (string | null)[];
  * navigating to /login. Never a reason to fall back to the offline index. */
 class AuthRedirectError extends Error {}
 
-/** True when the device reports no network. Read at boot (effect time) for
- * the branch decision, and as the render-time snapshot for the boot hint. */
-function isOffline(): boolean {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
-}
-
-// Connectivity for the boot hint is the one render-time read of navigator
-// state, so it goes through useSyncExternalStore with a `false` server
-// snapshot: SSR and the hydration pass render the online copy, and the client
-// snapshot upgrades it to the offline hint in the same commit. The loading
-// screen lives for milliseconds, so there is nothing to subscribe to.
-const subscribeConnectivityNever = () => () => {};
-
+// Connectivity for the boot hint is a render-time read of the shared
+// Connectivity state machine (src/hooks/useConnectivity.ts, issue #211):
+// the `online` server snapshot renders the online copy, and the client
+// snapshot upgrades it in the same commit. The loading screen lives for
+// milliseconds, so only definitive Offline flips the hint.
 export default function ControllerPage() {
   const params = useParams();
   const router = useRouter();
   const { t } = useLocale();
   const songsetId = params.id as string;
-  const offlineNow = useSyncExternalStore(
-    subscribeConnectivityNever,
-    isOffline,
-    () => false
-  );
+  const connectivity = useConnectivity();
+  const offlineNow = connectivity === "offline";
 
   const [songset, setSongset] = useState<SongsetData | null>(null);
   const [media, setMedia] = useState<ControllerMedia | null>(null);
@@ -84,18 +74,23 @@ export default function ControllerPage() {
   const [chapterRecordingHashes, setChapterRecordingHashes] =
     useState<ChapterRecordingHashes>([]);
 
-  // Load songset and render job data.
-  //
-  // Connectivity-aware three-branch boot (issue #205):
+  // Connectivity-aware three-branch boot (issue #205, probed state from
+  // issue #211's shared Connectivity):
   //   1. online → the existing four-fetch chain verbatim (freshness and Cast
   //      preserved for a downloaded-but-online leader);
-  //   2. chain fails while nominally online (mid-session drop: a rejected
-  //      fetch, or the service worker's 503 for an uncached API route) →
-  //      boot cache-first from the offline index, Cast hidden;
-  //   3. offline at boot → cache-first directly, zero API fetches.
-  // `isOffline` media only ever comes out of branches 2/3, so Cast gating on
-  // it is correct: online never skips the API chain, and never silently plays
-  // a stale download.
+  //   2. chain fails while not positively offline (mid-session drop: a
+  //      rejected fetch, or the service worker's 503 for an uncached API
+  //      route) → boot cache-first from the offline index, Cast hidden;
+  //   3. offline at boot (navigator.onLine false at effect time) →
+  //      cache-first directly, zero API fetches.
+  // The boot decision is made ONCE at effect time and deliberately does not
+  // re-run on later state flips: an Unknown (in-flight/inconclusive) probe
+  // falls into branch 1, whose failure fallback (branch 2) covers the
+  // genuinely-offline outcome without ever stealing a fresh online boot.
+  // Branch 3 keys on definitive Offline ("offline" ⟺ navigator.onLine
+  // false); probing would be pointless there. `isOffline` media only ever
+  // comes out of branches 2/3, so Cast gating on it is correct: online
+  // never skips the API chain, and never silently plays a stale download.
   useEffect(() => {
     let cancelled = false;
 
@@ -234,7 +229,7 @@ export default function ControllerPage() {
 
         // Offline at boot: no API fetch is even attempted — the offline index
         // and the artifact cache are the only sources.
-        if (isOffline()) {
+        if (getConnectivity() === "offline") {
           if (await loadOffline()) return;
           throw new Error(t("control.offlineUnavailable"));
         }
@@ -243,12 +238,16 @@ export default function ControllerPage() {
           await loadOnline();
         } catch (err) {
           if (err instanceof AuthRedirectError) throw err;
-          // Nominally online but the chain did not complete: prefer the
-          // downloaded copy over the error screen, and say so — a silent
-          // fallback hides the stale-playback risk from the leader (and from
-          // what Cast reflects). The toast carries no behavioral weight:
-          // isOfflineMedia stays the sole Cast gate. Branch 3 (offline at
-          // boot) needs no hint — the boot screen already announced it.
+          // The chain did not complete: prefer the downloaded copy over the
+          // error screen, and say so — a silent fallback hides the
+          // stale-playback risk from the leader (and from what Cast
+          // reflects). The toast carries no behavioral weight: isOfflineMedia
+          // stays the sole Cast gate. Branch 3 (offline at boot) needs no
+          // hint — the boot screen already announced it. Re-probe so the
+          // shared state (and the offline banner) reflects why the chain
+          // could not load (issue #211: probe after an app-level fetch
+          // failure).
+          void probeConnectivity();
           if (await loadOffline()) {
             toast.info(t("control.offlineFallback"));
             return;
