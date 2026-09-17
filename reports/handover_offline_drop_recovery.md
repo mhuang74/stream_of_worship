@@ -1,4 +1,6 @@
-# Handover: Offline playback dead-end on online boot — fix + tests (in progress)
+# Handover: Offline playback dead-end on online boot — fix + tests (COMPLETE 2026-09-17)
+
+> **Resolution:** all steps finished and pushed as `b42d90cc` (fix) + `b805d898` (graphify chore) on `fix_offline_worship_playback` (PR #209). Final verification: unit 2453 passed, lint 0 errors, tsc clean, e2e 23/23 PASS. Items 1 and 4 below were applied; item 6's doc change was not in the tree at commit time (user's concurrent work, left alone).
 
 **Branch:** `fix_offline_worship_playback`
 **Plan (durable copy):** `local://offline-drop-recovery-plan.md` — read it first; this handover references its Step numbers.
