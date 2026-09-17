@@ -258,6 +258,15 @@ export function RenderPageClient({
     setJobId(null)
   }, [t])
 
+  // The poll hit 401/403: the session expired and can never observe this
+  // job's completion. The job itself is fine — the render worker writes the
+  // database directly — so the submitted screen stays put with its own
+  // message; the toast just makes sure the state change is noticed (issue
+  // #210). No server-side hook: completion stays client-soft (ADR-0002).
+  const handleAuthExpired = useCallback(() => {
+    toast.error(t("render.toast.authExpired"))
+  }, [t])
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -346,6 +355,7 @@ export function RenderPageClient({
             jobId={jobId}
             onComplete={handleRenderComplete}
             onFailed={handleRenderFailed}
+            onAuthExpired={handleAuthExpired}
             estimatedMinutes={estimatedMinutes}
             onCancel={handleCancel}
             isCancelling={isCancelling}

@@ -14,6 +14,15 @@ vi.mock("@/lib/offline/artifact-cache", () => ({
   invalidateArtifactCache: vi.fn().mockResolvedValue(undefined),
 }));
 
+// The index's eviction paths also delete the pre-cached controller document
+// (issue #210) — mocked here, asserted per eviction below.
+const mockDeleteControllerDocument = vi.hoisted(() =>
+  vi.fn<(songsetId: string) => Promise<boolean>>().mockResolvedValue(true)
+);
+vi.mock("@/lib/offline/document-cache", () => ({
+  deleteControllerDocument: mockDeleteControllerDocument,
+}));
+
 // --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
@@ -206,6 +215,8 @@ describe("index round-trip", () => {
 
     expect(await getOfflineRecord("set-1")).toBeNull();
     expect(mockedInvalidate).toHaveBeenCalledWith("job-1");
+    // Issue #210: the pre-cached controller document goes with it.
+    expect(mockDeleteControllerDocument).toHaveBeenCalledWith("set-1");
   });
 
   it("put overwrites a prior record for the same songsetId", async () => {
@@ -245,21 +256,37 @@ describe("putOfflineRecord supersede eviction", () => {
     expect(loaded?.renderJobId).toBe("job-new");
   });
 
+  // Issue #210: a re-download supersedes the old copy — its pre-cached
+  // controller document (stale RSC hashes, possibly a different page) must
+  // go with the old artifacts.
+  it("deletes the prior controller document when superseding", async () => {
+    await putOfflineRecord(makeRecord({ songsetId: "set-1", renderJobId: "job-old" }));
+    mockDeleteControllerDocument.mockClear();
+
+    await putOfflineRecord(makeRecord({ songsetId: "set-1", renderJobId: "job-new" }));
+
+    expect(mockDeleteControllerDocument).toHaveBeenCalledTimes(1);
+    expect(mockDeleteControllerDocument).toHaveBeenCalledWith("set-1");
+  });
+
   it("does not evict when renderJobId is unchanged", async () => {
     await putOfflineRecord(makeRecord({ songsetId: "set-1", renderJobId: "job-1" }));
     mockedInvalidate.mockClear();
+    mockDeleteControllerDocument.mockClear();
 
     await putOfflineRecord(
       makeRecord({ songsetId: "set-1", renderJobId: "job-1", songsetName: "Renamed" })
     );
 
     expect(mockedInvalidate).not.toHaveBeenCalled();
+    expect(mockDeleteControllerDocument).not.toHaveBeenCalled();
   });
 
   it("does not evict when no prior record exists", async () => {
     await putOfflineRecord(makeRecord({ songsetId: "fresh", renderJobId: "job-1" }));
 
     expect(mockedInvalidate).not.toHaveBeenCalled();
+    expect(mockDeleteControllerDocument).not.toHaveBeenCalled();
   });
 });
 
@@ -281,6 +308,7 @@ describe("removeOfflineSongset artifact invalidation", () => {
     await removeOfflineSongset("missing");
 
     expect(mockedInvalidate).not.toHaveBeenCalled();
+    expect(mockDeleteControllerDocument).not.toHaveBeenCalled();
   });
 });
 

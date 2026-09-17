@@ -244,8 +244,15 @@ export default function ControllerPage() {
         } catch (err) {
           if (err instanceof AuthRedirectError) throw err;
           // Nominally online but the chain did not complete: prefer the
-          // downloaded copy over the error screen.
-          if (await loadOffline()) return;
+          // downloaded copy over the error screen, and say so — a silent
+          // fallback hides the stale-playback risk from the leader (and from
+          // what Cast reflects). The toast carries no behavioral weight:
+          // isOfflineMedia stays the sole Cast gate. Branch 3 (offline at
+          // boot) needs no hint — the boot screen already announced it.
+          if (await loadOffline()) {
+            toast.info(t("control.offlineFallback"));
+            return;
+          }
           throw err;
         }
       } catch (err) {

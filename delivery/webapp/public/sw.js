@@ -23,7 +23,7 @@ importScripts(
 // so the token is resolved against the network rather than the HTTP cache.
 let artifactHandlerRoute = null;
 try {
-  importScripts("/sw-artifact-serving.js?v=20954d42d8d3");
+  importScripts("/sw-artifact-serving.js?v=da3676bbb217");
   artifactHandlerRoute = self.artifactRangeServing?.artifactHandler ?? null;
   if (!artifactHandlerRoute) {
     console.error("[sw] sw-artifact-serving.js did not publish artifactHandler");
@@ -93,6 +93,41 @@ workbox.routing.registerRoute(
 workbox.routing.registerRoute(
   ({ url }) => url.pathname.startsWith("/api/signed-url"),
   new workbox.strategies.NetworkOnly()
+);
+
+// Unexpiring controller-document route (issue #210): navigations to the
+// controller path the download pre-caches (src/lib/offline/
+// document-cache.ts). The generic document route below expires the sow-pages
+// cache (7 days / 50 entries), which would silently evict the pre-cached
+// controller document and kill the offline tap path weeks after soundcheck
+// while artifacts survive. Workbox's expiration plugin has no per-entry
+// exemption, so expiry is dodged by routing: this NetworkFirst over the SAME
+// sow-pages cache, registered BEFORE the generic route, with the redirect-drop
+// guard (lockstep with the pre-cache's isLoginPage guard) but NO expiration
+// plugin. Online stays fresh (NetworkFirst); only the controller document is
+// immortal. Registered before the generic document route — workbox matches in
+// registration order.
+//
+// request.mode === "navigate" keeps RSC payload fetches (same URL, no
+// navigate mode) on the generic route's bounded expiration — unbounded RSC
+// growth must not land in an unexpiring cache. The /songsets/ shape keeps the
+// share controller (/share/<token>/play/controller) on the generic route too
+// (the share flow is out of scope).
+workbox.routing.registerRoute(
+  ({ request, url }) =>
+    request.mode === "navigate" && /^\/songsets\/[^/]+\/play\/controller$/.test(url.pathname),
+  new workbox.strategies.NetworkFirst({
+    cacheName: "sow-pages",
+    networkTimeoutSeconds: 10,
+    plugins: [
+      {
+        cacheWillUpdate: ({ response }) => (response.redirected ? null : response),
+      },
+      new workbox.cacheableResponse.CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+    ],
+  })
 );
 
 // Offline navigation (issue #206): full document loads and Next.js RSC

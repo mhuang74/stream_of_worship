@@ -24,6 +24,8 @@ export const controlBundle = bundle({
     "control.offlineBooting": "Starting offline playback…",
     "control.offlineUnavailable":
       "This songset has not been downloaded for offline playback",
+    "control.offlineFallback":
+      "The live version could not be loaded — playing the downloaded copy.",
 
     // --- Share landing page (app/share/[token]/page.tsx) -----------------
     "control.loading": "Loading",
@@ -165,6 +167,7 @@ export const controlBundle = bundle({
     "control.disconnectedFromTV": "已與電視斷線",
     "control.offlineBooting": "正在以離線模式啟動…",
     "control.offlineUnavailable": "這個敬拜歌單還沒下載到本機，無法離線播放",
+    "control.offlineFallback": "無法載入線上版本，改為播放已下載的副本。",
 
     // --- Share landing page (app/share/[token]/page.tsx) -----------------
     "control.loading": "載入中",

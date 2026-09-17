@@ -987,6 +987,11 @@ export function ControllerPlayer({
   // after the failure), then playback resumes. `load()` also rewinds the
   // element to 0:00, so the position is restored as soon as the new resource
   // has metadata — a mid-service stall must not restart the whole set.
+  //
+  // The restore listener is once-only AND explicitly removed in the error
+  // path: a retry whose play() rejects leaves the overlay up, and an
+  // orphaned listener would seek a LATER successful load back to this
+  // failure's position (issue #210).
   const handleRetryMedia = useCallback(() => {
     const element = mediaRef.current;
     if (!element) return;
@@ -1006,17 +1011,31 @@ export function ControllerPlayer({
           /* best-effort: seeking can throw while the resource is unavailable */
         }
       };
-      element.addEventListener("loadedmetadata", restorePosition);
+      element.addEventListener("loadedmetadata", restorePosition, { once: true });
+      // Clean up when this retry fails: the play rejection surfaces the
+      // overlay again, and the restore listener must not survive to rewind
+      // the next load.
+      element
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((err) => {
+          element.removeEventListener("loadedmetadata", restorePosition);
+          console.error("Play failed:", err);
+          toast.error(t("controller.toastPlaybackFailed"));
+        });
+    } else {
+      element
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((err) => {
+          console.error("Play failed:", err);
+          toast.error(t("controller.toastPlaybackFailed"));
+        });
     }
-    element
-      .play()
-      .then(() => {
-        setIsPlaying(true);
-      })
-      .catch((err) => {
-        console.error("Play failed:", err);
-        toast.error(t("controller.toastPlaybackFailed"));
-      });
   }, [t]);
 
   // ── Song-change effect (keyed on currentSongIndex while active) ─────────

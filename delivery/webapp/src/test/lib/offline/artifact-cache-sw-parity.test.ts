@@ -19,6 +19,8 @@ import {
 const APP_ORIGIN = "https://app.example.com";
 const SW_MODULE_PATH = path.resolve(__dirname, "../../../../public/sw-artifact-serving.js");
 const SW_SCRIPT_PATH = path.resolve(__dirname, "../../../../public/sw.js");
+// Marker comment above the dedicated controller-document route in public/sw.js.
+const MATCHER_COMMENT = "// Unexpiring controller-document route (issue #210)";
 
 function memoryCache() {
   const store = new Map<string, Response>();
@@ -121,5 +123,69 @@ describe("service worker ↔ app document cache contract (issue #206)", () => {
       script.includes(`cacheName: "${SOW_PAGES_CACHE_NAME}"`),
       `sw.js's document route must use the app's cache name (${SOW_PAGES_CACHE_NAME}) — see src/lib/offline/document-cache.ts and the NetworkFirst route in public/sw.js`
     ).toBe(true);
+  });
+});
+
+describe("service worker ↔ app controller-document route contract (issue #210)", () => {
+  // The pre-cached controller document must outlive the generic document
+  // route's 7-day/50-entry expiration: the offline tap path depends on an
+  // entry that a weeks-later cold start can still hit. Workbox's expiration
+  // plugin has no per-entry exemption, so sw.js registers a dedicated route
+  // for controller-document navigations BEFORE the generic document route,
+  // with the same redirect-drop guard but no expiration plugin.
+  it("registers a dedicated controller-document route before the generic document route", () => {
+    const script = readFileSync(SW_SCRIPT_PATH, "utf8");
+
+    const dedicatedIndex = script.indexOf(MATCHER_COMMENT);
+    expect(
+      dedicatedIndex,
+      "sw.js must register the dedicated controller-document route (marked by a comment naming issue #210)"
+    ).toBeGreaterThan(-1);
+
+    const genericIndex = script.indexOf("request.mode === \"navigate\"");
+    expect(genericIndex, "sw.js must keep the generic document route").toBeGreaterThan(-1);
+    expect(
+      dedicatedIndex,
+      "the dedicated controller-document route must be registered BEFORE the generic document route (workbox matches in registration order)"
+    ).toBeLessThan(genericIndex);
+  });
+
+  it("runs the dedicated route on the controller path with no expiration plugin", () => {
+    const script = readFileSync(SW_SCRIPT_PATH, "utf8");
+
+    // Isolate the dedicated route's registration: from its marker comment to
+    // the generic document route's comment block.
+    const dedicatedBlock = script.slice(
+      script.indexOf(MATCHER_COMMENT),
+      script.indexOf("// Offline navigation (issue #206)")
+    );
+
+    // Same path shape the app derives (controllerDocumentPath).
+    expect(dedicatedBlock).toContain('/^\\/songsets\\/[^/]+\\/play\\/controller$/');
+    // Navigations only: RSC payload fetches share the controller URL and must
+    // stay on the generic route's bounded expiration (unexpiring RSC growth
+    // would never be evicted).
+    expect(dedicatedBlock).toContain('request.mode === "navigate"');
+    // Same cache the pre-cache writes and the generic route reads.
+    expect(dedicatedBlock).toContain(`cacheName: "${SOW_PAGES_CACHE_NAME}"`);
+    // Redirect-drop guard in lockstep with the pre-cache (issue #210 parity).
+    expect(dedicatedBlock).toContain("cacheWillUpdate");
+    expect(dedicatedBlock).toContain("response.redirected");
+    // The whole point: no expiry on this route.
+    expect(
+      dedicatedBlock.includes("ExpirationPlugin"),
+      "the dedicated controller-document route must NOT expire entries (7-day TTL would evict the pre-cached tap path)"
+    ).toBe(false);
+    expect(dedicatedBlock).toContain("CacheableResponsePlugin");
+  });
+
+  it("keeps the generic document route's expiration intact", () => {
+    const script = readFileSync(SW_SCRIPT_PATH, "utf8");
+    const genericBlock = script.slice(script.indexOf("// Offline navigation (issue #206)"));
+
+    expect(genericBlock).toContain("request.mode === \"navigate\"");
+    expect(genericBlock).toContain("ExpirationPlugin");
+    // RSC-payload growth stays bounded on the generic route.
+    expect(genericBlock).toContain("maxEntries: 50");
   });
 });

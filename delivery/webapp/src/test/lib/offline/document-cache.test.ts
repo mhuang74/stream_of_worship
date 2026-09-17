@@ -4,6 +4,7 @@ import {
   WARM_TIMEOUT_MS,
   controllerDocumentPath,
   cacheControllerDocument,
+  deleteControllerDocument,
 } from "@/lib/offline/document-cache";
 
 /**
@@ -43,6 +44,27 @@ function installCaches(cache = memoryCache()) {
     configurable: true,
   });
   return cache;
+}
+
+/**
+ * A Response with the fixture-overridable `redirected` / `url` identity
+ * fields (both getter-only on the real Response — the SW's cacheWillUpdate
+ * guard and the pre-cache guard read exactly these).
+ */
+function responseWith(
+  body: string,
+  init: ResponseInit = {},
+  identity: { redirected?: boolean; url?: string } = {}
+): Response {
+  class FakeResponse extends Response {
+    get redirected(): boolean {
+      return identity.redirected ?? super.redirected;
+    }
+    get url(): string {
+      return identity.url ?? super.url;
+    }
+  }
+  return new FakeResponse(body, init);
 }
 
 function stubLocation(pathname: string) {
@@ -158,6 +180,48 @@ describe("cacheControllerDocument", () => {
     expect(cache.put).not.toHaveBeenCalled();
   });
 
+  // The auth proxy answers an expired-session navigation with a 307 to /login;
+  // fetch() resolves that to a 200 login HTML. Caching it would store the login
+  // page under the controller path — the exact trap the SW document route's
+  // cacheWillUpdate guard exists for (issue #210).
+  it("stores nothing when the fetch was redirected to a login page", async () => {
+    const cache = installCaches();
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(responseWith("<html>Sign in</html>", {}, { redirected: true }));
+
+    const ok = await cacheControllerDocument("set-1");
+
+    expect(ok).toBe(false);
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("stores nothing when the final URL is a login page even without the redirect flag", async () => {
+    const cache = installCaches();
+    global.fetch = vi.fn().mockResolvedValue(
+      responseWith("<html>Sign in</html>", {}, { url: `${ORIGIN}/login?callbackUrl=x` })
+    );
+
+    const ok = await cacheControllerDocument("set-1");
+
+    expect(ok).toBe(false);
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("still caches the genuine HTML document served from the controller path", async () => {
+    const cache = installCaches();
+    global.fetch = vi.fn().mockResolvedValue(
+      responseWith(HTML_WITH_ASSETS, { headers: { "Content-Type": "text/html; charset=utf-8" } }, {
+        url: `${ORIGIN}/songsets/set-1/play/controller`,
+      })
+    );
+
+    const ok = await warmDocument();
+
+    expect(ok).toBe(true);
+    expect(cache.put).toHaveBeenCalledWith("/songsets/set-1/play/controller", expect.any(Response));
+  });
+
   it("resolves false without throwing when Cache Storage is unavailable", async () => {
     Object.defineProperty(window, "caches", { value: undefined, configurable: true });
 
@@ -180,5 +244,33 @@ describe("cacheControllerDocument", () => {
     const ok = await cacheControllerDocument("set-1");
 
     expect(ok).toBe(false);
+  });
+});
+
+describe("deleteControllerDocument", () => {
+  it("deletes the controller path from the sow-pages cache", async () => {
+    const cache = installCaches();
+
+    await deleteControllerDocument("set-1");
+
+    expect(window.caches.open).toHaveBeenCalledWith(SOW_PAGES_CACHE_NAME);
+    expect(cache.delete).toHaveBeenCalledWith("/songsets/set-1/play/controller");
+  });
+
+  it("resolves false without throwing when Cache Storage is unavailable", async () => {
+    Object.defineProperty(window, "caches", { value: undefined, configurable: true });
+
+    await expect(deleteControllerDocument("set-1")).resolves.toBe(false);
+  });
+
+  it("resolves false without throwing when the delete fails", async () => {
+    installCaches({
+      put: vi.fn(() => Promise.resolve()),
+      match: vi.fn(() => Promise.resolve(undefined)),
+      delete: vi.fn(() => Promise.reject(new Error("storage blocked"))),
+      keys: vi.fn(() => Promise.resolve([])),
+    });
+
+    await expect(deleteControllerDocument("set-1")).resolves.toBe(false);
   });
 });

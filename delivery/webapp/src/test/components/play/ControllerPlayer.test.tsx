@@ -2037,6 +2037,103 @@ describe("ControllerPlayer", () => {
       expect(video.currentTime).toBe(120);
     });
 
+    // Issue #210: the position-restore listener used to outlive a failed
+    // retry. A retry whose play() rejects leaves the overlay back up; the
+    // leader clicks Retry again, the load succeeds — and the ORPHANED
+    // listener from the first attempt fired on that load's loadedmetadata,
+    // seeking back to the FIRST failure's position. No later unload may
+    // rewind the service.
+    it("removes the position-restore listener when the retry's play fails", async () => {
+      vi.spyOn(window.HTMLMediaElement.prototype, "load").mockImplementation(function (
+        this: HTMLMediaElement
+      ) {
+        this.currentTime = 0;
+      });
+      // First retry: play() rejects. Second retry: play() succeeds.
+      vi.spyOn(window.HTMLMediaElement.prototype, "play")
+        .mockRejectedValueOnce(new DOMException("play() failed", "AbortError"))
+        .mockResolvedValueOnce(undefined);
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const video = getVideo();
+      video.currentTime = 120;
+      await act(async () => {
+        fireEvent.error(video);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("media-retry-button")).toBeInTheDocument();
+      });
+
+      // Retry #1 fails — the play rejection removes the restore listener, and
+      // the element's (re-fired) error surfaces the overlay again.
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("media-retry-button"));
+      });
+      await act(async () => {
+        fireEvent.error(video);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("media-retry-button")).toBeInTheDocument();
+      });
+
+      // Retry #2 succeeds: metadata loads at 0:00 and playback resumes. The
+      // orphaned listener would seek back to 120 (rewind), a removed one
+      // leaves the position alone.
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("media-retry-button"));
+      });
+      await act(async () => {
+        fireEvent.loadedMetadata(video);
+      });
+
+      expect(video.currentTime).toBe(0);
+    });
+
+    it("restores the position exactly once on a successful retry", async () => {
+      // The real load() rewinds the element; the stub must too, or the test
+      // could not tell a restored position from an untouched one. The stub
+      // keeps a backing value so reads see the rewind.
+      vi.spyOn(window.HTMLMediaElement.prototype, "load").mockImplementation(function (
+        this: HTMLMediaElement
+      ) {
+        this.currentTime = 0;
+      });
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const video = getVideo();
+      video.currentTime = 120;
+      await act(async () => {
+        fireEvent.error(video);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("media-retry-button")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("media-retry-button"));
+      });
+      await act(async () => {
+        fireEvent.loadedMetadata(video);
+      });
+      // A second loadedmetadata (long buffer, another resource) must not
+      // seek again — the once-only listener is gone. The load() stub would
+      // have wiped the position to 0; a second restore would pin it at 120
+      // again after any later seek.
+      const positionAfterFirstRestore = video.currentTime;
+      await act(async () => {
+        fireEvent.loadedMetadata(video);
+      });
+
+      expect(positionAfterFirstRestore).toBe(120);
+      expect(video.currentTime).toBe(120);
+    });
+
     it("does not overlay media failures while a remote session is active", async () => {
       await act(async () => {
         render(
