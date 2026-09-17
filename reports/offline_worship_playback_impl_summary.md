@@ -2,9 +2,11 @@
 
 **Date:** 2026-08-23
 **Branch:** `fix_offline_worship_playback`
-**Base:** `2f52d355` · **HEAD:** `ab398651`
+**Base:** `2f52d355` · **HEAD:** `c05f5af4`
 **Spec:** [`specs/fix_offline_worship_playback_v2.md`](../specs/fix_offline_worship_playback_v2.md) (spec issue [#202](https://github.com/mhuang74/stream_of_worship/issues/202))
-**Issues:** #203, #204, #205, #206, #207, #208 (committed) · #210 (review fixes, **uncommitted in the working tree**)
+**Issues:** #203, #204, #205, #206, #207, #208 (committed) · #210 (review fixes, committed in `a369abc3`)
+
+> **Developer explanation:** [docs/offline_worship_design_explained.md](../docs/offline_worship_design_explained.md) — how the service worker serves the cached page, artifacts, and Range seeks.
 
 ---
 
@@ -154,10 +156,11 @@ flow.
   `controller-page`, `play-page`, `songsets-offline-merge` (`src/test/app/`); `OfflineStatus`,
   `ControllerPlayer` (`src/test/components/play/`); `RenderSubmitted`, `RenderForm`
   (`src/test/components/render/`); plus the `ServiceWorkerRegistrar` coverage.
-- **Browser proofs: not yet green.** `delivery/webapp/scripts/e2e/offline-playback.mjs` exists
-  but is **untracked and incomplete** — it is blocked on a page-side 401 during target
-  resolution. Its intended scenarios are (a) download producing artifact keys + index record +
-  controller document, (b) offline cold start with a 206 seek, (c) mid-stream network drop, (d)
+- **Browser proofs: not yet green.** `delivery/webapp/scripts/e2e/offline-playback.mjs` is
+  **tracked but not yet green** (`a369abc3`, documented by `delivery/webapp/scripts/e2e/README.md`;
+  the working tree carries further uncommitted changes to it). Its intended scenarios are (a)
+  download producing artifact keys + index record + controller document, (b) offline cold start
+  with a 206 seek, (c) mid-stream network drop, (d)
   the auto-cache toggle being honored, (e) an online regression pass (signed URL + Cast connect),
   (f) the expired-session login-HTML guard, (g) a 416 seek past EOF, (h) the pre-cached
   controller document surviving generic document-cache eviction. None of these has completed a
@@ -177,9 +180,15 @@ flow.
 
 ## Working-tree notice
 
-At the time of writing, the #210 review fixes above are **uncommitted** (17 modified files across
-`public/sw.js`, `public/sw-artifact-serving.js`, the controller page, `RenderPageClient`,
-`ControllerPlayer`, `RenderSubmitted`, the offline lib, two i18n bundles, and their tests). Also
-untracked: this task's e2e harness `delivery/webapp/scripts/e2e/` and
-`reports/handover-issue-210.md`. The committed branch tip `ab398651` therefore contains #203–#208
-only.
+The #210 review fixes are **committed** (`a369abc3`), together with this task's real-browser e2e
+harness (`delivery/webapp/scripts/e2e/`, documented by its own `README.md`) and
+`reports/handover-issue-210.md`. The committed branch tip is `c05f5af4` (a graphify chore commit),
+so the branch as committed contains #203–#210.
+
+The working tree still carries **uncommitted** changes from other in-flight webapp work — eight
+files at the time of writing (`git status --porcelain`): `delivery/webapp/scripts/e2e/offline-playback.mjs`,
+`src/app/page/HomePageClient.tsx`, `src/app/songsets/SongsetsClient.tsx`,
+`src/app/songsets/[id]/SongsetEditorClient.tsx`, `src/app/songsets/[id]/play/controller/page.tsx`,
+`src/components/play/ControllerPlayer.tsx`, `src/test/app/controller-page.test.tsx`, and
+`src/test/components/play/ControllerPlayer.test.tsx`. Those changes belong to other work in
+progress and are not described by this summary.

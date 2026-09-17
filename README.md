@@ -125,7 +125,7 @@ The Web App is the primary end-user interface for worship leaders and media team
 **Playback**
 - Built-in controller player (audio + synchronized lyrics)
 - Second-screen projection via W3C Presentation API or Google Cast
-- Offline caching of rendered files via Service Worker (see [Offline Playback](USER_GUIDE.md#offline-worship-playback))
+- Offline caching of rendered files via Service Worker (see [Offline Playback](USER_GUIDE.md#offline-worship-playback); developer walkthrough: [Offline Worship Design](docs/offline_worship_design_explained.md))
 - Full keyboard shortcuts and Media Session API integration
 
 **Content Review**
@@ -557,6 +557,7 @@ ls poc_audio/
 
 - **Developer Documentation:** [DEVELOPER.md](DEVELOPER.md) - Architecture, roadmap, advanced configuration
 - **User Guide:** [USER_GUIDE.md](USER_GUIDE.md) - Worship leader workflows, including offline playback
+- **Offline Worship Design:** [docs/offline_worship_design_explained.md](docs/offline_worship_design_explained.md) - Service worker caching and the offline playback request flow
 - **POC Script Guide:** [lab/poc-scripts/README.md](lab/poc-scripts/README.md)
 - **Design Document:** [specs/worship-music-transition-system-design.md](specs/worship-music-transition-system-design.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
