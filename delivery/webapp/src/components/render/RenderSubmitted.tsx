@@ -53,12 +53,12 @@ export function RenderSubmitted({
   })
 
   useEffect(() => {
-    let timer: NodeJS.Timeout | undefined
+    let timer: number | undefined
     let disposed = false
 
     const stopPolling = () => {
       if (timer !== undefined) {
-        clearInterval(timer)
+        window.clearInterval(timer)
         timer = undefined
       }
     }
@@ -96,7 +96,7 @@ export function RenderSubmitted({
       }
     }
 
-    timer = setInterval(poll, RENDER_JOB_POLL_INTERVAL_MS)
+    timer = window.setInterval(poll, RENDER_JOB_POLL_INTERVAL_MS)
 
     return () => {
       disposed = true
