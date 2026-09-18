@@ -23,7 +23,7 @@ export interface DashboardSongset {
 
 interface DashboardSongsetCardProps {
   songset: DashboardSongset;
-  onPlay: (songsetId: string) => void;
+  onPlay: (songsetId: string) => void | Promise<void>;
   onShare: (songsetId: string, name: string) => void;
 }
 

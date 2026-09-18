@@ -3,6 +3,8 @@ import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { HomePageClient } from "@/app/page/HomePageClient";
 import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
+import { getOfflineRecord } from "@/lib/offline/offline-index";
+import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
 import type { DashboardSongset } from "@/components/dashboard/DashboardSongsetCard";
 import type { SongCardData } from "@/components/songset/SongCard";
 
@@ -27,6 +29,10 @@ vi.mock("@/contexts/AudioPlayerContext", () => ({
 
 vi.mock("@/lib/r2/public-url", () => ({
   getPublicAudioUrl: vi.fn(() => null),
+}));
+
+vi.mock("@/lib/offline/offline-index", () => ({
+  getOfflineRecord: vi.fn(async () => null),
 }));
 
 function makeSong(id: string): SongCardData {
@@ -87,6 +93,7 @@ const defaultProps = {
 describe("HomePageClient", () => {
   const probe = vi.fn<() => Promise<boolean>>();
   let locationAssignMock: Mock;
+  let locationReplaceMock: Mock;
   let onLineDescriptor: PropertyDescriptor | undefined;
 
   function stubOnline(online: boolean): void {
@@ -151,28 +158,70 @@ describe("HomePageClient", () => {
     expect(shareButtons).toHaveLength(3);
   });
 
-  it("navigates to the play page when play is clicked", () => {
+  it("navigates to the play controller when play is clicked", async () => {
     render(<HomePageClient {...defaultProps} />);
-    fireEvent.click(screen.getByRole("button", { name: "Play" }));
-    expect(mockPush).toHaveBeenCalledWith("/songsets/s1/play");
+    // The handler awaits the offline-index read before navigating.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    });
+    expect(mockPush).toHaveBeenCalledWith("/songsets/s1/play/controller");
   });
 
   // Fail toward offline (issue #211): navigator.onLine false → definitive
   // Offline → the deterministic full-document path, never SPA navigation.
-  it("offline play is a full document navigation", () => {
+  it("offline play is a full document navigation", async () => {
     stubOnline(false);
     locationAssignMock = vi.fn();
+    locationReplaceMock = vi.fn();
     const locationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
     Object.defineProperty(window, "location", {
-      value: { assign: locationAssignMock },
+      value: { assign: locationAssignMock, replace: locationReplaceMock },
+      configurable: true,
+    });
+    try {
+      render(<HomePageClient {...defaultProps} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      });
+
+      expect(locationAssignMock).toHaveBeenCalledWith("/songsets/s1/play/controller");
+      expect(mockPush).not.toHaveBeenCalledWith("/songsets/s1/play/controller");
+    } finally {
+      if (locationDescriptor) {
+        Object.defineProperty(window, "location", locationDescriptor);
+      }
+    }
+  });
+
+  // Cache-first entry (issue #211 follow-up): a songset with an offline
+  // record takes the full-document path even when positively online.
+  it("cached songset play is a full document navigation even when online", async () => {
+    vi.mocked(getOfflineRecord).mockResolvedValue({
+      songsetId: "s1",
+      renderJobId: "job-1",
+      songsetName: "Set 1",
+      cachedMp3: true,
+      cachedMp4: true,
+      cachedChapters: true,
+      cachedAt: "2026-09-15T00:00:00.000Z",
+      chapterContentHashes: [],
+    } satisfies OfflineSongsetRecord);
+    locationAssignMock = vi.fn();
+    locationReplaceMock = vi.fn();
+    const locationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
+    Object.defineProperty(window, "location", {
+      value: { assign: locationAssignMock, replace: locationReplaceMock },
       configurable: true,
     });
     try {
       render(<HomePageClient {...defaultProps} />);
       fireEvent.click(screen.getByRole("button", { name: "Play" }));
-
-      expect(locationAssignMock).toHaveBeenCalledWith("/songsets/s1/play");
-      expect(mockPush).not.toHaveBeenCalledWith("/songsets/s1/play");
+      await waitFor(() => {
+        expect(locationAssignMock).toHaveBeenCalledWith(
+          "/songsets/s1/play/controller"
+        );
+      });
+      expect(mockPush).not.toHaveBeenCalledWith("/songsets/s1/play/controller");
     } finally {
       if (locationDescriptor) {
         Object.defineProperty(window, "location", locationDescriptor);

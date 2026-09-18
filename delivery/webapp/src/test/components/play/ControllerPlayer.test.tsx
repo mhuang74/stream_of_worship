@@ -10,9 +10,10 @@ vi.mock("@/hooks/useLyricsFeedback", () => ({
   useLyricsFeedback: (...args: unknown[]) => mockUseLyricsFeedback(...args),
 }));
 // Mock next/navigation
+const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: mockPush,
   }),
   useParams: () => ({ id: "test-songset" }),
 }));
@@ -1566,6 +1567,36 @@ describe("ControllerPlayer", () => {
 
   // ── Exit functionality ─────────────────────────────────────────────────
   describe("exit functionality", () => {
+    it("navigates to the explicit exitRoute on exit", async () => {
+      mockPush.mockClear();
+      await act(async () => {
+        render(
+          <ControllerPlayer {...defaultProps} exitRoute="/offline" />
+        );
+      });
+
+      const exitButton = screen.getByRole("button", { name: /^back$/i });
+      await act(async () => {
+        fireEvent.click(exitButton);
+      });
+
+      expect(mockPush).toHaveBeenCalledWith("/offline");
+    });
+
+    it("falls back to /songsets when no exitRoute is given", async () => {
+      mockPush.mockClear();
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const exitButton = screen.getByRole("button", { name: /^back$/i });
+      await act(async () => {
+        fireEvent.click(exitButton);
+      });
+
+      expect(mockPush).toHaveBeenCalledWith("/songsets");
+    });
+
     it("navigates back when exit button clicked", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);

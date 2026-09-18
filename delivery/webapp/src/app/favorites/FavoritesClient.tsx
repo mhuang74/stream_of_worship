@@ -9,6 +9,7 @@ import { Heart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
+import { useOfflineRedirect } from "@/hooks/useOfflineRedirect";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { toSongCardData } from "@/lib/song-card-data";
@@ -29,6 +30,7 @@ export function FavoritesClient({
 }: FavoritesClientProps) {
   const router = useRouter();
   const { t } = useLocale();
+  useOfflineRedirect();
   const [songs, setSongs] = useState<SongCardData[]>(initialSongs);
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(currentPage);

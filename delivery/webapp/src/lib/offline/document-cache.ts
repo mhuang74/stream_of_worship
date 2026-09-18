@@ -108,11 +108,24 @@ function isLoginPage(response: Response): boolean {
  * document itself is cached; asset warming is attempted but never fatal.
  */
 export async function cacheControllerDocument(songsetId: string): Promise<boolean> {
+  return cacheDocumentAtPath(controllerDocumentPath(songsetId));
+}
+
+/**
+ * Pre-caches the /offline list document (issue #211 follow-up). It is the
+ * offline redirect target and the controller's exit route, so it must be
+ * servable offline even before any songset download created a reason to
+ * cache it. Same best-effort contract as cacheControllerDocument.
+ */
+export async function cacheOfflineListDocument(): Promise<boolean> {
+  return cacheDocumentAtPath("/offline");
+}
+
+/** Shared body of cacheControllerDocument / cacheOfflineListDocument. */
+async function cacheDocumentAtPath(path: string): Promise<boolean> {
   if (typeof window === "undefined" || !("caches" in window) || !window.caches) {
     return false;
   }
-
-  const path = controllerDocumentPath(songsetId);
 
   try {
     const response = await fetch(path);
@@ -125,7 +138,7 @@ export async function cacheControllerDocument(songsetId: string): Promise<boolea
     await Promise.allSettled(preloadTargets(await response.text()).map(preload));
     return true;
   } catch (err) {
-    console.warn("Failed to pre-cache the controller document:", err);
+    console.warn(`Failed to pre-cache the ${path} document:`, err);
     return false;
   }
 }

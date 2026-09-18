@@ -535,6 +535,10 @@ describe("ControllerPage (songset)", () => {
       installArtifactCache({ mp4: "video-bytes", chapters: OFFLINE_CHAPTERS });
       setServiceWorkerController(true);
       setOnline(false);
+      // Fresh connectivity state per test: without this, a probe success
+      // recorded by an earlier test certifies Online for the whole suite
+      // (module-level lastProbeSucceeded).
+      setConnectivityProbe(null);
       Object.defineProperty(URL, "createObjectURL", {
         value: vi.fn(() => "blob:cached-video"),
         configurable: true,
@@ -632,8 +636,9 @@ describe("ControllerPage (songset)", () => {
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it("falls back to the index when the online chain fails", async () => {
+    it("shows the error screen when the record exists but the cached bytes are unusable and the online chain fails", async () => {
       setOnline(true);
+      installArtifactCache({}); // record present, artifact cache empty
       global.fetch = vi
         .fn()
         .mockRejectedValue(new TypeError("Failed to fetch"));
@@ -641,21 +646,24 @@ describe("ControllerPage (songset)", () => {
       render(<ControllerPage />);
 
       await waitFor(() => {
-        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+        expect(screen.getByText(/go back/i)).toBeInTheDocument();
       });
-
-      expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
-      expect(lastControllerProps?.isOfflineMedia).toBe(true);
+      expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
     });
 
     // Issue #210: a branch-2 boot (chain failed while nominally online) used
     // to land on the downloaded copy silently — the leader had no way to know
     // playback came from the offline copy (Cast included). The toast carries
     // no behavioral weight (isOfflineMedia stays the sole Cast gate); it only
-    // surfaces the state. Branch 3 (offline at boot) stays silent: the
-    // offline hint during boot already said so.
-    it("toasts the cached-copy hint when the chain fails onto the offline copy", async () => {
+    // surfaces the state. Branch 3 (offline at boot) and the cache-first boot
+    // stay silent: those boots already announced offline playback.
+    it("toasts the cached-copy hint when the chain of a NON-cached set fails onto the offline copy", async () => {
       setOnline(true);
+      // Cache-first sees no record at boot (online chain runs); the
+      // post-failure fallback resolves the record via the same index read.
+      mockGetOfflineRecord
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(OFFLINE_RECORD);
       global.fetch = vi
         .fn()
         .mockRejectedValue(new TypeError("Failed to fetch"));
@@ -697,8 +705,9 @@ describe("ControllerPage (songset)", () => {
       expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
     });
 
-    it("still redirects to login on a 401 instead of booting offline", async () => {
+    it("still redirects to login on a 401 instead of booting offline (non-cached set)", async () => {
       setOnline(true);
+      mockGetOfflineRecord.mockResolvedValue(null);
       global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 });
 
       render(<ControllerPage />);
@@ -709,8 +718,26 @@ describe("ControllerPage (songset)", () => {
       expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
     });
 
-    it("runs the online chain when online, even with a downloaded copy", async () => {
+    it("boots the offline copy when cached, even when online", async () => {
       setOnline(true);
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      // Cached ⇒ offline copy boots with zero API fetches, connectivity
+      // irrelevant (cache-first boot, issue #211 follow-up).
+      expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      expect(lastControllerProps?.isOfflineMedia).toBe(true);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it("runs the online chain when the record exists but the cached bytes are gone and the device is online", async () => {
+      setOnline(true);
+      installArtifactCache({}); // record present, artifact cache empty
       songsetSuccessFetches();
 
       render(<ControllerPage />);
@@ -725,15 +752,29 @@ describe("ControllerPage (songset)", () => {
       expect(lastControllerProps?.isOfflineMedia).toBe(false);
     });
 
+    it("reports the offline-unavailable error when the record exists but the cached bytes are gone while OS-offline", async () => {
+      setOnline(false);
+      installArtifactCache({}); // record present, artifact cache empty
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/not been downloaded for offline/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
+    });
+
     // Issue #211: an in-flight/failed probe is Unknown, NOT Offline — the
-    // boot must not silently go cache-first on a cold load before the probe
-    // has answered. Unknown boots the online chain; a genuinely-unreachable
-    // server makes the chain fail onto the downloaded copy (branch 2, with
-    // its toast). Only definitive Offline (navigator.onLine false) is silent
+    // boot must not treat a cold load as offline before the probe has
+    // answered. Unknown boots the online chain (cache-first for cached sets
+    // no longer depends on connectivity); a genuinely-unreachable server
+    // makes the chain fail onto the downloaded copy (branch 2, with its
+    // toast). Only definitive Offline (navigator.onLine false) is silent
     // branch 3.
-    it("still runs the online chain at boot while the probe has not confirmed online", async () => {
+    it("still runs the online chain at boot while the probe has not confirmed online (non-cached set)", async () => {
       setOnline(true);
       setConnectivityProbe(() => Promise.resolve(false)); // server unreachable
+      mockGetOfflineRecord.mockResolvedValue(null);
       songsetSuccessFetches();
 
       render(<ControllerPage />);
@@ -749,9 +790,12 @@ describe("ControllerPage (songset)", () => {
       expect(lastControllerProps?.isOfflineMedia).toBe(false);
     });
 
-    it("lands on the downloaded copy with the toast when the probe cannot confirm online and the chain fails", async () => {
+    it("lands on the downloaded copy with the toast when the probe cannot confirm online and the chain fails (non-cached set)", async () => {
       setOnline(true);
       setConnectivityProbe(() => Promise.resolve(false));
+      mockGetOfflineRecord
+        .mockResolvedValueOnce(null) // cache-first boot: no record
+        .mockResolvedValue(OFFLINE_RECORD); // post-failure fallback
       global.fetch = vi
         .fn()
         .mockRejectedValue(new TypeError("Failed to fetch"));
@@ -791,6 +835,9 @@ describe("ControllerPage (songset)", () => {
     // the downloaded copy (issue: offline playback dead-end on online boot).
     it("recovers a failed online source by swapping to the offline copy", async () => {
       setOnline(true);
+      mockGetOfflineRecord
+        .mockResolvedValueOnce(null) // cache-first boot: no record
+        .mockResolvedValue(OFFLINE_RECORD); // media-failure recovery
       songsetSuccessFetches();
 
       render(<ControllerPage />);
@@ -819,6 +866,9 @@ describe("ControllerPage (songset)", () => {
 
     it("attempts the online-boot offline recovery only once per boot", async () => {
       setOnline(true);
+      mockGetOfflineRecord
+        .mockResolvedValueOnce(null) // cache-first boot: no record
+        .mockResolvedValue(OFFLINE_RECORD); // media-failure recovery
       songsetSuccessFetches();
 
       render(<ControllerPage />);

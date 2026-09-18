@@ -61,6 +61,7 @@ export function mergeMessages<const B extends readonly MessageBundle<string>[]>(
 
 // Merged dictionary (bundle imports added as namespaces are introduced).
 import { core } from "./messages/core";
+import { offlineBundle } from "./messages/offline";
 import { songsetsBundle } from "./messages/songsets";
 import { browseBundle } from "./messages/browse";
 import { favoritesBundle } from "./messages/favorites";
@@ -73,6 +74,7 @@ import { docsBundle } from "./messages/docs";
 
 export const messages = mergeMessages(
   core,
+  offlineBundle,
   songsetsBundle,
   browseBundle,
   favoritesBundle,

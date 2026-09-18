@@ -85,6 +85,9 @@ export interface SongsetEditorProps {
   className?: string;
   highlightSongId?: string | null;
   onHighlightConsumed?: () => void;
+  /** Slot for the offline download control (OfflineStatus), rendered by the
+   * client host that owns the render-job state. */
+  offlineStatusSlot?: React.ReactNode;
 }
 
 export function SongsetEditor({
@@ -107,6 +110,7 @@ export function SongsetEditor({
   className,
   highlightSongId,
   onHighlightConsumed,
+  offlineStatusSlot,
 }: SongsetEditorProps) {
   const backToList = useSongsetListBack();
   const { t } = useLocale();
@@ -393,6 +397,10 @@ export function SongsetEditor({
           </DropdownMenu>
         </div>
       </header>
+
+      {/* Offline download control (moved from the deleted Play screen,
+          issue #211 follow-up Q16): download/refresh the offline copy. */}
+      {offlineStatusSlot}
 
       {/* Render failure alert */}
       {songset.renderState === "failed" && (

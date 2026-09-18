@@ -258,8 +258,9 @@ describe("SongsetsClient offline merge (issue #207)", () => {
   // full-document path, never SPA navigation.
   it("offline Play is a full document navigation", async () => {
     const locationAssignMock = vi.fn();
+    const locationReplaceMock = vi.fn();
     Object.defineProperty(window, "location", {
-      value: { assign: locationAssignMock },
+      value: { assign: locationAssignMock, replace: locationReplaceMock },
       configurable: true,
     });
     const onLineDescriptor = Object.getOwnPropertyDescriptor(navigator, "onLine");
@@ -268,7 +269,34 @@ describe("SongsetsClient offline merge (issue #207)", () => {
       renderClient();
       const playButton = await screen.findByRole("button", { name: "Play" });
       fireEvent.click(playButton);
-      expect(locationAssignMock).toHaveBeenCalledWith("/songsets/songset-1/play");
+      expect(locationAssignMock).toHaveBeenCalledWith(
+        "/songsets/songset-1/play/controller"
+      );
+    } finally {
+      if (onLineDescriptor) {
+        Object.defineProperty(navigator, "onLine", onLineDescriptor);
+      }
+    }
+  });
+
+  // Cache-first entry (issue #211 follow-up): a row with an offline record
+  // takes the full-document path even when positively online — the SW
+  // serves the pre-cached controller document.
+  it("cached row Play is a full document navigation even when online", async () => {
+    const locationAssignMock = vi.fn();
+    const locationReplaceMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { assign: locationAssignMock, replace: locationReplaceMock },
+      configurable: true,
+    });
+    const onLineDescriptor = Object.getOwnPropertyDescriptor(navigator, "onLine");
+    try {
+      renderClient();
+      const playButton = await screen.findByRole("button", { name: "Play" });
+      fireEvent.click(playButton);
+      expect(locationAssignMock).toHaveBeenCalledWith(
+        "/songsets/songset-1/play/controller"
+      );
     } finally {
       if (onLineDescriptor) {
         Object.defineProperty(navigator, "onLine", onLineDescriptor);

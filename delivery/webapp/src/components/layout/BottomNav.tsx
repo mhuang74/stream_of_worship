@@ -16,6 +16,7 @@ export function BottomNav() {
   const navItems = [
     { href: "/", key: "nav.dashboard" as const },
     { href: "/songsets", key: "nav.songsets" as const },
+    { href: "/offline", key: "nav.offline" as const },
     { href: "/favorites", key: "nav.favorites" as const },
   ];
 

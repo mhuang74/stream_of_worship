@@ -1,4 +1,4 @@
-// Ambient W3C Presentation API surface used by usePresentation.ts / PrePlayCard.tsx.
+// Ambient W3C Presentation API surface used by usePresentation.ts / ControllerPlayer.tsx.
 // Version-pinned to the narrow shape required by the receiver/sender hooks:
 // navigator.presentation, PresentationRequest, PresentationConnection,
 // PresentationConnectionList (receiver.connectionList), and the

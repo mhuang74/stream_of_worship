@@ -732,7 +732,7 @@ export function ControllerPlayer({
         // Ignore errors
       });
     }
-    router.push(exitRoute ?? `/songsets/${playerId}/play`);
+    router.push(exitRoute ?? "/songsets");
   }, [router, playerId, exitRoute, isPresentationActive, handleStopPresentation]);
 
   const handleReenterFullscreen = useCallback(() => {
