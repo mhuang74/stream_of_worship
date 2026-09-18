@@ -1336,7 +1336,10 @@ describe("ControllerPlayer", () => {
       });
 
       expect(screen.getByTestId("airplay-fallback")).toBeInTheDocument();
-      expect(screen.getByTestId("airplay-fallback")).toHaveAttribute("href", "/docs#airplay");
+      expect(screen.getByTestId("airplay-fallback")).toHaveAttribute(
+        "href",
+        "https://streamofworship.com/docs#airplay"
+      );
       expect(screen.getByTestId("airplay-fallback")).toHaveAttribute("target", "_blank");
       // The diagnostic Cast button remains visible (disabled-but-tappable,
       // opens the bottom sheet) even on iOS where Cast is unsupported — the

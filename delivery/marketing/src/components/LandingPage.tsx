@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/i18n/messages";
-import type { Locale } from "@/lib/i18n/messages";
-import { BuildStamp } from "./BuildStamp";
+import { t, type Locale } from "@/messages";
+import { APP_URL } from "@/lib/urls";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { FileMusic, Video, Cast } from "lucide-react";
 
 const FEATURES = [
@@ -19,9 +20,11 @@ const STEPS = [
   { titleKey: "home.signedOut.step4", descKey: "home.signedOut.step4Desc" },
 ] as const;
 
-export function PublicLanding({ locale }: { locale: Locale }) {
+export function LandingPage({ locale }: { locale: Locale }) {
   return (
     <div className="flex flex-col min-h-[60vh]">
+      <SiteHeader locale={locale} path="/" />
+
       {/* Hero */}
       <section className="gradient-hero border-b border-border">
         <div className="mx-auto max-w-6xl px-4 py-20 md:py-28 grid md:grid-cols-2 gap-12 items-center">
@@ -40,11 +43,11 @@ export function PublicLanding({ locale }: { locale: Locale }) {
               {t(locale, "home.signedOut.heroDescription")}
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/register" className={cn(buttonVariants())}>
+              <Link href={`${APP_URL}/register`} className={cn(buttonVariants())}>
                 {t(locale, "home.signedOut.ctaPrimary")}
               </Link>
               <Link
-                href="/login"
+                href={`${APP_URL}/login`}
                 className={cn(buttonVariants({ variant: "outline" }))}
               >
                 {t(locale, "home.signedOut.ctaSecondary")}
@@ -153,22 +156,16 @@ export function PublicLanding({ locale }: { locale: Locale }) {
         <h2 className="text-3xl font-bold mb-2">{t(locale, "home.signedOut.ctaBottomTitle")}</h2>
         <p className="text-muted-foreground mb-6">{t(locale, "home.signedOut.ctaBottomDesc")}</p>
         <div className="flex flex-wrap justify-center gap-3">
-          <Link href="/register" className={cn(buttonVariants())}>
+          <Link href={`${APP_URL}/register`} className={cn(buttonVariants())}>
             {t(locale, "home.signedOut.ctaBottomPrimary")}
           </Link>
-          <Link href="/login" className={cn(buttonVariants({ variant: "outline" }))}>
+          <Link href={`${APP_URL}/login`} className={cn(buttonVariants({ variant: "outline" }))}>
             {t(locale, "home.signedOut.ctaSecondary")}
           </Link>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-4 py-6 flex items-center justify-between text-sm text-muted-foreground">
-          <span>{t(locale, "brand.name")}</span>
-          <BuildStamp />
-        </div>
-      </footer>
+      <SiteFooter locale={locale} />
     </div>
   );
 }

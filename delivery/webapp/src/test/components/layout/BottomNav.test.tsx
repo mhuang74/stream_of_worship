@@ -83,7 +83,7 @@ describe("BottomNav", () => {
     mockSession.mockReturnValue(null);
     renderNav();
     const aboutLink = screen.getByRole("link", { name: "About" });
-    expect(aboutLink).toHaveAttribute("href", "/about");
+    expect(aboutLink).toHaveAttribute("href", "https://streamofworship.com/about");
     expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Songsets" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Favorites" })).not.toBeInTheDocument();

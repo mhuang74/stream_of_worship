@@ -19,12 +19,13 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { LogOut, Settings, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getMarketingUrl } from "@/lib/marketing-url";
 import { cacheOfflineListDocument } from "@/lib/offline/document-cache";
 
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { signOutAndRedirect } = useSignOut();
   const { data: session } = useSession();
   const user = session?.user;
@@ -79,7 +80,7 @@ export function Header() {
           ) : (
             <>
               <Link
-                href="/about"
+                href={`${getMarketingUrl(locale)}/about`}
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
                 {t("nav.about")}

@@ -42,61 +42,6 @@ export const core = bundle({
     "home.empty.createSongset": "Create your first songset",
     "home.empty.browseCatalog": "Browse the catalog",
 
-    // Public landing (signed-out home)
-    "home.signedOut.title": "Stream of Worship",
-    "home.signedOut.subtitle":
-      "A worship music system for small group worship — strings your songs into one seamless set, renders a synchronized lyrics video, and casts it to the TV so your group can worship together.",
-    "home.signedOut.heroTag": "Lyrics video for small group worship",
-    "home.signedOut.heroTitleLead": "Lead your small group in worship with ",
-    "home.signedOut.heroTitleAccent": "no awkward interruptions.",
-    "home.signedOut.heroDescription":
-      "Stream of Worship strings your songs into one seamless set, renders a synchronized lyrics video, and casts it to the TV — so your small group can worship together without awkward interruptions.",
-    "home.signedOut.ctaPrimary": "Get started free",
-    "home.signedOut.ctaSecondary": "Sign in",
-    "home.signedOut.ctaFooter": "No credit card required · Free for personal use",
-    "home.signedOut.featuresTitle": "Everything your small group needs to worship without interruption",
-    "home.signedOut.featuresDescription":
-      "From picking songs to casting the lyrics video, Stream of Worship handles the technical details so your group's worship never has to pause.",
-    "home.signedOut.feature.build": "Build your set",
-    "home.signedOut.feature.buildDesc":
-      "Curate songs from a catalog of 300+ worship songs. Reorder, adjust keys, and shape your set before you render.",
-    "home.signedOut.feature.render": "Render lyrics video",
-    "home.signedOut.feature.renderDesc":
-      "Generate a synchronized lyrics video with your choice of template, resolution, and fonts — plus the audio mix for your group.",
-    "home.signedOut.feature.cast": "Cast to the TV",
-    "home.signedOut.feature.castDesc":
-      "Send the lyrics video to your TV so everyone in your small group can follow along — worship never has to stop.",
-    "home.signedOut.howItWorksTitle": "How it works",
-    "home.signedOut.step1": "Pick your songs",
-    "home.signedOut.step1Desc": "Browse the catalog and add songs to a songset.",
-    "home.signedOut.step2": "Render",
-    "home.signedOut.step2Desc": "Generate the lyrics video and audio mix in the cloud.",
-    "home.signedOut.step3": "Cast to the TV",
-    "home.signedOut.step3Desc": "Send the lyrics video to your TV from any device.",
-    "home.signedOut.step4": "Worship without interruption",
-    "home.signedOut.step4Desc": "Worship flows from song to song — no awkward pauses, no fumbling between tracks.",
-    "home.signedOut.ctaBottomTitle": "Ready to lead small group worship without interruption?",
-    "home.signedOut.ctaBottomDesc":
-      "Join the worship leaders casting their lyrics with Stream of Worship.",
-    "home.signedOut.ctaBottomPrimary": "Create your free account",
-    "home.signedOut.nav.features": "Features",
-    "home.signedOut.nav.howItWorks": "How it works",
-    "home.signedOut.nav.songs": "Songs",
-    "home.signedOut.demoTitle": "See it in action",
-    "home.signedOut.demoDescription": "Watch how Stream of Worship turns a song list into a seamless worship set — from picking songs to casting the lyrics video to your TV.",
-    // About page
-    "about.heroTitle": "Built for small group worship leaders",
-    "about.heroDescription": "Stream of Worship exists because leading small group worship shouldn't mean fumbling between YouTube videos and praying the Wi-Fi holds.",
-    "about.whyTitle": "Why I built this",
-    "about.whyPara1": "I noticed a lack of tools for small group leaders—especially for Mandarin worship. We love our worship songs, but we don't have many options for lyrics videos.",
-    "about.whyPara2": "Some of my fondest memories from living in Shanghai came from joining and serving in a Taiwanese home church. There I grew to appreciate and love Mandarin worship songs from Stream of Praise (sop.org). Their songs brought me closer to His Presence.",
-    "about.whyPara3": "But every time I led small group worship, I faced the same problem: playing SOP worship lyrics videos from YouTube meant dealing with interruptions between songs and unreliable network in the middle of worship. The awkward pauses broke the flow. The dead silences when the connection dropped broke the moment. I wanted worship to flow.",
-    "about.whatTitle": "What this tool does",
-    "about.whatPara1": "Stream of Worship strings your songs into one seamless set, renders a synchronized lyrics video, and casts it to the TV—so your small group can worship together without awkward interruptions.",
-    "about.whatPara2": "No more fumbling between tracks. No more praying the Wi-Fi holds. Pick your songs, render the video, cast to the screen, and worship flows from song to song.",
-    "about.ctaTitle": "Ready to lead worship without interruption?",
-    "about.ctaDescription": "May the Holy Spirit flow",
-
     // Settings page
     "settings.title": "Settings",
     "settings.loading": "Loading settings",
@@ -316,60 +261,6 @@ export const core = bundle({
     "home.empty.communityFavorites": "還沒有社群最愛",
     "home.empty.createSongset": "來建立第一個敬拜歌單吧！",
     "home.empty.browseCatalog": "瀏覽所有詩歌",
-
-    // Public landing (signed-out home)
-    "home.signedOut.title": "Stream of Worship",
-    "home.signedOut.subtitle":
-      "專為小組敬拜設計的音樂系統——把詩歌串成一場不中斷的敬拜，渲染同步歌詞影片投放到電視，讓大家一起專心敬拜。",
-    "home.signedOut.heroTag": "為小組敬拜而設的歌詞影片",
-    "home.signedOut.heroTitleLead": "帶領小組敬拜，",
-    "home.signedOut.heroTitleAccent": "不再尷尬間斷。",
-    "home.signedOut.heroDescription":
-      "Stream of Worship 把詩歌串成一場不中斷的敬拜，渲染同步歌詞影片，再投放到電視——讓你們一起敬拜，不再有尷尬的間斷。",
-    "home.signedOut.ctaPrimary": "免費開始使用",
-    "home.signedOut.ctaSecondary": "登入",
-    "home.signedOut.ctaFooter": "不用信用卡 · 個人使用免費",
-    "home.signedOut.featuresTitle": "小組敬拜不中斷，需要的都在這裡",
-    "home.signedOut.featuresDescription":
-      "從挑歌到投放歌詞影片，技術細節交給 Stream of Worship，你專心帶敬拜就好。",
-    "home.signedOut.feature.build": "建立敬拜歌單",
-    "home.signedOut.feature.buildDesc":
-      "從 300 多首敬拜詩歌裡挑選喜歡的歌，重新排序、調整調性，排好自己的歌單再來渲染。",
-    "home.signedOut.feature.render": "渲染歌詞影片",
-    "home.signedOut.feature.renderDesc":
-      "雲端生成同步歌詞影片，範本、解析度、字型都能自己選——還有你需要的音訊混音。",
-    "home.signedOut.feature.cast": "投放到電視",
-    "home.signedOut.feature.castDesc":
-      "把歌詞影片送到電視上，大家抬頭跟著唱就好——敬拜不會再斷掉。",
-    "home.signedOut.howItWorksTitle": "怎麼用",
-    "home.signedOut.step1": "挑歌",
-    "home.signedOut.step1Desc": "從詩歌庫裡挑喜歡的歌，加進敬拜歌單。",
-    "home.signedOut.step2": "渲染",
-    "home.signedOut.step2Desc": "在雲端生成歌詞影片和音訊混音。",
-    "home.signedOut.step3": "投放到電視",
-    "home.signedOut.step3Desc": "用任何裝置，都能把歌詞影片送到電視。",
-    "home.signedOut.step4": "敬拜不中斷",
-    "home.signedOut.step4Desc": "詩歌一首接一首流暢唱下去——沒有尷尬的空檔，也不用趕著切影片。",
-    "home.signedOut.ctaBottomTitle": "準備好安心帶敬拜了嗎？",
-    "home.signedOut.ctaBottomDesc": "使用 Stream of Worship 讓你的敬拜更有能力。",
-    "home.signedOut.ctaBottomPrimary": "建立免費帳號",
-    "home.signedOut.nav.features": "功能",
-    "home.signedOut.nav.howItWorks": "怎麼用",
-    "home.signedOut.nav.songs": "詩歌",
-    "home.signedOut.demoTitle": "看看實際效果",
-    "home.signedOut.demoDescription": "看看 Stream of Worship 怎麼把歌曲清單變成一場流暢的敬拜——從挑歌到把歌詞影片投到電視。",
-    // 關於頁面
-    "about.heroTitle": "為小組敬拜主領而打造",
-    "about.heroDescription": "Stream of Worship 會存在，是因為帶小組敬拜不該等於在 YouTube 影片之間手忙腳亂，還要一路祈禱網路別斷線。",
-    "about.whyTitle": "為什麼做這個工具",
-    "about.whyPara1": "我發現市面上很少有為小組敬拜設計的工具。我們都很愛中文詩歌，但小組敬拜的選擇就只有放 YouTube 的歌詞影片，不然就是自己花時間校對歌詞、做影片。",
-    "about.whyPara2": "我住上海那幾年最開心的回憶，來自一個台灣的家庭教會。在那裡我慢慢認識、也愛上讚美之泉（sop.org）的繁體中文詩歌，那些歌陪我度過了無數次聚會。",
-    "about.whyPara3": "但每次帶小組敬拜，我都遇到同樣的問題：在 YouTube 播讚美之泉的歌詞影片，詩歌之間會有間斷，敬拜到一半網路還可能斷線。尷尬的停頓打斷了敬拜的流暢，斷線時的死寂更讓當下的氛圍整個空掉。我希望敬拜可以一直流暢地進行下去。",
-    "about.whatTitle": "這個工具在做什麼",
-    "about.whatPara1": "Stream of Worship 把你的詩歌串成一場不中斷的敬拜，渲染同步歌詞影片，再投放到電視——讓你們一起敬拜，不再有尷尬的間斷。",
-    "about.whatPara2": "不用再在詩歌之間手忙腳亂，也不用祈禱網路撐得住。挑好詩歌、渲染影片、投放到螢幕，敬拜就這樣一首接一首唱下去。",
-    "about.ctaTitle": "準備好讓敬拜不中斷了嗎？",
-    "about.ctaDescription": "願聖靈自由運行",
 
     // Settings page
     "settings.title": "設定",
