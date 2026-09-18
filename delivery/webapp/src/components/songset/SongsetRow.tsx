@@ -19,6 +19,7 @@ import {
 import { ThemeArcSpan, toSongTheme } from "./ThemeLabel";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
+import { useConnectivity } from "@/hooks/useConnectivity";
 import type { SongTheme } from "@/lib/constants";
 import {
   MoreVertical,
@@ -33,6 +34,7 @@ import {
   CloudOff,
   Music,
   Clock,
+  Download,
   FileAudio,
   FileVideo,
 } from "lucide-react";
@@ -58,6 +60,9 @@ export interface SongsetRowProps {
   onShare?: () => void;
   onDownloadAudio?: () => void;
   onDownloadVideo?: () => void;
+  /** Present ⇒ row shows the offline download/re-download menu item. */
+  onDownloadOffline?: () => void;
+  isOfflineDownloadInProgress?: boolean;
   onRemoveOffline?: () => void;
   onDelete?: () => void;
   className?: string;
@@ -74,6 +79,7 @@ export function SongsetRow({
   renderState,
   isOfflineAvailable = false,
   isArtifactsStale = false,
+  latestRenderJobId,
   lastCompletedRenderJobId,
   renderErrorMessage,
   failedAt,
@@ -84,6 +90,8 @@ export function SongsetRow({
   onShare,
   onDownloadAudio,
   onDownloadVideo,
+  onDownloadOffline,
+  isOfflineDownloadInProgress = false,
   onRemoveOffline,
   onDelete,
   className,
@@ -91,9 +99,20 @@ export function SongsetRow({
 }: SongsetRowProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { t, locale } = useLocale();
+  const connectivity = useConnectivity();
 
   const canPlayFreshRender =
     renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onPlay);
+
+  // Download for Offline (issue #212 follow-up): fresh rows without a copy
+  // get the plain item; stale rows get the re-download variant. Hidden when
+  // downloaded and fresh — "Remove from offline" occupies the slot. Gated on
+  // a render job + connectivity: the download fetches from the network.
+  const showDownloadOffline =
+    Boolean(onDownloadOffline) && (!isOfflineAvailable || isArtifactsStale);
+  const canDownloadOffline = showDownloadOffline
+    && (Boolean(latestRenderJobId) || Boolean(lastCompletedRenderJobId))
+    && connectivity === "online";
 
   const arcThemes = (themes ?? []).map(toSongTheme).filter((t): t is SongTheme => t !== null);
 
@@ -200,6 +219,19 @@ export function SongsetRow({
                       <FileVideo className="size-4 mr-2" />
                       {t("songsets.action.downloadVideo")}
                     </DropdownMenuItem>
+                    {showDownloadOffline && (
+                      <DropdownMenuItem
+                        onClick={onDownloadOffline}
+                        disabled={!canDownloadOffline || isOfflineDownloadInProgress}
+                      >
+                        <Download className="size-4 mr-2" />
+                        {isOfflineDownloadInProgress
+                          ? t("songsets.menu.downloadingOffline")
+                          : isArtifactsStale
+                            ? t("songsets.menu.redownloadOffline")
+                            : t("songsets.menu.downloadOffline")}
+                      </DropdownMenuItem>
+                    )}
                     {isOfflineAvailable && onRemoveOffline && (
                       <DropdownMenuItem onClick={onRemoveOffline}>
                         <CloudOff className="size-4 mr-2" />

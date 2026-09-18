@@ -1,8 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithLocale, renderWithLocale as render } from "@/test/render";
 import { SongsetRow } from "@/components/songset/SongsetRow";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
+import {
+  probeConnectivity,
+  setConnectivityProbe,
+} from "@/hooks/useConnectivity";
 
 describe("SongsetRow", () => {
   const defaultProps = {
@@ -14,6 +18,7 @@ describe("SongsetRow", () => {
     updatedAt: new Date("2024-01-15T10:30:00Z"),
     renderState: "fresh" as RenderState,
     lastCompletedRenderJobId: "render-job-1",
+    latestRenderJobId: "render-job-1",
     onRender: vi.fn(),
     onPlay: vi.fn(),
     onRetry: vi.fn(),
@@ -26,6 +31,26 @@ describe("SongsetRow", () => {
   const renderRow = (props = {}) => {
     return render(<SongsetRow {...defaultProps} {...props} />);
   };
+
+  const openMenu = async () => {
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+    });
+  };
+
+  // Download for Offline gates on Connectivity; the probe seam settles it
+  // Online so the enabled-state assertions are deterministic.
+  beforeEach(async () => {
+    const probe = vi.fn<() => Promise<boolean>>();
+    probe.mockResolvedValue(true);
+    setConnectivityProbe(probe);
+    await probeConnectivity();
+  });
+
+  afterEach(() => {
+    setConnectivityProbe(null);
+  });
 
   describe("metadata display", () => {
     it("renders songset name", () => {
@@ -190,6 +215,108 @@ describe("SongsetRow", () => {
       // item content is checked after opening
       return waitFor(() => {
         expect(screen.getByRole("menuitem", { name: /離線/ })).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("download for offline menu item", () => {
+    async function openMenuAndSettle() {
+      fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+      });
+      // The connectivity probe must settle before enabled-state assertions;
+      // while Unknown, the item is still disabled (fail toward offline).
+      await waitFor(() => {
+        expect(
+          screen.getByRole("menuitem", { name: /download for offline/i })
+        ).not.toHaveAttribute("data-disabled");
+      });
+    }
+
+    it("shows Download for Offline when not downloaded", async () => {
+      renderRow({ onDownloadOffline: vi.fn() });
+      await openMenuAndSettle();
+      expect(
+        screen.getByRole("menuitem", { name: /download for offline/i })
+      ).toBeInTheDocument();
+    });
+
+    it("hides the item when downloaded and fresh", async () => {
+      renderRow({
+        isOfflineAvailable: true,
+        onDownloadOffline: vi.fn(),
+        onRemoveOffline: vi.fn(),
+      });
+      await openMenu();
+      expect(
+        screen.queryByRole("menuitem", { name: /download for offline/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows Re-download for Offline when artifacts are stale", async () => {
+      renderRow({
+        isOfflineAvailable: true,
+        isArtifactsStale: true,
+        onDownloadOffline: vi.fn(),
+        onRemoveOffline: vi.fn(),
+      });
+      await openMenuAndSettle();
+      expect(
+        screen.getByRole("menuitem", { name: /re-download for offline/i })
+      ).toBeInTheDocument();
+    });
+
+    it("disables the item without any render job", async () => {
+      renderRow({
+        latestRenderJobId: null,
+        lastCompletedRenderJobId: null,
+        onDownloadOffline: vi.fn(),
+      });
+      fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /download for offline/i })).toBeInTheDocument();
+      });
+      // Radix marks disabled menu items with data-disabled, not the DOM
+      // disabled attribute.
+      expect(
+        screen.getByRole("menuitem", { name: /download for offline/i })
+      ).toHaveAttribute("data-disabled");
+    });
+
+    it("disables the item while a download is in progress", async () => {
+      renderRow({ onDownloadOffline: vi.fn(), isOfflineDownloadInProgress: true });
+      fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+      await waitFor(() => {
+        expect(
+          screen.getByRole("menuitem", { name: /downloading for offline/i })
+        ).toBeInTheDocument();
+      });
+      expect(
+        screen.getByRole("menuitem", { name: /downloading for offline/i })
+      ).toHaveAttribute("data-disabled");
+    });
+
+    it("calls onDownloadOffline when clicked", async () => {
+      const onDownloadOffline = vi.fn();
+      renderRow({ onDownloadOffline });
+      await openMenuAndSettle();
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: /download for offline/i })
+      );
+      expect(onDownloadOffline).toHaveBeenCalled();
+    });
+
+    it("renders the Traditional Chinese label in zh-Hant", async () => {
+      renderWithLocale(
+        <SongsetRow {...defaultProps} onDownloadOffline={() => {}} />,
+        "zh-Hant"
+      );
+      fireEvent.click(screen.getByRole("button", { name: /開啟選單/i }));
+      await waitFor(() => {
+        expect(
+          screen.getByRole("menuitem", { name: /下載離線副本/ })
+        ).toBeInTheDocument();
       });
     });
   });

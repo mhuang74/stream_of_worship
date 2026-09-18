@@ -49,6 +49,8 @@ interface SongsetListProps {
   onShare?: (id: string) => void;
   onDownloadAudio?: (id: string) => void;
   onDownloadVideo?: (id: string) => void;
+  onDownloadOffline?: (id: string) => void;
+  isOfflineDownloadInProgress?: boolean;
   onRemoveOffline?: (id: string) => void;
   onDelete?: (id: string) => Promise<void>;
   currentPage?: number;
@@ -74,6 +76,8 @@ export function SongsetList({
   onShare,
   onDownloadAudio,
   onDownloadVideo,
+  onDownloadOffline,
+  isOfflineDownloadInProgress,
   onRemoveOffline,
   onDelete,
   currentPage = 1,
@@ -354,6 +358,8 @@ export function SongsetList({
             onShare={() => onShare?.(songset.id)}
             onDownloadAudio={() => onDownloadAudio?.(songset.id)}
             onDownloadVideo={() => onDownloadVideo?.(songset.id)}
+            onDownloadOffline={() => onDownloadOffline?.(songset.id)}
+            isOfflineDownloadInProgress={isOfflineDownloadInProgress}
             onRemoveOffline={() => onRemoveOffline?.(songset.id)}
             onDelete={() => openDeleteDialog(songset.id)}
           />

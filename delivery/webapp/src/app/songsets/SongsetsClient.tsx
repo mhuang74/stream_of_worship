@@ -12,6 +12,7 @@ import { useOfflineRedirect } from "@/hooks/useOfflineRedirect";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { buildSongsetsUrl, saveSongsetListState } from "@/lib/songset-list-state";
 import { removeOfflineSongset, listOfflineRecords } from "@/lib/offline/offline-index";
+import { downloadOfflineArtifacts, NoArtifactsError } from "@/lib/offline/download-offline";
 
 const ShareDialog = dynamic(
   () => import("@/components/share/ShareDialog").then((m) => ({ default: m.ShareDialog })),
@@ -115,6 +116,7 @@ export function SongsetsClient({
   const [search, setSearch] = useState(initialSearch);
   const [committedSearch, setCommittedSearch] = useState(initialSearch);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [offlineDownloadId, setOfflineDownloadId] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<{
     id: string; name: string; durationSeconds: number | null;
   } | null>(null);
@@ -344,6 +346,51 @@ export function SongsetsClient({
     }
   }, [songsets, t]);
 
+  // Download for Offline (issue #212 follow-up): the kebab-menu path into the
+  // same downloadOfflineArtifacts pipeline the /offline list and render
+  // completion use. renderJobId mirrors the /offline Update semantics: the
+  // server's latest render, so re-downloading a stale row refreshes it (the
+  // NoArtifactsError path covers a latest render without artifacts).
+  const handleDownloadOffline = useCallback(
+    async (id: string) => {
+      const songset = songsets.find((s) => s.id === id);
+      const renderJobId = songset?.latestRenderJobId ?? songset?.lastCompletedRenderJobId;
+      if (!songset || !renderJobId) return;
+
+      setOfflineDownloadId(id);
+      const toastId = toast.loading(`${t("songsets.toast.downloadingOffline")} 0%`);
+      try {
+        await downloadOfflineArtifacts(
+          { songsetId: id, songsetName: songset.name, renderJobId },
+          (percent) => toast.loading(`${t("songsets.toast.downloadingOffline")} ${percent}%`, { id: toastId })
+        );
+        toast.success(t("songsets.toast.offlineReady"), { id: toastId });
+        // In-place merge (mirrors handleRemoveOffline): a fresh row's cached
+        // renderJobId equals latestRenderJobId, so offline staleness clears.
+        setSongsets((prev) =>
+          prev.map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  isOfflineAvailable: true,
+                  isArtifactsStale: renderJobId !== s.latestRenderJobId || s.renderState === "stale",
+                }
+              : s
+          )
+        );
+      } catch (err) {
+        if (err instanceof NoArtifactsError) {
+          toast.error(t("audio.offline.noArtifacts"), { id: toastId });
+        } else {
+          toast.error(t("audio.offline.downloadFailed"), { id: toastId });
+        }
+      } finally {
+        setOfflineDownloadId(null);
+      }
+    },
+    [songsets, t]
+  );
+
   const handleRemoveOffline = useCallback(
     async (id: string) => {
       try {
@@ -414,6 +461,8 @@ export function SongsetsClient({
         onShare={handleShare}
         onDownloadAudio={handleDownloadAudio}
         onDownloadVideo={handleDownloadVideo}
+        onDownloadOffline={handleDownloadOffline}
+        isOfflineDownloadInProgress={offlineDownloadId !== null}
         onRemoveOffline={handleRemoveOffline}
         onDelete={handleDelete}
         currentPage={page}

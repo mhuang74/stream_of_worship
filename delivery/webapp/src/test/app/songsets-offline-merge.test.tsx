@@ -4,16 +4,20 @@ import { renderWithLocale as render } from "@/test/render";
 import { SongsetsClient } from "@/app/songsets/SongsetsClient";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
-import { setConnectivityProbe } from "@/hooks/useConnectivity";
+import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
 
 const {
   mockListOfflineRecords,
   mockRemoveOfflineSongset,
+  mockDownloadOfflineArtifacts,
+  toastLoading,
   toastSuccess,
   toastError,
 } = vi.hoisted(() => ({
   mockListOfflineRecords: vi.fn<() => Promise<unknown>>(),
   mockRemoveOfflineSongset: vi.fn<() => Promise<void>>(),
+  mockDownloadOfflineArtifacts: vi.fn<() => Promise<void>>(),
+  toastLoading: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -27,8 +31,16 @@ vi.mock("@/lib/offline/offline-index", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/offline/download-offline", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/offline/download-offline")>();
+  return {
+    ...actual,
+    downloadOfflineArtifacts: mockDownloadOfflineArtifacts,
+  };
+});
+
 vi.mock("sonner", () => ({
-  toast: { success: toastSuccess, error: toastError },
+  toast: { success: toastSuccess, error: toastError, loading: toastLoading },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -97,6 +109,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     vi.clearAllMocks();
     mockListOfflineRecords.mockResolvedValue([]);
     mockRemoveOfflineSongset.mockResolvedValue(undefined);
+    mockDownloadOfflineArtifacts.mockResolvedValue(undefined);
     realFetch = globalThis.fetch;
     globalThis.fetch = mockedFetch as unknown as typeof globalThis.fetch;
     // The list effect fetches /api/songsets on mount.
@@ -116,6 +129,16 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     setConnectivityProbe(null);
     if (realFetch) globalThis.fetch = realFetch;
   });
+
+  // The Download for Offline item gates on Connectivity (fail toward
+  // offline); settle one successful probe so its enabled state is
+  // deterministic in the flow tests.
+  async function confirmOnline(): Promise<void> {
+    const probe = vi.fn<() => Promise<boolean>>();
+    probe.mockResolvedValue(true);
+    setConnectivityProbe(probe);
+    await probeConnectivity();
+  }
 
   it("merges index records so rows with a record show the offline badge", async () => {
     mockListOfflineRecords.mockResolvedValue([makeRecord()]);
@@ -228,6 +251,59 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     });
     expect(toastSuccess).toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("Download for Offline calls the pipeline, updates the row, and toasts", async () => {
+    await confirmOnline();
+    mockDownloadOfflineArtifacts.mockResolvedValue(undefined);
+    renderClient();
+    const playButton = await screen.findByRole("button", { name: "Play" });
+
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: /download for offline/i })
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: /download for offline/i }));
+
+    await waitFor(() => {
+      expect(mockDownloadOfflineArtifacts).toHaveBeenCalledWith(
+        { songsetId: "songset-1", songsetName: "Sunday Worship", renderJobId: "render-job-1" },
+        expect.any(Function)
+      );
+    });
+    await waitFor(() => {
+      expect(toastSuccess).toHaveBeenCalled();
+    });
+    expect(toastError).not.toHaveBeenCalled();
+    // In-place merge: the badge appears without a refetch — listOfflineRecords
+    // was called only for the boot merge.
+    await waitFor(() => {
+      expect(screen.getByText(/offline/i)).toBeInTheDocument();
+    });
+    expect(playButton).toBeDefined();
+  });
+
+  it("toasts a failure and leaves the row unchanged when the download fails", async () => {
+    await confirmOnline();
+    mockDownloadOfflineArtifacts.mockRejectedValue(new Error("network down"));
+    renderClient();
+    await screen.findByRole("button", { name: "Play" });
+
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: /download for offline/i })
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: /download for offline/i }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalled();
+    });
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(screen.queryByText(/offline/i)).not.toBeInTheDocument();
   });
 
   it("toasts an error and keeps the badge when removal fails", async () => {
