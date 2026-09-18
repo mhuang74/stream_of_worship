@@ -23,6 +23,10 @@ export function BottomNav() {
   if (
     pathname?.includes("/play/controller") ||
     pathname?.startsWith("/share/") ||
+    // /offline boots from the offline index with no session guarantee (the
+    // SW pre-caches this document); the async useSession would flash the
+    // signed-out About + LanguageSwitcher bar there. Issue #211 follow-up.
+    pathname === "/offline" ||
     isProjectionRoute(pathname)
   ) {
     return null;

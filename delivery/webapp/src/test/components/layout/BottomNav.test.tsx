@@ -69,6 +69,16 @@ describe("BottomNav", () => {
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
+  // /offline boots from the offline index with no session guarantee; the
+  // async session would flash the signed-out About + LanguageSwitcher bar.
+  it("does not render on /offline", () => {
+    mockPathname.mockReturnValue("/offline");
+
+    renderNav();
+
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
   it("renders About link when signed out", () => {
     mockSession.mockReturnValue(null);
     renderNav();
