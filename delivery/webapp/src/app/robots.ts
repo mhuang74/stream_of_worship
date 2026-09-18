@@ -1,17 +1,16 @@
 import type { MetadataRoute } from "next";
-import { getSiteBaseUrl } from "@/lib/siteUrl";
 
 /**
- * /robots.txt — allows all crawlers and points at the sitemap so it is
- * discoverable at the conventional location.
+ * /robots.txt — disallow all crawlers. The marketing site
+ * (streamofworship.com) owns all public SEO and ships its own robots.txt +
+ * sitemap; the app subdomain has no crawlable public content (session-gated
+ * pages plus unlisted per-user share links).
  */
 export default function robots(): MetadataRoute.Robots {
-  const base = getSiteBaseUrl();
   return {
     rules: {
       userAgent: "*",
-      allow: "/",
+      disallow: "/",
     },
-    sitemap: `${base}/sitemap.xml`,
   };
 }

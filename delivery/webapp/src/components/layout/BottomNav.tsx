@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { isProjectionRoute } from "@/lib/routes";
 import { useLocale } from "@/hooks/useLocale";
+import { getMarketingUrl } from "@/lib/marketing-url";
 import { useSession } from "@/lib/auth-client";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { data: session } = useSession();
   const user = session?.user;
 
@@ -39,7 +40,7 @@ export function BottomNav() {
       >
         <div className="flex h-16 items-center justify-between px-4">
           <Link
-            href="/about"
+            href={`${getMarketingUrl(locale)}/about`}
             className="pl-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
           >
             {t("nav.about")}

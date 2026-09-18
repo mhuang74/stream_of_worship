@@ -87,6 +87,9 @@ describe("Header avatar dropdown", () => {
       "href",
       "/register"
     );
-    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute(
+      "href",
+      "https://streamofworship.com/about"
+    );
   });
 });

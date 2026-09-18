@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://streamofworship.com/sitemap.xml

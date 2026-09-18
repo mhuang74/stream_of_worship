@@ -79,13 +79,19 @@ describe("Header", () => {
   it("renders About link when signed out", () => {
     mockSession.mockReturnValue(null);
     renderHeader();
-    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute(
+      "href",
+      "https://streamofworship.com/about"
+    );
   });
 
   it("renders Traditional Chinese About link in zh-Hant when signed out", () => {
     mockSession.mockReturnValue(null);
     renderHeader("zh-Hant");
-    expect(screen.getByRole("link", { name: "關於" })).toHaveAttribute("href", "/about");
+    expect(screen.getByRole("link", { name: "關於" })).toHaveAttribute(
+      "href",
+      "https://streamofworship.com/zh-Hant/about"
+    );
   });
 
   it("renders Sign in link when signed out", () => {

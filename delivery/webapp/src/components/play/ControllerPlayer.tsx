@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { PlaybackControls } from "./PlaybackControls";
 import { LyricJumpList } from "./LyricJumpList";
 import { useLocale } from "@/hooks/useLocale";
+import { getMarketingUrl } from "@/lib/marketing-url";
 import type { Chapter } from "@/lib/render/chapters";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -177,7 +178,7 @@ export function ControllerPlayer({
   className,
 }: ControllerPlayerProps) {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   // One element ref for both media elements: <video> online, <audio> on the
   // offline audio-only boot. Everything the player does with the element
   // (time, duration, volume, play/pause, load) lives on HTMLMediaElement; the
@@ -1287,7 +1288,7 @@ export function ControllerPlayer({
               {/* iPhone fallback: Cast unsupported and Presentation unsupported */}
               {showIphoneFallback && (
                 <a
-                  href="/docs#airplay"
+                  href={`${getMarketingUrl(locale)}/docs#airplay`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 text-white/80 rounded-full text-xs hover:bg-white/20"

@@ -1,16 +1,12 @@
-import { t } from "@/lib/i18n/messages";
-import type { Locale } from "@/lib/i18n/messages";
-import { resolveUserLocale } from "@/lib/i18n/server";
-import { BuildStamp } from "../page/BuildStamp";
+import { t, type Locale } from "@/messages";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 
-export default async function DocsPage() {
-  const locale = await resolveUserLocale();
-  return <DocsContent locale={locale} />;
-}
-
-function DocsContent({ locale }: { locale: Locale }) {
+export function DocsPage({ locale }: { locale: Locale }) {
   return (
     <div className="flex flex-col min-h-[60vh]">
+      <SiteHeader locale={locale} path="/docs" />
+
       {/* Hero */}
       <section className="gradient-hero border-b border-border">
         <div className="mx-auto max-w-3xl px-4 py-20 md:py-28 text-center">
@@ -23,7 +19,7 @@ function DocsContent({ locale }: { locale: Locale }) {
         </div>
       </section>
 
-      {/* AirPlay from iPhone / iPad (the controller chip links to /docs#airplay) */}
+      {/* AirPlay from iPhone / iPad (the app controller chip links to /docs#airplay) */}
       <section id="airplay" className="mx-auto max-w-3xl px-4 py-16 scroll-mt-16">
         <h2 className="text-2xl font-bold mb-4">{t(locale, "docs.airplay.title")}</h2>
         <p className="text-muted-foreground leading-relaxed mb-4">
@@ -48,13 +44,7 @@ function DocsContent({ locale }: { locale: Locale }) {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-4 py-6 flex items-center justify-between text-sm text-muted-foreground">
-          <span>{t(locale, "brand.name")}</span>
-          <BuildStamp />
-        </div>
-      </footer>
+      <SiteFooter locale={locale} />
     </div>
   );
 }

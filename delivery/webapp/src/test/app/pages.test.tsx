@@ -1,15 +1,23 @@
 import { screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import HomePage from "@/app/page";
-import DocsPage from "@/app/docs/page";
 import { SongsetsClient } from "@/app/songsets/SongsetsClient";
 import SettingsPage from "@/app/settings/page";
 import { renderWithLocale as render } from "@/test/render";
+
+const mockRedirect = vi.hoisted(() =>
+  vi.fn((url: string) => {
+    // Next's redirect() throws a special error to unwind the render; mirror
+    // that so the page does not fall through to the signed-in branch.
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  })
+);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
   useParams: () => ({}),
   usePathname: () => "/",
+  redirect: mockRedirect,
 }));
 
 vi.mock("@/lib/i18n/server", () => ({
@@ -44,19 +52,11 @@ vi.mock("sonner", () => ({
 }));
 
 describe("HomePage", () => {
-  it("renders the signed-out landing hero title", async () => {
-    render(await HomePage());
-    expect(
-      screen.getByRole("heading", { name: /lead your small group in worship with no awkward interruptions/i })
-    ).toBeInTheDocument();
-  });
-
-  it("has a get-started link to /register", async () => {
-    render(await HomePage());
-    expect(screen.getByRole("link", { name: /get started free/i })).toHaveAttribute(
-      "href",
-      "/register"
-    );
+  // Marketing moved to the marketing site (issue #213): signed-out visitors
+  // are login-first — the page redirects instead of rendering a landing.
+  it("redirects signed-out visitors to /login", async () => {
+    await expect(HomePage()).rejects.toThrow("NEXT_REDIRECT:/login");
+    expect(mockRedirect).toHaveBeenCalledWith("/login");
   });
 });
 
@@ -78,17 +78,5 @@ describe("SettingsPage", () => {
   it("renders heading", () => {
     render(<SettingsPage />);
     expect(screen.getByRole("heading", { name: /settings/i })).toBeInTheDocument();
-  });
-});
-
-describe("DocsPage", () => {
-  it("renders the AirPlay section with the #airplay anchor", async () => {
-    const { container } = render(await DocsPage());
-    expect(
-      screen.getByRole("heading", { name: /airplay from iphone \/ ipad/i })
-    ).toBeInTheDocument();
-    // The controller chip links to /docs#airplay — the anchor must exist.
-    expect(container.querySelector("#airplay")).not.toBeNull();
-    expect(screen.getByText(/screen mirroring/i)).toBeInTheDocument();
   });
 });

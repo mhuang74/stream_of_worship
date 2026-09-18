@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from "vitest";
 import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
-import { HomePageClient } from "@/app/page/HomePageClient";
+import { HomePageClient } from "@/app/HomePageClient";
 import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
 import { getOfflineRecord } from "@/lib/offline/offline-index";
 import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";

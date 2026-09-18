@@ -24,15 +24,18 @@ function req(
 describe("proxy locale cookie", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  // "/" is no longer public (issue #213): the marketing site lives at
+  // streamofworship.com, so locale-cookie tests exercise /login — the
+  // sign-in path users hit first, same withAutoLocaleCookie behavior.
   it("sets sow_locale=zh-Hant from Accept-Language on a public first visit (no cookie, no session)", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
-    const res = await proxy(req("/", { acceptLanguage: "zh-TW,en-US;q=0.9" }));
+    const res = await proxy(req("/login", { acceptLanguage: "zh-TW,en-US;q=0.9" }));
     expect(res.cookies.get("sow_locale")?.value).toBe("zh-Hant");
   });
 
   it("does not set sow_locale when a valid sow_locale cookie already exists", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
-    const res = await proxy(req("/", { cookie: "zh-Hant", acceptLanguage: "en-US" }));
+    const res = await proxy(req("/login", { cookie: "zh-Hant", acceptLanguage: "en-US" }));
     expect(res.cookies.get("sow_locale")).toBeUndefined();
   });
 
@@ -51,7 +54,7 @@ describe("proxy locale cookie", () => {
 
   it("defaults to en when Accept-Language is absent or unrecognized", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null as any);
-    const res = await proxy(req("/"));
+    const res = await proxy(req("/login"));
     expect(res.cookies.get("sow_locale")?.value).toBe("en");
   });
 });
@@ -89,5 +92,14 @@ describe("public path rules", () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null);
     const res = await proxy(req("/songsets"));
     expect(res.status).toBe(307);
+  });
+
+  // "/" is no longer public (issue #213): unauthenticated visitors to the
+  // app domain are login-first.
+  it("redirects an unauthenticated request for / to /login", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(null);
+    const res = await proxy(req("/"));
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
   });
 });
