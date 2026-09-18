@@ -59,20 +59,44 @@ UVR_MODEL="UVR-De-Echo-Normal.pth"
 VOCAL_MODEL_PATH="$MODEL_DIR/$VOCAL_MODEL"
 UVR_MODEL_PATH="$MODEL_DIR/$UVR_MODEL"
 
+# Minimum plausible model sizes (bytes). Guards against truncated/interrupted
+# downloads: audio_separator's downloader writes directly to the final path, so
+# a killed run leaves a corrupt file that torch fails to load at service start.
+VOCAL_MODEL_MIN_BYTES=$((900 * 1024 * 1024))   # full model ~1.0 GB
+UVR_MODEL_MIN_BYTES=$((100 * 1024 * 1024))     # full model ~127 MB
+
+model_ok() {
+    local path="$1" min_bytes="$2"
+    [[ -f "$path" ]] || return 1
+    local size
+    size=$(stat -c%s "$path" 2>/dev/null) || return 1
+    [[ "$size" -ge "$min_bytes" ]]
+}
+
 NEED_DOWNLOAD=false
 
-if [[ ! -f "$VOCAL_MODEL_PATH" ]]; then
-    echo -e "  ${YELLOW}Missing: $VOCAL_MODEL${NC}"
-    NEED_DOWNLOAD=true
-else
+if model_ok "$VOCAL_MODEL_PATH" "$VOCAL_MODEL_MIN_BYTES"; then
     echo -e "  ${GREEN}Found: $VOCAL_MODEL${NC}"
+else
+    if [[ -f "$VOCAL_MODEL_PATH" ]]; then
+        echo -e "  ${RED}Corrupt/truncated (too small), will re-download: $VOCAL_MODEL ($(stat -c%s "$VOCAL_MODEL_PATH") bytes)${NC}"
+        rm -f "$VOCAL_MODEL_PATH"
+    else
+        echo -e "  ${YELLOW}Missing: $VOCAL_MODEL${NC}"
+    fi
+    NEED_DOWNLOAD=true
 fi
 
-if [[ ! -f "$UVR_MODEL_PATH" ]]; then
-    echo -e "  ${YELLOW}Missing: $UVR_MODEL${NC}"
-    NEED_DOWNLOAD=true
-else
+if model_ok "$UVR_MODEL_PATH" "$UVR_MODEL_MIN_BYTES"; then
     echo -e "  ${GREEN}Found: $UVR_MODEL${NC}"
+else
+    if [[ -f "$UVR_MODEL_PATH" ]]; then
+        echo -e "  ${RED}Corrupt/truncated (too small), will re-download: $UVR_MODEL ($(stat -c%s "$UVR_MODEL_PATH") bytes)${NC}"
+        rm -f "$UVR_MODEL_PATH"
+    else
+        echo -e "  ${YELLOW}Missing: $UVR_MODEL${NC}"
+    fi
+    NEED_DOWNLOAD=true
 fi
 
 if [[ "$NEED_DOWNLOAD" == true ]]; then
@@ -81,35 +105,67 @@ if [[ "$NEED_DOWNLOAD" == true ]]; then
     echo "This may take a few minutes..."
     echo ""
 
-    cd "$PROJECT_ROOT"
-    uv run --python 3.11 --extra stem_separation python << EOF
-from audio_separator.separator import Separator
-import os
+    # audio_separator's Python downloader streams a single connection and crawls
+    # on some networks (~7 KB/s observed; GitHub release assets are Fastly-CDN'd
+    # and some ISP peerings throttle them). Release assets support ranged
+    # requests; parallel ranges recover ~100x aggregate throughput.
+    download_parallel() {
+        local url="$1" out="$2" size="$3" tmp="$4"
+        local chunk=$(( (size + 15) / 16 ))
+        local pids=()
 
-model_dir = os.path.expanduser("$MODEL_DIR")
-os.makedirs(model_dir, exist_ok=True)
+        rm -f "$tmp" "$tmp".part*
+        for i in $(seq 0 15); do
+            local start=$((i * chunk))
+            [[ "$start" -ge "$size" ]] && break
+            local end=$((start + chunk - 1))
+            [[ "$end" -ge "$size" ]] && end=$((size - 1))
+            curl -fsSL --retry 3 --retry-delay 2 -o "$(printf '%s.part%02d' "$tmp" "$i")" -r "$start-$end" "$url" &
+            pids+=($!)
+        done
 
-try:
-    print("Downloading MelBand Roformer model...")
-    sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-    sep1.load_model(model_filename="$VOCAL_MODEL")
-    print(f"  ✓ MelBand Roformer downloaded successfully")
-except Exception as e:
-    print(f"  ✗ Failed to download MelBand Roformer: {e}")
-    exit(1)
+        local fail=0
+        for pid in "${pids[@]}"; do
+            wait "$pid" || fail=1
+        done
+        if [[ "$fail" -ne 0 ]]; then
+            rm -f "$tmp" "$tmp".part??
+            return 1
+        fi
 
-try:
-    print("Downloading UVR-De-Echo model...")
-    sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-    sep2.load_model(model_filename="$UVR_MODEL")
-    print(f"  ✓ UVR-De-Echo downloaded successfully")
-except Exception as e:
-    print(f"  ✗ Failed to download UVR-De-Echo: {e}")
-    exit(1)
+        cat "$tmp".part?? > "$tmp"
+        rm -f "$tmp".part??
 
-print(f"\nModels ready in: {model_dir}")
-EOF
+        local downloaded
+        downloaded=$(stat -c%s "$tmp")
+        if [[ "$downloaded" -ne "$size" ]]; then
+            echo "  Size mismatch: expected $size bytes, got $downloaded"
+            rm -f "$tmp"
+            return 1
+        fi
+        mv "$tmp" "$out"
+    }
 
+    fetch_model() {
+        local filename="$1" size="$2" url="$3"
+        echo "Downloading $filename ($(numfmt --to=iec "$size"))..."
+        download_parallel "$url" "$MODEL_DIR/$filename" "$size" "$MODEL_DIR/.$filename.tmp" \
+            && echo "  ✓ $filename downloaded successfully" \
+            || { echo "  ✗ Failed to download $filename"; rm -f "$MODEL_DIR/.$filename.tmp" "$MODEL_DIR/$filename"; exit 1; }
+    }
+
+    VOCAL_MODEL_URL="https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/$VOCAL_MODEL"
+    UVR_MODEL_URL="https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/$UVR_MODEL"
+    # Exact upstream sizes (GitHub release assets); used for both range planning
+    # and post-download verification.
+    VOCAL_MODEL_SIZE=1007816988   # ~1.0 GB
+    UVR_MODEL_SIZE=127139365      # ~127 MB
+
+    [[ -f "$VOCAL_MODEL_PATH" ]] || fetch_model "$VOCAL_MODEL" "$VOCAL_MODEL_SIZE" "$VOCAL_MODEL_URL"
+    [[ -f "$UVR_MODEL_PATH" ]] || fetch_model "$UVR_MODEL" "$UVR_MODEL_SIZE" "$UVR_MODEL_URL"
+
+    echo ""
+    echo "Models ready in: $MODEL_DIR"
     echo ""
 fi
 
@@ -132,8 +188,7 @@ if [[ "$QWEN3_MODEL_FOUND" == false ]]; then
     echo "This may take several minutes (~1.2GB)..."
     echo ""
 
-    cd "$PROJECT_ROOT"
-    uv run --python 3.11 --extra poc_qwen3_asr python << EOF
+    uv run --project "$SCRIPT_DIR/../../lab/poc-scripts" --python 3.11 --extra poc_qwen3_asr python << EOF
 from huggingface_hub import snapshot_download
 import os
 
