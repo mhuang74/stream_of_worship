@@ -8,17 +8,6 @@ import { bundle } from "../messages";
 
 export const playBundle = bundle({
   en: {
-    // Play page (app/songsets/[id]/play/page.tsx)
-    "play.title": "Play",
-    "play.backAriaLabel": "Go back",
-    "play.notFound": "Songset not found",
-    "play.loadFailed": "Failed to load songset",
-    "play.backToSongsets": "Back to songsets",
-
-    // OfflineAvailableCard — play page offline entry (issue #206)
-    "play.offline.heading": "Ready for offline playback",
-    "play.offline.hint": "You are offline. This worship set was downloaded and can start without a network.",
-
     // Projection page (app/songsets/[id]/play/projection/page.tsx)
     "projection.loadingAriaLabel": "Loading projection",
     "projection.errorAuthRequired": "Authentication required",
@@ -32,32 +21,6 @@ export const playBundle = bundle({
     // ProjectionPlayer
     "projection.videoAriaLabel": "Projection video",
     "projection.tvFailed": "TV projection failed — check connection",
-
-    // PrePlayCard
-    "preplay.toastRenderFirst": "Please render this songset first",
-    "preplay.stale.title": "Artifacts out of date",
-    "preplay.stale.desc": "Songs have been modified since the last render.",
-    "preplay.stale.button": "Re-render",
-    "preplay.failed.title": "Render failed",
-    "preplay.failed.desc": "The last render attempt failed.",
-    "preplay.failed.button": "Retry render",
-    "preplay.unrendered.title": "Not rendered yet",
-    "preplay.unrendered.desc":
-      "This songset needs to be rendered before playback.",
-    "preplay.unrendered.button": "Render now",
-    "preplay.songList": "Song List",
-    "preplay.total": "Total",
-    "preplay.hourShort": "h",
-    "preplay.minShort": "m",
-    "preplay.minLong": "min",
-    "preplay.unknownSong": "Unknown Song",
-    "preplay.unknownArtist": "Unknown Artist",
-    "preplay.startWorship": "Start Worship",
-    "preplay.starting": "Starting...",
-    "preplay.share": "Share",
-    "preplay.renderToEnable": "Render this songset to enable playback",
-    "preplay.song": "song",
-    "preplay.songs": "songs",
 
     // PlaybackControls
     "controls.seek": "Seek",
@@ -122,17 +85,6 @@ export const playBundle = bundle({
     "controller.retry": "Retry",
   },
   "zh-Hant": {
-    // Play page
-    "play.title": "播放",
-    "play.backAriaLabel": "返回",
-    "play.notFound": "找不到這個敬拜歌單",
-    "play.loadFailed": "敬拜歌單載入失敗，請再試一次",
-    "play.backToSongsets": "返回歌單",
-
-    // OfflineAvailableCard — play page offline entry (issue #206)
-    "play.offline.heading": "離線播放已就緒",
-    "play.offline.hint": "你目前離線。這個敬拜歌單已下載到本機，不需要網路也能開始。",
-
     // Projection page
     "projection.loadingAriaLabel": "投影載入中",
     "projection.errorAuthRequired": "需要先登入",
@@ -146,31 +98,6 @@ export const playBundle = bundle({
     // ProjectionPlayer
     "projection.videoAriaLabel": "投影影片",
     "projection.tvFailed": "電視投放失敗，請檢查連線",
-
-    // PrePlayCard
-    "preplay.toastRenderFirst": "請先渲染這個敬拜歌單",
-    "preplay.stale.title": "成品已過期",
-    "preplay.stale.desc": "上次渲染之後，詩歌內容有變更。",
-    "preplay.stale.button": "重新渲染",
-    "preplay.failed.title": "渲染失敗",
-    "preplay.failed.desc": "上一次渲染沒有成功。",
-    "preplay.failed.button": "重試渲染",
-    "preplay.unrendered.title": "尚未渲染",
-    "preplay.unrendered.desc": "這個敬拜歌單要先渲染才能播放。",
-    "preplay.unrendered.button": "立即渲染",
-    "preplay.songList": "歌曲清單",
-    "preplay.total": "總計",
-    "preplay.hourShort": "小時",
-    "preplay.minShort": "分",
-    "preplay.minLong": "分鐘",
-    "preplay.unknownSong": "未知歌曲",
-    "preplay.unknownArtist": "未知演出者",
-    "preplay.startWorship": "開始敬拜",
-    "preplay.starting": "開始中…",
-    "preplay.share": "分享",
-    "preplay.renderToEnable": "渲染這個敬拜歌單後就能播放",
-    "preplay.song": "首歌",
-    "preplay.songs": "首歌",
 
     // PlaybackControls
     "controls.seek": "拖曳進度",

@@ -19,11 +19,13 @@ vi.mock("@/lib/offline/offline-index", () => ({
   putOfflineRecord: vi.fn().mockResolvedValue(undefined),
 }));
 
-const { mockCacheControllerDocument } = vi.hoisted(() => ({
+const { mockCacheControllerDocument, mockCacheOfflineListDocument } = vi.hoisted(() => ({
   mockCacheControllerDocument: vi.fn().mockResolvedValue(true),
+  mockCacheOfflineListDocument: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("@/lib/offline/document-cache", () => ({
   cacheControllerDocument: mockCacheControllerDocument,
+  cacheOfflineListDocument: mockCacheOfflineListDocument,
 }));
 
 
@@ -139,11 +141,15 @@ describe("downloadOfflineArtifacts", () => {
     expect(record.cachedChapters).toBe(false);
   });
 
-  it("pre-caches the controller document for the songset after the index write", async () => {
+  it("pre-caches the controller document and the offline list document after the index write", async () => {
     await downloadOfflineArtifacts(makeInput());
 
     expect(mockCacheControllerDocument).toHaveBeenCalledWith("set-1");
+    expect(mockCacheOfflineListDocument).toHaveBeenCalledWith();
     expect(mockCacheControllerDocument.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockedPutOfflineRecord.mock.invocationCallOrder[0]
+    );
+    expect(mockCacheOfflineListDocument.mock.invocationCallOrder[0]).toBeGreaterThan(
       mockedPutOfflineRecord.mock.invocationCallOrder[0]
     );
   });

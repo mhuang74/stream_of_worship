@@ -11,9 +11,20 @@ import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { useConnectivity } from "@/hooks/useConnectivity";
+import { useOfflineRedirect } from "@/hooks/useOfflineRedirect";
+import { getOfflineRecord } from "@/lib/offline/offline-index";
 import { useSongsetListBack } from "@/hooks/useSongsetListBack";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { removeOfflineSongset } from "@/lib/offline/offline-index";
+import { OfflineStatus } from "@/components/play/OfflineStatus";
+
+/** R2 keys the offline download needs, fetched from the render job. */
+interface RenderJobR2Keys {
+  id: string;
+  mp3R2Key: string | null;
+  mp4R2Key: string | null;
+  chaptersR2Key: string | null;
+}
 
 const BrowseSheet = dynamic(
   () => import("@/components/songset/BrowseSheet").then((m) => ({ default: m.BrowseSheet })),
@@ -119,6 +130,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const backToList = useSongsetListBack();
   const { t } = useLocale();
   const connectivity = useConnectivity();
+  useOfflineRedirect();
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
   const highlightSongParam = searchParams.get("highlightSong");
@@ -143,7 +155,47 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     isArtifactsStale: initialData.isArtifactsStale,
   }));
   const [items, setItems] = useState<SongListItem[]>(() => transformItems(initialData.items));
+  // Offline index record (client-only): cached ⇒ offline-copy play entry.
+  const [isOfflineAvailable, setIsOfflineAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void getOfflineRecord(songsetId).then((record) => {
+      if (!cancelled) setIsOfflineAvailable(record != null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [songsetId]);
   const [isBrowseSheetOpen, setIsBrowseSheetOpen] = useState(false);
+  // Render job R2 keys for the offline download control (moved from the
+  // deleted Play screen, issue #211 follow-up Q16). Fetched once when the
+  // songset has a completed render.
+  const [renderJobR2Keys, setRenderJobR2Keys] = useState<RenderJobR2Keys | null>(null);
+  useEffect(() => {
+    const jobId = songset?.latestRenderJobId;
+    if (!jobId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/render-jobs/${jobId}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) {
+          setRenderJobR2Keys({
+            id: data.id,
+            mp3R2Key: data.mp3R2Key,
+            mp4R2Key: data.mp4R2Key,
+            chaptersR2Key: data.chaptersR2Key,
+          });
+        }
+      } catch {
+        // Best-effort: the offline control just stays absent this boot.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [songset?.latestRenderJobId]);
   const isLoading = false;
   const error: string | null = null;
   const [isRemoving, setIsRemoving] = useState(false);
@@ -336,16 +388,19 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
 
   // Handle play
   const handlePlay = useCallback(() => {
-    // Not positively online (probed Offline, or Unknown — issue #211's
-    // fail-toward-offline): full document navigation — the SW document route
-    // serves the page; SPA navigation needs an RSC fetch that dead-ends
-    // offline (issue #206's trap, at editor granularity).
-    if (connectivity !== "online") {
-      window.location.assign(`/songsets/${songsetId}/play`);
+    // Cached ⇒ offline copy (cache-first controller boot): a full document
+    // navigation is deterministic regardless of connectivity — the SW
+    // document route serves the pre-cached controller. Not positively
+    // online (probed Offline, or Unknown — issue #211's
+    // fail-toward-offline): same full-document path. SPA navigation needs
+    // an RSC fetch that dead-ends offline (issue #206's trap, at editor
+    // granularity).
+    if (isOfflineAvailable || connectivity !== "online") {
+      window.location.assign(`/songsets/${songsetId}/play/controller`);
       return;
     }
-    router.push(`/songsets/${songsetId}/play`);
-  }, [connectivity, songsetId, router]);
+    router.push(`/songsets/${songsetId}/play/controller`);
+  }, [isOfflineAvailable, connectivity, songsetId, router]);
 
   // Handle retry
   const handleRetry = useCallback(() => {
@@ -583,6 +638,20 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         isRemoving={isRemoving}
         highlightSongId={highlightSongId}
         onHighlightConsumed={() => setHighlightSongId(null)}
+        offlineStatusSlot={
+          songset && renderJobR2Keys ? (
+            <div className="px-4 pt-3">
+              <OfflineStatus
+                songsetId={songsetId}
+                songsetName={songset.name}
+                renderJobId={renderJobR2Keys.id}
+                mp3R2Key={renderJobR2Keys.mp3R2Key}
+                mp4R2Key={renderJobR2Keys.mp4R2Key}
+                chaptersR2Key={renderJobR2Keys.chaptersR2Key}
+              />
+            </div>
+          ) : null
+        }
       />
       <BrowseSheet
         isOpen={isBrowseSheetOpen}

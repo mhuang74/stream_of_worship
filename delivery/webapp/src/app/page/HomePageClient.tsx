@@ -14,6 +14,8 @@ import { FileMusic, Heart, Library, Share2, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { useConnectivity } from "@/hooks/useConnectivity";
+import { useOfflineRedirect } from "@/hooks/useOfflineRedirect";
+import { getOfflineRecord } from "@/lib/offline/offline-index";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import type { DashboardStats } from "@/lib/db/dashboard";
 import { t } from "@/lib/i18n/messages";
@@ -43,6 +45,7 @@ export function HomePageClient({
 }: HomePageClientProps) {
   const router = useRouter();
   const connectivity = useConnectivity();
+  useOfflineRedirect();
   const [songs, setSongs] = useState<SongCardData[]>(recentFavoriteSongs);
   const { favoriteIds, toggleFavorite } = useFavoriteToggle(
     useMemo(() => new Set(recentFavoriteSongs.map((s) => s.id)), [recentFavoriteSongs])
@@ -105,16 +108,22 @@ export function HomePageClient({
   ];
 
   const handleSongsetPlay = useCallback(
-    (songsetId: string) => {
-      // Not positively online (probed Offline, or Unknown — issue #211's
-      // fail-toward-offline): full document navigation — the SW document
-      // route serves the page; SPA navigation needs an RSC fetch that
-      // dead-ends offline (issue #206's trap, at dashboard granularity).
-      if (connectivity !== "online") {
-        window.location.assign(`/songsets/${songsetId}/play`);
+    async (songsetId: string) => {
+      // Cached ⇒ offline copy (cache-first controller boot): a full document
+      // navigation is deterministic regardless of connectivity — the SW
+      // document route serves the pre-cached controller. Not positively
+      // online (probed Offline, or Unknown — issue #211's
+      // fail-toward-offline): same full-document path. SPA navigation needs
+      // an RSC fetch that dead-ends offline (issue #206's trap, at
+      // dashboard granularity).
+      if (
+        (await getOfflineRecord(songsetId)) ||
+        connectivity !== "online"
+      ) {
+        window.location.assign(`/songsets/${songsetId}/play/controller`);
         return;
       }
-      router.push(`/songsets/${songsetId}/play`);
+      router.push(`/songsets/${songsetId}/play/controller`);
     },
     [connectivity, router]
   );

@@ -9,6 +9,7 @@ import { AccountSettings } from "@/components/settings/AccountSettings";
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
+import { useOfflineRedirect } from "@/hooks/useOfflineRedirect";
 
 const DEFAULT_SETTINGS: UserSettingsData = {
   offlineAutoCache: true,
@@ -32,6 +33,7 @@ async function fetchSettings(): Promise<UserSettingsData> {
 
 export default function SettingsPage() {
   const router = useRouter();
+  useOfflineRedirect();
   const { t, setLocale } = useLocale();
   const [settings, setSettings] = useState<UserSettingsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);

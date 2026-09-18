@@ -15,6 +15,7 @@ import {
   revokeOfflineBlobUrl,
   type OfflineMediaKind,
 } from "@/lib/offline/offline-playback";
+import { getOfflineRecord } from "@/lib/offline/offline-index";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
@@ -227,11 +228,20 @@ export default function ControllerPage() {
         setIsLoading(true);
         setError(null);
 
-        // Offline at boot: no API fetch is even attempted — the offline index
-        // and the artifact cache are the only sources.
+        // OS-offline: no API fetch is even attempted — the offline index
+        // and the artifact cache are the only sources. No playable copy →
+        // the offline-unavailable error.
         if (getConnectivity() === "offline") {
           if (await loadOffline()) return;
           throw new Error(t("control.offlineUnavailable"));
+        }
+
+        // Cache-first boot (issue #211 follow-up): when a downloaded copy
+        // exists and is playable, boot it without any API fetch — cached ⇒
+        // offline copy, connectivity irrelevant. A record whose bytes are
+        // unusable (corrupt/evicted) falls through to the online chain.
+        if (await getOfflineRecord(songsetId)) {
+          if (await loadOffline()) return;
         }
 
         try {
@@ -478,7 +488,7 @@ export default function ControllerPage() {
             {error || t("control.failedToLoadPlayer")}
           </p>
           <button
-            onClick={() => router.push(`/songsets/${songsetId}/play`)}
+            onClick={() => router.push("/offline")}
             className="px-4 py-2 bg-primary text-white rounded-lg"
           >
             {t("control.goBack")}
@@ -491,6 +501,10 @@ export default function ControllerPage() {
   return (
     <ControllerPlayer
       playerId={songsetId}
+      // Booted via the SW controller document the page cannot know its
+      // origin; the offline list is the canonical exit (issue #211
+      // follow-up, Q5).
+      exitRoute="/offline"
       {...(media.kind === "audio" ? { audioSrc: media.src } : { videoSrc: media.src })}
       chapters={chapters}
       chapterRecordingHashes={chapterRecordingHashes}
