@@ -45,12 +45,24 @@ workbox.routing.registerRoute(
 );
 
 // Cache static assets (JS, CSS, fonts, images) – serve from cache, refresh in background.
+//
+// /_next/ chunks are excluded (issue: /offline endless request loop): in dev,
+// chunk URLs are stable across builds while their contents change, and the
+// dev server stamps them `Cache-Control: public, max-age=31536000, immutable`.
+// StaleWhileRevalidate's background revalidate fetch then resolves from the
+// browser HTTP cache (immutable) with the SAME stale body, and cache.put
+// re-stores it — `sow-static-assets` is permanently poisoned and code fixes
+// never reach clients (an old OfflineClient chunk refetched /api/songsets in
+// an endless loop). Production chunks are content-hashed and immutable, so
+// the SW adds nothing there but staleness risk. Same-origin fonts/images
+// under other paths keep SW caching.
 workbox.routing.registerRoute(
-  ({ request }) =>
-    request.destination === "script" ||
-    request.destination === "style" ||
-    request.destination === "font" ||
-    request.destination === "image",
+  ({ request, url }) =>
+    (request.destination === "script" ||
+      request.destination === "style" ||
+      request.destination === "font" ||
+      request.destination === "image") &&
+    !url.pathname.startsWith("/_next/"),
   new workbox.strategies.StaleWhileRevalidate({
     cacheName: "sow-static-assets",
     plugins: [
