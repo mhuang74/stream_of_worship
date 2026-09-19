@@ -30,7 +30,7 @@ export function LandingPage({ locale }: { locale: Locale }) {
         <div className="mx-auto max-w-6xl px-4 py-20 md:py-28 grid md:grid-cols-2 gap-12 items-center">
           <div className="space-y-6">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-              ✦ {t(locale, "home.signedOut.heroTag")}
+              <span className="text-base leading-none">✦</span> {t(locale, "home.signedOut.heroTag")}
             </span>
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
               {t(locale, "home.signedOut.heroTitleLead")}

@@ -8,9 +8,12 @@ export const MESSAGES = {
   en: {
     "brand.name": "Stream of Worship",
     "nav.main.ariaLabel": "Main navigation",
-    "nav.home": "Home",
+    "nav.language.ariaLabel": "Switch language",
+    "nav.language.en": "English",
+    "nav.language.zhHant": "繁體中文",
+    "nav.signIn": "Sign in",
+    "nav.register": "Create account",
     "nav.about": "About",
-    "nav.docs": "Docs",
 
     "home.signedOut.heroTag": "Lyrics video for small group worship",
     "home.signedOut.heroTitleLead": "Lead your small group in worship with ",
@@ -89,9 +92,12 @@ export const MESSAGES = {
   "zh-Hant": {
     "brand.name": "Stream of Worship",
     "nav.main.ariaLabel": "主要導覽",
-    "nav.home": "首頁",
     "nav.about": "關於",
-    "nav.docs": "使用說明",
+    "nav.language.ariaLabel": "切換語言",
+    "nav.language.en": "English",
+    "nav.language.zhHant": "繁體中文",
+    "nav.signIn": "登入",
+    "nav.register": "建立帳號",
 
     "home.signedOut.heroTag": "為小組敬拜而設的歌詞影片",
     "home.signedOut.heroTitleLead": "帶領小組敬拜，",
