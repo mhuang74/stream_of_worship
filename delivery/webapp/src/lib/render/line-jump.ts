@@ -42,14 +42,33 @@ function toGlobalLines(chapter: Chapter): GlobalLRCLine[] {
   }));
 }
 
-function firstLineStart(chapter: Chapter | undefined): number | null {
-  if (!chapter || chapter.lines.length === 0) return null;
-  return chapter.lines[0].startSeconds;
+/**
+ * Start of the first line in `chapter` strictly after `floor`, or null when
+ * the chapter has no such line. Bounding the forward cross by the current
+ * position keeps an ArrowRight jump monotonic even if a later chapter's lines
+ * were already passed.
+ */
+function firstLineStartAfter(chapter: Chapter | undefined, floor: number): number | null {
+  if (!chapter) return null;
+  for (const line of chapter.lines) {
+    if (line.startSeconds > floor) return line.startSeconds;
+  }
+  return null;
 }
 
-function lastLineStart(chapter: Chapter | undefined): number | null {
-  if (!chapter || chapter.lines.length === 0) return null;
-  return chapter.lines[chapter.lines.length - 1].startSeconds;
+/**
+ * Start of the last line in `chapter` strictly before `limit`, or null when
+ * the chapter has no such line. Bounding the backward cross by the current
+ * chapter's start keeps an ArrowLeft jump monotonic when crossfade makes
+ * chapters overlap (a previous chapter's tail lines can fall after the
+ * current chapter's start).
+ */
+function lastLineStartBefore(chapter: Chapter | undefined, limit: number): number | null {
+  if (!chapter) return null;
+  for (let i = chapter.lines.length - 1; i >= 0; i--) {
+    if (chapter.lines[i].startSeconds < limit) return chapter.lines[i].startSeconds;
+  }
+  return null;
 }
 
 /**
@@ -82,9 +101,9 @@ export function findLineJumpTarget(
       return lines[activeIndex + 1].startSeconds;
     }
     // On (or past) the last line of this song → first line of the next song
-    // that has synced lines.
+    // that has synced lines, strictly ahead of the current position.
     for (let i = currentSongIndex + 1; i < chapters.length; i++) {
-      const target = firstLineStart(chapters[i]);
+      const target = firstLineStartAfter(chapters[i], currentTime);
       if (target !== null) return target;
     }
     return null;
@@ -101,9 +120,10 @@ export function findLineJumpTarget(
     }
   }
   // At (or before) the first line of this song → last line of the previous
-  // song that has synced lines.
+  // song that has synced lines, strictly before this chapter's start so the
+  // jump stays backward even when crossfade overlaps chapters.
   for (let i = currentSongIndex - 1; i >= 0; i--) {
-    const target = lastLineStart(chapters[i]);
+    const target = lastLineStartBefore(chapters[i], chapter.startSeconds);
     if (target !== null) return target;
   }
   return null;

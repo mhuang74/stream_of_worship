@@ -111,6 +111,48 @@ describe("findLineJumpTarget", () => {
     });
   });
 
+  describe("overlapping chapters (crossfade)", () => {
+    // Crossfade (gap 0) makes chapters overlap: song A spans 0–100 with its
+    // last line at 98 (after song B's start), song B starts at 95 with its
+    // first line at 97. The controller resolves the overlap to the later
+    // chapter (B), so a naive "previous song's last line" would seek forward.
+    const overlapping = [
+      makeChapter(0, 0, 100, [90, 98]),
+      makeChapter(1, 95, 195, [97, 120]),
+    ];
+
+    it("does not seek forward on ArrowLeft from early in the next song", () => {
+      expect(findLineJumpTarget(overlapping, 1, 96, "previous")).toBe(90);
+    });
+
+    it("does not seek forward on ArrowLeft from the next song's first line", () => {
+      expect(findLineJumpTarget(overlapping, 1, 97, "previous")).toBe(90);
+    });
+
+    it("keeps ArrowRight forward in the run-up to the overlap", () => {
+      // At 94 the controller still resolves chapter A; the jump must land ahead.
+      expect(findLineJumpTarget(overlapping, 0, 94, "next")).toBe(98);
+    });
+
+    it("picks the previous chapter's last line before the current chapter start", () => {
+      const chapters = [
+        makeChapter(0, 0, 100, [10, 80]),
+        makeChapter(1, 50, 150, [60]),
+      ];
+      // 80 is after chapter 1's start (50), so 10 is the bounded target.
+      expect(findLineJumpTarget(chapters, 1, 60, "previous")).toBe(10);
+    });
+
+    it("falls through to an earlier chapter when the neighbour has no line before the bound", () => {
+      const chapters = [
+        makeChapter(0, 0, 100, [10, 20]),
+        makeChapter(1, 100, 150, [110]), // line falls after chapter 2 starts
+        makeChapter(2, 105, 205, [120]),
+      ];
+      expect(findLineJumpTarget(chapters, 2, 120, "previous")).toBe(20);
+    });
+  });
+
   describe("edge cases", () => {
     it("returns null for an empty chapter list", () => {
       expect(findLineJumpTarget([], 0, 0, "next")).toBeNull();

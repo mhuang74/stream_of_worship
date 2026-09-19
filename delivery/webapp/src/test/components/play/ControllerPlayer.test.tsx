@@ -925,6 +925,34 @@ describe("ControllerPlayer", () => {
     });
   });
 
+  // ── Current-song time context row ───────────────────────────────────────
+  describe("current-song time context row", () => {
+    it("is hidden before playback starts", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      expect(screen.queryByTestId("song-time-row")).not.toBeInTheDocument();
+    });
+
+    it("shows the playing song's title and time once playback advances", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+      const video = document.querySelector("video") as HTMLVideoElement;
+      await act(async () => {
+        video.duration = 420;
+        fireEvent(video, new Event("loadedmetadata"));
+        video.currentTime = 25;
+        fireEvent.timeUpdate(video);
+      });
+
+      const row = screen.getByTestId("song-time-row");
+      expect(row).toHaveTextContent("Amazing Grace");
+      expect(row).toHaveTextContent("0:25 / 3:00");
+    });
+  });
+
   // ── Lyric pullup expansion / jump-to-lyric ─────────────────────────────
   describe("jump list seek", () => {
     it("song title expands without seeking (LyricJumpList, not active)", async () => {
