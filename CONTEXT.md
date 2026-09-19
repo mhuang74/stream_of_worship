@@ -95,8 +95,12 @@ The device has no usable network path to the webapp's server — determined by c
 _Avoid_: airplane mode (that's one way to cause it), no internet (vague), disconnected (ambiguous)
 
 **Offline Copy**:
-A songset's media and chapters the user has downloaded for offline playback, created by Download for Offline and removed by Remove from offline. A copy can go stale when the songset renders again after the copy was made; Re-download for Offline refreshes it.
+A songset's media and chapters the user has downloaded for offline playback, created by Download for Offline and removed by Remove from offline. A copy can go stale when the songset renders again after the copy was made; Re-download for Offline refreshes it. Listed on the Worship page (`/worship`).
 _Avoid_: cached songset, offline download (the action, not the thing), local copy
+
+**Worship Page**:
+The nav surface (`/worship`) listing every songset with a rendered lyrics video. Its default filter, Ready for Offline Worship, shows only songsets with an Offline Copy; the All toggle shows every rendered songset, each row carrying its own caching affordance (Download for Offline / Remove from offline). Also the app's offline redirect target and the controller's exit route.
+_Avoid_: offline page, downloads page
 
 **Connectivity**:
 The app-level judgment of whether the server is reachable, maintained as a single shared state: `Online` (navigator.onLine true AND a health probe succeeds), `Offline` (navigator.onLine false — the OS verdict is definitive downward), or `Unknown` (probe in flight, never run, or inconclusive). Unknown is treated as Offline for all offline affordances (fail toward offline), with one deliberate exception: the controller's cache-first boot branch gates on definitive Offline only. Not the same as navigator.onLine, which reports interface state and can claim Online while Airplane-style no-route conditions persist.

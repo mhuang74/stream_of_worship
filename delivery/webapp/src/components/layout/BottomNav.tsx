@@ -6,6 +6,7 @@ import { isProjectionRoute } from "@/lib/routes";
 import { useLocale } from "@/hooks/useLocale";
 import { getMarketingUrl } from "@/lib/marketing-url";
 import { useSession } from "@/lib/auth-client";
+import { useConnectivity } from "@/hooks/useConnectivity";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 
 export function BottomNav() {
@@ -13,26 +14,33 @@ export function BottomNav() {
   const { t, locale } = useLocale();
   const { data: session } = useSession();
   const user = session?.user;
+  const connectivity = useConnectivity();
 
   const navItems = [
     { href: "/", key: "nav.dashboard" as const },
     { href: "/songsets", key: "nav.songsets" as const },
-    { href: "/offline", key: "nav.offline" as const },
+    { href: "/worship", key: "nav.worship" as const },
     { href: "/favorites", key: "nav.favorites" as const },
   ];
 
   if (
     pathname?.includes("/play/controller") ||
     pathname?.startsWith("/share/") ||
-    // /offline boots from the offline index with no session guarantee (the
-    // SW pre-caches this document); the async useSession would flash the
-    // signed-out About + LanguageSwitcher bar there. Issue #211 follow-up.
-    pathname === "/offline" ||
+    // /worship is the offline boot target: the SW pre-caches its document on
+    // authed page boots only, so an offline boot implies a signed-in user
+    // (and useSession cannot resolve offline — it would pin the signed-out
+    // About bar). Online, show the nav once the session settles signed-in;
+    // the genuinely signed-out are server-redirected to /login and get
+    // nothing (this also suppresses the unresolved-session flash).
+    (pathname === "/worship" && !(user || connectivity === "offline")) ||
     isProjectionRoute(pathname)
   ) {
     return null;
   }
-  if (!user) {
+  // Offline, useSession cannot resolve — treat offline boots as signed-in
+  // (see /worship note above) and render the full nav instead of the
+  // signed-out About bar, which would be permanently wrong offline.
+  if (!user && connectivity !== "offline") {
     return (
       <nav
         className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background"

@@ -45,12 +45,24 @@ workbox.routing.registerRoute(
 );
 
 // Cache static assets (JS, CSS, fonts, images) – serve from cache, refresh in background.
+//
+// /_next/ chunks are excluded (issue: /offline endless request loop): in dev,
+// chunk URLs are stable across builds while their contents change, and the
+// dev server stamps them `Cache-Control: public, max-age=31536000, immutable`.
+// StaleWhileRevalidate's background revalidate fetch then resolves from the
+// browser HTTP cache (immutable) with the SAME stale body, and cache.put
+// re-stores it — `sow-static-assets` is permanently poisoned and code fixes
+// never reach clients (an old OfflineClient chunk refetched /api/songsets in
+// an endless loop). Production chunks are content-hashed and immutable, so
+// the SW adds nothing there but staleness risk. Same-origin fonts/images
+// under other paths keep SW caching.
 workbox.routing.registerRoute(
-  ({ request }) =>
-    request.destination === "script" ||
-    request.destination === "style" ||
-    request.destination === "font" ||
-    request.destination === "image",
+  ({ request, url }) =>
+    (request.destination === "script" ||
+      request.destination === "style" ||
+      request.destination === "font" ||
+      request.destination === "image") &&
+    !url.pathname.startsWith("/_next/"),
   new workbox.strategies.StaleWhileRevalidate({
     cacheName: "sow-static-assets",
     plugins: [
@@ -120,14 +132,14 @@ workbox.routing.registerRoute(
 // navigate mode) on the generic route's bounded expiration — unbounded RSC
 // growth must not land in an unexpiring cache. The /songsets/ shape keeps the
 // share controller (/share/<token>/play/controller) on the generic route too
-// (the share flow is out of scope). /offline is the offline redirect target
+// (the share flow is out of scope). /worship is the offline redirect target
 // and the controller's exit route (issue #211 follow-up): also immortal —
 // the offline boot chain dies if its document expires.
 workbox.routing.registerRoute(
   ({ request, url }) =>
     request.mode === "navigate" &&
     (/^\/songsets\/[^/]+\/play\/controller$/.test(url.pathname) ||
-      url.pathname === "/offline"),
+      url.pathname === "/worship"),
   new workbox.strategies.NetworkFirst({
     cacheName: "sow-pages",
     networkTimeoutSeconds: 10,

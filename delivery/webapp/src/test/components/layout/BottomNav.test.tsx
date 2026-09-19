@@ -69,14 +69,38 @@ describe("BottomNav", () => {
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
-  // /offline boots from the offline index with no session guarantee; the
-  // async session would flash the signed-out About + LanguageSwitcher bar.
-  it("does not render on /offline", () => {
-    mockPathname.mockReturnValue("/offline");
+  it("renders the signed-in nav on /worship", () => {
+    mockPathname.mockReturnValue("/worship");
+
+    renderNav();
+
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+  });
+
+  it("renders nothing on /worship while the session is unresolved (signed-out flash guard)", () => {
+    mockPathname.mockReturnValue("/worship");
+    mockSession.mockReturnValue(null);
 
     renderNav();
 
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "About" })).not.toBeInTheDocument();
+  });
+
+  it("renders the signed-in nav on /worship when offline even with no session", () => {
+    mockPathname.mockReturnValue("/worship");
+    mockSession.mockReturnValue(null);
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+
+    try {
+      renderNav();
+
+      expect(screen.getByRole("navigation")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    }
   });
 
   it("renders About link when signed out", () => {

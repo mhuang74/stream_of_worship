@@ -77,7 +77,6 @@ export const playBundle = bundle({
     "controller.mediaAlbum": "Worship Set",
     "controller.offlinePlayback": "Offline playback",
     "controller.mediaFailed": "Playback stopped",
-    "controller.mediaStalled": "Playback stalled",
     "controller.mediaFailedDesc":
       "The worship video stopped loading. Check your connection, then tap Retry. If it keeps failing, go back and re-render this songset.",
     "controller.mediaFailedOfflineDesc":
@@ -150,7 +149,6 @@ export const playBundle = bundle({
     "controller.mediaAlbum": "敬拜歌單",
     "controller.offlinePlayback": "離線播放中",
     "controller.mediaFailed": "播放已停止",
-    "controller.mediaStalled": "播放卡住了",
     "controller.mediaFailedDesc": "敬拜影片載入中斷了。請確認網路連線，然後點「重試」。如果一直失敗，請返回並重新渲染這個敬拜歌單。",
     "controller.mediaFailedOfflineDesc": "已下載的敬拜影片中斷播放了。請點「重試」；如果一直失敗，請連上網路後重新下載這個敬拜歌單。",
     "controller.retry": "重試",

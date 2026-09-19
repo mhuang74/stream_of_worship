@@ -1574,7 +1574,7 @@ describe("ControllerPlayer", () => {
       mockPush.mockClear();
       await act(async () => {
         render(
-          <ControllerPlayer {...defaultProps} exitRoute="/offline" />
+          <ControllerPlayer {...defaultProps} exitRoute="/worship" />
         );
       });
 
@@ -1583,7 +1583,7 @@ describe("ControllerPlayer", () => {
         fireEvent.click(exitButton);
       });
 
-      expect(mockPush).toHaveBeenCalledWith("/offline");
+      expect(mockPush).toHaveBeenCalledWith("/worship");
     });
 
     it("falls back to /songsets when no exitRoute is given", async () => {
@@ -1975,96 +1975,6 @@ describe("ControllerPlayer", () => {
       expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
       expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalled();
       expect(video.currentTime).toBe(120);
-    });
-
-    it("waits 15 seconds before surfacing a stall", async () => {
-      vi.useFakeTimers();
-      try {
-        await act(async () => {
-          render(<ControllerPlayer {...defaultProps} />);
-        });
-
-        fireEvent.stalled(getVideo());
-        await act(async () => {
-          vi.advanceTimersByTime(14_000);
-        });
-        expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
-
-        await act(async () => {
-          vi.advanceTimersByTime(1_000);
-        });
-        expect(screen.getByTestId("media-failure-title")).toHaveTextContent(
-          /playback stalled/i
-        );
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("drops a pending stall when bytes flow again", async () => {
-      vi.useFakeTimers();
-      try {
-        await act(async () => {
-          render(<ControllerPlayer {...defaultProps} />);
-        });
-
-        fireEvent.stalled(getVideo());
-        await act(async () => {
-          vi.advanceTimersByTime(10_000);
-        });
-        fireEvent.progress(getVideo());
-        await act(async () => {
-          vi.advanceTimersByTime(20_000);
-        });
-
-        expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("clears a surfaced stall once bytes flow again", async () => {
-      vi.useFakeTimers();
-      try {
-        await act(async () => {
-          render(<ControllerPlayer {...defaultProps} />);
-        });
-
-        fireEvent.stalled(getVideo());
-        await act(async () => {
-          vi.advanceTimersByTime(15_000);
-        });
-        expect(screen.getByTestId("media-failure-overlay")).toBeInTheDocument();
-
-        fireEvent.progress(getVideo());
-        await act(async () => {});
-
-        expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("clears a surfaced stall once the media plays again", async () => {
-      vi.useFakeTimers();
-      try {
-        await act(async () => {
-          render(<ControllerPlayer {...defaultProps} />);
-        });
-
-        fireEvent.stalled(getVideo());
-        await act(async () => {
-          vi.advanceTimersByTime(15_000);
-        });
-        expect(screen.getByTestId("media-failure-overlay")).toBeInTheDocument();
-
-        fireEvent.playing(getVideo());
-        await act(async () => {});
-
-        expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
-      } finally {
-        vi.useRealTimers();
-      }
     });
 
     it("retry re-issues load/play and clears the overlay", async () => {

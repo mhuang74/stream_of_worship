@@ -134,9 +134,6 @@ function canVideoFullscreenSnapshot(): boolean {
 
 const SEEK_DEBOUNCE_MS = 200;
 const BUFFERING_ACTIONABLE_MS = 15_000;
-// A local media stall surfaces an overlay only after this long: a transient
-// stall on a healthy network must not flash a "playback failed" panel.
-const MEDIA_STALL_TIMEOUT_MS = 15_000;
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -222,10 +219,9 @@ export function ControllerPlayer({
   const [showDiagnosticSheet, setShowDiagnosticSheet] = useState(false);
   const [pendingResume, setPendingResume] = useState<PendingResume | null>(null);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
-  // Local media failure surface: a hard `error`, or a stall that outlived
-  // MEDIA_STALL_TIMEOUT_MS. Cleared as soon as the element plays again.
-  const [mediaFailure, setMediaFailure] = useState<"error" | "stalled" | null>(null);
-  const stallTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Local media failure surface: a hard `error` event. Cleared as soon as
+  // bytes flow again.
+  const [mediaFailure, setMediaFailure] = useState<"error" | null>(null);
   // Host-takeover recovery (the controller swaps the failed src prop for the
   // offline copy): capture the failure position at error time — the swap
   // re-runs resource selection and can reset currentTime to 0 before the
@@ -381,13 +377,6 @@ export function ControllerPlayer({
     const media = mediaRef.current;
     if (!media) return;
 
-    const clearStallTimer = () => {
-      if (stallTimerRef.current) {
-        clearTimeout(stallTimerRef.current);
-        stallTimerRef.current = null;
-      }
-    };
-
     const handleTimeUpdate = () => {
       // While the transport is connected, the receiver is the source of
       // truth — don't let local timeupdate events fight the mirrored state.
@@ -423,30 +412,16 @@ export function ControllerPlayer({
       }
     };
 
-    // Stalling is how a dropped network or a stalled cache read shows up: the
-    // element keeps "playing" but stops advancing. Only a stall that outlives
-    // MEDIA_STALL_TIMEOUT_MS is worth an overlay — transient stalls must not
-    // flash one. `playing`/`progress` both mean bytes are flowing again, so
-    // they cancel the timer and clear an overlay already on screen (which is
-    // also what makes Retry recover visibly).
+    // `playing`/`progress` mean bytes are flowing again, so they clear an
+    // error overlay already on screen (which is also what makes Retry
+    // recover visibly).
     const handleBytesFlowing = () => {
       if (isPresentationActive) return;
-      clearStallTimer();
       setMediaFailure(null);
-    };
-
-    const handleStalled = () => {
-      if (isPresentationActive) return;
-      clearStallTimer();
-      stallTimerRef.current = setTimeout(() => {
-        stallTimerRef.current = null;
-        setMediaFailure("stalled");
-      }, MEDIA_STALL_TIMEOUT_MS);
     };
 
     const handleError = () => {
       if (isPresentationActive) return;
-      clearStallTimer();
       // The element exposes no failure reason, so log the source it failed on.
       console.error("Media element failed:", media.currentSrc || media.src);
       // Capture the failure position immediately: the host's recovery (a src
@@ -477,19 +452,16 @@ export function ControllerPlayer({
     media.addEventListener("play", handlePlay);
     media.addEventListener("pause", handlePause);
     media.addEventListener("volumechange", handleVolumeChange);
-    media.addEventListener("stalled", handleStalled);
     media.addEventListener("progress", handleBytesFlowing);
     media.addEventListener("playing", handleBytesFlowing);
     media.addEventListener("error", handleError);
 
     return () => {
-      clearStallTimer();
       media.removeEventListener("timeupdate", handleTimeUpdate);
       media.removeEventListener("loadedmetadata", handleLoadedMetadata);
       media.removeEventListener("play", handlePlay);
       media.removeEventListener("pause", handlePause);
       media.removeEventListener("volumechange", handleVolumeChange);
-      media.removeEventListener("stalled", handleStalled);
       media.removeEventListener("progress", handleBytesFlowing);
       media.removeEventListener("playing", handleBytesFlowing);
       media.removeEventListener("error", handleError);
@@ -1330,9 +1302,9 @@ export function ControllerPlayer({
           </button>
         )}
 
-        {/* Media failure overlay: a hard element error, or a stall that
-            outlived MEDIA_STALL_TIMEOUT_MS. Actionable — Retry re-issues the
-            load on whatever source the host has in place by then. */}
+        {/* Media failure overlay: a hard element error. Actionable — Retry
+            re-issues the load on whatever source the host has in place by
+            then. */}
         {mediaFailure && (
           <div
             role="alert"
@@ -1343,9 +1315,7 @@ export function ControllerPlayer({
               <div className="flex items-center justify-center gap-2 font-medium">
                 <AlertTriangle className="size-5 shrink-0" />
                 <span data-testid="media-failure-title">
-                  {mediaFailure === "stalled"
-                    ? t("controller.mediaStalled")
-                    : t("controller.mediaFailed")}
+                  {t("controller.mediaFailed")}
                 </span>
               </div>
               <p className="mt-2 text-sm">
