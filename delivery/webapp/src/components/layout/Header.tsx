@@ -20,7 +20,7 @@ import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
 import { LogOut, Settings, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMarketingUrl } from "@/lib/marketing-url";
-import { cacheOfflineListDocument } from "@/lib/offline/document-cache";
+import { cacheWorshipListDocument } from "@/lib/offline/document-cache";
 
 export function Header() {
   const pathname = usePathname();
@@ -30,13 +30,13 @@ export function Header() {
   const { data: session } = useSession();
   const user = session?.user;
 
-  // Opportunistic /offline document pre-cache (issue #211 follow-up): any
-  // authed online page boot warms the offline list's document so the
+  // Opportunistic /worship document pre-cache (issue #211 follow-up): any
+  // authed online page boot warms the worship list's document so the
   // redirect target works before any songset download has cached it.
   // Best-effort — a failure degrades to the SW's offline fallback page.
   useEffect(() => {
     if (!user || navigator.onLine === false) return;
-    void cacheOfflineListDocument().catch(() => {});
+    void cacheWorshipListDocument().catch(() => {});
   }, [user]);
 
   if (pathname?.startsWith("/share/") || isProjectionRoute(pathname)) {
@@ -65,10 +65,10 @@ export function Header() {
                 {t("nav.songsets")}
               </Link>
               <Link
-                href="/offline"
+                href="/worship"
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
-                {t("nav.offline")}
+                {t("nav.worship")}
               </Link>
               <Link
                 href="/favorites"

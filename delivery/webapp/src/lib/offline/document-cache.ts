@@ -112,16 +112,16 @@ export async function cacheControllerDocument(songsetId: string): Promise<boolea
 }
 
 /**
- * Pre-caches the /offline list document (issue #211 follow-up). It is the
+ * Pre-caches the /worship list document (issue #211 follow-up). It is the
  * offline redirect target and the controller's exit route, so it must be
  * servable offline even before any songset download created a reason to
  * cache it. Same best-effort contract as cacheControllerDocument.
  */
-export async function cacheOfflineListDocument(): Promise<boolean> {
-  return cacheDocumentAtPath("/offline");
+export async function cacheWorshipListDocument(): Promise<boolean> {
+  return cacheDocumentAtPath("/worship");
 }
 
-/** Shared body of cacheControllerDocument / cacheOfflineListDocument. */
+/** Shared body of cacheControllerDocument / cacheWorshipListDocument. */
 async function cacheDocumentAtPath(path: string): Promise<boolean> {
   if (typeof window === "undefined" || !("caches" in window) || !window.caches) {
     return false;

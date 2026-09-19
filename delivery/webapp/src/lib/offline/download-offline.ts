@@ -16,7 +16,7 @@ import {
   type CacheableArtifacts,
 } from "./artifact-cache";
 import { putOfflineRecord, type OfflineSongsetRecord } from "./offline-index";
-import { cacheControllerDocument, cacheOfflineListDocument } from "./document-cache";
+import { cacheControllerDocument, cacheWorshipListDocument } from "./document-cache";
 
 export class NoArtifactsError extends Error {
   constructor() {
@@ -105,5 +105,5 @@ export async function downloadOfflineArtifacts(
   // the offline fallback page rather than failing a download whose artifacts
   // are already in place.
   await cacheControllerDocument(input.songsetId).catch(() => {});
-  await cacheOfflineListDocument().catch(() => {});
+  await cacheWorshipListDocument().catch(() => {});
 }
