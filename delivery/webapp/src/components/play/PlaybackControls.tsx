@@ -22,6 +22,14 @@ export interface PlaybackControlsProps {
   currentSongIndex: number;
   totalSongs: number;
   isPresentationActive: boolean;
+  /**
+   * Current-song time context (derived from the playing chapter). When
+   * present and the song duration is positive, a context row renders under
+   * the scrub bar: song title · elapsed-in-song / song duration · time left.
+   */
+  songTitle?: string;
+  songElapsedSeconds?: number;
+  songDurationSeconds?: number;
   onPlayPause: () => void;
   onSeek: (time: number) => void;
   onPrevSong: () => void;
@@ -40,6 +48,9 @@ export function PlaybackControls({
   currentSongIndex,
   totalSongs,
   isPresentationActive,
+  songTitle,
+  songElapsedSeconds,
+  songDurationSeconds,
   onPlayPause,
   onSeek,
   onPrevSong,
@@ -115,6 +126,26 @@ export function PlaybackControls({
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
+
+        {/* Current-song context: title · elapsed-in-song / song duration ·
+            time left within this song. Hidden when no chapter is current. */}
+        {songTitle && (songDurationSeconds ?? 0) > 0 && (
+          <div
+            className="flex items-center justify-between gap-3 text-xs text-white/70"
+            data-testid="song-time-row"
+          >
+            <span className="truncate">{songTitle}</span>
+            <span
+              className="shrink-0 tabular-nums"
+              aria-label={`${formatTime(
+                Math.max(0, (songDurationSeconds ?? 0) - (songElapsedSeconds ?? 0))
+              )} ${t("controls.remaining")}`}
+            >
+              {formatTime(songElapsedSeconds ?? 0)} / {formatTime(songDurationSeconds ?? 0)}
+              {" · "}-{formatTime(Math.max(0, (songDurationSeconds ?? 0) - (songElapsedSeconds ?? 0)))}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Main controls */}

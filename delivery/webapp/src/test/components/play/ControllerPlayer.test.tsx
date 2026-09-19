@@ -799,6 +799,132 @@ describe("ControllerPlayer", () => {
     });
   });
 
+  // ── Arrow-key lyric-line jumps ──────────────────────────────────────────
+  // ArrowLeft/ArrowRight jump to the previous/next lyric line (mirroring the
+  // LyricJumpList cursor). Chapters in defaultProps: song 1 lines @10/20,
+  // song 2 lines @190/200.
+  describe("arrow key lyric-line jumps", () => {
+    async function renderAt(time: number, props = defaultProps) {
+      await act(async () => {
+        render(<ControllerPlayer {...props} />);
+      });
+      const video = document.querySelector("video") as HTMLVideoElement;
+      await act(async () => {
+        // jsdom never fires loadedmetadata, so give the element a duration
+        // (the scrub bar's own ±10s handler clamps against it).
+        video.duration = 420;
+        fireEvent(video, new Event("loadedmetadata"));
+        video.currentTime = time;
+        fireEvent.timeUpdate(video);
+      });
+      return video;
+    }
+
+    it("ArrowRight jumps to the next lyric line (local playback)", async () => {
+      const video = await renderAt(11);
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "ArrowRight" });
+      });
+
+      expect(video.currentTime).toBe(20);
+    });
+
+    it("ArrowLeft restarts the current line when past the restart threshold", async () => {
+      const video = await renderAt(25);
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "ArrowLeft" });
+      });
+
+      expect(video.currentTime).toBe(20);
+    });
+
+    it("ArrowLeft goes to the previous line just after the current line started", async () => {
+      const video = await renderAt(21);
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "ArrowLeft" });
+      });
+
+      expect(video.currentTime).toBe(10);
+    });
+
+    it("ArrowRight on the last line crosses into the next song", async () => {
+      const video = await renderAt(41);
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "ArrowRight" });
+      });
+
+      expect(video.currentTime).toBe(190);
+    });
+
+    it("falls back to +10s when the current chapter has no synced lines", async () => {
+      const noLyricsChapters = [
+        { ...mockChapters[0], lines: [] },
+        mockChapters[1],
+      ];
+      const video = await renderAt(50, { ...defaultProps, chapters: noLyricsChapters });
+
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "ArrowRight" });
+      });
+
+      expect(video.currentTime).toBe(60);
+    });
+
+    it("arrows on the scrub bar keep the slider's ±10s seek (no line jump)", async () => {
+      const video = await renderAt(11);
+      const scrubBar = screen.getByRole("slider", { name: /seek/i });
+
+      await act(async () => {
+        fireEvent.keyDown(scrubBar, { key: "ArrowRight" });
+      });
+
+      // Slider semantics: +10s from 11 → 21, NOT the next lyric line @20.
+      expect(video.currentTime).toBe(21);
+    });
+
+    it("forwards the lyric-line jump to the receiver while casting", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: false, now: Date.now() });
+      try {
+        const onSendTransportCommand = vi.fn();
+        const transport = makeTransport({
+          isConnected: true,
+          playerState: "playing",
+          currentTime: 11,
+          duration: 420,
+        });
+
+        await act(async () => {
+          render(
+            <ControllerPlayer
+              {...defaultProps}
+              isPresentationActive={true}
+              transport={transport}
+              onSendTransportCommand={onSendTransportCommand}
+            />
+          );
+        });
+
+        await act(async () => {
+          fireEvent.keyDown(document, { key: "ArrowRight" });
+        });
+        await act(async () => {
+          vi.advanceTimersByTime(200);
+        });
+
+        expect(onSendTransportCommand).toHaveBeenCalledWith({
+          type: "seek",
+          positionSeconds: 20,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   // ── Lyric pullup expansion / jump-to-lyric ─────────────────────────────
   describe("jump list seek", () => {
     it("song title expands without seeking (LyricJumpList, not active)", async () => {

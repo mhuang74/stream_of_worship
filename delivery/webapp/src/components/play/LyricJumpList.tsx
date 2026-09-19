@@ -8,15 +8,13 @@ import { useLocale } from "@/hooks/useLocale";
 import { LyricsFeedbackRow } from "@/components/audio/LyricsFeedbackRow";
 
 import type { Chapter } from "@/lib/render/chapters";
+import { CURSOR_LEAD_SECONDS } from "@/lib/render/line-jump";
 import { isIOS } from "@/lib/platform";
 
 // Cursor highlight (worship-arc phase-3 blue, user-picked). Local to this
 // sheet — deliberately NOT THEME_PHASE_COLORS, whose pairs are pinned for
 // WCAG AA contrast on ThemeLabel badges (light surfaces), not a dark sheet.
 const CURSOR_COLORS = { bg: "#bfdbfe", text: "#1e3a8a" };
-// Highlight 0.3s before the line's timestamp so the cursor visibly leads the
-// sung line.
-const CURSOR_LEAD_SECONDS = 0.3;
 
 export interface LyricJumpListProps {
   chapters: Chapter[];

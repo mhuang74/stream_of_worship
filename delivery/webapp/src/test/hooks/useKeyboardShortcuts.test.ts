@@ -4,8 +4,8 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 describe("useKeyboardShortcuts", () => {
   const onTogglePlayback = vi.fn();
-  const onSeekBack = vi.fn();
-  const onSeekForward = vi.fn();
+  const onPrevLine = vi.fn();
+  const onNextLine = vi.fn();
   const onPrevSong = vi.fn();
   const onNextSong = vi.fn();
 
@@ -19,8 +19,8 @@ describe("useKeyboardShortcuts", () => {
 
   const defaultActions = {
     onTogglePlayback,
-    onSeekBack,
-    onSeekForward,
+    onPrevLine,
+    onNextLine,
     onPrevSong,
     onNextSong,
   };
@@ -59,12 +59,12 @@ describe("useKeyboardShortcuts", () => {
   });
 
   describe("Arrow keys", () => {
-    it("calls onSeekBack when ArrowLeft is pressed", () => {
+    it("calls onPrevLine when ArrowLeft is pressed", () => {
       renderHook(() => useKeyboardShortcuts(defaultActions));
 
       fireKeyDown("ArrowLeft");
 
-      expect(onSeekBack).toHaveBeenCalledTimes(1);
+      expect(onPrevLine).toHaveBeenCalledTimes(1);
     });
 
     it("prevents default on ArrowLeft", () => {
@@ -75,12 +75,12 @@ describe("useKeyboardShortcuts", () => {
       expect(event.defaultPrevented).toBe(true);
     });
 
-    it("calls onSeekForward when ArrowRight is pressed", () => {
+    it("calls onNextLine when ArrowRight is pressed", () => {
       renderHook(() => useKeyboardShortcuts(defaultActions));
 
       fireKeyDown("ArrowRight");
 
-      expect(onSeekForward).toHaveBeenCalledTimes(1);
+      expect(onNextLine).toHaveBeenCalledTimes(1);
     });
 
     it("prevents default on ArrowRight", () => {
@@ -135,8 +135,8 @@ describe("useKeyboardShortcuts", () => {
       fireKeyDown("Escape");
 
       expect(onTogglePlayback).not.toHaveBeenCalled();
-      expect(onSeekBack).not.toHaveBeenCalled();
-      expect(onSeekForward).not.toHaveBeenCalled();
+      expect(onPrevLine).not.toHaveBeenCalled();
+      expect(onNextLine).not.toHaveBeenCalled();
       expect(onPrevSong).not.toHaveBeenCalled();
       expect(onNextSong).not.toHaveBeenCalled();
     });
@@ -194,7 +194,7 @@ describe("useKeyboardShortcuts", () => {
       const input = document.createElement("input");
       fireKeyDown("ArrowLeft", input);
 
-      expect(onSeekBack).not.toHaveBeenCalled();
+      expect(onPrevLine).not.toHaveBeenCalled();
     });
 
     it("ignores [ when focus is on a TEXTAREA element", () => {
@@ -204,6 +204,31 @@ describe("useKeyboardShortcuts", () => {
       fireKeyDown("[", textarea);
 
       expect(onPrevSong).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("scrub bar (role=slider) exclusion", () => {
+    it("ignores ArrowLeft/ArrowRight when focus is on the scrub bar so its own ±10s handling wins", () => {
+      renderHook(() => useKeyboardShortcuts(defaultActions));
+
+      const slider = document.createElement("div");
+      slider.setAttribute("role", "slider");
+      slider.tabIndex = 0;
+      fireKeyDown("ArrowLeft", slider);
+      fireKeyDown("ArrowRight", slider);
+
+      expect(onPrevLine).not.toHaveBeenCalled();
+      expect(onNextLine).not.toHaveBeenCalled();
+    });
+
+    it("still handles Space when focus is on the scrub bar", () => {
+      renderHook(() => useKeyboardShortcuts(defaultActions));
+
+      const slider = document.createElement("div");
+      slider.setAttribute("role", "slider");
+      fireKeyDown(" ", slider);
+
+      expect(onTogglePlayback).toHaveBeenCalledTimes(1);
     });
   });
 

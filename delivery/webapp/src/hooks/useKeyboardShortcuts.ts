@@ -4,8 +4,10 @@ import { useEffect, useRef } from "react";
 
 export interface KeyboardShortcutActions {
   onTogglePlayback: () => void;
-  onSeekBack: () => void;
-  onSeekForward: () => void;
+  /** ArrowLeft — jump to the previous lyric line. */
+  onPrevLine: () => void;
+  /** ArrowRight — jump to the next lyric line. */
+  onNextLine: () => void;
   onPrevSong: () => void;
   onNextSong: () => void;
 }
@@ -28,8 +30,19 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
       ) {
         return;
       }
+      if (
+        // The scrub bar is a role="slider" widget with its own ArrowLeft/
+        // ArrowRight handling (±10s seek, slider semantics). Letting the
+        // global handler fire too would seek twice — to two different
+        // targets once arrows became lyric-line jumps — so defer to it for
+        // arrow keys only (Space toggling playback from the slider is safe).
+        (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+        target.closest?.('[role="slider"]')
+      ) {
+        return;
+      }
 
-      const { onTogglePlayback, onSeekBack, onSeekForward, onPrevSong, onNextSong } =
+      const { onTogglePlayback, onPrevLine, onNextLine, onPrevSong, onNextSong } =
         actionsRef.current;
 
       switch (event.key) {
@@ -39,11 +52,11 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
           break;
         case "ArrowLeft":
           event.preventDefault();
-          onSeekBack();
+          onPrevLine();
           break;
         case "ArrowRight":
           event.preventDefault();
-          onSeekForward();
+          onNextLine();
           break;
         case "[":
           event.preventDefault();

@@ -13,6 +13,7 @@ import { LyricJumpList } from "./LyricJumpList";
 import { useLocale } from "@/hooks/useLocale";
 import { getMarketingUrl } from "@/lib/marketing-url";
 import type { Chapter } from "@/lib/render/chapters";
+import { findLineJumpTarget } from "@/lib/render/line-jump";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useMediaSession } from "@/hooks/useMediaSession";
@@ -675,6 +676,40 @@ export function ControllerPlayer({
   );
 
   const transportRef = useRef(transport);
+
+  // ── Arrow-key lyric-line jumps ──────────────────────────────────────────
+  // ArrowLeft/ArrowRight jump to the previous/next lyric line (mirroring the
+  // LyricJumpList cursor, incl. its 0.3s lead). When no line jump applies —
+  // the current chapter has no synced lines, or the set boundary is reached —
+  // fall back to the classic ±10s skip so the keys are never dead. Media
+  // Session (headset / lock screen) seek actions keep the plain ±10s.
+  const handlePrevLine = useCallback(() => {
+    const target = findLineJumpTarget(
+      chapters,
+      currentSongIndex,
+      effectiveCurrentTime,
+      "previous"
+    );
+    if (target !== null) {
+      handleSeek(target);
+      return;
+    }
+    handleSkipBack();
+  }, [chapters, currentSongIndex, effectiveCurrentTime, handleSeek, handleSkipBack]);
+
+  const handleNextLine = useCallback(() => {
+    const target = findLineJumpTarget(
+      chapters,
+      currentSongIndex,
+      effectiveCurrentTime,
+      "next"
+    );
+    if (target !== null) {
+      handleSeek(target);
+      return;
+    }
+    handleSkipForward();
+  }, [chapters, currentSongIndex, effectiveCurrentTime, handleSeek, handleSkipForward]);
   useEffect(() => {
     transportRef.current = transport;
   }, [transport]);
@@ -736,14 +771,23 @@ export function ControllerPlayer({
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onTogglePlayback: handlePlayPause,
-    onSeekBack: handleSkipBack,
-    onSeekForward: handleSkipForward,
+    onPrevLine: handlePrevLine,
+    onNextLine: handleNextLine,
     onPrevSong: handlePrevSong,
     onNextSong: handleNextSong,
   });
 
   // Media Session API
   const currentChapter = chapters[currentSongIndex];
+  // Current-song time context for the controls row: elapsed / song duration /
+  // time remaining within the current chapter (the global set time on the
+  // scrub bar ends stays as-is).
+  const songDurationSeconds = currentChapter
+    ? Math.max(0, currentChapter.endSeconds - currentChapter.startSeconds)
+    : 0;
+  const songElapsedSeconds = currentChapter
+    ? clamp(effectiveCurrentTime - currentChapter.startSeconds, 0, songDurationSeconds)
+    : 0;
   const mediaSessionMetadata = useMemo(
     () =>
       currentChapter
@@ -1107,8 +1151,12 @@ export function ControllerPlayer({
       onMouseMove={handleInteraction}
     >
       {/* Media: <video> normally, <audio> for an offline audio-only render
-          (an MP3-only songset has no video track to show). */}
-      <div className="flex-1 relative">
+          (an MP3-only songset has no video track to show). min-h-0 lets this
+          flex item shrink below the video's intrinsic height — without it a
+          1080p video on a wide/short viewport pushes PlaybackControls below
+          the fold (fixed container → unreachable). object-contain letterboxes
+          the shrunken video. */}
+      <div className="flex-1 min-h-0 relative">
         {isAudioOnly ? (
           <audio
             ref={setMediaElement}
@@ -1371,9 +1419,9 @@ export function ControllerPlayer({
           <div className="bg-black/60 text-white/75 rounded-lg px-3 py-2 text-xs">
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
               <span><kbd className="font-mono text-white/90">Space</kbd> {t("controller.kbSpacePlayPause")}</span>
-              <span><kbd className="font-mono text-white/90">←</kbd>/<kbd className="font-mono text-white/90">→</kbd> {t("controller.kbSeek10s")}</span>
-              <span><kbd className="font-mono text-white/90">[</kbd> {t("controller.kbPrevSong")}</span>
-              <span><kbd className="font-mono text-white/90">]</kbd> {t("controller.kbNextSong")}</span>
+              <span><kbd className="font-mono text-white/90">←</kbd> {t("controller.kbPrevLine")}</span>
+              <span><kbd className="font-mono text-white/90">→</kbd> {t("controller.kbNextLine")}</span>
+              <span><kbd className="font-mono text-white/90">[</kbd>/<kbd className="font-mono text-white/90">]</kbd> {t("controller.kbPrevSong")}/{t("controller.kbNextSong")}</span>
             </div>
           </div>
         </div>
@@ -1404,6 +1452,9 @@ export function ControllerPlayer({
           currentSongIndex={currentSongIndex}
           totalSongs={chapters.length}
           isPresentationActive={isPresentationActive}
+          songTitle={currentChapter?.songTitle}
+          songElapsedSeconds={songElapsedSeconds}
+          songDurationSeconds={songDurationSeconds}
           onPlayPause={handlePlayPause}
           onSeek={handleSeek}
           onPrevSong={handlePrevSong}
