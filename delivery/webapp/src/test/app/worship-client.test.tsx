@@ -4,11 +4,12 @@ import { renderWithLocale as render } from "@/test/render";
 import { WorshipClient } from "@/app/worship/WorshipClient";
 import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
 import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
-const { mockListOfflineRecords, mockRemoveOfflineSongset, mockMatchCachedArtifact } =
+const { mockListOfflineRecords, mockRemoveOfflineSongset, mockMatchCachedArtifact, mockDownloadOfflineArtifacts } =
   vi.hoisted(() => ({
     mockListOfflineRecords: vi.fn<() => Promise<unknown>>(),
     mockRemoveOfflineSongset: vi.fn<() => Promise<void>>(),
     mockMatchCachedArtifact: vi.fn<() => Promise<unknown>>(),
+    mockDownloadOfflineArtifacts: vi.fn<() => Promise<void>>(),
   }));
 
 vi.mock("@/lib/offline/offline-index", async (importOriginal) => {
@@ -25,6 +26,14 @@ vi.mock("@/lib/offline/artifact-cache", async (importOriginal) => {
   return {
     ...actual,
     matchCachedArtifact: mockMatchCachedArtifact,
+  };
+});
+
+vi.mock("@/lib/offline/download-offline", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/offline/download-offline")>();
+  return {
+    ...actual,
+    downloadOfflineArtifacts: mockDownloadOfflineArtifacts,
   };
 });
 
@@ -74,6 +83,7 @@ function makeApiSongset(overrides: Record<string, unknown> = {}) {
     latestRenderJobId: "render-job-2",
     lastFailedRenderJobId: null,
     lastCompletedRenderJobId: "render-job-2",
+    lastCompletedRenderHasVideo: true,
     renderErrorMessage: null,
     failedAt: null,
     themes: [],
@@ -237,6 +247,157 @@ describe("WorshipClient (issue #211 follow-up descope)", () => {
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     await waitFor(() => {
       expect(screen.getByText("Set 0")).toBeInTheDocument();
+    });
+  });
+
+  it("byte-verifies the mp3 artifact for an MP3-only download instead of wrongly marking it stale", async () => {
+    mockListOfflineRecords.mockResolvedValue([
+      makeRecord({ cachedMp4: false }),
+    ]);
+
+    render(<WorshipClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sunday Worship")).toBeInTheDocument();
+    });
+    // Only the MP3 artifact is probed; the absent MP4 must not mark it stale.
+    await waitFor(() => {
+      expect(mockMatchCachedArtifact).toHaveBeenCalledWith("render-job-1", "mp3");
+    });
+    expect(mockMatchCachedArtifact).not.toHaveBeenCalledWith("render-job-1", "mp4");
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    await waitFor(() => {
+      // Fresh row's menu: no re-download item (would only appear when stale).
+      expect(screen.queryByText(/re-download for offline/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("marks a downloaded MP4 row stale only when neither mp4 nor cached mp3 exists", async () => {
+    mockListOfflineRecords.mockResolvedValue([makeRecord()]);
+    mockMatchCachedArtifact.mockImplementation((_jobId: string, kind: string) =>
+      Promise.resolve(kind === "mp3" ? new Response(null) : null)
+    );
+
+    render(<WorshipClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sunday Worship")).toBeInTheDocument();
+    });
+    // MP4 probed first, missing; MP3 fallback present ⇒ stays fresh.
+    await waitFor(() => {
+      expect(mockMatchCachedArtifact).toHaveBeenCalledWith("render-job-1", "mp3");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    await waitFor(() => {
+      expect(screen.queryByText(/re-download for offline/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("excludes audio-only renders from the All view unless downloaded", async () => {
+    mockedFetch.mockImplementation((url: string) => {
+      if (url === "/api/songsets?limit=100&offset=0") {
+        return Promise.resolve(
+          songsetListResponse(2, [
+            makeApiSongset({
+              id: "audio-only",
+              name: "Audio Only Set",
+              latestRenderJobId: "job-audio",
+              lastCompletedRenderJobId: "job-audio",
+              lastCompletedRenderHasVideo: false,
+            }),
+            makeApiSongset(),
+          ])
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    });
+    mockListOfflineRecords.mockResolvedValue([]);
+    await confirmOnline();
+
+    render(<WorshipClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    await waitFor(() => {
+      expect(screen.getByText("Evening Prayer")).toBeInTheDocument();
+    });
+    // Audio-only render: no Play action (online load would reject with
+    // "No video available"), so the row is filtered out entirely.
+    expect(screen.queryByText("Audio Only Set")).not.toBeInTheDocument();
+  });
+
+  it("shows a downloaded audio-only set in the All view (offline playback works)", async () => {
+    mockedFetch.mockImplementation((url: string) => {
+      if (url === "/api/songsets?limit=100&offset=0") {
+        return Promise.resolve(
+          songsetListResponse(1, [
+            makeApiSongset({
+              id: "songset-1",
+              name: "Sunday Worship",
+              latestRenderJobId: "render-job-2",
+              lastCompletedRenderJobId: "render-job-2",
+              lastCompletedRenderHasVideo: false,
+            }),
+          ])
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    });
+    mockListOfflineRecords.mockResolvedValue([makeRecord()]);
+    await confirmOnline();
+
+    render(<WorshipClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    await waitFor(() => {
+      expect(screen.getByText("Sunday Worship")).toBeInTheDocument();
+    });
+  });
+
+  it("downloads the last completed render when the latest job is not completed", async () => {
+    mockDownloadOfflineArtifacts.mockResolvedValue(undefined);
+    mockedFetch.mockImplementation((url: string) => {
+      if (url === "/api/songsets?limit=100&offset=0") {
+        return Promise.resolve(
+          songsetListResponse(1, [
+            makeApiSongset({
+              id: "songset-2",
+              name: "Evening Prayer",
+              // Latest render queued (running job), older render completed.
+              renderState: "rendering",
+              latestRenderJobId: "render-job-9",
+              lastCompletedRenderJobId: "render-job-2",
+            }),
+          ])
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    });
+    mockListOfflineRecords.mockResolvedValue([]);
+    await confirmOnline();
+
+    render(<WorshipClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    await waitFor(() => {
+      expect(screen.getByText("Evening Prayer")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    fireEvent.click(screen.getByText(/download for offline/i));
+
+    await waitFor(() => {
+      expect(mockDownloadOfflineArtifacts).toHaveBeenCalledWith(
+        expect.objectContaining({ renderJobId: "render-job-2" }),
+        expect.any(Function)
+      );
     });
   });
 });

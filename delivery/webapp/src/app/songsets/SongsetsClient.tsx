@@ -354,7 +354,15 @@ export function SongsetsClient({
   const handleDownloadOffline = useCallback(
     async (id: string) => {
       const songset = songsets.find((s) => s.id === id);
-      const renderJobId = songset?.latestRenderJobId ?? songset?.lastCompletedRenderJobId;
+      // Prefer the last COMPLETED render: the latest job may be queued,
+      // running, or failed, and /api/offline/cache 409s on non-completed
+      // jobs. Only use the latest when the render state says it completed
+      // (fresh/stale ⇒ latest == lastCompleted) — e.g. a stale row
+      // refreshing onto a just-re-rendered set.
+      const renderJobId =
+        songset && (songset.renderState === "fresh" || songset.renderState === "stale")
+          ? songset.latestRenderJobId ?? songset.lastCompletedRenderJobId
+          : songset?.lastCompletedRenderJobId ?? songset?.latestRenderJobId;
       if (!songset || !renderJobId) return;
 
       setOfflineDownloadId(id);

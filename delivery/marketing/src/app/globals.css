@@ -5,8 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  /* Mobile-first breakpoints: sm=0 (phone), md=768px (tablet), lg=1024px (desktop) */
-  --breakpoint-sm: 0px;
+  /* Mobile-first breakpoints: sm=420px (large phone), md=768px (tablet), lg=1024px (desktop) */
+  --breakpoint-sm: 420px;
   --breakpoint-md: 48rem;
   --breakpoint-lg: 64rem;
   --breakpoint-xl: 80rem;
