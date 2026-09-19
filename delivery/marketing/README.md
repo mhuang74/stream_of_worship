@@ -50,4 +50,15 @@ No other env vars, no database, no secrets.
 
 ## Deployment
 
-Serve the static export (`out/`) at `https://streamofworship.com` from any static host. Set `NEXT_PUBLIC_APP_URL` if the app domain differs from the default. Infra provisioning is tracked in issue #213.
+The site auto-deploys on Vercel via Git integration (see `vercel.json`):
+
+- **Project:** `stream-of-worship-marketing` — Root Directory `delivery/marketing/`
+- Push to `main` (with changes under `delivery/marketing/`) → production deploy to `https://streamofworship.com`
+- Push to any other branch → preview deploy
+- No environment variables or secrets required; optionally set `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` in Vercel **Settings → Environment Variables** (baked in at build time — redeploy after changing)
+
+Full setup steps (project creation, custom domain) are in
+[`delivery/webapp/DEPLOY-VERCEL.md`](../webapp/DEPLOY-VERCEL.md) under
+**Deploy Marketing Site to Vercel**.
+
+The static export (`out/`) can also be served from any static host.

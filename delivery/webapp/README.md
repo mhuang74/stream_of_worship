@@ -227,11 +227,16 @@ Create the SQS queue and dead-letter queue (DLQ) in AWS:
 
 ### Preview Deployments
 
-Preview deployments are enabled for all branches via `vercel.json`:
-```json
-"git": { "deploymentEnabled": { "main": true, "*": true } }
-```
-Each preview branch gets its own URL (e.g. `your-app-git-branch-name.vercel.app`).
+Git-triggered deployments are disabled in `vercel.json` for the webapp: deploys on
+`main` go through the GitHub Actions pipeline (migrations, then the
+`VERCEL_DEPLOY_HOOK_URL` deploy hook — see `.github/workflows/deploy.yml`), which
+keeps the database schema ahead of the deployed code. Preview deployments for
+non-main branches are therefore not produced by Vercel Git integration; if a
+preview is needed, deploy one explicitly with `vercel` CLI from `delivery/webapp/`.
+
+(The separate marketing project, `delivery/marketing/`, does use Vercel Git
+integration: `main` → production, other branches → preview. See its
+`vercel.json` and the marketing deploy section in `DEPLOY-VERCEL.md`.)
 
 Preview deployments share the production environment variables unless preview-scoped values are configured. Cast features in a preview deployment use the Default Media Receiver (no per-environment registration required); set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` only if you need a custom receiver ID pointing at the preview URL.
 

@@ -88,28 +88,37 @@ vercel env add SOW_RENDER_WORKER_MODE production <<< "sqs"
 
 ### Option A: Git Push (Recommended)
 
-The project's `vercel.json` already enables automatic deployments:
+Git-triggered deployments are **disabled** in `vercel.json` for this project, and this is intentional:
 
 ```json
 "git": {
   "deploymentEnabled": {
-    "main": true,
-    "*": true
+    "main": false,
+    "*": false
   }
 }
 ```
 
-Pushing to `main` triggers a production deploy. Pushing any other branch triggers a preview deploy.
+Pushing to `main` still auto-deploys — but through GitHub Actions, not Vercel's Git
+integration. `.github/workflows/deploy.yml` runs the Drizzle migrations against the
+production database first, then triggers the Vercel deploy via a deploy hook
+(`VERCEL_DEPLOY_HOOK_URL` secret). This ordering guarantees the database schema is
+always ahead of the deployed code; Vercel's native Git integration would deploy new
+code *before* migrations run.
 
 ```bash
 git push origin main
 ```
 
-Monitor the deploy at `https://vercel.com/dashboard` or in the CLI:
+Monitor the deploy in the GitHub Actions run, at `https://vercel.com/dashboard`, or in the CLI:
 
 ```bash
 vercel inspect <deployment-url>
 ```
+
+> **Note:** The deploy hook is project-scoped. Create it in the Vercel dashboard under
+> **Settings → Git → Deploy Hooks** (e.g. name it `github-actions-prod`), then add the
+> URL as the `VERCEL_DEPLOY_HOOK_URL` repository secret in GitHub.
 
 ### Option B: CLI Deploy
 
@@ -130,6 +139,7 @@ The existing `vercel.json` handles:
 | `functions.*.maxDuration` | `60` | Render job API routes get 60s timeout |
 | `regions` | `iad1` | Deploy to US East (same as SQS/R2) |
 | `headers` | Cache rules | No-cache for projection pages, immutable for static assets |
+| `git.deploymentEnabled` | `false` for all branches | Vercel Git integration off; deploys go through the GitHub Actions migrate-then-deploy-hook pipeline |
 
 No changes to `vercel.json` are needed for a standard deployment.
 
@@ -206,7 +216,7 @@ Chromecast — use AirPlay to Apple TV instead.
    - `NEXT_PUBLIC_BASE_URL` → `https://app.streamofworship.com`
 6. Redeploy for `NEXT_PUBLIC_BASE_URL` to take effect (it's baked into the client bundle).
 
-The app domain should be `app.streamofworship.com`; the apex `streamofworship.com` serves the static marketing site (`delivery/marketing/out/`), not this Vercel project.
+The app domain should be `app.streamofworship.com`; the apex `streamofworship.com` serves the static marketing site (`delivery/marketing/`, its own Vercel project — see **Deploy Marketing Site to Vercel** below), not this Vercel project.
 
 ## Troubleshooting
 
@@ -291,3 +301,72 @@ npx drizzle-kit migrate    # Apply pending migrations
 - Required credentials: `SOW_AWS_REGION`, `SOW_SQS_QUEUE_URL`, `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY`.
 - IAM user needs minimum permissions: `sqs:SendMessage` on the render jobs queue ARN.
 - `SOW_RENDER_WORKER_MODE` must be `sqs` in production. The `rest` mode is for local development only.
+
+---
+
+# Deploy Marketing Site to Vercel
+
+The marketing site (`delivery/marketing/`, package `sow-marketing`) is a separate
+static Next.js export (`output: "export"`) served from `https://streamofworship.com`.
+It has no database, no auth, and no secrets, so it uses Vercel's native Git
+integration — unlike the webapp, no GitHub Actions pipeline or deploy hook is needed.
+
+## Step 1: Create & Link a Second Vercel Project
+
+One Vercel project per site. The webapp project (`stream-of-worship-webapp`) must
+not serve the marketing pages. From the project root:
+
+```bash
+mkdir -p delivery/marketing/.vercel
+vercel link --project stream-of-worship-marketing --cwd delivery/marketing
+```
+
+When prompted, set the **Root Directory** to `delivery/marketing/` (or set it in
+the dashboard under **Settings → General → Root Directory**). Linking creates
+`delivery/marketing/.vercel/` — already covered by the root `.gitignore` (`.vercel/`).
+
+`delivery/marketing/vercel.json` configures the project:
+
+| Setting | Value | Purpose |
+|---|---|---|
+| `framework` | `nextjs` | Auto-detected, explicit for safety |
+| `buildCommand` | `pnpm build` | Runs the pnpm workspace build, producing `out/` |
+| `installCommand` | `pnpm install --frozen-lockfile` | Deterministic workspace install |
+| `git.deploymentEnabled` | `main: true`, `*: true` | Push to `main` = production deploy; any other branch = preview deploy |
+
+## Step 2: Environment Variables
+
+Optional — the site builds with sensible defaults without any variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXT_PUBLIC_APP_URL` | `https://app.streamofworship.com` | Webapp base URL for register/login CTAs |
+| `NEXT_PUBLIC_SITE_URL` | `https://streamofworship.com` | Canonical marketing base URL (sitemap) |
+
+Because it's a static export, `NEXT_PUBLIC_*` values are baked in at build time —
+change them in **Settings → Environment Variables** and redeploy.
+
+## Step 3: Deploy & Verify
+
+```bash
+git push origin main   # touches under delivery/marketing/ → production deploy
+```
+
+Or from `delivery/marketing/`: `vercel --prod`.
+
+Post-deploy checks:
+
+1. `https://<project>.vercel.app/` renders the landing page.
+2. `/about`, `/docs`, and the `/zh-Hant/` mirror of each resolve (static export emits
+   clean URLs; `/zh-Hant` works without a trailing slash on Vercel).
+3. `robots.txt` and `sitemap.xml` are served.
+4. CTA buttons link to the webapp domain.
+
+## Step 4: Custom Domain
+
+1. In the marketing project: **Settings → Domains** → add `streamofworship.com` (apex)
+   and optionally `www.streamofworship.com`.
+2. Add the DNS records Vercel shows; SSL is automatic.
+3. Keep `app.streamofworship.com` assigned to the **webapp** project — the apex and
+   `www` belong to marketing, the `app.` subdomain to the webapp.
+4. If `NEXT_PUBLIC_SITE_URL` differs from the final domain, update it and redeploy.
