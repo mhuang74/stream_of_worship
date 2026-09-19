@@ -95,6 +95,9 @@ export function OfflineClient() {
     void (async () => {
       const updates = await Promise.all(
         rows.map(async (row) => {
+          // Already compared and found stale this mount — refetching would
+          // re-derive the same update and re-fire this effect forever.
+          if (row.latestRenderJobId) return null;
           try {
             const response = await fetch(`/api/songsets/${row.songsetId}`);
             if (!response.ok) return null;
@@ -109,10 +112,16 @@ export function OfflineClient() {
         })
       );
       if (cancelled) return;
+      const applied = updates.filter(
+        (u): u is NonNullable<(typeof updates)[number]> => u !== null
+      );
+      // Unconditional setRows allocated a new rows array every pass, re-firing
+      // this effect (identity churn). Only touch state when something changed.
+      if (applied.length === 0) return;
       setRows((prev) =>
         prev
           ? prev.map((r) => {
-              const update = updates.find((u) => u?.songsetId === r.songsetId);
+              const update = applied.find((u) => u.songsetId === r.songsetId);
               return update ? { ...r, latestRenderJobId: update.latestRenderJobId } : r;
             })
           : prev
