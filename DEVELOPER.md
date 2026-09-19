@@ -21,7 +21,7 @@ This document contains technical details for developers and contributors. For us
 ## Project Status
 
 **Current Phase:** Web App production, Android App available, Admin CLI operational, Analysis Service running  
-**Architecture:** Seven-component system with shared PostgreSQL (Neon) database
+**Architecture:** Eight-component system with shared PostgreSQL (Neon) database
 
 ### Components Status
 
@@ -32,6 +32,7 @@ This document contains technical details for developers and contributors. For us
 | **Analysis Service** | ✅ Operational | `ops/analysis-service/` | Audio analysis, stem separation, LRC generation |
 | **User App** | ⚠️ Deprecated | `lab/sow-app/src/sow_lab_app/` | TUI (deprecated in favor of Web App) |
 | **Web App** | ✅ Production | `delivery/webapp/` | Primary end-user interface (Next.js) |
+| **Marketing Site** | ✅ Production-ready (infra pending) | `delivery/marketing/` | Public marketing pages, bilingual (en / zh-Hant), static export |
 | **Android App** | ✅ Available | `delivery/android/` | Native mobile client (Kotlin/Jetpack Compose) |
 | **Render Worker** | ✅ Production | `delivery/render-worker/` | AWS Lambda render processing |
 
@@ -39,7 +40,7 @@ This document contains technical details for developers and contributors. For us
 
 ## Architecture Overview
 
-The project consists of **seven architecturally separate components**:
+The project consists of **eight architecturally separate components**:
 
 ### 1. 🧪 POC Scripts (Archived Experimental)
 - **Location:** `lab/poc-scripts/` directory
@@ -212,7 +213,16 @@ Use this flow when testing the native Android app on a physical device.
      with the externally reachable origin where possible. The webapp also trusts
      private-network origins matching `192.168.*`, `10.*`, and `172.16.*`.
 
-### 7. ⚡ Render Worker (AWS Lambda)
+### 7. 🌐 Marketing Site (Public Web)
+- **Location:** `delivery/marketing/` (pnpm workspace package `sow-marketing`)
+- **Purpose:** Public marketing surface: landing `/`, `/about`, `/docs` (incl. AirPlay docs anchor `/docs#airplay` linked from the webapp ControllerPlayer)
+- **Users:** Prospective users / public visitors; no auth, no database
+- **Runtime:** Static Next.js export (`output: "export"`), served from `https://streamofworship.com`; deploy target is any static host serving `delivery/marketing/out/`
+- **Technologies:** Next.js 16, React 19, Tailwind v4; bilingual via locale-parameterized page components, en at root and 繁體中文 under `/zh-Hant`
+- **Database:** None. CTAs point at the webapp (`NEXT_PUBLIC_APP_URL`, default `https://app.streamofworship.com`)
+- **Commands:** `pnpm --filter sow-marketing dev|build|lint|typecheck`
+
+### 8. ⚡ Render Worker (AWS Lambda)
 - **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Purpose:** Serverless render processing (audio mixing + video encoding)
 - **Users:** Called by Web App via SQS
@@ -225,14 +235,14 @@ Use this flow when testing the native Android app on a physical device.
 
 ### Why Architecturally Separate?
 
-| Concern | Admin CLI | Analysis Service | User App (Dep.) | Web App | Android App | Render Worker |
-|---------|-----------|------------------|-----------------|---------|-------------|---------------|
-| **Runtime Model** | One-shot commands | Long-lived daemon | Interactive TUI | Serverless + browser | Native Android app | Event-driven Lambda |
-| **Target Users** | Admins / DevOps | Internal service | End users (legacy) | End users | End users (mobile) | Internal service |
-| **Dependencies** | Minimal | Very heavy (PyTorch) | Moderate | Node.js stack | Kotlin / Jetpack Compose | Moderate (psycopg2, FFmpeg) |
-| **Distribution** | `uv run --project ops/admin-cli --extra admin sow-admin` | Docker image | `uv run --project lab/sow-app sow-app` | Vercel | APK (`./gradlew assembleDebug`) | Lambda container |
-| **Data Access** | PostgreSQL (Neon) + R2 | R2 + SQLite (jobs) | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 | Webapp JSON APIs only | PostgreSQL (Neon) + R2 |
-| **Database Driver** | psycopg3 | aiosqlite | psycopg3 | Drizzle ORM + Neon | None (API client) | psycopg2 |
+| Concern | Admin CLI | Analysis Service | User App (Dep.) | Web App | Android App | Marketing Site | Render Worker |
+|---------|-----------|------------------|-----------------|---------|-------------|----------------|---------------|
+| **Runtime Model** | One-shot commands | Long-lived daemon | Interactive TUI | Serverless + browser | Native Android app | Static export + CDN | Event-driven Lambda |
+| **Target Users** | Admins / DevOps | Internal service | End users (legacy) | End users | End users (mobile) | Public visitors | Internal service |
+| **Dependencies** | Minimal | Very heavy (PyTorch) | Moderate | Node.js stack | Kotlin / Jetpack Compose | Node.js build only, no runtime services | Moderate (psycopg2, FFmpeg) |
+| **Distribution** | `uv run --project ops/admin-cli --extra admin sow-admin` | Docker image | `uv run --project lab/sow-app sow-app` | Vercel | APK (`./gradlew assembleDebug`) | Static files at streamofworship.com | Lambda container |
+| **Data Access** | PostgreSQL (Neon) + R2 | R2 + SQLite (jobs) | PostgreSQL (Neon) + R2 | PostgreSQL (Neon) + R2 | Webapp JSON APIs only | None | PostgreSQL (Neon) + R2 |
+| **Database Driver** | psycopg3 | aiosqlite | psycopg3 | Drizzle ORM + Neon | None (API client) | None | psycopg2 |
 
 ### Shared Database Architecture
 
@@ -279,6 +289,7 @@ All components except the Analysis Service share a **single PostgreSQL database 
 3. **Web App** is the primary end-user interface, using Drizzle ORM with Neon's serverless driver.
 4. **Render Worker** shares the same PostgreSQL database as the Web App for render job status tracking.
 5. **User App** is deprecated; all new development should target the Web App.
+6. **Marketing Site** has no database and no auth — it is a pure static export; it links into the webapp via `NEXT_PUBLIC_APP_URL`.
 
 ### Component Interaction
 
@@ -505,6 +516,15 @@ sow_cli_admin/                           # Repository root
 │   ├── drizzle.config.ts                #    Drizzle Kit config
 │   └── package.json                     #    Node.js dependencies
 │
+├── delivery/marketing/                        # 🌐 Marketing Site (static Next.js export)
+│   ├── src/app/                       #    en pages at root + zh-Hant tree
+│   │   ├── page.tsx / about/ / docs/  #    landing, about, docs (airplay anchor)
+│   │   └── zh-Hant/                   #    繁體中文 mirror of all 3 pages
+│   ├── src/components/                #    SiteHeader/SiteFooter, page components
+│   ├── src/messages.ts                #    typed two-locale dictionary
+│   ├── next.config.ts                 #    output: "export" (static out/)
+│   └── package.json                   #    sow-marketing workspace package
+│
 ├── ops/analysis-service/                   # 🚀 Analysis Service (heavy ML)
 │   ├── src/sow_analysis/                #    Service package
 │   │   ├── main.py                      #    FastAPI app
@@ -591,6 +611,7 @@ sow_cli_admin/                           # Repository root
 | `lab/sow-app/src/sow_lab_app/` | `stream-of-worship-app` | End-user TUI (DEPRECATED) | End users (legacy) | PostgreSQL (Neon) + R2 | `uv run --project lab/sow-app sow-app` |
 | `ops/analysis-service/` | `sow-analysis` | Audio analysis microservice | Internal service | SQLite (jobs only) + R2 | Docker image |
 | `delivery/webapp/` | `sow-webapp` | Web application | End users | PostgreSQL (Neon) + R2 | Vercel |
+| `delivery/marketing/` | `sow-marketing` | Public marketing pages | Public visitors | None (static) | Static host (streamofworship.com) |
 | `delivery/android/` | `stream-of-worship-android` | Native mobile client | End users (mobile) | Webapp JSON APIs only (no direct DB/R2/SQS) | `cd delivery/android && ./gradlew assembleDebug` |
 | `delivery/render-worker/` | `sow-render-worker` | Render processing | Internal service | PostgreSQL (Neon) + R2 | Lambda container |
 | `lab/poc-scripts/` | N/A (scripts) | Experimental validation | Developers | Local files only | Local scripts |
@@ -799,6 +820,7 @@ SOW_R2_SECRET_ACCESS_KEY=...            # R2 secret key
 BETTER_AUTH_SECRET=...                  # Auth session signing secret
 BETTER_AUTH_URL=https://...             # Auth base URL
 NEXT_PUBLIC_BASE_URL=https://...        # Public app URL
+NEXT_PUBLIC_MARKETING_URL=https://streamofworship.com  # Marketing site base; zh-Hant users get <base>/zh-Hant (src/lib/marketing-url.ts)
 ```
 
 ### Render Worker Configuration
@@ -931,6 +953,7 @@ peaks = librosa.util.peak_pick(
 - **Analysis Service:** [ops/analysis-service/README.md](ops/analysis-service/README.md)
 - **Render Worker:** [delivery/render-worker/README.md](delivery/render-worker/README.md)
 - **Web App:** [delivery/webapp/README.md](delivery/webapp/README.md)
+- **Marketing Site:** [delivery/marketing/README.md](delivery/marketing/README.md)
 - **Android App:** [delivery/android/README.md](delivery/android/README.md)
 - **Admin CLI:** [ops/admin-cli/src/stream_of_worship/admin/README.md](ops/admin-cli/src/stream_of_worship/admin/README.md)
 - **librosa Documentation:** https://librosa.org/doc/latest/
@@ -947,4 +970,4 @@ peaks = librosa.util.peak_pick(
 
 ---
 
-**Last Updated:** 2026-09-14
+**Last Updated:** 2026-09-19

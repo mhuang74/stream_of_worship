@@ -52,6 +52,7 @@ vercel env add SOW_R2_ENDPOINT_URL production
 | `BETTER_AUTH_SECRET` | Server | 32+ char random secret (`openssl rand -base64 32`) |
 | `BETTER_AUTH_URL` | Server | Deployed app URL (e.g. `https://your-app.vercel.app`) |
 | `NEXT_PUBLIC_BASE_URL` | Client | Same as `BETTER_AUTH_URL` (embedded in client bundle) |
+| `NEXT_PUBLIC_MARKETING_URL` | Client | Base URL of the marketing site for in-app About/Docs links (default `https://streamofworship.com`; zh-Hant users get `<base>/zh-Hant`) |
 | `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` | Client | Google Cast receiver app ID. Leave unset to use Google's Default Media Receiver (the v3 default). One per environment, or empty. |
 | `SOW_AWS_REGION` | Server | AWS region for SQS (e.g. `us-east-1`) |
 | `SOW_SQS_QUEUE_URL` | Server | SQS queue URL for render jobs |
@@ -204,6 +205,8 @@ Chromecast — use AirPlay to Apple TV instead.
    - `BETTER_AUTH_URL` → `https://app.streamofworship.com`
    - `NEXT_PUBLIC_BASE_URL` → `https://app.streamofworship.com`
 6. Redeploy for `NEXT_PUBLIC_BASE_URL` to take effect (it's baked into the client bundle).
+
+The app domain should be `app.streamofworship.com`; the apex `streamofworship.com` serves the static marketing site (`delivery/marketing/out/`), not this Vercel project.
 
 ## Troubleshooting
 

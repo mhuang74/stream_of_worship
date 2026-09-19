@@ -100,7 +100,7 @@ docker compose up --build
 
 ## Architecture & Structure
 
-The project consists of **eight architecturally separate components**:
+The project consists of **nine architecturally separate components**:
 
 ### 1. POC Scripts (Experimental)
 - **Location:** `lab/poc-scripts/` directory
@@ -134,6 +134,12 @@ The project consists of **eight architecturally separate components**:
 - **Location:** `delivery/render-worker/` (Python, deployed as Lambda container via private ECR)
 - **Stack:** psycopg2, boto3, Pillow, FFmpeg, urllib3
 - **Commands:** See `delivery/render-worker/README.md`
+
+### 9. Marketing Site (Static)
+- **Location:** `delivery/marketing/` (pnpm workspace package `sow-marketing`)
+- **Stack:** Next.js 16 static export (`output: "export"`), Tailwind v4; bilingual en + `/zh-Hant`; no DB, no auth
+- **Commands:** `pnpm --filter sow-marketing dev`, `pnpm --filter sow-marketing build`, `pnpm --filter sow-marketing lint`, `pnpm --filter sow-marketing typecheck`
+- **Boundary:** No PostgreSQL/R2/SQS access. CTAs link to the webapp domain (`NEXT_PUBLIC_APP_URL`, default `https://app.streamofworship.com`).
 
 **Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies. The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components. The Android app is a separate Kotlin mobile client and must use the webapp JSON APIs instead of PostgreSQL, R2, or SQS directly.
 

@@ -22,7 +22,8 @@ This project consists of several architecturally separate components. Here's how
 |-----------|---------|-------------|
 | **Admin CLI** | Catalog management, audio download | `uv run --project ops/admin-cli --extra admin sow-admin --help` |
 | **User App** | Interactive TUI for transitions | `uv run --project lab/sow-app sow-app run` |
-| **Web App** | Browser-based worship set editor | `pnpm --filter sow-webapp dev` |
+| **Web App** | Browser-based worship set editor (login-gated) | `pnpm --filter sow-webapp dev` |
+| **Marketing Site** | Public marketing pages (landing, about, docs) | `pnpm --filter sow-marketing dev` |
 | **Android App** | Native mobile worship set editor/player | `cd delivery/android && ./gradlew assembleDebug` |
 | **Analysis Service** | Audio analysis & stem separation | `cd ops/analysis-service && docker compose up -d` |
 | **Render Worker** | Serverless render processing | `cd delivery/render-worker && docker compose up --build` |
@@ -105,6 +106,8 @@ release build notes.
 ---
 
 ## Web App (`sow-webapp`)
+
+The public marketing pages (landing, about, docs) moved to the separate Marketing Site component (`delivery/marketing`, served at `https://streamofworship.com`). The webapp at `https://app.streamofworship.com` is login-first — unauthenticated visits to any app path redirect to `/login` — and in-app About/Docs links point at the marketing domain via `NEXT_PUBLIC_MARKETING_URL` (issue #213).
 
 The Web App is the primary end-user interface for worship leaders and media teams. It is a Next.js browser application offering phone-first worship set preparation and playback, with desktop power-mode for advanced editing.
 
@@ -207,6 +210,8 @@ npx drizzle-kit migrate    # Run pending migrations
 | `/share/[token]/play/projection` | Shared projection playback |
 | `/settings` | User settings |
 
+> The old public `/`, `/about`, and `/docs` routes were removed (issue #213); they now live on the marketing site (`delivery/marketing`, `https://streamofworship.com`).
+
 ### API Summary
 
 - `GET /api/songs`, `GET /api/songs/[id]`, `GET /api/songs/search`, `GET /api/songs/albums`, `POST /api/songs/search/semantic`: authenticated catalog APIs. Semantic search requires a `recordingId` and uses pre-computed embeddings from the database. App users only see songs with at least one published recording.
@@ -229,6 +234,23 @@ See [delivery/webapp/README.md](delivery/webapp/README.md) for full deployment i
 - Environment variable configuration
 - Google Cast SDK receiver registration (dev / staging / production)
 - Cast production approval process
+
+---
+
+### Marketing Site (`sow-marketing`)
+
+The public marketing surface: landing, about, and docs pages, bilingual (English at root, 繁體中文 under `/zh-Hant`, switched via plain links). Tech: Next.js 16 static export (`output: "export"`), Tailwind v4.
+
+```bash
+pnpm --filter sow-marketing dev      # dev server on :3001
+pnpm --filter sow-marketing build    # static export to delivery/marketing/out/
+pnpm --filter sow-marketing lint
+pnpm --filter sow-marketing typecheck
+```
+
+Environment: `NEXT_PUBLIC_APP_URL` (default `https://app.streamofworship.com`) points the register/login CTAs at the webapp. No database, no auth, no secrets.
+
+**Deployment:** marketing owns `https://streamofworship.com` serving `delivery/marketing/out/`; the webapp owns `https://app.streamofworship.com`. Infra provisioning is not yet done (see issue #213 deployment notes). See [delivery/marketing/README.md](delivery/marketing/README.md).
 
 ---
 
@@ -582,4 +604,4 @@ MIT License - See [LICENSE](LICENSE) file
 
 ---
 
-**Last Updated:** 2026-05-17
+**Last Updated:** 2026-09-19

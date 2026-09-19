@@ -2,6 +2,8 @@
 
 Web application for rendering worship music transitions with synchronized lyrics videos.
 
+> The public marketing surface (landing, about, docs) is the separate static site `delivery/marketing` — see [delivery/marketing/README.md](../marketing/README.md).
+
 ## Prerequisites
 
 - Node.js 20.9+ (Next.js 16.2.6 requires `>=20.9.0`)
@@ -26,6 +28,7 @@ The dev server binds `0.0.0.0` (all interfaces), so it is reachable via any host
 - `SOW_AWS_REGION`, `SOW_SQS_QUEUE_URL`, `SOW_AWS_ACCESS_KEY_ID`, `SOW_AWS_SECRET_ACCESS_KEY` — AWS SQS credentials for render job queue
 - `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` — Better Auth configuration
 - `NEXT_PUBLIC_BASE_URL` — Base URL of the app (for share links)
+- `NEXT_PUBLIC_MARKETING_URL` — Base URL of the marketing site for About/Docs links (default `https://streamofworship.com`; zh-Hant users get `<base>/zh-Hant`)
 - `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` — (optional) Google Cast Web Sender SDK receiver app ID. Omit to use Google's Default Media Receiver, which is the only supported v3 Cast mode (lyrics are baked into the MP4, so no custom Cast receiver UI is required). See the "Google Cast SDK Setup" section below.
 
 > **Note on LLM vs. embedding env vars:** This app does **not** use the
@@ -88,6 +91,8 @@ npx drizzle-kit migrate    # Run pending migrations
 > `sow-admin theme-anchors sync`. Do not drop it with `drizzle-kit push`.
 
 ## Routes
+
+> Login-first: the proxy (`src/proxy.ts`) redirects unauthenticated visitors from any app path to `/login`. The former public landing/about/docs pages moved to the separate marketing site (`delivery/marketing/`); in-app About/Docs links point at `NEXT_PUBLIC_MARKETING_URL` (default `https://streamofworship.com`, zh-Hant users get `<base>/zh-Hant` — see `src/lib/marketing-url.ts`).
 
 | Path | Description |
 |------|-------------|
