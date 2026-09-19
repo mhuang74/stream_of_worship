@@ -788,6 +788,11 @@ export function ControllerPlayer({
   const songElapsedSeconds = currentChapter
     ? clamp(effectiveCurrentTime - currentChapter.startSeconds, 0, songDurationSeconds)
     : 0;
+  // Hide the song-time context until playback has actually begun: before that
+  // `currentSongIndex` defaults to localSongIndex 0 (nothing is current yet,
+  // mirroring currentSong.fromPlayback) and showing song 1 at 0:00 would
+  // misreport the current song.
+  const hasPlaybackStarted = effectiveCurrentTime > 0 || effectiveIsPlaying;
   const mediaSessionMetadata = useMemo(
     () =>
       currentChapter
@@ -1452,9 +1457,9 @@ export function ControllerPlayer({
           currentSongIndex={currentSongIndex}
           totalSongs={chapters.length}
           isPresentationActive={isPresentationActive}
-          songTitle={currentChapter?.songTitle}
-          songElapsedSeconds={songElapsedSeconds}
-          songDurationSeconds={songDurationSeconds}
+          songTitle={hasPlaybackStarted ? currentChapter?.songTitle : undefined}
+          songElapsedSeconds={hasPlaybackStarted ? songElapsedSeconds : undefined}
+          songDurationSeconds={hasPlaybackStarted ? songDurationSeconds : undefined}
           onPlayPause={handlePlayPause}
           onSeek={handleSeek}
           onPrevSong={handlePrevSong}

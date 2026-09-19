@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, createEvent } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { PlaybackControls } from "@/components/play/PlaybackControls";
 
@@ -172,6 +172,28 @@ describe("PlaybackControls", () => {
       fireEvent.click(scrubBar);
 
       expect(mockSeek).toHaveBeenCalled();
+    });
+
+    it("seeks back 10s and prevents default on ArrowLeft from the scrub bar", () => {
+      render(<PlaybackControls {...defaultProps} />);
+
+      const scrubBar = screen.getByRole("slider", { name: /seek/i });
+      const event = createEvent.keyDown(scrubBar, { key: "ArrowLeft" });
+      fireEvent(scrubBar, event);
+
+      expect(mockSeek).toHaveBeenCalledWith(20);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("seeks forward 10s and prevents default on ArrowRight from the scrub bar", () => {
+      render(<PlaybackControls {...defaultProps} />);
+
+      const scrubBar = screen.getByRole("slider", { name: /seek/i });
+      const event = createEvent.keyDown(scrubBar, { key: "ArrowRight" });
+      fireEvent(scrubBar, event);
+
+      expect(mockSeek).toHaveBeenCalledWith(40);
+      expect(event.defaultPrevented).toBe(true);
     });
   });
 

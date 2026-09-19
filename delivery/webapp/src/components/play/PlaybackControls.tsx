@@ -104,9 +104,13 @@ export function PlaybackControls({
           aria-valuenow={currentTime}
           tabIndex={0}
           onKeyDown={(e) => {
+            // The global shortcut handler defers to this slider for arrow keys,
+            // so suppress the browser's default (page scroll) here instead.
             if (e.key === "ArrowLeft") {
+              e.preventDefault();
               onSeek(Math.max(0, currentTime - 10));
             } else if (e.key === "ArrowRight") {
+              e.preventDefault();
               onSeek(Math.min(duration, currentTime + 10));
             }
           }}
