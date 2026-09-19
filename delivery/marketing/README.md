@@ -58,7 +58,6 @@ The site auto-deploys on Vercel via Git integration (see `vercel.json`):
 - No environment variables or secrets required; optionally set `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` in Vercel **Settings → Environment Variables** (baked in at build time — redeploy after changing)
 
 Full setup steps (project creation, custom domain) are in
-[`delivery/webapp/DEPLOY-VERCEL.md`](../webapp/DEPLOY-VERCEL.md) under
-**Deploy Marketing Site to Vercel**.
+[`./DEPLOY-VERCEL.md`](./DEPLOY-VERCEL.md).
 
 The static export (`out/`) can also be served from any static host.
