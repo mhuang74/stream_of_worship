@@ -58,7 +58,7 @@ describe("useOfflineRedirect", () => {
       window.dispatchEvent(new Event("offline"));
     });
 
-    expect(replaceMock).toHaveBeenCalledWith("/offline");
+    expect(replaceMock).toHaveBeenCalledWith("/worship");
   });
 
   it("does not redirect while the probe has not confirmed online (Unknown)", async () => {

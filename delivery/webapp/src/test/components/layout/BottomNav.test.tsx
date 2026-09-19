@@ -72,7 +72,7 @@ describe("BottomNav", () => {
   // /offline boots from the offline index with no session guarantee; the
   // async session would flash the signed-out About + LanguageSwitcher bar.
   it("does not render on /offline", () => {
-    mockPathname.mockReturnValue("/offline");
+    mockPathname.mockReturnValue("/worship");
 
     renderNav();
 

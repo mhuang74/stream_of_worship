@@ -488,7 +488,7 @@ export default function ControllerPage() {
             {error || t("control.failedToLoadPlayer")}
           </p>
           <button
-            onClick={() => router.push("/offline")}
+            onClick={() => router.push("/worship")}
             className="px-4 py-2 bg-primary text-white rounded-lg"
           >
             {t("control.goBack")}
@@ -504,7 +504,7 @@ export default function ControllerPage() {
       // Booted via the SW controller document the page cannot know its
       // origin; the offline list is the canonical exit (issue #211
       // follow-up, Q5).
-      exitRoute="/offline"
+      exitRoute="/worship"
       {...(media.kind === "audio" ? { audioSrc: media.src } : { videoSrc: media.src })}
       chapters={chapters}
       chapterRecordingHashes={chapterRecordingHashes}

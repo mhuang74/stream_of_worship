@@ -17,17 +17,17 @@ export function BottomNav() {
   const navItems = [
     { href: "/", key: "nav.dashboard" as const },
     { href: "/songsets", key: "nav.songsets" as const },
-    { href: "/offline", key: "nav.offline" as const },
+    { href: "/worship", key: "nav.worship" as const },
     { href: "/favorites", key: "nav.favorites" as const },
   ];
 
   if (
     pathname?.includes("/play/controller") ||
     pathname?.startsWith("/share/") ||
-    // /offline boots from the offline index with no session guarantee (the
+    // /worship boots from the offline index with no session guarantee (the
     // SW pre-caches this document); the async useSession would flash the
     // signed-out About + LanguageSwitcher bar there. Issue #211 follow-up.
-    pathname === "/offline" ||
+    pathname === "/worship" ||
     isProjectionRoute(pathname)
   ) {
     return null;
