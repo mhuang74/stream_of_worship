@@ -242,4 +242,46 @@ describe("PlaybackControls", () => {
       expect(volumeButton).toBeInTheDocument();
     });
   });
+
+  describe("current-song time context", () => {
+    const songProps = {
+      songTitle: "Amazing Grace",
+      songElapsedSeconds: 45,
+      songDurationSeconds: 180,
+    };
+
+    it("renders song title with elapsed-in-song, song duration and time left", () => {
+      render(<PlaybackControls {...defaultProps} {...songProps} />);
+
+      const row = screen.getByTestId("song-time-row");
+      expect(row).toHaveTextContent("Amazing Grace");
+      expect(row).toHaveTextContent("0:45 / 3:00");
+      expect(row).toHaveTextContent("-2:15");
+    });
+
+    it("exposes the remaining time via an aria-label", () => {
+      render(<PlaybackControls {...defaultProps} {...songProps} />);
+
+      expect(screen.getByLabelText("2:15 remaining")).toBeInTheDocument();
+    });
+
+    it("is hidden when no chapter is current", () => {
+      render(<PlaybackControls {...defaultProps} />);
+
+      expect(screen.queryByTestId("song-time-row")).not.toBeInTheDocument();
+    });
+
+    it("clamps remaining time at zero when past the chapter end", () => {
+      render(
+        <PlaybackControls
+          {...defaultProps}
+          {...songProps}
+          songElapsedSeconds={200}
+          songDurationSeconds={180}
+        />
+      );
+
+      expect(screen.getByTestId("song-time-row")).toHaveTextContent("-0:00");
+    });
+  });
 });

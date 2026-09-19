@@ -32,6 +32,7 @@ export const playBundle = bundle({
     "controls.unmute": "Unmute",
     "controls.volume": "Volume",
     "controls.connected": "Connected",
+    "controls.remaining": "remaining",
 
     // LyricJumpList
     "lyrics.openAriaLabel": "Open lyric jump list",
@@ -64,7 +65,8 @@ export const playBundle = bundle({
     "controller.dismissInfo": "Dismiss info",
     "controller.keyboardShortcuts": "Keyboard shortcuts",
     "controller.kbSpacePlayPause": "Play/Pause",
-    "controller.kbSeek10s": "Seek 10s",
+    "controller.kbPrevLine": "Previous lyric line",
+    "controller.kbNextLine": "Next lyric line",
     "controller.kbPrevSong": "Prev song",
     "controller.kbNextSong": "Next song",
     "controller.diagTitle": "Cast unavailable",
@@ -108,6 +110,7 @@ export const playBundle = bundle({
     "controls.unmute": "取消靜音",
     "controls.volume": "音量",
     "controls.connected": "已連線",
+    "controls.remaining": "剩餘",
 
     // LyricJumpList
     "lyrics.openAriaLabel": "開啟歌詞清單",
@@ -136,7 +139,8 @@ export const playBundle = bundle({
     "controller.dismissInfo": "關閉資訊",
     "controller.keyboardShortcuts": "鍵盤快速鍵",
     "controller.kbSpacePlayPause": "播放/暫停",
-    "controller.kbSeek10s": "快轉 10 秒",
+    "controller.kbPrevLine": "上一句歌詞",
+    "controller.kbNextLine": "下一句歌詞",
     "controller.kbPrevSong": "上一首",
     "controller.kbNextSong": "下一首",
     "controller.diagTitle": "不支援投放",
