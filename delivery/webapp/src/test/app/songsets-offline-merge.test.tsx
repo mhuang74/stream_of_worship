@@ -253,12 +253,41 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
+  it("Download for Offline targets the last completed render when the latest job is not completed", async () => {
+    await confirmOnline();
+    mockDownloadOfflineArtifacts.mockResolvedValue(undefined);
+    // Latest render queued; an older render completed.
+    renderClient([
+      makeApiSongset({
+        renderState: "rendering" as RenderState,
+        latestRenderJobId: "render-job-9",
+        lastCompletedRenderJobId: "render-job-1",
+      }),
+    ]);
+    await screen.findByText("Sunday Worship");
+
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: /download for offline/i })
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: /download for offline/i }));
+
+    // /api/offline/cache 409s on a non-completed job — the completed one wins.
+    await waitFor(() => {
+      expect(mockDownloadOfflineArtifacts).toHaveBeenCalledWith(
+        { songsetId: "songset-1", songsetName: "Sunday Worship", renderJobId: "render-job-1" },
+        expect.any(Function)
+      );
+    });
+  });
+
   it("Download for Offline calls the pipeline, updates the row, and toasts", async () => {
     await confirmOnline();
     mockDownloadOfflineArtifacts.mockResolvedValue(undefined);
     renderClient();
     const playButton = await screen.findByRole("button", { name: "Play" });
-
     fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
     await waitFor(() => {
       expect(

@@ -30,7 +30,11 @@ import {
  * All shows every fetched set with a rendered video.
  */
 
-type WorshipRow = SongsetRowProps & { latestRenderJobId: string | null };
+type WorshipRow = SongsetRowProps & {
+  latestRenderJobId: string | null;
+  /** The last completed render produced an MP4 (audio-only renders don't). */
+  lastCompletedRenderHasVideo: boolean;
+};
 
 interface ApiSongset {
   id: string;
@@ -44,6 +48,7 @@ interface ApiSongset {
   latestRenderJobId: string | null;
   lastFailedRenderJobId: string | null;
   lastCompletedRenderJobId: string | null;
+  lastCompletedRenderHasVideo: boolean;
   renderErrorMessage: string | null;
   failedAt: string | null;
   themes: string[];
@@ -67,6 +72,7 @@ function transformSongsets(songsets: ApiSongset[]): WorshipRow[] {
     renderState: songset.renderState,
     latestRenderJobId: songset.latestRenderJobId,
     lastCompletedRenderJobId: songset.lastCompletedRenderJobId,
+    lastCompletedRenderHasVideo: songset.lastCompletedRenderHasVideo ?? false,
     renderErrorMessage: songset.renderErrorMessage,
     failedAt: songset.failedAt ? new Date(songset.failedAt) : null,
     themes: songset.themes ?? [],
@@ -75,9 +81,9 @@ function transformSongsets(songsets: ApiSongset[]): WorshipRow[] {
   }));
 }
 
-/** Rows with a rendered lyrics video; stale renders stay (still playable). */
+/** Rows whose last completed render has an MP4; stale renders stay (still playable). */
 function hasRenderedVideo(row: WorshipRow): boolean {
-  return row.lastCompletedRenderJobId != null;
+  return row.lastCompletedRenderJobId != null && row.lastCompletedRenderHasVideo;
 }
 
 export function WorshipClient() {
@@ -106,6 +112,9 @@ export function WorshipClient() {
           renderState: "fresh" as RenderState,
           latestRenderJobId: record.renderJobId,
           lastCompletedRenderJobId: record.renderJobId,
+          // The offline controller plays MP4-or-MP3; the row is playable
+          // regardless of the render's media kind.
+          lastCompletedRenderHasVideo: record.cachedMp4,
           renderErrorMessage: null,
           failedAt: null,
           themes: [],
@@ -152,6 +161,10 @@ export function WorshipClient() {
         return {
           ...row,
           isOfflineAvailable: true,
+          // The cached copy is what plays offline; an audio-only render with
+          // a cached MP3 still keeps its All-view slot via isOfflineAvailable.
+          lastCompletedRenderHasVideo:
+            row.lastCompletedRenderHasVideo || record.cachedMp4,
           isArtifactsStale:
             row.isArtifactsStale || record.renderJobId !== row.latestRenderJobId,
         };
@@ -181,19 +194,28 @@ export function WorshipClient() {
     for (const row of rows) {
       if (!row.isOfflineAvailable || row.isArtifactsStale) continue;
       void (async () => {
-        const kind = row.lastCompletedRenderJobId ? "mp4" : "mp3";
+        // The offline record's media flags decide which artifact must exist:
+        // audio-only renders never cache an MP4, so probing it would wrongly
+        // mark every downloaded audio-only set stale.
+        const kind = row.lastCompletedRenderHasVideo ? "mp4" : "mp3";
         const cached = await matchCachedArtifact(
           row.lastCompletedRenderJobId ?? "",
           kind
         );
         if (!cancelled && !cached) {
-          setRows((prev) =>
-            prev
-              ? prev.map((r) =>
-                  r.id === row.id ? { ...r, isArtifactsStale: true } : r
-                )
-              : prev
-          );
+          // MP4 gone but the set also cached MP3 audio: still playable.
+          const mp3Fallback = kind === "mp4"
+            ? await matchCachedArtifact(row.lastCompletedRenderJobId ?? "", "mp3")
+            : null;
+          if (!cancelled && !mp3Fallback) {
+            setRows((prev) =>
+              prev
+                ? prev.map((r) =>
+                    r.id === row.id ? { ...r, isArtifactsStale: true } : r
+                  )
+                : prev
+            );
+          }
         }
       })();
     }
@@ -222,9 +244,15 @@ export function WorshipClient() {
   const handleDownloadOffline = useCallback(
     async (id: string) => {
       const row = rows?.find((r) => r.id === id);
-      // Row not in the fetched list (offline Ready view): the offline
-      // record's renderJobId is the render to (re)fetch artifacts for.
-      const renderJobId = row?.latestRenderJobId ?? row?.lastCompletedRenderJobId;
+      // Prefer the last COMPLETED render: the latest job may be queued,
+      // running, or failed, and /api/offline/cache 409s on non-completed
+      // jobs. Only use the latest when the render state says it completed
+      // (fresh/stale ⇒ latest == lastCompleted) — e.g. an old download
+      // refreshing onto a just-re-rendered set.
+      const renderJobId =
+        row && (row.renderState === "fresh" || row.renderState === "stale")
+          ? row.latestRenderJobId ?? row.lastCompletedRenderJobId
+          : row?.lastCompletedRenderJobId ?? row?.latestRenderJobId;
       if (!row || !renderJobId) return;
 
       setDownloadingId(id);
@@ -297,7 +325,11 @@ export function WorshipClient() {
       (row) => row.isOfflineAvailable
     );
     if (filter === "ready") return ready;
-    return rows.filter(hasRenderedVideo);
+    // All: an actual MP4 render, or a downloaded set (plays offline even
+    // when its render is audio-only via the cache-first controller).
+    return rows.filter(
+      (row) => hasRenderedVideo(row) || row.isOfflineAvailable
+    );
   }, [rows, filter]);
 
   const totalPages = filteredRows ? Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE)) : 1;

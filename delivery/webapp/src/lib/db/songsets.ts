@@ -235,6 +235,12 @@ export interface SongsetListItem {
   themes: string[];
 }
 
+/** SongsetListItem plus list-only fields (listSongsetSummaries). */
+export interface SongsetListSummary extends SongsetListItem {
+  /** The last COMPLETED render produced an MP4 (audio-only renders don't). */
+  lastCompletedRenderHasVideo: boolean;
+}
+
 export interface SongsetItemRecording {
   contentHash: string;
   durationSeconds: number | null;
@@ -442,7 +448,7 @@ export async function listSongsetSummaries(
   limit = 50,
   offset = 0,
   search?: string
-): Promise<{ songsets: SongsetListItem[]; total: number }> {
+): Promise<{ songsets: SongsetListSummary[]; total: number }> {
   return timePageLoad("listSongsetSummaries", async () => {
     const trimmedSearch = search?.trim();
     const whereCondition = trimmedSearch
@@ -491,6 +497,16 @@ export async function listSongsetSummaries(
         renderErrorMessage: sql<string | null>`left(${renderJobs.errorMessage}, 4000)`,
         latestJobStartedAt: renderJobs.startedAt,
         latestJobCreatedAt: renderJobs.createdAt,
+        // Correlated EXISTS avoids another renderJobs join (which would need
+        // aliasing + groupBy changes); reads the completed job's own
+        // videoEnabled/mp4R2Key rather than the latest job's.
+        lastCompletedRenderHasVideo: sql<boolean>`exists (
+          select 1
+          from ${renderJobs} as completed_job
+          where completed_job.id = ${songsets.lastCompletedRenderJobId}
+            and completed_job.video_enabled = true
+            and completed_job.mp4_r2_key is not null
+        )`,
         themes: sql<string[]>`array_agg(${recordings.theme} order by ${songsetItems.position}) filter (where ${recordings.deletedAt} is null and ${recordings.theme} is not null)`,
       })
       .from(songsets)
@@ -538,6 +554,7 @@ export async function listSongsetSummaries(
             renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
           failedAt: renderState === "failed" ? failedAt : null,
           themes: (row.themes ?? []).filter(Boolean),
+          lastCompletedRenderHasVideo: Boolean(row.lastCompletedRenderHasVideo),
         };
       }),
     };

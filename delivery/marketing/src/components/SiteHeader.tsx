@@ -16,14 +16,14 @@ export function SiteHeader({ locale, path }: { locale: Locale; path: string }) {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
-      <div className="flex h-14 items-center gap-4 px-4">
+      <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 sm:px-4">
         <Link
           href={base === "" ? "/" : base}
           className="flex items-center gap-2 font-semibold whitespace-nowrap"
         >
           <span className="text-primary">{t(locale, "brand.name")}</span>
         </Link>
-        <nav className="flex items-center gap-6 ml-6" aria-label={t(locale, "nav.main.ariaLabel")}>
+        <nav className="flex items-center gap-6" aria-label={t(locale, "nav.main.ariaLabel")}>
           <Link
             href={`${base}/about`}
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
@@ -35,7 +35,10 @@ export function SiteHeader({ locale, path }: { locale: Locale; path: string }) {
           <Link href={`${APP_URL}/login`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
             {t(locale, "nav.signIn")}
           </Link>
-          <Link href={`${APP_URL}/register`} className={cn(buttonVariants({ size: "sm" }))}>
+          <Link
+            href={`${APP_URL}/register`}
+            className={cn(buttonVariants({ size: "sm" }), "hidden sm:inline-flex")}
+          >
             {t(locale, "nav.register")}
           </Link>
           <nav
