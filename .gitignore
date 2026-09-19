@@ -17,6 +17,7 @@ eggs/
 lib/
 !delivery/webapp/src/lib/
 !delivery/webapp/src/test/lib/
+!delivery/marketing/src/lib/
 lib64/
 parts/
 sdist/
