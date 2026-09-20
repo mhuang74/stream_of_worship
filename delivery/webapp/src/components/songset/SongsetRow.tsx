@@ -38,6 +38,13 @@ import {
   FileAudio,
   FileVideo,
 } from "lucide-react";
+
+/** Kebab-menu items a row may show; default is the full management menu. */
+export type SongsetMenuAction =
+  | "render"
+  | "play"
+  | "downloadOffline"
+  | "removeOffline";
 export interface SongsetRowProps {
   id: string;
   name: string;
@@ -67,6 +74,13 @@ export interface SongsetRowProps {
   onDelete?: () => void;
   className?: string;
   themes?: string[];
+  /**
+   * Whitelist of kebab items to render. Undefined ⇒ full management menu
+   * (Rename/Duplicate/Render/Play/Share/Audio/Video/offline/Delete), the
+   * /songsets behavior. Narrow lists (e.g. /worship's playback-focused menu)
+   * pass only the actions they wire.
+   */
+  menuActions?: SongsetMenuAction[];
 }
 
 export function SongsetRow({
@@ -96,10 +110,15 @@ export function SongsetRow({
   onDelete,
   className,
   themes,
+  menuActions,
 }: SongsetRowProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { t, locale } = useLocale();
   const connectivity = useConnectivity();
+
+  // Undefined whitelist ⇒ full management menu (default).
+  const showMenuItem = (action: SongsetMenuAction) =>
+    !menuActions || menuActions.includes(action);
 
   const canPlayFreshRender =
     renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onPlay);
@@ -184,41 +203,55 @@ export function SongsetRow({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem onClick={onRename}>
-                      <Edit className="size-4 mr-2" />
-                      {t("songsets.action.rename")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onDuplicate}>
-                      <Copy className="size-4 mr-2" />
-                      {t("songsets.action.duplicate")}
-                    </DropdownMenuItem>
+                    {showMenuItem("render") && onRename && (
+                      <DropdownMenuItem onClick={onRename}>
+                        <Edit className="size-4 mr-2" />
+                        {t("songsets.action.rename")}
+                      </DropdownMenuItem>
+                    )}
+                    {showMenuItem("render") && onDuplicate && (
+                      <DropdownMenuItem onClick={onDuplicate}>
+                        <Copy className="size-4 mr-2" />
+                        {t("songsets.action.duplicate")}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={onRender}>
-                      <RefreshCw className="size-4 mr-2" />
-                      {t("songsets.action.render")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onPlay}>
-                      <Play className="size-4 mr-2" />
-                      {t("songsets.action.play")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onShare}>
-                      <Share2 className="size-4 mr-2" />
-                      {t("songsets.action.share")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={onDownloadAudio}
-                      disabled={!lastCompletedRenderJobId}
-                    >
-                      <FileAudio className="size-4 mr-2" />
-                      {t("songsets.action.downloadAudio")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={onDownloadVideo}
-                      disabled={!lastCompletedRenderJobId}
-                    >
-                      <FileVideo className="size-4 mr-2" />
-                      {t("songsets.action.downloadVideo")}
-                    </DropdownMenuItem>
+                    {showMenuItem("render") && (
+                      <DropdownMenuItem onClick={onRender}>
+                        <RefreshCw className="size-4 mr-2" />
+                        {t("songsets.action.render")}
+                      </DropdownMenuItem>
+                    )}
+                    {showMenuItem("play") && (
+                      <DropdownMenuItem onClick={onPlay}>
+                        <Play className="size-4 mr-2" />
+                        {t("songsets.action.play")}
+                      </DropdownMenuItem>
+                    )}
+                    {showMenuItem("render") && (
+                      <DropdownMenuItem onClick={onShare}>
+                        <Share2 className="size-4 mr-2" />
+                        {t("songsets.action.share")}
+                      </DropdownMenuItem>
+                    )}
+                    {showMenuItem("render") && (
+                      <DropdownMenuItem
+                        onClick={onDownloadAudio}
+                        disabled={!lastCompletedRenderJobId}
+                      >
+                        <FileAudio className="size-4 mr-2" />
+                        {t("songsets.action.downloadAudio")}
+                      </DropdownMenuItem>
+                    )}
+                    {showMenuItem("render") && (
+                      <DropdownMenuItem
+                        onClick={onDownloadVideo}
+                        disabled={!lastCompletedRenderJobId}
+                      >
+                        <FileVideo className="size-4 mr-2" />
+                        {t("songsets.action.downloadVideo")}
+                      </DropdownMenuItem>
+                    )}
                     {showDownloadOffline && (
                       <DropdownMenuItem
                         onClick={onDownloadOffline}
@@ -232,20 +265,21 @@ export function SongsetRow({
                             : t("songsets.menu.downloadOffline")}
                       </DropdownMenuItem>
                     )}
-                    {isOfflineAvailable && onRemoveOffline && (
+                    {showMenuItem("removeOffline") && isOfflineAvailable && onRemoveOffline && (
                       <DropdownMenuItem onClick={onRemoveOffline}>
                         <CloudOff className="size-4 mr-2" />
                         {t("songsets.menu.removeOffline")}
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={onDelete}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="size-4 mr-2" />
-                      {t("songsets.action.delete")}
-                    </DropdownMenuItem>
+                    {showMenuItem("render") && onDelete && (
+                      <DropdownMenuItem
+                        onClick={onDelete}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        {t("songsets.action.delete")}
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

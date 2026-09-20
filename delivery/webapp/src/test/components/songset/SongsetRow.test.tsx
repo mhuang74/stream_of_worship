@@ -412,6 +412,47 @@ describe("SongsetRow", () => {
       
       expect(defaultProps.onDelete).toHaveBeenCalled();
     });
+
+    it("whitelisted menu shows only the allowed items", async () => {
+      renderRow({
+        menuActions: ["play", "downloadOffline", "removeOffline"],
+        onDownloadOffline: vi.fn(),
+        onRemoveOffline: vi.fn(),
+        isOfflineAvailable: true,
+        isArtifactsStale: true,
+      });
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /^play/i })).toBeInTheDocument();
+        // Stale copy ⇒ re-download variant replaces Remove's slot.
+        expect(screen.getByRole("menuitem", { name: /re-download for offline/i })).toBeInTheDocument();
+      });
+      expect(screen.getByRole("menuitem", { name: /remove from offline/i })).toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /rename/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /duplicate/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /render/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /share/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /delete/i })).not.toBeInTheDocument();
+    });
+
+    it("removeOffline excluded from whitelist hides remove item", async () => {
+      renderRow({
+        menuActions: ["play"],
+        isOfflineAvailable: true,
+        onRemoveOffline: vi.fn(),
+      });
+      const menuButton = screen.getByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /^play/i })).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByRole("menuitem", { name: /remove from offline/i })
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("data attributes", () => {

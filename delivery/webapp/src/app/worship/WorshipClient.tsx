@@ -400,6 +400,7 @@ export function WorshipClient() {
           <SongsetRow
             key={row.id}
             {...row}
+            menuActions={["play", "downloadOffline", "removeOffline"]}
             onPlay={() => handlePlay(row.id)}
             onDownloadOffline={() => handleDownloadOffline(row.id)}
             isOfflineDownloadInProgress={downloadingId === row.id}
