@@ -678,9 +678,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/public/sw.js": {
-    "mtime": 1789855701.0330896,
-    "seen": 1789859684.6005945,
-    "ast_hash": "064cb68f764ae592586bd9c901bd3e81",
+    "mtime": 1789881977.961114,
+    "seen": 1789882331.1065834,
+    "ast_hash": "2b4ab73bf5aa6c5c5084524f35329038",
     "semantic_hash": ""
   },
   "delivery/webapp/scripts/mark-migrations-applied.ts": {
@@ -4944,15 +4944,15 @@
     "semantic_hash": ""
   },
   "delivery/webapp/scripts/e2e/offline-playback.mjs": {
-    "mtime": 1789752179.5457215,
-    "seen": 1789808299.639006,
-    "ast_hash": "c2a0ce87f36ac352bd4c2f05c6cb937b",
+    "mtime": 1789881998.8511932,
+    "seen": 1789882331.1065862,
+    "ast_hash": "00e26cdca009be9afe9702f20a1a81c4",
     "semantic_hash": ""
   },
   "USER_GUIDE.md": {
-    "mtime": 1789752179.5447216,
-    "seen": 1789808299.6775436,
-    "ast_hash": "fdc64bf5c569b12658f32e6a878386d6",
+    "mtime": 1789882011.0542378,
+    "seen": 1789882331.1512318,
+    "ast_hash": "3c91dfbadc6a232e526fe9a54ce51fee",
     "semantic_hash": ""
   },
   "delivery/webapp/scripts/e2e/README.md": {
