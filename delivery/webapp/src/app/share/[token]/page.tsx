@@ -1,14 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Play, Loader2, Monitor, AlertTriangle, Music, Clock } from "lucide-react";
+import {
+  Play,
+  Loader2,
+  Monitor,
+  AlertTriangle,
+  Music,
+  Clock,
+  Download,
+  Check,
+  RefreshCw,
+} from "lucide-react";
+import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { useSession } from "@/lib/auth-client";
 import { ThemeLabel, toSongTheme } from "@/components/songset/ThemeLabel";
 import { formatTotalDuration } from "@/lib/i18n/format";
+import {
+  downloadShareOfflineArtifacts,
+  ShareNoArtifactsError,
+} from "@/lib/offline/download-share-offline";
+import {
+  getShareOfflineRecord,
+  type OfflineShareRecord,
+} from "@/lib/offline/share-offline-index";
+import { isOfflineSupportedOnCurrentDevice } from "@/lib/offline/artifact-cache";
 
 interface PublicSongsetItem {
   id: string;
@@ -41,6 +61,8 @@ interface ShareData {
     selectedRenderJobId: string | null;
     isStale: boolean;
     staleStatus: string | null;
+    mediaKind?: "video" | "audio";
+    chapterRecordingHashes?: (string | null)[];
     mp3Url: string | null;
     mp4Url: string | null;
     chaptersUrl: string | null;
@@ -73,6 +95,9 @@ export default function SharePage() {
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
+  const [downloadedRecord, setDownloadedRecord] = useState<OfflineShareRecord | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadSupported] = useState(isOfflineSupportedOnCurrentDevice);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +138,19 @@ export default function SharePage() {
     };
   }, [token, t]);
 
+  // Cached-copy lookup for the Download affordance + staleness hint
+  // (ADR-0009). Silent-failure convention: an unavailable IndexedDB simply
+  // hides the "downloaded" state; the button then offers a plain download.
+  useEffect(() => {
+    let cancelled = false;
+    getShareOfflineRecord(token).then((record) => {
+      if (!cancelled) setDownloadedRecord(record);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const handlePlay = () => {
     if (!shareData?.playback.mp4Url && !shareData?.playback.mp3Url) return;
     setIsStarting(true);
@@ -121,6 +159,54 @@ export default function SharePage() {
     // MP3-only render as audio-only. The separate audio page is gone.
     router.push(`/share/${token}/play/controller`);
   };
+
+  // Staleness hint (ADR-0009): the landing page is the only surface that
+  // calls the API, so it is the only surface that can compare the current
+  // render against the frozen snapshot. The controller never probes.
+  const isStaleDownload =
+    downloadedRecord != null &&
+    shareData?.playback.selectedRenderJobId != null &&
+    downloadedRecord.renderJobId !== shareData.playback.selectedRenderJobId;
+
+  const handleDownload = useCallback(async () => {
+    if (!shareData) return;
+    const { playback, songset } = shareData;
+    if (!playback.selectedRenderJobId) return;
+
+    setIsDownloading(true);
+
+    try {
+      await downloadShareOfflineArtifacts({
+        token,
+        songsetName: songset.name,
+        renderJobId: playback.selectedRenderJobId,
+        mp3Url: playback.mp3Url,
+        mp4Url: playback.mp4Url,
+        chaptersUrl: playback.chaptersUrl,
+        chapterContentHashes: playback.chapterRecordingHashes,
+      });
+      setDownloadedRecord({
+        token,
+        renderJobId: playback.selectedRenderJobId,
+        songsetName: songset.name,
+        cachedMp3: Boolean(playback.mp3Url),
+        cachedMp4: Boolean(playback.mp4Url),
+        cachedChapters: Boolean(playback.chaptersUrl),
+        cachedAt: new Date().toISOString(),
+        chapterContentHashes: playback.chapterRecordingHashes ?? [],
+      });
+      toast.success(t("share.downloadDone"));
+    } catch (err) {
+      if (err instanceof ShareNoArtifactsError) {
+        toast.error(t("share.downloadNoArtifacts"));
+      } else {
+        console.error("Share download error:", err);
+        toast.error(t("share.downloadFailed"));
+      }
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [shareData, token, t]);
 
   if (isLoading) {
     return (
@@ -251,6 +337,56 @@ export default function SharePage() {
             <p className="text-sm text-amber-700 dark:text-amber-300">
               {t("control.playbackStaleWarning")}
             </p>
+          </div>
+        )}
+
+        {/* Download affordance (issue #218 PR2, ADR-0009): explicit user
+            action, never automatic. The staleness hint lives only here —
+            the landing page is the only surface that calls the API and can
+            compare the current render against the frozen snapshot. */}
+        {playback.selectedRenderJobId && hasArtifacts && isDownloadSupported && (
+          <div className="space-y-2">
+            {isStaleDownload ? (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={handleDownload}
+                disabled={isDownloading}
+                data-testid="redownload-button"
+              >
+                {isDownloading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                {t("share.redownload")}
+              </Button>
+            ) : downloadedRecord ? (
+              <div
+                className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+                data-testid="downloaded-hint"
+              >
+                <Check className="size-4" />
+                {t("share.downloaded")}
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={handleDownload}
+                disabled={isDownloading}
+                data-testid="download-button"
+              >
+                {isDownloading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Download className="size-4" />
+                )}
+                {isDownloading
+                  ? t("share.downloading")
+                  : t("share.download")}
+              </Button>
+            )}
           </div>
         )}
 
