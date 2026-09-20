@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { songsetShares, renderJobs } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { songsetShares, renderJobs, songsetItems, recordings } from "@/db/schema";
+import { eq, and, asc } from "drizzle-orm";
 import {
   CAST_PLAYBACK_EXPIRES_IN_SECONDS,
   DEFAULT_EXPIRES_IN_SECONDS,
@@ -73,6 +73,13 @@ export async function GET(
 
     const shareType = share.renderJobId !== null ? "renderJob" : "songset";
 
+    // Session-gated Lyrics Feedback (issue #218): the route sees cookies, so
+    // it can tell the client whether the viewer may submit feedback without
+    // a separate session round-trip. Anonymous viewers get hashes but no
+    // feedback affordance.
+    const session = await auth.api.getSession({ headers: request.headers });
+    const viewerAuthenticated = Boolean(session?.user);
+
     const songsetView = await getSongsetPublicView(share.songsetId);
 
     if (!songsetView) {
@@ -116,6 +123,27 @@ export async function GET(
     let chaptersData: unknown = null;
     let mp3SizeBytes: number | null = null;
     let mp4SizeBytes: number | null = null;
+
+    // Explicit mediaKind + per-position Recording content hashes (issue
+    // #218). Derived server-side: the client never infers the media type
+    // from URL shape. Hash ordering follows the songset controller's
+    // contract (issue #194): items sorted by position, entry i is songset
+    // item i's recording contentHash (the Lyrics Feedback key), null when
+    // the item has no recording; a left join keeps the array length equal
+    // to the item count so hashes never shift across items.
+    const mediaKind: "video" | "audio" = playbackJob?.mp4R2Key
+      ? "video"
+      : playbackJob?.mp3R2Key
+        ? "audio"
+        : "video";
+
+    const hashRows = await db
+      .select({ contentHash: recordings.contentHash })
+      .from(songsetItems)
+      .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+      .where(eq(songsetItems.songsetId, share.songsetId))
+      .orderBy(asc(songsetItems.position));
+    const chapterRecordingHashes = hashRows.map((row) => row.contentHash ?? null);
 
     if (playbackJob) {
       try {
@@ -190,6 +218,8 @@ export async function GET(
           selectedRenderJobId,
           isStale,
           staleStatus,
+          mediaKind,
+          chapterRecordingHashes,
           mp3Url,
           mp4Url,
           chaptersUrl,
@@ -197,6 +227,7 @@ export async function GET(
           mp3SizeBytes,
           mp4SizeBytes,
         },
+        viewerAuthenticated,
         allowDownload: share.allowDownload,
         createdAt: share.createdAt,
         expiresAt: share.expiresAt,

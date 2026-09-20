@@ -14,6 +14,12 @@ vi.mock("@/db", () => ({
       songsetShares: { findFirst: (...args: unknown[]) => mockFindFirstShare(...args) },
       renderJobs: { findFirst: (...args: unknown[]) => mockFindFirstJob(...args) },
     },
+    // The share route's per-position recording-hash query (issue #218).
+    select: () => ({ from: () => ({
+      leftJoin: () => ({
+        where: () => ({ orderBy: () => Promise.resolve([{ contentHash: null }]) }),
+      }),
+    }) }),
   },
 }));
 
