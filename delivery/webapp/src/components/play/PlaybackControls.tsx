@@ -131,22 +131,24 @@ export function PlaybackControls({
           <span>{formatTime(duration)}</span>
         </div>
 
-        {/* Current-song context: title · elapsed-in-song / song duration ·
-            time left within this song. Hidden when no chapter is current. */}
+        {/* Current-song context: song title · time left within this song ·
+            elapsed-in-song / song duration. Hidden when no chapter is current. */}
         {songTitle && (songDurationSeconds ?? 0) > 0 && (
           <div
-            className="flex items-center justify-between gap-3 text-xs text-white/70"
+            className="flex items-center justify-center gap-12 text-xs text-white/70"
             data-testid="song-time-row"
           >
-            <span className="truncate">{songTitle}</span>
+            <span className="min-w-0 truncate">{songTitle}</span>
             <span
               className="shrink-0 tabular-nums"
               aria-label={`${formatTime(
                 Math.max(0, (songDurationSeconds ?? 0) - (songElapsedSeconds ?? 0))
               )} ${t("controls.remaining")}`}
             >
-              {formatTime(songElapsedSeconds ?? 0)} / {formatTime(songDurationSeconds ?? 0)}
-              {" · "}-{formatTime(Math.max(0, (songDurationSeconds ?? 0) - (songElapsedSeconds ?? 0)))}
+              -{formatTime(Math.max(0, (songDurationSeconds ?? 0) - (songElapsedSeconds ?? 0)))}
+            </span>
+            <span className="shrink-0 tabular-nums">
+              ({formatTime(songElapsedSeconds ?? 0)} / {formatTime(songDurationSeconds ?? 0)})
             </span>
           </div>
         )}
