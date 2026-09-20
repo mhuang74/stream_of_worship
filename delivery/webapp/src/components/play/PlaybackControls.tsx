@@ -135,10 +135,10 @@ export function PlaybackControls({
             elapsed-in-song / song duration. Hidden when no chapter is current. */}
         {songTitle && (songDurationSeconds ?? 0) > 0 && (
           <div
-            className="flex items-center justify-center gap-12 text-xs text-white/70"
+            className="grid grid-cols-[1fr_auto_1fr] items-center text-xs text-white/70"
             data-testid="song-time-row"
           >
-            <span className="min-w-0 truncate">{songTitle}</span>
+            <span className="min-w-0 truncate justify-self-end pr-3">{songTitle}</span>
             <span
               className="shrink-0 tabular-nums"
               aria-label={`${formatTime(
@@ -147,17 +147,17 @@ export function PlaybackControls({
             >
               -{formatTime(Math.max(0, (songDurationSeconds ?? 0) - (songElapsedSeconds ?? 0)))}
             </span>
-            <span className="shrink-0 tabular-nums">
+            <span className="shrink-0 tabular-nums justify-self-start pl-3">
               ({formatTime(songElapsedSeconds ?? 0)} / {formatTime(songDurationSeconds ?? 0)})
             </span>
           </div>
         )}
       </div>
 
-      {/* Main controls */}
-      <div className="flex items-center justify-between gap-1 sm:gap-4">
+      {/* Main controls — 3-column grid keeps Play/Pause on the exact center axis */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 sm:gap-4">
         {/* Song navigation */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 justify-self-start">
           <Button
             variant="ghost"
             size="icon"
@@ -201,7 +201,7 @@ export function PlaybackControls({
         </div>
 
         {/* Volume and presentation status */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 justify-self-end">
           <Button
             variant="ghost"
             size="icon"
