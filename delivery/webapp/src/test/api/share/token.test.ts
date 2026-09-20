@@ -11,6 +11,7 @@ vi.mock("@/lib/auth", () => ({
 
 const mockFindFirstShare = vi.fn();
 const mockFindFirstJob = vi.fn();
+const mockHashRows = vi.fn();
 const mockGetSongsetPublicView = vi.fn();
 const mockSet = vi.fn();
 const mockWhere = vi.fn();
@@ -22,6 +23,11 @@ vi.mock("@/db", () => ({
       renderJobs: { findFirst: (...args: unknown[]) => mockFindFirstJob(...args) },
     },
     update: () => ({ set: (v: unknown) => { mockSet(v); return { where: mockWhere }; } }),
+    select: () => ({ from: () => ({
+      leftJoin: () => ({
+        where: () => ({ orderBy: () => mockHashRows() }),
+      }),
+    }) }),
   },
 }));
 
@@ -127,6 +133,7 @@ describe("GET /api/share/[token]", () => {
     );
     mockGetObjectSize.mockResolvedValue(50 * 1024 * 1024);
     mockEnforceRateLimit.mockResolvedValue(true);
+    mockHashRows.mockResolvedValue([{ contentHash: "hash-a" }]);
   });
 
   it("checks the per-IP rate limit before consuming the shared token bucket", async () => {
@@ -197,6 +204,53 @@ describe("GET /api/share/[token]", () => {
     expect(data.playback.mp3Url).toContain("r2.example.com");
     expect(data.playback.mp4Url).toContain("r2.example.com");
     expect(data.playback.isStale).toBe(false);
+  });
+
+  // Issue #218 contract bundle: explicit mediaKind, per-position recording
+  // hashes, and the viewerAuthenticated flag.
+  it("declares mediaKind video for an MP4 render, audio for an MP3-only render", async () => {
+    mockFindFirstShare.mockResolvedValue(activeShare);
+    mockGetSongsetPublicView.mockResolvedValue(songsetPublicView);
+    mockFindFirstJob.mockResolvedValue(completedJob);
+
+    const res = await GET(makeRequest("http://localhost/api/share/valid-token-abc"), makeParams("valid-token-abc") as any);
+    expect((await res.json()).playback.mediaKind).toBe("video");
+
+    mockFindFirstJob.mockResolvedValue({ ...completedJob, mp4R2Key: null });
+    const audioRes = await GET(makeRequest("http://localhost/api/share/valid-token-abc"), makeParams("valid-token-abc") as any);
+    expect((await audioRes.json()).playback.mediaKind).toBe("audio");
+  });
+
+  it("returns chapterRecordingHashes position-aligned with songset items (out-of-order positions sorted)", async () => {
+    mockFindFirstShare.mockResolvedValue(activeShare);
+    mockGetSongsetPublicView.mockResolvedValue(songsetPublicView);
+    mockFindFirstJob.mockResolvedValue(completedJob);
+    mockHashRows.mockResolvedValue([
+      { contentHash: "hash-a" },
+      { contentHash: "hash-b" },
+      { contentHash: null },
+    ]);
+
+    const res = await GET(makeRequest("http://localhost/api/share/valid-token-abc"), makeParams("valid-token-abc") as any);
+    expect((await res.json()).playback.chapterRecordingHashes).toEqual([
+      "hash-a",
+      "hash-b",
+      null,
+    ]);
+  });
+
+  it("flags viewerAuthenticated true only when a session cookie is present", async () => {
+    mockFindFirstShare.mockResolvedValue(activeShare);
+    mockGetSongsetPublicView.mockResolvedValue(songsetPublicView);
+    mockFindFirstJob.mockResolvedValue(completedJob);
+
+    vi.mocked(auth.api.getSession).mockResolvedValue(null);
+    const anon = await GET(makeRequest("http://localhost/api/share/valid-token-abc"), makeParams("valid-token-abc") as any);
+    expect((await anon.json()).viewerAuthenticated).toBe(false);
+
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 42 } } as any);
+    const authed = await GET(makeRequest("http://localhost/api/share/valid-token-abc"), makeParams("valid-token-abc") as any);
+    expect((await authed.json()).viewerAuthenticated).toBe(true);
   });
 
   it("does not expose sensitive fields in items", async () => {
