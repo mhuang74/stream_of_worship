@@ -30,6 +30,11 @@ export function controllerDocumentPath(songsetId: string): string {
   return `/songsets/${songsetId}/play/controller`;
 }
 
+/** The controller route for a share token (issue #218 PR2, ADR-0009). */
+export function shareControllerDocumentPath(token: string): string {
+  return `/share/${token}/play/controller`;
+}
+
 interface PreloadTarget {
   href: string;
   as: string;
@@ -121,6 +126,14 @@ export async function cacheWorshipListDocument(): Promise<boolean> {
   return cacheDocumentAtPath("/worship");
 }
 
+/**
+ * Pre-caches the share controller document (issue #218 PR2). Same
+ * best-effort contract as cacheControllerDocument.
+ */
+export async function cacheShareControllerDocument(token: string): Promise<boolean> {
+  return cacheDocumentAtPath(shareControllerDocumentPath(token));
+}
+
 /** Shared body of cacheControllerDocument / cacheWorshipListDocument. */
 async function cacheDocumentAtPath(path: string): Promise<boolean> {
   if (typeof window === "undefined" || !("caches" in window) || !window.caches) {
@@ -158,6 +171,25 @@ export async function deleteControllerDocument(songsetId: string): Promise<boole
   try {
     const cache = await window.caches.open(SOW_PAGES_CACHE_NAME);
     return await cache.delete(controllerDocumentPath(songsetId));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deletes the pre-cached share controller document from the sow-pages
+ * cache. Called when a share copy is removed or superseded, so stale or
+ * orphaned share controller pages never linger. Best-effort: false on any
+ * failure.
+ */
+export async function deleteShareControllerDocument(token: string): Promise<boolean> {
+  if (typeof window === "undefined" || !("caches" in window) || !window.caches) {
+    return false;
+  }
+
+  try {
+    const cache = await window.caches.open(SOW_PAGES_CACHE_NAME);
+    return await cache.delete(shareControllerDocumentPath(token));
   } catch {
     return false;
   }

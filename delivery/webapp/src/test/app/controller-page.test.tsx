@@ -43,6 +43,24 @@ vi.mock("@/lib/offline/offline-index", () => ({
   getOfflineRecord: mockGetOfflineRecord,
 }));
 
+// The share controller (issue #218 PR2) boots from the token-keyed share
+// index; mocked separately from the owner index so namespace separation is
+// exercised.
+const mockGetShareOfflineRecord = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/offline/share-offline-index", () => ({
+  getShareOfflineRecord: mockGetShareOfflineRecord,
+}));
+
+const { mockedDownloadShareArtifacts, MockShareNoArtifactsError } = vi.hoisted(() => ({
+  mockedDownloadShareArtifacts:
+    vi.fn<(input: unknown, onProgress?: (p: number) => void) => Promise<void>>(),
+  MockShareNoArtifactsError: class ShareNoArtifactsError extends Error {},
+}));
+vi.mock("@/lib/offline/download-share-offline", () => ({
+  downloadShareOfflineArtifacts: mockedDownloadShareArtifacts,
+  ShareNoArtifactsError: MockShareNoArtifactsError,
+}));
+
 import ControllerPage from "@/app/songsets/[id]/play/controller/page";
 import { setConnectivityProbe } from "@/hooks/useConnectivity";
 import ShareControllerPage from "@/app/share/[token]/play/controller/page";
@@ -233,6 +251,20 @@ const OFFLINE_RECORD: OfflineSongsetRecord = {
   chapterContentHashes: ["hash-a", "hash-b", null],
 };
 const MP4_PROXY_SRC = "/api/r2/artifact/job-offline/output.mp4";
+
+const OFFLINE_CHAPTERS = {
+  chapters: [
+    {
+      position: 0,
+      songTitle: "Amazing Grace",
+      startSeconds: 0,
+      endSeconds: 180,
+      lines: [],
+    },
+  ],
+  totalDurationSeconds: 180,
+  generatedAt: "2026-09-15T00:00:00.000Z",
+};
 
 const SONGSET_RESPONSE = {
   id: "test-songset",
@@ -514,20 +546,6 @@ describe("ControllerPage (songset)", () => {
   });
 
   describe("offline boot", () => {
-    const OFFLINE_CHAPTERS = {
-      chapters: [
-        {
-          position: 0,
-          songTitle: "Amazing Grace",
-          startSeconds: 0,
-          endSeconds: 180,
-          lines: [],
-        },
-      ],
-      totalDurationSeconds: 180,
-      generatedAt: "2026-09-15T00:00:00.000Z",
-    };
-
     const MP3_PROXY_SRC = "/api/r2/artifact/job-offline/output.mp3";
 
     function setOnline(online: boolean) {
@@ -1332,7 +1350,10 @@ describe("ShareControllerPage (share token)", () => {
   it("recovers a failed online source by swapping to the offline copy", async () => {
     installArtifactCache({ mp4: "video-bytes" });
     shareSuccessFetches();
-    mockGetOfflineRecord
+    // Cache-first sees no share record at boot; the media-failure recovery
+    // resolves the share-index record (its frozen renderJobId keys into the
+    // same artifact cache).
+    mockGetShareOfflineRecord
       .mockResolvedValueOnce(null) // cache-first boot: no record
       .mockResolvedValue(OFFLINE_RECORD); // media-failure recovery
 
@@ -1355,6 +1376,8 @@ describe("ShareControllerPage (share token)", () => {
   });
 
   it("shows the error screen with the go-back route when the share fetch fails", async () => {
+    // No cached copy: the failing chain has nothing to fall back to.
+    mockGetShareOfflineRecord.mockResolvedValue(null);
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 410,
@@ -1367,6 +1390,112 @@ describe("ShareControllerPage (share token)", () => {
       expect(screen.getByText(/revoked/i)).toBeInTheDocument();
     });
     expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
+  });
+
+  // Share offline copies (issue #218 PR2, ADR-0009): the share controller
+  // boots cache-first from the token-keyed share index with zero API calls,
+  // and a revoked link's cached copy keeps playing.
+  describe("share offline boot", () => {
+    const SHARE_OFFLINE_RECORD = {
+      token: "share-tok",
+      renderJobId: "job-offline",
+      songsetName: "Shared Set Name",
+      cachedMp3: true,
+      cachedMp4: true,
+      cachedChapters: true,
+      cachedAt: "2026-09-20T00:00:00.000Z",
+      chapterContentHashes: ["hash-a", null],
+    };
+
+    function setOnline(online: boolean) {
+      Object.defineProperty(navigator, "onLine", {
+        value: online,
+        configurable: true,
+      });
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      lastControllerProps = null;
+      castTransportMock.mockImplementation(() => makeTransport());
+      presentationSenderMock.mockImplementation(() => makeSender());
+      mockGetOfflineRecord.mockResolvedValue(null);
+      mockGetShareOfflineRecord.mockResolvedValue(SHARE_OFFLINE_RECORD);
+      installArtifactCache({ mp4: "video-bytes", chapters: OFFLINE_CHAPTERS });
+      setServiceWorkerController(true);
+      setOnline(false);
+      setConnectivityProbe(null);
+      Object.defineProperty(URL, "createObjectURL", {
+        value: vi.fn(() => "blob:cached-video"),
+        configurable: true,
+        writable: true,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        value: vi.fn(),
+        configurable: true,
+        writable: true,
+      });
+      global.fetch = vi.fn();
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(window, "caches");
+      Reflect.deleteProperty(navigator, "serviceWorker");
+      Reflect.deleteProperty(URL, "createObjectURL");
+      Reflect.deleteProperty(URL, "revokeObjectURL");
+      setOnline(true);
+      setConnectivityProbe(null);
+    });
+
+    it("boots from the share index with the proxy source and zero API fetches", async () => {
+      render(<ShareControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(lastControllerProps?.isOfflineMedia).toBe(true);
+      expect(lastControllerProps?.chapterRecordingHashes).toEqual(["hash-a", null]);
+    });
+
+    it("shows the offline boot hint while a share copy boots", () => {
+      const { promise } = Promise.withResolvers<never>();
+      mockGetShareOfflineRecord.mockReturnValue(promise);
+
+      render(<ShareControllerPage />);
+
+      expect(screen.getByText(/starting offline playback/i)).toBeInTheDocument();
+    });
+
+    it("reports nothing downloaded when offline with no share record", async () => {
+      mockGetShareOfflineRecord.mockResolvedValue(null);
+
+      render(<ShareControllerPage />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/has not been downloaded for offline playback/i)
+        ).toBeInTheDocument();
+      });
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it("still runs the anonymous token chain online (no share copy)", async () => {
+      setOnline(true);
+      mockGetShareOfflineRecord.mockResolvedValue(null);
+      shareSuccessFetches();
+
+      render(<ShareControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("video-src")).toHaveTextContent(
+          "https://r2.example.com/share/video.mp4"
+        );
+      });
+      expect(lastControllerProps?.isOfflineMedia).toBe(false);
+    });
   });
 
   it("renders ControllerPlayer when share data loaded", async () => {
@@ -1579,5 +1708,117 @@ describe("SharePage (share landing — entry navigation)", () => {
     });
 
     expect(mockPush).toHaveBeenCalledWith("/share/share-tok/play/controller");
+  });
+
+  // Share Offline Copies (issue #218 PR2, ADR-0009): Download lives on the
+  // landing page as an explicit button; staleness (current render ≠ frozen
+  // snapshot) surfaces only here and offers Re-download.
+  describe("share download affordance", () => {
+    // isOfflineSupportedOnCurrentDevice must be true on the test platform.
+    function shareFetch(response: Record<string, unknown>) {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(response),
+      });
+    }
+
+    it("offers Download when artifacts exist and nothing is downloaded yet", async () => {
+      shareFetch(videoShareResponse);
+
+      render(<SharePage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("download-button")).toBeInTheDocument();
+      });
+    });
+
+    it("shows the downloaded hint when the cached copy matches the current render", async () => {
+      mockGetShareOfflineRecord.mockResolvedValue({
+        token: "share-tok",
+        renderJobId: "job-1",
+        songsetName: "Shared Set Name",
+        cachedMp3: false,
+        cachedMp4: true,
+        cachedChapters: false,
+        cachedAt: "2026-09-20T00:00:00.000Z",
+        chapterContentHashes: [],
+      });
+      shareFetch(videoShareResponse);
+
+      render(<SharePage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("downloaded-hint")).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("download-button")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("redownload-button")).not.toBeInTheDocument();
+    });
+
+    it("offers Re-download when the cached copy pins an older render", async () => {
+      mockGetShareOfflineRecord.mockResolvedValue({
+        token: "share-tok",
+        renderJobId: "job-old",
+        songsetName: "Shared Set Name",
+        cachedMp3: false,
+        cachedMp4: true,
+        cachedChapters: false,
+        cachedAt: "2026-09-19T00:00:00.000Z",
+        chapterContentHashes: [],
+      });
+      shareFetch(videoShareResponse);
+
+      render(<SharePage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("redownload-button")).toBeInTheDocument();
+      });
+    });
+
+    it("downloads through the share path and toasts success", async () => {
+      mockGetShareOfflineRecord.mockResolvedValue(null);
+      mockedDownloadShareArtifacts.mockResolvedValueOnce(undefined);
+      shareFetch(videoShareResponse);
+
+      render(<SharePage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("download-button")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByTestId("download-button").click();
+      });
+
+      expect(mockedDownloadShareArtifacts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          token: "share-tok",
+          renderJobId: "job-1",
+          songsetName: "Shared Set Name",
+        })
+      );
+      expect(toastSuccess).toHaveBeenCalledWith(
+        expect.stringMatching(/downloaded for offline/i)
+      );
+    });
+
+    it("toasts the no-artifacts error when the share has nothing to download", async () => {
+      mockGetShareOfflineRecord.mockResolvedValue(null);
+      mockedDownloadShareArtifacts.mockRejectedValueOnce(new MockShareNoArtifactsError());
+      shareFetch(videoShareResponse);
+
+      render(<SharePage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("download-button")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        screen.getByTestId("download-button").click();
+      });
+
+      expect(toastError).toHaveBeenCalledWith(
+        expect.stringMatching(/no downloadable files/i)
+      );
+    });
   });
 });

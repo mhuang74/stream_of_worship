@@ -23,6 +23,7 @@
 import { normalizeChaptersManifest, type Chapter } from "@/lib/render/chapters";
 import { matchCachedArtifact } from "./artifact-cache";
 import { getOfflineRecord } from "./offline-index";
+import { getShareOfflineRecord } from "./share-offline-index";
 
 export type OfflineMediaKind = "video" | "audio";
 
@@ -123,15 +124,17 @@ async function sourceFor(
 }
 
 /**
- * Resolves offline playback for a songset, or null when it cannot be played
- * offline (no index record, no cached media, or no way to serve the bytes).
+ * Resolves offline playback from an already-loaded index record. Shared by
+ * the songset resolver (record from the songsetId-keyed owner index) and the
+ * share resolver (record from the token-keyed share index, issue #218 PR2).
  */
-export async function resolveOfflinePlayback(
-  songsetId: string
+async function playbackFromRecord(
+  record: {
+    renderJobId: string;
+    songsetName: string;
+    chapterContentHashes: (string | null)[];
+  }
 ): Promise<OfflinePlayback | null> {
-  const record = await getOfflineRecord(songsetId);
-  if (!record) return null;
-
   const video = await matchCachedArtifact(record.renderJobId, "mp4");
   const audio = video ? null : await matchCachedArtifact(record.renderJobId, "mp3");
   const cached = video ?? audio;
@@ -149,4 +152,31 @@ export async function resolveOfflinePlayback(
     chapters: await cachedChapters(record.renderJobId),
     chapterRecordingHashes: record.chapterContentHashes,
   };
+}
+
+/**
+ * Resolves offline playback for a songset, or null when it cannot be played
+ * offline (no index record, no cached media, or no way to serve the bytes).
+ */
+export async function resolveOfflinePlayback(
+  songsetId: string
+): Promise<OfflinePlayback | null> {
+  const record = await getOfflineRecord(songsetId);
+  if (!record) return null;
+  return playbackFromRecord(record);
+}
+
+/**
+ * Resolves offline playback for a share token (issue #218 PR2, ADR-0009):
+ * record from the token-keyed share index, artifacts from the same
+ * sow-artifacts cache the SW serves. A share copy is a frozen snapshot —
+ * the record's renderJobId is used as-is, never re-resolved. Null when no
+ * usable cached copy exists.
+ */
+export async function resolveShareOfflinePlayback(
+  token: string
+): Promise<OfflinePlayback | null> {
+  const record = await getShareOfflineRecord(token);
+  if (!record) return null;
+  return playbackFromRecord(record);
 }

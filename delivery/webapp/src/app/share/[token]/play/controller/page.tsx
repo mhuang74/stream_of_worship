@@ -5,8 +5,8 @@ import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import { usePlaybackCore } from "@/hooks/usePlaybackCore";
 import { useLocale } from "@/hooks/useLocale";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
-import { getOfflineRecord } from "@/lib/offline/offline-index";
-import { resolveOfflinePlayback } from "@/lib/offline/offline-playback";
+import { getShareOfflineRecord } from "@/lib/offline/share-offline-index";
+import { resolveShareOfflinePlayback } from "@/lib/offline/offline-playback";
 import { Loader2 } from "lucide-react";
 
 /**
@@ -27,14 +27,14 @@ export default function ShareControllerPage() {
     castSourceKind: "share",
     projectionPath: `/share/${token}/play/projection`,
     offlineUnavailableMessage: t("control.offlineUnavailable"),
-    // The anonymous token fetch chain. PR2 swaps this for the
-    // share-namespace resolver (ADR-0009); until then the songset-namespace
-    // index backs the shared core's media-error recovery, which is the only
-    // consumer when no cache-first boot exists.
+    // Cache-first boot + media-error recovery over the share-scoped offline
+    // copy (issue #218 PR2, ADR-0009): token-keyed index, frozen renderJobId.
+    // The controller boots with zero API calls when a copy exists and
+    // deliberately cannot detect staleness — the landing page owns that.
     resolveOffline: async () => {
-      const record = await getOfflineRecord(token);
+      const record = await getShareOfflineRecord(token);
       if (!record) return null;
-      const offline = await resolveOfflinePlayback(token);
+      const offline = await resolveShareOfflinePlayback(token);
       if (!offline) return null;
       return {
         title: offline.songsetName,
@@ -110,13 +110,18 @@ export default function ShareControllerPage() {
   });
 
   const { media } = core;
+  const offlineNow = core.offlineNow;
 
   if (core.isLoading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="size-8 animate-spin text-white" />
-          <p className="text-white/70">{t("control.loadingPlayer")}</p>
+          <p className="text-white/70">
+            {offlineNow
+              ? t("control.offlineBooting")
+              : t("control.loadingPlayer")}
+          </p>
         </div>
       </div>
     );
