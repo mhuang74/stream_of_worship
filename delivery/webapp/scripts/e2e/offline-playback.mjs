@@ -44,6 +44,12 @@ const LOGIN = process.env.SOW_WEBAPP_TESTUSER_LOGIN;
 const PASSWORD = process.env.SOW_WEBAPP_TESTUSER_PASSWORD;
 const SONGSET_ID = process.env.SOW_E2E_SONGSET_ID;
 
+// The service worker's last-resort page for an uncached document navigation
+// (public/sw.js). It intentionally no longer claims "you are offline" — a SW
+// fetch rejection is identical for an offline device and an unreachable /
+// TLS-failing server — so match on its stable opening phrase.
+const SW_DOC_FALLBACK_TEXT = "Unable to load this page";
+
 const HEADLESS_ARGS = [
   "--headless=new",
   "--no-sandbox",
@@ -443,7 +449,7 @@ async function scenarioOfflineColdStart(tab, songsetId, renderJobId) {
         tab,
         `(async () => {
           const player = document.querySelector("video, audio");
-          const fallback = document.body.textContent.includes("You are offline. Please reconnect.");
+          const fallback = document.body.textContent.includes(${JSON.stringify(SW_DOC_FALLBACK_TEXT)});
           return JSON.stringify({
             hasMedia: player !== null,
             fallbackVisible: fallback,
@@ -869,7 +875,7 @@ async function scenarioOfflineListEntry(tab, songsetId) {
     }
     const fallback = await evaluateJson(
       tab,
-      `JSON.stringify(document.body.textContent.includes("You are offline. Please reconnect."))`
+      `JSON.stringify(document.body.textContent.includes(${JSON.stringify(SW_DOC_FALLBACK_TEXT)}))`
     );
     check("(j) controller boots fully offline from the list entry", controllerUp && !fallback, `up=${controllerUp} fallback=${fallback}`);
   } finally {

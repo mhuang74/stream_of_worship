@@ -1358,7 +1358,7 @@ flowchart TD
 | Local stall over 15 s | Overlay with Retry; `playing`/`progress` cancel the timer and clear the overlay. | `MEDIA_STALL_TIMEOUT_MS`, `handleStalled` |
 | Uncached API read while offline | `503 {"error":"offline"}` when the caller declares `Accept: application/json`, otherwise `Response.error()` (a rejected fetch). The play page treats both as "a downloaded copy may still play". | `setCatchHandler` |
 | Uncached `video` request while offline | `Response.error()`, so the element surfaces its own `error` event and the player UI reacts. | `setCatchHandler` |
-| Uncached document navigation while offline | A minimal static offline HTML page ("You are offline. Please reconnect."). | `setCatchHandler` |
+| Uncached document navigation while offline | A minimal static offline HTML page ("Unable to load this page…"), worded for both an offline device and an unreachable server — a service worker `fetch()` rejection can't distinguish them. | `setCatchHandler` |
 | Session expired during the pre-cache | The login HTML is never stored under the controller path; the pre-cache reports `false` and the download still succeeds. | `isLoginPage`, `cacheControllerDocument` |
 | Storage over the 1 GB hard limit | `cacheArtifacts` throws **before** writing anything; the caller toasts. | `cacheArtifacts` |
 | iOS below 17.4 | The download affordance is replaced by an "Update iOS for offline" hint with a tooltip. | `isOfflineSupportedOnCurrentDevice`, `OfflineStatus` |
@@ -1521,8 +1521,10 @@ The worker's last-resort answers:
 ```js title="delivery/webapp/public/sw.js"
 workbox.routing.setCatchHandler(async ({ event }) => {
   if (event.request.destination === "document") {
+    // Not "you are offline": a SW fetch rejection is identical for an
+    // offline device and an unreachable/TLS-failing server.
     return new Response(
-      "<!DOCTYPE html><html><body><p>You are offline. Please reconnect.</p></body></html>",
+      "<!DOCTYPE html><html><body><p>Unable to load this page. It isn't stored for offline use, and the server could not be reached. Check your connection. On a development server this may also be a TLS or certificate problem.</p></body></html>",
       { headers: { "Content-Type": "text/html" } }
     );
   }
