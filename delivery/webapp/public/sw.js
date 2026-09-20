@@ -206,11 +206,18 @@ if (artifactHandlerRoute) {
 workbox.core.skipWaiting();
 workbox.core.clientsClaim();
 
-// Offline fallback: return a minimal JSON error for uncached API requests.
+// Last-resort fallback for uncached requests: a JSON error for API calls, a
+// minimal page for documents.
 workbox.routing.setCatchHandler(async ({ event }) => {
   if (event.request.destination === "document") {
+    // Deliberately does NOT claim "you are offline": a fetch() rejection from
+    // a service worker is identical for a genuinely offline device and for an
+    // unreachable server (e.g. a down dev server, or a TLS/certificate failure
+    // against a dev host). The specific net error is not recoverable here, so
+    // the copy stays honest about both possibilities — otherwise a certificate
+    // problem is silently reported as "you are offline".
     return new Response(
-      "<!DOCTYPE html><html><body><p>You are offline. Please reconnect.</p></body></html>",
+      "<!DOCTYPE html><html><body><p>Unable to load this page. It isn't stored for offline use, and the server could not be reached. Check your connection. On a development server this may also be a TLS or certificate problem.</p></body></html>",
       { headers: { "Content-Type": "text/html" } }
     );
   }

@@ -54,7 +54,7 @@ Once a worship set is downloaded for offline use, the downloaded video (or audio
 | Download refuses at a size limit | The app caps offline storage at 1 GB (warns at 500 MB) | Remove other offline sets via their **⋯** menu |
 | The **Offline**（離線）badge is amber | The set was re-rendered after you downloaded it | Download again — the old copy is removed automatically |
 | **Start Worship** spins or errors while offline | The set was never downloaded **on this device** | Download it while online, or play online |
-| A page shows "You are offline. Please reconnect." | That page was never opened online on this device | Navigate only through pages you've opened before (list → play page → controller) |
+| A page shows "Unable to load this page" | That page was never opened online on this device — or the server couldn't be reached (on a dev host, possibly a TLS/certificate problem) | Navigate only through pages you've opened before (list → play page → controller); while online, open the pages you'll need offline |
 | **Playback stopped**（播放已停止）or **Playback stalled**（播放卡住了）overlay | The media failed, or stalled over 15 seconds | Tap **Retry**（重試）; if it persists, reconnect and download the set again |
 | Mid-service Wi-Fi drop | Nothing — playback continues from the downloaded copy ("The live version could not be loaded — playing the downloaded copy."／無法載入線上版本，改為播放已下載的副本。) | Nothing to do |
 
