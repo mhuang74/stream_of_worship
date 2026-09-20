@@ -140,7 +140,7 @@ export function PlaybackControls({
           >
             <span className="min-w-0 truncate justify-self-end pr-3">{songTitle}</span>
             <span
-              className="shrink-0 tabular-nums"
+              className="shrink-0 tabular-nums text-lg leading-none"
               aria-label={`${formatTime(
                 Math.max(0, (songDurationSeconds ?? 0) - (songElapsedSeconds ?? 0))
               )} ${t("controls.remaining")}`}
