@@ -130,15 +130,17 @@ workbox.routing.registerRoute(
 //
 // request.mode === "navigate" keeps RSC payload fetches (same URL, no
 // navigate mode) on the generic route's bounded expiration — unbounded RSC
-// growth must not land in an unexpiring cache. The /songsets/ shape keeps the
-// share controller (/share/<token>/play/controller) on the generic route too
-// (the share flow is out of scope). /worship is the offline redirect target
-// and the controller's exit route (issue #211 follow-up): also immortal —
-// the offline boot chain dies if its document expires.
+// growth must not land in an unexpiring cache. /worship is the offline
+// redirect target and the controller's exit route (issue #211 follow-up):
+// also immortal — the offline boot chain dies if its document expires.
+// The share controller (/share/<token>/play/controller) joins the immortal
+// route in issue #218 PR2: the share download pre-caches it (ADR-0009), and
+// an expired token must not kill the cached copy's offline tap path either.
 workbox.routing.registerRoute(
   ({ request, url }) =>
     request.mode === "navigate" &&
     (/^\/songsets\/[^/]+\/play\/controller$/.test(url.pathname) ||
+      /^\/share\/[^/]+\/play\/controller$/.test(url.pathname) ||
       url.pathname === "/worship"),
   new workbox.strategies.NetworkFirst({
     cacheName: "sow-pages",
