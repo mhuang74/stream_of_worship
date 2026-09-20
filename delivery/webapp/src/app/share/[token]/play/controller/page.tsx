@@ -1,190 +1,117 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
-import { useCastTransport, type CastMedia } from "@/hooks/useCast";
-import { usePresentationSender } from "@/hooks/usePresentation";
-import { dispatchCast } from "@/lib/cast/dispatch";
-import type { PresentationCommand, PresentationMediaStatus } from "@/types/presentation-api";
-import type { Chapter } from "@/lib/render/chapters";
-import { normalizeChaptersManifest } from "@/lib/render/chapters";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { usePlaybackCore } from "@/hooks/usePlaybackCore";
 import { useLocale } from "@/hooks/useLocale";
+import { normalizeChaptersManifest } from "@/lib/render/chapters";
+import { getOfflineRecord } from "@/lib/offline/offline-index";
+import { resolveOfflinePlayback } from "@/lib/offline/offline-playback";
+import { Loader2 } from "lucide-react";
 
+/**
+ * Anonymous share play controller (issue #218): a thin consumer of the
+ * shared playback core. It differs from the songset controller only in its
+ * anonymous token fetch chain, its offline resolver (share-namespace, PR2),
+ * and its exit routes.
+ */
 export default function ShareControllerPage() {
   const params = useParams();
   const router = useRouter();
   const { t } = useLocale();
   const token = params.token as string;
 
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [shareName, setShareName] = useState<string>(t("control.sharedWorshipSet"));
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [presentationMediaStatus, setPresentationMediaStatus] =
-    useState<PresentationMediaStatus | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadData() {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const res = await fetch(`/api/share/${token}`);
-        if (!res.ok) {
-          let errorMessage = t("control.linkNoLongerAvailable");
-          try {
-            const data = await res.json();
-            if (data?.error) {
-              errorMessage = data.error;
-            }
-          } catch {
-            // Fallback to default message if response is not valid JSON
-          }
-          throw new Error(errorMessage);
-        }
-
-        const data = await res.json();
-        if (cancelled) return;
-
-        if (!data?.playback?.mp4Url) {
-          throw new Error(t("control.noVideoForShare"));
-        }
-
-        // The share-token route mints a presigned R2 URL (no auth on the TV);
-        // the phone hands it to the receiver, which only hits R2.
-        setVideoUrl(data.playback.mp4Url);
-        if (data?.songset?.name) {
-          setShareName(data.songset.name);
-        }
-
-        if (data.playback?.chaptersData) {
-          try {
-            const manifest = normalizeChaptersManifest(data.playback.chaptersData);
-            if (!cancelled) {
-              setChapters(manifest.chapters);
-            }
-          } catch (e) {
-            console.error("Failed to parse chapters:", e);
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err instanceof Error ? err.message : t("control.failedToLoadPlayer");
-          setError(message);
-          toast.error(message);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    if (token) {
-      loadData();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token, t]);
-
-  // Cast + Presentation transport wiring (same shape as the songset
-  // controller). Cast is preferred; the Presentation API fallback runs only
-  // when `!cast.isSupported`.
-  const presentationUrl = useMemo(() => {
-    const params = new URLSearchParams();
-    if (videoUrl) params.set("v", videoUrl);
-    if (shareName) params.set("t", shareName);
-    const qs = params.toString();
-    return qs
-      ? `/share/${token}/play/projection?${qs}`
-      : `/share/${token}/play/projection`;
-  }, [token, videoUrl, shareName]);
-  const media = useMemo<CastMedia>(
-    () => ({
-      videoUrl: videoUrl ?? "",
-      title: shareName,
-      source: { kind: "share", idOrToken: token },
-      startSeconds: 0,
-    }),
-    [videoUrl, shareName, token],
-  );
-
-  const cast = useCastTransport({
-    media,
-    onError: (m) => toast.error(m),
-  });
-
-  const sender = usePresentationSender({
-    presentationUrl,
-    onConnected: () => toast.success(t("control.connectedProjection")),
-    onDisconnected: () => {
-      setPresentationMediaStatus(null);
-      toast.info(t("control.disconnectedProjection"));
+  const core = usePlaybackCore({
+    bootKey: token,
+    defaultTitle: t("control.sharedWorshipSet"),
+    castSourceKind: "share",
+    projectionPath: `/share/${token}/play/projection`,
+    offlineUnavailableMessage: t("control.offlineUnavailable"),
+    // The anonymous token fetch chain. PR2 swaps this for the
+    // share-namespace resolver (ADR-0009); until then the songset-namespace
+    // index backs the shared core's media-error recovery, which is the only
+    // consumer when no cache-first boot exists.
+    resolveOffline: async () => {
+      const record = await getOfflineRecord(token);
+      if (!record) return null;
+      const offline = await resolveOfflinePlayback(token);
+      if (!offline) return null;
+      return {
+        title: offline.songsetName,
+        chapters: offline.chapters,
+        chapterRecordingHashes: offline.chapterRecordingHashes,
+        media: {
+          src: offline.src,
+          kind: offline.kind,
+          isOffline: true,
+          viaProxy: offline.viaProxy,
+          renderJobId: offline.renderJobId,
+        },
+      };
     },
-    onStartError: (m) => toast.error(m),
-    onStatus: (status) => {
-      if (status.type === "error") {
-        toast.error(t("projection.tvFailed"));
-      } else if (status.type === "media") {
-        setPresentationMediaStatus(status);
+    runOnlineChain: async (ctx) => {
+      const res = await fetch(`/api/share/${token}`);
+      if (!res.ok) {
+        let errorMessage = t("control.linkNoLongerAvailable");
+        try {
+          const data = await res.json();
+          if (data?.error) {
+            errorMessage = data.error;
+          }
+        } catch {
+          // Fallback to default message if response is not valid JSON
+        }
+        throw new Error(errorMessage);
+      }
+
+      interface ShareResponse {
+        songset?: { name?: string } | null;
+        playback?: {
+          mediaKind?: "video" | "audio";
+          selectedRenderJobId?: string | null;
+          mp4Url?: string | null;
+          mp3Url?: string | null;
+          chapterRecordingHashes?: (string | null)[];
+          chaptersData?: unknown;
+        } | null;
+      }
+      const data: ShareResponse = await res.json();
+      if (ctx.isCancelled()) return;
+
+      const kind = data.playback?.mediaKind ?? (data.playback?.mp4Url ? "video" : "audio");
+      const src = kind === "video" ? data.playback?.mp4Url : data.playback?.mp3Url;
+      if (!src) {
+        throw new Error(t("control.noPlaybackArtifacts"));
+      }
+
+      // The share-token route mints presigned R2 URLs (no auth on the TV);
+      // the phone hands them to the receiver, which only hits R2.
+      ctx.setTitle(data.songset?.name ?? t("control.sharedWorshipSet"));
+      ctx.setChapterRecordingHashes(data.playback?.chapterRecordingHashes ?? []);
+      ctx.setMedia({
+        src,
+        kind,
+        isOffline: false,
+        viaProxy: false,
+        renderJobId: data.playback?.selectedRenderJobId ?? "",
+      });
+
+      if (data.playback?.chaptersData) {
+        try {
+          const manifest = normalizeChaptersManifest(data.playback.chaptersData);
+          if (!ctx.isCancelled()) {
+            ctx.setChapters(manifest.chapters);
+          }
+        } catch (e) {
+          console.error("Failed to parse chapters:", e);
+        }
       }
     },
   });
 
-  // Toasts only from transport lifecycle. Cast connection transitions are
-  // observed via state (the hook exposes `isConnected`, not a callback).
-  const prevCastConnectedRef = useRef(false);
-  useEffect(() => {
-    const wasConnected = prevCastConnectedRef.current;
-    if (cast.isConnected && !wasConnected) {
-      toast.success(
-        `${t("control.connectedTo")} ${cast.deviceName || t("control.tv")}`
-      );
-    } else if (!cast.isConnected && wasConnected) {
-      toast.info(t("control.disconnectedFromTV"));
-    }
-    prevCastConnectedRef.current = cast.isConnected;
-  }, [cast.isConnected, cast.deviceName, t]);
+  const { media } = core;
 
-  const isPresentationActive =
-    cast.isConnected || (!cast.isSupported && sender.isConnected);
-
-  const handleSendToTV = useCallback(() => {
-    if (cast.isSupported) {
-      void cast.start();
-    } else {
-      void sender.start();
-    }
-  }, [cast, sender]);
-
-  const handleSendTransportCommand = useCallback(
-    (command: PresentationCommand) => {
-      if (cast.isSupported) {
-        dispatchCast(cast, command);
-      } else {
-        sender.send(command);
-      }
-    },
-    [cast, sender],
-  );
-
-  const handleStopPresentation = useCallback(() => {
-    if (cast.isConnected) {
-      cast.stop();
-    } else if (!cast.isSupported && sender.isConnected) {
-      sender.stop();
-    }
-  }, [cast, sender]);
-
-  if (isLoading) {
+  if (core.isLoading) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -195,14 +122,15 @@ export default function ShareControllerPage() {
     );
   }
 
-  if (error || !videoUrl) {
+  if (core.error || !media) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-white mb-4">
-            {error || t("control.failedToLoadPlayer")}
+            {core.error || t("control.failedToLoadPlayer")}
           </p>
           <button
+            type="button"
             onClick={() => router.push(`/share/${token}`)}
             className="px-4 py-2 bg-primary text-white rounded-lg"
           >
@@ -216,22 +144,25 @@ export default function ShareControllerPage() {
   return (
     <ControllerPlayer
       playerId={token}
-      videoSrc={videoUrl}
-      chapters={chapters}
       exitRoute={`/share/${token}`}
-      isPresentationActive={isPresentationActive}
-      transport={cast}
+      {...(media.kind === "audio" ? { audioSrc: media.src } : { videoSrc: media.src })}
+      chapters={core.chapters}
+      chapterRecordingHashes={core.chapterRecordingHashes}
+      isOfflineMedia={media.isOffline}
+      onMediaError={core.handleMediaError}
+      isPresentationActive={core.isPresentationActive}
+      transport={core.transport}
       presentationFallback={{
-        isSupported: sender.isSupported,
-        isConnected: sender.isConnected,
+        isSupported: core.sender.isSupported,
+        isConnected: core.sender.isConnected,
       }}
-      presentationMediaStatus={presentationMediaStatus}
-      isCastSupported={cast.isSupported}
-      castAvailability={cast.availability}
-      isCastConnecting={cast.isConnecting}
-      onSendToTV={handleSendToTV}
-      onStopPresentation={handleStopPresentation}
-      onSendTransportCommand={handleSendTransportCommand}
+      presentationMediaStatus={core.presentationMediaStatus}
+      isCastSupported={core.transport.isSupported}
+      castAvailability={core.transport.availability}
+      isCastConnecting={core.transport.isConnecting}
+      onSendToTV={core.handleSendToTV}
+      onStopPresentation={core.handleStopPresentation}
+      onSendTransportCommand={core.handleSendTransportCommand}
     />
   );
 }

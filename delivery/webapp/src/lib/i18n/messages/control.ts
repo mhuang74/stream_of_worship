@@ -55,9 +55,7 @@ export const controlBundle = bundle({
     "control.inviteBody": "Create your own seamless worship sets with Stream of Worship.",
     "control.inviteCta": "Learn more",
 
-    // --- Share audio page (app/share/[token]/play/audio) ----------------
-    "control.noAudioForShare": "No audio available for this share",
-    "control.failedToLoadAudio": "Failed to load audio",
+    // --- Share play controller (app/share/[token]/play/controller) ------
     "control.worshipSet": "Worship Set",
     "control.sharedWorshipSet": "Shared Worship Set",
 
@@ -197,9 +195,7 @@ export const controlBundle = bundle({
     "control.inviteBody": "用 Stream of Worship 打造你自己的無縫敬拜歌單。",
     "control.inviteCta": "了解更多",
 
-    // --- Share audio page (app/share/[token]/play/audio) ----------------
-    "control.noAudioForShare": "這個分享沒有可用的音訊",
-    "control.failedToLoadAudio": "音訊載入失敗，請再試一次",
+    // --- Share play controller (app/share/[token]/play/controller) ------
     "control.worshipSet": "敬拜歌單",
     "control.sharedWorshipSet": "分享的敬拜歌單",
 

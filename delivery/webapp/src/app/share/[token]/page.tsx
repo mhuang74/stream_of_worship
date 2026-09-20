@@ -116,11 +116,10 @@ export default function SharePage() {
   const handlePlay = () => {
     if (!shareData?.playback.mp4Url && !shareData?.playback.mp3Url) return;
     setIsStarting(true);
-    router.push(
-      shareData.playback.mp4Url
-        ? `/share/${token}/play/controller`
-        : `/share/${token}/play/audio`
-    );
+    // Both media kinds boot through the controller (issue #218): the
+    // controller resolves mediaKind from the share API and plays an
+    // MP3-only render as audio-only. The separate audio page is gone.
+    router.push(`/share/${token}/play/controller`);
   };
 
   if (isLoading) {
@@ -286,6 +285,7 @@ export default function SharePage() {
                 onClick={handlePlay}
                 disabled={isStarting}
                 aria-label={t("control.playAudio")}
+                data-testid="play-button"
               >
                 {isStarting ? (
                   <Loader2 className="size-5 animate-spin" />

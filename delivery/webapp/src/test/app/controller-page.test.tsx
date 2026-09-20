@@ -50,6 +50,46 @@ import SharePage from "@/app/share/[token]/page";
 
 // --- Transport hook mocks -------------------------------------------------
 
+// Cache/SW stubs shared by the songset and share controller suites (issue
+// #218: the share controller's recovery boots the same index/cache).
+function setServiceWorkerController(controlling: boolean) {
+  Object.defineProperty(navigator, "serviceWorker", {
+    value: controlling ? { controller: { scriptURL: "/sw.js" } } : undefined,
+    configurable: true,
+  });
+}
+
+/** Cache Storage stub holding the download path's keys (sow-artifacts). */
+function installArtifactCache(bodies: {
+  mp4?: string;
+  mp3?: string;
+  chapters?: unknown;
+}) {
+  const entries = new Map<string, Response>();
+  if (bodies.mp4 !== undefined) {
+    entries.set("/sow-artifact-cache/job-offline/mp4", new Response(bodies.mp4));
+  }
+  if (bodies.mp3 !== undefined) {
+    entries.set("/sow-artifact-cache/job-offline/mp3", new Response(bodies.mp3));
+  }
+  if (bodies.chapters !== undefined) {
+    entries.set(
+      "/sow-artifact-cache/job-offline/chapters",
+      Response.json(bodies.chapters)
+    );
+  }
+
+  Object.defineProperty(window, "caches", {
+    value: {
+      open: () =>
+        Promise.resolve({
+          match: (key: string) => Promise.resolve(entries.get(key)),
+        }),
+    },
+    configurable: true,
+  });
+}
+
 function makeTransport(overrides: Partial<CastTransportResult> = {}): CastTransportResult {
   return {
     isSupported: true,
@@ -178,7 +218,21 @@ vi.mock("@/components/play/ControllerPlayer", () => ({
   },
 }));
 
-// --- Fixtures --------------------------------------------------------------
+// --- Fixtures -------------------------------------------------------------
+
+// Offline-copy fixture shared by the songset and share controller suites
+// (issue #218: the share controller's recovery boots the same index/cache).
+const OFFLINE_RECORD: OfflineSongsetRecord = {
+  songsetId: "test-songset",
+  renderJobId: "job-offline",
+  songsetName: "Offline Set",
+  cachedMp3: true,
+  cachedMp4: true,
+  cachedChapters: true,
+  cachedAt: "2026-09-15T00:00:00.000Z",
+  chapterContentHashes: ["hash-a", "hash-b", null],
+};
+const MP4_PROXY_SRC = "/api/r2/artifact/job-offline/output.mp4";
 
 const SONGSET_RESPONSE = {
   id: "test-songset",
@@ -230,10 +284,13 @@ const SHARE_RESPONSE = {
   shareType: "songset",
   songset: { id: "ss-1", name: "Shared Set Name" },
   playback: {
+    mediaKind: "video",
+    selectedRenderJobId: "job-1",
     mp4Url: "https://r2.example.com/share/video.mp4",
     chaptersUrl: null,
     chaptersData: null,
   },
+  viewerAuthenticated: false,
 };
 
 describe("ControllerPage (songset)", () => {
@@ -457,17 +514,6 @@ describe("ControllerPage (songset)", () => {
   });
 
   describe("offline boot", () => {
-    const OFFLINE_RECORD: OfflineSongsetRecord = {
-      songsetId: "test-songset",
-      renderJobId: "job-offline",
-      songsetName: "Offline Set",
-      cachedMp3: true,
-      cachedMp4: true,
-      cachedChapters: true,
-      cachedAt: "2026-09-15T00:00:00.000Z",
-      chapterContentHashes: ["hash-a", "hash-b", null],
-    };
-
     const OFFLINE_CHAPTERS = {
       chapters: [
         {
@@ -482,50 +528,11 @@ describe("ControllerPage (songset)", () => {
       generatedAt: "2026-09-15T00:00:00.000Z",
     };
 
-    const MP4_PROXY_SRC = "/api/r2/artifact/job-offline/output.mp4";
     const MP3_PROXY_SRC = "/api/r2/artifact/job-offline/output.mp3";
 
     function setOnline(online: boolean) {
       Object.defineProperty(navigator, "onLine", {
         value: online,
-        configurable: true,
-      });
-    }
-
-    function setServiceWorkerController(controlling: boolean) {
-      Object.defineProperty(navigator, "serviceWorker", {
-        value: controlling ? { controller: { scriptURL: "/sw.js" } } : undefined,
-        configurable: true,
-      });
-    }
-
-    /** Cache Storage stub holding the download path's keys (sow-artifacts). */
-    function installArtifactCache(bodies: {
-      mp4?: string;
-      mp3?: string;
-      chapters?: unknown;
-    }) {
-      const entries = new Map<string, Response>();
-      if (bodies.mp4 !== undefined) {
-        entries.set("/sow-artifact-cache/job-offline/mp4", new Response(bodies.mp4));
-      }
-      if (bodies.mp3 !== undefined) {
-        entries.set("/sow-artifact-cache/job-offline/mp3", new Response(bodies.mp3));
-      }
-      if (bodies.chapters !== undefined) {
-        entries.set(
-          "/sow-artifact-cache/job-offline/chapters",
-          Response.json(bodies.chapters)
-        );
-      }
-
-      Object.defineProperty(window, "caches", {
-        value: {
-          open: () =>
-            Promise.resolve({
-              match: (key: string) => Promise.resolve(entries.get(key)),
-            }),
-        },
         configurable: true,
       });
     }
@@ -1242,14 +1249,125 @@ describe("ShareControllerPage (share token)", () => {
     lastControllerProps = null;
     castTransportMock.mockImplementation(() => makeTransport());
     presentationSenderMock.mockImplementation(() => makeSender());
+    // The shared core's media-error recovery resolves the offline index;
+    // default to no record so online-boot tests never hit the cache stub.
+    mockGetOfflineRecord.mockResolvedValue(null);
+    setServiceWorkerController(true);
   });
 
-  function shareSuccessFetches() {
+  function shareSuccessFetches(response: Record<string, unknown> = SHARE_RESPONSE) {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve(SHARE_RESPONSE),
+      json: () => Promise.resolve(response),
     });
   }
+
+  // Issue #218: MP3-only share renders boot as audio-only — mediaKind is
+  // declared by the API, and the page passes audioSrc (never videoSrc).
+  it("boots audio playback for an MP3-only share (mediaKind audio)", async () => {
+    shareSuccessFetches({
+      ...SHARE_RESPONSE,
+      playback: {
+        mediaKind: "audio",
+        selectedRenderJobId: "job-1",
+        mp3Url: "https://r2.example.com/share/audio.mp3",
+        mp4Url: null,
+      },
+    });
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("audio-src")).toHaveTextContent(
+      "https://r2.example.com/share/audio.mp3"
+    );
+    expect(lastControllerProps?.videoSrc).toBeUndefined();
+  });
+
+  // Lyrics Feedback is session-gated (ADR-0007): hashes flow for every
+  // viewer, the player's feedback row only renders when the share API saw a
+  // session — the page relays whatever the route reports.
+  it("passes chapterRecordingHashes from the share response", async () => {
+    shareSuccessFetches({
+      ...SHARE_RESPONSE,
+      playback: {
+        ...SHARE_RESPONSE.playback,
+        chapterRecordingHashes: ["hash-a", "hash-b", null],
+      },
+      viewerAuthenticated: true,
+    });
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+    expect(lastControllerProps?.chapterRecordingHashes).toEqual([
+      "hash-a",
+      "hash-b",
+      null,
+    ]);
+  });
+
+  it("renders no hashes (no feedback affordance) when the viewer is anonymous", async () => {
+    shareSuccessFetches({
+      ...SHARE_RESPONSE,
+      viewerAuthenticated: false,
+    });
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+    });
+    // The route omits hashes for anonymous viewers; the page relays the
+    // absence — LyricJumpList then hides the Lyrics Feedback row.
+    expect(lastControllerProps?.chapterRecordingHashes).toEqual([]);
+  });
+
+  // Media-error recovery (issue #218): the shared core's one-per-boot swap
+  // to the downloaded copy must work on the share surface too.
+  it("recovers a failed online source by swapping to the offline copy", async () => {
+    installArtifactCache({ mp4: "video-bytes" });
+    shareSuccessFetches();
+    mockGetOfflineRecord
+      .mockResolvedValueOnce(null) // cache-first boot: no record
+      .mockResolvedValue(OFFLINE_RECORD); // media-failure recovery
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("video-src")).toHaveTextContent(
+        "https://r2.example.com/share/video.mp4"
+      );
+    });
+
+    let handled: boolean | undefined;
+    await act(async () => {
+      handled = await lastControllerProps?.onMediaError?.();
+    });
+
+    expect(handled).toBe(true);
+    expect(screen.getByTestId("video-src")).toHaveTextContent(MP4_PROXY_SRC);
+    expect(screen.getByTestId("offline-media")).toHaveTextContent("true");
+  });
+
+  it("shows the error screen with the go-back route when the share fetch fails", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 410,
+      json: () => Promise.resolve({ error: "This share link has been revoked" }),
+    });
+
+    render(<ShareControllerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/revoked/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("controller-player")).not.toBeInTheDocument();
+  });
 
   it("renders ControllerPlayer when share data loaded", async () => {
     shareSuccessFetches();
@@ -1431,5 +1549,35 @@ describe("SharePage (share landing — entry navigation)", () => {
 
     expect(mockPush).toHaveBeenCalledWith("/share/share-tok/play/controller");
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  // Issue #218: an MP3-only share boots through the controller (audio-only
+  // playback with lyrics and controls) — the separate audio page is gone.
+  it("routes an audio-only share to the play controller, not the audio page", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ...videoShareResponse,
+          playback: {
+            ...videoShareResponse.playback,
+            mediaKind: "audio",
+            mp4Url: null,
+            mp3Url: "https://r2.example.com/share/audio.mp3",
+          },
+        }),
+    });
+
+    render(<SharePage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("play-button")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTestId("play-button").click();
+    });
+
+    expect(mockPush).toHaveBeenCalledWith("/share/share-tok/play/controller");
   });
 });
