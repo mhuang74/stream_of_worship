@@ -536,10 +536,10 @@ class TestRecording:
 
     def test_recording_columns_select_order_matches_from_row(self):
         """Verify RECORDING_COLUMNS_SELECT column count and order matches
-        what from_row expects (38 columns in canonical order).
+        what from_row expects (39 columns in canonical order).
         """
         columns = [c.strip() for c in RECORDING_COLUMNS_SELECT.split(",") if c.strip()]
-        assert len(columns) == 38
+        assert len(columns) == 39
         assert columns[0] == "content_hash"
         assert columns[13] == "key_confidence"
         assert columns[14] == "key_algorithm_version"
@@ -553,9 +553,10 @@ class TestRecording:
         assert columns[35] == "deleted_at"
         assert columns[36] == "theme"
         assert columns[37] == "vocal_posture"
+        assert columns[38] == "lrc_source"
 
     def test_from_row_38_column_canonical_order(self):
-        """Test from_row with 38-column schema including theme/vocal_posture."""
+        """Test from_row with 39-column schema including lrc_source."""
         row = (
             "c6de4449928d0c4c5b76e23c9f4e5b8a7c6d5e4f3b2a1908",  # 0  content_hash
             "c6de4449928d",  # 1  hash_prefix
@@ -595,8 +596,9 @@ class TestRecording:
             None,  # 35 deleted_at
             "讚美",  # 36 theme
             "To God",  # 37 vocal_posture
+            "whisper_asr",  # 38 lrc_source
         )
-        assert len(row) == 38
+        assert len(row) == 39
         recording = Recording.from_row(row)
 
         assert recording.structured_lyrics_raw == "raw description text"
@@ -607,6 +609,7 @@ class TestRecording:
         assert recording.deleted_at is None
         assert recording.theme == "讚美"
         assert recording.vocal_posture == "To God"
+        assert recording.lrc_source == "whisper_asr"
 
     def test_from_row_34_column_legacy_still_works(self):
         """34-column legacy row still deserialises (new fields → None)."""

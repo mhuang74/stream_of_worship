@@ -1520,6 +1520,15 @@ def list_recordings(
         "--lrc",
         help="Filter by LRC status (pending|processing|completed|failed|incomplete)",
     ),
+    lrc_source: Optional[str] = typer.Option(
+        None,
+        "--lrc-source",
+        help=(
+            "Filter by LRC generation source "
+            "(youtube_transcript|qwen3_asr|whisper_asr|forced_alignment|manual_upload|"
+            "r2_preexisting|none where none = unknown/legacy)"
+        ),
+    ),
     sort: str = typer.Option(
         "album",
         "--sort",
@@ -1561,6 +1570,24 @@ def list_recordings(
             )
             raise typer.Exit(1)
 
+    # Validate LRC source filter
+    if lrc_source:
+        valid_lrc_sources = {
+            "youtube_transcript",
+            "qwen3_asr",
+            "whisper_asr",
+            "forced_alignment",
+            "manual_upload",
+            "r2_preexisting",
+            "none",
+        }
+        if lrc_source not in valid_lrc_sources:
+            console.print(
+                f"[red]Invalid LRC source: {lrc_source}. "
+                f"Must be one of: {', '.join(sorted(valid_lrc_sources))}[/red]"
+            )
+            raise typer.Exit(1)
+
     # Validate theme filter
     if theme:
         valid_themes = set(SONG_COMPONENT_THEMES) | {"none"}
@@ -1587,6 +1614,7 @@ def list_recordings(
         lrc_status=lrc,
         album=album,
         theme=theme,
+        lrc_source=lrc_source,
         sort_by=sort,
         limit=limit,
     )
@@ -1621,6 +1649,8 @@ def list_recordings(
             filter_parts.append(f"album={album}")
         if lrc:
             filter_parts.append(f"lrc={lrc}")
+        if lrc_source:
+            filter_parts.append(f"lrc_source={lrc_source}")
         if theme:
             filter_parts.append(f"theme={theme}")
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
@@ -3714,6 +3744,7 @@ def check_status(
                                 hash_prefix=rec.hash_prefix,
                                 r2_lrc_url=lrc_url,
                                 visibility_status=None,
+                                lrc_source=rec.lrc_source or "r2_preexisting",
                             )
                             reconciled_lrc += 1
                             console.print(
@@ -4018,6 +4049,7 @@ def check_status(
                                     hash_prefix=rec.hash_prefix,
                                     r2_lrc_url=job.result.lrc_url,
                                     visibility_status="review",
+                                    lrc_source=job.result.lrc_source,
                                 )
                                 synced_count += 1
                         elif job.status == "failed":
@@ -4333,6 +4365,7 @@ def _update_recording_status_force(
             db_client.update_recording_lrc(
                 hash_prefix=rec.hash_prefix,
                 r2_lrc_url=force_url,
+                lrc_source="manual_upload",
             )
         else:
             db_client.update_recording_status(
@@ -4391,6 +4424,7 @@ def _force_sync_all_pending(
                 db_client.update_recording_lrc(
                     hash_prefix=rec.hash_prefix,
                     r2_lrc_url=force_url,
+                    lrc_source="manual_upload",
                 )
             else:
                 db_client.update_recording_status(
@@ -5923,6 +5957,7 @@ def _submit_lrc_for_song(
                 recording.hash_prefix,
                 lrc_url,
                 visibility_status=None,
+                lrc_source=recording.lrc_source or "r2_preexisting",
             )
             results[song_id]["generate_lyrics"] = "completed"
             results[song_id]["generate_lyrics_source"] = "r2_preexisting"
@@ -6762,6 +6797,7 @@ def _handle_lrc_completion(
                 recording.hash_prefix,
                 lrc_url,
                 visibility_status="review",
+                lrc_source=job.result.lrc_source if job.result else None,
             )
             results[song_id]["generate_lyrics"] = "completed"
             if job.result and job.result.lrc_source:
@@ -6868,6 +6904,7 @@ def _handle_lrc_404(
             recording.hash_prefix,
             lrc_url,
             visibility_status=None,
+            lrc_source=recording.lrc_source or "r2_preexisting",
         )
         results[song_id]["generate_lyrics"] = "completed"
 
@@ -7887,6 +7924,7 @@ def _reconcile_on_interrupt(
                     hash_prefix,
                     lrc_url,
                     visibility_status=None,
+                    lrc_source=recording.lrc_source or "r2_preexisting",
                 )
                 results[song_id]["generate_lyrics"] = "completed"
 

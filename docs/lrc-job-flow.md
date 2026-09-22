@@ -1,16 +1,27 @@
 # LRC Job Flow
 
+> Note (2026-09-22): the pipeline priority below was updated to match
+> `_process_lrc_job()` in `ops/analysis-service/src/sow_analysis/workers/queue.py`
+> — DashScope Qwen3 ASR is now stage 2 (between YouTube transcript and
+> Whisper), and the old in-process "Qwen3 refinement" post-step has been
+> replaced by the separate forced-alignment job type (`sow-admin lyrics
+> align`, `lrc_source="forced_alignment"`). For provenance tracking
+> (`recordings.lrc_source`) and the completion flow, see
+> `docs/research-analysis-service-lrc-completion-flow.md`.
+
 ## High-Level Summary
 
 The LRC (Lyric) job generates timestamped lyric files (`.lrc`) for songs in the Stream of Worship platform. It orchestrates a multi-stage pipeline that attempts three transcription strategies in priority order, with automatic fallback between them.
 
 **The transcription priority is:**
 
-1. **YouTube Transcript** (preferred) — When a YouTube URL is provided, the system fetches human-curated or auto-generated captions, uses an LLM to correct them against official lyrics, and produces LRC directly. No audio download or stem separation is needed for this path.
+1. **YouTube Transcript** (preferred) — When a YouTube URL is provided, the system fetches human-curated or auto-generated captions, uses an LLM to correct them against official lyrics, and produces LRC directly. No audio download or stem separation is needed for this path. Sets `lrc_source="youtube_transcript"`.
 
-2. **Whisper ASR** (fallback) — When no YouTube URL is provided or the YouTube path fails, the system downloads audio from R2, optionally extracts vocals stems for cleaner transcription, runs local Whisper (`faster_whisper`) to produce phrase-level transcriptions with timestamps, then uses an LLM to align the official lyrics with Whisper's output.
+2. **DashScope Qwen3 ASR** (second) — When the YouTube path fails/skips and `use_qwen3_asr=true` (default), the system downloads audio, calls the DashScope Qwen3 ASR cloud API (context-biased with official lyrics), snaps segments to canonical lyric lines, then runs LLM alignment. Sets `lrc_source="qwen3_asr"`. Quota exhaustion waits in free-only mode; any other error falls back to Whisper.
 
-3. **Qwen3 Refinement** (optional post-processing) — After either path produces timestamps, an optional Qwen3 ForcedAligner can refine the timestamps for higher precision. This runs in-process within the analysis service, not as a separate Docker container. It never replaces the primary transcription method.
+3. **Whisper ASR** (fallback) — Runs local Whisper (`faster_whisper`) to produce phrase-level transcriptions with timestamps, then uses an LLM to align the official lyrics with Whisper's output. Sets `lrc_source="whisper_asr"`.
+
+4. **Forced alignment** (separate job type) — `sow-admin lyrics align` uses the local Qwen3ForcedAligner to align known lyrics to audio timestamps. Sets `lrc_source="forced_alignment"`. It is a distinct job type, not a post-processing step of LRC jobs.
 
 **Key characteristics:**
 

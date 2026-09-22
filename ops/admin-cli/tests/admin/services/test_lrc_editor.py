@@ -251,6 +251,7 @@ class TestUploadRevisedLrc:
         db_client.update_recording_lrc.assert_called_once_with(
             hash_prefix="abc123def456",
             r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
+            lrc_source="manual_upload",
         )
 
 
