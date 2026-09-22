@@ -255,7 +255,7 @@ There is no per-endpoint file. `POST /api/auth/sign-up/email`, `POST /api/auth/s
 
 ## 4. Step 1 — the register form
 
-`delivery/webapp/src/app/register/page.tsx` is a client component. It holds five pieces of form state plus `loading`, and two state variables that drive the post-submit screen:
+`delivery/webapp/src/app/register/page.tsx` is a client component. It holds four field values (`name`, `email`, `password`, `confirmPassword`), an `errors` object, and a `loading` flag — all plain `useState`. The post-submit screen is driven by two more:
 
 ```ts title="delivery/webapp/src/app/register/page.tsx"
   const [loading, setLoading] = useState(false);
