@@ -190,6 +190,7 @@ def submit_lrc_single(
                 hash_prefix=recording.hash_prefix,
                 r2_lrc_url=final_job.result.lrc_url,
                 visibility_status="review",
+                lrc_source=final_job.result.lrc_source,
             )
 
         console.print(f"[green]LRC generation completed for {song_id}[/green]")

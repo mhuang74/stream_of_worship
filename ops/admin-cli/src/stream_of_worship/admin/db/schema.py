@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS recordings (
     analysis_job_id TEXT,
     lrc_status TEXT DEFAULT 'pending',
     lrc_job_id TEXT,
+    lrc_source TEXT,
 
     created_at timestamptz DEFAULT NOW(),
     updated_at timestamptz DEFAULT NOW(),
@@ -328,6 +329,13 @@ ALTER TABLE recordings ADD COLUMN IF NOT EXISTS vocal_posture TEXT
     CHECK (vocal_posture IN ('To God','About God','To Congregation') OR vocal_posture IS NULL);
 """
 
+# LRC generation provenance: which pipeline produced lyrics.lrc
+# (youtube_transcript | qwen3_asr | whisper_asr | forced_alignment |
+#  manual_upload | r2_preexisting | llm_edit). NULL = legacy/unknown.
+ALTER_RECORDINGS_LRC_SOURCE_COLUMN = """
+ALTER TABLE recordings ADD COLUMN IF NOT EXISTS lrc_source TEXT;
+"""
+
 # Column list for song_components SELECT queries (matches SongComponent.from_row).
 # v5: 16 original + 11 new = 27 columns.
 SONG_COMPONENT_COLUMNS_SELECT = """
@@ -389,7 +397,7 @@ RECORDING_COLUMNS_SELECT = """
     embeddings_shape, analysis_status, analysis_job_id, lrc_status,
     lrc_job_id, created_at, updated_at, youtube_url,
     structured_lyrics_raw, structured_lyrics, visibility_status,
-    download_status, deleted_at, theme, vocal_posture
+    download_status, deleted_at, theme, vocal_posture, lrc_source
 """
 
 # Column lists for JOIN queries (used by catalog service and other query builders)
@@ -399,7 +407,7 @@ RECORDING_COLUMNS_FOR_JOIN = ", ".join(
 )
 
 SONG_COLUMN_COUNT = 24
-RECORDING_COLUMN_COUNT = 38
+RECORDING_COLUMN_COUNT = 39
 
 # SQL for listing active (non-deleted) songs
 ACTIVE_SONGS_QUERY = f"""

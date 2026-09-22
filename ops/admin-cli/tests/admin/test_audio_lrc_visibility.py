@@ -91,6 +91,7 @@ def test_submit_lrc_wait_completion_forces_review_visibility():
         hash_prefix="abc123def456",
         r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
         visibility_status="review",
+        lrc_source="whisper_asr",
     )
     analysis_client.submit_lrc.assert_called_once()
     submit_kwargs = analysis_client.submit_lrc.call_args.kwargs
@@ -135,6 +136,7 @@ def test_status_sync_lrc_completion_forces_review_visibility():
         hash_prefix="abc123def456",
         r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
         visibility_status="review",
+        lrc_source="whisper_asr",
     )
 
 
@@ -178,6 +180,7 @@ def test_status_reconcile_lrc_on_r2_preserves_visibility():
         hash_prefix="abc123def456",
         r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
         visibility_status=None,
+        lrc_source="r2_preexisting",
     )
 
 
@@ -215,6 +218,7 @@ def test_handle_lrc_completion_forces_review_visibility():
         "abc123def456",
         "s3://bucket/abc123def456/lyrics.lrc",
         visibility_status="review",
+        lrc_source="whisper_asr",
     )
 
 
@@ -240,6 +244,7 @@ def test_interrupt_reconciliation_preserves_visibility():
         "abc123def456",
         "s3://bucket/abc123def456/lyrics.lrc",
         visibility_status=None,
+        lrc_source="r2_preexisting",
     )
 
 
@@ -279,6 +284,7 @@ def test_submit_lrc_for_song_skip_r2_preserves_visibility():
         "abc123def456",
         "s3://bucket/abc123def456/lyrics.lrc",
         visibility_status=None,
+        lrc_source="r2_preexisting",
     )
 
 
@@ -316,6 +322,7 @@ def test_handle_lrc_404_lost_job_preserves_visibility():
         "abc123def456",
         "s3://bucket/abc123def456/lyrics.lrc",
         visibility_status=None,
+        lrc_source="r2_preexisting",
     )
 
 

@@ -226,6 +226,7 @@ class Recording:
     deleted_at: Optional[str] = None
     theme: Optional[str] = None
     vocal_posture: Optional[str] = None
+    lrc_source: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Recording":
@@ -246,13 +247,15 @@ class Recording:
             - 29 columns: with download_status at index 27 and deleted_at at index 28
             - 36 columns: pre-theme schema (no theme/vocal_posture at end)
             - 38 columns: with theme at index 36 and vocal_posture at index 37
+            - 39 columns: with lrc_source at index 38
         """
         row_len = len(row)
 
         theme = None
         vocal_posture = None
+        lrc_source = None
 
-        if row_len >= 38:
+        if row_len >= 39:
             key_algorithm_version = row[14]
             key_score_margin = row[15]
             key_window_agreement = row[16]
@@ -269,6 +272,7 @@ class Recording:
             deleted_at = row[35]
             theme = row[36]
             vocal_posture = row[37]
+            lrc_source = row[38]
         elif row_len >= 36:
             key_algorithm_version = row[14]
             key_score_margin = row[15]
@@ -389,6 +393,7 @@ class Recording:
             deleted_at=_to_str(deleted_at),
             theme=theme,
             vocal_posture=vocal_posture,
+            lrc_source=lrc_source,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -436,6 +441,7 @@ class Recording:
             "deleted_at": self.deleted_at,
             "theme": self.theme,
             "vocal_posture": self.vocal_posture,
+            "lrc_source": self.lrc_source,
         }
 
     @property

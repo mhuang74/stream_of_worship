@@ -574,6 +574,7 @@ def _submit_forced_alignment_single(
                 hash_prefix=recording.hash_prefix,
                 r2_lrc_url=final_job.result.lrc_url,
                 visibility_status="review",
+                lrc_source="forced_alignment",
             )
 
         console.print(f"[green]Forced alignment completed for {song_id}[/green]")
@@ -970,6 +971,7 @@ def lyrics_upload(
     db_client.update_recording_lrc(
         hash_prefix=recording.hash_prefix,
         r2_lrc_url=r2_url,
+        lrc_source="manual_upload",
     )
 
     # Display success summary

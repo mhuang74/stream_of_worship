@@ -739,6 +739,7 @@ class DatabaseClient:
         visibility: Optional[str] = None,
         lrc_status: Optional[str] = None,
         download_status: Optional[str] = None,
+        lrc_source: Optional[str] = None,
         limit: Optional[int] = None,
         include_deleted: bool = False,
     ) -> list[Recording]:
@@ -749,6 +750,8 @@ class DatabaseClient:
             visibility: Filter by visibility status. Pass "none" to match recordings with NULL visibility_status.
             lrc_status: Filter by LRC status.
             download_status: Filter by download status.
+            lrc_source: Filter by LRC generation provenance. Pass "none" to match
+                recordings with NULL lrc_source.
             limit: Maximum number of results.
             include_deleted: Whether to include soft-deleted recordings.
 
@@ -794,6 +797,13 @@ class DatabaseClient:
                 query += " AND download_status = %s"
                 params.append(download_status)
 
+        if lrc_source:
+            if lrc_source == "none":
+                query += " AND lrc_source IS NULL"
+            else:
+                query += " AND lrc_source = %s"
+                params.append(lrc_source)
+
         query += " ORDER BY imported_at DESC"
 
         if limit:
@@ -813,6 +823,7 @@ class DatabaseClient:
         lrc_status: Optional[str] = None,
         album: Optional[str] = None,
         theme: Optional[str] = None,
+        lrc_source: Optional[str] = None,
         sort_by: str = "imported",
         limit: Optional[int] = None,
         include_deleted: bool = False,
@@ -827,6 +838,8 @@ class DatabaseClient:
             lrc_status: Filter by LRC status.
             album: Filter by album name (case-insensitive substring).
             theme: Filter by recording-level theme. Pass "none" to match recordings with NULL theme.
+            lrc_source: Filter by LRC generation provenance. Pass "none" to match
+                recordings with NULL lrc_source.
             sort_by: Sort order (``album``, ``series``, ``title``, ``imported``).
             limit: Maximum number of results.
             include_deleted: Whether to include soft-deleted recordings.
@@ -881,6 +894,12 @@ class DatabaseClient:
             else:
                 query += " AND r.theme = %s"
                 params.append(theme)
+        if lrc_source:
+            if lrc_source == "none":
+                query += " AND r.lrc_source IS NULL"
+            else:
+                query += " AND r.lrc_source = %s"
+                params.append(lrc_source)
 
         order_map = {
             "album": "s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
@@ -1194,6 +1213,7 @@ class DatabaseClient:
         hash_prefix: str,
         r2_lrc_url: str,
         visibility_status: Optional[str] = None,
+        lrc_source: Optional[str] = None,
     ) -> None:
         """Update recording with LRC results.
 
@@ -1204,6 +1224,10 @@ class DatabaseClient:
             hash_prefix: The hash prefix of the recording.
             r2_lrc_url: R2 URL for the generated LRC file.
             visibility_status: Optional visibility status to force on the recording.
+            lrc_source: Optional LRC generation provenance
+                (youtube_transcript | qwen3_asr | whisper_asr | forced_alignment |
+                manual_upload | llm_edit | r2_preexisting). Only overwrites the
+                stored value when a non-NULL source is given.
 
         Raises:
             ValueError: If ``visibility_status`` is not valid.
@@ -1223,11 +1247,12 @@ class DatabaseClient:
                         UPDATE recordings SET
                             r2_lrc_url = %s,
                             lrc_status = 'completed',
+                            lrc_source = COALESCE(%s, lrc_source),
                             visibility_status = COALESCE(visibility_status, 'published'),
                             updated_at = NOW()
                         WHERE hash_prefix = %s
                         """,
-                        (r2_lrc_url, hash_prefix),
+                        (r2_lrc_url, lrc_source, hash_prefix),
                     )
                 else:
                     cursor.execute(
@@ -1235,11 +1260,12 @@ class DatabaseClient:
                         UPDATE recordings SET
                             r2_lrc_url = %s,
                             lrc_status = 'completed',
+                            lrc_source = COALESCE(%s, lrc_source),
                             visibility_status = %s,
                             updated_at = NOW()
                         WHERE hash_prefix = %s
                         """,
-                        (r2_lrc_url, visibility_status, hash_prefix),
+                        (r2_lrc_url, lrc_source, visibility_status, hash_prefix),
                     )
 
         self._execute_with_retry(_query)

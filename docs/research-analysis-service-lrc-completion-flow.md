@@ -1,108 +1,156 @@
 # Research: Analysis Service LRC Completion Flow
 
+> Refreshed 2026-09-22. Supersedes the earlier SQLite/Turso narrative — the
+> admin catalog is now **PostgreSQL** (psycopg), and the LRC pipeline has a
+> third transcription source (DashScope Qwen3 ASR). For the pipeline decision
+> tree, see also `docs/lrc-job-flow.md`.
+
 ## Architecture Overview
 
-The system uses a **two-tier architecture** for database management. The Analysis Service has its own local SQLite job store, while the catalog database (with Turso sync) lives in the Admin CLI. The Analysis Service **never writes to Turso directly**. Instead, it writes to its own local SQLite database and to R2, and the Admin CLI is responsible for pulling results and updating its own local SQLite (which syncs to Turso).
+Two-tier architecture. The **Analysis Service** owns a local SQLite job store
+(`{CACHE_DIR}/jobs.db` via aiosqlite) plus R2 for artifacts. The **Admin CLI**
+owns the catalog: **PostgreSQL accessed via `psycopg`**
+(`ops/admin-cli/src/stream_of_worship/admin/db/client.py`). The Analysis
+Service never writes to the catalog; it exposes job status over HTTP and the
+Admin CLI pulls results and updates the catalog.
+
+There is no Turso/libsql sync anymore; `sow-admin db init` runs the unified
+Postgres DDL from `ops/admin-cli/src/stream_of_worship/db/postgres_schema.py`
+(`ALL_SCHEMA_STATEMENTS`, all idempotent `CREATE ... IF NOT EXISTS` / `ADD
+COLUMN IF NOT EXISTS`).
+
+## LRC Pipeline Sources (`ops/analysis-service/src/sow_analysis/workers/queue.py`, `_process_lrc_job`)
+
+`_process_lrc_job()` picks exactly one generation path, in priority order,
+and records it in `lrc_source`:
+
+| Priority | Source | `lrc_source` value | Trigger |
+|---|---|---|---|
+| 1 | YouTube transcript + LLM correction | `youtube_transcript` | `recordings.youtube_url` present; free-only mode waits out rate-limit circuit breakers, non-free mode falls through |
+| 2 | DashScope Qwen3 ASR → canonical snap → LLM alignment | `qwen3_asr` | `options.use_qwen3_asr` (default true); quota exhaustion waits in free mode, errors fall back to Whisper |
+| 3 | faster-Whisper transcription + LLM alignment | `whisper_asr` | Fallback; phrases cached under a language/prompt-aware key |
+| — | Qwen3ForcedAligner (separate job type) | `forced_alignment` | `sow-admin lyrics align` |
+| — | Admin manual paths (catalog-side, see below) | `manual_upload`, `r2_preexisting` | n/a |
+
+The worker sets `lrc_source` inside `result_json` of the job store row and
+returns it to the admin via `GET /api/v1/jobs/{id}` → `result.lrc_source`
+(`JobResult.lrc_source`, `ops/analysis-service/src/sow_analysis/models.py`).
 
 ## How the Analysis Service Writes LRC Results
 
-The LRC generation pipeline is in `services/analysis/src/sow_analysis/workers/lrc.py`. The `generate_lrc()` function (line 664) returns a tuple of `(Path, int, List[WhisperPhrase])` -- the LRC file path, line count, and Whisper phrases. It writes the LRC file to a local temporary path via `_write_lrc()` (line 490).
+`_process_lrc_job()` in `ops/analysis-service/src/sow_analysis/workers/queue.py`:
 
-The orchestration happens in `_process_lrc_job()` in `services/analysis/src/sow_analysis/workers/queue.py` (line 509). This method:
+1. Sets job status to `PROCESSING` in the local SQLite job store
+2. Checks the LRC result cache (unless `force=True`); a cache hit with cached
+   text re-uploads `lyrics.lrc` to R2 and returns `lrc_source` from the cache
+3. Runs the pipeline (above) → writes LRC to a temp path via `_write_lrc()`
+4. Uploads to R2 via `r2_client.upload_official_lrc(hash_prefix, lrc_path,
+   expected_etag=official_lrc_etag)` — ETag captured at job start for
+   stale-object protection (fails the job if a human edited the official LRC
+   mid-flight); a `.bak` backup of the previous file is kept
+5. Saves `{lrc_url, line_count, lrc_source, lrc_text}` to the local disk cache
+   (`cache_manager.save_lrc_result`, composite key `content_hash + lyrics_hash`)
+6. Sets job status `COMPLETED` with `result_json` containing
+   `{lrc_url, line_count, lrc_source}`
 
-1. Sets job status to `PROCESSING` in the local SQLite job store (line 529)
-2. Calls `generate_lrc()` to produce the LRC file locally
-3. Uploads the LRC to R2 (line 852)
-4. Saves the result to the local disk cache (line 856)
-5. Sets job status to `COMPLETED` in the local SQLite job store with the `lrc_url` and `line_count` in `result_json` (lines 860-878)
+**Job retention:** `JobStore.purge_old_jobs(max_age_days=7)` runs at every
+service startup (`queue.py` `initialize()`), deleting completed/failed/
+cancelled jobs older than 7 days. **The job store is therefore NOT a durable
+record of LRC provenance** — which is why `lrc_source` is now persisted in
+the catalog (below).
 
-## Database Storage: Local SQLite, NOT Turso
-
-The Analysis Service writes to a **local SQLite database** at `{CACHE_DIR}/jobs.db` (default `/cache/jobs.db`). This is defined in:
-
-- `services/analysis/src/sow_analysis/storage/db.py` -- the `JobStore` class uses `aiosqlite`
-- `services/analysis/src/sow_analysis/workers/queue.py` line 116 -- `db_path = db_path if db_path is not None else cache_dir / "jobs.db"`
-
-There are **zero references** to Turso, libsql, or any Turso connection strings anywhere in the `services/analysis/` directory. The Analysis Service has no knowledge of Turso whatsoever.
-
-## How LRC Files Are Uploaded to R2
-
-The R2 upload happens in `_process_lrc_job()` at queue.py line 852:
-
-```python
-lrc_url = await self.r2_client.upload_lrc(hash_prefix, lrc_path)
-```
-
-The `upload_lrc()` method in `services/analysis/src/sow_analysis/storage/r2.py` (line 135) uploads the local LRC file to the key `{hash_prefix}/lyrics.lrc` and returns the S3 URL `s3://{bucket}/{hash_prefix}/lyrics.lrc`.
-
-After R2 upload, two things happen:
-
-1. **Local disk cache** is updated (queue.py line 856): `cache_manager.save_lrc_result(lrc_cache_key, {"lrc_url": lrc_url, "line_count": line_count})`
-2. **Local SQLite job store** is updated (queue.py lines 869-878): `job_store.update_job(job.id, status="completed", progress=1.0, stage="complete", result_json=...)`
-
-## Complete Flow: LRC Job Submission to Database Update
+## Complete Flow: LRC Job Submission to Catalog Update
 
 ### Phase A: Admin CLI submits job and records intent
 
-1. Admin CLI (`_submit_lrc_single()` at `src/stream_of_worship/admin/commands/audio.py` line 341) calls `analysis_client.submit_lrc()` via HTTP POST to `/api/v1/jobs/lrc`
-2. Admin CLI immediately updates its own local SQLite catalog: `db_client.update_recording_status(hash_prefix=..., lrc_status="processing", lrc_job_id=job_id)` (line 360-364)
+1. `sow-admin lyrics generate` (`ops/admin-cli/.../commands/lyrics.py`) →
+   `submit_lrc_single()` / `submit_lrc_batch()` in
+   `ops/admin-cli/.../services/lrc_jobs.py` → HTTP POST `/api/v1/jobs/lrc`
+2. Admin CLI immediately updates the catalog:
+   `db_client.update_recording_status(hash_prefix=..., lrc_status="processing",
+   lrc_job_id=job_id)`
 
 ### Phase B: Analysis Service processes the job
 
-3. Analysis Service's `_process_lrc_job()` runs the LRC pipeline:
-   - Downloads audio from R2
-   - Optionally downloads/generates vocals stem
-   - Runs Whisper transcription + LLM alignment (or YouTube transcript path)
-   - Optionally runs Qwen3 refinement
-   - Writes LRC file locally
-4. Uploads LRC to R2 via `r2_client.upload_lrc()` -- stored at `{hash_prefix}/lyrics.lrc`
-5. Saves LRC result to local disk cache
-6. Updates the Analysis Service's own `jobs.db`: `status=completed`, `result_json` contains `{lrc_url, line_count}`
+See "LRC Pipeline Sources" and "How the Analysis Service Writes LRC Results"
+above.
 
 ### Phase C: Admin CLI retrieves results and updates catalog
 
-This happens through **two mechanisms**:
+**Mechanism 1: Synchronous wait (`lyrics generate --wait`)**
+- `submit_lrc_single()` calls `analysis_client.wait_for_completion()` which
+  polls `GET /api/v1/jobs/{job_id}` every 30s
+- On `status=completed`, calls
+  `db_client.update_recording_lrc(hash_prefix, r2_lrc_url=...,
+  visibility_status="review", lrc_source=job.result.lrc_source)`
 
-**Mechanism 1: Synchronous wait (single job with `--wait`)**
-- `_submit_lrc_single()` calls `analysis_client.wait_for_completion()` (audio.py line 387) which polls `GET /api/v1/jobs/{job_id}` every 30s
-- When the job returns `status=completed`, the Admin CLI calls `db_client.update_recording_lrc(hash_prefix, r2_lrc_url=job.result.lrc_url)` (audio.py lines 411-415)
-- This writes to the Admin CLI's local SQLite catalog: sets `r2_lrc_url`, `lrc_status='completed'`, and auto-publishes via `visibility_status = COALESCE(visibility_status, 'published')` (client.py lines 893-922)
-
-**Mechanism 2: Async sync via `sow-admin audio status --sync`**
-- The `status` command (audio.py line 1920) iterates over recordings with `lrc_status IN ('pending', 'processing')`
+**Mechanism 2: Async sync (`sow-admin audio status --sync`)**
+- Iterates recordings with `lrc_status IN ('pending', 'processing')`
 - For each, queries the Analysis Service API for the job status
-- If completed with an `lrc_url`, calls `db_client.update_recording_lrc()` (audio.py lines 1996-2004)
-- If failed, calls `db_client.update_recording_status(lrc_status="failed")` (audio.py lines 2006-2010)
+- If completed with an `lrc_url`, calls `db_client.update_recording_lrc()`
+  (now passing `lrc_source=job.result.lrc_source`)
+- If failed, calls `db_client.update_recording_status(lrc_status="failed")`
 
-### Phase D: Turso sync (separate manual step)
+### Phase D: No external sync needed
 
-7. The Admin CLI's `DatabaseClient` can optionally use `libsql` embedded replicas to sync with Turso cloud
-8. Triggered by `sow-admin db sync` command
-9. Calls `conn.sync()` on the libsql connection, which pushes local writes to Turso cloud
-10. This is a **manual operation**
+Postgres is the single source of truth; there is no separate sync step.
 
-## Data Flow Diagram
+## LRC Provenance in the Catalog (`recordings.lrc_source`)
 
+Column: `recordings.lrc_source TEXT` (39th column of
+`RECORDING_COLUMNS_SELECT`; `RECORDING_COLUMN_COUNT = 39`). NULL = legacy row
+predating the column, or source unknown.
+
+| Value | Written by |
+|---|---|
+| `youtube_transcript` | LRC job completed via YouTube transcript path (`audio status --sync`, `lyrics generate --wait`, batch completion) |
+| `qwen3_asr` | LRC job completed via DashScope Qwen3 ASR path (same mechanisms) |
+| `whisper_asr` | LRC job completed via Whisper fallback path (same mechanisms) |
+| `forced_alignment` | `sow-admin lyrics align` completion |
+| `manual_upload` | `sow-admin lyrics upload`, LRC editor save (`editor/upload.py`), `audio status --force-status --force-url` |
+| `r2_preexisting` | Reconciliation paths that found `lyrics.lrc` already on R2 (`audio status --reconcile`, batch skip-on-R2, lost-job recovery) |
+| NULL | Recorded before this column existed, or source unknown |
+
+`update_recording_lrc(lrc_source=...)` uses
+`lrc_source = COALESCE(%s, lrc_source)`: passing `None` preserves any existing
+value; passing a value overwrites.
+
+### Querying by source
+
+```bash
+# All LRCs generated from YouTube transcripts (pipeable IDs)
+sow-admin audio list --lrc-source youtube_transcript --format ids
+
+# Re-run LRC for that source after a pipeline enhancement
+sow-admin audio list --lrc-source youtube_transcript --format ids \
+  | sow-admin lyrics generate --force --stdin
+
+# Source quality breakdown (psql)
+SELECT lrc_source, COUNT(*) FROM recordings
+WHERE r2_lrc_url IS NOT NULL AND deleted_at IS NULL
+GROUP BY lrc_source ORDER BY 2 DESC;
+
+# Cross-reference with user feedback (lyrics_feedback, ADR 0007)
+SELECT r.lrc_source, f.rating, COUNT(*) FROM lyrics_feedback f
+JOIN recordings r ON r.content_hash = f.recording_content_hash
+GROUP BY r.lrc_source, f.rating;
 ```
-Analysis Service (local SQLite jobs.db + R2)
-       |
-       | HTTP API (GET /api/v1/jobs/{id})
-       v
-Admin CLI (local SQLite catalog.db)
-       |
-       | libsql embedded replica sync
-       v
-Turso Cloud Database
-```
 
-## Turso Write Operations in the Analysis Service
+### Historical recordings (backfill)
 
-**There are none.** The Analysis Service never writes to Turso. The path to Turso goes through the Admin CLI.
+The analysis service purges job rows after 7 days, so the job store holds at
+most ~1 week of `lrc_source` values — a bulk backfill migration is not worth
+building. Legacy rows keep `lrc_source = NULL` (filterable as `--lrc-source
+none`). Sources are recorded going forward from the deployment of this
+change; to (re)populate known rows, re-run the LRC pipeline with `--force`.
 
-## Storage Layer Summary (`services/analysis/src/sow_analysis/storage/`)
+## Storage Layer Summary (`ops/analysis-service/src/sow_analysis/storage/`)
 
-- **`db.py`** (`JobStore`): Local SQLite via `aiosqlite` for job state persistence. The `jobs` table tracks id, type, status, progress, stage, error_message, request_json, result_json, content_hash, timestamps.
-
-- **`r2.py`** (`R2Client`): S3-compatible storage client for R2. `upload_lrc()` (line 135) stores LRC files at `{hash_prefix}/lyrics.lrc`. Also handles audio downloads, stem uploads, and analysis result uploads.
-
-- **`cache.py`** (`CacheManager`): Local disk cache for deduplication. Stores LRC results as `{hash_prefix}_lrc.json` containing `{lrc_url, line_count}`. Also caches Whisper transcriptions. Cache key for LRC results is a composite hash of `content_hash + lyrics_hash`.
+- **`db.py`** (`JobStore`): Local SQLite via `aiosqlite` for job state
+  persistence; 7-day purge of terminal jobs on startup.
+- **`r2.py`** (`R2Client`): `upload_official_lrc()` stores LRC at
+  `{hash_prefix}/lyrics.lrc` with ETag stale-object protection + backup; also
+  handles audio downloads, stem uploads, analysis result uploads.
+- **`cache.py`** (`CacheManager`): LRC results cached as
+  `{content_hash+lyrics_hash}` → `{lrc_url, line_count, lrc_source, lrc_text}`;
+  also caches Whisper and Qwen3 ASR transcriptions.
