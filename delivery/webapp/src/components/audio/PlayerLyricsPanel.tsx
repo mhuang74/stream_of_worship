@@ -42,15 +42,23 @@ export function PlayerLyricsPanel({ recordingContentHash }: PlayerLyricsPanelPro
     ? findCurrentLyricIndex(globalLines, currentTime + CURSOR_LEAD_SECONDS)
     : -1;
 
+  // Page-flip auto-scroll (same rule as LyricJumpList): the cursor walks down
+  // the visible region untouched; only when the active row leaves it does the
+  // panel scroll — a full page at a time, landing the row one row-height below
+  // the top so the just-sung line stays visible (instant; no smooth scrolling).
   useEffect(() => {
     if (activeIndex < 0) return;
     const container = scrollRef.current;
-    const row = container?.querySelector<HTMLButtonElement>(
-      `[data-lyric-index="${activeIndex}"]`
-    );
-    if (!row || !container) return;
+    if (!container) return;
+    const row = container.querySelector<HTMLElement>(`[data-lyric-index="${activeIndex}"]`);
+    if (!row) return;
+    const rowTop = row.offsetTop - container.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    const viewTop = container.scrollTop;
+    const viewBottom = viewTop + container.clientHeight;
+    if (rowBottom <= viewBottom && rowTop >= viewTop) return; // fully visible
     container.scrollTo({
-      top: row.offsetTop - container.offsetTop - (container.clientHeight - row.offsetHeight) / 2,
+      top: Math.max(0, rowTop - row.offsetHeight),
     });
   }, [activeIndex]);
 

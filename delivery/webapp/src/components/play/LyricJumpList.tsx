@@ -79,17 +79,27 @@ export function LyricJumpList({
     }
   }, [isOpen]);
 
-  // Auto-scroll the active row to the vertical center of the sheet. Instant
-  // (no smooth scrolling). Skipped when the user pinned a different chapter.
+  // Page-flip auto-scroll: the cursor walks down the visible region untouched;
+  // only when the active row leaves it does the sheet scroll — a full page at a
+  // time, landing the row one row-height below the top so the just-sung line
+  // stays visible as context (instant; no smooth scrolling). Skipped when the
+  // user pinned a different chapter: the current chapter's rows aren't rendered
+  // then, so the query misses and nothing scrolls.
   useEffect(() => {
     if (!isOpen || activeLineIndex < 0) return;
     const container = contentRef.current;
-    const row = container?.querySelector<HTMLButtonElement>(
+    if (!container) return;
+    const row = container.querySelector<HTMLButtonElement>(
       `[data-lyric-row="${currentSongIndex}-${activeLineIndex}"]`
     );
-    if (!row || !container) return;
+    if (!row) return;
+    const rowTop = row.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    const viewTop = container.scrollTop;
+    const viewBottom = viewTop + container.clientHeight;
+    if (rowBottom <= viewBottom && rowTop >= viewTop) return; // fully visible
     container.scrollTo({
-      top: row.offsetTop - (container.clientHeight - row.offsetHeight) / 2,
+      top: Math.max(0, rowTop - row.offsetHeight),
     });
   }, [isOpen, currentSongIndex, activeLineIndex]);
 

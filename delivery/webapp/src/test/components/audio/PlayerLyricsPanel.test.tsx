@@ -234,6 +234,14 @@ describe("PlayerLyricsPanel — playback cursor", () => {
 
   let scrollSpy: Mock;
 
+  const ROW_HEIGHT = 50;
+  // data-lyric-index → row.offsetTop
+  let rowTops: Record<string, number>;
+
+  let origOffsetTop: PropertyDescriptor | undefined;
+  let origOffsetHeight: PropertyDescriptor | undefined;
+  let origClientHeight: PropertyDescriptor | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockFeedbackOk();
@@ -246,6 +254,45 @@ describe("PlayerLyricsPanel — playback cursor", () => {
     // jsdom has no scrollTo; install a recording spy on the container prototype.
     scrollSpy = vi.fn();
     Element.prototype.scrollTo = scrollSpy;
+
+    // jsdom reports 0 for all layout metrics; under the containment check
+    // that means "everything visible" → no scroll. Install per-element
+    // layout so the page-flip logic can be exercised (same scaffolding as
+    // LyricJumpList.test.tsx, keyed by data-lyric-index).
+    rowTops = {};
+    origOffsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop");
+    origOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    origClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get(this: HTMLElement) {
+        const key = this.getAttribute("data-lyric-index");
+        return key ? (rowTops[key] ?? 0) : 0; // container.offsetTop = 0
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute("data-lyric-index") ? ROW_HEIGHT : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("overflow-y-auto") ? 300 : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    for (const [name, desc] of [
+      ["offsetTop", origOffsetTop],
+      ["offsetHeight", origOffsetHeight],
+      ["clientHeight", origClientHeight],
+    ] as const) {
+      if (desc) Object.defineProperty(HTMLElement.prototype, name, desc);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+    }
   });
 
   function mockPlayerTime(currentTime: number) {
@@ -287,7 +334,7 @@ describe("PlayerLyricsPanel — playback cursor", () => {
     expect(seekFn).toHaveBeenCalledWith(9);
   });
 
-  it("active line change → container scrollTo centers the row", () => {
+  it("does not scroll when the active row stays inside the visible region", () => {
     mockPlayerTime(6);
     const { rerender } = render(<PlayerLyricsPanel recordingContentHash="abc123" />);
     scrollSpy.mockClear();
@@ -295,6 +342,41 @@ describe("PlayerLyricsPanel — playback cursor", () => {
     mockPlayerTime(10);
     rerender(<PlayerLyricsPanel recordingContentHash="abc123" />);
 
-    expect(scrollSpy).toHaveBeenCalledWith({ top: expect.any(Number) });
+    // Row 2 at [150, 200] inside [0, 300] → no scroll.
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it("page-flips when the active row exits below the visible region", () => {
+    rowTops = { "2": 400 };
+    mockPlayerTime(6);
+    const { rerender } = render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    scrollSpy.mockClear();
+
+    mockPlayerTime(10);
+    rerender(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    // Row 2 at [400, 450], bottom 450 > 300 → one flip landing it one
+    // row-height below the top.
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ top: 400 - ROW_HEIGHT });
+  });
+
+  it("scrolls up with the same placement when the cursor exits above, clamped at 0", () => {
+    rowTops = { "0": 0, "1": 60 };
+    mockPlayerTime(6);
+    const { rerender } = render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+    // Row 1 at [60, 110] is fully inside [0, 300] → no scroll yet.
+    expect(scrollSpy).not.toHaveBeenCalled();
+
+    const scroller = document.querySelector(".overflow-y-auto") as HTMLElement;
+    scroller.scrollTop = 500;
+    scrollSpy.mockClear();
+
+    mockPlayerTime(1.5);
+    rerender(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    // Active row 0 (1.5 + 0.3 lead ≥ 1) at rowTop 0 < viewTop 500 →
+    // upward flip; 0 − 50 clamps to 0.
+    expect(scrollSpy).toHaveBeenCalledWith({ top: 0 });
   });
 });
