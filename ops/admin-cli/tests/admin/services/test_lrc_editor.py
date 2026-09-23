@@ -115,7 +115,7 @@ class TestAutosave:
             source_mode="catalog",
             selected_index=2,
         )
-        path = save_autosave(tmp_path, "abc123", state)
+        save_autosave(tmp_path, "abc123", state)
         loaded = load_autosave(tmp_path, "abc123")
         assert loaded is not None
         assert loaded.selected_index == 2

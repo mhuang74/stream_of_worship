@@ -62,8 +62,8 @@ class TestSongIDStability:
         scraper = CatalogScraper()
 
         # Different Unicode forms should produce same ID
-        id_1 = scraper._compute_song_id("café", "Test", "Test")
-        id_2 = scraper._compute_song_id("café", "Test", "Test")  # Different Unicode form
+        scraper._compute_song_id("café", "Test", "Test")
+        scraper._compute_song_id("café", "Test", "Test")  # Different Unicode form
 
         # These should be the same after NFKC normalization
         # (though in practice most inputs will already be normalized)
@@ -85,7 +85,6 @@ class TestIncrementalScraping:
         """Test that incremental mode skips existing songs."""
         # This is an integration test that would require a mock database
         # For now, we just verify the method signature exists
-        scraper = CatalogScraper()
 
         # _get_existing_song_ids should return a set
         # In a real test, we'd mock the db_client

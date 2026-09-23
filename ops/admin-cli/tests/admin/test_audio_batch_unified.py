@@ -1104,7 +1104,7 @@ class TestReconcileOnInterruptV3:
     def test_analyze_job_leaves_db_untouched(self):
         db = MagicMock()
         db.get_recording_by_song_id.return_value = _make_recording("s1")
-        results = self._reconcile({("s1", "analyze"): "a-1"}, db, MagicMock())
+        self._reconcile({("s1", "analyze"): "a-1"}, db, MagicMock())
         db.update_recording_lrc.assert_not_called()
         db.update_recording_status.assert_not_called()
 
