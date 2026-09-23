@@ -72,15 +72,21 @@ const handleTapToggle = useCallback(() => {
   });
 }, [startHideTimer]);
 
-// Activity wake: desktop hover re-summons, never toggles.
-const handleActivity = useCallback(() => {
+// Activity wake: MOUSE hover only — re-summons, never toggles.
+// MUST be pointer-type-gated: a tap dispatches compat mouse events
+// (touchstart → touchend → mouseover → mousemove → mousedown → mouseup)
+// BEFORE click, so a plain onMouseMove wake would set chrome visible and
+// the immediately following click-toggle would read that state and hide
+// it again — tap-to-reveal would become tap-to-hide on phones.
+const handleActivity = useCallback((e: React.PointerEvent) => {
+  if (e.pointerType !== "mouse") return;
   setChromeVisible(true);
   startHideTimer();
 }, [startHideTimer]);
 ```
 
 Wiring:
-- Root div: `onClick={handleTapToggle}`, `onMouseMove={handleActivity}`; **`onTouchStart` removed** (double-toggle risk above; click covers taps with no 300ms delay in modern browsers).
+- Root div: `onClick={handleTapToggle}`, `onPointerMove={handleActivity}`; **`onTouchStart` and `onMouseMove` both removed** — touchstart would double-toggle against click (a tap synthesizes click), and ungated mousemove has the compat-event ordering bug above. Click covers taps with no 300ms delay in modern browsers; pointermove with the `pointerType === "mouse"` gate covers desktop hover.
 - Video element's own `onClick` (`:1180-1183`) calls `handleTapToggle` (keeps its `stopPropagation`).
 - **Propagation discipline (the core risk of toggle semantics):** chrome containers must not let their button clicks bubble to the root toggle. Add `onClick={(e) => e.stopPropagation()}` to: top bar container, controls wrapper, pendingResume overlay, media-failure overlay, iOS info card, diagnostic sheet, and the LyricJumpList backdrop (its tap = close sheet, not toggle chrome).
 - Q13 interaction: while the lyrics sheet is open, the backdrop covers the video — backdrop taps close the sheet (stopPropagation), so chrome can't be toggled off underneath the pinned-open sheet. Consistent.
@@ -89,22 +95,32 @@ Wiring:
 #### 1h. First-tap document fullscreen, touch only (D3/Q21)
 
 ```tsx
-const fullscreenRequestedRef = useRef(false);
+const fullscreenDoneRef = useRef(false);
 
 const maybeEnterFullscreenOnce = useCallback(() => {
-  if (fullscreenRequestedRef.current) return;
+  if (fullscreenDoneRef.current) return;
   if (!isTouchDevice || !canDocumentFullscreen) return;
-  fullscreenRequestedRef.current = true; // set before the async call: never retried
-  document.documentElement.requestFullscreen().catch(() => {
-    // iOS Safari (no API — gated above), user-denied, transient errors:
-    // stay in-browser, never nag. The manual top-bar button remains.
-  });
+  // MUST be called from an activation-triggering event (click / pointerup /
+  // touchend). NEVER from touchstart: touchstart is NOT an activation-
+  // triggering event for the Fullscreen API, so a request fired there is
+  // rejected — the same silent-failure mode as the deleted auto effect.
+  document.documentElement.requestFullscreen().then(
+    () => {
+      fullscreenDoneRef.current = true; // success: never auto-request again
+    },
+    () => {
+      // Rejected (transient focus/race, embed policy): leave the flag UNSET
+      // so the next tap may silently retry. Bounded by user taps; no UI nag.
+    }
+  );
 }, [isTouchDevice, canDocumentFullscreen]);
 ```
 
 - `isTouchDevice` via the existing `useSyncExternalStore` capability-detection pattern (`matchMedia("(pointer: coarse)")`), alongside `canDocumentFullscreen` (`:106-134`).
-- Called from `handleTapToggle` and from the play button's handler (covers users whose first gesture is the play button — the button's stopPropagation means the root toggle never fires there).
+- Called from `handleTapToggle` (the `click` path — activation-triggering) and from the play button's `click` handler (covers users whose first gesture is the play button — the button's stopPropagation means the root toggle never fires there). **Never wired to touchstart** (see comment in code).
 - Not called from `handleActivity` (desktop mousemove must never trigger it; also redundant given the pointer-coarse gate).
+- The one-shot flag latches on **promise resolution**, not on the call — a rejection doesn't consume the attempt, so a transiently-failing first tap isn't a permanent loss of auto-entry.
+- Once latched, it stays latched even if the user later exits fullscreen (Esc / Android back gesture / browser UI): auto-entry never fights an explicit exit. **The manual top-bar re-enter button is permanent, not transitional** — system exit paths can't be intercepted, and iPhone Safari has no Fullscreen API at all (`canDocumentFullscreen` false), so without the button those users are stranded with browser chrome.
 - The 1h request and 1g's toggle both fire on the same first tap — that's intended: the user sees chrome appear *as* the browser chrome disappears, once.
 
 #### 1i. Rotate hint in portrait (D4/Q22)
@@ -140,6 +156,7 @@ A chip rendered inside the media overlay area, sharing the chrome fade:
 - `isPortrait` via `useSyncExternalStore` on `matchMedia("(orientation: portrait)")` — same pattern as capability detection.
 - Fades **with** chrome: zero added clutter during normal playback (chrome hidden → hint hidden). Users see it at mount (chrome starts visible for 3s) and on every chrome summon while in portrait — a persistent but never-obstructive nudge. Session-scoped dismiss (`useState`) for those who intentionally stay portrait.
 - Sits above the control bar via the same `--sow-controller-bar-height` variable used for the sheet dock; never overlaps the bar or the video's letterboxed image center.
+- **Measurement timing fix (v1 §234 bug):** v1 measured the bar height only "while `isLyricsOpen`" — but the hint renders at mount, before the sheet is ever opened, so the variable would be unset and `bottom-[calc(var(--sow-controller-bar-height)+1rem)]` is an invalid declaration the browser drops, leaving the chip unbounded at the top of the overlay. Two-part fix: (a) the root sets a default `--sow-controller-bar-height: 0px` so the declaration is always valid, and (b) the measurement moves from "while sheet open" to **whenever chrome is visible** (on `chromeVisible` transitions and window resize) — the sheet dock consumes the same variable, so earlier measurement is compatible with Phase 2c.
 - No orientation lock attempted anywhere (rejected: requires fullscreen on Android, unsupported on iOS).
 
 ### Phase 2: LyricJumpList — unchanged from v1
@@ -162,15 +179,16 @@ v1 §4a–4c apply, with these changes:
 - Delete (v1): auto-fullscreen-on-mount assertion.
 - Update (D2): fullscreen-button test now asserts `document.documentElement.requestFullscreen` is called; the `webkitEnterFullscreen` iOS fallback test (`:1937-1956`) is kept by deleting `document.documentElement.requestFullscreen` in that test. Any v1-planned element-fullscreen assertions are dropped — that path no longer exists.
 - New (D1): tap on the video toggles — `opacity-100` → tap → `opacity-0 pointer-events-none` immediately (no timer wait) → tap → `opacity-100`. Clicking the play button (child of the controls wrapper) does **not** toggle chrome. Manual toggle-off while paused works; the 3s auto-hide still never fires while paused (D5).
-- New (D3): with coarse-pointer + `canDocumentFullscreen` mocks, the first tap requests document fullscreen exactly once (second tap does not re-request); with fine-pointer mock, no request ever fires; with `canDocumentFullscreen` false, no request and no throw.
-- New (D4): rotate hint rendered when portrait + touch + chrome visible; absent in landscape; absent after dismiss click; gains `opacity-0` when chrome hides.
+- New (D1, compat-mouse-event regression): with chrome hidden, fire `pointerMove` with `pointerType: "touch"` followed by `click` on the video (the real mobile tap sequence) → chrome is visible **and stays visible** (the pointermove must not wake chrome into the toggle's path). Fire `pointerMove` with `pointerType: "mouse"` → chrome wakes without toggling.
+- New (D3): with coarse-pointer + `canDocumentFullscreen` mocks, the first tap requests document fullscreen exactly once; on mocked promise **resolution**, a second tap does not re-request; on mocked **rejection**, a second tap retries (flag latches on settle, not on call); after a mocked `fullscreenchange` exit following success, further taps do NOT re-request (manual button only). With fine-pointer mock, no request ever fires; with `canDocumentFullscreen` false, no request and no throw. Assert the request is only ever triggered from click handlers (no touchstart wiring).
+- New (D4): rotate hint rendered when portrait + touch + chrome visible; absent in landscape; absent after dismiss click; gains `opacity-0` when chrome hides. At mount with the sheet never opened, the root carries a valid `--sow-controller-bar-height` (default `0px`, updated on chrome-visible transitions) so the hint's `bottom` calc always resolves — jsdom class/variable assertion; the browser pass measures the rect.
 
 **LyricJumpList.test.tsx** — v1 changes apply; add: backdrop click closes the sheet without invoking any parent toggle (assert `onOpenChange(false)` called, and if rendered inside a toggle harness, chrome state unchanged).
 
 **Real-browser verification (acceptance, per AGENTS.md recipe)** — v1's geometry proofs plus:
 - Portrait 390×844: rotate hint visible at mount, gone after chrome fade; video rect fills viewport.
 - Landscape 844×390: video fills viewport height; after first tap, `document.fullscreenElement === document.documentElement` (headless Chromium supports the Fullscreen API — if the CDP environment rejects it, verify the request was *attempted* via a spy injected with `addInitScript`, and verify real fullscreen manually on a device); URL-bar-free viewport height gain confirmed via `window.innerHeight` before/after.
-- Tap-toggle: tap video → controls appear; tap again → gone; screenshot pair.
+- Tap-toggle: tap video → controls appear **and stay** (real touch events exercise the compat-mouse-event ordering — the regression the pointer-gate fixes); tap again → gone; screenshot pair. At mount in portrait, measure the rotate hint's rect: fully inside the viewport, bottom edge above the control bar's top edge (catches the unset-CSS-var bug jsdom can't).
 - Sheet geometry proofs (Q17) unchanged.
 - Safe-area: can't be measured on a notched emulator via plain headless Chrome — class-contract assertion in jsdom (`env(safe-area-inset-*)` classes present) suffices; eyeball on a real device when available.
 
@@ -186,8 +204,12 @@ v1 §4a–4c apply, with these changes:
 |------|-----------|
 | Tap-toggle: missed tap on a small button hides chrome, disorienting the user | stopPropagation on every chrome container (1g); covered by the "play button doesn't toggle" test |
 | Tap-toggle double-fires from touchstart+click synthesis | Toggle on `click` only; `touchstart` handler removed (1g) |
+| Compat mouse events (mouseover/mousemove before click) wake chrome into the toggle's path — tap-to-reveal becomes tap-to-hide on phones | Activity wake is `pointermove` gated to `pointerType === "mouse"` (1g); dedicated regression test + real-touch browser check |
+| Fullscreen request fired from touchstart is rejected (touchstart is not an activation-triggering event) — same silent-failure mode as the deleted auto effect | Request wired only to `click` handlers (1h); test asserts no touchstart wiring |
 | First-tap fullscreen surprises users who only wanted to summon controls | Requested once per session, touch-only; the fullscreen transition coincides with chrome appearing; back gesture/Esc exits; the overlay player looks identical in and out of fullscreen except for browser chrome |
-| `requestFullscreen` promise rejection (user gesture edge cases, embedded contexts) | Fire-and-forget `.catch(() => {})`; flag set before the call so a failure is never retried mid-session |
+| User exits fullscreen via Esc/Android back — system path the page can't intercept — and iPhone Safari has no Fullscreen API at all | Manual re-enter button is permanent (1h); auto-entry never re-fires after an explicit exit (flag stays latched) |
+| `requestFullscreen` promise rejection (transient focus/race, embed policy) | Flag latches on promise **resolution**, not on the call — the next tap silently retries; bounded by user taps, no UI nag (1h) |
+| Rotate-hint `calc()` uses `--sow-controller-bar-height` before it's ever measured (v1 measured only while the sheet is open) → invalid declaration dropped, chip unbounded | Root default `--sow-controller-bar-height: 0px` + measurement on every chrome-visible transition (1i); mount-time geometry assertions in both jsdom and browser passes |
 | Rotate hint becomes noise for intentional portrait users | Session dismiss chip; fades with chrome so it never sits over playback |
 | Document fullscreen + landscape: Android gesture bar still overlays bottom edge | Safe-area padding (1b′); chrome auto-hides anyway during playback |
 
