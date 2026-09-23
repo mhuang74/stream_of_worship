@@ -11,6 +11,7 @@ from stream_of_worship.admin.services.structured_lyrics import (
     StructuredLyricsSection,
     extract_structured_lyrics_with_llm,
     flatten_structured_lyrics,
+    format_structured_lyrics_canonical,
     parse_structured_lyrics,
     parse_structured_lyrics_smart,
 )
@@ -194,6 +195,50 @@ class TestFlattenStructuredLyrics:
 
         flattened = flatten_structured_lyrics(parsed)
         assert not flattened.endswith("\n")
+
+
+class TestFormatStructuredLyricsCanonical:
+    """Tests for format_structured_lyrics_canonical."""
+
+    def test_mixed_case_labels_lowercased(self):
+        """Labels come from the normalized lowercase field, never raw_label."""
+        parsed = parse_structured_lyrics("[Pre-Chorus]\nLine 1\n\n[CHORUS]\nLine 2")
+        assert parsed is not None
+
+        formatted = format_structured_lyrics_canonical(parsed)
+        assert formatted == "[pre-chorus]\nLine 1\n\n[chorus]\nLine 2\n"
+
+    def test_crlf_input_produces_lf_output(self):
+        """CRLF input is normalized to LF output."""
+        parsed = parse_structured_lyrics("[Verse]\r\nLine 1\r\nLine 2\r\n")
+        assert parsed is not None
+
+        formatted = format_structured_lyrics_canonical(parsed)
+        assert formatted == "[verse]\nLine 1\nLine 2\n"
+        assert "\r" not in formatted
+
+    def test_empty_sections_list_returns_empty_string(self):
+        """Empty sections list produces empty string (no trailing newline)."""
+        assert format_structured_lyrics_canonical({"sections": [], "preamble_lines": []}) == ""
+
+    def test_zero_line_section_still_emits_header(self):
+        """A section with no lines still emits its header."""
+        parsed = parse_structured_lyrics("[Verse]\nLine 1\n\n[Bridge]")
+        assert parsed is not None
+        assert parsed["sections"][1]["lines"] == []
+
+        formatted = format_structured_lyrics_canonical(parsed)
+        assert formatted == "[verse]\nLine 1\n\n[bridge]\n"
+
+    def test_single_trailing_newline(self):
+        """Output ends with exactly one newline; preamble is dropped."""
+        parsed = parse_structured_lyrics("Promo line\n[Verse]\nLine 1")
+        assert parsed is not None
+
+        formatted = format_structured_lyrics_canonical(parsed)
+        assert formatted == "[verse]\nLine 1\n"
+        assert "Promo line" not in formatted
+        assert not formatted.endswith("\n\n")
 
 
 class TestStructuredLyricsModels:

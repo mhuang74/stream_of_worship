@@ -291,3 +291,27 @@ def flatten_structured_lyrics(structured: dict) -> str:
         out.append(f"[{raw_label}]")
         out.extend(section.get("lines", []))
     return "\n".join(out)
+
+
+def format_structured_lyrics_canonical(structured: dict) -> str:
+    """Render structured sections to the canonical section-tagged style.
+
+    Canonical style: one ``[label]`` header per section (lowercase normalized
+    ``label``, never ``raw_label``), its lyric lines, a blank line between
+    sections, LF endings, and a single trailing newline. Preamble lines are
+    NOT included. Sections with zero lines still emit their header. Empty
+    sections list yields ``""`` (no trailing newline).
+
+    Differs from :func:`flatten_structured_lyrics`, which preserves the
+    ``raw_label`` case and omits blank lines between sections.
+    """
+    sections = structured.get("sections", [])
+    if not sections:
+        return ""
+
+    blocks: list[str] = []
+    for section in sections:
+        label = section.get("label", "")
+        lines = section.get("lines", [])
+        blocks.append("\n".join([f"[{label}]", *lines]))
+    return "\n\n".join(blocks) + "\n"
