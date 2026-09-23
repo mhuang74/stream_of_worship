@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor, act, within } from "@testing-library/react";
+import { screen, fireEvent, act, within } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { LyricJumpList } from "@/components/play/LyricJumpList";
 
 describe("LyricJumpList", () => {
   const mockJumpToLine = vi.fn();
+  const mockOnOpenChange = vi.fn();
 
   const mockChapters = [
     {
@@ -45,14 +46,8 @@ describe("LyricJumpList", () => {
     currentTime: 25,
     currentSongIndex: 0,
     onJumpToLine: mockJumpToLine,
-  };
-
-  const openList = async () => {
-    const handle = screen.getByRole("button", { name: /open lyric jump list/i });
-
-    await act(async () => {
-      fireEvent.click(handle);
-    });
+    isOpen: false,
+    onOpenChange: mockOnOpenChange,
   };
 
   beforeEach(() => {
@@ -65,101 +60,105 @@ describe("LyricJumpList", () => {
   });
 
   describe("rendering", () => {
-    it("renders swipe handle when closed", () => {
+    it("renders nothing when closed (peek handle removed)", () => {
       render(<LyricJumpList {...defaultProps} />);
 
-      expect(screen.getByText(/lyrics/i)).toBeInTheDocument();
+      expect(screen.queryByTestId("lyric-jump-sheet")).not.toBeInTheDocument();
+      expect(screen.queryByText(/lyrics/i)).not.toBeInTheDocument();
     });
 
-    it("renders translated handle label in zh-Hant", () => {
-      render(<LyricJumpList {...defaultProps} />, "zh-Hant");
+    it("renders the sheet when open", () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
-      expect(screen.getByRole("button", { name: /開啟歌詞清單/i })).toBeInTheDocument();
-      expect(screen.getByText(/歌詞/i)).toBeInTheDocument();
+      expect(screen.getByTestId("lyric-jump-sheet")).toBeInTheDocument();
+      expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
+      expect(screen.getByText("How Great Thou Art")).toBeInTheDocument();
+      expect(screen.getByText("Great Is Thy Faithfulness")).toBeInTheDocument();
     });
 
-    it("renders chapter list when opened", async () => {
-      render(<LyricJumpList {...defaultProps} />);
+    it("renders the in-sheet close chip", () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
-        expect(screen.getByText("How Great Thou Art")).toBeInTheDocument();
-        expect(screen.getByText("Great Is Thy Faithfulness")).toBeInTheDocument();
-      });
+      expect(screen.getByTestId("lyric-sheet-close")).toBeInTheDocument();
     });
 
-    it("shows current chapter indicator", async () => {
-      render(<LyricJumpList {...defaultProps} currentSongIndex={0} />);
+    it("renders translated close chip in zh-Hant", () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />, "zh-Hant");
 
-      await openList();
-
-      await waitFor(() => {
-        const chapters = screen.getAllByText(/0:00 - 3:00/);
-        expect(chapters.length).toBeGreaterThan(0);
-      });
+      expect(screen.getByTestId("lyric-sheet-close")).toHaveAttribute(
+        "aria-label",
+        "關閉歌詞清單"
+      );
     });
 
-    it("shows current song with pulse indicator", async () => {
-      render(<LyricJumpList {...defaultProps} currentSongIndex={0} />);
+    it("docks above the control bar via the bar-height variable with a height budget", () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
-      await openList();
+      const sheet = screen.getByTestId("lyric-jump-sheet");
+      expect(sheet.className).toContain("bottom-[var(--sow-controller-bar-height)]");
+      expect(sheet.className).toContain(
+        "max-h-[calc(100dvh-var(--sow-controller-bar-height))]"
+      );
+      expect(sheet.className).toContain("rounded-t-2xl");
+    });
 
-      await waitFor(() => {
-        // The first chapter should have a pulse indicator
-        const firstChapter = screen.getByText("Amazing Grace").closest("button");
-        expect(firstChapter).toBeInTheDocument();
-      });
+    it("shows current chapter indicator", () => {
+      render(<LyricJumpList {...defaultProps} currentSongIndex={0} isOpen={true} />);
+
+      const chapters = screen.getAllByText(/0:00 - 3:00/);
+      expect(chapters.length).toBeGreaterThan(0);
     });
   });
 
   describe("interactions", () => {
-    it("opens when handle is clicked", async () => {
-      render(<LyricJumpList {...defaultProps} />);
+    it("in-sheet close chip calls onOpenChange(false)", async () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("lyric-sheet-close"));
       });
+
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+      expect(mockJumpToLine).not.toHaveBeenCalled();
     });
 
-    it("closes when backdrop is clicked", async () => {
-      render(<LyricJumpList {...defaultProps} />);
+    it("backdrop click closes the sheet and stops propagation (no parent chrome toggle)", async () => {
+      const stopSpy = vi.spyOn(Event.prototype, "stopPropagation");
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
-      // Open first
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
+      // The backdrop is the role=button whose class carries the dim layer;
+      // the in-sheet close chip shares the aria label.
+      const backdrop = screen
+        .getAllByRole("button", { name: /close lyric jump list/i })
+        .find((el) => el.className.includes("bg-black/50"));
+      expect(backdrop).toBeDefined();
+      await act(async () => {
+        fireEvent.click(backdrop!);
       });
 
-      // Find and click backdrop (it's a div with role button)
-      const backdrop = document.querySelector('[role="button"][tabindex="0"]');
-      if (backdrop) {
-        await act(async () => {
-          fireEvent.click(backdrop);
-        });
-      }
+      // Backdrop tap must not bubble to the player's root tap-toggle.
+      expect(stopSpy).toHaveBeenCalled();
+      expect(mockOnOpenChange).toHaveBeenCalledTimes(1);
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+      stopSpy.mockRestore();
+    });
 
-      // Should be closed - content should not be visible
-      await waitFor(() => {
-        // The sheet should be closed (check for absence of backdrop)
-        const backdrops = document.querySelectorAll('[role="button"][tabindex="0"]');
-        // After closing, there should be no backdrop
-        expect(backdrops.length).toBeLessThan(2);
+    it("backdrop Escape key closes the sheet", async () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
+
+      const backdrop = screen
+        .getAllByRole("button", { name: /close lyric jump list/i })
+        .find((el) => el.className.includes("bg-black/50"));
+      expect(backdrop).toBeDefined();
+      await act(async () => {
+        fireEvent.keyDown(backdrop!, { key: "Escape" });
       });
+
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
 
     it("expands a non-current song title when clicked", async () => {
-      render(<LyricJumpList {...defaultProps} />);
-
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText("How Great Thou Art")).toBeInTheDocument();
-      });
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
       const chapterButton = screen.getByText("How Great Thou Art").closest("button");
       if (chapterButton) {
@@ -174,28 +173,20 @@ describe("LyricJumpList", () => {
       ).toBeInTheDocument();
     });
 
-    it("does not call a seek callback when a song title is clicked", async () => {
-      render(<LyricJumpList {...defaultProps} />);
+    it("does not call a seek callback when a song title is clicked", () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
-      await openList();
-
-      const chapterButton = await screen.findByText("How Great Thou Art");
-      await act(async () => {
-        fireEvent.click(chapterButton);
-      });
+      const chapterButton = screen.getByText("How Great Thou Art");
+      fireEvent.click(chapterButton);
 
       expect(mockJumpToLine).not.toHaveBeenCalled();
     });
 
-    it("keeps current-song visual state tied to currentSongIndex", async () => {
-      render(<LyricJumpList {...defaultProps} currentSongIndex={0} />);
+    it("keeps current-song visual state tied to currentSongIndex", () => {
+      render(<LyricJumpList {...defaultProps} currentSongIndex={0} isOpen={true} />);
 
-      await openList();
-
-      const chapterButton = await screen.findByText("How Great Thou Art");
-      await act(async () => {
-        fireEvent.click(chapterButton);
-      });
+      const chapterButton = screen.getByText("How Great Thou Art");
+      fireEvent.click(chapterButton);
 
       const currentSongCard = screen.getByText("Amazing Grace").closest(".rounded-lg");
       const expandedSongCard = screen.getByText("How Great Thou Art").closest(".rounded-lg");
@@ -205,25 +196,15 @@ describe("LyricJumpList", () => {
       expect(screen.getByText("O Lord my God, when I in awesome wonder")).toBeInTheDocument();
     });
 
-    it("shows lines for current chapter", async () => {
-      render(<LyricJumpList {...defaultProps} currentSongIndex={0} />);
+    it("shows lines for current chapter", () => {
+      render(<LyricJumpList {...defaultProps} currentSongIndex={0} isOpen={true} />);
 
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText("Amazing grace, how sweet the sound")).toBeInTheDocument();
-        expect(screen.getByText("That saved a wretch like me")).toBeInTheDocument();
-      });
+      expect(screen.getByText("Amazing grace, how sweet the sound")).toBeInTheDocument();
+      expect(screen.getByText("That saved a wretch like me")).toBeInTheDocument();
     });
 
     it("calls onJumpToLine when line is clicked", async () => {
-      render(<LyricJumpList {...defaultProps} currentSongIndex={0} />);
-
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText("Amazing grace, how sweet the sound")).toBeInTheDocument();
-      });
+      render(<LyricJumpList {...defaultProps} currentSongIndex={0} isOpen={true} />);
 
       const lineButton = screen.getByText("Amazing grace, how sweet the sound").closest("button");
       if (lineButton) {
@@ -235,20 +216,14 @@ describe("LyricJumpList", () => {
       expect(mockJumpToLine).toHaveBeenCalledWith(0, 0);
     });
 
-    it("calls onJumpToLine with the expanded chapter and line index", async () => {
-      render(<LyricJumpList {...defaultProps} currentSongIndex={0} />);
+    it("calls onJumpToLine with the expanded chapter and line index", () => {
+      render(<LyricJumpList {...defaultProps} currentSongIndex={0} isOpen={true} />);
 
-      await openList();
+      const chapterButton = screen.getByText("How Great Thou Art");
+      fireEvent.click(chapterButton);
 
-      const chapterButton = await screen.findByText("How Great Thou Art");
-      await act(async () => {
-        fireEvent.click(chapterButton);
-      });
-
-      const lineButton = await screen.findByText("Consider all the worlds Thy hands have made");
-      await act(async () => {
-        fireEvent.click(lineButton);
-      });
+      const lineButton = screen.getByText("Consider all the worlds Thy hands have made");
+      fireEvent.click(lineButton);
 
       expect(mockJumpToLine).toHaveBeenCalledWith(1, 1);
     });
@@ -265,9 +240,10 @@ describe("LyricJumpList", () => {
       Element.prototype.scrollTo = scrollSpy as unknown as typeof Element.prototype.scrollTo;
     });
 
-    it("highlights current line with the blue inline cursor", async () => {
-      render(<LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />);
-      await openList();
+    it("highlights current line with the blue inline cursor", () => {
+      render(
+        <LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} isOpen={true} />
+      );
 
       const activeRow = document.querySelector('[data-lyric-row="0-1"]');
       expect(activeRow).toHaveAttribute("data-active");
@@ -289,10 +265,16 @@ describe("LyricJumpList", () => {
       expect(within(inactiveRow).getByText("0:10")).not.toHaveClass("opacity-80");
     });
 
-    it("cursor leads: highlights next line 0.3s before its timestamp", async () => {
+    it("cursor leads: highlights next line 0.3s before its timestamp", () => {
       // Line 2 starts at 20s; at 19.8s the 0.3s lead must already select it.
-      render(<LyricJumpList {...defaultProps} currentTime={19.8} currentSongIndex={0} />);
-      await openList();
+      render(
+        <LyricJumpList
+          {...defaultProps}
+          currentTime={19.8}
+          currentSongIndex={0}
+          isOpen={true}
+        />
+      );
 
       expect(document.querySelector('[data-lyric-row="0-1"]')).toHaveAttribute(
         "data-active"
@@ -302,16 +284,18 @@ describe("LyricJumpList", () => {
       );
     });
 
-    it("before first line: no row highlighted", async () => {
-      render(<LyricJumpList {...defaultProps} currentTime={5} currentSongIndex={0} />);
-      await openList();
+    it("before first line: no row highlighted", () => {
+      render(
+        <LyricJumpList {...defaultProps} currentTime={5} currentSongIndex={0} isOpen={true} />
+      );
 
       expect(document.querySelector("[data-active]")).not.toBeInTheDocument();
     });
 
-    it("past lines are dimmed while active line is not", async () => {
-      render(<LyricJumpList {...defaultProps} currentTime={35} currentSongIndex={0} />);
-      await openList();
+    it("past lines are dimmed while active line is not", () => {
+      render(
+        <LyricJumpList {...defaultProps} currentTime={35} currentSongIndex={0} isOpen={true} />
+      );
 
       // At 35s, lines 0 and 1 are past (dimmed); line 2 (30s) is active.
       expect(document.querySelector('[data-lyric-row="0-0"]')).toHaveClass("text-white/40");
@@ -325,30 +309,46 @@ describe("LyricJumpList", () => {
     });
 
     it("scrolls to center the active row on open", async () => {
-      render(<LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />);
-      scrollSpy.mockClear();
-      await openList();
-
-      expect(scrollSpy).toHaveBeenCalledWith({ top: expect.any(Number) });
-    });
-
-    it("scrolls again when the active line changes", async () => {
       const { rerender } = render(
-        <LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />
+        <LyricJumpList
+          {...defaultProps}
+          currentTime={25}
+          currentSongIndex={0}
+          isOpen={false}
+        />
       );
-      await openList();
       scrollSpy.mockClear();
 
       await act(async () => {
         rerender(
-          <LyricJumpList {...defaultProps} currentTime={35} currentSongIndex={0} />
+          <LyricJumpList
+            {...defaultProps}
+            currentTime={25}
+            currentSongIndex={0}
+            isOpen={true}
+          />
         );
       });
 
       expect(scrollSpy).toHaveBeenCalledWith({ top: expect.any(Number) });
     });
 
-    it("does not scroll while the sheet is closed", async () => {
+    it("scrolls again when the active line changes", async () => {
+      const { rerender } = render(
+        <LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} isOpen={true} />
+      );
+      scrollSpy.mockClear();
+
+      await act(async () => {
+        rerender(
+          <LyricJumpList {...defaultProps} currentTime={35} currentSongIndex={0} isOpen={true} />
+        );
+      });
+
+      expect(scrollSpy).toHaveBeenCalledWith({ top: expect.any(Number) });
+    });
+
+    it("does not scroll while the sheet is closed", () => {
       render(<LyricJumpList {...defaultProps} currentTime={25} currentSongIndex={0} />);
 
       expect(scrollSpy).not.toHaveBeenCalled();
@@ -356,70 +356,18 @@ describe("LyricJumpList", () => {
   });
 
   describe("time formatting", () => {
-    it("formats chapter times correctly", async () => {
-      render(<LyricJumpList {...defaultProps} />);
+    it("formats chapter times correctly", () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
 
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText(/0:00 - 3:00/)).toBeInTheDocument();
-        expect(screen.getByText(/3:00 - 7:00/)).toBeInTheDocument();
-      });
+      expect(screen.getByText(/0:00 - 3:00/)).toBeInTheDocument();
+      expect(screen.getByText(/3:00 - 7:00/)).toBeInTheDocument();
     });
 
-    it("formats line times correctly", async () => {
-      render(<LyricJumpList {...defaultProps} currentSongIndex={0} />);
+    it("formats line times correctly", () => {
+      render(<LyricJumpList {...defaultProps} currentSongIndex={0} isOpen={true} />);
 
-      await openList();
-
-      await waitFor(() => {
-        expect(screen.getByText("0:10")).toBeInTheDocument();
-        expect(screen.getByText("0:20")).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("keyboard navigation", () => {
-    it("opens on Enter key", async () => {
-      render(<LyricJumpList {...defaultProps} />);
-
-      const handle = screen.getByRole("button", { name: /open lyric jump list/i });
-      
-      await act(async () => {
-        fireEvent.keyDown(handle, { key: "Enter" });
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
-      });
-    });
-
-    it("closes on Escape key", async () => {
-      render(<LyricJumpList {...defaultProps} />);
-
-      // Open first
-      const handle = screen.getByRole("button", { name: /open lyric jump list/i });
-      
-      await act(async () => {
-        fireEvent.click(handle);
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
-      });
-
-      // Find the backdrop (it's the one with class containing "bg-black/50")
-      const closeButtons = screen.getAllByRole("button", { name: /close lyric jump list/i });
-      const backdrop = closeButtons.find(btn => btn.className.includes("bg-black/50"));
-      
-      await act(async () => {
-        fireEvent.keyDown(backdrop!, { key: "Escape" });
-      });
-
-      // Should close - check that the backdrop is gone
-      await waitFor(() => {
-        expect(screen.queryByRole("button", { name: /close lyric jump list/i })).not.toBeInTheDocument();
-      });
+      expect(screen.getByText("0:10")).toBeInTheDocument();
+      expect(screen.getByText("0:20")).toBeInTheDocument();
     });
   });
 });

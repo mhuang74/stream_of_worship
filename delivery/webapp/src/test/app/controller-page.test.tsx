@@ -186,7 +186,6 @@ interface CapturedControllerProps {
   onStopPresentation?: () => void;
   onSendTransportCommand?: (cmd: unknown) => void;
   exitRoute?: string;
-  autoFullscreen?: boolean;
 }
 
 let lastControllerProps: CapturedControllerProps | null = null;
@@ -1531,18 +1530,6 @@ describe("ShareControllerPage (share token)", () => {
       "v=https%3A%2F%2Fr2.example.com%2Fshare%2Fvideo.mp4"
     );
     expect(senderOpts.presentationUrl).toContain("t=Shared+Set+Name");
-  });
-
-  it("does not pass autoFullscreen (defaults to true, matching songsets)", async () => {
-    shareSuccessFetches();
-
-    render(<ShareControllerPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("controller-player")).toBeInTheDocument();
-    });
-
-    expect(lastControllerProps?.autoFullscreen).toBeUndefined();
   });
 
   it("passes token-derived media payload to useCastTransport", async () => {

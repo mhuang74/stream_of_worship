@@ -11,6 +11,7 @@ import {
   Volume2,
   VolumeX,
   Monitor,
+  ListMusic,
 } from "lucide-react";
 
 export interface PlaybackControlsProps {
@@ -36,6 +37,10 @@ export interface PlaybackControlsProps {
   onNextSong: () => void;
   onVolumeChange: (volume: number) => void;
   onToggleMute: () => void;
+  /** Whether the lyric jump sheet is open — highlights the toggle button. */
+  isLyricsOpen?: boolean;
+  /** When present, renders the lyric-sheet toggle button in the right column. */
+  onToggleLyrics?: () => void;
   className?: string;
 }
 
@@ -57,6 +62,8 @@ export function PlaybackControls({
   onNextSong,
   onVolumeChange,
   onToggleMute,
+  isLyricsOpen,
+  onToggleLyrics,
   className,
 }: PlaybackControlsProps) {
   const { t } = useLocale();
@@ -202,6 +209,26 @@ export function PlaybackControls({
 
         {/* Volume and presentation status */}
         <div className="flex items-center gap-1 sm:gap-2 justify-self-end">
+          {/* Lyric sheet toggle — visible on all screen sizes (on mobile the
+              volume control below is hidden, so this is the right column's
+              only control; two-step lyric access per the overlay spec). */}
+          {onToggleLyrics && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "size-10 text-white hover:bg-white/20",
+                isLyricsOpen && "bg-white/20"
+              )}
+              onClick={onToggleLyrics}
+              aria-label={t("controls.lyrics")}
+              aria-expanded={isLyricsOpen}
+              data-testid="lyrics-toggle"
+            >
+              <ListMusic className="size-5" />
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="icon"

@@ -2,14 +2,13 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronUp, Music } from "lucide-react";
+import { ChevronDown, Music } from "lucide-react";
 import { findCurrentLyricIndex } from "@/lib/render/lrc-parser";
 import { useLocale } from "@/hooks/useLocale";
 import { LyricsFeedbackRow } from "@/components/audio/LyricsFeedbackRow";
 
 import type { Chapter } from "@/lib/render/chapters";
 import { CURSOR_LEAD_SECONDS } from "@/lib/render/line-jump";
-import { isIOS } from "@/lib/platform";
 
 // Cursor highlight (worship-arc phase-3 blue, user-picked). Local to this
 // sheet — deliberately NOT THEME_PHASE_COLORS, whose pairs are pinned for
@@ -21,6 +20,9 @@ export interface LyricJumpListProps {
   currentTime: number;
   currentSongIndex: number;
   onJumpToLine: (chapterIndex: number, lineIndex: number) => void;
+  /** Controlled open state — owned by the player so it can pin chrome. */
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
   /**
    * Content hash of the Recording behind the current chapter, when one is
    * current. Feedback renders only when this is non-null (issue #194:
@@ -36,23 +38,18 @@ export function LyricJumpList({
   currentTime,
   currentSongIndex,
   onJumpToLine,
+  isOpen,
+  onOpenChange,
   currentRecordingContentHash,
   className,
 }: LyricJumpListProps) {
   const { t } = useLocale();
-  const [isOpen, setIsOpen] = useState(false);
   const [explicitExpandedChapterIndex, setExplicitExpandedChapterIndex] = useState<number | null>(
     null
   );
   const [contentInteractive, setContentInteractive] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startY, setStartY] = useState(0);
-  const [currentY, setCurrentY] = useState(0);
-  const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const lastToggleTimeRef = useRef(0);
 
-  const isSwipeEnabled = isIOS();
   const chapterLineRefs = useMemo(
     () =>
       chapters.map((chapter) =>
@@ -96,11 +93,12 @@ export function LyricJumpList({
     });
   }, [isOpen, currentSongIndex, activeLineIndex]);
 
-  const handleToggle = useCallback(() => {
+  // Close paths: in-sheet chip, backdrop tap/Escape, control-bar toggle.
+  const closeSheet = useCallback(() => {
     setContentInteractive(false);
     setExplicitExpandedChapterIndex(null);
-    setIsOpen((prev) => !prev);
-  }, []);
+    onOpenChange(false);
+  }, [onOpenChange]);
 
   const handleChapterExpand = useCallback(
     (chapterIndex: number) => {
@@ -112,64 +110,6 @@ export function LyricJumpList({
     [currentSongIndex]
   );
 
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent | React.MouseEvent) => {
-      if (!isSwipeEnabled) return;
-      e.stopPropagation();
-      const clientY =
-        "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-      setStartY(clientY);
-      setIsDragging(true);
-    },
-    [isSwipeEnabled]
-  );
-
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent | React.MouseEvent) => {
-      if (!isSwipeEnabled || !isDragging) return;
-      e.stopPropagation();
-
-      const clientY =
-        "touches" in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-      const deltaY = startY - clientY;
-
-      if (!isOpen && deltaY > 0) {
-        setCurrentY(Math.min(deltaY, 300));
-      } else if (isOpen && deltaY < 0) {
-        setCurrentY(Math.max(deltaY, -300));
-      }
-    },
-    [isSwipeEnabled, isDragging, startY, isOpen]
-  );
-
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent | React.MouseEvent) => {
-      if (!isSwipeEnabled || !isDragging) return;
-      e.stopPropagation();
-
-      const now = Date.now();
-      const threshold = 100;
-      const absY = Math.abs(currentY);
-
-      const shouldToggle =
-        (currentY > threshold || absY < 30) && now - lastToggleTimeRef.current > 100;
-
-      if (!isOpen && shouldToggle) {
-        setContentInteractive(false);
-        setIsOpen(true);
-        lastToggleTimeRef.current = now;
-      } else if (isOpen && shouldToggle) {
-        setContentInteractive(false);
-        setIsOpen(false);
-        lastToggleTimeRef.current = now;
-      }
-
-      setIsDragging(false);
-      setCurrentY(0);
-    },
-    [isSwipeEnabled, isDragging, currentY, isOpen]
-  );
-
   const formatTime = (seconds: number): string => {
     if (!isFinite(seconds) || seconds < 0) return "0:00";
     const mins = Math.floor(seconds / 60);
@@ -177,72 +117,46 @@ export function LyricJumpList({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // Closed sheet renders nothing — open state lives in the control bar's
+  // lyrics toggle (the peek handle and swipe gestures are gone).
+  if (!isOpen) return null;
+
   return (
     <>
-      {/* Swipe handle */}
+      {/* Sheet docked above the control bar: the pinned bar (z-[80]) would
+          otherwise cover the sheet's bottom edge, occluding trailing lyric
+          rows and the feedback footer. Height budget, not just offset — in
+          landscape the scroll area compresses instead of the sheet pushing
+          off-screen. --sow-controller-bar-height is measured by
+          ControllerPlayer whenever chrome is visible (root default 0px). */}
       <div
-        ref={sheetRef}
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-50 transition-transform duration-300 ease-out",
-          isOpen ? "translate-y-0" : "translate-y-[calc(100%-48px)]",
+          "fixed left-0 right-0 z-50 flex flex-col",
+          "bottom-[var(--sow-controller-bar-height)]",
+          "max-h-[calc(100dvh-var(--sow-controller-bar-height))]",
+          "bg-black/90 backdrop-blur-sm rounded-t-2xl",
           className
         )}
-        style={
-          isSwipeEnabled && isDragging
-            ? {
-                transform: `translateY(${isOpen ? currentY : currentY - 48}px)`,
-              }
-            : undefined
-        }
+        data-testid="lyric-jump-sheet"
         onClick={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
       >
-        {/* Handle bar */}
-        <div
-          className="flex flex-col items-center justify-center h-12 bg-black/90 backdrop-blur-sm rounded-t-2xl cursor-pointer"
-          onClick={handleToggle}
-          onTouchStart={isSwipeEnabled ? handleTouchStart : undefined}
-          onTouchMove={isSwipeEnabled ? handleTouchMove : undefined}
-          onTouchEnd={isSwipeEnabled ? handleTouchEnd : undefined}
-          onMouseDown={isSwipeEnabled ? handleTouchStart : undefined}
-          onMouseMove={isSwipeEnabled ? handleTouchMove : undefined}
-          onMouseUp={isSwipeEnabled ? handleTouchEnd : undefined}
-          onMouseLeave={isSwipeEnabled ? handleTouchEnd : undefined}
-          role="button"
-          tabIndex={0}
-          aria-label={isOpen ? t("lyrics.closeAriaLabel") : t("lyrics.openAriaLabel")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              handleToggle();
-            }
-          }}
+        {/* Floating in-sheet close chip (always visible, out of flow) */}
+        <button
+          type="button"
+          onClick={closeSheet}
+          className="absolute top-2 right-2 z-10 size-8 rounded-full bg-white/10 text-white/80 hover:bg-white/20 flex items-center justify-center"
+          aria-label={t("lyrics.closeAriaLabel")}
+          data-testid="lyric-sheet-close"
         >
-          <div className="w-12 h-1 bg-white/30 rounded-full mb-1" />
-          <div className="flex items-center gap-2 text-white/70 text-sm">
-            <ChevronUp
-              className={cn(
-                "size-4 transition-transform",
-                isOpen ? "rotate-180" : ""
-              )}
-            />
-            <span>
-              {isOpen
-                ? isSwipeEnabled
-                  ? t("lyrics.swipeDownToClose")
-                  : t("lyrics.tapToClose")
-                : t("lyrics.lyrics")}
-            </span>
-          </div>
-        </div>
+          <ChevronDown className="size-4" />
+        </button>
 
-        {/* Content */}
+        {/* Scrollable content */}
         <div
           ref={contentRef}
           className={cn(
-            "relative bg-black/90 backdrop-blur-sm max-h-[60vh] overflow-y-auto",
-            !contentInteractive && "pointer-events-none",
-            isSwipeEnabled && "overscroll-y-contain"
+            "relative flex-1 min-h-0 overflow-y-auto",
+            !contentInteractive && "pointer-events-none"
           )}
         >
           <div className="p-4 space-y-4">
@@ -348,32 +262,28 @@ export function LyricJumpList({
             situation={
               chapters[currentSongIndex].lines.length > 0 ? "synced" : "none"
             }
-            className="border-t border-white/10"
+            className="shrink-0 border-t border-white/10"
           />
         )}
       </div>
 
-      {/* Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => {
-            setContentInteractive(false);
-            setExplicitExpandedChapterIndex(null);
-            setIsOpen(false);
-          }}
-          role="button"
-          tabIndex={0}
-          aria-label={t("lyrics.closeAriaLabel")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === "Escape") {
-              setContentInteractive(false);
-              setExplicitExpandedChapterIndex(null);
-              setIsOpen(false);
-            }
-          }}
-        />
-      )}
+      {/* Backdrop: tap = close the sheet (stopPropagation — must not bubble
+          to the player's root tap-toggle underneath the pinned-open sheet) */}
+      <div
+        className="fixed inset-0 bg-black/50 z-40"
+        onClick={(e) => {
+          e.stopPropagation();
+          closeSheet();
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={t("lyrics.closeAriaLabel")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === "Escape") {
+            closeSheet();
+          }
+        }}
+      />
     </>
   );
 }
