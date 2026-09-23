@@ -5230,8 +5230,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py": {
-    "mtime": 1790120557.517191,
-    "ast_hash": "fe34a85b73f13fff450ff4b72cd437be",
+    "mtime": 1790149289.8281944,
+    "ast_hash": "d7bf2a2ddb3eb53990ed38af6390487d",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/lrc_jobs.py": {
