@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
+from botocore.exceptions import ClientError
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
@@ -25,6 +26,7 @@ from stream_of_worship.admin.commands.catalog import get_db_client
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
     AnalysisServiceError,
@@ -1259,7 +1261,6 @@ def lyrics_edit(
         load_autosave,
         AutosaveState,
     )
-    from stream_of_worship.admin.editor.state import EditorState
     from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
 
     if autosave_exists(cache_dir, recording.hash_prefix):
@@ -1381,7 +1382,6 @@ def _build_fresh_editor_state(
     source_mode: str,
 ) -> "EditorState":
     """Build a fresh EditorState from transcribed content or catalog lyrics."""
-    from stream_of_worship.admin.editor.state import EditorState
     from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
 
     if transcribed_content:

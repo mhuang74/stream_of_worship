@@ -238,6 +238,6 @@ analysis_url = "http://localhost:8000"
 [paths]
 cache_dir = "/toml/admin-cache"
 """)
-        config = AdminConfig.load(config_file)
+        AdminConfig.load(config_file)
         # cache_dir is no longer on config object, use get_cache_dir()
         assert isinstance(get_cache_dir(), Path)

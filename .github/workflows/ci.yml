@@ -6,6 +6,8 @@ on:
     paths:
       - "delivery/webapp/**"
       - "delivery/render-worker/**"
+      - "ops/admin-cli/**"
+      - ".github/workflows/ci.yml"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -58,6 +60,18 @@ jobs:
       - run: SOW_DATABASE_URL=postgresql://sow:sow@localhost:5432/sow_test?sslmode=disable pnpm exec drizzle-kit migrate
 
       - run: SOW_DATABASE_URL=postgresql://sow:sow@localhost:5432/sow_test?sslmode=disable pnpm test:postgres-smoke
+
+  admin-lint:
+    name: Admin CLI Ruff (F821/F841)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Ruff check (undefined names / unused locals)
+        run: uv run --project ops/admin-cli --python 3.11 ruff check --select F821,F841 --no-cache ops/admin-cli/src/ ops/admin-cli/tests/
 
   render-worker-test:
     name: Render Worker Test

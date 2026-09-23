@@ -254,6 +254,7 @@ def submit_lrc_batch(
             continue
 
         # Submit LRC
+        youtube_url = "" if no_youtube else (recording.youtube_url or "")
         try:
             job = analysis_client.submit_lrc(
                 audio_url=recording.r2_audio_url,

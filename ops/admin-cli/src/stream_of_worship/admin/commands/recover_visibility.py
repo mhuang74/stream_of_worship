@@ -269,41 +269,33 @@ def _compute_verdict(sig: CandidateSignals) -> tuple[str, str, dict[str, Any]]:
     }
 
     # lrc_url_drift: lrc_result_url differs from PG pg_r2_lrc_url
-    lrc_url_drift = False
     if (sig.lrc_result_url is not None
             and sig.pg_r2_lrc_url is not None
             and sig.lrc_result_url != sig.pg_r2_lrc_url):
-        lrc_url_drift = True
         debug_notes["lrc_url_drift"] = True
         debug_notes["lrc_url_drift_details"] = (
             f"svc={sig.lrc_result_url} pg={sig.pg_r2_lrc_url}"
         )
 
     # stem_bump_attributable_to_stems: analyze_bump AND stems_url present
-    stem_bump_attributable_to_stems = False
     if analyze_bump and sig.analyze_stems_present:
-        stem_bump_attributable_to_stems = True
         debug_notes["stem_bump_attributable_to_stems"] = True
         debug_notes["stem_bump_attributable_to_stems_details"] = (
             "stems_url present"
         )
 
     # transcript_source_bias: manual_edit_after_autogen == "yes" AND lrc_source == "youtube_transcript"
-    transcript_source_bias = False
     if (manual_edit_after_autogen == "yes"
             and sig.lrc_source == "youtube_transcript"):
-        transcript_source_bias = True
         debug_notes["transcript_source_bias"] = True
         debug_notes["transcript_source_bias_details"] = (
             "manual_edit=yes, source=youtube_transcript"
         )
 
     # key_detected_at_drift: analyze_result_key_detected_at differs from PG
-    key_detected_at_drift = False
     if (sig.analyze_result_key_detected_at is not None
             and sig.key_detected_at is not None
             and sig.analyze_result_key_detected_at != sig.key_detected_at):
-        key_detected_at_drift = True
         debug_notes["key_detected_at_drift"] = True
         debug_notes["key_detected_at_drift_details"] = (
             f"analyze={sig.analyze_result_key_detected_at.isoformat()} "

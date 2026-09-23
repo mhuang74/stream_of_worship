@@ -72,7 +72,7 @@ class TestSongsetListCommand:
         with patch("stream_of_worship.admin.commands.songset.AdminConfig.load") as mock_config, \
              patch("stream_of_worship.admin.commands.songset.ConnectionProvider") as mock_conn_prov_cls, \
              patch("stream_of_worship.admin.commands.songset.SongsetClient") as mock_client_cls, \
-             patch("stream_of_worship.admin.commands.songset.UserClient") as mock_user_cls:
+             patch("stream_of_worship.admin.commands.songset.UserClient"):
             mock_config.return_value.get_connection_url.return_value = "postgresql://test"
             mock_conn_prov_cls.return_value = MagicMock()
 
