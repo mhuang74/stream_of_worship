@@ -1664,8 +1664,8 @@ class DatabaseClient:
     def list_soft_deleted_songs_with_counts(self, limit: Optional[int] = None) -> list[dict]:
         """List soft-deleted songs with recording and songset reference counts."""
         cursor = self.connection.cursor()
-        sql = """
-            SELECT s.*, COUNT(DISTINCT r.content_hash) AS recording_count,
+        sql = f"""
+            SELECT {SONG_COLUMNS_FOR_JOIN}, COUNT(DISTINCT r.content_hash) AS recording_count,
                    COUNT(DISTINCT si.id) AS songset_reference_count
             FROM songs s
             LEFT JOIN recordings r ON r.song_id = s.id
