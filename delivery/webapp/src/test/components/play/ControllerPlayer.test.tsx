@@ -57,6 +57,34 @@ function makeTransport(
 }
 
 describe("ControllerPlayer", () => {
+  // jsdom (setup.ts) provides a static matchMedia; some tests need scenario
+  // control over (pointer: coarse) and (orientation: portrait).
+  let originalMatchMedia: typeof window.matchMedia | undefined;
+
+  function installMediaQueryMocks(
+    coarse: () => boolean,
+    portrait: () => boolean
+  ) {
+    originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches:
+        query === "(pointer: coarse)"
+          ? coarse()
+          : query === "(orientation: portrait)"
+            ? portrait()
+            : false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  function restoreMediaQueryMocks() {
+    if (originalMatchMedia) {
+      window.matchMedia = originalMatchMedia;
+      originalMatchMedia = undefined;
+    }
+  }
+
   const mockChapters = [
     {
       position: 0,
@@ -206,12 +234,12 @@ describe("ControllerPlayer", () => {
       expect(backButton).not.toBe(fullscreenButton);
     });
 
-    it("renders lyric jump list handle", async () => {
+    it("renders the lyric sheet toggle in the control bar", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);
       });
 
-      expect(screen.getByText(/lyrics/i)).toBeInTheDocument();
+      expect(screen.getByTestId("lyrics-toggle")).toBeInTheDocument();
     });
   });
 
@@ -320,12 +348,12 @@ describe("ControllerPlayer", () => {
       expect(video).not.toHaveAttribute("muted");
     });
 
-    it("renders LyricJumpList when active", async () => {
+    it("renders the lyrics toggle when presentation is active", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} isPresentationActive={true} />);
       });
 
-      expect(screen.getByText(/lyrics/i)).toBeInTheDocument();
+      expect(screen.getByTestId("lyrics-toggle")).toBeInTheDocument();
     });
   });
 
@@ -379,9 +407,9 @@ describe("ControllerPlayer", () => {
   // ── Lyrics Feedback gating (issue #194, story 20) ──────────────────────
   describe("lyrics feedback gating", () => {
     const openSheet = async () => {
-      const handle = screen.getByRole("button", { name: /open lyric jump list/i });
+      const toggle = screen.getByTestId("lyrics-toggle");
       await act(async () => {
-        fireEvent.click(handle);
+        fireEvent.click(toggle);
       });
     };
 
@@ -963,9 +991,8 @@ describe("ControllerPlayer", () => {
       const video = document.querySelector("video") as HTMLVideoElement;
       video.currentTime = 0;
 
-      const handle = screen.getByText(/lyrics/i);
       await act(async () => {
-        fireEvent.click(handle);
+        fireEvent.click(screen.getByTestId("lyrics-toggle"));
       });
 
       const chapterButton = await screen.findByText("How Great Thou Art");
@@ -985,9 +1012,8 @@ describe("ControllerPlayer", () => {
       const video = document.querySelector("video") as HTMLVideoElement;
       video.currentTime = 0;
 
-      const handle = screen.getByText(/lyrics/i);
       await act(async () => {
-        fireEvent.click(handle);
+        fireEvent.click(screen.getByTestId("lyrics-toggle"));
       });
 
       const chapterHeader = await screen.findByText("How Great Thou Art");
@@ -1028,7 +1054,7 @@ describe("ControllerPlayer", () => {
       onSendTransportCommand.mockClear();
 
       await act(async () => {
-        fireEvent.click(screen.getByText(/lyrics/i));
+        fireEvent.click(screen.getByTestId("lyrics-toggle"));
       });
 
       await act(async () => {
@@ -1914,7 +1940,7 @@ describe("ControllerPlayer", () => {
     });
   });
 
-  // ── Fullscreen ─────────────────────────────────────────────────────────
+  // ── Fullscreen (D2: document root; iOS WebKit fallback; no auto-request) ─
   describe("fullscreen", () => {
     afterEach(() => {
       Reflect.deleteProperty(
@@ -1923,14 +1949,23 @@ describe("ControllerPlayer", () => {
       );
     });
 
-    it("requests fullscreen on mount", async () => {
+    it("does NOT request fullscreen on mount (auto effect deleted)", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);
       });
 
-      await waitFor(() => {
-        expect(document.documentElement.requestFullscreen).toHaveBeenCalled();
+      expect(document.documentElement.requestFullscreen).not.toHaveBeenCalled();
+    });
+
+    it("fullscreen button requests DOCUMENT fullscreen (not element)", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
       });
+
+      const button = screen.getByRole("button", { name: /re-enter fullscreen/i });
+      fireEvent.click(button);
+
+      expect(document.documentElement.requestFullscreen).toHaveBeenCalledTimes(1);
     });
 
     it("falls back to video webkitEnterFullscreen when document fullscreen is unavailable", async () => {
@@ -1959,6 +1994,147 @@ describe("ControllerPlayer", () => {
 
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      expect(
+        screen.queryByRole("button", { name: /fullscreen/i })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  // ── First-tap document fullscreen (D3: touch only, one-shot) ───────────
+  describe("first-tap document fullscreen", () => {
+    // jsdom lacks matchMedia; the component reads (pointer: coarse) and
+    // (orientation: portrait) through useSyncExternalStore.
+    let coarseMatches = false;
+    let portraitMatches = true;
+
+    beforeEach(() => {
+      coarseMatches = false;
+      portraitMatches = true;
+      installMediaQueryMocks(
+        () => coarseMatches,
+        () => portraitMatches
+      );
+    });
+
+    afterEach(() => {
+      restoreMediaQueryMocks();
+    });
+
+    async function renderWithFullscreenSpy(
+      requestMock = vi.fn().mockResolvedValue(undefined)
+    ) {
+      Object.defineProperty(document.documentElement, "requestFullscreen", {
+        value: requestMock,
+        writable: true,
+        configurable: true,
+      });
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+      return requestMock;
+    }
+
+    it("first tap on a coarse-pointer device requests document fullscreen exactly once", async () => {
+      coarseMatches = true;
+      const requestMock = await renderWithFullscreenSpy();
+
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
+      });
+
+      expect(requestMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("a second tap does NOT re-request after the promise resolved (latched)", async () => {
+      coarseMatches = true;
+      const requestMock = await renderWithFullscreenSpy();
+
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
+      });
+      await act(async () => {
+        // Let the resolved promise settle the latch.
+        await Promise.resolve();
+        fireEvent.click(document.querySelector("video")!);
+      });
+
+      expect(requestMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("a second tap RETRIES after the first request was rejected (latch settles on resolution, not call)", async () => {
+      coarseMatches = true;
+      const requestMock = vi
+        .fn<[], Promise<void>>()
+        .mockRejectedValueOnce(new Error("transient"))
+        .mockResolvedValueOnce(undefined);
+      await renderWithFullscreenSpy(requestMock);
+
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
+      });
+      await act(async () => {
+        await Promise.resolve();
+        fireEvent.click(document.querySelector("video")!);
+      });
+
+      expect(requestMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("after a fullscreenchange exit following success, taps do NOT re-request (manual button only)", async () => {
+      coarseMatches = true;
+      const requestMock = await renderWithFullscreenSpy();
+
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
+      });
+      // System exit path (Esc / Android back) — page cannot intercept.
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        writable: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
+      });
+
+      expect(requestMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("first gesture being the play button also requests once", async () => {
+      coarseMatches = true;
+      const requestMock = await renderWithFullscreenSpy();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+      });
+
+      expect(requestMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("fine-pointer (desktop) never auto-requests", async () => {
+      coarseMatches = false;
+      const requestMock = await renderWithFullscreenSpy();
+
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
+      });
+
+      expect(requestMock).not.toHaveBeenCalled();
+    });
+
+    it("no capability → no request and no throw", async () => {
+      coarseMatches = true;
+      Reflect.deleteProperty(document.documentElement, "requestFullscreen");
+
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
       });
 
       expect(
@@ -2301,6 +2477,367 @@ describe("ControllerPlayer", () => {
       });
 
       expect(screen.queryByTestId("media-failure-overlay")).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Overlay chrome model (v2) ───────────────────────────────────────────
+  describe("overlay chrome", () => {
+    // jsdom lacks matchMedia (orientation/pointer queries read by the
+    // rotate hint and first-tap fullscreen). Default: portrait + fine
+    // pointer (desktop), rotate hint absent.
+    let coarseMatches = false;
+    let portraitMatches = true;
+
+    beforeEach(() => {
+      coarseMatches = false;
+      portraitMatches = true;
+      installMediaQueryMocks(
+        () => coarseMatches,
+        () => portraitMatches
+      );
+    });
+
+    afterEach(() => {
+      restoreMediaQueryMocks();
+    });
+
+    function getControlsWrapper() {
+      // The transport button's label flips play↔pause with playback state.
+      const transport = screen.queryByRole("button", { name: /^play$/i })
+        ?? screen.getByRole("button", { name: /^pause$/i });
+      return transport.closest("div[class*='transition-opacity']")!;
+    }
+
+    function getTopBar() {
+      return screen.getByTestId("playback-left-actions").closest(
+        "div[class*='transition-opacity']"
+      )!;
+    }
+
+    it("media container is absolute inset-0 and controls wrapper is an absolute bottom overlay", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const video = document.querySelector("video")!;
+      expect(video.parentElement).toHaveClass("absolute", "inset-0");
+      const wrapper = getControlsWrapper();
+      expect(wrapper.className).toContain("absolute");
+      expect(wrapper.className).toContain("bottom-0");
+      expect(wrapper.className).toContain("z-[80]");
+      // Root is no longer a flex column (overlay stacking, not siblings).
+      expect(video.closest(".fixed")).not.toHaveClass("flex", "flex-col");
+    });
+
+    it("tap on the video toggles chrome immediately — hide with no timer wait, tap again to re-show", async () => {
+      vi.useFakeTimers();
+      try {
+        await act(async () => {
+          render(<ControllerPlayer {...defaultProps} />);
+        });
+        const video = document.querySelector("video")!;
+        const wrapper = getControlsWrapper();
+        expect(wrapper).toHaveClass("opacity-100");
+
+        // Tap 1 → hidden immediately (no 3s wait).
+        await act(async () => {
+          fireEvent.click(video);
+        });
+        expect(wrapper).toHaveClass("opacity-0");
+        expect(wrapper).toHaveClass("pointer-events-none");
+
+        // Auto-hide timer would not re-hide on its own here.
+        await act(async () => {
+          vi.advanceTimersByTime(5000);
+        });
+        expect(wrapper).toHaveClass("opacity-0");
+
+        // Tap 2 → visible again.
+        await act(async () => {
+          fireEvent.click(video);
+        });
+        expect(wrapper).toHaveClass("opacity-100");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("clicking the play button (inside the chrome container) does NOT toggle chrome", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+      });
+
+      expect(getControlsWrapper()).toHaveClass("opacity-100");
+    });
+
+    it("manual toggle-off works while paused, and the 3s auto-hide never fires while paused", async () => {
+      vi.useFakeTimers();
+      try {
+        await act(async () => {
+          render(<ControllerPlayer {...defaultProps} />);
+        });
+        const video = document.querySelector("video")!;
+
+        // Paused tap-off: works regardless of play state.
+        await act(async () => {
+          fireEvent.click(video);
+        });
+        expect(getControlsWrapper()).toHaveClass("opacity-0");
+        await act(async () => {
+          fireEvent.click(video);
+        });
+        expect(getControlsWrapper()).toHaveClass("opacity-100");
+
+        // Chrome re-shown while paused: idle 3s must NOT hide (D5).
+        await act(async () => {
+          vi.advanceTimersByTime(4000);
+        });
+        expect(getControlsWrapper()).toHaveClass("opacity-100");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("auto-hides after 3s while playing", async () => {
+      vi.useFakeTimers();
+      try {
+        await act(async () => {
+          render(<ControllerPlayer {...defaultProps} />);
+        });
+        const video = document.querySelector("video")!;
+        video.play();
+        await act(async () => {
+          fireEvent(video, new Event("play"));
+        });
+        expect(getControlsWrapper()).toHaveClass("opacity-100");
+
+        await act(async () => {
+          vi.advanceTimersByTime(3000);
+        });
+        expect(getControlsWrapper()).toHaveClass("opacity-0");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("touch compat-mouse regression: touch pointermove + click leaves chrome VISIBLE (tap-to-reveal, not tap-to-hide)", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+      const video = document.querySelector("video")!;
+
+      // Hide chrome first.
+      await act(async () => {
+        fireEvent.click(video);
+      });
+      expect(getControlsWrapper()).toHaveClass("opacity-0");
+
+      // Real mobile tap sequence: compat mouse/pointer events before click.
+      await act(async () => {
+        fireEvent.pointerMove(video, { pointerType: "touch" });
+        fireEvent.click(video);
+      });
+
+      expect(getControlsWrapper()).toHaveClass("opacity-100");
+    });
+
+    it("mouse pointermove wakes chrome without toggling", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+      const video = document.querySelector("video")!;
+
+      await act(async () => {
+        fireEvent.click(video);
+      });
+      expect(getControlsWrapper()).toHaveClass("opacity-0");
+
+      await act(async () => {
+        fireEvent.pointerMove(video, { pointerType: "mouse" });
+      });
+
+      expect(getControlsWrapper()).toHaveClass("opacity-100");
+    });
+
+    it("chrome visibility classes include the safe-area padding classes", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      expect(getControlsWrapper().className).toContain(
+        "pb-[env(safe-area-inset-bottom)]"
+      );
+      const topBar = getTopBar();
+      expect(topBar.className).toContain("env(safe-area-inset-top)");
+      expect(topBar.className).toContain("env(safe-area-inset-left)");
+      expect(topBar.className).toContain("env(safe-area-inset-right)");
+    });
+  });
+
+  // ── Lyrics sheet from the control bar (Q13 / Q17) ──────────────────────
+  describe("lyrics sheet", () => {
+    it("toggle opens the pinned sheet; backdrop closes it and chrome stays visible", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("lyrics-toggle"));
+      });
+
+      const sheet = await screen.findByTestId("lyric-jump-sheet");
+      expect(screen.getByTestId("lyrics-toggle")).toHaveAttribute(
+        "aria-expanded",
+        "true"
+      );
+      // Chrome pinned while open.
+      expect(
+        screen
+          .getByRole("button", { name: /^play$/i })
+          .closest("div[class*='transition-opacity']")
+      ).toHaveClass("opacity-100");
+
+      // Backdrop tap closes the sheet.
+      const backdrop = screen
+        .getAllByRole("button", { name: /close lyric jump list/i })
+        .find((el) => el.className.includes("bg-black/50"));
+      await act(async () => {
+        fireEvent.click(backdrop!);
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("lyric-jump-sheet")).not.toBeInTheDocument();
+      });
+      void sheet;
+    });
+
+    it("in-sheet close chip closes the sheet", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("lyrics-toggle"));
+      });
+      await screen.findByTestId("lyric-jump-sheet");
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("lyric-sheet-close"));
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("lyric-jump-sheet")).not.toBeInTheDocument();
+      });
+    });
+
+    it("second toggle click closes the sheet", async () => {
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("lyrics-toggle"));
+      });
+      await screen.findByTestId("lyric-jump-sheet");
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("lyrics-toggle"));
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("lyric-jump-sheet")).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  // ── Rotate hint (D4: portrait + touch, fades with chrome) ──────────────
+  describe("rotate hint", () => {
+    let coarseMatches = false;
+    let portraitMatches = true;
+
+    beforeEach(() => {
+      coarseMatches = false;
+      portraitMatches = true;
+      installMediaQueryMocks(
+        () => coarseMatches,
+        () => portraitMatches
+      );
+    });
+
+    afterEach(() => {
+      restoreMediaQueryMocks();
+    });
+
+    it("renders when portrait + touch + chrome visible, and fades with chrome", async () => {
+      coarseMatches = true;
+      portraitMatches = true;
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const hint = screen.getByTestId("rotate-hint");
+      expect(hint).toHaveClass("opacity-100");
+      // Positioned above the bar via the shared bar-height variable.
+      expect(hint.className).toContain(
+        "bottom-[calc(var(--sow-controller-bar-height)+1rem)]"
+      );
+
+      // Chrome hides → hint fades.
+      await act(async () => {
+        fireEvent.click(document.querySelector("video")!);
+      });
+      expect(hint).toHaveClass("opacity-0");
+      expect(hint).toHaveClass("pointer-events-none");
+    });
+
+    it("absent in landscape", async () => {
+      coarseMatches = true;
+      portraitMatches = false;
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      expect(screen.queryByTestId("rotate-hint")).not.toBeInTheDocument();
+    });
+
+    it("absent on fine-pointer (desktop)", async () => {
+      coarseMatches = false;
+      portraitMatches = true;
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      expect(screen.queryByTestId("rotate-hint")).not.toBeInTheDocument();
+    });
+
+    it("dismiss click removes the hint for the session", async () => {
+      coarseMatches = true;
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("rotate-hint").querySelector("button")!);
+      });
+
+      expect(screen.queryByTestId("rotate-hint")).not.toBeInTheDocument();
+    });
+
+    it("root always carries a valid --sow-controller-bar-height (default 0px at mount)", async () => {
+      coarseMatches = true;
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} />);
+      });
+
+      const root = screen.getByTestId("rotate-hint").closest(".fixed")!;
+      const value = (root as HTMLElement).style.getPropertyValue(
+        "--sow-controller-bar-height"
+      );
+      expect(value).toBe("0px");
     });
   });
 });

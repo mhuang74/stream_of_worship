@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, X, Info, Maximize, Monitor, MonitorOff, Loader2, WifiOff, AlertTriangle } from "lucide-react";
+import { ArrowLeft, X, Info, Maximize, Monitor, MonitorOff, Loader2, WifiOff, AlertTriangle, RotateCw } from "lucide-react";
 
 /**
  * Surface for the dev-only Presentation API sender fallback (used only when
@@ -81,7 +81,6 @@ interface ControllerPlayerBaseProps {
   /** Forward a transport command to the active receiver. */
   onSendTransportCommand?: (command: PresentationCommand) => void;
   exitRoute?: string;
-  autoFullscreen?: boolean;
   /**
    * Content hash per chapter position (index 0 = first chapter), from the
    * songset detail API. Enables the Lyrics Feedback footer on the lyric
@@ -107,7 +106,7 @@ const IOS_INFO_KEY = "sow-ios-info-shown";
 // document Fullscreen API is unavailable (all WKWebView browsers, incl. Chrome
 // iOS). Capability-detected via useSyncExternalStore; see
 // canDocumentFullscreenSnapshot / canVideoFullscreenSnapshot and
-// handleReenterFullscreen.
+// handleEnterFullscreen.
 type VideoElementWithIOSFullscreen = HTMLVideoElement & {
   webkitEnterFullscreen?: () => void;
 };
@@ -131,6 +130,24 @@ function canVideoFullscreenSnapshot(): boolean {
     typeof (HTMLVideoElement.prototype as VideoElementWithIOSFullscreen)
       .webkitEnterFullscreen === "function"
   );
+}
+
+// These media queries DO change at runtime (rotation, pointer-device swap),
+// so unlike the fullscreen capabilities they need a real subscribe.
+function subscribeMediaQuery(query: string) {
+  return (onChange: () => void) => {
+    const mql = window.matchMedia(query);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  };
+}
+
+function isTouchDeviceSnapshot(): boolean {
+  return window.matchMedia("(pointer: coarse)").matches;
+}
+
+function isPortraitSnapshot(): boolean {
+  return window.matchMedia("(orientation: portrait)").matches;
 }
 
 const SEEK_DEBOUNCE_MS = 200;
@@ -166,7 +183,6 @@ export function ControllerPlayer({
   isOfflineMedia = false,
   onMediaError,
   exitRoute,
-  autoFullscreen = true,
   chapterRecordingHashes,
   castAvailability,
   isCastConnecting,
@@ -188,7 +204,7 @@ export function ControllerPlayer({
   const mediaSrc = videoSrc ?? audioSrc;
   const isAudioOnly = audioSrc !== undefined;
   const controlsRef = useRef<HTMLDivElement>(null);
-  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const seekDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasActiveRef = useRef(false);
   const suppressNextResumeRef = useRef(false);
@@ -212,12 +228,33 @@ export function ControllerPlayer({
     canVideoFullscreenSnapshot,
     () => false
   );
+  // Touch-device + orientation: media queries that can change at runtime
+  // (rotation), so these subscribe to `change` events. Server snapshot false
+  // (no tap-to-fullscreen / rotate hint on SSR output).
+  const isTouchDevice = useSyncExternalStore(
+    subscribeMediaQuery("(pointer: coarse)"),
+    isTouchDeviceSnapshot,
+    () => false
+  );
+  const isPortrait = useSyncExternalStore(
+    subscribeMediaQuery("(orientation: portrait)"),
+    isPortraitSnapshot,
+    () => false
+  );
   const [isMuted, setIsMuted] = useState(false);
   const [localSongIndex, setLocalSongIndex] = useState(0);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const [showIosInfo, setShowIosInfo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDiagnosticSheet, setShowDiagnosticSheet] = useState(false);
+  const [isLyricsOpen, setIsLyricsOpen] = useState(false);
+  // Session-scoped dismiss of the portrait rotate hint (D4).
+  const [rotateHintDismissed, setRotateHintDismissed] = useState(false);
+  // Measured control-bar height feeding --sow-controller-bar-height (sheet
+  // dock + rotate-hint offset). 0 until measured — the root always sets the
+  // variable so `bottom-[calc(var(--sow-controller-bar-height)+1rem)]` is a
+  // valid declaration even before the first measurement.
+  const [barHeightPx, setBarHeightPx] = useState(0);
   const [pendingResume, setPendingResume] = useState<PendingResume | null>(null);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
   // Local media failure surface: a hard `error` event. Cleared as soon as
@@ -469,51 +506,116 @@ export function ControllerPlayer({
     };
   }, [chapters, currentSongIndex, isPresentationActive, t]);
 
-  // Auto-hide controls in mirror mode
+  // ── First-tap document fullscreen, touch devices only (D3) ──────────────
+  // One-shot per session, latching on promise RESOLUTION (a rejection —
+  // transient focus/race, embed policy — leaves the flag unset so the next
+  // tap may silently retry; bounded by user taps, no UI nag). Once latched,
+  // it stays latched even after an explicit exit (Esc / Android back):
+  // auto-entry never fights the user; the manual top-bar button remains.
+  const fullscreenDoneRef = useRef(false);
+
+  const maybeEnterFullscreenOnce = useCallback(() => {
+    if (fullscreenDoneRef.current) return;
+    if (!isTouchDevice || !canDocumentFullscreen) return;
+    // MUST be called from an activation-triggering event (click / pointerup /
+    // touchend). NEVER from touchstart: touchstart is NOT an activation-
+    // triggering event for the Fullscreen API, so a request fired there is
+    // rejected — the same silent-failure mode as the deleted auto effect.
+    document.documentElement.requestFullscreen().then(
+      () => {
+        fullscreenDoneRef.current = true;
+      },
+      () => {
+        /* rejected: leave the flag unset so the next tap may retry */
+      }
+    );
+  }, [isTouchDevice, canDocumentFullscreen]);
+
+  // Auto-hide chrome after 3s idle — overlay model (chrome = top bar +
+  // keyboard hint + bottom controls, one shared visibility state). Auto-hide
+  // runs only while playing (D5: paused = user is deciding); suspended while
+  // a presentation is active or the lyrics sheet is open.
   const startHideTimer = useCallback(() => {
-    if (isPresentationActive) return; // Don't auto-hide when presentation is active
+    if (isPresentationActive || isLyricsOpen) return;
 
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-    }
-
+    clearTimeout(hideTimeoutRef.current);
     hideTimeoutRef.current = setTimeout(() => {
       if (isPlaying) {
-        setControlsVisible(false);
+        setChromeVisible(false);
       }
-    }, 2000);
-  }, [isPresentationActive, isPlaying]);
+    }, 3000);
+  }, [isPresentationActive, isLyricsOpen, isPlaying]);
 
-  const showControls = useCallback(() => {
-    setControlsVisible(true);
-    startHideTimer();
-  }, [startHideTimer]);
+  // Toggle (D1): tap hides chrome immediately when visible, shows it
+  // otherwise. Fires on click only — a tap synthesizes click on mobile, and
+  // handling touchstart AND click would double-toggle and cancel out.
+  // The first tap on a touch device also requests document fullscreen once
+  // (D3) — the same activation gesture, deliberately.
+  const handleTapToggle = useCallback(() => {
+    setChromeVisible((v) => !v);
+    maybeEnterFullscreenOnce();
+  }, [maybeEnterFullscreenOnce]);
 
-  const showControlsRef = useRef(showControls);
-  useEffect(() => {
-    showControlsRef.current = showControls;
-  }, [showControls]);
-
-  // Handle user interaction
-  const handleInteraction = useCallback(() => {
-    showControls();
-  }, [showControls]);
+  // Activity wake (desktop hover): MOUSE pointer only — re-summons chrome,
+  // never toggles. MUST be pointer-type-gated: a tap dispatches compat mouse
+  // events (mouseover/mousemove) BEFORE click, so an ungated mousemove wake
+  // would set chrome visible and the immediately following click-toggle
+  // would read that state and hide it again — tap-to-reveal would become
+  // tap-to-hide on phones.
+  const handleActivity = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      setChromeVisible(true);
+      startHideTimer();
+    },
+    [startHideTimer]
+  );
 
   // Clear timer on unmount
   useEffect(() => {
     return () => {
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
+      clearTimeout(hideTimeoutRef.current);
+    };
+  }, []);
+
+  // Chrome lifecycle: timer follows the pin conditions; an explicit
+  // toggle-off clears any pending auto-hide.
+  useEffect(() => {
+    if (!chromeVisible) {
+      clearTimeout(hideTimeoutRef.current);
+      return;
+    }
+    if (isPlaying && !isPresentationActive && !isLyricsOpen) {
+      startHideTimer();
+    } else {
+      // Pinned (paused / presentation / lyrics sheet): auto-hide suspended.
+      clearTimeout(hideTimeoutRef.current);
+    }
+  }, [chromeVisible, isPlaying, isPresentationActive, isLyricsOpen, startHideTimer]);
+
+  // ── Bar-height measurement (for --sow-controller-bar-height) ────────────
+  // Consumed by the lyrics-sheet dock and the portrait rotate hint. Measured
+  // whenever chrome is visible (v1 measured only while the sheet was open —
+  // the hint renders at mount, before any sheet open, so the measurement
+  // must happen earlier) plus on window resize.
+  useEffect(() => {
+    if (!chromeVisible) return;
+    const measure = () => {
+      const bar = controlsRef.current;
+      if (bar) {
+        setBarHeightPx(bar.getBoundingClientRect().height);
       }
     };
-  }, [showControls]);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [chromeVisible]);
 
-  // Start hide timer when playing
-  useEffect(() => {
-    if (isPlaying && !isPresentationActive) {
-      startHideTimer();
-    }
-  }, [isPlaying, isPresentationActive, startHideTimer]);
+  // ── Lyrics sheet (Q13): pin chrome while open, resume the idle timer on
+  // close. The pin is applied when the toggle opens the sheet; the chrome
+  // lifecycle effect above clears the pending timer while isLyricsOpen and
+  // restarts it on close. The sheet backdrop blocks tap-toggle, so chrome
+  // can't be toggled off underneath the pinned-open sheet.
 
   // ── Intent forwarding ───────────────────────────────────────────────────
   // When the presentation is active, control intents are forwarded to the
@@ -743,14 +845,18 @@ export function ControllerPlayer({
     router.push(exitRoute ?? "/songsets");
   }, [router, playerId, exitRoute, isPresentationActive, handleStopPresentation]);
 
-  const handleReenterFullscreen = useCallback(() => {
+  const handleEnterFullscreen = useCallback(() => {
+    // Document fullscreen (D2): hides browser chrome (incl. the Android URL
+    // bar) while our fixed inset-0 overlay player — custom controls, lyrics
+    // sheet — keeps rendering. Element fullscreen would hand the video to
+    // the browser's native player UI and hide everything we built.
     if (typeof document.documentElement.requestFullscreen === "function") {
       document.documentElement.requestFullscreen().catch(() => {});
       return;
     }
-    // iOS WKWebView (Chrome iOS etc.): document fullscreen is unavailable.
-    // Fall back to the <video> element's native WebKit fullscreen. Requires a
-    // user gesture — satisfied because this runs from a button tap.
+    // iOS WKWebView (Chrome iOS etc.): no Fullscreen API at all. Native
+    // WebKit video fullscreen is the only escape from browser chrome there.
+    // Requires a user gesture — satisfied because this runs from a button tap.
     try {
       (mediaRef.current as VideoElementWithIOSFullscreen | null)?.webkitEnterFullscreen?.();
     } catch {
@@ -844,37 +950,6 @@ export function ControllerPlayer({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
-
-  useEffect(() => {
-    if (!autoFullscreen) return;
-
-    const requestFullscreen = async () => {
-      try {
-        if (document.documentElement.requestFullscreen) {
-          await document.documentElement.requestFullscreen();
-        }
-      } catch {
-        // Fullscreen not supported or blocked
-      }
-    };
-
-    requestFullscreen();
-
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        showControlsRef.current();
-      }
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
-    };
-  }, [autoFullscreen]);
 
   // Mute (+ pause) local video when presentation is active (audio plays on the
   // receiver). Composes with the disconnect→resume effect below.
@@ -1145,23 +1220,43 @@ export function ControllerPlayer({
     onSendToTVRef.current?.();
   }, [castUnavailable]);
 
+  // Play button wrapper: the button sits inside the controls wrapper whose
+  // onClick stops propagation, so the root tap-toggle never fires there —
+  // the first gesture being the play button must still get the one-shot
+  // fullscreen attempt (D3).
+  const handlePlayButtonClick = useCallback(() => {
+    maybeEnterFullscreenOnce();
+    handlePlayPause();
+  }, [maybeEnterFullscreenOnce, handlePlayPause]);
+
+  // Lyrics sheet toggle in the control bar (two-step access: tap to summon
+  // chrome, then tap the lyrics button). Opening pins chrome (Q13) — applied
+  // here, not in an effect; the lifecycle effect clears the pending hide
+  // timer while open and restarts it on close.
+  const handleToggleLyrics = useCallback(() => {
+    if (!isLyricsOpen) {
+      setChromeVisible(true);
+    }
+    setIsLyricsOpen(!isLyricsOpen);
+  }, [isLyricsOpen]);
+
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[70] bg-black flex flex-col",
+        "fixed inset-0 z-[70] bg-black",
         className
       )}
-      onClick={handleInteraction}
-      onTouchStart={handleInteraction}
-      onMouseMove={handleInteraction}
+      style={
+        { "--sow-controller-bar-height": `${barHeightPx}px` } as React.CSSProperties
+      }
+      onClick={handleTapToggle}
+      onPointerMove={handleActivity}
     >
       {/* Media: <video> normally, <audio> for an offline audio-only render
-          (an MP3-only songset has no video track to show). min-h-0 lets this
-          flex item shrink below the video's intrinsic height — without it a
-          1080p video on a wide/short viewport pushes PlaybackControls below
-          the fold (fixed container → unreachable). object-contain letterboxes
-          the shrunken video. */}
-      <div className="flex-1 min-h-0 relative">
+          (an MP3-only songset has no video track to show). Full-bleed overlay
+          model: the media fills the viewport and every chrome element floats
+          above it; object-contain letterboxes (lyrics are never cropped). */}
+      <div className="absolute inset-0">
         {isAudioOnly ? (
           <audio
             ref={setMediaElement}
@@ -1179,7 +1274,7 @@ export function ControllerPlayer({
             muted={isPresentationActive}
             onClick={(e) => {
               e.stopPropagation();
-              handleInteraction();
+              handleTapToggle();
             }}
             onDoubleClick={(e) => {
               e.preventDefault();
@@ -1187,12 +1282,44 @@ export function ControllerPlayer({
           />
         )}
 
+        {/* Rotate hint in portrait (D4): touch-only, dismissible chip that
+            fades with chrome — zero clutter during normal playback. Sits
+            above the control bar via the shared bar-height variable. */}
+        {isPortrait && isTouchDevice && !rotateHintDismissed && (
+          <div
+            className={cn(
+              "absolute bottom-[calc(var(--sow-controller-bar-height)+1rem)] left-1/2 -translate-x-1/2",
+              "z-[80] flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm text-white/90",
+              "transition-opacity duration-300",
+              chromeVisible || isPresentationActive
+                ? "opacity-100"
+                : "opacity-0 pointer-events-none"
+            )}
+            onClick={(e) => e.stopPropagation()}
+            data-testid="rotate-hint"
+          >
+            <RotateCw className="size-4" />
+            <span>{t("controller.rotateHint")}</span>
+            <button
+              type="button"
+              onClick={() => setRotateHintDismissed(true)}
+              aria-label={t("controller.dismissInfo")}
+              className="size-6 flex items-center justify-center text-white/60 hover:text-white"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Top bar */}
         <div
           className={cn(
-            "absolute top-0 left-0 right-0 p-4 transition-opacity duration-300",
-            controlsVisible || isPresentationActive ? "opacity-100" : "opacity-0"
+            "absolute top-0 left-0 right-0",
+            "pb-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))]",
+            "transition-opacity duration-300",
+            chromeVisible || isPresentationActive ? "opacity-100" : "opacity-0"
           )}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2" data-testid="playback-left-actions">
@@ -1211,7 +1338,7 @@ export function ControllerPlayer({
                   variant="ghost"
                   size="icon"
                   className="size-10 text-white hover:bg-white/20"
-                  onClick={handleReenterFullscreen}
+                  onClick={handleEnterFullscreen}
                   aria-label={
                     canDocumentFullscreen
                       ? t("controller.reenterFullscreen")
@@ -1340,7 +1467,10 @@ export function ControllerPlayer({
         {pendingResume && (
           <button
             type="button"
-            onClick={handleTapToResume}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleTapToResume();
+            }}
             className="absolute top-16 left-1/2 -translate-x-1/2 z-[85] flex items-center gap-2 px-4 py-3 bg-amber-500/90 text-black rounded-lg shadow-lg text-sm font-medium"
             data-testid="tap-to-resume"
           >
@@ -1362,6 +1492,7 @@ export function ControllerPlayer({
           <div
             role="alert"
             className="absolute inset-0 z-[85] flex items-center justify-center bg-black/85 p-6"
+            onClick={(e) => e.stopPropagation()}
             data-testid="media-failure-overlay"
           >
             <div className="w-full max-w-sm rounded-lg bg-amber-500/95 text-black p-5 text-center shadow-lg">
@@ -1390,7 +1521,10 @@ export function ControllerPlayer({
 
         {/* iOS Info Toast */}
         {showIosInfo && (
-          <div className="absolute top-16 left-4 right-4 bg-blue-500/90 text-white p-4 rounded-lg shadow-lg">
+          <div
+            className="absolute top-16 left-4 right-4 bg-blue-500/90 text-white p-4 rounded-lg shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-start gap-3">
               <Info className="size-5 shrink-0 mt-0.5" />
               <div className="flex-1">
@@ -1416,7 +1550,7 @@ export function ControllerPlayer({
         <div
           className={cn(
             "hidden lg:block absolute bottom-4 right-4 transition-opacity duration-300",
-            controlsVisible || isPresentationActive ? "opacity-100" : "opacity-0"
+            chromeVisible || isPresentationActive ? "opacity-100" : "opacity-0"
           )}
           aria-label={t("controller.keyboardShortcuts")}
           data-testid="keyboard-shortcuts-hint"
@@ -1432,19 +1566,24 @@ export function ControllerPlayer({
         </div>
       </div>
 
-      {/* Controls */}
+      {/* Controls: bottom overlay over the full-bleed media. PlaybackControls
+          paints its own translucent gradient; pb safe-area clears the Android
+          gesture area (replaces the deleted pb-12's clearance role — the
+          measured --sow-controller-bar-height includes it). stopPropagation:
+          chrome containers must not let button clicks bubble to the root
+          tap-toggle. */}
       <div
         ref={controlsRef}
         className={cn(
-          "transition-opacity duration-300 pb-12",
-          controlsVisible || isPresentationActive
+          "absolute bottom-0 left-0 right-0 z-[80] transition-opacity duration-300",
+          "pb-[env(safe-area-inset-bottom)]",
+          chromeVisible || isPresentationActive
             ? "opacity-100"
             : "opacity-0 pointer-events-none"
         )}
+        onClick={(e) => e.stopPropagation()}
         onMouseEnter={() => {
-          if (hideTimeoutRef.current) {
-            clearTimeout(hideTimeoutRef.current);
-          }
+          clearTimeout(hideTimeoutRef.current);
         }}
         onMouseLeave={startHideTimer}
       >
@@ -1460,12 +1599,14 @@ export function ControllerPlayer({
           songTitle={hasPlaybackStarted ? currentChapter?.songTitle : undefined}
           songElapsedSeconds={hasPlaybackStarted ? songElapsedSeconds : undefined}
           songDurationSeconds={hasPlaybackStarted ? songDurationSeconds : undefined}
-          onPlayPause={handlePlayPause}
+          onPlayPause={handlePlayButtonClick}
           onSeek={handleSeek}
           onPrevSong={handlePrevSong}
           onNextSong={handleNextSong}
           onVolumeChange={handleVolumeChange}
           onToggleMute={handleToggleMute}
+          isLyricsOpen={isLyricsOpen}
+          onToggleLyrics={handleToggleLyrics}
         />
       </div>
 
@@ -1474,6 +1615,8 @@ export function ControllerPlayer({
         currentTime={effectiveCurrentTime}
         currentSongIndex={currentSongIndex}
         onJumpToLine={handleJumpToLine}
+        isOpen={isLyricsOpen}
+        onOpenChange={setIsLyricsOpen}
         currentRecordingContentHash={
           (currentSong.fromPlayback ? chapterRecordingHashes?.[currentSong.index] : null) ?? null
         }
@@ -1484,7 +1627,11 @@ export function ControllerPlayer({
         open={showDiagnosticSheet}
         onOpenChange={setShowDiagnosticSheet}
       >
-        <SheetContent side="bottom" data-testid="diagnostic-sheet">
+        <SheetContent
+          side="bottom"
+          onClick={(e) => e.stopPropagation()}
+          data-testid="diagnostic-sheet"
+        >
           <SheetHeader>
             <SheetTitle>{t("controller.diagTitle")}</SheetTitle>
             <SheetDescription>

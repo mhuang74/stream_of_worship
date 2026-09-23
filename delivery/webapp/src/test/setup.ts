@@ -1,5 +1,25 @@
 import "@testing-library/jest-dom";
 
+// jsdom lacks matchMedia. Components read (pointer: coarse) and
+// (orientation: portrait) via useSyncExternalStore — provide a fine-pointer
+// / portrait default; tests override the return value per scenario.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  Object.defineProperty(window, "matchMedia", {
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+    writable: true,
+    configurable: true,
+  });
+}
+
 // This Node build exposes an experimental global `localStorage` that requires
 // `--localstorage-file`, and jsdom's own storage ends up undefined. Provide a
 // minimal in-memory Storage so client code that reads/writes localStorage

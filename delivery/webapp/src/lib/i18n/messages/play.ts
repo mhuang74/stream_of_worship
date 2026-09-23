@@ -33,11 +33,10 @@ export const playBundle = bundle({
     "controls.volume": "Volume",
     "controls.connected": "Connected",
     "controls.remaining": "remaining",
+    "controls.lyrics": "Lyrics",
 
     // LyricJumpList
-    "lyrics.openAriaLabel": "Open lyric jump list",
     "lyrics.closeAriaLabel": "Close lyric jump list",
-    "lyrics.swipeDownToClose": "Swipe down to close",
     "lyrics.tapToClose": "Tap to close",
     "lyrics.lyrics": "Lyrics",
 
@@ -45,6 +44,7 @@ export const playBundle = bundle({
     "controller.backAriaLabel": "Back",
     "controller.reenterFullscreen": "Re-enter fullscreen",
     "controller.enterFullscreen": "Enter fullscreen",
+    "controller.rotateHint": "Rotate your device for a larger view",
     "controller.connectedTo": "Connected to",
     "controller.tv": "TV",
     "controller.closeTvView": "Close TV view",
@@ -111,11 +111,10 @@ export const playBundle = bundle({
     "controls.volume": "音量",
     "controls.connected": "已連線",
     "controls.remaining": "剩餘",
+    "controls.lyrics": "歌詞",
 
     // LyricJumpList
-    "lyrics.openAriaLabel": "開啟歌詞清單",
     "lyrics.closeAriaLabel": "關閉歌詞清單",
-    "lyrics.swipeDownToClose": "向下滑動關閉",
     "lyrics.tapToClose": "輕觸關閉",
     "lyrics.lyrics": "歌詞",
 
@@ -123,6 +122,7 @@ export const playBundle = bundle({
     "controller.backAriaLabel": "返回",
     "controller.reenterFullscreen": "重新進入全螢幕",
     "controller.enterFullscreen": "進入全螢幕",
+    "controller.rotateHint": "旋轉裝置以放大畫面",
     "controller.connectedTo": "已連線至",
     "controller.tv": "電視",
     "controller.closeTvView": "關閉電視畫面",
