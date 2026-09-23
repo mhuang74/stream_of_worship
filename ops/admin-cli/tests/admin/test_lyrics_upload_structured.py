@@ -12,7 +12,9 @@ from stream_of_worship.admin.db.models import Recording, Song
 runner = CliRunner()
 lyrics_app = lyrics_commands.app
 
-SECTION_TAGGED_TEXT = "[Verse]\nLine 1\nLine 2\n[Chorus]\nChorus line 1\nChorus line 2\nChorus line 3"
+SECTION_TAGGED_TEXT = (
+    "[Verse]\nLine 1\nLine 2\n[Chorus]\nChorus line 1\nChorus line 2\nChorus line 3"
+)
 
 
 def _make_recording(
@@ -42,13 +44,13 @@ def _make_song(title="Test Song") -> Song:
     )
 
 
-def _invoke_upload(tmp_path, recording, args=(), confirm="y"):
+def _invoke_upload(tmp_path, recording, args=(), confirm="y", text: str = SECTION_TAGGED_TEXT):
     """Invoke upload-structured with config/DB/prompt mocked.
 
     Returns (result, db_mock).
     """
     lyrics_file = tmp_path / "lyrics.txt"
-    lyrics_file.write_text(SECTION_TAGGED_TEXT, encoding="utf-8")
+    lyrics_file.write_text(text, encoding="utf-8")
 
     db_mock = MagicMock()
     db_mock.get_recording_by_song_id.return_value = recording
@@ -74,12 +76,39 @@ def test_upload_structured_happy_path(tmp_path):
     db_mock.update_recording_structured_lyrics.assert_called_once()
     kwargs = db_mock.update_recording_structured_lyrics.call_args.kwargs
     assert kwargs["hash_prefix"] == "abc123"
-    assert kwargs["structured_lyrics_raw"] == SECTION_TAGGED_TEXT
+    assert (
+        kwargs["structured_lyrics_raw"]
+        == "[verse]\nLine 1\nLine 2\n\n[chorus]\nChorus line 1\nChorus line 2\nChorus line 3\n"
+    )
     parsed = json.loads(kwargs["structured_lyrics"])
     labels = [s["label"] for s in parsed["sections"]]
     assert labels == ["verse", "chorus"]
     assert parsed["sections"][0]["lines"] == ["Line 1", "Line 2"]
     assert parsed["sections"][1]["lines"] == ["Chorus line 1", "Chorus line 2", "Chorus line 3"]
+
+
+def test_upload_structured_reformats_raw_text(tmp_path):
+    recording = _make_recording()
+    dirty = "Song Title\n\n[Verse 1]\n  Line 1  \n\n[CHORUS]\nChorus line\n\nhttps://youtube.com/watch?v=x"
+    result, db_mock = _invoke_upload(tmp_path, recording, text=dirty)
+
+    assert result.exit_code == 0, result.output
+    db_mock.update_recording_structured_lyrics.assert_called_once()
+    kwargs = db_mock.update_recording_structured_lyrics.call_args.kwargs
+    assert kwargs["structured_lyrics_raw"] == "[verse 1]\nLine 1\n\n[chorus]\nChorus line\n"
+    assert "Raw text will be reformatted to canonical style" in result.output
+
+
+def test_upload_structured_no_reformat_notice_when_canonical(tmp_path):
+    recording = _make_recording()
+    canonical = "[verse]\nLine 1\nLine 2\n\n[chorus]\nChorus line 1\nChorus line 2\nChorus line 3\n"
+    result, db_mock = _invoke_upload(tmp_path, recording, text=canonical)
+
+    assert result.exit_code == 0, result.output
+    db_mock.update_recording_structured_lyrics.assert_called_once()
+    kwargs = db_mock.update_recording_structured_lyrics.call_args.kwargs
+    assert kwargs["structured_lyrics_raw"] == canonical
+    assert "reformatted to canonical style" not in result.output
 
 
 def test_upload_structured_no_section_tags(tmp_path):
@@ -191,9 +220,12 @@ def test_view_structured_prefers_raw_text(tmp_path):
         result = runner.invoke(lyrics_app, ["view-structured", "song_0001"])
 
     assert result.exit_code == 0, result.output
-    assert "[Verse]" in result.output
-    assert "[Chorus]" in result.output
-    assert "json line" not in result.output
+    # JSON wins and renders canonical: lowercase label, "json line" lyric from
+    # the JSON; the raw column's distinct content ("Chorus line 1") is absent.
+    assert "[verse]" in result.output
+    assert "[Verse]" not in result.output
+    assert "json line" in result.output
+    assert "Chorus line 1" not in result.output
 
 
 def test_view_structured_falls_back_to_json(tmp_path):
@@ -216,8 +248,10 @@ def test_view_structured_falls_back_to_json(tmp_path):
         result = runner.invoke(lyrics_app, ["view-structured", "song_0001"])
 
     assert result.exit_code == 0, result.output
-    assert "[Verse]" in result.output
-    assert "[Chorus]" in result.output
+    assert "[verse]" in result.output
+    assert "[chorus]" in result.output
+    assert "[Verse]" not in result.output
+    assert "\n\n" in result.output
     assert "re-rendered" in result.output
 
 
@@ -245,8 +279,35 @@ def test_view_structured_output_flag_writes_file(tmp_path):
     assert result.exit_code == 0, result.output
     assert "Wrote structured lyrics" in result.output
     written = out_file.read_text(encoding="utf-8")
-    assert "[Verse]" in written
-    assert "Line 1" in written
+    assert written == "[verse]\nLine 1\n"
+
+
+def test_view_structured_round_trips_canonical(tmp_path):
+    recording = _make_recording()
+    result, db_mock = _invoke_upload(tmp_path, recording)
+    assert result.exit_code == 0, result.output
+    kwargs = db_mock.update_recording_structured_lyrics.call_args.kwargs
+    stored_raw = kwargs["structured_lyrics_raw"]
+
+    export_recording = _make_recording(
+        structured_lyrics=kwargs["structured_lyrics"],
+        structured_lyrics_raw=stored_raw,
+    )
+    view_db_mock = MagicMock()
+    view_db_mock.get_recording_by_song_id.return_value = export_recording
+    view_db_mock.get_song.return_value = _make_song()
+    out_file = tmp_path / "out.txt"
+
+    with (
+        patch.object(lyrics_commands, "AdminConfig", MagicMock()),
+        patch.object(lyrics_commands, "get_db_client", return_value=view_db_mock),
+    ):
+        view_result = runner.invoke(
+            lyrics_app, ["view-structured", "song_0001", "--output", str(out_file)]
+        )
+
+    assert view_result.exit_code == 0, view_result.output
+    assert out_file.read_text(encoding="utf-8") == stored_raw
 
 
 def test_view_structured_no_structured_lyrics_exits_zero(tmp_path):

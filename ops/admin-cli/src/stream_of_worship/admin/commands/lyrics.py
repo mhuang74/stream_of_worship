@@ -50,7 +50,7 @@ from stream_of_worship.admin.services.prompts import (
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.structured_lyrics import (
-    flatten_structured_lyrics,
+    format_structured_lyrics_canonical,
     parse_structured_lyrics,
 )
 from stream_of_worship.db.connection import ConnectionProvider
@@ -997,7 +997,9 @@ def lyrics_upload(
 @app.command("upload-structured")
 def lyrics_upload_structured(
     song_id: str = typer.Argument(..., help="Song ID to store structured lyrics for"),
-    lyrics_file: Path = typer.Argument(..., help="Path to section-tagged lyrics text file", exists=True),
+    lyrics_file: Path = typer.Argument(
+        ..., help="Path to section-tagged lyrics text file", exists=True
+    ),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing structured lyrics"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -1046,6 +1048,7 @@ def lyrics_upload_structured(
         raise typer.Exit(1)
 
     sections = parsed["sections"]
+    formatted = format_structured_lyrics_canonical(parsed)
     preview_lines = [
         f"[cyan]Song ID:[/cyan]     {song_id}",
         f"[cyan]Song Title:[/cyan]  {song_title}",
@@ -1054,7 +1057,14 @@ def lyrics_upload_structured(
         f"[cyan]Sections:[/cyan]    {len(sections)}",
         "",
     ]
-    preview_lines.extend(f"  [{s.get('raw_label') or s.get('label', '')}] {len(s.get('lines', []))} line(s)" for s in sections)
+    preview_lines.extend(
+        f"  [{s.get('raw_label') or s.get('label', '')}] {len(s.get('lines', []))} line(s)"
+        for s in sections
+    )
+    if formatted != content:
+        preview_lines.append(
+            "[yellow]Raw text will be reformatted to canonical style (lowercase labels, blank line between sections)[/yellow]"
+        )
     if overwriting:
         preview_lines.append("")
         preview_lines.append("[yellow]Existing structured lyrics will be overwritten[/yellow]")
@@ -1073,7 +1083,7 @@ def lyrics_upload_structured(
 
     db_client.update_recording_structured_lyrics(
         hash_prefix=recording.hash_prefix,
-        structured_lyrics_raw=content,
+        structured_lyrics_raw=formatted,
         structured_lyrics=json.dumps(parsed, ensure_ascii=False),
     )
 
@@ -1109,7 +1119,10 @@ def lyrics_upload_structured(
 def lyrics_view_structured(
     song_id: str = typer.Argument(..., help="Song ID to view structured lyrics for"),
     output: Optional[Path] = typer.Option(
-        None, "--output", "-o", help="Write raw section-tagged text to this file instead of printing"
+        None,
+        "--output",
+        "-o",
+        help="Write raw section-tagged text to this file instead of printing",
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -1130,15 +1143,20 @@ def lyrics_view_structured(
         )
         raise typer.Exit(1)
 
-    if recording.structured_lyrics_raw:
+    if recording.structured_lyrics:
+        try:
+            text = format_structured_lyrics_canonical(json.loads(recording.structured_lyrics))
+        except (json.JSONDecodeError, TypeError):
+            text = None
+        if text is None:
+            text = recording.structured_lyrics_raw or ""
+        else:
+            console.print(
+                "[dim]Note: raw section-tagged text unavailable — re-rendered from stored "
+                "structured lyrics JSON.[/dim]"
+            )
+    elif recording.structured_lyrics_raw:
         text = recording.structured_lyrics_raw
-    elif recording.structured_lyrics:
-        parsed = json.loads(recording.structured_lyrics)
-        text = flatten_structured_lyrics(parsed)
-        console.print(
-            "[dim]Note: raw section-tagged text unavailable — re-rendered from stored "
-            "structured lyrics JSON.[/dim]"
-        )
     else:
         console.print(
             "[yellow]No structured lyrics stored for this recording. "
@@ -1150,7 +1168,9 @@ def lyrics_view_structured(
         output.write_text(text, encoding="utf-8")
         console.print(f"[green]Wrote structured lyrics to {output}[/green]")
     else:
-        console.print(text)
+        # markup=False: canonical lowercase labels like [verse] would otherwise
+        # be consumed as rich markup and vanish from the display.
+        console.print(text, markup=False)
 
 
 @app.command("edit")

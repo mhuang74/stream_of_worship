@@ -991,7 +991,9 @@ class DatabaseClient:
 
         Args:
             hash_prefix: The hash prefix of the recording.
-            structured_lyrics_raw: Raw YouTube description text (or None).
+            structured_lyrics_raw: Canonical reformatted section-tagged text
+                (from ``lyrics upload-structured``) or verbatim input text
+                (from the ``fetch_structured_lyrics`` backfill paths), or None.
             structured_lyrics: Parsed structured-lyrics JSON string (or None).
         """
         with self.transaction() as conn:
