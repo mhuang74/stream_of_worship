@@ -10,6 +10,7 @@ Per ADR 0007, feedback is advisory: feedback commands only write
 (``recordings.lrc_status``).
 """
 
+import json
 from pathlib import Path
 from typing import List, Optional
 
@@ -48,6 +49,10 @@ from stream_of_worship.admin.services.prompts import (
     read_song_ids_from_stdin,
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
+from stream_of_worship.admin.services.structured_lyrics import (
+    flatten_structured_lyrics,
+    parse_structured_lyrics,
+)
 from stream_of_worship.db.connection import ConnectionProvider
 
 console = Console()
@@ -987,6 +992,165 @@ def lyrics_upload(
             border_style="green",
         )
     )
+
+
+@app.command("upload-structured")
+def lyrics_upload_structured(
+    song_id: str = typer.Argument(..., help="Song ID to store structured lyrics for"),
+    lyrics_file: Path = typer.Argument(..., help="Path to section-tagged lyrics text file", exists=True),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing structured lyrics"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Parse a section-tagged lyrics text file and store it on the recording.
+
+    Does NOT upload to R2 — structured lyrics live in the recordings table
+    (structured_lyrics_raw + structured_lyrics columns), unlike
+    ``lyrics upload`` which uploads a timed LRC file to R2.
+    """
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for song: {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    song = db_client.get_song(song_id)
+    song_title = song.title if song else "Unknown"
+
+    try:
+        content = lyrics_file.read_text(encoding="utf-8")
+    except Exception as e:
+        console.print(f"[red]Error reading lyrics file: {e}[/red]")
+        raise typer.Exit(1)
+
+    parsed = parse_structured_lyrics(content)
+    if parsed is None or not parsed.get("sections"):
+        console.print("[red]No section tags (e.g. [Verse], [Chorus]) found in file[/red]")
+        raise typer.Exit(1)
+
+    overwriting = bool(recording.structured_lyrics)
+    if overwriting and not force:
+        console.print(
+            f"[red]Recording {recording.hash_prefix} already has structured lyrics. "
+            f"Use --force to overwrite.[/red]"
+        )
+        raise typer.Exit(1)
+
+    sections = parsed["sections"]
+    preview_lines = [
+        f"[cyan]Song ID:[/cyan]     {song_id}",
+        f"[cyan]Song Title:[/cyan]  {song_title}",
+        f"[cyan]Hash Prefix:[/cyan] {recording.hash_prefix}",
+        f"[cyan]Lyrics File:[/cyan] {lyrics_file}",
+        f"[cyan]Sections:[/cyan]    {len(sections)}",
+        "",
+    ]
+    preview_lines.extend(f"  [{s.get('raw_label') or s.get('label', '')}] {len(s.get('lines', []))} line(s)" for s in sections)
+    if overwriting:
+        preview_lines.append("")
+        preview_lines.append("[yellow]Existing structured lyrics will be overwritten[/yellow]")
+
+    console.print(
+        Panel.fit(
+            "\n".join(preview_lines),
+            title="Structured Lyrics Upload Preview",
+            border_style="cyan",
+        )
+    )
+
+    if not prompt_confirmation("Store these structured lyrics?"):
+        console.print("[yellow]Upload cancelled.[/yellow]")
+        raise typer.Exit(0)
+
+    db_client.update_recording_structured_lyrics(
+        hash_prefix=recording.hash_prefix,
+        structured_lyrics_raw=content,
+        structured_lyrics=json.dumps(parsed, ensure_ascii=False),
+    )
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[green]Structured lyrics stored![/green]\n\n"
+            f"[cyan]Song:[/cyan] {song_title}\n"
+            f"[cyan]Sections:[/cyan] {len(sections)}",
+            title="Upload Complete",
+            border_style="green",
+        )
+    )
+
+    # Advisory hints (read-only checks; never abort the success report)
+    if recording.lrc_status != "completed":
+        console.print(
+            f"[yellow]No completed LRC yet — run 'sow-admin lyrics generate {song_id}' "
+            f"to generate one.[/yellow]"
+        )
+    try:
+        components = db_client.get_song_components(song_id)
+        if not components:
+            console.print(
+                f"[yellow]No song components yet — run 'sow-admin audio components {song_id}' "
+                f"to generate them.[/yellow]"
+            )
+    except Exception as e:
+        console.print(f"[dim]Skipped components check: {e}[/dim]")
+
+
+@app.command("view-structured")
+def lyrics_view_structured(
+    song_id: str = typer.Argument(..., help="Song ID to view structured lyrics for"),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Write raw section-tagged text to this file instead of printing"
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """View or export the structured lyrics stored on a recording."""
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for song: {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    if recording.structured_lyrics_raw:
+        text = recording.structured_lyrics_raw
+    elif recording.structured_lyrics:
+        parsed = json.loads(recording.structured_lyrics)
+        text = flatten_structured_lyrics(parsed)
+        console.print(
+            "[dim]Note: raw section-tagged text unavailable — re-rendered from stored "
+            "structured lyrics JSON.[/dim]"
+        )
+    else:
+        console.print(
+            "[yellow]No structured lyrics stored for this recording. "
+            "Use 'lyrics upload-structured' or 'audio download --backfill-lyrics'.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    if output:
+        output.write_text(text, encoding="utf-8")
+        console.print(f"[green]Wrote structured lyrics to {output}[/green]")
+    else:
+        console.print(text)
 
 
 @app.command("edit")
