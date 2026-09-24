@@ -104,6 +104,25 @@ describe("POST /api/transitions/preview", () => {
     expect(data.error).toMatch(/not found|not published/i);
   });
 
+  it("returns signed URL when recording visibility is review", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    const expiresAt = new Date(Date.now() + 3600_000);
+    mockFindFirst.mockResolvedValue({
+      hashPrefix: "hash-b",
+      visibilityStatus: "review",
+    });
+    mockGetAudioSignedUrl.mockResolvedValue({
+      url: "https://r2.example.com/audio/hash-b.mp3",
+      expiresAt,
+    });
+
+    const res = await POST(makeRequest({ toHash: "hash-b" }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.url).toBe("https://r2.example.com/audio/hash-b.mp3");
+    expect(data.previewHash).toBe("hash-b");
+  });
+
   it("returns signed URL using toHash when provided", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     const expiresAt = new Date(Date.now() + 3600_000);

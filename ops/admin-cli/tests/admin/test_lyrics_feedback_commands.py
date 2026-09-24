@@ -314,10 +314,74 @@ class TestLyricsFeedbackListCommand:
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
-        # Three songed recordings dedup to one song_001 line; songless R4 falls
-        # back to hash_prefix. No table chrome in ids mode.
-        lines = [ln for ln in result.output.splitlines() if ln.strip()]
-        assert lines == ["song_001", "hash-dd"]
+        # Three songed recordings dedup to one song_001 line; songless R4 is
+        # reported on stderr as skipped, keeping stdout a clean id stream.
+        lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        assert lines == ["song_001"]
+        assert "hash-dd" in result.stderr
+        assert "Skipped 1 recording" in result.stderr
+        _drop_all_tables(make_test_provider)
+
+    def test_format_ids_dedupes_multi_recording_song(self, make_test_provider, postgres_url, tmp_path):
+        """Regression pin: a song with open sad rows on several recordings is
+        emitted exactly once by the ids formatter (the `seen` set)."""
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        # All three songed recordings already carry open sad rows for song_001.
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            [
+                "feedback", "list", "--rating", "poor", "--format", "ids",
+                "--config", str(config_path),
+            ],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.stdout
+        lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        # One song id despite three recordings with open sad feedback.
+        assert lines == ["song_001"]
+        _drop_all_tables(make_test_provider)
+
+    def test_rating_poor_excludes_resolved_sad_with_open_happy(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """--rating poor means 'has ≥1 OPEN sad row': a recording whose sad
+        rows are all resolved but which has an open happy row drops out."""
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        # Resolve ALL of R1's sad rows, leaving its happy row open.
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE lyrics_feedback SET resolved_at = NOW() "
+                "WHERE recording_content_hash = 'hash-aaaaaaaaaaaaaaaa' AND rating = 'sad'"
+            )
+        conn.commit()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            [
+                "feedback", "list", "--rating", "poor", "--format", "ids",
+                "--config", str(config_path),
+            ],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.stdout
+        # hash-aa (resolved sad, open happy) drops out; hash-bb/hash-cc remain.
+        lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+        assert lines == ["song_001"]  # other songed recordings still qualify (same song)
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM lyrics_feedback f "
+                "JOIN recordings r ON r.content_hash = f.recording_content_hash "
+                "WHERE r.song_id = 'song_001' AND f.resolved_at IS NULL "
+                "AND f.rating = 'sad'"
+            )
+            open_sad = cur.fetchone()[0]
+        assert open_sad == 3  # hash-bb + hash-cc rows still open sad
         _drop_all_tables(make_test_provider)
 
     def test_format_ids_empty_feedback_prints_nothing(
@@ -334,7 +398,7 @@ class TestLyricsFeedbackListCommand:
         assert result.exit_code == 0, result.output
         # Pipe contract: empty queue emits zero stdout lines so the downstream
         # --stdin consumer sees clean EOF (set-visibility errors on stray text).
-        assert result.output.strip() == ""
+        assert result.stdout.strip() == ""
         _drop_all_tables(make_test_provider)
 
     def test_rating_good_ids_pipeable_for_set_visibility(
@@ -361,8 +425,8 @@ class TestLyricsFeedbackListCommand:
             ],
             env={"COLUMNS": "200"},
         )
-        assert result.exit_code == 0, result.output
-        lines = [ln for ln in result.output.splitlines() if ln.strip()]
+        assert result.exit_code == 0, result.stdout
+        lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
         assert lines == ["song_001"]
         _drop_all_tables(make_test_provider)
 

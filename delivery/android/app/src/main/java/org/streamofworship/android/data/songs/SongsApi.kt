@@ -13,7 +13,7 @@ interface SongsApi {
     suspend fun listSongs(
         @Query("limit") limit: Int,
         @Query("offset") offset: Int,
-        @Query("visibilityStatus") visibilityStatus: String = "published",
+        @Query("visibilityStatus") visibilityStatus: String = "published,review",
         @Query("albumName") albumName: String? = null,
         @Query("albumSeries") albumSeries: String? = null,
         @Query("composer") composer: String? = null,
@@ -25,7 +25,7 @@ interface SongsApi {
         @Query("q") query: String,
         @Query("limit") limit: Int,
         @Query("offset") offset: Int,
-        @Query("visibilityStatus") visibilityStatus: String = "published",
+        @Query("visibilityStatus") visibilityStatus: String = "published,review",
     ): Response<SongsPage>
 
     @POST("api/songs/search/semantic")

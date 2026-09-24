@@ -211,11 +211,16 @@ def submit_lrc_batch(
     no_qwen3_asr: bool,
     force_qwen3_asr: bool,
     console: Console,
-) -> None:
-    """Submit LRC for multiple recordings (batch mode, no wait)."""
+) -> list[tuple[str, str, str]]:
+    """Submit LRC for multiple recordings (batch mode, no wait).
+
+    Returns the submitted ``(song_id, content_hash, job_id)`` triples;
+    skipped/errored songs are not included.
+    """
     submitted = 0
     skipped = 0
     errors = 0
+    submissions: list[tuple[str, str, str]] = []
 
     for i, song_id in enumerate(song_ids, 1):
         console.print(f"[{i}/{len(song_ids)}] Processing {song_id}...")
@@ -281,6 +286,7 @@ def submit_lrc_batch(
 
             console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
             submitted += 1
+            submissions.append((song_id, recording.content_hash, job.job_id))
 
         except AnalysisServiceError as e:
             console.print(f"  [red]Failed to submit: {e}[/red]")
@@ -296,6 +302,7 @@ def submit_lrc_batch(
     console.print(f"  Skipped: {skipped}")
     console.print(f"  Errors: {errors}")
     console.print(f"  Total: {len(song_ids)}")
+    return submissions
 
 
 def submit_lrc_job(

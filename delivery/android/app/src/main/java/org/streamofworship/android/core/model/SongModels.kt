@@ -46,8 +46,8 @@ data class Song(
     val matchingSnippet: String? = null,
     val whyThisMatch: List<String> = emptyList(),
 ) {
-    val publishedRecordings: List<Recording>
-        get() = recordings.filter { it.visibilityStatus == null || it.visibilityStatus == "published" }
+    val visibleRecordings: List<Recording>
+        get() = recordings.filter { it.visibilityStatus == null || it.visibilityStatus == "published" || it.visibilityStatus == "review" }
 }
 
 @Serializable

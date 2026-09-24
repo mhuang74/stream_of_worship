@@ -393,7 +393,7 @@ class SongsetDetailViewModel(
 
     fun addSong(song: Song) {
         val previous = mutableState.value.songset ?: return
-        val recording = song.publishedRecordings.firstOrNull()
+        val recording = song.visibleRecordings.firstOrNull()
         // Synchronous pre-check for immediate UX feedback (does not race-protect alone).
         if (previous.items.size >= SongsetMaxSongs) {
             mutableState.update { it.copy(validationMessage = "Songsets can include up to 5 songs") }
@@ -413,7 +413,7 @@ class SongsetDetailViewModel(
                 // so concurrent addSong calls do not both pass validation and POST the same
                 // position or exceed the song/duration cap.
                 val current = mutableState.value.songset ?: return@withLock
-                val currentRecording = song.publishedRecordings.firstOrNull()
+                val currentRecording = song.visibleRecordings.firstOrNull()
                 if (current.items.size >= SongsetMaxSongs) {
                     mutableState.update { it.copy(validationMessage = "Songsets can include up to 5 songs") }
                     return@withLock

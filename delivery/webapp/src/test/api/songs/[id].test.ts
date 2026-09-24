@@ -103,6 +103,50 @@ describe("GET /api/songs/[id]", () => {
     expect(data.recordings[0].tempoBpm).toBe(120);
   });
 
+  it("returns song whose only recording is review", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const mockSong = {
+      id: "song-2",
+      title: "Review Song",
+      lyricsRaw: "Review lyrics raw",
+      lyricsLines: "Review lyrics lines",
+      sections: null,
+      sourceUrl: null,
+      recordings: [
+        {
+          contentHash: "def456",
+          hashPrefix: "def",
+          originalFilename: "review.mp3",
+          durationSeconds: 200,
+          tempoBpm: 110,
+          musicalKey: "G",
+          musicalMode: "major",
+          loudnessDb: -12,
+          r2AudioUrl: "https://r2.example.com/review.mp3",
+          r2LrcUrl: null,
+          visibilityStatus: "review",
+          analysisStatus: "completed",
+        },
+      ],
+    };
+
+    vi.mocked(getSong).mockResolvedValue(mockSong);
+
+    const request = createMockRequest("http://localhost:3000/api/songs/song-2");
+    const response = await GET(request, { params: Promise.resolve({ id: "song-2" }) });
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.id).toBe("song-2");
+    expect(data.title).toBe("Review Song");
+    expect(data.recordings).toHaveLength(1);
+    expect(data.recordings[0].visibilityStatus).toBe("review");
+    expect(data.recordings[0].contentHash).toBe("def456");
+  });
+
   it("returns 404 when song not found", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

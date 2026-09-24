@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { createR2ClientFromEnv } from "@/lib/r2/client";
 import { db } from "@/db";
 import { recordings } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import { z } from "zod";
 
 const previewRequestSchema = z.object({
@@ -59,13 +59,13 @@ export async function POST(request: NextRequest) {
     const recording = await db.query.recordings.findFirst({
       where: and(
         eq(recordings.hashPrefix, previewHash),
-        eq(recordings.visibilityStatus, "published")
+        inArray(recordings.visibilityStatus, ["published", "review"])
       ),
     });
 
     if (!recording) {
       return NextResponse.json(
-        { error: "Recording not found or not published" },
+        { error: "Recording not found or not visible" },
         { status: 404 }
       );
     }

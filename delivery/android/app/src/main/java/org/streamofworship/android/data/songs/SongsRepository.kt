@@ -34,7 +34,7 @@ class HttpSongsRepository(
             api.listSongs(
                 limit = limit,
                 offset = offset,
-                visibilityStatus = "published",
+                visibilityStatus = "published,review",
                 albumName = albumName,
             )
         }.publishedOnly()
@@ -49,7 +49,7 @@ class HttpSongsRepository(
                 query = query,
                 limit = limit,
                 offset = offset,
-                visibilityStatus = "published",
+                visibilityStatus = "published,review",
             )
         }.publishedOnly()
 
@@ -66,6 +66,6 @@ private fun SongsPage.publishedOnly(): SongsPage =
     copy(
         songs =
             songs
-                .map { song -> song.copy(recordings = song.publishedRecordings) }
+                .map { song -> song.copy(recordings = song.visibleRecordings) }
                 .filter { it.recordings.isNotEmpty() },
     )

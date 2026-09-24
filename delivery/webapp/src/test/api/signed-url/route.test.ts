@@ -144,6 +144,25 @@ describe("/api/signed-url", () => {
     );
   });
 
+  it("generates a recording audio URL from hashPrefix when visibility is review", async () => {
+    mockRecordingFindFirst.mockResolvedValue({
+      hashPrefix: "abc123",
+      visibilityStatus: "review",
+    });
+
+    const response = await GET(
+      createMockRequest(
+        "http://localhost:3000/api/signed-url?hashPrefix=abc123&fileType=audio"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetAudioSignedUrl).toHaveBeenCalledWith(
+      "abc123",
+      expect.objectContaining({ expiresInSeconds: 3600 })
+    );
+  });
+
   it("rejects unpublished recording access by hashPrefix", async () => {
     mockRecordingFindFirst.mockResolvedValue(null);
 

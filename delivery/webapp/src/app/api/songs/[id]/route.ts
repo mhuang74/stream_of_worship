@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const song = await getSong(id);
+    const song = await getSong(id, ["published", "review"]);
 
     if (!song) {
       return NextResponse.json({ error: "Song not found" }, { status: 404 });
