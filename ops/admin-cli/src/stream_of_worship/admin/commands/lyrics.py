@@ -521,20 +521,37 @@ def _preflight_guard(
     ``get_recording_by_song_id`` lookup) matches one of the feedback's
     recording content hashes. Mismatched songs are skipped so a run never
     regenerates a recording users did not complain about. Songs with no open
-    sad feedback at all pass unconditionally.
+    sad feedback at all pass unconditionally. Songs with no recording at all
+    are reported as ``skipped-songless``.
 
-    Returns ``(accepted_song_ids, skipped_guard_rows)``.
+    Returns ``(accepted_song_ids, skipped_rows)``.
     """
     accepted: list[str] = []
     skipped: list[dict] = []
     for song_id in song_ids:
+        recording = db_client.get_recording_by_song_id(song_id)
+        if recording is None:
+            # No (non-deleted) recording to target — nothing to regenerate.
+            # Report it rather than letting it vanish into a submit error.
+            skipped.append(
+                {
+                    "song_id": song_id,
+                    "reason": "skipped-songless",
+                    "target_hash": None,
+                    "feedback_hashes": [],
+                }
+            )
+            console.print(
+                f"  [yellow]→ {song_id} (skipped-songless: no recording found "
+                f"for this song id)[/yellow]"
+            )
+            continue
         feedback = _fetch_open_feedback_hashes(provider, song_id)
         sad_hashes = feedback.get("sad", [])
         if not sad_hashes:
             accepted.append(song_id)
             continue
-        recording = db_client.get_recording_by_song_id(song_id)
-        target_hash = recording.content_hash if recording else None
+        target_hash = recording.content_hash
         if target_hash in sad_hashes:
             accepted.append(song_id)
         else:
@@ -571,7 +588,8 @@ def _write_lyrics_manifest(
 ) -> Optional[Path]:
     """Write (or rewrite) the lyrics-batch run manifest to disk.
 
-    Returns the manifest path, or None on failure.
+    Records ``finished_at`` once every job has settled. Returns the manifest
+    path, or None on failure.
     """
     import logging
 
@@ -585,6 +603,8 @@ def _write_lyrics_manifest(
             "started_at": started_at,
             "jobs": entries,
         }
+        if entries and all(e.get("outcome") != "pending" for e in entries):
+            manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
         return manifest_path
     except OSError as e:
@@ -602,6 +622,13 @@ def _load_lyrics_manifest(manifest_path: Path) -> Optional[dict]:
     except (OSError, json.JSONDecodeError) as e:
         logger.error(f"Failed to load manifest {manifest_path}: {e}")
         return None
+
+
+def _r2_lrc_lookup(r2_client: Optional[R2Client], hash_prefix: str) -> Optional[str]:
+    """Return the R2 LRC URL for a prefix, or None when R2 is unavailable."""
+    if r2_client is None:
+        return None
+    return r2_client.lrc_exists(hash_prefix)
 
 
 def _poll_lrc_batch(
@@ -668,7 +695,7 @@ def _poll_lrc_batch(
                 except AnalysisServiceError as e:
                     if e.status_code == 404:
                         # Job lost: R2 fallback.
-                        lrc_url = r2_client.lrc_exists(hash_prefix)
+                        lrc_url = _r2_lrc_lookup(r2_client, hash_prefix)
                         if lrc_url:
                             db_client.update_recording_lrc(
                                 hash_prefix=hash_prefix,
@@ -703,7 +730,7 @@ def _poll_lrc_batch(
                     # Service-first: use the reported lrc_url; fall back to R2.
                     lrc_url = job.result.lrc_url if job.result else None
                     if not lrc_url:
-                        lrc_url = r2_client.lrc_exists(hash_prefix)
+                        lrc_url = _r2_lrc_lookup(r2_client, hash_prefix)
                     if lrc_url:
                         db_client.update_recording_lrc(
                             hash_prefix=hash_prefix,
@@ -752,7 +779,7 @@ def _poll_lrc_batch(
         console.print("[yellow]Batch interrupted. Reconciling in-progress jobs...[/yellow]")
         for job_id, entry in by_job.items():
             hash_prefix = get_hash_prefix(entry["content_hash"])
-            lrc_url = r2_client.lrc_exists(hash_prefix)
+            lrc_url = _r2_lrc_lookup(r2_client, hash_prefix)
             if lrc_url:
                 db_client.update_recording_lrc(
                     hash_prefix=hash_prefix,
@@ -783,15 +810,16 @@ def _poll_lrc_batch(
 def _print_run_report(
     submissions: list[tuple[str, str, str]],
     entries: list[dict],
-    skipped_guard: list[dict],
+    skipped: list[dict],
     db_client: DatabaseClient,
     console: Console,
 ) -> None:
     """Print the end-of-run report.
 
-    Per-recording outcomes (completed / failed / skipped-guard / pending),
-    failures with job ids, and the exact `lyrics feedback resolve` commands
-    for completed recordings. Nothing is auto-resolved (ADR-0007).
+    Per-recording outcomes (completed / failed / skipped-guard /
+    skipped-songless / pending), failures with job ids, and the exact
+    `lyrics feedback resolve` commands for completed recordings. Nothing is
+    auto-resolved (ADR-0007).
     """
     completed: list[dict] = []
     failed: list[dict] = []
@@ -808,6 +836,9 @@ def _print_run_report(
         else:
             pending.append(entry)
 
+    skipped_guard = [s for s in skipped if s.get("reason") != "skipped-songless"]
+    skipped_songless = [s for s in skipped if s.get("reason") == "skipped-songless"]
+
     console.print()
     console.print("[cyan]Run Report[/cyan]")
     console.print(f"  Submitted: {len(submissions)}")
@@ -815,6 +846,7 @@ def _print_run_report(
     console.print(f"  Failed: {len(failed)}")
     console.print(f"  Pending (interrupted): {len(pending)}")
     console.print(f"  Skipped (guard): {len(skipped_guard)}")
+    console.print(f"  Skipped (songless): {len(skipped_songless)}")
 
     for entry in failed:
         console.print(
@@ -830,6 +862,11 @@ def _print_run_report(
             f"  [yellow]→ skipped-guard {skip['song_id']}: target "
             f"{skip['target_hash'] or 'none'} vs feedback "
             f"{', '.join(skip['feedback_hashes'])}[/yellow]"
+        )
+    for skip in skipped_songless:
+        console.print(
+            f"  [yellow]→ skipped-songless {skip['song_id']}: no recording "
+            f"found for this song id[/yellow]"
         )
 
     if completed:

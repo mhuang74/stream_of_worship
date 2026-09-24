@@ -7,6 +7,18 @@ import { auth } from "@/lib/auth";
 
 const mockRenderJobFindFirst = vi.fn();
 const mockRecordingFindFirst = vi.fn();
+
+/** Recursively collect string leaf values from a drizzle where clause,
+ * so tests can assert which literal values a query filter accepts. */
+function collectLeafValues(node: unknown, out: string[] = [], depth = 0): string[] {
+  if (node == null || typeof node !== "object" || depth > 8) return out;
+  for (const value of Object.values(node as Record<string, unknown>)) {
+    if (typeof value === "string") out.push(value);
+    else if (Array.isArray(value)) value.forEach((v) => collectLeafValues(v, out, depth + 1));
+    else if (value && typeof value === "object") collectLeafValues(value, out, depth + 1);
+  }
+  return out;
+}
 const mockGenerateSignedUrl = vi.fn();
 const mockGetAudioSignedUrl = vi.fn();
 const mockGetLrcSignedUrl = vi.fn();
@@ -161,6 +173,12 @@ describe("/api/signed-url", () => {
       "abc123",
       expect.objectContaining({ expiresInSeconds: 3600 })
     );
+    // Pin the widening: the query's where clause must accept both published
+    // and review, so this test fails if it reverts to published-only.
+    const whereClause = mockRecordingFindFirst.mock.calls.at(-1)?.[0]?.where;
+    const seenValues = collectLeafValues(whereClause);
+    expect(seenValues).toContain("published");
+    expect(seenValues).toContain("review");
   });
 
   it("rejects unpublished recording access by hashPrefix", async () => {

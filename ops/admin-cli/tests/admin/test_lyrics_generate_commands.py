@@ -80,14 +80,13 @@ def _init_schema(make_test_provider):
 
 
 def _seed_guard_data(provider):
-    """Seed two songs: song_001 (target matches feedback) and song_002
-    (feedback on a different recording than the generation target).
+    """Seed three songs with 12-char prefixes (content_hash == hash_prefix).
 
-    get_recording_by_song_id has no ORDER BY — it returns an arbitrary
-    row among the song's recordings. For song_002 we seed two recordings;
-    the feedback points at the NON-target hash. Because the lookup may
-    return either, we detect which hash the command targets dynamically
-    (recorded via submit_lrc_batch calls) instead of pinning one.
+    - song_001: open sad feedback on its only recording → passes guard.
+    - song_002: open sad feedback on hash-bb; its lookup is forced (via
+      ORDER BY hash_prefix DESC in _fake_lookup) to target hash-cc, a
+      different recording — the guard must skip it.
+    - song_003: no feedback at all → passes guard unconditionally.
     """
     conn = provider.get_connection()
     with conn.cursor() as cur:
@@ -103,13 +102,15 @@ def _seed_guard_data(provider):
             INSERT INTO songs (id, title, source_url, scraped_at, composer, lyrics_raw)
             VALUES
                 ('song_001', 'Song One', 'https://example.com/1', '2024-01-01T00:00:00', '作曲', '歌词一'),
-                ('song_002', 'Song Two', 'https://example.com/2', '2024-01-01T00:00:00', '作曲', '歌词二')
+                ('song_002', 'Song Two', 'https://example.com/2', '2024-01-01T00:00:00', '作曲', '歌词二'),
+                ('song_003', 'Song Three', 'https://example.com/3', '2024-01-01T00:00:00', '作曲', '歌词三')
             """
         )
-        for hash_, prefix, filename, song_id in [
-            ("hash-aaaaaaaaaaaa", "hash-aaaaaa", "one.mp3", "song_001"),
-            ("hash-bbbbbbbbbbbb", "hash-bbbbbb", "two-a.mp3", "song_002"),
-            ("hash-cccccccccccc", "hash-cccccc", "two-b.mp3", "song_002"),
+        for hash_, filename, song_id in [
+            ("hashaaaaaaaaaaaa", "one.mp3", "song_001"),
+            ("hashbbbbbbbbbbbb", "two-a.mp3", "song_002"),
+            ("hashcccccccccccc", "two-b.mp3", "song_002"),
+            ("hashdddddddddddd", "three.mp3", "song_003"),
         ]:
             cur.execute(
                 """
@@ -119,20 +120,21 @@ def _seed_guard_data(provider):
                 )
                 VALUES (%s, %s, %s, %s, 100, '2024-01-01T00:00:00', 'missing', 's3://bucket/audio')
                 """,
-                (hash_, prefix, song_id, filename),
+                (hash_, hash_[:12], song_id, filename),
             )
         # song_001: open sad feedback on its only recording → passes guard.
         cur.execute(
             """
             INSERT INTO lyrics_feedback (id, user_id, recording_content_hash, rating, reason)
-            VALUES ('fb-1', 1, 'hash-aaaaaaaaaaaa', 'sad', 'missing')
+            VALUES ('fb-1', 1, 'hashaaaaaaaaaaaa', 'sad', 'missing')
             """
         )
-        # song_002: open sad feedback on hash-bb only.
+        # song_002: open sad feedback on hash-bb only; generation will target
+        # hash-cc (forced by the test's lookup), so the guard must veto it.
         cur.execute(
             """
             INSERT INTO lyrics_feedback (id, user_id, recording_content_hash, rating, reason)
-            VALUES ('fb-2', 1, 'hash-bbbbbbbbbbbb', 'sad', 'timing')
+            VALUES ('fb-2', 1, 'hashbbbbbbbbbbbb', 'sad', 'timing')
             """
         )
     conn.commit()
@@ -255,16 +257,12 @@ def test_generate_stdin_multiple_ids_routes_to_batch():
 class TestPreFlightGuard:
     """Seam 2: feedback-aware pre-flight target guard on real Postgres."""
 
-    def teardown_method(self):
-        pass
-
     def test_guard_skips_mismatched_target(
         self, make_test_provider, postgres_url, tmp_path
     ):
         _init_schema(make_test_provider)
         provider = _seed_guard_data(make_test_provider())
         config_path = _write_config(tmp_path, postgres_url)
-        target_hash = _target_hash(provider, "song_002")
 
         with (
             patch.object(lyrics_commands, "get_db_client") as db_mock,
@@ -274,27 +272,25 @@ class TestPreFlightGuard:
             ) as batch_mock,
         ):
             db_client = db_mock.return_value
-            # The submission path's own lookup: same recording the CLI sees.
-            db_client.get_recording_by_song_id.side_effect = _fake_lookup(provider)
+            # Both guard and submission-path lookups target hash-cc (DESC
+            # order), but song_002's open sad feedback is on hash-bb. The
+            # mismatch is deterministic, so the guard MUST skip the song.
+            db_client.get_recording_by_song_id.side_effect = _fake_lookup(provider, descending=True)
             result = runner.invoke(
                 lyrics_app,
                 ["generate", "--stdin", "--force", "--config", str(config_path)],
                 input="song_002\n",
             )
         assert result.exit_code == 0, result.output
-        # hash-bb has the feedback; if the lookup targets hash-cc the guard
-        # must skip the song. If it targets hash-bb the song is submitted —
-        # either way, never a silent mismatched regeneration.
-        if target_hash != "hash-bbbbbbbbbbbb":
-            batch_mock.assert_not_called()
-            assert "skipped-guard" in result.output
-            assert "song_002" in result.output
-        else:
-            batch_mock.assert_called_once()
+        batch_mock.assert_not_called()
+        assert "skipped-guard" in result.output
+        assert "hashcccccccccccc" in result.output  # target hash reported
+        assert "hashbbbbbbbbbbbb" in result.output  # feedback hash reported
+        _drop_all_tables(make_test_provider)
 
     def test_guard_passes_matching_target(self, make_test_provider, postgres_url, tmp_path):
         _init_schema(make_test_provider)
-        _seed_guard_data(make_test_provider())
+        provider = _seed_guard_data(make_test_provider())
         config_path = _write_config(tmp_path, postgres_url)
 
         with (
@@ -305,7 +301,8 @@ class TestPreFlightGuard:
             ) as batch_mock,
         ):
             db_client = db_mock.return_value
-            db_client.get_recording_by_song_id.side_effect = _fake_lookup(provider := make_test_provider())
+            # song_001 has one recording, whose hash matches its feedback.
+            db_client.get_recording_by_song_id.side_effect = _fake_lookup(provider)
             result = runner.invoke(
                 lyrics_app,
                 ["generate", "--stdin", "--force", "--config", str(config_path)],
@@ -320,7 +317,7 @@ class TestPreFlightGuard:
         self, make_test_provider, postgres_url, tmp_path
     ):
         _init_schema(make_test_provider)
-        _seed_guard_data(make_test_provider())
+        provider = _seed_guard_data(make_test_provider())
         config_path = _write_config(tmp_path, postgres_url)
 
         with (
@@ -331,27 +328,35 @@ class TestPreFlightGuard:
             ) as batch_mock,
         ):
             db_client = db_mock.return_value
-            db_client.get_recording_by_song_id.side_effect = _fake_lookup(make_test_provider())
+            # song_003 has recordings but no feedback rows at all.
+            db_client.get_recording_by_song_id.side_effect = _fake_lookup(provider)
             result = runner.invoke(
                 lyrics_app,
                 ["generate", "--stdin", "--force", "--config", str(config_path)],
-                input="song_unknown\n",
+                input="song_003\n",
             )
         assert result.exit_code == 0, result.output
-        # No feedback rows → guard passes unconditionally (batch will report
-        # its own no-recording error; here we only assert the guard passed).
+        # No feedback → guard passes unconditionally.
         batch_mock.assert_called_once()
+        assert batch_mock.call_args.kwargs["song_ids"] == ["song_003"]
         _drop_all_tables(make_test_provider)
 
 
-def _fake_lookup(provider):
-    """Return a get_recording_by_song_id stub backed by the real DB."""
+def _fake_lookup(provider, descending: bool = False):
+    """Return a get_recording_by_song_id stub backed by the real DB.
+
+    With ``descending=True`` it sorts hash_prefix DESC, so a song with two
+    recordings deterministically targets the lexicographically-later one
+    (hash-cc for song_002) — the recording without feedback.
+    """
 
     def _lookup(song_id):
+        order = "DESC" if descending else "ASC"
         with provider.get_connection().cursor() as cur:
             cur.execute(
-                "SELECT content_hash, hash_prefix FROM recordings "
-                "WHERE song_id = %s AND deleted_at IS NULL LIMIT 1",
+                f"SELECT content_hash, hash_prefix FROM recordings "
+                f"WHERE song_id = %s AND deleted_at IS NULL "
+                f"ORDER BY hash_prefix {order} LIMIT 1",
                 (song_id,),
             )
             row = cur.fetchone()
@@ -363,14 +368,3 @@ def _fake_lookup(provider):
         return rec
 
     return _lookup
-
-
-def _target_hash(provider, song_id):
-    with provider.get_connection().cursor() as cur:
-        cur.execute(
-            "SELECT content_hash FROM recordings "
-            "WHERE song_id = %s AND deleted_at IS NULL LIMIT 1",
-            (song_id,),
-        )
-        row = cur.fetchone()
-    return row[0] if row else None

@@ -200,52 +200,6 @@ def _real_db_factory(provider):
     return _factory
 
 
-def _invoke_wait_generate(tmp_path, postgres_url, config_path, stdin_text="song_001\nsong_002\n"):
-    """Invoke `generate --stdin --force --wait` with:
-    - real DB (config points at testcontainers Postgres)
-    - AnalysisClient patched at class level in the lyrics module
-    - R2Client patched to a MagicMock whose lrc_exists returns None
-      (service-first path provides lrc_url)
-    - AnalysisClient instance replaced with the fake
-    """
-    manifests = _manifest_dir(tmp_path)
-    fake = None  # set inside the patch context
-
-    with (
-        patch.object(lyrics_commands, "AnalysisClient") as analysis_cls,
-        patch.object(lyrics_commands, "R2Client") as r2_cls,
-        patch.dict(
-            "os.environ", {"SOW_BATCH_MANIFEST_DIR": str(manifests)}
-        ),
-    ):
-        fake = _FakeAnalysisClient(states={})
-        analysis_cls.return_value = fake
-        r2_cls.return_value.lrc_exists.return_value = None
-        # submit_lrc_batch needs to produce job ids for the poll loop;
-        # patch it to submit through the fake so job ids and DB state line up.
-        def _fake_submit_batch(**kwargs):
-            analysis_client = kwargs["analysis_client"]
-            submissions = []
-            for i, song_id in enumerate(kwargs["song_ids"], 1):
-                job_id = f"job-{i:03d}"
-                db_client = kwargs["db_client"]
-                db_client.update_recording_status(
-                    hash_prefix=f"hash{'aaaaaa' if song_id == 'song_001' else 'bbbbbb'}",
-                    lrc_status="processing",
-                    lrc_job_id=job_id,
-                )
-                submissions.append((song_id, f"hash{'aaaaaaaaaaaa' if song_id == 'song_001' else 'bbbbbbbbbbbb'}", job_id))
-            return submissions
-
-        with patch.object(lyrics_commands, "submit_lrc_batch", side_effect=_fake_submit_batch):
-            result = runner.invoke(
-                lyrics_app,
-                ["generate", "--stdin", "--force", "--wait", "--config", str(config_path)],
-                input=stdin_text,
-            )
-    return result, manifests, fake
-
-
 @pytest.mark.integration
 class TestBatchWaitEndState:
     def test_batch_wait_completes_and_fails(
