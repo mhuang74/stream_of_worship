@@ -936,6 +936,12 @@ def _run_stdin_batch(
         _print_run_report(submissions, [], skipped_guard, db_client, console)
         return
 
+    if not submissions:
+        # Nothing actually submitted (every song errored at submit) — no
+        # manifest, just the report.
+        _print_run_report([], [], skipped_guard, db_client, console)
+        return
+
     # Wait mode: manifest + poll loop.
     batch_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S") + "_lyrics"
     started_at = datetime.now(timezone.utc).isoformat()
@@ -959,10 +965,6 @@ def _run_stdin_batch(
     except ValueError as e:
         console.print(f"[yellow]R2 not configured ({e}); skipping R2 fallback checks.[/yellow]")
         r2_client = None  # type: ignore[assignment]
-
-    if not submissions:
-        _print_run_report([], [], skipped_guard, db_client, console)
-        return
 
     entries = _poll_lrc_batch(
         submissions,
