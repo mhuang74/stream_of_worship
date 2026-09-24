@@ -43,7 +43,7 @@ export function SiteHeader({ locale, path }: { locale: Locale; path: string }) {
           </Link>
           <nav
             aria-label={t(locale, "nav.language.ariaLabel")}
-            className="hidden lg:flex ml-2 items-center gap-1 text-xs"
+            className="ml-2 flex items-center gap-1 text-xs"
           >
             {locale === "en" ? (
               <span className={currentLangCls}>{t(locale, "nav.language.en")}</span>
