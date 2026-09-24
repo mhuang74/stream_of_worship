@@ -155,8 +155,8 @@ The acceptance pass for the Android implementation used:
   user, the artifact is not present in R2, or the signed URL expired before
   playback started. Refresh the render/job screen and retry playback to mint a
   fresh URL.
-- Source recording previews require published recordings with a valid
-  `hashPrefix`; draft recordings are intentionally unavailable to app users.
+- Source recording previews require published or review recordings with a valid
+  `hashPrefix`; draft and hold recordings are intentionally unavailable to app users.
 
 ### Offline Downloads
 

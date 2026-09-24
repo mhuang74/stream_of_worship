@@ -543,14 +543,14 @@ private fun SongSearchResult(
                         listOfNotNull(
                             song.albumName,
                             song.composer,
-                            song.publishedRecordings.firstOrNull()?.tempoBpm?.let { "${it.toInt()} BPM" },
-                            song.publishedRecordings.firstOrNull()?.let { it.effectiveKey ?: it.musicalKey },
+                            song.visibleRecordings.firstOrNull()?.tempoBpm?.let { "${it.toInt()} BPM" },
+                            song.visibleRecordings.firstOrNull()?.let { it.effectiveKey ?: it.musicalKey },
                         ).joinToString(" • "),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Button(onClick = onAdd, enabled = addEnabled && song.publishedRecordings.isNotEmpty()) {
+                Button(onClick = onAdd, enabled = addEnabled && song.visibleRecordings.isNotEmpty()) {
                     Text("Add")
                 }
             }

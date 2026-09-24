@@ -359,13 +359,12 @@ export async function listSongs(
 
 export async function getSong(
   id: string,
-  visibilityStatus: string = "published"
+  visibilityStatus: string | string[] = "published"
 ): Promise<SongDetail | null> {
   const visibilityWhereClause = buildSongWhereClause({ visibilityStatus });
   const recordingWhereConditions = [];
-  if (visibilityStatus !== "all") {
-    recordingWhereConditions.push(eq(recordings.visibilityStatus, visibilityStatus));
-  }
+  const visPredicate = recordingVisibilityPredicate(visibilityStatus);
+  if (visPredicate) recordingWhereConditions.push(visPredicate);
   recordingWhereConditions.push(isNull(recordings.deletedAt));
   const recordingWhereClause = recordingWhereConditions.length > 0
     ? and(...recordingWhereConditions)

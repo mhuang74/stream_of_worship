@@ -11,6 +11,8 @@ Per ADR 0007, feedback is advisory: feedback commands only write
 """
 
 import json
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -38,6 +40,7 @@ from stream_of_worship.admin.services.lrc_jobs import (
     submit_lrc_batch,
     submit_lrc_single,
 )
+from stream_of_worship.admin.services.hasher import get_hash_prefix
 from stream_of_worship.admin.services.lrc_parser import (
     build_draft_from_catalog,
     format_duration,
@@ -131,7 +134,10 @@ def feedback_list(
     clauses: list[str] = []
     params: dict = {}
     if rating is not None:
-        clauses.append("f.rating = %(rating)s")
+        # Open-only: with --rating poor, the group must be built from open sad
+        # rows, so recordings whose sad rows are all resolved (but which have an
+        # open happy row) drop out instead of being regenerated needlessly.
+        clauses.append("(f.resolved_at IS NULL AND f.rating = %(rating)s)")
         params["rating"] = RATING_FILTER[rating]
     if reason is not None:
         clauses.append("(f.resolved_at IS NULL AND f.reason = %(reason)s)")
@@ -169,13 +175,26 @@ def feedback_list(
     provider.close()
 
     if format == "ids":
+        stderr_console = Console(stderr=True)
         seen: set[str] = set()
+        songless: list[str] = []
         for row in rows:
             song_id = row[2]
-            target = song_id if song_id else row[1]
-            if target not in seen:
-                seen.add(target)
-                console.print(target)
+            if song_id:
+                if song_id not in seen:
+                    seen.add(song_id)
+                    console.print(song_id)
+            else:
+                # Songless recordings cannot be consumed by `lyrics generate`;
+                # report them to stderr, keeping stdout a clean id stream.
+                songless.append(row[1])
+        if songless:
+            stderr_console.print(
+                f"[yellow]Skipped {len(songless)} recording(s) with no song "
+                f"(not pipeable to lyrics generate):[/yellow]"
+            )
+            for hash_prefix in songless:
+                stderr_console.print(f"  {hash_prefix}")
         return
     if not rows:
         console.print("[yellow]No lyrics feedback found.[/yellow]")
@@ -348,6 +367,16 @@ def lyrics_generate(
         False, "--force-qwen3-asr", help="Bypass cached Qwen3 ASR transcription only"
     ),
     wait: bool = typer.Option(False, "--wait", "-w", help="Wait for LRC generation to complete"),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print the selection and guard results without submitting (batch mode only)",
+    ),
+    resume: Optional[Path] = typer.Option(
+        None,
+        "--resume",
+        help="Resume an interrupted batch run from its manifest (re-polls without resubmitting)",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Submit a recording for lyrics alignment (LRC generation).
@@ -357,18 +386,26 @@ def lyrics_generate(
     Use --no-youtube to skip the YouTube path and use Whisper directly.
     Use --no-qwen3-asr to skip Qwen3 ASR and use Whisper.
 
-    For batch processing, pipe song IDs via stdin:
+    For batch processing, pipe song IDs via stdin (always batch mode, with
+    feedback guard, manifest, and optional --wait polling):
         sow-admin audio list --lrc incomplete --format ids | sow-admin lyrics generate --stdin
+        sow-admin lyrics feedback list --rating poor --format ids | sow-admin lyrics generate --force --stdin --wait
     """
     # Validate mutually exclusive inputs
-    if not song_id and not stdin:
+    if not song_id and not stdin and not resume:
         console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
         raise typer.Exit(1)
     if song_id and stdin:
         console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
         raise typer.Exit(1)
-    if stdin and wait:
-        console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
+    if song_id and resume:
+        console.print("[red]Error: Cannot use both song_id argument and --resume[/red]")
+        raise typer.Exit(1)
+    if stdin and resume:
+        console.print("[red]Error: Cannot use both --stdin and --resume[/red]")
+        raise typer.Exit(1)
+    if dry_run and resume:
+        console.print("[red]Error: --dry-run is not valid with --resume[/red]")
         raise typer.Exit(1)
     if language not in {"auto", "zh", "en"}:
         console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
@@ -390,6 +427,12 @@ def lyrics_generate(
         console.print(f"[red]Analysis service not configured: {e}[/red]")
         raise typer.Exit(1)
 
+    if resume:
+        # A resumed run always waits: it is a poll continuation; --force was
+        # already applied at the original submission.
+        _resume_batch(resume, db_client, analysis_client, config, console)
+        return
+
     # Collect song IDs to process
     if stdin:
         song_ids = read_song_ids_from_stdin()
@@ -399,13 +442,14 @@ def lyrics_generate(
     else:
         song_ids = [song_id]
 
-    # Process all songs
-    if len(song_ids) == 1:
-        # Single song mode - original behavior with wait support
-        submit_lrc_single(
-            song_id=song_ids[0],
+    if stdin:
+        # Batch flow for ALL stdin input regardless of id count: pre-flight
+        # feedback guard, manifest, optional poll loop, run report.
+        _run_stdin_batch(
+            song_ids=song_ids,
             db_client=db_client,
             analysis_client=analysis_client,
+            config=config,
             force=force,
             whisper_model=whisper_model,
             language=language,
@@ -415,24 +459,523 @@ def lyrics_generate(
             no_qwen3_asr=no_qwen3_asr,
             force_qwen3_asr=force_qwen3_asr,
             wait=wait,
-            console=console,
+            dry_run=dry_run,
         )
+        return
+
+    # Single song mode (positional argument) - original behavior with wait support
+    submit_lrc_single(
+        song_id=song_ids[0],
+        db_client=db_client,
+        analysis_client=analysis_client,
+        force=force,
+        whisper_model=whisper_model,
+        language=language,
+        no_vocals=no_vocals,
+        no_youtube=no_youtube,
+        no_whisper_cache=no_whisper_cache,
+        no_qwen3_asr=no_qwen3_asr,
+        force_qwen3_asr=force_qwen3_asr,
+        wait=wait,
+        console=console,
+    )
+
+
+def _fetch_open_feedback_hashes(provider: ConnectionProvider, song_id: str) -> dict[str, list[str]]:
+    """Return open feedback content hashes for a song, grouped by rating.
+
+    Queries lyrics_feedback joined via recordings.song_id, mirroring the
+    `lyrics feedback list` open-only selection: only rows with
+    ``resolved_at IS NULL`` count.
+    """
+    conn = provider.get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT f.rating, f.recording_content_hash
+            FROM lyrics_feedback f
+            JOIN recordings r ON r.content_hash = f.recording_content_hash
+            WHERE r.song_id = %s
+              AND r.deleted_at IS NULL
+              AND f.resolved_at IS NULL
+            """,
+            (song_id,),
+        )
+        rows = cur.fetchall()
+    grouped: dict[str, list[str]] = {}
+    for rating, content_hash in rows:
+        grouped.setdefault(rating, []).append(content_hash)
+    return grouped
+
+
+def _preflight_guard(
+    song_ids: list[str],
+    db_client: DatabaseClient,
+    provider: ConnectionProvider,
+    console: Console,
+) -> tuple[list[str], list[dict]]:
+    """Feedback-aware pre-flight target guard.
+
+    For each piped song id with open sad feedback, check that the recording
+    `submit_lrc_single`/`submit_lrc_batch` would target (the
+    ``get_recording_by_song_id`` lookup) matches one of the feedback's
+    recording content hashes. Mismatched songs are skipped so a run never
+    regenerates a recording users did not complain about. Songs with no open
+    sad feedback at all pass unconditionally.
+
+    Returns ``(accepted_song_ids, skipped_guard_rows)``.
+    """
+    accepted: list[str] = []
+    skipped: list[dict] = []
+    for song_id in song_ids:
+        feedback = _fetch_open_feedback_hashes(provider, song_id)
+        sad_hashes = feedback.get("sad", [])
+        if not sad_hashes:
+            accepted.append(song_id)
+            continue
+        recording = db_client.get_recording_by_song_id(song_id)
+        target_hash = recording.content_hash if recording else None
+        if target_hash in sad_hashes:
+            accepted.append(song_id)
+        else:
+            skipped.append(
+                {
+                    "song_id": song_id,
+                    "target_hash": target_hash,
+                    "feedback_hashes": sad_hashes,
+                }
+            )
+            console.print(
+                f"  [yellow]→ {song_id} (skipped-guard: target recording "
+                f"{target_hash or 'none'} does not match open sad feedback on "
+                f"{', '.join(sad_hashes)})[/yellow]"
+            )
+    return accepted, skipped
+
+
+def _get_lyrics_manifest_dir() -> Path:
+    """Get the manifest directory (XDG-aware, overridable via env)."""
+    import os
+
+    env_dir = os.environ.get("SOW_BATCH_MANIFEST_DIR")
+    if env_dir:
+        return Path(env_dir)
+    return Path.home() / ".local" / "share" / "sow-admin" / "batch"
+
+
+def _write_lyrics_manifest(
+    batch_id: str,
+    manifest_dir: Path,
+    started_at: str,
+    entries: list[dict],
+) -> Optional[Path]:
+    """Write (or rewrite) the lyrics-batch run manifest to disk.
+
+    Returns the manifest path, or None on failure.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    try:
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = manifest_dir / f"{batch_id}_manifest.json"
+        manifest = {
+            "batch_id": batch_id,
+            "kind": "lyrics_generate",
+            "started_at": started_at,
+            "jobs": entries,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+        return manifest_path
+    except OSError as e:
+        logger.warning(f"Failed to write manifest: {e}")
+        return None
+
+
+def _load_lyrics_manifest(manifest_path: Path) -> Optional[dict]:
+    """Load a lyrics-batch run manifest from disk."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    try:
+        return json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load manifest {manifest_path}: {e}")
+        return None
+
+
+def _poll_lrc_batch(
+    submissions: list[tuple[str, str, str]],
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    r2_client: R2Client,
+    console: Console,
+    manifest_path: Optional[Path],
+    existing_entries: Optional[list[dict]] = None,
+) -> list[dict]:
+    """Poll every submitted LRC job to completion (no overall timeout).
+
+    Unified service-first + R2-fallback reconciliation per job, mirroring
+    `audio batch`'s poll loop semantics:
+
+    - completed: confirm the LRC on R2 (service-first, R2 fallback), then
+      ``update_recording_lrc(..., visibility_status='review', ...)`` — the
+      explicit ``'review'`` kwarg is required because ``update_recording_lrc``
+      otherwise promotes NULL visibility to 'published' (COALESCE).
+    - failed/cancelled: ``lrc_status='failed'``.
+    - 404 (job lost): fall back to R2; if not there, mark failed.
+
+    Manifest entries are updated in place and re-flushed after each settle.
+
+    Returns the manifest entries list.
+    """
+    entries = existing_entries if existing_entries is not None else [
+        {
+            "song_id": song_id,
+            "content_hash": content_hash,
+            "job_id": job_id,
+            "outcome": "pending",
+        }
+        for song_id, content_hash, job_id in submissions
+    ]
+    by_job = {entry["job_id"]: entry for entry in entries if entry.get("outcome") == "pending"}
+    if not by_job:
+        return entries
+
+    if manifest_path and manifest_path.exists():
+        try:
+            started_at = json.loads(manifest_path.read_text())["started_at"]
+        except (OSError, json.JSONDecodeError, KeyError):
+            started_at = datetime.now(timezone.utc).isoformat()
     else:
-        # Batch mode - no wait support, process all
-        submit_lrc_batch(
-            song_ids=song_ids,
-            db_client=db_client,
-            analysis_client=analysis_client,
-            force=force,
-            whisper_model=whisper_model,
-            language=language,
-            no_vocals=no_vocals,
-            no_youtube=no_youtube,
-            no_whisper_cache=no_whisper_cache,
-            no_qwen3_asr=no_qwen3_asr,
-            force_qwen3_asr=force_qwen3_asr,
-            console=console,
+        started_at = datetime.now(timezone.utc).isoformat()
+    batch_id = manifest_path.name.replace("_manifest.json", "") if manifest_path else None
+
+    def _flush() -> None:
+        if manifest_path:
+            _write_lyrics_manifest(batch_id, manifest_path.parent, started_at, entries)
+
+    poll_interval = 30.0
+    try:
+        while by_job:
+            for job_id in list(by_job.keys()):
+                entry = by_job[job_id]
+                song_id = entry["song_id"]
+                content_hash = entry["content_hash"]
+                hash_prefix = get_hash_prefix(content_hash)
+                try:
+                    job = analysis_client.get_job(job_id)
+                except AnalysisServiceError as e:
+                    if e.status_code == 404:
+                        # Job lost: R2 fallback.
+                        lrc_url = r2_client.lrc_exists(hash_prefix)
+                        if lrc_url:
+                            db_client.update_recording_lrc(
+                                hash_prefix=hash_prefix,
+                                r2_lrc_url=lrc_url,
+                                visibility_status="review",
+                                lrc_source=entry.get("lrc_source") or "r2_preexisting",
+                            )
+                            entry["outcome"] = "completed"
+                            entry["lrc_url"] = lrc_url
+                            console.print(f"  [green]✓[/green] {song_id}: LRC found on R2 (job lost)")
+                        else:
+                            db_client.update_recording_status(
+                                hash_prefix=hash_prefix, lrc_status="failed"
+                            )
+                            entry["outcome"] = "failed"
+                            entry["error"] = "Job lost (404) and not found on R2"
+                            console.print(
+                                f"  [red]✗[/red] {song_id}: job lost (404), not on R2 — marked failed"
+                            )
+                        del by_job[job_id]
+                        _flush()
+                    else:
+                        console.print(
+                            f"  [yellow]→ Error polling {song_id}: {e}[/yellow]"
+                        )
+                    continue
+                except Exception as e:
+                    console.print(f"  [yellow]→ Error polling {song_id}: {e}[/yellow]")
+                    continue
+
+                if job.status == "completed":
+                    # Service-first: use the reported lrc_url; fall back to R2.
+                    lrc_url = job.result.lrc_url if job.result else None
+                    if not lrc_url:
+                        lrc_url = r2_client.lrc_exists(hash_prefix)
+                    if lrc_url:
+                        db_client.update_recording_lrc(
+                            hash_prefix=hash_prefix,
+                            r2_lrc_url=lrc_url,
+                            visibility_status="review",
+                            lrc_source=job.result.lrc_source if job.result else None,
+                        )
+                        entry["outcome"] = "completed"
+                        entry["lrc_url"] = lrc_url
+                        entry["lrc_source"] = (
+                            job.result.lrc_source if job.result else None
+                        )
+                        console.print(f"  [green]✓[/green] {song_id}: LRC completed")
+                    else:
+                        # Completed but object not visible yet; retry next cycle.
+                        console.print(
+                            f"  [yellow]→ {song_id}: job completed but LRC not on R2 yet, "
+                            f"retrying...[/yellow]"
+                        )
+                        continue
+                elif job.status in ("failed", "cancelled"):
+                    db_client.update_recording_status(
+                        hash_prefix=hash_prefix, lrc_status="failed"
+                    )
+                    entry["outcome"] = "failed"
+                    entry["error"] = (
+                        job.error_message
+                        or ("Job cancelled" if job.status == "cancelled" else "Unknown error")
+                    )
+                    console.print(
+                        f"  [red]✗[/red] {song_id}: LRC failed: {entry['error']}"
+                    )
+                else:
+                    # queued/processing
+                    continue
+
+                del by_job[job_id]
+                _flush()
+
+            if by_job:
+                time.sleep(poll_interval)
+    except KeyboardInterrupt:
+        # Jobs already submitted stay valid server-side (WAITING-status
+        # recovery); flush the manifest so --resume can finish the run.
+        console.print()
+        console.print("[yellow]Batch interrupted. Reconciling in-progress jobs...[/yellow]")
+        for job_id, entry in by_job.items():
+            hash_prefix = get_hash_prefix(entry["content_hash"])
+            lrc_url = r2_client.lrc_exists(hash_prefix)
+            if lrc_url:
+                db_client.update_recording_lrc(
+                    hash_prefix=hash_prefix,
+                    r2_lrc_url=lrc_url,
+                    visibility_status="review",
+                    lrc_source=entry.get("lrc_source") or "r2_preexisting",
+                )
+                entry["outcome"] = "completed"
+                entry["lrc_url"] = lrc_url
+                console.print(f"  [green]✓[/green] {entry['song_id']}: LRC found on R2 (completed)")
+            else:
+                entry["outcome"] = "pending"
+                console.print(
+                    f"  [cyan]→ {entry['song_id']}: job continues server-side; "
+                    f"resume with: sow-admin lyrics generate --resume {manifest_path}[/cyan]"
+                    if manifest_path
+                    else f"  [cyan]→ {entry['song_id']}: job continues server-side[/cyan]"
+                )
+        _flush()
+        console.print()
+        console.print(
+            "[dim]Tip: unfinished jobs stay valid server-side; resume with "
+            "'sow-admin lyrics generate --resume <manifest>' to finish the run.[/dim]"
         )
+    return entries
+
+
+def _print_run_report(
+    submissions: list[tuple[str, str, str]],
+    entries: list[dict],
+    skipped_guard: list[dict],
+    db_client: DatabaseClient,
+    console: Console,
+) -> None:
+    """Print the end-of-run report.
+
+    Per-recording outcomes (completed / failed / skipped-guard / pending),
+    failures with job ids, and the exact `lyrics feedback resolve` commands
+    for completed recordings. Nothing is auto-resolved (ADR-0007).
+    """
+    completed: list[dict] = []
+    failed: list[dict] = []
+    pending: list[dict] = []
+    by_song = {entry["song_id"]: entry for entry in entries}
+    for song_id, _, _ in submissions:
+        entry = by_song.get(song_id)
+        if entry is None:
+            continue
+        if entry["outcome"] == "completed":
+            completed.append(entry)
+        elif entry["outcome"] == "failed":
+            failed.append(entry)
+        else:
+            pending.append(entry)
+
+    console.print()
+    console.print("[cyan]Run Report[/cyan]")
+    console.print(f"  Submitted: {len(submissions)}")
+    console.print(f"  Completed: {len(completed)}")
+    console.print(f"  Failed: {len(failed)}")
+    console.print(f"  Pending (interrupted): {len(pending)}")
+    console.print(f"  Skipped (guard): {len(skipped_guard)}")
+
+    for entry in failed:
+        console.print(
+            f"  [red]✗ {entry['song_id']} (job {entry['job_id']}): {entry.get('error', 'Unknown error')}[/red]"
+        )
+    for entry in pending:
+        console.print(
+            f"  [yellow]… {entry['song_id']} (job {entry['job_id']}): still running — "
+            f"resume with --resume to finish the run[/yellow]"
+        )
+    for skip in skipped_guard:
+        console.print(
+            f"  [yellow]→ skipped-guard {skip['song_id']}: target "
+            f"{skip['target_hash'] or 'none'} vs feedback "
+            f"{', '.join(skip['feedback_hashes'])}[/yellow]"
+        )
+
+    if completed:
+        console.print()
+        console.print(
+            "[cyan]After reviewing each regenerated recording, resolve its "
+            "feedback explicitly (ADR-0007):[/cyan]"
+        )
+        for entry in completed:
+            console.print(f"  sow-admin lyrics feedback resolve {entry['song_id']}")
+    console.print()
+
+
+def _run_stdin_batch(
+    song_ids: list[str],
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    config: AdminConfig,
+    force: bool,
+    whisper_model: str,
+    language: str,
+    no_vocals: bool,
+    no_youtube: bool,
+    no_whisper_cache: bool,
+    no_qwen3_asr: bool,
+    force_qwen3_asr: bool,
+    wait: bool,
+    dry_run: bool,
+) -> None:
+    """Batch flow for all stdin input: guard → submit → (poll) → report."""
+    # Pre-flight feedback guard (DB-lookup, not pipe-format).
+    provider = ConnectionProvider(config.get_connection_url())
+    try:
+        accepted, skipped_guard = _preflight_guard(song_ids, db_client, provider, console)
+    finally:
+        provider.close()
+
+    if not accepted:
+        console.print("[yellow]Nothing to submit after the feedback guard.[/yellow]")
+        _print_run_report([], [], skipped_guard, db_client, console)
+        return
+
+    if dry_run:
+        console.print("[cyan]Dry run — would submit:[/cyan]")
+        for song_id in accepted:
+            console.print(f"  {song_id}")
+        if skipped_guard:
+            console.print(f"  Skipped (guard): {len(skipped_guard)}")
+        return
+
+    submissions = submit_lrc_batch(
+        song_ids=accepted,
+        db_client=db_client,
+        analysis_client=analysis_client,
+        force=force,
+        whisper_model=whisper_model,
+        language=language,
+        no_vocals=no_vocals,
+        no_youtube=no_youtube,
+        no_whisper_cache=no_whisper_cache,
+        no_qwen3_asr=no_qwen3_asr,
+        force_qwen3_asr=force_qwen3_asr,
+        console=console,
+    )
+
+    if not wait:
+        _print_run_report(submissions, [], skipped_guard, db_client, console)
+        return
+
+    # Wait mode: manifest + poll loop.
+    batch_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S") + "_lyrics"
+    started_at = datetime.now(timezone.utc).isoformat()
+    manifest_path = _write_lyrics_manifest(
+        batch_id,
+        _get_lyrics_manifest_dir(),
+        started_at,
+        [
+            {
+                "song_id": song_id,
+                "content_hash": content_hash,
+                "job_id": job_id,
+                "outcome": "pending",
+            }
+            for song_id, content_hash, job_id in submissions
+        ],
+    )
+
+    try:
+        r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+    except ValueError as e:
+        console.print(f"[yellow]R2 not configured ({e}); skipping R2 fallback checks.[/yellow]")
+        r2_client = None  # type: ignore[assignment]
+
+    if not submissions:
+        _print_run_report([], [], skipped_guard, db_client, console)
+        return
+
+    entries = _poll_lrc_batch(
+        submissions,
+        db_client,
+        analysis_client,
+        r2_client,
+        console,
+        manifest_path,
+    )
+    _print_run_report(submissions, entries, skipped_guard, db_client, console)
+
+
+def _resume_batch(
+    manifest_file: Path,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    config: AdminConfig,
+    console: Console,
+) -> None:
+    """Re-poll an interrupted run from its manifest without resubmitting."""
+    manifest = _load_lyrics_manifest(manifest_file)
+    if not manifest or manifest.get("kind") != "lyrics_generate":
+        console.print(f"[red]Invalid or missing lyrics manifest: {manifest_file}[/red]")
+        raise typer.Exit(1)
+    entries = manifest.get("jobs", [])
+    pending = [e for e in entries if e.get("outcome") == "pending"]
+    if not pending:
+        console.print("[green]Nothing pending in the manifest; run already complete.[/green]")
+        return
+    console.print(f"[cyan]Resuming {len(pending)} pending job(s) from {manifest_file}[/cyan]")
+
+    try:
+        r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+    except ValueError as e:
+        console.print(f"[yellow]R2 not configured ({e}); skipping R2 fallback checks.[/yellow]")
+        r2_client = None  # type: ignore[assignment]
+
+    submissions = [
+        (entry["song_id"], entry["content_hash"], entry["job_id"]) for entry in pending
+    ]
+    updated = _poll_lrc_batch(
+        submissions,
+        db_client,
+        analysis_client,
+        r2_client,
+        console,
+        manifest_file,
+        existing_entries=entries,
+    )
+    _print_run_report(submissions, updated, [], db_client, console)
 
 
 def _get_alignment_lyrics_text(

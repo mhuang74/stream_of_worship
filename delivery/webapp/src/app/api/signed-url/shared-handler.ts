@@ -7,7 +7,7 @@ import {
 } from "@/lib/r2/client";
 import { db } from "@/db";
 import { recordings, renderJobs } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 interface SignedUrlParams {
   hashPrefix?: string;
@@ -91,7 +91,7 @@ export async function generateSignedUrlResponse(
     const recording = await db.query.recordings.findFirst({
       where: and(
         eq(recordings.hashPrefix, params.hashPrefix),
-        eq(recordings.visibilityStatus, "published")
+        inArray(recordings.visibilityStatus, ["published", "review"])
       ),
     });
 
