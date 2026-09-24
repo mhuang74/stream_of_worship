@@ -7,6 +7,7 @@ import type { UserSettingsData } from "@/components/settings/SettingsForm";
 import { SettingsSkeleton } from "@/components/settings/SettingsSkeleton";
 import { AccountSettings } from "@/components/settings/AccountSettings";
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets";
+import { BuildStamp } from "@/components/system/BuildStamp";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
 import { useOfflineRedirect } from "@/hooks/useOfflineRedirect";
@@ -121,6 +122,10 @@ export default function SettingsPage() {
           </div>
         </>
       )}
+
+      <div className="mt-8 border-t pt-6">
+        <BuildStamp />
+      </div>
     </div>
   );
 }

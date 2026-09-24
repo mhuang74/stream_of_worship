@@ -18,6 +18,9 @@ export const core = bundle({
     "nav.settings": "Settings",
     "nav.signOut": "Sign out",
 
+    // Build info
+    "build.info": "and all the trees of the field shall clap their hands",
+
     // Home page
     "home.title": "Stream of Worship",
     "home.subtitle":
@@ -237,6 +240,9 @@ export const core = bundle({
     "nav.about": "關於",
     "nav.settings": "設定",
     "nav.signOut": "登出",
+
+    // Build info
+    "build.info": "田野的樹木也都拍掌",
 
     // Home page
     "home.title": "Stream of Worship",
