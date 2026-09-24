@@ -19,6 +19,18 @@ vi.mock("@/lib/r2/client", () => ({
 
 const mockFindFirst = vi.fn();
 
+/** Recursively collect string leaf values from a drizzle where clause,
+ * so tests can assert which literal values a query filter accepts. */
+function collectLeafValues(node: unknown, out: string[] = [], depth = 0): string[] {
+  if (node == null || typeof node !== "object" || depth > 8) return out;
+  for (const value of Object.values(node as Record<string, unknown>)) {
+    if (typeof value === "string") out.push(value);
+    else if (Array.isArray(value)) value.forEach((v) => collectLeafValues(v, out, depth + 1));
+    else if (value && typeof value === "object") collectLeafValues(value, out, depth + 1);
+  }
+  return out;
+}
+
 vi.mock("@/db", () => ({
   db: {
     query: {
@@ -121,6 +133,12 @@ describe("POST /api/transitions/preview", () => {
     const data = await res.json();
     expect(data.url).toBe("https://r2.example.com/audio/hash-b.mp3");
     expect(data.previewHash).toBe("hash-b");
+    // Pin the widening: the query's where clause must accept both published
+    // and review, so this test fails if it reverts to published-only.
+    const whereClause = mockFindFirst.mock.calls.at(-1)?.[0]?.where;
+    const seenValues = collectLeafValues(whereClause);
+    expect(seenValues).toContain("published");
+    expect(seenValues).toContain("review");
   });
 
   it("returns signed URL using toHash when provided", async () => {

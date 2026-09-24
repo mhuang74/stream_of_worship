@@ -347,16 +347,36 @@ class TestLyricsFeedbackListCommand:
     def test_rating_poor_excludes_resolved_sad_with_open_happy(
         self, make_test_provider, postgres_url, tmp_path
     ):
-        """--rating poor means 'has ≥1 OPEN sad row': a recording whose sad
-        rows are all resolved but which has an open happy row drops out."""
+        """--rating poor must never surface a recording whose sad rows are all
+        resolved. With --all (no HAVING), the old bare rating clause would
+        still list fully-resolved sad recordings; the open-only WHERE filter
+        is what excludes them — so this test fails on revert."""
         _init_schema(make_test_provider)
         provider = _seed_data_provider(make_test_provider)
-        # Resolve ALL of R1's sad rows, leaving its happy row open.
         conn = provider.get_connection()
         with conn.cursor() as cur:
+            # Give the resolved-sad recording its own song so its absence is
+            # provable: resolve ALL of R4's sad rows, add an open happy row,
+            # then attach it to song_002.
+            cur.execute(
+                """
+                INSERT INTO songs (id, title, source_url, scraped_at, composer)
+                VALUES ('song_002', 'Second Song', 'https://example.com/2', '2024-01-01T00:00:00', '作曲')
+                """
+            )
+            cur.execute(
+                "UPDATE recordings SET song_id = 'song_002' "
+                "WHERE content_hash = 'hash-dddddddddddddddd'"
+            )
             cur.execute(
                 "UPDATE lyrics_feedback SET resolved_at = NOW() "
-                "WHERE recording_content_hash = 'hash-aaaaaaaaaaaaaaaa' AND rating = 'sad'"
+                "WHERE recording_content_hash = 'hash-dddddddddddddddd' AND rating = 'sad'"
+            )
+            cur.execute(
+                """
+                INSERT INTO lyrics_feedback (id, user_id, recording_content_hash, rating, reason)
+                VALUES ('fb-9', 1, 'hash-dddddddddddddddd', 'happy', NULL)
+                """
             )
         conn.commit()
         config_path = _write_config(tmp_path, postgres_url)
@@ -364,24 +384,16 @@ class TestLyricsFeedbackListCommand:
         result = runner.invoke(
             lyrics_app,
             [
-                "feedback", "list", "--rating", "poor", "--format", "ids",
-                "--config", str(config_path),
+                "feedback", "list", "--rating", "poor", "--all",
+                "--format", "ids", "--config", str(config_path),
             ],
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.stdout
-        # hash-aa (resolved sad, open happy) drops out; hash-bb/hash-cc remain.
+        # song_002 (hash-dd: sad fully resolved) must NOT appear even with
+        # --all; song_001 still qualifies via its open sad rows.
         lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
-        assert lines == ["song_001"]  # other songed recordings still qualify (same song)
-        with provider.get_connection().cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM lyrics_feedback f "
-                "JOIN recordings r ON r.content_hash = f.recording_content_hash "
-                "WHERE r.song_id = 'song_001' AND f.resolved_at IS NULL "
-                "AND f.rating = 'sad'"
-            )
-            open_sad = cur.fetchone()[0]
-        assert open_sad == 3  # hash-bb + hash-cc rows still open sad
+        assert lines == ["song_001"]
         _drop_all_tables(make_test_provider)
 
     def test_format_ids_empty_feedback_prints_nothing(

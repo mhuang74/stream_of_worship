@@ -145,6 +145,9 @@ describe("GET /api/songs/[id]", () => {
     expect(data.recordings).toHaveLength(1);
     expect(data.recordings[0].visibilityStatus).toBe("review");
     expect(data.recordings[0].contentHash).toBe("def456");
+    // Pin the widening: the route must request published AND review, so this
+    // test fails if the route reverts to the published-only default.
+    expect(getSong).toHaveBeenCalledWith("song-2", ["published", "review"]);
   });
 
   it("returns 404 when song not found", async () => {
