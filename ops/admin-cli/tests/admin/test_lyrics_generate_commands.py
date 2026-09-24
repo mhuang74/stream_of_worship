@@ -341,6 +341,37 @@ class TestPreFlightGuard:
         assert batch_mock.call_args.kwargs["song_ids"] == ["song_003"]
         _drop_all_tables(make_test_provider)
 
+    def test_songless_id_reported_as_skipped_songless(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """A piped id with no recording (e.g. a bare hash_prefix from a
+        hand-built pipe) is classified as skipped-songless in the report,
+        not silently dropped into a submit error."""
+        _init_schema(make_test_provider)
+        provider = _seed_guard_data(make_test_provider())
+        config_path = _write_config(tmp_path, postgres_url)
+
+        with (
+            patch.object(lyrics_commands, "get_db_client") as db_mock,
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(
+                lyrics_commands, "submit_lrc_batch", return_value=[]
+            ) as batch_mock,
+        ):
+            db_client = db_mock.return_value
+            db_client.get_recording_by_song_id.side_effect = _fake_lookup(provider)
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "--stdin", "--force", "--config", str(config_path)],
+                input="song_unknown\n",
+            )
+        assert result.exit_code == 0, result.output
+        batch_mock.assert_not_called()
+        assert "skipped-songless" in result.output
+        assert "song_unknown" in result.output
+        assert "Skipped (songless): 1" in result.output
+        _drop_all_tables(make_test_provider)
+
 
 def _fake_lookup(provider, descending: bool = False):
     """Return a get_recording_by_song_id stub backed by the real DB.
