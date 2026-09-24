@@ -357,7 +357,6 @@ class TestBatchWaitEndState:
 
         provider = _init_schema(make_test_provider)
         _seed(provider)
-        fake = _FakeAnalysisClient(states={})
 
         def _submit(**kwargs):
             job = _job("pending", "processing")

@@ -326,7 +326,7 @@ class TestLyricsFeedbackListCommand:
         """Regression pin: a song with open sad rows on several recordings is
         emitted exactly once by the ids formatter (the `seen` set)."""
         _init_schema(make_test_provider)
-        provider = _seed_data_provider(make_test_provider)
+        _seed_data_provider(make_test_provider)
         # All three songed recordings already carry open sad rows for song_001.
         config_path = _write_config(tmp_path, postgres_url)
 
