@@ -140,6 +140,22 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     await probeConnectivity();
   }
 
+  // The list mounts from `initialData` and then re-renders: the mount fetch
+  // sets isLoading, which swaps every row for the skeleton and back. A row
+  // whose menu was opened before that swap unmounts, taking the open state
+  // with it — the click silently does nothing. Wait until a row node survives
+  // a real tick (i.e. the list has stopped being replaced) before interacting.
+  async function openRowMenu(): Promise<void> {
+    const menuButton = await screen.findByRole("button", { name: /open menu/i });
+    await waitFor(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 10);
+      await promise;
+      expect(menuButton.isConnected).toBe(true);
+    });
+    fireEvent.click(menuButton);
+  }
+
   it("merges index records so rows with a record show the offline badge", async () => {
     mockListOfflineRecords.mockResolvedValue([makeRecord()]);
     renderClient();
@@ -235,7 +251,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
       expect(screen.getByText(/offline/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await openRowMenu();
     await waitFor(() => {
       expect(
         screen.getByRole("menuitem", { name: /remove from offline/i })
@@ -266,7 +282,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     ]);
     await screen.findByText("Sunday Worship");
 
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await openRowMenu();
     await waitFor(() => {
       expect(
         screen.getByRole("menuitem", { name: /download for offline/i })
@@ -288,7 +304,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     mockDownloadOfflineArtifacts.mockResolvedValue(undefined);
     renderClient();
     const playButton = await screen.findByRole("button", { name: "Play" });
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await openRowMenu();
     await waitFor(() => {
       expect(
         screen.getByRole("menuitem", { name: /download for offline/i })
@@ -320,7 +336,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     renderClient();
     await screen.findByRole("button", { name: "Play" });
 
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await openRowMenu();
     await waitFor(() => {
       expect(
         screen.getByRole("menuitem", { name: /download for offline/i })
@@ -343,7 +359,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
       expect(screen.getByText(/offline/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    await openRowMenu();
     await waitFor(() => {
       expect(
         screen.getByRole("menuitem", { name: /remove from offline/i })

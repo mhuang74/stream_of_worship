@@ -34,12 +34,13 @@ So in short: create the account → they get an email → they can't log in unti
 
 | Concern | File | Key symbol |
 |---|---|---|
-| Register UI (form + confirmation card) | `delivery/webapp/src/app/register/page.tsx` | `RegisterPage`, `handleSubmit` |
+| Register UI (form + confirmation card + `?email=` prefill) | `delivery/webapp/src/app/register/page.tsx` | `RegisterPage`, `handleSubmit` |
 | Login UI (unverified handling + resend) | `delivery/webapp/src/app/login/page.tsx` | `LoginPage`, `handleSubmit` |
 | Shared resend button behaviour | `delivery/webapp/src/hooks/useResendVerification.ts` | `useResendVerification` |
 | Client auth methods | `delivery/webapp/src/lib/auth-client.ts` | `signUp`, `requestVerificationEmail` |
 | Server auth config (the decisions) | `delivery/webapp/src/lib/auth.ts` | `auth`, `requireEmailVerification` |
 | Transactional email | `delivery/webapp/src/lib/email/client.ts` | `sendVerificationEmail` |
+| Lead-capture email (Brevo, `Notify me`) | `delivery/webapp/src/lib/brevo/client.ts`, `delivery/webapp/src/app/api/capture-email/route.ts` | `upsertContact`, `sendConfirmationEmail` |
 | HTTP endpoint that Better Auth serves | `delivery/webapp/src/app/api/auth/[...all]/route.ts` | `GET`, `POST` |
 | Auth gate / middleware | `delivery/webapp/src/proxy.ts` | `proxy`, `PUBLIC_PATHS` |
 | Database tables | `delivery/webapp/src/db/schema.ts` | `users`, `accounts`, `sessions`, `verifications` |
@@ -267,6 +268,26 @@ There is no per-endpoint file. `POST /api/auth/sign-up/email`, `POST /api/auth/s
 ```
 
 `submittedEmail` is doing double duty: it is both the flag that switches the render from form to confirmation card, and the value interpolated into the confirmation copy. That is why the hook is initialised with it — the resend button needs an address, and before submission there isn't one.
+
+### Prefill from a confirmation link
+
+The marketing site's "Notify me" form emails a lead a signup link with their address already attached (`/register?email=…`, built by `delivery/webapp/src/app/api/capture-email/route.ts`). The register page reads that param once on mount:
+
+```ts title="delivery/webapp/src/app/register/page.tsx"
+  // Prefill from ?email= (confirmation-email deep link) exactly once on mount.
+  // Never clobber: only fill while the field is empty, so anything the user
+  // already typed wins. Read via window.location, not useSearchParams, to
+  // avoid a Suspense boundary around the page.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlEmail = params.get("email");
+    if (urlEmail) {
+      setEmail((current) => (current ? current : urlEmail));
+    }
+  }, []);
+```
+
+Two details are deliberate. The functional `setEmail` update is what makes the prefill non-destructive — it decides against the *current* value, so a fast typist never loses input to the effect. And the param is read from `window.location` rather than `useSearchParams`, which keeps the page free of a Suspense boundary; the mount-only dependency array means a later URL change cannot retroactively overwrite an edited field.
 
 ### Client-side validation
 

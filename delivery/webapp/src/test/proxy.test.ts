@@ -88,6 +88,17 @@ describe("public path rules", () => {
     }
   );
 
+  // Lead capture (issue #222) is submitted by anonymous marketing-site
+  // visitors, who have no session by definition. Gating it returned 401 to
+  // every real lead — and to the cross-origin preflight, which killed the
+  // funnel before the browser ever sent the POST.
+  it("does not reject the unauthenticated capture-email endpoint", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(null);
+    const res = await proxy(req("/api/capture-email"));
+    expect(res.status).not.toBe(307);
+    expect(res.status).not.toBe(401);
+  });
+
   it("still redirects an unauthenticated app path", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(null);
     const res = await proxy(req("/songsets"));

@@ -227,15 +227,21 @@ Create the SQS queue and dead-letter queue (DLQ) in AWS:
 
 ### Preview Deployments
 
-Git-triggered deployments are disabled in `vercel.json` for the webapp: deploys on
-`main` go through the GitHub Actions pipeline (migrations, then the
-`VERCEL_DEPLOY_HOOK_URL` deploy hook — see `.github/workflows/deploy.yml`), which
-keeps the database schema ahead of the deployed code. Preview deployments for
-non-main branches are therefore not produced by Vercel Git integration; if a
-preview is needed, deploy one explicitly with `vercel` CLI from `delivery/webapp/`.
+Production deploys on `main` go through the GitHub Actions pipeline (migrations,
+then the `VERCEL_DEPLOY_HOOK_URL` deploy hook — see
+`.github/workflows/deploy.yml`), which keeps the database schema ahead of the
+deployed code. Although `vercel.json` sets
+`git.deploymentEnabled: {main: false, "*": false}`, preview deployments for PRs
+and non-`main` branches are still created (with branch aliases like
+`…-git-<branch>-….vercel.app`); the effective override lives in the Vercel
+dashboard's Git settings, not the JSON. See the "Preview Environments" section in
+[`DEPLOY-VERCEL.md`](./DEPLOY-VERCEL.md) for the environment-variable overrides
+(stable branch domain for `BETTER_AUTH_URL`/`NEXT_PUBLIC_BASE_URL`,
+`SOW_MARKETING_ORIGINS`, and the marketing project's `NEXT_PUBLIC_APP_URL`) that
+make the marketing site and webapp work together in Preview.
 
-(The separate marketing project, `delivery/marketing/`, does use Vercel Git
-integration: `main` → production, other branches → preview. See its
+(The separate marketing project, `delivery/marketing/`, uses Vercel Git
+integration fully: `main` → production, other branches → preview. See its
 `vercel.json` and the marketing deploy section in `DEPLOY-VERCEL.md`.)
 
 Preview deployments share the production environment variables unless preview-scoped values are configured. Cast features in a preview deployment use the Default Media Receiver (no per-environment registration required); set `NEXT_PUBLIC_CAST_RECEIVER_APP_ID` only if you need a custom receiver ID pointing at the preview URL.

@@ -3,13 +3,16 @@ import { auth } from "@/lib/auth";
 import { isLocale } from "@/lib/i18n/messages";
 import { parseAcceptLanguage } from "@/lib/i18n/accept-language";
 
-const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/api/health", "/share", "/api/share", "/sw.js", "/sw-artifact-serving.js"];
+const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/api/health", "/share", "/api/share", "/api/capture-email", "/sw.js", "/sw-artifact-serving.js"];
 // "/" is NOT public: the marketing site lives at streamofworship.com (issue
 // #213) and unauthenticated visitors to the app domain are login-first —
 // they get redirected to /login (proxy + server-render in src/app/page.tsx).
 // /api/health stays public: the client's reachability probe (issue #211) must
 // never depend on session state, so a stale session cannot produce a false
 // "Offline"; see src/hooks/useConnectivity.ts.
+// /api/capture-email stays public: its callers are anonymous marketing-site
+// visitors (issue #222) who by definition have no session — gating it made the
+// funnel return 401 to every real lead (and to the CORS preflight).
 // The service worker scripts must stay reachable unauthenticated: they are
 // fetched outside the page's own navigation (register() + importScripts), and
 // an auth redirect would fail installation with "script resource is behind a

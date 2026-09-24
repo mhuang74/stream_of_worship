@@ -267,6 +267,31 @@ describe(".env.production.example", () => {
     const content = readEnvExample();
     expect(content).toContain("SOW_EMBEDDING_MODEL=");
   });
+
+  it("documents BREVO_API_KEY", () => {
+    const content = readEnvExample();
+    expect(content).toContain("BREVO_API_KEY=");
+  });
+
+  it("documents BREVO_TEMPLATE_ID", () => {
+    const content = readEnvExample();
+    expect(content).toContain("BREVO_TEMPLATE_ID=");
+  });
+
+  it("documents BREVO_LIST_ID", () => {
+    const content = readEnvExample();
+    expect(content).toContain("BREVO_LIST_ID=");
+  });
+
+  it("documents BREVO_FROM_ADDRESS", () => {
+    const content = readEnvExample();
+    expect(content).toContain("BREVO_FROM_ADDRESS=");
+  });
+
+  it("documents SOW_MARKETING_ORIGINS", () => {
+    const content = readEnvExample();
+    expect(content).toContain("SOW_MARKETING_ORIGINS=");
+  });
 });
 
 // ---------------------------------------------------------------------------

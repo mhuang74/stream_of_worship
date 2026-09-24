@@ -242,3 +242,48 @@ describe("RegisterPage", () => {
     });
   });
 });
+
+describe("RegisterPage email prefill from URL", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = mockFetch;
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    window.history.pushState({}, "", "/register");
+  });
+
+  it("prefills the email field from ?email= on mount", () => {
+    window.history.pushState({}, "", "/register?email=a%40b.com");
+    renderWithLocale(<RegisterPage />);
+    expect(screen.getByLabelText("Email")).toHaveValue("a@b.com");
+  });
+
+  // The effect is mount-only, so this proves a later rerender/URL change does
+  // not clobber typed input. (The `current ? current : urlEmail` guard defends
+  // a separate, non-deterministic race — typing or autofill landing before the
+  // effect flushes — which a unit test cannot reproduce reliably.)
+  it("keeps the typed value when a rerender follows with a different ?email=", async () => {
+    window.history.pushState({}, "", "/register?email=a%40b.com");
+    const { rerender } = renderWithLocale(<RegisterPage />);
+    expect(screen.getByLabelText("Email")).toHaveValue("a@b.com");
+    // User replaces the prefilled value by hand...
+    await userEvent.clear(screen.getByLabelText("Email"));
+    await userEvent.type(screen.getByLabelText("Email"), "typed@example.com");
+    // ...then the URL changes; the prefill effect must not fire again
+    // (mount-only) and the typed value must survive.
+    window.history.pushState({}, "", "/register?email=other%40b.com");
+    rerender(<RegisterPage />);
+    expect(screen.getByLabelText("Email")).toHaveValue("typed@example.com");
+  });
+
+  it("leaves the email field empty when there is no ?email= param", () => {
+    window.history.pushState({}, "", "/register");
+    renderWithLocale(<RegisterPage />);
+    const email = screen.getByLabelText("Email");
+    expect(email).toHaveValue("");
+    expect(email.textContent).not.toMatch(/null|undefined/);
+  });
+});

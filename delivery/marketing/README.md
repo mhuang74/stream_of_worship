@@ -30,9 +30,16 @@ pnpm --filter sow-marketing dev
 # Production build — static export to out/
 pnpm --filter sow-marketing build
 
+# Unit tests (Vitest, jsdom)
+pnpm --filter sow-marketing test
+
 pnpm --filter sow-marketing lint
 pnpm --filter sow-marketing typecheck
 ```
+
+## Lead capture ("Sign up for Free Curated Songsets")
+
+The hero and bottom CTA carry an inline email form (`src/components/SongsetSignupForm.tsx`) offering free curated songsets sent via email, instead of a Log In button; Sign in stays in the header nav. Submitting posts to `<NEXT_PUBLIC_APP_URL>/api/capture-email`, which stores the address in Brevo and emails a signup link with the address prefilled. The form is client-side only — this site stays a static export.
 
 ## Environment
 
@@ -55,7 +62,7 @@ The site auto-deploys on Vercel via Git integration (see `vercel.json`):
 - **Project:** `stream-of-worship-marketing` — Root Directory `delivery/marketing/`
 - Push to `main` (with changes under `delivery/marketing/`) → production deploy to `https://streamofworship.com`
 - Push to any other branch → preview deploy
-- No environment variables or secrets required; optionally set `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` in Vercel **Settings → Environment Variables** (baked in at build time — redeploy after changing)
+- No environment variables or secrets required; optionally set `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` in Vercel **Settings → Environment Variables** (baked in at build time — push any commit to the branch or redeploy manually to rebuild with the new values)
 
 Full setup steps (project creation, custom domain) are in
 [`./DEPLOY-VERCEL.md`](./DEPLOY-VERCEL.md).

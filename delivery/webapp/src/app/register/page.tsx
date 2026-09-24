@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { signUp } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,23 @@ export default function RegisterPage() {
   // navigating (spec v1, Phase 4).
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
   const { resending, resendState, resend } = useResendVerification(submittedEmail);
+
+  // Prefill from ?email= (confirmation-email deep link) exactly once on mount.
+  // Never clobber: only fill while the field is empty, so anything the user
+  // already typed wins. Read via window.location, not useSearchParams, to
+  // avoid a Suspense boundary around the page.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlEmail = params.get("email");
+    if (urlEmail) {
+      // Seeding state from an external system (the URL) after mount is the
+      // SSR-safe form of this: a lazy useState initializer would read `window`
+      // during prerender and hydrate with a different value than the server
+      // rendered. Same suppression used by the other URL/DOM-sync effects here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEmail((current) => (current ? current : urlEmail));
+    }
+  }, []);
 
   function validate() {
     const next: typeof errors = {};
