@@ -12,7 +12,7 @@ migration step, and no deploy hook. A `git push` to `main` is the entire deploym
 |---|---|
 | Push to `main` with changes under `delivery/marketing/` | Production deploy to `https://streamofworship.com` |
 | Push to any other branch | Preview deploy (unique URL, also posted on the PR) |
-| Push to `main` with no changes under `delivery/marketing/` | No deploy (monorepo path filtering) |
+| Push to `main` with no changes under `delivery/marketing/` | No-op deploy (no diff to build, no domain change) |
 
 Auto-deploy is enabled for every branch in `delivery/marketing/vercel.json`:
 
@@ -66,12 +66,31 @@ you need to override the URLs:
 
 | Variable | Default | Description |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` | `https://app.streamofworship.com` | Webapp base URL for register/login CTAs |
+| `NEXT_PUBLIC_APP_URL` | `https://app.streamofworship.com` | Webapp base URL for register/login CTAs and the signup form's `${APP_URL}/api/capture-email` POST |
 | `NEXT_PUBLIC_SITE_URL` | `https://streamofworship.com` | Canonical marketing base URL (sitemap) |
 
 Because it's a static export, `NEXT_PUBLIC_*` values are baked in at build time —
 change them in **Settings → Environment Variables** and redeploy. No secrets ever
 belong on the marketing site.
+
+### Preview environment: point the signup form at the webapp preview
+
+Production needs no variables (defaults are correct). In **Preview**, set one
+variable so the lead-capture form talks to the webapp preview instead of
+production:
+
+| Variable | Scope | Preview value |
+|---|---|---|
+| `NEXT_PUBLIC_APP_URL` | Preview | The webapp's stable preview branch domain (e.g. `https://qa-app.streamofworship.com`) — random per-deployment URLs cannot work: `NEXT_PUBLIC_*` is baked at build time and the webapp's `SOW_MARKETING_ORIGINS` allowlist is exact-match |
+
+On the webapp project, the matching origin must also be allowlisted: add the
+marketing preview origin to `SOW_MARKETING_ORIGINS` at **Preview** scope (see
+[`../webapp/DEPLOY-VERCEL.md`](../webapp/DEPLOY-VERCEL.md), "Preview Environments").
+Without both sides, the browser blocks the form's POST at CORS preflight. R2,
+database, and SQS are shared single-environment infrastructure — previews use the
+same Neon database and R2 bucket as production by design.
+
+`NEXT_PUBLIC_SITE_URL` can stay at its production default on previews.
 
 ## Step 3: Deploy & Verify
 
@@ -115,9 +134,9 @@ preview URL — useful for reviewing marketing copy before it goes live.
 
 | Symptom | Cause & Fix |
 |---|---|
-| Push to `main` doesn't deploy | Root Directory not set to `delivery/marketing/`, or the diff touches nothing under that path (monorepo path filtering) |
+| Push to `main` doesn't deploy | Root Directory not set to `delivery/marketing/` (monorepo path filtering at project setup) |
 | Build runs the webapp instead of marketing | Project linked to the wrong root — re-run `vercel link --cwd delivery/marketing` and confirm Root Directory |
-| Env var change has no effect | `NEXT_PUBLIC_*` is baked at build time — redeploy after changing it |
+| Env var change has no effect | `NEXT_PUBLIC_*` is baked at build time — any push to the branch triggers a rebuild, or redeploy manually from the dashboard |
 | 404 on `/zh-Hant/about` via `curl` | Expected: `/zh-Hant/` 308-redirects to `/zh-Hant`. Use `curl -sL` to follow the redirect |
 
 ## Reference

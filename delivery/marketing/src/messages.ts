@@ -22,7 +22,17 @@ export const MESSAGES = {
       "Stream of Worship strings your songs into one seamless set, renders a synchronized lyrics video, and casts it to the TV — so your small group can worship together without awkward interruptions.",
     "home.signedOut.ctaPrimary": "Get started free",
     "home.signedOut.ctaSecondary": "Sign in",
-    "home.signedOut.ctaFooter": "No credit card required · Free for personal use",
+    "home.signedOut.ctaFooter": "Free ready-to-worship songsets · No credit card required",
+    "home.signedOut.ctaAccountLink": "Create a free account",
+    "home.signedOut.songsets.emailLabel": "Email address",
+    "home.signedOut.songsets.placeholder": "miriam@tambourine.org",
+    "home.signedOut.songsets.submit": "Get free songsets",
+    "home.signedOut.songsets.submitting": "Sending…",
+    "home.signedOut.songsets.success":
+      "Thanks! Check your inbox — your first ready-to-worship songset is on its way.",
+    "home.signedOut.songsets.invalidEmail": "Please enter a valid email address.",
+    "home.signedOut.songsets.error":
+      "Something went wrong. Please try again later.",
     "home.signedOut.featuresTitle":
       "Everything your small group needs to worship without interruption",
     "home.signedOut.featuresDescription":
@@ -49,8 +59,7 @@ export const MESSAGES = {
     "home.signedOut.ctaBottomTitle":
       "Ready to lead small group worship without interruption?",
     "home.signedOut.ctaBottomDesc":
-      "Join the worship leaders casting their lyrics with Stream of Worship.",
-    "home.signedOut.ctaBottomPrimary": "Create your free account",
+      "Join the worship leaders casting their lyrics with Stream of Worship — and get free ready-to-worship songsets in your inbox.",
     "home.signedOut.demoTitle": "See it in action",
     "home.signedOut.demoDescription":
       "Watch how Stream of Worship turns a song list into a seamless worship set — from picking songs to casting the lyrics video to your TV.",
@@ -106,7 +115,15 @@ export const MESSAGES = {
       "Stream of Worship 把詩歌串成一場不中斷的敬拜，渲染同步歌詞影片，再投放到電視——讓你們一起敬拜，不再有尷尬的間斷。",
     "home.signedOut.ctaPrimary": "免費開始使用",
     "home.signedOut.ctaSecondary": "登入",
-    "home.signedOut.ctaFooter": "不用信用卡 · 個人使用免費",
+    "home.signedOut.ctaFooter": "免費即用敬拜歌單 · 不用信用卡",
+    "home.signedOut.ctaAccountLink": "免費建立帳號",
+    "home.signedOut.songsets.emailLabel": "電子郵件地址",
+    "home.signedOut.songsets.placeholder": "miriam@tambourine.org",
+    "home.signedOut.songsets.submit": "訂閱免費歌單",
+    "home.signedOut.songsets.submitting": "送出中…",
+    "home.signedOut.songsets.success": "謝謝！請到信箱收信，你的第一份即用敬拜歌單正在寄送中。",
+    "home.signedOut.songsets.invalidEmail": "請輸入有效的電子郵件地址。",
+    "home.signedOut.songsets.error": "發生錯誤，請稍後再試。",
     "home.signedOut.featuresTitle": "小組敬拜不中斷，需要的都在這裡",
     "home.signedOut.featuresDescription":
       "從挑歌到投放歌詞影片，技術細節交給 Stream of Worship，你專心帶敬拜就好。",
@@ -129,8 +146,7 @@ export const MESSAGES = {
     "home.signedOut.step4": "敬拜不中斷",
     "home.signedOut.step4Desc": "詩歌一首接一首流暢唱下去——沒有尷尬的空檔，也不用趕著切影片。",
     "home.signedOut.ctaBottomTitle": "準備好安心帶敬拜了嗎？",
-    "home.signedOut.ctaBottomDesc": "使用 Stream of Worship 讓你的敬拜更有能力。",
-    "home.signedOut.ctaBottomPrimary": "建立免費帳號",
+    "home.signedOut.ctaBottomDesc": "與使用 Stream of Worship 的敬拜主領同行，並免費收到寄到信箱的即用敬拜歌單。",
     "home.signedOut.demoTitle": "看看實際效果",
     "home.signedOut.demoDescription":
       "看看 Stream of Worship 怎麼把歌曲清單變成一場流暢的敬拜——從挑歌到把歌詞影片投到電視。",

@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { t, type Locale } from "@/messages";
 import { APP_URL } from "@/lib/urls";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SongsetSignupForm } from "@/components/SongsetSignupForm";
 import { FileMusic, Video, Cast } from "lucide-react";
 
 const FEATURES = [
@@ -42,18 +41,19 @@ export function LandingPage({ locale }: { locale: Locale }) {
             <p className="text-muted-foreground text-lg max-w-md">
               {t(locale, "home.signedOut.heroDescription")}
             </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <Link href={`${APP_URL}/register`} className={cn(buttonVariants())}>
-                {t(locale, "home.signedOut.ctaPrimary")}
-              </Link>
-              <Link
-                href={`${APP_URL}/login`}
-                className={cn(buttonVariants({ variant: "outline" }))}
-              >
-                {t(locale, "home.signedOut.ctaSecondary")}
-              </Link>
+            <div className="max-w-md">
+              <SongsetSignupForm locale={locale} />
+              <p className="mt-3 px-1 text-xs text-muted-foreground">
+                {t(locale, "home.signedOut.ctaFooter")}
+                {" · "}
+                <Link
+                  href={`${APP_URL}/register`}
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                >
+                  {t(locale, "home.signedOut.ctaAccountLink")}
+                </Link>
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">{t(locale, "home.signedOut.ctaFooter")}</p>
           </div>
 
           {/* Static CSS mockup of the projected lyrics screen */}
@@ -154,14 +154,21 @@ export function LandingPage({ locale }: { locale: Locale }) {
       {/* Bottom CTA */}
       <section className="mx-auto max-w-6xl px-4 py-16 text-center">
         <h2 className="text-3xl font-bold mb-2">{t(locale, "home.signedOut.ctaBottomTitle")}</h2>
-        <p className="text-muted-foreground mb-6">{t(locale, "home.signedOut.ctaBottomDesc")}</p>
-        <div className="flex flex-wrap justify-center gap-3">
-          <Link href={`${APP_URL}/register`} className={cn(buttonVariants())}>
-            {t(locale, "home.signedOut.ctaBottomPrimary")}
-          </Link>
-          <Link href={`${APP_URL}/login`} className={cn(buttonVariants({ variant: "outline" }))}>
-            {t(locale, "home.signedOut.ctaSecondary")}
-          </Link>
+        <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
+          {t(locale, "home.signedOut.ctaBottomDesc")}
+        </p>
+        <div className="mx-auto max-w-md">
+          <SongsetSignupForm locale={locale} />
+          <p className="mt-3 px-1 text-xs text-muted-foreground">
+            {t(locale, "home.signedOut.ctaFooter")}
+            {" · "}
+            <Link
+              href={`${APP_URL}/register`}
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              {t(locale, "home.signedOut.ctaAccountLink")}
+            </Link>
+          </p>
         </div>
       </section>
 

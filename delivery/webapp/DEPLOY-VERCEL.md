@@ -61,6 +61,16 @@ vercel env add SOW_R2_ENDPOINT_URL production
 | `SOW_SQS_ENDPOINT_URL` | Server | Leave empty in production |
 | `SOW_RENDER_WORKER_MODE` | Server | Set to `sqs` in production |
 | `SOW_RENDER_WORKER_REST_URL` | Server | Leave empty in production |
+| `SOW_EMBEDDING_API_KEY` | Server | OpenAI-compatible key for semantic search ("Describe" tab); required in production |
+| `SOW_EMBEDDING_BASE_URL` | Server | OpenAI-compatible API base URL for embeddings |
+| `SOW_EMBEDDING_MODEL` | Server | Embedding model name (defaults to `text-embedding-3-small`) |
+| `RESEND_API_KEY` | Server | Transactional email (verification, password reset); sends are skipped when unset |
+| `RESEND_FROM_ADDRESS` | Server | Verified Resend sender (defaults to `noreply@streamofworship.com`) |
+| `BREVO_API_KEY` | Server | Marketing lead capture; no-op-safe when unset |
+| `BREVO_TEMPLATE_ID` | Server | Optional Brevo email template ID (inline HTML fallback when unset) |
+| `BREVO_LIST_ID` | Server | Optional Brevo list ID for captured contacts |
+| `BREVO_FROM_ADDRESS` | Server | Optional Brevo sender (must be a verified Brevo sender) |
+| `SOW_MARKETING_ORIGINS` | Server | Comma-separated exact-match CORS allowlist of marketing origins for `POST /api/capture-email` |
 | `UPSTASH_REDIS_REST_URL` | Server | Upstash Redis REST URL for `POST /api/log-client-error` rate limiting (optional; allow-all fallback when unset) |
 | `UPSTASH_REDIS_REST_TOKEN` | Server | Upstash Redis REST token (optional; recommend setting in production) |
 
@@ -218,6 +228,73 @@ Chromecast — use AirPlay to Apple TV instead.
 
 The app domain should be `app.streamofworship.com`; the apex `streamofworship.com` serves the static marketing site (`delivery/marketing/`, its own Vercel project — see [`../marketing/DEPLOY-VERCEL.md`](../marketing/DEPLOY-VERCEL.md)), not this Vercel project.
 
+## Preview Environments
+
+Previews are created for pull requests and non-`main` branches despite
+`vercel.json` setting `git.deploymentEnabled: {main: false, "*": false}` —
+observed on live deployments (branch aliases like `…-git-<branch>-….vercel.app`);
+the effective override is configured in the dashboard (Settings → Git), not in the
+JSON. Production deploys on `main` go through the GitHub
+Actions pipeline (migrations, then the `VERCEL_DEPLOY_HOOK_URL` deploy hook — see
+`.github/workflows/deploy.yml`), which keeps the database schema ahead of the
+deployed code.
+
+The **sow-marketing** project (`delivery/marketing/`) has native Git integration
+fully enabled: `main` → production, other branches/PRs → preview. Previews are
+skipped entirely when a commit touches nothing under `delivery/marketing/`
+(the `ignoreCommand` in its `vercel.json`).
+
+#### Environment variables to override for Preview
+
+Preview deployments use the **Preview** environment variables. A variable scoped
+only to Production is simply **absent** from previews (Development scope applies
+only to local `vercel dev` / `vercel env pull`). Shared infrastructure (Neon
+database, R2 bucket, SQS queue) is intentionally scoped to both Preview and
+Production — there is only one environment for those, so previews read/write the
+same database and storage as production. To make the marketing site and webapp
+**work together in Preview without touching production behavior**, override these
+variables at **Preview** scope (Settings → Environment Variables, or
+`vercel env add <VAR> preview`):
+
+**Use a stable hostname — random preview URLs cannot work.** Per-deployment
+preview URLs (`…-<hash>-….vercel.app`) are random and unknowable at build time,
+and `NEXT_PUBLIC_*` is baked at build. Worse, per-branch aliases
+(`…-git-<branch>-….vercel.app`) change with the branch name, and
+`SOW_MARKETING_ORIGINS` is exact-match with no wildcard support. The workable
+pattern is **branch domains**: in the dashboard (Settings → Domains), assign a
+stable domain to the branch under test — e.g. the existing
+`qa-app.streamofworship.com` is assigned to a branch's previews
+(`app.streamofworship.com` remains the production domain). Reassign that domain
+when you switch branches; other branches' previews keep resolving to whatever
+origin is pinned, so always reassign before testing auth or lead capture on a new
+branch.
+
+**Webapp project (`stream-of-worship-webapp`):**
+
+| Variable | Preview value | Why |
+|---|---|---|
+| `BETTER_AUTH_URL` | The branch domain (e.g. `https://qa-app.streamofworship.com`) | Auth callbacks/cookies must resolve against the preview origin, not production |
+| `NEXT_PUBLIC_BASE_URL` | Same branch domain | Baked into the client bundle at build time; share links and the Brevo signup link must point at the preview |
+| `SOW_MARKETING_ORIGINS` | Comma-separated list of the marketing preview origins you want to allow — must be the stable marketing branch domain, since random origins can never be listed | Without the marketing preview's origin here, its signup form fails CORS preflight against this webapp preview |
+
+**Marketing project (`sow-marketing`):**
+
+| Variable | Preview value | Why |
+|---|---|---|
+| `NEXT_PUBLIC_APP_URL` | The webapp branch domain (same value as the webapp's `NEXT_PUBLIC_BASE_URL`) | The signup form POSTs to `${APP_URL}/api/capture-email`; the default points at production |
+
+`NEXT_PUBLIC_SITE_URL` (sitemap) can stay at its production default on previews.
+Because both are `NEXT_PUBLIC_*` and baked at build time, set them **before** the
+preview build runs — after adding them, trigger a fresh deploy (push a commit or
+use `vercel` from the package directory).
+
+Production keeps its own values untouched: these overrides live only at Preview
+scope, so `main` deploys continue using the Production-scoped settings. Vercel
+also supports **branch-scoped** Preview values that override generic Preview ones
+— the clean fix when two branches need different pinned origins simultaneously.
+
+---
+
 ## Troubleshooting
 
 ### Build fails: "Root Directory" not set
@@ -249,12 +326,6 @@ These are embedded at **build time**. Changing them in the Vercel dashboard requ
 ```bash
 vercel --prod
 ```
-
-### Preview deploys use wrong environment
-
-Preview deploys use the **Preview** environment variables. If not set, they fall back to Development. Configure Preview-specific values in **Settings → Environment Variables** (e.g. a staging R2 bucket, a different Cast receiver app ID).
-
----
 
 ## Reference: Infrastructure & Migration
 

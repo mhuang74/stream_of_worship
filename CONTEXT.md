@@ -8,6 +8,12 @@ A seamless Chinese worship music transition system: songs are analyzed (tempo, k
 The display language of the webapp's UI — one of `English` or `繁體中文` (Traditional Chinese) — chosen per user account. The Locale affects **UI text only**: the song catalog, lyrics, and rendered audio/video output are always Traditional Chinese regardless of the Locale, because that is how the catalog and lyrics are stored.
 _Avoid_: language, display language, translation
 
+### Marketing
+
+**Lead**:
+An email address captured on the marketing site before signup, existing only in Brevo until converted to a User by signing up. A Lead is not an account — conversion is the act of signup. Whether an email belongs to a Lead or a registered User is never distinguishable from the client.
+_Avoid_: contact, subscriber, prospect
+
 ### Catalog
 
 **Song**:
