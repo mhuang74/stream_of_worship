@@ -147,7 +147,7 @@ def _invoke_stdin_generate(stdin_text: str, extra_args: tuple = ()):
     (result, single_mock, batch_mock)."""
     with (
         patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
-        patch.object(lyrics_commands, "get_db_client", MagicMock()) as db_mock,
+        patch.object(lyrics_commands, "get_db_client", MagicMock()),
         patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
         patch.object(lyrics_commands, "ConnectionProvider", MagicMock()),
         patch.object(
