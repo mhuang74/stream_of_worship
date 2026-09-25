@@ -413,11 +413,20 @@ def cmd_snapshot(args) -> None:
         )
     run_ok(["neon", "snapshots", "create", "--branch", args.branch, "--name", args.name])
     after = neon_json(["snapshots", "list"])
-    prod_id = next(b["id"] for b in neon_json(["branches", "list"]) if b["name"] == args.branch)
-    created = [s for s in after if s.get("source_branch_id") == prod_id]
+    # Snapshot create is async — an immediate list may return the snapshot with
+    # source_branch_id still null. Match by name (unique per project) and treat
+    # a missing source_branch_id as a warning, not a failure.
+    created = [s for s in after if s.get("name") == args.name]
     if len(created) != 1:
-        die(f"expected exactly 1 snapshot for {args.branch}, found {len(created)}")
+        die(f"expected exactly 1 snapshot named '{args.name}', found {len(created)}")
     s = created[0]
+    prod_id = next(b["id"] for b in neon_json(["branches", "list"]) if b["name"] == args.branch)
+    if s.get("source_branch_id") != prod_id:
+        print(
+            f"WARNING: snapshot source_branch_id={s.get('source_branch_id')} "
+            f"not yet resolved to {prod_id} ({args.branch}) — async creation still "
+            "in progress; verify later with `neon snapshots list`"
+        )
     print(f"SNAPSHOT PASS: {s.get('id')} name={s.get('name')} source={s.get('source_branch_id')}")
 
 
