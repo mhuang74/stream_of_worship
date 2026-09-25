@@ -451,15 +451,20 @@ def parse_dump_tables(dump_path: Path) -> set[str]:
 
     TOC lines look like: `10; 145433 145431 TABLE public songs postgres`
     (semicolon only after the sequence number; leading `;` marks comments).
+    The TOC also contains `... TABLE DATA public songs postgres` entries with
+    the same prefix — excluded via lookahead so they don't parse as a fake
+    "DATA.<schema>" table.
     """
     rc, toc, stderr = run(["pg_restore", "--list", str(dump_path)])
     if rc != 0:
         die(f"pg_restore --list failed for {dump_path}\n{stderr.strip()}")
     tables: set[str] = set()
     for line in toc.splitlines():
-        m = re.match(r"^\d+;\s+\d+\s+\d+\s+TABLE\s+(\S+)\s+(\S+)\s", line)
+        m = re.match(r"^\d+;\s+\d+\s+\d+\s+TABLE\s+(?!DATA\b)(\S+)\s+(\S+)\s", line)
         if m:
             tables.add(f"{m.group(1)}.{m.group(2)}")
+    if not tables:
+        die(f"no TABLE entries parsed from TOC of {dump_path} — format drift?")
     return tables
 
 
