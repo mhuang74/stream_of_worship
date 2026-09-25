@@ -276,7 +276,7 @@ describe("markValidated", () => {
     expect(body).toEqual({
       email: "lead@example.com",
       updateEnabled: true,
-      attributes: { VALIDATED: "true" },
+      attributes: { VALIDATED: true },
     });
   });
 

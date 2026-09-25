@@ -126,7 +126,10 @@ export async function markValidated(email: string): Promise<void> {
   const body = {
     email,
     updateEnabled: true,
-    attributes: { VALIDATED: "true" },
+    // Must match the Brevo attribute type: VALIDATED is a Boolean attribute —
+    // a string "true" against a boolean attribute is silently ignored (Brevo
+    // drops values that don't match the attribute's declared type).
+    attributes: { VALIDATED: true },
   };
 
   try {
