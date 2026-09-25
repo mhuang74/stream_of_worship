@@ -14,7 +14,7 @@ export interface UpsertContactArgs {
 export interface SendConfirmationEmailArgs {
   to: string;
   locale?: string; // "zh-Hant" → Traditional Chinese fallback copy, else English
-  signupUrl: string; // fully-built signup URL with the email already query-encoded
+  validateUrl: string; // fully-built email-validation URL (`/validated?token=…`)
 }
 
 const BREVO_API_BASE = "https://api.brevo.com/v3";
@@ -44,21 +44,21 @@ function parseFromAddress(value: string): { email: string; name?: string } {
 
 /**
  * Inline-HTML fallback copy so a missing template ID never silently eats a
- * lead. The signup URL is embedded as an `<a href>` (the conversion path).
+ * lead. The validation URL is embedded as an `<a href>` (the conversion path).
  */
 function fallbackCopy(
-  signupUrl: string,
+  validateUrl: string,
   locale?: string
 ): { subject: string; html: string } {
   if (locale === "zh-Hant") {
     return {
-      subject: "已收到您的通知需求 — Stream of Worship",
-      html: `<p>感謝您對 Stream of Worship 的關注！</p><p><a href="${signupUrl}">完成建立帳號</a></p>`,
+      subject: "請確認您的電子郵件 — Stream of Worship",
+      html: `<p>感謝您對 Stream of Worship 的關注！</p><p><a href="${validateUrl}">點此確認電子郵件，即可獲得免費歌單</a></p>`,
     };
   }
   return {
-    subject: "You're on the list — Stream of Worship",
-    html: `<p>Thanks for your interest in Stream of Worship!</p><p><a href="${signupUrl}">Finish creating your account</a></p>`,
+    subject: "Confirm your email — Stream of Worship",
+    html: `<p>Thanks for your interest in Stream of Worship!</p><p><a href="${validateUrl}">Confirm your email to get your free songsets</a></p>`,
   };
 }
 
@@ -108,10 +108,46 @@ export async function upsertContact(args: UpsertContactArgs): Promise<void> {
 }
 
 /**
- * Send the lead-capture confirmation email. Uses the configured Brevo
- * template when BREVO_TEMPLATE_ID is set; otherwise falls back to inline
- * HTML so a missing template ID never silently eats a lead. Never throws.
+ * Mark a contact as having validated their email (clicked the emailed link).
+ * Idempotent create-or-update that sets ONLY the VALIDATED attribute — list
+ * membership was already granted at submit time and must not change here.
+ * Never throws: Brevo failures are logged server-side only (the /validated
+ * page renders success regardless — re-visiting the link retries the write).
  */
+export async function markValidated(email: string): Promise<void> {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    console.warn(
+      `[brevo] BREVO_API_KEY not set; skipping VALIDATED mark for ${email}`
+    );
+    return;
+  }
+
+  const body = {
+    email,
+    updateEnabled: true,
+    attributes: { VALIDATED: "true" },
+  };
+
+  try {
+    const res = await fetch(`${BREVO_API_BASE}/contacts`, {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error("[brevo] Failed to mark contact validated:", res.status, text);
+    }
+  } catch (error) {
+    console.error("[brevo] Failed to mark contact validated:", error);
+  }
+}
+
 export async function sendConfirmationEmail(
   args: SendConfirmationEmailArgs
 ): Promise<void> {
@@ -133,10 +169,10 @@ export async function sendConfirmationEmail(
     body = {
       templateId,
       to: [{ email: args.to }],
-      params: { email: args.to, signupUrl: args.signupUrl },
+      params: { email: args.to, validateUrl: args.validateUrl },
     };
   } else {
-    const copy = fallbackCopy(args.signupUrl, args.locale);
+    const copy = fallbackCopy(args.validateUrl, args.locale);
     body = {
       sender: from,
       to: [{ email: args.to }],

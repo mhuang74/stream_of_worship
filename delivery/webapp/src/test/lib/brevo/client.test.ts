@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   upsertContact,
   sendConfirmationEmail,
+  markValidated,
 } from "@/lib/brevo/client";
 
 // Stub global fetch so the wrapper's REST request shapes can be asserted
@@ -10,7 +11,7 @@ const fetchMock = vi.fn(async () =>
   new Response(JSON.stringify({ id: 1 }), { status: 201 })
 );
 
-const SIGNUP_URL = "https://streamofworship.com/register?email=visitor%40example.com";
+const VALIDATE_URL = "https://streamofworship.com/validated?token=abc.def";
 
 function lastCall(): { url: string; init: RequestInit } {
   const [url, init] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
@@ -140,7 +141,7 @@ describe("sendConfirmationEmail", () => {
     await sendConfirmationEmail({
       to: "visitor@example.com",
       locale: "en",
-      signupUrl: SIGNUP_URL,
+      validateUrl: VALIDATE_URL,
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -153,15 +154,15 @@ describe("sendConfirmationEmail", () => {
     expect(body).toEqual({
       templateId: 7,
       to: [{ email: "visitor@example.com" }],
-      params: { email: "visitor@example.com", signupUrl: SIGNUP_URL },
+      params: { email: "visitor@example.com", validateUrl: VALIDATE_URL },
     });
   });
 
-  it("falls back to inline HTML when no template is configured, embedding the signup URL as a link", async () => {
+  it("falls back to inline HTML when no template is configured, embedding the validation URL as a link", async () => {
     await sendConfirmationEmail({
       to: "visitor@example.com",
       locale: "en",
-      signupUrl: SIGNUP_URL,
+      validateUrl: VALIDATE_URL,
     });
 
     const body = JSON.parse(lastCall().init.body as string);
@@ -172,25 +173,25 @@ describe("sendConfirmationEmail", () => {
     });
     expect(body.to).toEqual([{ email: "visitor@example.com" }]);
     expect(body.subject).toContain("Stream of Worship");
-    expect(body.htmlContent).toContain(`href="${SIGNUP_URL}"`);
+    expect(body.htmlContent).toContain(`href="${VALIDATE_URL}"`);
   });
 
   it("renders Traditional Chinese fallback copy for zh-Hant", async () => {
     await sendConfirmationEmail({
       to: "visitor@example.com",
       locale: "zh-Hant",
-      signupUrl: SIGNUP_URL,
+      validateUrl: VALIDATE_URL,
     });
     const body = JSON.parse(lastCall().init.body as string);
     expect(body.subject).toMatch(/[\u4e00-\u9fff]/);
-    expect(body.htmlContent).toContain(`href="${SIGNUP_URL}"`);
+    expect(body.htmlContent).toContain(`href="${VALIDATE_URL}"`);
   });
 
   it("renders English (non-Chinese) fallback copy for other locales", async () => {
     await sendConfirmationEmail({
       to: "visitor@example.com",
       locale: "en",
-      signupUrl: SIGNUP_URL,
+      validateUrl: VALIDATE_URL,
     });
     const body = JSON.parse(lastCall().init.body as string);
     expect(body.subject).not.toMatch(/[\u4e00-\u9fff]/);
@@ -201,7 +202,7 @@ describe("sendConfirmationEmail", () => {
     await sendConfirmationEmail({
       to: "v@example.com",
       locale: "en",
-      signupUrl: SIGNUP_URL,
+      validateUrl: VALIDATE_URL,
     });
     const body = JSON.parse(lastCall().init.body as string);
     expect(body.sender).toEqual({ email: "hello@custom.example", name: "Custom" });
@@ -211,7 +212,7 @@ describe("sendConfirmationEmail", () => {
     fetchMock.mockResolvedValueOnce(new Response("boom", { status: 502 }));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(
-      sendConfirmationEmail({ to: "v@example.com", locale: "en", signupUrl: SIGNUP_URL })
+      sendConfirmationEmail({ to: "v@example.com", locale: "en", validateUrl: VALIDATE_URL })
     ).resolves.toBeUndefined();
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
@@ -221,7 +222,7 @@ describe("sendConfirmationEmail", () => {
     delete process.env.BREVO_API_KEY;
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await expect(
-      sendConfirmationEmail({ to: "v@example.com", locale: "en", signupUrl: SIGNUP_URL })
+      sendConfirmationEmail({ to: "v@example.com", locale: "en", validateUrl: VALIDATE_URL })
     ).resolves.toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
@@ -237,13 +238,72 @@ describe("sendConfirmationEmail", () => {
       await sendConfirmationEmail({
         to: "v@example.com",
         locale: "en",
-        signupUrl: SIGNUP_URL,
+        validateUrl: VALIDATE_URL,
       });
       const body = JSON.parse(lastCall().init.body as string);
       // A template send with a bogus ID would be rejected by Brevo and the
       // lead would get nothing; the inline fallback keeps the confirmation.
       expect(body.templateId).toBeUndefined();
-      expect(body.htmlContent).toContain(`href="${SIGNUP_URL}"`);
+      expect(body.htmlContent).toContain(`href="${VALIDATE_URL}"`);
     }
   );
+});
+
+describe("markValidated", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", fetchMock);
+    process.env.BREVO_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.BREVO_API_KEY;
+  });
+
+  it("POSTs the contact update with the VALIDATED attribute and no listIds", async () => {
+    await markValidated("lead@example.com");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const { url, init } = lastCall();
+    expect(url).toBe("https://api.brevo.com/v3/contacts");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["api-key"]).toBe("test-key");
+
+    const body = JSON.parse(init.body as string);
+    // Exactly VALIDATED — list membership is owned by the submit-time upsert,
+    // so this call must never add/remove the contact from a list.
+    expect(body).toEqual({
+      email: "lead@example.com",
+      updateEnabled: true,
+      attributes: { VALIDATED: "true" },
+    });
+  });
+
+  it("is no-op-safe when BREVO_API_KEY is unset (no fetch, no throw)", async () => {
+    delete process.env.BREVO_API_KEY;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(markValidated("lead@example.com")).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("skipping VALIDATED mark for lead@example.com")
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("never throws on a non-OK response (logged, swallowed)", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(markValidated("lead@example.com")).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("never throws when fetch itself rejects", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("network down"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(markValidated("lead@example.com")).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

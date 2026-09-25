@@ -182,6 +182,14 @@ export const core = bundle({
     "auth.register.hasAccount": "Already have an account?",
     "auth.register.signInLink": "Sign in",
 
+    // Lead email validation (/validated)
+    "lead.validated.success.title": "Email confirmed",
+    "lead.validated.success.subtitle": "You're on the list for free songsets.",
+    "lead.validated.ctaRegister": "Create your free account",
+    "lead.validated.invalid.title": "This link is invalid or expired",
+    "lead.validated.invalid.subtitle": "Please submit your email again on the website.",
+    "lead.validated.ctaMarketing": "Back to Stream of Worship",
+
     // Register verification gate
     "auth.register.verify.title": "Check your email",
     "auth.register.verify.subtitle": "We sent a verification link to ${email}. Click it to finish creating your account.",
@@ -404,6 +412,14 @@ export const core = bundle({
     "auth.register.validation.confirmMismatch": "兩次輸入的密碼不一致",
     "auth.register.hasAccount": "已有帳號？",
     "auth.register.signInLink": "登入",
+
+    // Lead email validation (/validated)
+    "lead.validated.success.title": "電子郵件已確認",
+    "lead.validated.success.subtitle": "您已成功訂閱免費歌單。",
+    "lead.validated.ctaRegister": "建立免費帳號",
+    "lead.validated.invalid.title": "此連結無效或已過期",
+    "lead.validated.invalid.subtitle": "請回到網站重新輸入您的電子郵件。",
+    "lead.validated.ctaMarketing": "回到 Stream of Worship",
 
     // Register verification gate
     "auth.register.verify.title": "檢查一下你的電子郵件",

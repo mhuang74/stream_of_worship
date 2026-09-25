@@ -96,11 +96,14 @@ describe("POST /api/capture-email", () => {
     // Signup-link tests opt in explicitly; default to unconfigured.
     delete process.env.NEXT_PUBLIC_BASE_URL;
     process.env.SOW_MARKETING_ORIGINS = ALLOWED_ORIGIN;
+    // The route signs a validation token on every successful POST.
+    process.env.BETTER_AUTH_SECRET = "test-secret";
   });
 
   afterEach(() => {
     __resetRateLimitCacheForTests();
     delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.BETTER_AUTH_SECRET;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     delete process.env.SOW_MARKETING_ORIGINS;
   });
@@ -132,9 +135,7 @@ describe("POST /api/capture-email", () => {
       expect.objectContaining({
         to: "visitor@example.com",
         locale: "zh-Hant",
-        signupUrl: expect.stringContaining(
-          "/register?email=visitor%40example.com"
-        ),
+        validateUrl: expect.stringContaining("/validated?token="),
       })
     );
   });
@@ -146,10 +147,11 @@ describe("POST /api/capture-email", () => {
     expect(args.variant).toBeUndefined();
   });
 
-  // The signup link is emailed from our own domain to an address anyone can
-  // submit. Deriving it from the request would let a forged Host header put an
-  // attacker-controlled URL in that mail, so the link must come from config.
-  it("never builds the signup link from a forged request host", async () => {
+  // The validation link is emailed from our own domain to an address anyone
+  // can submit. Deriving it from the request would let a forged Host header
+  // put an attacker-controlled URL in that mail, so the link must come from
+  // config.
+  it("never builds the validation link from a forged request host", async () => {
     await POST(
       makePostRequest(validBody, "203.0.113.9", {
         host: "evil.example.com",
@@ -157,18 +159,18 @@ describe("POST /api/capture-email", () => {
         "x-forwarded-proto": "https",
       })
     );
-    const { signupUrl } = vi.mocked(sendConfirmationEmail).mock.calls[0][0];
-    expect(signupUrl).not.toContain("evil.example.com");
-    expect(signupUrl).toContain("https://app.streamofworship.com/register?email=");
+    const { validateUrl } = vi.mocked(sendConfirmationEmail).mock.calls[0][0];
+    expect(validateUrl).not.toContain("evil.example.com");
+    expect(validateUrl).toContain("https://app.streamofworship.com/validated?token=");
   });
 
-  it("uses NEXT_PUBLIC_BASE_URL for the signup link when configured", async () => {
+  it("uses NEXT_PUBLIC_BASE_URL for the validation link when configured", async () => {
     process.env.NEXT_PUBLIC_BASE_URL = "https://staging.example.com/";
     await POST(makePostRequest(validBody, "203.0.113.9", { host: "evil.example.com" }));
-    const { signupUrl } = vi.mocked(sendConfirmationEmail).mock.calls[0][0];
+    const { validateUrl } = vi.mocked(sendConfirmationEmail).mock.calls[0][0];
     // Trailing slash trimmed, so no doubled path segment.
-    expect(signupUrl).toBe(
-      "https://staging.example.com/register?email=visitor%40example.com"
+    expect(validateUrl).toMatch(
+      /^https:\/\/staging\.example\.com\/validated\?token=/
     );
     delete process.env.NEXT_PUBLIC_BASE_URL;
   });
@@ -270,10 +272,12 @@ describe("CORS", () => {
     setAllowCount(999);
     __resetRateLimitCacheForTests();
     process.env.SOW_MARKETING_ORIGINS = `${ALLOWED_ORIGIN}, https://other.example.com`;
+    process.env.BETTER_AUTH_SECRET = "test-secret";
   });
 
   afterEach(() => {
     delete process.env.SOW_MARKETING_ORIGINS;
+    delete process.env.BETTER_AUTH_SECRET;
   });
 
   it("echoes an allowlisted Origin on POST responses", async () => {

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { isLocale } from "@/lib/i18n/messages";
 import { parseAcceptLanguage } from "@/lib/i18n/accept-language";
 
-const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/api/auth", "/api/health", "/share", "/api/share", "/api/capture-email", "/sw.js", "/sw-artifact-serving.js"];
+const PUBLIC_PATHS = ["/login", "/register", "/validated", "/forgot-password", "/reset-password", "/api/auth", "/api/health", "/share", "/api/share", "/api/capture-email", "/sw.js", "/sw-artifact-serving.js"];
 // "/" is NOT public: the marketing site lives at streamofworship.com (issue
 // #213) and unauthenticated visitors to the app domain are login-first —
 // they get redirected to /login (proxy + server-render in src/app/page.tsx).
