@@ -39,7 +39,7 @@ pnpm --filter sow-marketing typecheck
 
 ## Lead capture ("Sign up for Free Curated Songsets")
 
-The hero and bottom CTA carry an inline email form (`src/components/SongsetSignupForm.tsx`) offering free curated songsets sent via email, instead of a Log In button; Sign in stays in the header nav. Submitting posts to `<NEXT_PUBLIC_APP_URL>/api/capture-email`, which stores the address in Brevo and emails a signup link with the address prefilled. The form is client-side only — this site stays a static export.
+The hero and bottom CTA carry an inline email form (`src/components/SongsetSignupForm.tsx`) offering free curated songsets sent via email, instead of a Log In button; Sign in stays in the header nav. Submitting posts to `<NEXT_PUBLIC_APP_URL>/api/capture-email`, which stores the address in Brevo and emails a validation link (`/validated?token=…`); confirming marks the contact `VALIDATED` in Brevo and leads on to a pre-filled signup. The form is client-side only — this site stays a static export.
 
 ## Environment
 
