@@ -286,14 +286,19 @@ def cmd_backup(args) -> None:
         run_ok(["pg_restore", "--list", str(dump)])
         print(f"  integrity OK: {dump.name}")
 
-    # sha256 manifest (sha256sum-compatible format)
+    # sha256 manifest (sha256sum-compatible format) over ALL dumps for this
+    # date in the output dir — not just the ones dumped in this invocation —
+    # so repeated backup runs accumulate instead of dropping earlier entries.
+    all_dumps = sorted(out_dir.glob(f"*_{args.date}.dump"))
+    if not all_dumps:
+        die("no dump files found for manifest")
     manifest = out_dir / f"manifest_{args.date}.sha256"
     lines = []
-    for dump in dumps:
+    for dump in all_dumps:
         digest = hashlib.sha256(dump.read_bytes()).hexdigest()
         lines.append(f"{digest}  {dump.name}")
     manifest.write_text("\n".join(lines) + "\n")
-    print(f"manifest written: {manifest.name}")
+    print(f"manifest written: {manifest.name} ({len(all_dumps)} dumps)")
 
     # Baseline counts always come from development
     dev_dsn = args.dsn or neon_dsn("development")
@@ -347,11 +352,13 @@ def cmd_test_restore(args) -> None:
             args.scratch_name,
             "--parent",
             args.parent,
+            "--no-secrets",
             *project_argv,
         ]
     )
 
     restore_ok = False
+    diff_ok = False
     try:
         dsn = args.dsn or neon_dsn(args.scratch_name)
         wait_ready(dsn, attempts=12, delay=10)
@@ -378,9 +385,10 @@ def cmd_test_restore(args) -> None:
         if diffs:
             print("".join(diffs))
             die(f"baseline mismatch after restore into {args.scratch_name}")
+        diff_ok = True
         print("  baseline identical")
     finally:
-        if restore_ok:
+        if restore_ok and diff_ok:
             print(f"== deleting scratch branch {args.scratch_name} ==")
             delete_branch(args.scratch_name)
             print(f"TEST-RESTORE PASS ({dump_path.name})")
@@ -439,14 +447,17 @@ def cmd_snapshot_smoke(args) -> None:
 
 
 def parse_dump_tables(dump_path: Path) -> set[str]:
-    """schema.name set from pg_restore TOC TABLE entries."""
+    """schema.name set from pg_restore TOC TABLE entries.
+
+    TOC lines look like: `10; 145433 145431 TABLE public songs postgres`
+    (semicolon only after the sequence number; leading `;` marks comments).
+    """
     rc, toc, stderr = run(["pg_restore", "--list", str(dump_path)])
     if rc != 0:
         die(f"pg_restore --list failed for {dump_path}\n{stderr.strip()}")
-    tables = set()
+    tables: set[str] = set()
     for line in toc.splitlines():
-        # ;<seq>;<oid>;<oid> TABLE <schema> <name> <owner>
-        m = re.match(r"^;\d+;\d+;\d+ TABLE (\S+) (\S+) ", line)
+        m = re.match(r"^\d+;\s+\d+\s+\d+\s+TABLE\s+(\S+)\s+(\S+)\s", line)
         if m:
             tables.add(f"{m.group(1)}.{m.group(2)}")
     return tables
@@ -541,7 +552,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("backup", help="Phase 2 backups + manifest + baseline + R2 upload")
     p.add_argument("--branches", default="production,development,dev_0912,dev_0923")
-    p.add_argument("--output-dir", default="output/neon-backups")
+    p.add_argument("--output-dir", default=str(REPO_ROOT / "output" / "neon-backups"))
     add_common(p, date=True)
     p.add_argument("--no-upload", action="store_true")
     p.add_argument("--r2-prefix", default="neon-backups")
@@ -592,7 +603,9 @@ def main() -> None:
     if getattr(args, "name", None) is None and hasattr(args, "date"):
         args.name = f"production-promoted-{args.date}"
     if getattr(args, "baseline", None) is None and hasattr(args, "date"):
-        args.baseline = f"output/neon-backups/baseline_dev_counts_{args.date}.txt"
+        args.baseline = str(
+            REPO_ROOT / "output" / "neon-backups" / f"baseline_dev_counts_{args.date}.txt"
+        )
     args.func(args)
 
 
