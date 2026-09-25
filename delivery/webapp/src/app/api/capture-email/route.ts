@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientIp, hashIp, enforceRateLimit } from "@/lib/rate-limit";
 import { upsertContact, sendConfirmationEmail } from "@/lib/brevo/client";
+import { signValidationToken } from "@/lib/lead-validation";
 
 /**
  * /api/capture-email — landing-page "Notify me" lead capture (issue #222).
@@ -30,20 +31,21 @@ import { upsertContact, sendConfirmationEmail } from "@/lib/brevo/client";
 export const runtime = "nodejs";
 
 /**
- * Canonical app origin used to build the signup link in the confirmation
- * email. Deliberately NOT derived from the request: the link is emailed from
- * our own domain to whatever address was submitted, and anyone can post a
- * harvested third-party email — a forged Host header must never turn our
- * confirmation mail into a vector pointing at an attacker's host.
+ * Canonical app origin used to build the email-validation link in the
+ * confirmation email. Deliberately NOT derived from the request: the link is
+ * emailed from our own domain to whatever address was submitted, and anyone
+ * can post a harvested third-party email — a forged Host header must never
+ * turn our confirmation mail into a vector pointing at an attacker's host.
  */
 const CANONICAL_APP_ORIGIN = "https://app.streamofworship.com";
 
-function signupUrlFor(email: string): string {
+function validationUrlFor(email: string): string {
   // Spec: derive from the existing public base URL env; no new URL env var.
   // Falls back to the canonical production origin (never the request origin).
   const configured = process.env.NEXT_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
   const origin = configured || CANONICAL_APP_ORIGIN;
-  return `${origin}/register?email=${encodeURIComponent(email)}`;
+  const token = signValidationToken(email);
+  return `${origin}/validated?token=${encodeURIComponent(token)}`;
 }
 
 const captureEmailSchema = z
@@ -156,13 +158,12 @@ export async function POST(request: NextRequest) {
     ...(variant ? { variant } : {}),
   });
 
-  // 5. Confirmation email with the pre-filled signup link (the conversion
-  //    path). Built from the configured public base URL — never from the
-  //    request host (see signupUrlFor).
+  // 5. Email-validation link (the conversion path). Built from the configured
+  //    public base URL — never from the request host (see validationUrlFor).
   await sendConfirmationEmail({
     to: email,
     ...(locale ? { locale } : {}),
-    signupUrl: signupUrlFor(email),
+    validateUrl: validationUrlFor(email),
   });
 
   return NextResponse.json({ success: true }, { status: 200, headers: cors });
