@@ -271,7 +271,7 @@ There is no per-endpoint file. `POST /api/auth/sign-up/email`, `POST /api/auth/s
 
 ### Prefill from a confirmation link
 
-The marketing site's "Notify me" form emails a lead a signup link with their address already attached (`/register?email=…`, built by `delivery/webapp/src/app/api/capture-email/route.ts`). The register page reads that param once on mount:
+The marketing site's "Notify me" form emails a lead an email-validation link (`/validated?token=…`, built by `delivery/webapp/src/app/api/capture-email/route.ts`). Visiting that link marks the lead's Brevo contact as `VALIDATED` and offers a "Create your free account" CTA that carries the address across: `/register?email=…`. The register page reads that param once on mount:
 
 ```ts title="delivery/webapp/src/app/register/page.tsx"
   // Prefill from ?email= (confirmation-email deep link) exactly once on mount.
