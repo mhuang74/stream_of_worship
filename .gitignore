@@ -139,6 +139,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
 .envrc
 # Neon CLI link file (org/project/branch IDs)
 .neon
