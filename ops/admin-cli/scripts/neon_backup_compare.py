@@ -464,13 +464,15 @@ def cmd_test_restore(args) -> None:
         wait_ready(dsn, attempts=12, delay=10)
         print(f"== restoring {dump_path.name} into {args.scratch_name} ==")
         clean, env = pg_env(dsn)
+        # Scratch branches inherit from parent (production), which already has
+        # tables and functions. The dump recreates them, so drop inherited
+        # user tables first to avoid "already exists" restore errors.
+        psql_rc(dsn, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
         run_ok(
             [
                 "pg_restore",
                 "--no-owner",
                 "--no-privileges",
-                "--clean",
-                "--if-exists",
                 "--exit-on-error",
                 "--jobs",
                 "4",
