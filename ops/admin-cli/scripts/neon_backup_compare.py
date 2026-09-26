@@ -13,6 +13,9 @@ Destructive steps (branch wipes/renames/deletes other than this script's own
 scratch branches, snapshot slot deletion, compute repointing, env cutover) are
 performed manually by the operator, never by this script.
 
+A `--date` is immutable: `backup` refuses to overwrite any same-date
+dump/baseline/manifest; redo with a new `--date`.
+
 Usage (from repo root):
     uv run --project ops/admin-cli --python 3.11 --extra admin python \
         ops/admin-cli/scripts/neon_backup_compare.py <subcommand> ...
@@ -137,7 +140,9 @@ def neon_dsn(branch: str, pooled: bool = False, project_id: str | None = None) -
     if project_id:
         argv += ["--project-id", project_id]
     rc, stdout, stderr = run(argv, timeout=60)
-    dsn = stdout.strip().splitlines()[-1].strip() if stdout.strip() else ""
+    dsn_lines = [ln.strip() for ln in stdout.splitlines() if ln.strip()]
+    dsn_lines = [ln for ln in dsn_lines if ln.startswith(("postgres://", "postgresql://"))]
+    dsn = dsn_lines[-1] if dsn_lines else ""
     if rc != 0 or not dsn:
         die(f"neon connection-string {branch} failed\n{stderr.strip()}")
     return dsn
@@ -216,7 +221,7 @@ def diff_baselines(baseline_path: Path, actual: str) -> list[str]:
 
 
 def r2_upload_files(files: list[Path], date: str, r2_prefix: str) -> None:
-    """Upload files to R2; any failure is fatal (fail-gate)."""
+    """Upload files to R2; never overwrites remote objects; any failure is fatal."""
     from stream_of_worship.admin.config import AdminConfig
     from stream_of_worship.admin.services.r2 import R2Client
 
@@ -224,8 +229,19 @@ def r2_upload_files(files: list[Path], date: str, r2_prefix: str) -> None:
     client = R2Client(bucket=config.r2_bucket, endpoint_url=config.r2_endpoint_url)
     for path in files:
         key = f"{r2_prefix}/{date}/{path.name}"
+        pre = client.head_object(key)
+        if pre is not None:
+            die(f"R2 object already exists: {key} — refusing to overwrite; use a new --date")
         with path.open("rb") as fh:
             url = client.upload_fileobj(fh, key)
+        post = client.head_object(key)
+        if post is None:
+            die(f"R2 upload not found after upload: {key}")
+        if post["size"] != path.stat().st_size:
+            die(
+                f"R2 upload size mismatch for {key}: remote {post['size']} != "
+                f"local {path.stat().st_size}"
+            )
         print(f"  uploaded {url}")
 
 
@@ -247,10 +263,16 @@ def cmd_precheck(args) -> None:
     # neonctl + API key
     out = run_ok(["neon", "--version"]).strip()
     print(f"neonctl OK: {out}")
-    snapshots = neon_json(["snapshots", "list"])
+    snapshots_argv = ["snapshots", "list"]
+    if args.project_id:
+        snapshots_argv += ["--project-id", args.project_id]
+    snapshots = neon_json(snapshots_argv)
     print(f"neon API key OK: snapshots list returned {len(snapshots)} snapshot(s)")
 
-    branches = neon_json(["branches", "list"])
+    branches_argv = ["branches", "list"]
+    if args.project_id:
+        branches_argv += ["--project-id", args.project_id]
+    branches = neon_json(branches_argv)
     if len(branches) > 8:
         die(f"expected at most 8 branches, found {len(branches)} — reconcile manually")
     print(f"branches ({len(branches)}):")
@@ -302,11 +324,23 @@ def dump_prefix_for(branch: str) -> str:
     return f"{branch}_archive"
 
 
+def assert_date_fresh(out_dir: Path, date: str) -> None:
+    """Refuse to overwrite an existing same-date snapshot (dumps/baseline/manifest)."""
+    existing = list(out_dir.glob(f"*_{date}.dump"))
+    for name in (f"baseline_dev_counts_{date}.txt", f"manifest_{date}.sha256"):
+        if (out_dir / name).exists():
+            existing.append(out_dir / name)
+    if existing:
+        die(f"date snapshot for {date} already exists — refusing to overwrite; use a new --date")
+
+
 def cmd_backup(args) -> None:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     branches = [b.strip() for b in args.branches.split(",") if b.strip()]
     dumps: list[Path] = []
+
+    assert_date_fresh(out_dir, args.date)
 
     if args.dsn and len(branches) != 1:
         die("--dsn requires exactly one branch in --branches")
@@ -316,12 +350,11 @@ def cmd_backup(args) -> None:
     for branch in branches:
         prefix = dump_prefix_for(branch)
         dump_path = out_dir / f"{prefix}_{args.date}.dump"
-        if dump_path.exists() and not args.force:
-            die(f"refusing to overwrite existing dump: {dump_path} (use --force)")
         dsn = args.dsn or neon_dsn(branch, project_id=args.project_id)
         print(f"== dumping {branch} -> {dump_path.name} (host {mask(dsn)}) ==")
         wait_ready(dsn)
         tmp_path = out_dir / f"{prefix}_{args.date}.dump.tmp"
+        tmp_path.unlink(missing_ok=True)
         clean, env = pg_env(dsn)
         run_ok(
             [
@@ -342,24 +375,16 @@ def cmd_backup(args) -> None:
         print(f"  dumped {size_mb:.1f} MB")
         dumps.append(dump_path)
 
-    # sha256 manifest (sha256sum-compatible format) over ALL dumps for this
-    # date in the output dir — not just the ones dumped in this invocation —
-    # so repeated backup runs accumulate instead of dropping earlier entries.
-    all_dumps = sorted(out_dir.glob(f"*_{args.date}.dump"))
-    if not all_dumps:
-        die("no dump files found for manifest")
-    # Every globbed dump may come from an earlier run — verify its TOC before
-    # it is covered by the manifest we are about to publish.
-    for dump in all_dumps:
-        run_ok(["pg_restore", "--list", str(dump)])
-        print(f"  integrity OK: {dump.name}")
+    # sha256 manifest (sha256sum-compatible format) over the dumps produced by
+    # THIS invocation — freshness is guaranteed by assert_date_fresh, which
+    # refuses to run when any same-date artifact already exists.
     manifest = out_dir / f"manifest_{args.date}.sha256"
     lines = []
-    for dump in all_dumps:
+    for dump in dumps:
         digest = hashlib.sha256(dump.read_bytes()).hexdigest()
         lines.append(f"{digest}  {dump.name}")
     manifest.write_text("\n".join(lines) + "\n")
-    print(f"manifest written: {manifest.name} ({len(all_dumps)} dumps)")
+    print(f"manifest written: {manifest.name} ({len(dumps)} dumps)")
 
     # Baseline counts always come from development; --dsn never applies here
     # (the baseline is development-sourced by definition).
@@ -395,6 +420,13 @@ def delete_branch(name: str, project_id: str | None = None) -> None:
 def cmd_test_restore(args) -> None:
     if not args.scratch_name:
         die("scratch branch name unresolved — pass --scratch-name explicitly")
+    if not args.scratch_name.startswith("scratch_"):
+        die(
+            f"scratch branch name must start with 'scratch_' (got {args.scratch_name!r}) — "
+            "refusing to restore into a non-scratch branch"
+        )
+    if args.scratch_name in {"production", "development", "staging"}:
+        die(f"refusing to restore into protected branch {args.scratch_name!r}")
     dump_path = Path(args.dump)
     if not dump_path.is_file():
         die(f"dump not found: {dump_path}")
@@ -428,6 +460,7 @@ def cmd_test_restore(args) -> None:
     diff_ok = False
     try:
         dsn = neon_dsn(args.scratch_name, project_id=args.project_id)
+        assert_dsn_matches_branch(dsn, args.scratch_name, args.project_id)
         wait_ready(dsn, attempts=12, delay=10)
         print(f"== restoring {dump_path.name} into {args.scratch_name} ==")
         clean, env = pg_env(dsn)
@@ -473,7 +506,10 @@ def cmd_test_restore(args) -> None:
 def cmd_snapshot(args) -> None:
     if not args.name:
         die("snapshot name unresolved — pass --name explicitly")
-    existing = neon_json(["snapshots", "list"])
+    existing_argv = ["snapshots", "list"]
+    if args.project_id:
+        existing_argv += ["--project-id", args.project_id]
+    existing = neon_json(existing_argv)
     if existing:
         print("existing snapshot(s):")
         for s in existing:
@@ -482,8 +518,14 @@ def cmd_snapshot(args) -> None:
             "snapshot slot occupied — delete the existing snapshot MANUALLY first "
             "(free plan = 1 slot); this script never deletes snapshots"
         )
-    run_ok(["neon", "snapshots", "create", "--branch", args.branch, "--name", args.name])
-    after = neon_json(["snapshots", "list"])
+    create_argv = ["neon", "snapshots", "create", "--branch", args.branch, "--name", args.name]
+    if args.project_id:
+        create_argv += ["--project-id", args.project_id]
+    run_ok(create_argv)
+    after_argv = ["snapshots", "list"]
+    if args.project_id:
+        after_argv += ["--project-id", args.project_id]
+    after = neon_json(after_argv)
     # Snapshot create is async — an immediate list may return the snapshot with
     # source_branch_id still null. Match by name (unique per project) and treat
     # a missing source_branch_id as a warning, not a failure.
@@ -491,7 +533,16 @@ def cmd_snapshot(args) -> None:
     if len(created) != 1:
         die(f"expected exactly 1 snapshot named '{args.name}', found {len(created)}")
     s = created[0]
-    prod_id = next(b["id"] for b in neon_json(["branches", "list"]) if b["name"] == args.branch)
+    branches_argv = ["branches", "list"]
+    if args.project_id:
+        branches_argv += ["--project-id", args.project_id]
+    prod_id = None
+    for b in neon_json(branches_argv):
+        if b["name"] == args.branch:
+            prod_id = b["id"]
+            break
+    if prod_id is None:
+        die(f"branch {args.branch!r} not found in branches list")
     if s.get("source_branch_id") != prod_id:
         print(
             f"WARNING: snapshot source_branch_id={s.get('source_branch_id')} "
@@ -506,11 +557,22 @@ def cmd_snapshot_smoke(args) -> None:
     if not baseline_path.is_file():
         die(f"baseline not found: {baseline_path}")
 
+    if not args.branch_name.startswith("snapshot_smoke_"):
+        die(
+            f"smoke branch name must start with 'snapshot_smoke_' (got "
+            f"{args.branch_name!r}) — refusing to restore into a non-smoke branch"
+        )
+    if args.branch_name in {"production", "development", "staging"}:
+        die(f"refusing to restore into protected branch {args.branch_name!r}")
+
     if branch_exists(args.branch_name, project_id=args.project_id):
         die(f"branch '{args.branch_name}' already exists — delete it manually first")
 
     print(f"== restoring snapshot {args.snapshot} into new branch {args.branch_name} ==")
-    run_ok(["neon", "snapshots", "restore", args.snapshot, "--name", args.branch_name])
+    restore_argv = ["neon", "snapshots", "restore", args.snapshot, "--name", args.branch_name]
+    if args.project_id:
+        restore_argv += ["--project-id", args.project_id]
+    run_ok(restore_argv)
     smoke_ok = False
     try:
         dsn = neon_dsn(args.branch_name, project_id=args.project_id)
@@ -653,7 +715,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(p, date=True)
     p.add_argument("--no-upload", action="store_true")
     p.add_argument("--r2-prefix", default="neon-backups")
-    p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_backup)
 
     p = sub.add_parser("test-restore", help="Phase 3 scratch-branch restore test")
