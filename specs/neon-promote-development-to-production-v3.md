@@ -256,6 +256,9 @@ live data until promotion completes. Prove restorability end-to-end:
 ```bash
 neon branches create --name scratch_restore_test --parent production
 SCRATCH_DSN="$(neon connection-string scratch_restore_test)"
+# Scratch branch inherits production's tables/functions — live-verified that
+# restore fails without pre-clean (pkey/function/table already-exists):
+psql "$SCRATCH_DSN" -At -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 pg_restore --no-owner --no-privileges --exit-on-error --jobs 4 \
   --dbname "$SCRATCH_DSN" "output/neon-backups/development_source_$DATE.dump"
 
@@ -269,6 +272,10 @@ diff /tmp/scratch_baseline.txt "output/neon-backups/baseline_dev_counts_$DATE.tx
 rm /tmp/scratch_baseline.txt
 neon branches delete scratch_restore_test
 ```
+
+The `test-restore` subcommand of `ops/admin-cli/scripts/neon_backup_compare.py` performs
+this pre-clean (generalized to all non-system schemas + non-plpgsql extensions) and the
+baseline diff automatically; prefer it over the hand commands.
 
 Do not proceed on any error. Peak storage here ≈ 345 MB (< 500 MB cap).
 
