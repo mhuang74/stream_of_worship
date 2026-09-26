@@ -45,8 +45,9 @@ def die(msg: str) -> None:
     raise SystemExit(1)
 
 
-def run(argv, input_text: str | None = None, timeout: int | None = None):
+def run(argv, input_text: str | None = None, timeout: int | None = None, env: dict | None = None):
     """Run a command with argv list (no shell). Returns (rc, stdout, stderr)."""
+    merged = {**os.environ, **env} if env else None
     result = subprocess.run(
         argv,
         input=input_text,
@@ -54,15 +55,20 @@ def run(argv, input_text: str | None = None, timeout: int | None = None):
         text=True,
         timeout=timeout,
         check=False,
+        env=merged,
     )
     return result.returncode, result.stdout, result.stderr
 
 
-def run_ok(argv, input_text: str | None = None, timeout: int | None = None) -> str:
+def run_ok(
+    argv, input_text: str | None = None, timeout: int | None = None, env: dict | None = None
+) -> str:  # noqa: E501
     """Run a command, die on non-zero. Returns stdout."""
-    rc, stdout, stderr = run(argv, input_text=input_text, timeout=timeout)
+    rc, stdout, stderr = run(argv, input_text=input_text, timeout=timeout, env=env)
     if rc != 0:
-        die(f"command failed ({rc}): {' '.join(argv)}\n{stderr.strip()}")
+        redacted = REDACT_DSN.sub(r"\1****@", " ".join(argv))
+        redacted_stderr = REDACT_DSN.sub(r"\1****@", stderr.strip())
+        die(f"command failed ({rc}): {redacted}\n{redacted_stderr}")
     return stdout
 
 
@@ -71,6 +77,44 @@ def mask(dsn: str) -> str:
 
     p = urlparse(dsn)
     return p.hostname or dsn
+
+
+REDACT_DSN = re.compile(r"(postgres(?:ql)?://[^:\s]+:)[^@\s]+@")
+
+
+def dsn_host(dsn: str) -> str:
+    from urllib.parse import urlparse
+
+    host = urlparse(dsn).hostname
+    if not host:
+        die(f"could not parse host from DSN: {mask(dsn)}")
+    return host
+
+
+def _normalize_neon_host(host: str) -> str:
+    # Neon pooled DSNs insert "-pooler" into the host; treat both forms as equal.
+    return host.replace("-pooler.", ".")
+
+
+def assert_dsn_matches_branch(dsn: str, branch: str, project_id: str | None = None) -> None:
+    expected = dsn_host(neon_dsn(branch, project_id=project_id))
+    actual = dsn_host(dsn)
+    if _normalize_neon_host(actual) != _normalize_neon_host(expected):
+        die(f"--dsn host {actual!r} does not match branch '{branch}' host {expected!r}")
+
+
+def pg_env(dsn: str) -> tuple[str, dict[str, str]]:
+    """Split DSN into (dsn_without_password, env_with_PGPASSWORD)."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    p = urlsplit(dsn)
+    if not p.password:
+        return dsn, {}
+    netloc = f"{p.username}@{p.hostname}" if p.username else str(p.hostname)
+    if p.port:
+        netloc += f":{p.port}"
+    clean = urlunsplit((p.scheme, netloc, p.path, p.query, p.fragment))
+    return clean, {"PGPASSWORD": p.password}
 
 
 # ---------------------------------------------------------------- Neon helpers
@@ -100,11 +144,15 @@ def neon_dsn(branch: str, pooled: bool = False, project_id: str | None = None) -
 
 
 def psql(dsn: str, sql: str, input_text: str | None = None) -> str:
-    return run_ok(["psql", dsn, "-At", "-v", "ON_ERROR_STOP=1", "-c", sql], input_text=input_text)
+    clean, env = pg_env(dsn)
+    return run_ok(
+        ["psql", clean, "-At", "-v", "ON_ERROR_STOP=1", "-c", sql], input_text=input_text, env=env
+    )
 
 
 def psql_rc(dsn: str, sql: str) -> int:
-    rc, _, _ = run(["psql", dsn, "-At", "-v", "ON_ERROR_STOP=1", "-c", sql])
+    clean, env = pg_env(dsn)
+    rc, _, _ = run(["psql", clean, "-At", "-v", "ON_ERROR_STOP=1", "-c", sql], env=env)
     return rc
 
 
@@ -229,9 +277,12 @@ def cmd_precheck(args) -> None:
 
 
 def cmd_freeze_check(args) -> None:
-    dsn = args.dsn or neon_dsn(args.branch)
+    dsn = args.dsn or neon_dsn(args.branch, project_id=args.project_id)
+    if args.dsn:
+        assert_dsn_matches_branch(args.dsn, args.branch, args.project_id)
     wait_ready(dsn)
     sql = (
+        # advisory snapshot only — this does not block new writers; the freeze is procedural
         "SELECT usename, application_name, client_addr, state FROM pg_stat_activity "
         "WHERE datname = current_database() AND pid <> pg_backend_pid();"
     )
@@ -257,14 +308,21 @@ def cmd_backup(args) -> None:
     branches = [b.strip() for b in args.branches.split(",") if b.strip()]
     dumps: list[Path] = []
 
+    if args.dsn and len(branches) != 1:
+        die("--dsn requires exactly one branch in --branches")
+    if args.dsn:
+        assert_dsn_matches_branch(args.dsn, branches[0], args.project_id)
+
     for branch in branches:
         prefix = dump_prefix_for(branch)
         dump_path = out_dir / f"{prefix}_{args.date}.dump"
         if dump_path.exists() and not args.force:
             die(f"refusing to overwrite existing dump: {dump_path} (use --force)")
-        dsn = args.dsn or neon_dsn(branch)
+        dsn = args.dsn or neon_dsn(branch, project_id=args.project_id)
         print(f"== dumping {branch} -> {dump_path.name} (host {mask(dsn)}) ==")
         wait_ready(dsn)
+        tmp_path = out_dir / f"{prefix}_{args.date}.dump.tmp"
+        clean, env = pg_env(dsn)
         run_ok(
             [
                 "pg_dump",
@@ -272,19 +330,17 @@ def cmd_backup(args) -> None:
                 "--no-owner",
                 "--no-privileges",
                 "--file",
-                str(dump_path),
-                dsn,
+                str(tmp_path),
+                clean,
             ],
+            env=env,
             timeout=None,
         )
+        run_ok(["pg_restore", "--list", str(tmp_path)])  # verify before publish
+        tmp_path.rename(dump_path)  # atomic same-dir publish; overwrites only after verify
         size_mb = dump_path.stat().st_size / 1_000_000
         print(f"  dumped {size_mb:.1f} MB")
         dumps.append(dump_path)
-
-    # Integrity check: every dump's TOC must be readable
-    for dump in dumps:
-        run_ok(["pg_restore", "--list", str(dump)])
-        print(f"  integrity OK: {dump.name}")
 
     # sha256 manifest (sha256sum-compatible format) over ALL dumps for this
     # date in the output dir — not just the ones dumped in this invocation —
@@ -292,6 +348,11 @@ def cmd_backup(args) -> None:
     all_dumps = sorted(out_dir.glob(f"*_{args.date}.dump"))
     if not all_dumps:
         die("no dump files found for manifest")
+    # Every globbed dump may come from an earlier run — verify its TOC before
+    # it is covered by the manifest we are about to publish.
+    for dump in all_dumps:
+        run_ok(["pg_restore", "--list", str(dump)])
+        print(f"  integrity OK: {dump.name}")
     manifest = out_dir / f"manifest_{args.date}.sha256"
     lines = []
     for dump in all_dumps:
@@ -300,8 +361,9 @@ def cmd_backup(args) -> None:
     manifest.write_text("\n".join(lines) + "\n")
     print(f"manifest written: {manifest.name} ({len(all_dumps)} dumps)")
 
-    # Baseline counts always come from development
-    dev_dsn = args.dsn or neon_dsn("development")
+    # Baseline counts always come from development; --dsn never applies here
+    # (the baseline is development-sourced by definition).
+    dev_dsn = neon_dsn("development", project_id=args.project_id)
     baseline = out_dir / f"baseline_dev_counts_{args.date}.txt"
     baseline.write_text(collect_baseline(dev_dsn))
     print(f"baseline written: {baseline.name} (source: development)")
@@ -317,12 +379,17 @@ def cmd_backup(args) -> None:
 
 def branch_exists(name: str, project_id: str | None = None) -> bool:
     argv = ["branches", "list"]
+    if project_id:
+        argv += ["--project-id", project_id]
     branches = neon_json(argv)
     return any(b["name"] == name or b["id"] == name for b in branches)
 
 
-def delete_branch(name: str) -> None:
-    run_ok(["neon", "branches", "delete", name])
+def delete_branch(name: str, project_id: str | None = None) -> None:
+    argv = ["neon", "branches", "delete", name]
+    if project_id:
+        argv += ["--project-id", project_id]
+    run_ok(argv)
 
 
 def cmd_test_restore(args) -> None:
@@ -335,7 +402,7 @@ def cmd_test_restore(args) -> None:
     if not baseline_path.is_file():
         die(f"baseline not found: {baseline_path}")
 
-    if branch_exists(args.scratch_name):
+    if branch_exists(args.scratch_name, project_id=args.project_id):
         die(
             f"branch '{args.scratch_name}' already exists — delete it manually or "
             "choose another --scratch-name"
@@ -360,21 +427,25 @@ def cmd_test_restore(args) -> None:
     restore_ok = False
     diff_ok = False
     try:
-        dsn = args.dsn or neon_dsn(args.scratch_name)
+        dsn = neon_dsn(args.scratch_name, project_id=args.project_id)
         wait_ready(dsn, attempts=12, delay=10)
         print(f"== restoring {dump_path.name} into {args.scratch_name} ==")
+        clean, env = pg_env(dsn)
         run_ok(
             [
                 "pg_restore",
                 "--no-owner",
                 "--no-privileges",
+                "--clean",
+                "--if-exists",
                 "--exit-on-error",
                 "--jobs",
                 "4",
                 "--dbname",
-                dsn,
+                clean,
                 str(dump_path),
             ],
+            env=env,
             timeout=None,
         )
         restore_ok = True
@@ -390,7 +461,7 @@ def cmd_test_restore(args) -> None:
     finally:
         if restore_ok and diff_ok:
             print(f"== deleting scratch branch {args.scratch_name} ==")
-            delete_branch(args.scratch_name)
+            delete_branch(args.scratch_name, project_id=args.project_id)
             print(f"TEST-RESTORE PASS ({dump_path.name})")
         else:
             print(
@@ -435,13 +506,14 @@ def cmd_snapshot_smoke(args) -> None:
     if not baseline_path.is_file():
         die(f"baseline not found: {baseline_path}")
 
-    if branch_exists(args.branch_name):
+    if branch_exists(args.branch_name, project_id=args.project_id):
         die(f"branch '{args.branch_name}' already exists — delete it manually first")
 
     print(f"== restoring snapshot {args.snapshot} into new branch {args.branch_name} ==")
     run_ok(["neon", "snapshots", "restore", args.snapshot, "--name", args.branch_name])
+    smoke_ok = False
     try:
-        dsn = args.dsn or neon_dsn(args.branch_name)
+        dsn = neon_dsn(args.branch_name, project_id=args.project_id)
         wait_ready(dsn, attempts=12, delay=10)
         actual = collect_baseline(dsn)
         diffs = diff_baselines(baseline_path, actual)
@@ -449,10 +521,17 @@ def cmd_snapshot_smoke(args) -> None:
             print("".join(diffs))
             die(f"snapshot smoke baseline mismatch for branch {args.branch_name}")
         print("  baseline identical")
-    finally:
-        print(f"== deleting smoke branch {args.branch_name} ==")
-        delete_branch(args.branch_name)
+        smoke_ok = True
         print("SNAPSHOT-SMOKE PASS")
+    finally:
+        if smoke_ok and branch_exists(args.branch_name, project_id=args.project_id):
+            print(f"== deleting smoke branch {args.branch_name} ==")
+            delete_branch(args.branch_name, project_id=args.project_id)
+        elif not smoke_ok:
+            print(
+                f"KEEPING smoke branch {args.branch_name} for inspection (if created); "
+                "delete manually after diagnosing."
+            )
 
 
 def parse_dump_tables(dump_path: Path) -> set[str]:
@@ -485,7 +564,9 @@ def cmd_verify_production(args) -> None:
     if not baseline_path.is_file():
         die(f"baseline not found: {baseline_path}")
 
-    dsn = args.dsn or neon_dsn(args.branch)
+    dsn = args.dsn or neon_dsn(args.branch, project_id=args.project_id)
+    if args.dsn:
+        assert_dsn_matches_branch(args.dsn, args.branch, args.project_id)
     wait_ready(dsn)
 
     print(f"== baseline check on {args.branch} ({mask(dsn)}) ==")
@@ -527,7 +608,9 @@ def cmd_zero_drift(args) -> None:
     baseline_path = Path(args.baseline)
     if not baseline_path.is_file():
         die(f"baseline not found: {baseline_path}")
-    dsn = args.dsn or neon_dsn(args.branch)
+    dsn = args.dsn or neon_dsn(args.branch, project_id=args.project_id)
+    if args.dsn:
+        assert_dsn_matches_branch(args.dsn, args.branch, args.project_id)
     wait_ready(dsn)
     diffs = diff_baselines(baseline_path, collect_baseline(dsn))
     if diffs:
@@ -577,7 +660,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dump", required=True)
     p.add_argument("--scratch-name", default=None)
     p.add_argument("--parent", default="production")
-    add_common(p, date=True)
+    add_common(p, dsn=False, date=True)
     p.add_argument("--baseline", default=None)
     p.set_defaults(func=cmd_test_restore)
 
@@ -590,7 +673,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("snapshot-smoke", help="Phase 6 snapshot smoke test")
     p.add_argument("--snapshot", required=True)
     p.add_argument("--branch-name", default="snapshot_smoke_test")
-    add_common(p)
+    add_common(p, dsn=False)
     p.add_argument("--baseline", required=True)
     p.set_defaults(func=cmd_snapshot_smoke)
 
