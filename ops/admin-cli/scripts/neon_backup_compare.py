@@ -375,6 +375,12 @@ def cmd_backup(args) -> None:
         print(f"  dumped {size_mb:.1f} MB")
         dumps.append(dump_path)
 
+        if branch == "development":
+            dev_dsn = dsn
+            baseline = out_dir / f"baseline_dev_counts_{args.date}.txt"
+            baseline.write_text(collect_baseline(dev_dsn))
+            print(f"baseline written: {baseline.name} (source: development)")
+
     # sha256 manifest (sha256sum-compatible format) over the dumps produced by
     # THIS invocation — freshness is guaranteed by assert_date_fresh, which
     # refuses to run when any same-date artifact already exists.
@@ -386,12 +392,15 @@ def cmd_backup(args) -> None:
     manifest.write_text("\n".join(lines) + "\n")
     print(f"manifest written: {manifest.name} ({len(dumps)} dumps)")
 
-    # Baseline counts always come from development; --dsn never applies here
-    # (the baseline is development-sourced by definition).
-    dev_dsn = neon_dsn("development", project_id=args.project_id)
-    baseline = out_dir / f"baseline_dev_counts_{args.date}.txt"
-    baseline.write_text(collect_baseline(dev_dsn))
-    print(f"baseline written: {baseline.name} (source: development)")
+    # Fallback for --dsn single-branch mode: the branch list may not include
+    # development, so collect the baseline separately from the real
+    # development branch (--dsn never applies here; the baseline is
+    # development-sourced by definition).
+    if "development" not in branches:
+        dev_dsn = neon_dsn("development", project_id=args.project_id)
+        baseline = out_dir / f"baseline_dev_counts_{args.date}.txt"
+        baseline.write_text(collect_baseline(dev_dsn))
+        print(f"baseline written: {baseline.name} (source: development)")
 
     if args.no_upload:
         print("skipping R2 upload (--no-upload)")
@@ -464,10 +473,33 @@ def cmd_test_restore(args) -> None:
         wait_ready(dsn, attempts=12, delay=10)
         print(f"== restoring {dump_path.name} into {args.scratch_name} ==")
         clean, env = pg_env(dsn)
-        # Scratch branches inherit from parent (production), which already has
-        # tables and functions. The dump recreates them, so drop inherited
-        # user tables first to avoid "already exists" restore errors.
-        psql_rc(dsn, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+        # Scratch branches inherit everything from the parent branch — not just
+        # production's tables/functions, but also any non-public schemas
+        # (e.g. drizzle with __drizzle_migrations) and non-plpgsql extensions
+        # (e.g. vector) present in the parent. The dump recreates them, so
+        # wipe all non-system schemas and non-plpgsql extensions first to
+        # avoid "already exists" restore errors.
+        drop_exts = psql(
+            dsn,
+            "SELECT format('DROP EXTENSION %I CASCADE;', extname) "
+            "FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY 1",
+        )
+        drop_schemas = psql(
+            dsn,
+            "SELECT format('DROP SCHEMA %I CASCADE;', nspname) FROM pg_namespace "
+            "WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema' "
+            "AND nspname <> 'public' ORDER BY 1",
+        )
+        wipe_sql = "".join(
+            line + "\n" for line in (*drop_exts.splitlines(), *drop_schemas.splitlines())
+        )
+        wipe_sql += "DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;"
+        rc = psql_rc(dsn, wipe_sql)
+        if rc != 0:
+            die(
+                f"pre-restore schema wipe failed on {args.scratch_name} (rc={rc}) — "
+                "not attempting pg_restore"
+            )
         run_ok(
             [
                 "pg_restore",
