@@ -75,7 +75,8 @@ export async function POST(request: NextRequest) {
     let queryEmbedding: number[];
     try {
       queryEmbedding = await embedQuery(query);
-    } catch {
+    } catch (error) {
+      console.error("embedQuery failed:", error);
       return NextResponse.json(
         { error: "Semantic search unavailable. Try Search mode." },
         { status: 503 }
