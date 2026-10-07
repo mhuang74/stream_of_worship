@@ -104,9 +104,10 @@ Backup keys mix two timestamp sources:
   3 blank ADR-0008 placeholders kept. Per-text counts
   (`count_changes`): the chorus lines drop 5→3 / 5→3 / 7→5; the outro lines
   appear 0→2 / 0→2 / 0→1. Occurrence-index timing: 32/38 lines matched;
-  the 32 unchanged-text lines all keep their timestamps, while 6 reworded
-  lines re-anchor with shifts up to 19.66 s. Not a split/merge
-  (`line_splits_or_merges=false`).
+  27 matched lines keep their exact timestamps, while 5 matched occurrences
+  of the chorus lines themselves re-anchor (+12.4…+19.7 s — same text,
+  moved position); the 6 unmatched lines are the reworded outro block. Not
+  a split/merge (`line_splits_or_merges=false`).
 
 ## Anomaly inspection: manual_upload seed negative
 
@@ -166,10 +167,13 @@ inspect" seed negative. Findings:
   pure re-spacing (`wo_xuan_ze_xi_le_e2ec9095`; internal whitespace collapses
   at parse time) are NOT flagged, because repeated refrains make fuzzy
   matching indistinguishable from rewrites. Consumers wanting those cases
-  should use the per-pair `diff` directly. Known limitation: a split whose
+  should use the per-pair `diff_normalized` directly (the raw `diff` is
+  verbatim evidence but is noisy on bracket-spacing churn — e.g. the
+  `bu_ting` pair shows 81 raw changed lines vs 17 real deltas). Known
+  limitation: a split whose
   tail text already exists elsewhere (net count unchanged, e.g.
-  `wo_de_ye_su_4c27d159`) leaves no delta-list trace — read its `diff` and
-  per-line timing instead.
+  `wo_de_ye_su_4c27d159`) leaves no delta-list trace — read its
+  `diff_normalized` and per-line timing instead.
 - The 6 youtube_transcript + 1 qwen3_asr seed negatives each have a
   2026-09-24 00:21–00:26 batch backup that preserves their **pre-regen**
   (feedback-time) state; current content differs (post-regen). The same

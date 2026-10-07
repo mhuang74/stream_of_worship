@@ -132,6 +132,15 @@ def _normalized(text: str) -> str:
     return text.replace(" ", "")
 
 
+def _normalized_line(row: dict) -> str:
+    """Timestamped line in normalized form for content-only diffs:
+    ``m:ss.xx text`` with whitespace collapsed. Placeholder lines (blank
+    text) keep the timestamp so timing-only changes still show."""
+    t = row["time_s"]
+    stamp = f"{int(t // 60):d}:{t % 60:05.2f}"
+    return f"{stamp} {row['text']}".rstrip()
+
+
 def _reconstructs(target: str, pieces: list[str]) -> bool:
     """True when ≥2 pieces (spaces stripped) exactly partition ``target``
     (spaces stripped) as contiguous substrings, in any order — a real
@@ -467,6 +476,20 @@ def build_pairs(official, editor, prov, r2: R2Client) -> tuple[list[dict], list[
                     difflib.unified_diff(
                         before_content.splitlines(),
                         after_content.splitlines(),
+                        fromfile="before",
+                        tofile="after",
+                        lineterm="",
+                        n=1,
+                    )
+                ),
+                # Same diff over normalized lines (timestamp prefix stripped,
+                # whitespace collapsed) — the raw diff above can be all +/- on
+                # bracket-spacing churn alone; this one carries only real
+                # content/timing deltas. Use for evidence.
+                "diff_normalized": list(
+                    difflib.unified_diff(
+                        [_normalized_line(l) for l in parse_lrc_lines(before_content)],
+                        [_normalized_line(l) for l in parse_lrc_lines(after_content)],
                         fromfile="before",
                         tofile="after",
                         lineterm="",
