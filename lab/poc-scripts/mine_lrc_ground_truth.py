@@ -64,7 +64,7 @@ def fetch_text(r2: R2Client, s3_key: str) -> str:
 
 
 def backup_ts(key: str) -> str:
-    """Timestamp component of a ``{hp}/lyrics.backup.{ts}.lrc`` key."""
+    """Timestamp component of a ``<hp>/lyrics.backup.<ts>.lrc`` key."""
     return key.split("lyrics.backup.")[1].removesuffix(".lrc")
 
 
@@ -94,26 +94,71 @@ def parse_lrc_lines(text: str) -> list[dict]:
 
 
 def timing_shift_stats(before: list[dict], after: list[dict]) -> dict:
-    """Match lines by identical text (before texts that occur exactly once in
-    both) and report timestamp shifts. Detects uniform retimes without
-    pretending to full alignment."""
-    from collections import Counter
+    """Align lines by (text, occurrence index): walk both ordered lists and
+    pair each sung line's k-th occurrence of a text with the other side's k-th
+    occurrence of the same text. Full coverage — repeated chorus lines align
+    too, so shift min/max/mean are trustworthy even when texts are reworded
+    elsewhere. Lines whose text vanished/appeared simply don't participate."""
+    from collections import defaultdict
 
-    b_counts = Counter(l["text"] for l in before if l["text"])
-    a_counts = Counter(l["text"] for l in after if l["text"])
-    common = {t for t in b_counts if t in a_counts and b_counts[t] == 1 and a_counts[t] == 1}
-    b_by_text = {l["text"]: l["time_s"] for l in before if l["text"] in common}
-    a_by_text = {l["text"]: l["time_s"] for l in after if l["text"] in common}
-    shifts = sorted(a_by_text[t] - b_by_text[t] for t in common)
+    def _by_occurrence(rows: list[dict]) -> dict:
+        seen: dict = defaultdict(int)
+        out: dict = {}
+        for l in rows:
+            if l["text"]:
+                out[(l["text"], seen[l["text"]])] = l["time_s"]
+                seen[l["text"]] += 1
+        return out
+
+    b_by_occ = _by_occurrence(before)
+    a_by_occ = _by_occurrence(after)
+    shifts = sorted(a_by_occ[k] - b_by_occ[k] for k in b_by_occ.keys() & a_by_occ.keys())
     if not shifts:
         return {"matched_lines": 0}
     return {
         "matched_lines": len(shifts),
+        "total_sung_before": sum(1 for l in before if l["text"]),
         "shift_seconds_min": round(min(shifts), 3),
         "shift_seconds_max": round(max(shifts), 3),
         "shift_seconds_mean": round(sum(shifts) / len(shifts), 3),
         "all_zero": all(s == 0 for s in shifts),
     }
+
+
+def _normalized(text: str) -> str:
+    """Space-stripped text for reconstruction/coverage comparisons."""
+    return text.replace(" ", "")
+
+
+def _reconstructs(target: str, pieces: list[str]) -> bool:
+    """True when ≥2 pieces (spaces stripped, concatenated) equal ``target``
+    (spaces stripped) — a real split/merge shares ALL its text. A single
+    equal piece is a pure re-spacing of the same line, not a split.
+
+    Order-insensitive: pieces are matched in list order first, then in sorted
+    order (the merge direction enumerates dropped texts in *before*-list
+    order, which need not match the target's reading order). Length-pruned
+    combinations keep this cheap on large delta lists.
+
+    Deliberately exact: partial resegmentation (a moved split point where a
+    refrain tail lands elsewhere) is indistinguishable from a rewrite when
+    refrains repeat, so it is NOT flagged — zero false positives preferred
+    for a calibration dataset."""
+    import itertools
+
+    t = _normalized(target)
+    if not t:
+        return False
+    usable = [_normalized(p) for p in pieces if p]
+    t_sorted = "".join(sorted(t))
+    for n in range(2, len(usable) + 1):
+        for combo in itertools.combinations(usable, n):
+            if sum(map(len, combo)) != len(t):
+                continue
+            joined = "".join(combo)
+            if joined == t or "".join(sorted(joined)) == t_sorted:
+                return True
+    return False
 
 
 def classify_edits(before: list[dict], after: list[dict]) -> dict:
@@ -145,19 +190,12 @@ def classify_edits(before: list[dict], after: list[dict]) -> dict:
         "count_changes": {
             t: {"before": b_counts[t], "after": a_counts[t]} for t in dropped + added
         },
-        # Split/merge: a dropped line's text contains, or is contained in, an
-        # added line's text where the shorter text is at least half the longer
-        # (a real split/merge shares nearly all its text; a sub-phrase like
-        # 讚美祢 appearing inside an unrelated rewrite does not).
-        "line_splits_or_merges": any(
-            t2 != t1
-            and t1
-            and t2
-            and (t1 in t2 or t2 in t1)
-            and 2 * min(len(t1), len(t2)) >= max(len(t1), len(t2))
-            for t1 in dropped
-            for t2 in added
-        ),
+        # Split/merge: added texts reconstruct a dropped text (spaces
+        # stripped, ≥2 pieces, in order) or vice versa — a real split/merge
+        # shares ALL its text. Mere phrase overlap (a chorus phrase inside an
+        # unrelated rewrite) does not reconstruct.
+        "line_splits_or_merges": any(_reconstructs(t1, added) for t1 in dropped)
+        or any(_reconstructs(t2, dropped) for t2 in added),
         "timing": timing,
     }
 
@@ -289,81 +327,101 @@ def query_user_lrc_overrides(conn, r2: R2Client) -> dict:
 def build_pairs(official, editor, prov, r2: R2Client) -> tuple[list[dict], list[dict]]:
     """Pair each eligible backup with its immediate successor.
 
-    Eligible: the successor after this backup (next backup, else current) is the
-    recording's CURRENT content and its ``lrc_source`` is human. Intermediate
-    backup→backup successors have no per-version provenance (lrc_source only
-    exists since 2026-09-23 and is a recording-level column), so they are
-    skipped and counted, never paired.
+    Pairing gate (two independent paths, both provably human-successor):
 
-    Immediacy (ladder-order check): a pair ships only when the newest official
-    backup's content hash equals the newest editor-session backup's hash —
-    proving the editor session that uploaded current wrote the backup, so no
-    intermediate version sits between the pair. Prefixes without an
-    editor-session ladder cannot prove immediacy and are skipped.
+    1. ``recordings.lrc_source ∈ {manual_upload, llm_edit}`` — the column
+       written by the editor upload path (captured since 2026-09-23,
+       c49cf014).
+    2. Editor-draft mechanism (covers NULL lrc_source: pre-2026-09-23
+       recordings): the newest official backup's content hash equals the
+       newest editor-session draft's hash (``{hp}/backups/lyrics.{ts}.lrc``,
+       written by ``upload_r2_backup`` immediately before each editor save).
+       The editor upload path provably writes draft → revised, so the
+       successor (current content) is human-attributed by mechanism even
+       though the DB column is NULL. Also requires before != current: a later
+       machine regen after the session would have written a newer official
+       backup, breaking the hash match — the gate self-protects.
+
+    Intermediate backup→backup successors have no per-version provenance and
+    are never paired; each gets a ``skipped`` accounting entry so a reviewer
+    can see every backup was considered.
 
     Returns (pairs, skipped_records).
     """
     pairs: list[dict] = []
     skipped: list[dict] = []
 
-    def _skip(hp: str, rec: dict, n_backups: int, reason: str) -> None:
-        skipped.append(
-            {
-                "hash_prefix": hp,
-                "song_id": rec.get("song_id"),
-                "lrc_source": rec.get("lrc_source"),
-                "n_backups": n_backups,
-                "reason": reason,
-            }
-        )
+    def _skip(hp: str, rec: dict, reason: str, backup_key: str | None = None) -> None:
+        entry = {
+            "hash_prefix": hp,
+            "song_id": rec.get("song_id"),
+            "lrc_source": rec.get("lrc_source"),
+            "reason": reason,
+        }
+        if backup_key is not None:
+            entry["backup_key"] = backup_key
+        skipped.append(entry)
 
     for hp, ladder in sorted(official.items()):
         if not ladder["backups"] or ladder["current_key"] is None:
             continue
         rec = prov.get(hp) or {}
         newest = ladder["backups"][-1]
-        if rec.get("lrc_source") not in HUMAN_SOURCES:
+
+        # Account for every intermediate backup: backup→backup successors have
+        # unknown provenance (never diff two machine outputs).
+        for older in ladder["backups"][:-1]:
             _skip(
                 hp,
                 rec,
-                len(ladder["backups"]),
-                "successor lrc_source not in " + "|".join(sorted(HUMAN_SOURCES)),
+                "intermediate backup→backup successor: no per-version "
+                "provenance (lrc_source is a recording-level column since "
+                "2026-09-23); never diff two machine outputs",
+                backup_key=older["key"],
             )
-            continue
 
-        # Immediacy cross-check: newest official backup content == newest
-        # editor-session backup content proves the editor session uploaded
-        # current right after this backup (no lost intermediate).
+        column_human = rec.get("lrc_source") in HUMAN_SOURCES
         ed_objs = editor.get(hp, [])
-        if not ed_objs:
-            _skip(
-                hp,
-                rec,
-                len(ladder["backups"]),
-                "no editor-session ladder; " "immediacy unverifiable",
-            )
-            continue
         before_content = fetch_text(r2, newest["key"])
-        newest_editor_hash = sha12(fetch_text(r2, ed_objs[-1]["key"]))
-        if newest_editor_hash != sha12(before_content):
+        after_content = fetch_text(r2, ladder["current_key"])
+        identical = before_content == after_content
+
+        if identical:
             _skip(
                 hp,
                 rec,
-                len(ladder["backups"]),
-                "newest editor-session backup does not match newest official "
-                "backup; an intermediate version may be lost",
+                "newest backup content identical to current (no diff)",
+                backup_key=newest["key"],
             )
             continue
 
-        after_content = fetch_text(r2, ladder["current_key"])
-        if before_content == after_content:
+        if column_human:
+            mechanism = "lrc_source_column"
+            immediacy = (
+                sha12(fetch_text(r2, ed_objs[-1]["key"])) == sha12(before_content)
+                if ed_objs
+                else None
+            )
+        elif ed_objs and sha12(fetch_text(r2, ed_objs[-1]["key"])) == sha12(before_content):
+            # NULL column, but the draft→current hash chain proves an editor
+            # session wrote both the backup and the current content.
+            mechanism = "editor_draft_mechanism"
+            immediacy = True
+        else:
             _skip(
                 hp,
                 rec,
-                len(ladder["backups"]),
-                "newest backup content identical to current (no diff)",
+                "successor not attributable to a human edit: lrc_source not in "
+                + "|".join(sorted(HUMAN_SOURCES))
+                + (
+                    " and no matching editor-session draft"
+                    if ed_objs
+                    else " and no editor-session ladder"
+                ),
+                backup_key=newest["key"],
             )
             continue
+
         before_rows = parse_lrc_lines(before_content)
         after_rows = parse_lrc_lines(after_content)
         pairs.append(
@@ -371,7 +429,17 @@ def build_pairs(official, editor, prov, r2: R2Client) -> tuple[list[dict], list[
                 "hash_prefix": hp,
                 "song_id": rec.get("song_id"),
                 "lrc_source": rec.get("lrc_source"),
-                "visibility_status": rec.get("visibility_status"),
+                "provenance": {
+                    "mechanism": mechanism,
+                    "immediacy_evidence": {
+                        "newest_editor_backup_matches_before": immediacy,
+                        "note": "the newest editor-session draft "
+                        f"({hp}/backups/lyrics.{{ts}}.lrc) content hash equals the "
+                        "newest official backup's hash, proving the backup was "
+                        "written by the editor session that uploaded the "
+                        "current content (no lost intermediate version)",
+                    },
+                },
                 "before": {
                     "r2_key": newest["key"],
                     "uploaded_at": newest["last_modified"],
@@ -388,14 +456,6 @@ def build_pairs(official, editor, prov, r2: R2Client) -> tuple[list[dict], list[
                     "sha12": sha12(after_content),
                     "content": after_content,
                     "recording_updated_at": rec.get("updated_at"),
-                },
-                "immediacy_evidence": {
-                    "newest_editor_backup_matches_before": True,
-                    "note": "pairing gate: the newest editor-session backup "
-                    "({hp}/backups/lyrics.{ts}.lrc) content hash equals the "
-                    "newest official backup's hash, proving the backup was "
-                    "written by the editor session that uploaded the current "
-                    "content (no lost intermediate version)",
                 },
                 "diff": list(
                     difflib.unified_diff(
@@ -591,15 +651,21 @@ def main(argv: list[str] | None = None) -> int:
         "phase": "0b",
         "pairing_rule": (
             "backup → successor paired ONLY when the successor is the recording's "
-            "current content and recordings.lrc_source ∈ {manual_upload, llm_edit}; "
-            "backup→backup successors have no per-version provenance and are skipped, "
-            "never paired (never diff two machine outputs)"
+            "current content AND is attributable to a human edit, by one of two "
+            "paths: (1) recordings.lrc_source ∈ {manual_upload, llm_edit}, or "
+            "(2) editor-draft mechanism — the newest official backup's content "
+            "hash equals the newest editor-session draft's hash, proving that "
+            "session uploaded current (used for pre-2026-09-23 recordings whose "
+            "lrc_source is NULL). backup→backup successors have no per-version "
+            "provenance and are skipped with accounting entries, never paired "
+            "(never diff two machine outputs)"
         ),
         "ladder_order_check": (
-            "each backup is matched to its immediate successor: newest ladder entry "
-            "→ current, cross-checked against the editor-session ladder "
-            "({hp}/backups/lyrics.{ts}.lrc); a matching content hash proves the "
-            "backup was written by the same editor session that uploaded current"
+            "newest ladder entry → current, gated on the hash match with the "
+            "newest editor-session draft ({hp}/backups/lyrics.{ts}.lrc), which "
+            "proves the backup was written by the same editor session that "
+            "uploaded current — no intermediate version sits inside the pair; "
+            "every intermediate backup appears in `skipped` with a reason"
         ),
         "counts": {
             "recordings": len(prov),
@@ -607,7 +673,14 @@ def main(argv: list[str] | None = None) -> int:
             "backup_objects": sum(len(ladder["backups"]) for ladder in official.values()),
             "human_source_prefixes_with_backups": len(eligible_prefixes),
             "pairs": len(pairs),
+            "pairs_by_mechanism": {
+                m: sum(1 for p in pairs if p["provenance"]["mechanism"] == m)
+                for m in sorted({p["provenance"]["mechanism"] for p in pairs})
+            },
             "skipped": len(skipped),
+            "skipped_intermediate_backups": sum(
+                1 for s in skipped if s["reason"].startswith("intermediate")
+            ),
             "user_lrc_override_prefixes": len(overrides),
             "user_lrc_override_rows": sum(len(v) for v in overrides.values()),
         },
@@ -623,13 +696,14 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(dataset, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
-    print(f"pairs: {len(pairs)} (skipped {len(skipped)} ineligible prefixes)")
+    print(f"pairs: {len(pairs)} (skipped {len(skipped)} entries)")
     for p in pairs:
         e = p["edits"]
         t = e.get("timing", {})
         print(
-            f"  {p['song_id']}: {e['sung_lines_before']}→{e['sung_lines_after']} sung lines, "
-            f"timing matched {t.get('matched_lines', 0)} lines "
+            f"  {p['song_id']} [{p['provenance']['mechanism']}]: "
+            f"{e['sung_lines_before']}→{e['sung_lines_after']} sung lines, "
+            f"timing matched {t.get('matched_lines', 0)}/{t.get('total_sung_before', '?')} lines "
             f"(shift {t.get('shift_seconds_min')}–{t.get('shift_seconds_max')}s), "
             f"split/merge={e['line_splits_or_merges']}"
         )

@@ -76,8 +76,8 @@ class TestTimingShiftStats:
         assert stats["all_zero"] is True
         assert stats["matched_lines"] == 2
 
-    def test_duplicate_texts_not_matched(self):
-        # repeated lines (chorus) are ambiguous — excluded, not mis-matched
+    def test_duplicate_texts_matched_by_occurrence(self):
+        # repeated chorus lines align by occurrence index — full coverage
         before = [
             {"time_s": 10.0, "text": "副歌"},
             {"time_s": 60.0, "text": "副歌"},
@@ -87,7 +87,18 @@ class TestTimingShiftStats:
             {"time_s": 62.0, "text": "副歌"},
         ]
         stats = timing_shift_stats(before, after)
-        assert stats["matched_lines"] == 0
+        assert stats["matched_lines"] == 2
+        assert stats["total_sung_before"] == 2
+        assert stats["all_zero"] is False
+
+    def test_duplicate_texts_zero_shift(self):
+        rows = [
+            {"time_s": 10.0, "text": "副歌"},
+            {"time_s": 60.0, "text": "副歌"},
+        ]
+        stats = timing_shift_stats(rows, rows)
+        assert stats["matched_lines"] == 2
+        assert stats["all_zero"] is True
 
     def test_no_common_texts(self):
         before = [{"time_s": 10.0, "text": "舊"}]
@@ -124,15 +135,14 @@ class TestClassifyEdits:
         assert edits["sung_lines_after"] == 1
 
     def test_net_zero_split_not_flagged(self):
-        # one line split into two: net count unchanged, but the new halves
-        # are substrings of the original → still flagged
+        # one line split into two: the pieces reconstruct the original line
         before = parse_lrc_lines("[00:10.0]祢與我同坐席 傾聽我心意 我的耶穌")
         after = parse_lrc_lines("[00:10.0]祢與我同坐席 傾聽我心意\n[00:18.0]我的耶穌")
         edits = classify_edits(before, after)
         assert edits["line_splits_or_merges"] is True
 
     def test_repeat_trim_not_flagged_as_split(self):
-        # repeated chorus block trimmed: counts change but no split/merge
+        # repeated chorus block trimmed: counts change but no reconstruction
         before = parse_lrc_lines("[00:10.0]副歌行\n[00:20.0]副歌行\n[00:30.0]副歌行")
         after = parse_lrc_lines("[00:10.0]副歌行\n[00:20.0]副歌行")
         edits = classify_edits(before, after)
@@ -149,9 +159,19 @@ class TestClassifyEdits:
         assert edits["blank_lines_after"] == 1
         assert edits["added_texts"] == []
 
-    def test_short_token_containment_not_flagged(self):
+    def test_respacing_only_not_flagged(self):
+        # whole ladder re-spaced (multi-space -> single-space): texts differ
+        # as strings but normalize equal → re-spacing, not a split/merge
+        before = parse_lrc_lines("[00:10.0]禱告   凡事謝恩\n[00:20.0]神在這裡   喜樂無止盡")
+        after = parse_lrc_lines("[00:10.0]禱告 凡事謝恩\n[00:20.0]神在這裡 喜樂無止盡")
+        edits = classify_edits(before, after)
+        assert edits["dropped_texts"] == ["禱告   凡事謝恩", "神在這裡   喜樂無止盡"]
+        assert edits["added_texts"] == ["禱告 凡事謝恩", "神在這裡 喜樂無止盡"]
+        assert edits["line_splits_or_merges"] is False
+
+    def test_short_phrase_overlap_not_flagged(self):
         # "大聲讚美" appears inside the dropped "不停讚美祢 大聲讚美祢" but the
-        # change is a repeated-block rewrite, not a split/merge
+        # added texts do NOT reconstruct it → repeated-block rewrite, not a split
         before = parse_lrc_lines("[00:10.0]不停讚美祢 大聲讚美祢")
         after = parse_lrc_lines("[00:10.0]我要讚美 不停讚美\n[00:20.0]大聲讚美")
         edits = classify_edits(before, after)
@@ -171,6 +191,48 @@ class TestClassifyEdits:
         edits = classify_edits(before, after)
         assert edits["added_texts"] == ["新句"]
         assert edits["count_changes"]["新句"] == {"before": 0, "after": 2}
+
+
+class TestReconstructs:
+    def test_real_split_two_pieces(self):
+        from mine_lrc_ground_truth import _reconstructs
+
+        assert (
+            _reconstructs(
+                "祢與我同坐席 傾聽我心意 我的耶穌", ["祢與我同坐席 傾聽我心意", "我的耶穌"]
+            )
+            is True
+        )
+
+    def test_real_merge_reading_order(self):
+        # pieces must appear in reading order for a real merge
+        from mine_lrc_ground_truth import _reconstructs
+
+        assert (
+            _reconstructs(
+                "祢與我同坐席 傾聽我心意 我的耶穌",
+                ["祢與我同坐席 傾聽我心意", "我的耶穌"],
+            )
+            is True
+        )
+
+    def test_single_identical_piece_is_respacing_not_split(self):
+        # same line re-spaced (multi-space → single-space): one piece equals
+        # the target after space-stripping — not a split/merge
+        from mine_lrc_ground_truth import _reconstructs
+
+        assert _reconstructs("禱告   凡事謝恩", ["禱告 凡事謝恩"]) is False
+
+    def test_sub_phrase_overlap_does_not_reconstruct(self):
+        from mine_lrc_ground_truth import _reconstructs
+
+        assert _reconstructs("不停讚美祢 大聲讚美祢", ["大聲讚美", "我要讚美 不停讚美"]) is False
+
+    def test_empty_target(self):
+        from mine_lrc_ground_truth import _reconstructs
+
+        assert _reconstructs("", ["x"]) is False
+        assert _reconstructs("   ", ["x"]) is False
 
 
 class TestHumanSources:
