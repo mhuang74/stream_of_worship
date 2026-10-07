@@ -3,14 +3,19 @@
 
 Implements Phase 0a of ``specs/lrc-review-triage-cascade-design-v2.md``:
 
-- positive truth list: every ``published`` recording song_id
-  (equivalent to ``sow-admin audio list --visibility published --format ids``)
-  → ``positive.txt``
-- negative truth list: every song_id with OPEN ``sad`` lyrics feedback
-  (equivalent to ``sow-admin lyrics feedback list --rating poor --format ids``)
-  → ``negative.txt``
+- positive truth list: the live CLI query
+  ``sow-admin audio list --visibility published --format ids`` is executed
+  (via the same Typer entry point) and its stdout is written verbatim to
+  ``positive.txt`` — no reimplementation of the CLI's SQL.
+- negative truth list: the live CLI query
+  ``sow-admin lyrics feedback list --rating poor --format ids`` likewise →
+  ``negative.txt``. The CLI may emit songless-recording notices on stderr;
+  those are captured and recorded in the snapshot JSON but never pollute the
+  id list.
 - review-queue snapshot: every non-deleted ``review`` recording with
-  song_id, hash_prefix, lrc_source, lrc_status, youtube_url presence → JSON
+  song_id, hash_prefix, lrc_source, lrc_status, youtube_url presence → JSON.
+  The review queue is not available via ``--format ids`` with those columns,
+  so this part uses a direct read-only SELECT.
 - seed-subset assertions: seed positives ⊆ published snapshot, seed negatives ⊆
   feedback-poor snapshot. Divergences are recorded per-song in the JSON; the
   seed list stays authoritative for that song. Nothing is dropped silently.
@@ -26,8 +31,9 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import json
+import shutil
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,53 +43,30 @@ from stream_of_worship.db.connection import ConnectionProvider
 
 DEFAULT_OUTPUT_DIR = Path("eval/lrc_truth")
 
-RATING_FILTER = {"good": "happy", "poor": "sad"}
 
+def run_cli_ids_query(sow_admin_bin: Path, argv: list[str]) -> tuple[list[str], str]:
+    """Run the real ``sow-admin`` command as a subprocess, capture stdout.
 
-def query_published_song_ids(conn) -> list[str]:
-    """Song IDs of all non-deleted recordings with visibility_status='published'.
+    This is the live query exactly as the spec names it — the CLI's own SQL
+    (LEFT JOIN songs, hash_prefix fallback for songless recordings,
+    soft-deleted-song exclusion) applies unmodified. ``--format ids`` writes
+    one id per line to stdout; the lyrics feedback command may print
+    songless-recording notices to stderr.
 
-    Mirrors the CLI's recording→song dedup (one id per song, sorted for stable
-    diffing; the CLI emits in feedback/import order, this snapshot sorts).
+    Returns:
+        (ids, stderr_text)
     """
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT DISTINCT s.id
-            FROM recordings r
-            JOIN songs s ON s.id = r.song_id
-            WHERE r.visibility_status = 'published'
-              AND r.deleted_at IS NULL
-              AND s.id IS NOT NULL
-            ORDER BY s.id
-            """
-        )
-        return [row[0] for row in cur.fetchall()]
-
-
-def query_feedback_poor_song_ids(conn) -> list[str]:
-    """Song IDs with OPEN 'sad' lyrics feedback (the must-FAIL set).
-
-    Mirrors ``lyrics feedback list --rating poor``: groups are built from open
-    sad rows; a song qualifies while it has ≥1 unresolved sad row. Songless
-    recordings cannot appear here (no song_id to list) — the CLI reports them
-    on stderr; if that ever happens the review-queue snapshot is the fallback
-    record.
-    """
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT DISTINCT s.id
-            FROM lyrics_feedback f
-            JOIN recordings r ON r.content_hash = f.recording_content_hash
-            JOIN songs s ON s.id = r.song_id
-            WHERE f.resolved_at IS NULL
-              AND f.rating = 'sad'
-              AND r.deleted_at IS NULL
-            ORDER BY s.id
-            """
-        )
-        return [row[0] for row in cur.fetchall()]
+    cmd = [str(sow_admin_bin), *argv]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"{' '.join(argv)} exited {result.returncode}: {result.stderr.strip()}")
+    ids = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return ids, result.stderr
 
 
 def query_review_queue(conn) -> list[dict]:
@@ -135,6 +118,49 @@ def load_seed_ids(path: Path) -> list[str]:
     return ids
 
 
+def extract_seed_lists_from_spec(
+    spec_path: Path,
+) -> tuple[list[str], list[str], dict[str, str]]:
+    """Parse the 46 seed positives and 8 seed negatives out of Appendix A.
+
+    Mechanically derived from the spec so the anchor can never be corrupted by
+    a transcription typo. Returns (positives, negatives, negative_lrc_sources).
+    """
+    text = spec_path.read_text(encoding="utf-8")
+    pos_block = _appendix_block(text, "Seed positives")
+    neg_block = _appendix_block(text, "Seed negatives")
+
+    positives = [w for w in pos_block.split() if _looks_like_song_id(w)]
+
+    negatives = []
+    negative_sources: dict[str, str] = {}
+    for line in neg_block.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        song_id = parts[0]
+        if not _looks_like_song_id(song_id):
+            continue
+        negatives.append(song_id)
+        for source in ("manual_upload", "youtube_transcript", "qwen3_asr", "whisper_asr"):
+            if f"({source}" in line or f"— {source}" in line:
+                negative_sources[song_id] = source
+                break
+    return positives, negatives, negative_sources
+
+
+def _looks_like_song_id(token: str) -> bool:
+    return len(token) > 8 and token[-8:].isalnum() and "_" in token
+
+
+def _appendix_block(text: str, heading: str) -> str:
+    idx = text.index(heading)
+    fence_start = text.index("```", idx)
+    fence_end = text.index("```", fence_start + 3)
+    return text[fence_start + 3 : fence_end]
+
+
 def assert_seed_subset(seeds: list[str], snapshot_ids: set[str], kind: str) -> list[dict]:
     """Seed ⊆ snapshot assertion; every seed song gets a per-song result.
 
@@ -160,6 +186,8 @@ def write_ids(paths: list[Path], ids: list[str]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    import argparse
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",
@@ -169,6 +197,12 @@ def main(argv: list[str] | None = None) -> int:
         "(default: eval/lrc_truth)",
     )
     parser.add_argument("--config", type=Path, default=None, help="Admin config path")
+    parser.add_argument(
+        "--spec",
+        type=Path,
+        default=Path("specs/lrc-review-triage-cascade-design-v2.md"),
+        help="Spec path to mechanically extract seed lists from",
+    )
     args = parser.parse_args(argv)
 
     output_dir = args.output_dir
@@ -177,38 +211,54 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(UTC)
     started_at = now.isoformat(timespec="seconds")
 
+    config_path = str(args.config) if args.config else None
+
+    # Locate the real sow-admin binary from the same venv this script runs in
+    # (sys.executable's directory), falling back to PATH.
+    sow_admin = Path(sys.executable).parent / "sow-admin"
+    if not sow_admin.exists():
+        sow_admin = shutil.which("sow-admin")
+        if not sow_admin:
+            raise SystemExit("sow-admin binary not found in venv or PATH")
+        sow_admin = Path(sow_admin)
+
+    positive_argv = ["audio", "list", "--visibility", "published", "--format", "ids"]
+    negative_argv = [
+        "lyrics",
+        "feedback",
+        "list",
+        "--rating",
+        "poor",
+        "--format",
+        "ids",
+    ]
+    if config_path:
+        positive_argv += ["--config", config_path]
+        negative_argv += ["--config", config_path]
+
+    positive_started_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    positive_ids, pos_stderr = run_cli_ids_query(sow_admin, positive_argv)
+    positive_finished = datetime.now(UTC).isoformat(timespec="seconds")
+    negative_started_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    negative_ids, neg_stderr = run_cli_ids_query(sow_admin, negative_argv)
+    negative_finished = datetime.now(UTC).isoformat(timespec="seconds")
     config = AdminConfig.load(args.config)
     provider = ConnectionProvider(config.get_connection_url())
     conn = provider.get_connection()
-
-    published_started = datetime.now(UTC)
-    published_ids = query_published_song_ids(conn)
-    published_finished = datetime.now(UTC).isoformat(timespec="seconds")
-    published_started_iso = published_started.isoformat(timespec="seconds")
-
-    negative_started = datetime.now(UTC)
-    negative_ids = query_feedback_poor_song_ids(conn)
-    negative_finished = datetime.now(UTC).isoformat(timespec="seconds")
-    negative_started_iso = negative_started.isoformat(timespec="seconds")
-
-    review_started = datetime.now(UTC)
+    review_started_iso = datetime.now(UTC).isoformat(timespec="seconds")
     review_queue = query_review_queue(conn)
     review_finished = datetime.now(UTC).isoformat(timespec="seconds")
-    review_started_iso = review_started.isoformat(timespec="seconds")
     provider.close()
 
-    seed_pos = load_seed_ids(output_dir / "seed_positive.txt")
-    seed_neg = load_seed_ids(output_dir / "seed_negative.txt")
-    if not seed_pos or not seed_neg:
-        print(
-            "error: seed_positive.txt / seed_negative.txt missing or empty in "
-            f"{output_dir}; seed lists are the regression anchor and must exist",
-            file=sys.stderr,
-        )
-        return 2
+    spec_pos, spec_neg, neg_sources = extract_seed_lists_from_spec(args.spec)
 
-    positive_assertions = assert_seed_subset(seed_pos, set(published_ids), "positive")
-    negative_assertions = assert_seed_subset(seed_neg, set(negative_ids), "negative")
+    # Seed files are written from the spec parse so the anchor can never be a
+    # hand-typed transcription of Appendix A.
+    write_ids([output_dir / "seed_positive.txt"], spec_pos)
+    write_ids([output_dir / "seed_negative.txt"], spec_neg)
+
+    positive_assertions = assert_seed_subset(spec_pos, set(positive_ids), "positive")
+    negative_assertions = assert_seed_subset(spec_neg, set(negative_ids), "negative")
     positive_divergences = [a for a in positive_assertions if not a["in_snapshot"]]
     negative_divergences = [a for a in negative_assertions if not a["in_snapshot"]]
 
@@ -219,32 +269,28 @@ def main(argv: list[str] | None = None) -> int:
     with_youtube_url = sum(1 for row in review_queue if row["has_youtube_url"])
 
     snapshot = {
-        "schema_version": 1,
+        "schema_version": 2,
         "created_at": started_at,
         "spec": "specs/lrc-review-triage-cascade-design-v2.md",
         "phase": "0a",
         "queries": {
             "positive": {
                 "command": "sow-admin audio list --visibility published --format ids",
-                "sql_equivalent": (
-                    "SELECT DISTINCT s.id FROM recordings r JOIN songs s ON s.id = r.song_id "
-                    "WHERE r.visibility_status = 'published' AND r.deleted_at IS NULL"
-                ),
-                "started_at": published_started_iso,
-                "finished_at": published_finished,
-                "count": len(published_ids),
+                "argv": positive_argv,
+                "invocation": "real sow-admin subprocess; stdout captured verbatim as positive.txt",
+                "started_at": positive_started_iso,
+                "finished_at": positive_finished,
+                "count": len(positive_ids),
+                "stderr_notices": pos_stderr.strip() or None,
             },
             "negative": {
                 "command": "sow-admin lyrics feedback list --rating poor --format ids",
-                "sql_equivalent": (
-                    "SELECT DISTINCT s.id FROM lyrics_feedback f "
-                    "JOIN recordings r ON r.content_hash = f.recording_content_hash "
-                    "JOIN songs s ON s.id = r.song_id "
-                    "WHERE f.resolved_at IS NULL AND f.rating = 'sad' AND r.deleted_at IS NULL"
-                ),
+                "argv": negative_argv,
+                "invocation": "real sow-admin subprocess; stdout captured verbatim as negative.txt",
                 "started_at": negative_started_iso,
                 "finished_at": negative_finished,
                 "count": len(negative_ids),
+                "stderr_notices": neg_stderr.strip() or None,
             },
             "review_queue": {
                 "command": "review-visibility recordings snapshot (song_id, hash_prefix, lrc_source, lrc_status, youtube_url presence)",
@@ -254,17 +300,18 @@ def main(argv: list[str] | None = None) -> int:
             },
         },
         "seed_subsets": {
-            "source": "specs/lrc-review-triage-cascade-design-v2.md Appendix A",
+            "source": f"mechanically parsed from {args.spec} Appendix A",
             "authoritative": "seed lists stay authoritative per-song; divergences recorded here, never dropped",
             "positive": {
-                "seed_count": len(seed_pos),
+                "seed_count": len(spec_pos),
                 "all_present": not positive_divergences,
                 "per_song": positive_assertions,
             },
             "negative": {
-                "seed_count": len(seed_neg),
+                "seed_count": len(spec_neg),
                 "all_present": not negative_divergences,
                 "per_song": negative_assertions,
+                "lrc_source_provenance": neg_sources,
             },
         },
         "review_queue_summary": {
@@ -283,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     }
 
-    write_ids([output_dir / "positive.txt"], published_ids)
+    write_ids([output_dir / "positive.txt"], positive_ids)
     write_ids([output_dir / "negative.txt"], negative_ids)
 
     stamp = now.strftime("%Y%m%dT%H%M%SZ")
@@ -295,14 +342,14 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
-    print(f"positive.txt: {len(published_ids)} song ids")
+    print(f"positive.txt: {len(positive_ids)} song ids")
     print(f"negative.txt: {len(negative_ids)} song ids")
     print(f"review queue: {len(review_queue)} recordings -> {snapshot_path.name}")
     print(
-        f"seed positive assertions: {len(seed_pos)} checked, {len(positive_divergences)} divergence(s)"
+        f"seed positive assertions: {len(spec_pos)} checked, {len(positive_divergences)} divergence(s)"
     )
     print(
-        f"seed negative assertions: {len(seed_neg)} checked, {len(negative_divergences)} divergence(s)"
+        f"seed negative assertions: {len(spec_neg)} checked, {len(negative_divergences)} divergence(s)"
     )
     if positive_divergences or negative_divergences:
         for entry in positive_divergences + negative_divergences:

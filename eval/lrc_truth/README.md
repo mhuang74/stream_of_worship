@@ -10,7 +10,7 @@ Snapshot of live DB queries at experiment start, per
 | `negative.txt` | `sow-admin lyrics feedback list --rating poor --format ids` at snapshot time — negative truth list (must-FAIL set) |
 | `snapshot-<UTC timestamp>.json` | Full snapshot: query timestamps, counts, seed-subset assertion results, review-queue rows (song_id, hash_prefix, lrc_source, lrc_status, youtube_url presence) |
 | `latest.json` | Copy of the newest snapshot JSON (stable pointer for later phases) |
-| `seed_positive.txt` / `seed_negative.txt` | Appendix A seed lists copied from the spec (regression anchors; authoritative per-song even when the live query diverges) |
+| `seed_positive.txt` / `seed_negative.txt` | Appendix A seed lists, mechanically parsed from the spec by the script (regression anchors; authoritative per-song even when the live query diverges) |
 
 Phase 0b (backup-ladder ground-truth mining, issue #243) artifacts live
 alongside: `ground-truth-pairs-*.json` + `GROUND_TRUTH_MINING.md` — see that
