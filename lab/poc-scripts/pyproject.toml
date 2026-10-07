@@ -94,6 +94,11 @@ score_lrc_base = [
     "pypinyin>=0.52.0",
 ]
 fix_lrc = ["sow-lab-poc-scripts[poc_qwen3_mlx,poc_qwen3_align,score_lrc_base]"]
+stem_separation = [
+    "audio-separator>=0.30.0",
+    "onnxruntime>=1.17.0",
+    "requests>=2.31.0",
+]
 bpm_poc = [
     "librosa>=0.10.0",
     "matplotlib>=3.8.0",
