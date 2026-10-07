@@ -273,6 +273,69 @@ class TestProcessSong:
 # --------------------------------------------------------------------------
 
 
+class _ExplodingR2:
+    """R2 stub whose every method raises (assertion by default)."""
+
+    def __init__(self, message_prefix: str = "R2") -> None:
+        self._message_prefix = message_prefix
+
+    def __getattr__(self, name: str):
+        def _boom(*a, **k):
+            raise AssertionError(f"{self._message_prefix}.{name} must not be touched")
+
+        return _boom
+
+
+class _FakeConn:
+    def cursor(self):
+        raise AssertionError("DB must not be touched")
+
+
+class _FakeProvider:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get_connection(self):
+        return _FakeConn()
+
+    def close(self):
+        pass
+
+
+class _FakeConfig:
+    r2_bucket = "bucket"
+    r2_endpoint_url = "http://localhost"
+    r2_region = "us-east-1"
+
+    def get_connection_url(self):
+        # run() evaluates the URL eagerly; the DB-isolation guard is
+        # _FakeConn.cursor (and build_song_refs is stubbed per test).
+        return "postgresql://unused"
+
+
+def _stub_run_infra(monkeypatch, r2=None):
+    """Patch AdminConfig/ConnectionProvider/R2Client so run() touches no
+    real config file, DB, or R2. Pass r2= to customize the R2 stub."""
+    monkeypatch.setattr(
+        "stream_of_worship.admin.config.AdminConfig.load", lambda p: _FakeConfig()
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.db.connection.ConnectionProvider",
+        lambda url: _FakeProvider(),
+    )
+    monkeypatch.setattr(
+        "stream_of_worship.admin.services.r2.R2Client",
+        lambda **k: r2 if r2 is not None else _ExplodingR2(),
+    )
+    monkeypatch.setattr(
+        "run_stem_cache.build_song_refs",
+        lambda conn, ids: [("song_a", "aaaaaaaaaaaa")],
+    )
+
+
 class TestRunnerIdempotence:
     def test_rerun_after_complete_run_changes_nothing(self, tmp_path, monkeypatch):
         """run() on a fully-resolved set performs no R2/DB I/O beyond ref
@@ -296,56 +359,8 @@ class TestRunnerIdempotence:
         cached_file.write_bytes(b"flac-bytes")
         before = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        class _ExplodingR2:
-            def __getattr__(self, name):
-                def _boom(*a, **k):
-                    raise AssertionError(f"R2.{name} must not be touched on resume")
-
-                return _boom
-
-        class _FakeConn:
-            def cursor(self):
-                raise AssertionError("DB must not be touched on resume")
-
-        class _FakeProvider:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-            def get_connection(self):
-                return _FakeConn()
-
-            def close(self):
-                pass
-
-        class _FakeConfig:
-            r2_bucket = "bucket"
-            r2_endpoint_url = "http://localhost"
-            r2_region = "us-east-1"
-
-            def get_connection_url(self):
-                # run() evaluates the URL eagerly; the DB-isolation guard is
-                # _FakeConn.cursor below (and build_song_refs is stubbed).
-                return "postgresql://unused"
-
-        monkeypatch.setattr(
-            "stream_of_worship.admin.config.AdminConfig.load", lambda p: _FakeConfig()
-        )
-        monkeypatch.setattr(
-            "stream_of_worship.db.connection.ConnectionProvider",
-            lambda url: _FakeProvider(),
-        )
-        monkeypatch.setattr(
-            "stream_of_worship.admin.services.r2.R2Client", lambda **k: _ExplodingR2()
-        )
-
-        # build_song_refs must still resolve refs (read-only DB): stub it at
-        # module level since run() calls it by global name.
-        monkeypatch.setattr(
-            "run_stem_cache.build_song_refs",
-            lambda conn, ids: [("song_a", "aaaaaaaaaaaa")],
+        _stub_run_infra(
+            monkeypatch, r2=_ExplodingR2("R2 (resume must not touch)")
         )
 
         summary = run_cache(
@@ -383,20 +398,14 @@ class TestRunnerIdempotence:
         before = json.loads(manifest_path.read_text(encoding="utf-8"))
         # no file materialized -> requeued, then R2 explodes -> per-song failure
 
-        class _ExplodingR2:
+        class _RuntimeExplodingR2:
             def __getattr__(self, name):
                 def _boom(*a, **k):
                     raise RuntimeError("R2 unreachable")
 
                 return _boom
 
-        monkeypatch.setattr(
-            "stream_of_worship.admin.services.r2.R2Client", lambda **k: _ExplodingR2()
-        )
-        monkeypatch.setattr(
-            "run_stem_cache.build_song_refs",
-            lambda conn, ids: [("song_a", "aaaaaaaaaaaa")],
-        )
+        _stub_run_infra(monkeypatch, r2=_RuntimeExplodingR2())
 
         summary = run_cache(
             song_ids=["song_a"],
