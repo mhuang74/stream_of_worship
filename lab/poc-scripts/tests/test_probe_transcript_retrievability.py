@@ -265,8 +265,17 @@ class TestProbeRunner:
             )
         )
 
+        resolver_calls: list[int] = []
+
+        def resolver(specs):
+            resolver_calls.append(1)
+            for s in specs:
+                s.youtube_url = f"https://www.youtube.com/watch?v={s.song_id}-vid"
+
         # DB and YouTube are unreachable from unit tests anyway; the run must
         # abort inside the first probe_song before any real network access.
+        # The resolver seam is the ONLY url source — if it were bypassed the
+        # real DB resolve_urls would fail this hermetic test.
         code = main(
             [
                 "--manifest",
@@ -277,11 +286,9 @@ class TestProbeRunner:
                 str(report_path),
             ],
             runner_factory=lambda: runner,
-            url_resolver=lambda specs: [
-                setattr(s, "youtube_url", f"https://www.youtube.com/watch?v={s.song_id}-vid")
-                for s in specs
-            ],
+            url_resolver=resolver,
         )
+        assert len(resolver_calls) == 1  # resolver seam was actually used
 
         assert code == 2
         report = json.loads(report_path.read_text())
@@ -316,6 +323,15 @@ class TestProbeRunner:
             )
         )
 
+        resolver_calls: list[int] = []
+
+        def resolver(specs):
+            resolver_calls.append(1)
+            for s in specs:
+                s.youtube_url = f"https://www.youtube.com/watch?v={s.song_id}"
+
+        # Resolver is the only URL source (hermetic: real DB resolve_urls
+        # would fail on CI where live Neon access is absent).
         code = main(
             [
                 "--self-check-only",
@@ -327,11 +343,9 @@ class TestProbeRunner:
                 str(report_path),
             ],
             runner_factory=lambda: runner,
-            url_resolver=lambda specs: [
-                setattr(s, "youtube_url", f"https://www.youtube.com/watch?v={s.song_id}")
-                for s in specs
-            ],
+            url_resolver=resolver,
         )
+        assert len(resolver_calls) == 1  # resolver seam used on the self-check path
 
         assert code == 1
         report = json.loads(report_path.read_text())

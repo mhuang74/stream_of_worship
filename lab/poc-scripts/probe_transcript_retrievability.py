@@ -644,7 +644,10 @@ def main(argv: list[str] | None = None, runner_factory=None, url_resolver=None) 
     try:
         if args.self_check_only:
             report = run_self_check(
-                runner, str(args.config) if args.config else None, args.snapshot
+                runner,
+                str(args.config) if args.config else None,
+                args.snapshot,
+                url_resolver,
             )
         else:
             specs = load_review_snapshot(args.snapshot)
