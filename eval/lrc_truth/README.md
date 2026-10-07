@@ -12,6 +12,10 @@ Snapshot of live DB queries at experiment start, per
 | `latest.json` | Copy of the newest snapshot JSON (stable pointer for later phases) |
 | `seed_positive.txt` / `seed_negative.txt` | Appendix A seed lists copied from the spec (regression anchors; authoritative per-song even when the live query diverges) |
 
+Phase 0b (backup-ladder ground-truth mining, issue #243) artifacts live
+alongside: `ground-truth-pairs-*.json` + `GROUND_TRUTH_MINING.md` — see that
+file for pairing rules, the anomaly inspection, and the stale-negative caveat.
+
 ## Semantics
 
 - The seed lists stay authoritative for their songs. If a seed positive is

@@ -1,0 +1,643 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-07T13:40:27+00:00",
+  "spec": "specs/lrc-review-triage-cascade-design-v2.md",
+  "phase": "0b",
+  "pairing_rule": "backup → successor paired ONLY when the successor is the recording's current content and recordings.lrc_source ∈ {manual_upload, llm_edit}; backup→backup successors have no per-version provenance and are skipped, never paired (never diff two machine outputs)",
+  "ladder_order_check": "each backup is matched to its immediate successor: newest ladder entry → current, cross-checked against the editor-session ladder ({hp}/backups/lyrics.{ts}.lrc); a matching content hash proves the backup was written by the same editor session that uploaded current",
+  "counts": {
+    "recordings": 514,
+    "prefixes_with_backups": 51,
+    "backup_objects": 81,
+    "human_source_prefixes_with_backups": 2,
+    "pairs": 2,
+    "skipped": 49,
+    "user_lrc_override_rows": 0
+  },
+  "pairs": [
+    {
+      "hash_prefix": "675d313d8ba3",
+      "song_id": "wo_de_ye_su_4c27d159",
+      "lrc_source": "manual_upload",
+      "visibility_status": "published",
+      "before": {
+        "r2_key": "675d313d8ba3/lyrics.backup.1791358556951.lrc",
+        "uploaded_at": "2026-10-07T07:35:57.222000+00:00",
+        "timestamp_kind": "wall_clock_ms",
+        "sha12": "6e051fc8e041",
+        "content": "[00:15.05]我的耶穌 是我生命的主\n[00:22.82]我的依靠 隨時幫助\n[00:29.66]我的耶穌 最信任的朋友\n[00:37.37]耶穌 我真需要祢\n[00:44.31]當我不知未來會在哪裡\n[00:52.09]閉上眼睛 放下憂慮\n[00:58.83]邀請耶穌陪伴著我前行\n[01:06.47]盼望從心中升起\n[01:13.21]耶穌 耶穌 我需要祢\n[01:20.71]耶穌 耶穌 我渴慕祢\n[01:27.95]耶穌 耶穌 我需要祢\n[01:34.26]祢與我同坐席 傾聽我心意 我的耶穌\n[01:41.13]我的耶穌\n[01:45.91]耶穌 耶穌 我敬拜祢\n[01:53.41]耶穌 耶穌 我讚美祢\n[02:00.65]耶穌 耶穌 我敬拜祢\n[02:06.96]我來到祢面前 更靠近祢心\n[02:13.83]我的耶穌\n[02:23.66]\n[02:50.89]耶穌 耶穌 我好愛祢\n[02:58.58]耶穌 耶穌 我好愛祢\n[03:05.68]耶穌 耶穌 我好愛祢\n[03:12.54]在祢的懷抱裡 更貼近祢心\n[03:19.38]我的耶穌\n[03:24.47]耶穌 耶穌 我敬拜祢\n[03:31.64]耶穌 耶穌 我讚美祢\n[03:38.88]耶穌 耶穌 我敬拜祢\n[03:45.19]我來到祢面前 更靠近祢心\n[03:52.06]我的耶穌\n"
+      },
+      "after": {
+        "r2_key": "675d313d8ba3/lyrics.lrc",
+        "sha12": "b69e8cb04623",
+        "content": "[00:15.05]我的耶穌 是我生命的主\n[00:22.82]我的依靠 隨時幫助\n[00:29.66]我的耶穌 最信任的朋友\n[00:37.37]耶穌 我真需要祢\n[00:44.31]當我不知未來會在哪裡\n[00:52.09]閉上眼睛 放下憂慮\n[00:58.83]邀請耶穌陪伴著我前行\n[01:06.47]盼望從心中升起\n[01:13.21]耶穌 耶穌 我需要祢\n[01:20.71]耶穌 耶穌 我渴慕祢\n[01:27.95]耶穌 耶穌 我需要祢\n[01:34.26]祢與我同坐席 傾聽我心意\n[01:41.13]我的耶穌\n[01:45.91]耶穌 耶穌 我敬拜祢\n[01:53.41]耶穌 耶穌 我讚美祢\n[02:00.65]耶穌 耶穌 我敬拜祢\n[02:06.96]我來到祢面前 更靠近祢心\n[02:13.83]我的耶穌\n[02:23.66]\n[02:50.89]耶穌 耶穌 我好愛祢\n[02:58.58]耶穌 耶穌 我好愛祢\n[03:05.68]耶穌 耶穌 我好愛祢\n[03:12.54]在祢的懷抱裡 更貼近祢心\n[03:19.38]我的耶穌\n[03:24.47]耶穌 耶穌 我敬拜祢\n[03:31.64]耶穌 耶穌 我讚美祢\n[03:38.88]耶穌 耶穌 我敬拜祢\n[03:45.19]我來到祢面前 更靠近祢心\n[03:52.06]我的耶穌\n",
+        "recording_updated_at": "2026-10-07T11:48:58.243358+00:00"
+      },
+      "immediacy_evidence": {
+        "newest_editor_backup_matches_before": true,
+        "note": "editor-session ladder cross-check; True proves the backup was written by the editor session that uploaded the current content (no lost intermediate version). None = no editor-session backups."
+      },
+      "diff": [
+        "--- before",
+        "+++ after",
+        "@@ -11,3 +11,3 @@",
+        " [01:27.95]耶穌 耶穌 我需要祢",
+        "-[01:34.26]祢與我同坐席 傾聽我心意 我的耶穌",
+        "+[01:34.26]祢與我同坐席 傾聽我心意",
+        " [01:41.13]我的耶穌"
+      ],
+      "edits": {
+        "sung_lines_before": 28,
+        "sung_lines_after": 28,
+        "blank_lines_before": 1,
+        "blank_lines_after": 1,
+        "dropped_texts": [
+          "祢與我同坐席 傾聽我心意 我的耶穌"
+        ],
+        "added_texts": [
+          "祢與我同坐席 傾聽我心意"
+        ],
+        "line_splits_or_merges": false,
+        "timing": {
+          "matched_lines": 10,
+          "shift_seconds_min": 0.0,
+          "shift_seconds_max": 0.0,
+          "shift_seconds_mean": 0.0,
+          "all_zero": true
+        }
+      }
+    },
+    {
+      "hash_prefix": "689ad50aaebf",
+      "song_id": "bu_ting_zan_mei_mi_e937a9d3",
+      "lrc_source": "manual_upload",
+      "visibility_status": "review",
+      "before": {
+        "r2_key": "689ad50aaebf/lyrics.backup.1790297439348.lrc",
+        "uploaded_at": "2026-09-25T00:50:41.420000+00:00",
+        "timestamp_kind": "wall_clock_ms",
+        "sha12": "49d2083a5c7e",
+        "content": "[00:13.78] 時時稱頌祢 向祢來歌唱\n[00:19.99] 因祢是拯救我們偉大的神\n[00:26.99] 我們尊崇祢 稱頌祢聖名\n[00:33.13] 口唱心和地 大聲地讚美祢\n[00:40.14] 不停讚美祢 大聲讚美祢\n[00:46.28] 唯有祢配得榮耀 尊貴 權柄\n[00:53.22] 天是屬於祢 地也屬於祢\n[00:59.43] 一切所造之物齊來讚美祢\n[01:07.45] \n[01:19.55] 不停讚美祢 大聲讚美祢\n[01:25.78] 唯有祢配得榮耀 尊貴 權柄\n[01:32.69] 天是屬於祢 地也屬於祢\n[01:38.90] 一切所造之物齊來讚美祢\n[01:45.70] 我讚美讚美 不停讚美\n[01:49.14] 跳舞跳舞 不停跳舞\n[01:52.44] 高舉雙手 大聲讚美祢\n[01:58.82] 我讚美讚美 不停讚美\n[02:02.25] 跳舞跳舞 不停跳舞\n[02:05.59] 高舉雙手 大聲讚美祢\n[02:12.00] 我讚美讚美 不停讚美\n[02:15.44] 跳舞跳舞 不停跳舞\n[02:18.71] 高舉雙手 大聲讚美祢\n[02:25.15] 我讚美讚美 不停讚美\n[02:28.62] 跳舞跳舞 不停跳舞\n[02:31.92] 高舉雙手 大聲讚美祢\n[02:39.27] \n[02:51.67] 不停讚美祢 大聲讚美祢\n[02:54.97] 唯有祢配得榮耀 尊貴 權柄\n[02:58.24] 天是屬於祢 地也屬於祢\n[03:04.78] 不停讚美祢 大聲讚美祢\n[03:10.92] 唯有祢配得榮耀 尊貴 權柄\n[03:17.90] 天是屬於祢 地也屬於祢\n[03:24.10] 一切所造之物齊來讚美祢\n[03:29.47] 天是屬於祢 地也屬於祢\n[03:37.25] 一切所造之物齊來讚美祢\n[03:44.19] 天是屬於祢 地也屬於祢\n[03:50.43] 一切所造之物齊來讚美祢\n[03:59.85] \n[04:10.55] 不停讚美祢 大聲讚美祢\n[04:13.89] 唯有祢配得榮耀 尊貴 權柄\n[04:17.12] 天是屬於祢 地也屬於祢\n"
+      },
+      "after": {
+        "r2_key": "689ad50aaebf/lyrics.lrc",
+        "sha12": "6c4302daf431",
+        "content": "[00:13.78]時時稱頌祢 向祢來歌唱\n[00:19.99]因祢是拯救我們偉大的神\n[00:26.99]我們尊崇祢 稱頌祢聖名\n[00:33.13]口唱心和地 大聲地讚美祢\n[00:40.14]不停讚美祢 大聲讚美祢\n[00:46.28]唯有祢配得榮耀 尊貴 權柄\n[00:53.22]天是屬於祢 地也屬於祢\n[00:59.43]一切所造之物齊來讚美祢\n[01:07.45]\n[01:19.55]不停讚美祢 大聲讚美祢\n[01:25.78]唯有祢配得榮耀 尊貴 權柄\n[01:32.69]天是屬於祢 地也屬於祢\n[01:38.90]一切所造之物齊來讚美祢\n[01:45.70]我讚美讚美 不停讚美\n[01:49.14]跳舞跳舞 不停跳舞\n[01:52.44]高舉雙手 大聲讚美祢\n[01:58.82]我讚美讚美 不停讚美\n[02:02.25]跳舞跳舞 不停跳舞\n[02:05.59]高舉雙手 大聲讚美祢\n[02:12.00]我讚美讚美 不停讚美\n[02:15.44]跳舞跳舞 不停跳舞\n[02:18.71]高舉雙手 大聲讚美祢\n[02:25.15]我讚美讚美 不停讚美\n[02:28.62]跳舞跳舞 不停跳舞\n[02:31.92]高舉雙手 大聲讚美祢\n[02:38.55]\n[02:51.07]我要讚美 不停讚美\n[02:58.04]大聲讚美\n[03:04.09]不停讚美祢 大聲讚美祢\n[03:10.92]唯有祢配得榮耀 尊貴 權柄\n[03:17.90]天是屬於祢 地也屬於祢\n[03:24.10]一切所造之物齊來讚美祢\n[03:30.26]天是屬於祢 地也屬於祢\n[03:37.25]一切所造之物齊來讚美祢\n[03:44.19]天是屬於祢 地也屬於祢\n[03:50.43]一切所造之物齊來讚美祢\n[03:59.85]\n[04:10.18]我要讚美 不停讚美\n[04:16.88]大聲讚美\n[04:19.58]讚美祢\n",
+        "recording_updated_at": "2026-09-25T00:50:42.564679+00:00"
+      },
+      "immediacy_evidence": {
+        "newest_editor_backup_matches_before": true,
+        "note": "editor-session ladder cross-check; True proves the backup was written by the editor session that uploaded the current content (no lost intermediate version). None = no editor-session backups."
+      },
+      "diff": [
+        "--- before",
+        "+++ after",
+        "@@ -1,41 +1,40 @@",
+        "-[00:13.78] 時時稱頌祢 向祢來歌唱",
+        "-[00:19.99] 因祢是拯救我們偉大的神",
+        "-[00:26.99] 我們尊崇祢 稱頌祢聖名",
+        "-[00:33.13] 口唱心和地 大聲地讚美祢",
+        "-[00:40.14] 不停讚美祢 大聲讚美祢",
+        "-[00:46.28] 唯有祢配得榮耀 尊貴 權柄",
+        "-[00:53.22] 天是屬於祢 地也屬於祢",
+        "-[00:59.43] 一切所造之物齊來讚美祢",
+        "-[01:07.45] ",
+        "-[01:19.55] 不停讚美祢 大聲讚美祢",
+        "-[01:25.78] 唯有祢配得榮耀 尊貴 權柄",
+        "-[01:32.69] 天是屬於祢 地也屬於祢",
+        "-[01:38.90] 一切所造之物齊來讚美祢",
+        "-[01:45.70] 我讚美讚美 不停讚美",
+        "-[01:49.14] 跳舞跳舞 不停跳舞",
+        "-[01:52.44] 高舉雙手 大聲讚美祢",
+        "-[01:58.82] 我讚美讚美 不停讚美",
+        "-[02:02.25] 跳舞跳舞 不停跳舞",
+        "-[02:05.59] 高舉雙手 大聲讚美祢",
+        "-[02:12.00] 我讚美讚美 不停讚美",
+        "-[02:15.44] 跳舞跳舞 不停跳舞",
+        "-[02:18.71] 高舉雙手 大聲讚美祢",
+        "-[02:25.15] 我讚美讚美 不停讚美",
+        "-[02:28.62] 跳舞跳舞 不停跳舞",
+        "-[02:31.92] 高舉雙手 大聲讚美祢",
+        "-[02:39.27] ",
+        "-[02:51.67] 不停讚美祢 大聲讚美祢",
+        "-[02:54.97] 唯有祢配得榮耀 尊貴 權柄",
+        "-[02:58.24] 天是屬於祢 地也屬於祢",
+        "-[03:04.78] 不停讚美祢 大聲讚美祢",
+        "-[03:10.92] 唯有祢配得榮耀 尊貴 權柄",
+        "-[03:17.90] 天是屬於祢 地也屬於祢",
+        "-[03:24.10] 一切所造之物齊來讚美祢",
+        "-[03:29.47] 天是屬於祢 地也屬於祢",
+        "-[03:37.25] 一切所造之物齊來讚美祢",
+        "-[03:44.19] 天是屬於祢 地也屬於祢",
+        "-[03:50.43] 一切所造之物齊來讚美祢",
+        "-[03:59.85] ",
+        "-[04:10.55] 不停讚美祢 大聲讚美祢",
+        "-[04:13.89] 唯有祢配得榮耀 尊貴 權柄",
+        "-[04:17.12] 天是屬於祢 地也屬於祢",
+        "+[00:13.78]時時稱頌祢 向祢來歌唱",
+        "+[00:19.99]因祢是拯救我們偉大的神",
+        "+[00:26.99]我們尊崇祢 稱頌祢聖名",
+        "+[00:33.13]口唱心和地 大聲地讚美祢",
+        "+[00:40.14]不停讚美祢 大聲讚美祢",
+        "+[00:46.28]唯有祢配得榮耀 尊貴 權柄",
+        "+[00:53.22]天是屬於祢 地也屬於祢",
+        "+[00:59.43]一切所造之物齊來讚美祢",
+        "+[01:07.45]",
+        "+[01:19.55]不停讚美祢 大聲讚美祢",
+        "+[01:25.78]唯有祢配得榮耀 尊貴 權柄",
+        "+[01:32.69]天是屬於祢 地也屬於祢",
+        "+[01:38.90]一切所造之物齊來讚美祢",
+        "+[01:45.70]我讚美讚美 不停讚美",
+        "+[01:49.14]跳舞跳舞 不停跳舞",
+        "+[01:52.44]高舉雙手 大聲讚美祢",
+        "+[01:58.82]我讚美讚美 不停讚美",
+        "+[02:02.25]跳舞跳舞 不停跳舞",
+        "+[02:05.59]高舉雙手 大聲讚美祢",
+        "+[02:12.00]我讚美讚美 不停讚美",
+        "+[02:15.44]跳舞跳舞 不停跳舞",
+        "+[02:18.71]高舉雙手 大聲讚美祢",
+        "+[02:25.15]我讚美讚美 不停讚美",
+        "+[02:28.62]跳舞跳舞 不停跳舞",
+        "+[02:31.92]高舉雙手 大聲讚美祢",
+        "+[02:38.55]",
+        "+[02:51.07]我要讚美 不停讚美",
+        "+[02:58.04]大聲讚美",
+        "+[03:04.09]不停讚美祢 大聲讚美祢",
+        "+[03:10.92]唯有祢配得榮耀 尊貴 權柄",
+        "+[03:17.90]天是屬於祢 地也屬於祢",
+        "+[03:24.10]一切所造之物齊來讚美祢",
+        "+[03:30.26]天是屬於祢 地也屬於祢",
+        "+[03:37.25]一切所造之物齊來讚美祢",
+        "+[03:44.19]天是屬於祢 地也屬於祢",
+        "+[03:50.43]一切所造之物齊來讚美祢",
+        "+[03:59.85]",
+        "+[04:10.18]我要讚美 不停讚美",
+        "+[04:16.88]大聲讚美",
+        "+[04:19.58]讚美祢"
+      ],
+      "edits": {
+        "sung_lines_before": 38,
+        "sung_lines_after": 37,
+        "blank_lines_before": 3,
+        "blank_lines_after": 3,
+        "dropped_texts": [],
+        "added_texts": [
+          "我要讚美 不停讚美",
+          "大聲讚美",
+          "我要讚美 不停讚美",
+          "大聲讚美",
+          "讚美祢"
+        ],
+        "line_splits_or_merges": true,
+        "timing": {
+          "matched_lines": 4,
+          "shift_seconds_min": 0.0,
+          "shift_seconds_max": 0.0,
+          "shift_seconds_mean": 0.0,
+          "all_zero": true
+        }
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "hash_prefix": "079b96335928",
+      "song_id": "wei_ai_er_sheng_21d2c05b",
+      "lrc_source": null,
+      "n_backups": 3,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "09c478ef7e9e",
+      "song_id": "ye_he_hua_shi_wo_mu_zhe_be32dee2",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "14550a91476c",
+      "song_id": "you_yi_jian_shi_013139fc",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "196669aa37bd",
+      "song_id": "mei_hao_de_chuang_zao_3d42d76e",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "20379ea26256",
+      "song_id": "hereforyou_62e79ae9",
+      "lrc_source": null,
+      "n_backups": 4,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "2556561a5f99",
+      "song_id": "xi_le_he_liu_6f4d65a7",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "28a0ed6e1408",
+      "song_id": "yu_mi_man_bu_e46c5fe7",
+      "lrc_source": null,
+      "n_backups": 2,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "28f09e4d4382",
+      "song_id": "wo_jing_bai_mi__ye_su_e6dd6146",
+      "lrc_source": "youtube_transcript",
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "328aba5ad346",
+      "song_id": "na_me_shen_de_ke_mu_ff92abd9",
+      "lrc_source": "youtube_transcript",
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "33b8c5a4ee53",
+      "song_id": "xi_le_quan_yuan_88cd7a75",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "36a6e4e0912b",
+      "song_id": "cang_shen_zhi_chu_39437ec0",
+      "lrc_source": "youtube_transcript",
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "3c443ab5fdf1",
+      "song_id": "mi_mei_hao_ying_xu_a9a63ba1",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "41f1236fc61a",
+      "song_id": "wo_neng_gei_ni_shen_me_03b2dcb2",
+      "lrc_source": "youtube_transcript",
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "4814d8d1131e",
+      "song_id": "ai_shi_wo_men_yong_gan_6d1865b8",
+      "lrc_source": "qwen3_asr",
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "4bee85caecd0",
+      "song_id": "wo_zai_zhe_li_97e552ed",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "50f6419044cb",
+      "song_id": "mi_de_jiu_en_5c1dbb88",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "558c2421ab8c",
+      "song_id": "xin_kao_mei_yi_ju_ying_xu_df457941",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "55b7fae84a6e",
+      "song_id": "quan_xin_de_sheng_ming_5a797042",
+      "lrc_source": null,
+      "n_backups": 5,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "57a167c3ff6f",
+      "song_id": "yin_zhu_shi_jia_e5a7765f",
+      "lrc_source": null,
+      "n_backups": 2,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "5c81077aad94",
+      "song_id": "lian_jing_wo_a28b0d9e",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "609d8b53875b",
+      "song_id": "jing_bai_ye_su_b08227a2",
+      "lrc_source": "youtube_transcript",
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "621bf97917af",
+      "song_id": "he_deng_rong_yao_mei_li_de_zhu_b0ee74b5",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "639b1d624630",
+      "song_id": "zhu_mi_shi_wo_li_liang_bd7f9a85",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "6967630ec21e",
+      "song_id": "yong_huo_quan_neng_de_shen_c00c7d70",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "6a410a5c222a",
+      "song_id": "hereibow_a9271bf4",
+      "lrc_source": null,
+      "n_backups": 5,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "777480bb9d96",
+      "song_id": "shu_bu_jin_71fba0ce",
+      "lrc_source": "youtube_transcript",
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "7813486c9057",
+      "song_id": "ben_pao_bu_fang_qi_467222a5",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "78e29c9840fa",
+      "song_id": "zhu_mu_kan_ye_su_d9d7c511",
+      "lrc_source": null,
+      "n_backups": 2,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "7f0364d2caee",
+      "song_id": "shi_jia_de_ai_288ba1c9",
+      "lrc_source": null,
+      "n_backups": 2,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "85001d8b5273",
+      "song_id": "mi_yong_yuan_huo_zhu_f461da22",
+      "lrc_source": null,
+      "n_backups": 2,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "89aa957729b7",
+      "song_id": "da_shan_ke_yi_nuo_kai__zhu_de_ci_ai__8da4d2ce",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "8a369fe394fe",
+      "song_id": "yuan_mi_guo_jiang_lin_62f41e91",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "8a4663283a5c",
+      "song_id": "jun_wang_jiu_zai_zhe_li_1c32724c",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "8ce554a1a91f",
+      "song_id": "you_yi_wei_shen_c33ea762",
+      "lrc_source": null,
+      "n_backups": 4,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "99083df13975",
+      "song_id": "bu_dong_yao_de_xin_xin_c8efa2cb",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "9e2eb249c3de",
+      "song_id": "wo_xuan_ze_xi_le_e2ec9095",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "a161921cc6cd",
+      "song_id": "zai_mi_tong_zai_li_d23a1255",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "a3925e3d94bc",
+      "song_id": "wei_da_de_shen_fa92f6d2",
+      "lrc_source": null,
+      "n_backups": 3,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "a58117e12a59",
+      "song_id": "wo_yao_kan_jian_6acb645d",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "b275c5784170",
+      "song_id": "zhu_a__wo_men_jing_wei_mi_1eb5d053",
+      "lrc_source": null,
+      "n_backups": 2,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "b6a0fcf08df5",
+      "song_id": "qiu_mi_yang_qi_lian_lai_d3eee0a5",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "c04e746de0fa",
+      "song_id": "pi_shang_zan_mei_yi_9621c199",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "cf8d0dde06f0",
+      "song_id": "yi_sheng_jing_bai_mi_da2173d0",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "d6c37597e208",
+      "song_id": "iwillsinghallelujah_wo_yao_chang_ha_li_lu_ya__f5b0bc26",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "dbd506660aa3",
+      "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "e309186fa975",
+      "song_id": "mi_jiu_shi_wei_yi_aae2bf2f",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "e4938fe5f03e",
+      "song_id": "ye_he_hua_ni_xi_afde0692",
+      "lrc_source": null,
+      "n_backups": 3,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "f204143d48e6",
+      "song_id": "yun_shang_tai_yang_c51e2ec1",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    },
+    {
+      "hash_prefix": "fe4f11da783d",
+      "song_id": "wei_you_zhu_ye_su_de_bao_xue_396220cd",
+      "lrc_source": null,
+      "n_backups": 1,
+      "reason": "successor lrc_source not in llm_edit|manual_upload"
+    }
+  ],
+  "anomaly": {
+    "song_id": "bu_ting_zan_mei_mi_e937a9d3",
+    "hash_prefix": "689ad50aaebf",
+    "feedback_timeline": [
+      {
+        "rating": "sad",
+        "reason": "wrong_text",
+        "created_at": "2026-09-23T15:09:06.077166+00:00",
+        "resolved_at": null,
+        "updated_at": "2026-09-23T15:09:06.077166+00:00"
+      }
+    ],
+    "recording": {
+      "lrc_source": "manual_upload",
+      "visibility_status": "review",
+      "duration_seconds": 268.6781,
+      "tempo_bpm": 99.4
+    },
+    "ladder": [
+      {
+        "key": "689ad50aaebf/lyrics.backup.274798998.lrc",
+        "last_modified": "2026-09-24T00:21:49.800000+00:00"
+      },
+      {
+        "key": "689ad50aaebf/lyrics.backup.1790297439348.lrc",
+        "last_modified": "2026-09-25T00:50:41.420000+00:00"
+      }
+    ],
+    "before": {
+      "r2_key": "689ad50aaebf/lyrics.backup.274798998.lrc",
+      "uploaded_at": "2026-09-24T00:21:49.800000+00:00",
+      "sha12": "b44c406de0d7",
+      "sung_lines": 38
+    },
+    "after": {
+      "r2_key": "689ad50aaebf/lyrics.lrc",
+      "sha12": "6c4302daf431",
+      "sung_lines": 37
+    },
+    "canonical_lyrics_lines": [
+      "時時稱頌祢　向祢來歌唱 因祢是拯救我們偉大的神 我們尊崇祢　稱頌祢聖名 口唱心和地　大聲地讚美祢  不停讚美祢　大聲讚美祢 唯有祢配得榮耀　尊貴　權柄 天是屬於祢　地也屬於祢 一切所造之物齊來讚美祢  我讚美讚美　不停讚美 跳舞跳舞　不停跳舞 高舉雙手　大聲讚美祢  我讚美讚美　不停讚美 跳舞跳舞　不停跳舞 高舉雙手　大聲讚美祢"
+    ],
+    "canonical_lyrics_note": "songs.lyrics_lines is a single merged line (scraper artifact) — useless for per-line comparison",
+    "structured_lyrics_texts": [
+      "時時稱頌祢 向祢來歌唱",
+      "因祢是拯救我們偉大的神",
+      "我們尊崇祢 稱頌祢聖名",
+      "口唱心和地 大聲地讚美祢",
+      "不停讚美祢 大聲讚美祢",
+      "唯有祢配得榮耀 尊貴 權柄",
+      "天是屬於祢 地也屬於祢",
+      "一切所造之物齊來讚美祢",
+      "我讚美讚美 不停讚美",
+      "跳舞跳舞 不停跳舞",
+      "高舉雙手 大聲讚美祢",
+      "我讚美讚美 不停讚美",
+      "跳舞跳舞 不停跳舞",
+      "高舉雙手 大聲讚美祢"
+    ],
+    "structured_lyrics_sections": [
+      {
+        "label": "[Verse]",
+        "n_lines": 4
+      },
+      {
+        "label": "[Chorus]",
+        "n_lines": 4
+      },
+      {
+        "label": "[Bridge]",
+        "n_lines": 7
+      }
+    ],
+    "edits": {
+      "sung_lines_before": 38,
+      "sung_lines_after": 37,
+      "blank_lines_before": 0,
+      "blank_lines_after": 3,
+      "dropped_texts": [],
+      "added_texts": [
+        "我要讚美 不停讚美",
+        "大聲讚美",
+        "我要讚美 不停讚美",
+        "大聲讚美",
+        "讚美祢"
+      ],
+      "line_splits_or_merges": true,
+      "timing": {
+        "matched_lines": 4,
+        "shift_seconds_min": 0.0,
+        "shift_seconds_max": 0.0,
+        "shift_seconds_mean": 0.0,
+        "all_zero": true
+      }
+    }
+  }
+}

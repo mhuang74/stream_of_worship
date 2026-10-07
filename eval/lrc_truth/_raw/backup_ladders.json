@@ -4,7 +4,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-06 11:40:12.606357+00:00",
+  "recording_updated_at": "2026-09-06T11:40:12.606357+00:00",
   "backups": [
    {
     "key": "079b96335928/lyrics.backup.363587677.lrc",
@@ -34,7 +34,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-07-17 02:59:38.119241+00:00",
+  "recording_updated_at": "2026-07-17T02:59:38.119241+00:00",
   "backups": [
    {
     "key": "09c478ef7e9e/lyrics.backup.345168670.lrc",
@@ -52,7 +52,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-06 04:18:43.024903+00:00",
+  "recording_updated_at": "2026-09-06T04:18:43.024903+00:00",
   "backups": [
    {
     "key": "14550a91476c/lyrics.backup.1783388280318.lrc",
@@ -70,7 +70,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:48:59.078889+00:00",
+  "recording_updated_at": "2026-10-07T11:48:59.078889+00:00",
   "backups": [
    {
     "key": "196669aa37bd/lyrics.backup.1781585470948.lrc",
@@ -88,7 +88,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:48:57.989624+00:00",
+  "recording_updated_at": "2026-10-07T11:48:57.989624+00:00",
   "backups": [
    {
     "key": "20379ea26256/lyrics.backup.2820312524.lrc",
@@ -124,7 +124,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:02.453399+00:00",
+  "recording_updated_at": "2026-10-07T11:49:02.453399+00:00",
   "backups": [
    {
     "key": "2556561a5f99/lyrics.backup.1781781342533.lrc",
@@ -142,7 +142,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-06 04:18:41.609743+00:00",
+  "recording_updated_at": "2026-09-06T04:18:41.609743+00:00",
   "backups": [
    {
     "key": "28a0ed6e1408/lyrics.backup.1783390100310.lrc",
@@ -166,7 +166,7 @@
   "lrc_source": "youtube_transcript",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-24 01:50:26.183059+00:00",
+  "recording_updated_at": "2026-09-24T01:50:26.183059+00:00",
   "backups": [
    {
     "key": "28f09e4d4382/lyrics.backup.274919282.lrc",
@@ -184,7 +184,7 @@
   "lrc_source": "youtube_transcript",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-24 01:51:43.612605+00:00",
+  "recording_updated_at": "2026-09-24T01:51:43.612605+00:00",
   "backups": [
    {
     "key": "328aba5ad346/lyrics.backup.274953915.lrc",
@@ -202,7 +202,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:02.200279+00:00",
+  "recording_updated_at": "2026-10-07T11:49:02.200279+00:00",
   "backups": [
    {
     "key": "33b8c5a4ee53/lyrics.backup.1784572310871.lrc",
@@ -220,7 +220,7 @@
   "lrc_source": "youtube_transcript",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-24 01:52:35.601597+00:00",
+  "recording_updated_at": "2026-09-24T01:52:35.601597+00:00",
   "backups": [
    {
     "key": "36a6e4e0912b/lyrics.backup.274987062.lrc",
@@ -238,7 +238,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-07-17 02:58:43.132085+00:00",
+  "recording_updated_at": "2026-07-17T02:58:43.132085+00:00",
   "backups": [
    {
     "key": "3c443ab5fdf1/lyrics.backup.345419754.lrc",
@@ -256,7 +256,7 @@
   "lrc_source": "youtube_transcript",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-24 01:47:59.086237+00:00",
+  "recording_updated_at": "2026-09-24T01:47:59.086237+00:00",
   "backups": [
    {
     "key": "41f1236fc61a/lyrics.backup.274861909.lrc",
@@ -274,7 +274,7 @@
   "lrc_source": "qwen3_asr",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-24 01:53:37.643176+00:00",
+  "recording_updated_at": "2026-09-24T01:53:37.643176+00:00",
   "backups": [
    {
     "key": "4814d8d1131e/lyrics.backup.275045939.lrc",
@@ -292,7 +292,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:05.767745+00:00",
+  "recording_updated_at": "2026-10-07T11:49:05.767745+00:00",
   "backups": [
    {
     "key": "4bee85caecd0/lyrics.backup.1783387586197.lrc",
@@ -310,7 +310,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:00.164217+00:00",
+  "recording_updated_at": "2026-10-07T11:49:00.164217+00:00",
   "backups": [
    {
     "key": "50f6419044cb/lyrics.backup.125141715.lrc",
@@ -328,7 +328,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:02.964308+00:00",
+  "recording_updated_at": "2026-10-07T11:49:02.964308+00:00",
   "backups": [
    {
     "key": "558c2421ab8c/lyrics.backup.1781781669720.lrc",
@@ -346,7 +346,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:05.265396+00:00",
+  "recording_updated_at": "2026-10-07T11:49:05.265396+00:00",
   "backups": [
    {
     "key": "55b7fae84a6e/lyrics.backup.574767016.lrc",
@@ -388,7 +388,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:05.517363+00:00",
+  "recording_updated_at": "2026-10-07T11:49:05.517363+00:00",
   "backups": [
    {
     "key": "57a167c3ff6f/lyrics.backup.445153796.lrc",
@@ -412,7 +412,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:05.016306+00:00",
+  "recording_updated_at": "2026-10-07T11:49:05.016306+00:00",
   "backups": [
    {
     "key": "5c81077aad94/lyrics.backup.124035866.lrc",
@@ -430,7 +430,7 @@
   "lrc_source": "youtube_transcript",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-24 01:49:18.939291+00:00",
+  "recording_updated_at": "2026-09-24T01:49:18.939291+00:00",
   "backups": [
    {
     "key": "609d8b53875b/lyrics.backup.274886191.lrc",
@@ -448,7 +448,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-09-06 04:18:07.738953+00:00",
+  "recording_updated_at": "2026-09-06T04:18:07.738953+00:00",
   "backups": [
    {
     "key": "621bf97917af/lyrics.backup.1782620023344.lrc",
@@ -466,7 +466,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-08 01:37:03.530848+00:00",
+  "recording_updated_at": "2026-09-08T01:37:03.530848+00:00",
   "backups": [
    {
     "key": "639b1d624630/lyrics.backup.346343822.lrc",
@@ -484,7 +484,7 @@
   "lrc_source": "manual_upload",
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:48:58.243358+00:00",
+  "recording_updated_at": "2026-10-07T11:48:58.243358+00:00",
   "backups": [
    {
     "key": "675d313d8ba3/lyrics.backup.244410656.lrc",
@@ -520,7 +520,7 @@
   "lrc_source": "manual_upload",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-25 00:50:42.564679+00:00",
+  "recording_updated_at": "2026-09-25T00:50:42.564679+00:00",
   "backups": [
    {
     "key": "689ad50aaebf/lyrics.backup.274798998.lrc",
@@ -544,7 +544,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-07-17 02:56:38.648978+00:00",
+  "recording_updated_at": "2026-07-17T02:56:38.648978+00:00",
   "backups": [
    {
     "key": "6967630ec21e/lyrics.backup.343469952.lrc",
@@ -562,7 +562,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:48:57.724246+00:00",
+  "recording_updated_at": "2026-10-07T11:48:57.724246+00:00",
   "backups": [
    {
     "key": "6a410a5c222a/lyrics.backup.2127413348.lrc",
@@ -604,7 +604,7 @@
   "lrc_source": "youtube_transcript",
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-24 01:46:52.223271+00:00",
+  "recording_updated_at": "2026-09-24T01:46:52.223271+00:00",
   "backups": [
    {
     "key": "777480bb9d96/lyrics.backup.274832207.lrc",
@@ -622,7 +622,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-06 10:10:43.865150+00:00",
+  "recording_updated_at": "2026-09-06T10:10:43.865150+00:00",
   "backups": [
    {
     "key": "7813486c9057/lyrics.backup.117895059.lrc",
@@ -640,7 +640,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:03.984266+00:00",
+  "recording_updated_at": "2026-10-07T11:49:03.984266+00:00",
   "backups": [
    {
     "key": "78e29c9840fa/lyrics.backup.117748617.lrc",
@@ -664,7 +664,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:04.238338+00:00",
+  "recording_updated_at": "2026-10-07T11:49:04.238338+00:00",
   "backups": [
    {
     "key": "7f0364d2caee/lyrics.backup.90942365.lrc",
@@ -688,7 +688,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:04.508256+00:00",
+  "recording_updated_at": "2026-10-07T11:49:04.508256+00:00",
   "backups": [
    {
     "key": "85001d8b5273/lyrics.backup.41254123.lrc",
@@ -712,7 +712,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-09-06 04:16:58.554234+00:00",
+  "recording_updated_at": "2026-09-06T04:16:58.554234+00:00",
   "backups": [
    {
     "key": "89aa957729b7/lyrics.backup.1783029183953.lrc",
@@ -730,7 +730,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-07-17 02:57:22.537312+00:00",
+  "recording_updated_at": "2026-07-17T02:57:22.537312+00:00",
   "backups": [
    {
     "key": "8a369fe394fe/lyrics.backup.343580335.lrc",
@@ -748,7 +748,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:02.709380+00:00",
+  "recording_updated_at": "2026-10-07T11:49:02.709380+00:00",
   "backups": [
    {
     "key": "8a4663283a5c/lyrics.backup.1781782835545.lrc",
@@ -766,7 +766,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:04.760452+00:00",
+  "recording_updated_at": "2026-10-07T11:49:04.760452+00:00",
   "backups": [
    {
     "key": "8ce554a1a91f/lyrics.backup.42560300.lrc",
@@ -802,7 +802,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-06 04:17:35.236803+00:00",
+  "recording_updated_at": "2026-09-06T04:17:35.236803+00:00",
   "backups": [
    {
     "key": "99083df13975/lyrics.backup.3504603822.lrc",
@@ -820,7 +820,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-06 04:18:57.174957+00:00",
+  "recording_updated_at": "2026-09-06T04:18:57.174957+00:00",
   "backups": [
    {
     "key": "9e2eb249c3de/lyrics.backup.1783030420216.lrc",
@@ -838,7 +838,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:00.673413+00:00",
+  "recording_updated_at": "2026-10-07T11:49:00.673413+00:00",
   "backups": [
    {
     "key": "a161921cc6cd/lyrics.backup.123647506.lrc",
@@ -856,7 +856,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-09-06 04:17:09.841758+00:00",
+  "recording_updated_at": "2026-09-06T04:17:09.841758+00:00",
   "backups": [
    {
     "key": "a3925e3d94bc/lyrics.backup.2135773399.lrc",
@@ -886,7 +886,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-09-06 12:24:36.514220+00:00",
+  "recording_updated_at": "2026-09-06T12:24:36.514220+00:00",
   "backups": [
    {
     "key": "a58117e12a59/lyrics.backup.363374000.lrc",
@@ -904,7 +904,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:48:58.501368+00:00",
+  "recording_updated_at": "2026-10-07T11:48:58.501368+00:00",
   "backups": [
    {
     "key": "b275c5784170/lyrics.backup.1783725778345.lrc",
@@ -928,7 +928,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-07-17 02:57:09.434236+00:00",
+  "recording_updated_at": "2026-07-17T02:57:09.434236+00:00",
   "backups": [
    {
     "key": "b6a0fcf08df5/lyrics.backup.344382653.lrc",
@@ -946,7 +946,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-09-06 04:18:44.433129+00:00",
+  "recording_updated_at": "2026-09-06T04:18:44.433129+00:00",
   "backups": [
    {
     "key": "c04e746de0fa/lyrics.backup.1784569999748.lrc",
@@ -964,7 +964,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:03.217647+00:00",
+  "recording_updated_at": "2026-10-07T11:49:03.217647+00:00",
   "backups": [
    {
     "key": "cf8d0dde06f0/lyrics.backup.1781781957861.lrc",
@@ -982,7 +982,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:48:59.398390+00:00",
+  "recording_updated_at": "2026-10-07T11:48:59.398390+00:00",
   "backups": [
    {
     "key": "d6c37597e208/lyrics.backup.1782619093331.lrc",
@@ -1000,7 +1000,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:03.732786+00:00",
+  "recording_updated_at": "2026-10-07T11:49:03.732786+00:00",
   "backups": [
    {
     "key": "dbd506660aa3/lyrics.backup.1784575280578.lrc",
@@ -1018,7 +1018,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-09-06 04:18:23.263844+00:00",
+  "recording_updated_at": "2026-09-06T04:18:23.263844+00:00",
   "backups": [
    {
     "key": "e309186fa975/lyrics.backup.1784617209804.lrc",
@@ -1036,7 +1036,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-10-07 11:49:03.474364+00:00",
+  "recording_updated_at": "2026-10-07T11:49:03.474364+00:00",
   "backups": [
    {
     "key": "e4938fe5f03e/lyrics.backup.345719629.lrc",
@@ -1066,7 +1066,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "review",
-  "recording_updated_at": "2026-07-17 02:57:29.260017+00:00",
+  "recording_updated_at": "2026-07-17T02:57:29.260017+00:00",
   "backups": [
    {
     "key": "f204143d48e6/lyrics.backup.343540593.lrc",
@@ -1084,7 +1084,7 @@
   "lrc_source": null,
   "lrc_status": "completed",
   "visibility_status": "published",
-  "recording_updated_at": "2026-09-02 12:31:07.231999+00:00",
+  "recording_updated_at": "2026-09-02T12:31:07.231999+00:00",
   "backups": [
    {
     "key": "fe4f11da783d/lyrics.backup.1783388539532.lrc",
