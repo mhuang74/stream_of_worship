@@ -289,17 +289,20 @@ class TestProbeRunner:
         assert report["stopped_at_song"] == "s1"
         assert "YouTube Data API" in report["note"]
 
-    def test_main_self_check_honors_injected_snapshot(self, tmp_path):
-        """--snapshot must win over DEFAULT_SNAPSHOT for seed provenance."""
+    def test_main_self_check_flags_diverging_snapshot_provenance(self, tmp_path):
+        """A snapshot provenance that diverges from the pinned Appendix-A
+        map must FAIL loudly (exit 1, divergence recorded) — never be
+        adopted wholesale, which would let a partial snapshot silently
+        shrink the assertion set."""
         from probe_transcript_retrievability import main
 
-        fetch = make_fetch([["  ".join([f"line{i}" for i in range(12)])]])
+        fetch = make_fetch([[]])
         manifest_path = tmp_path / "m.json"
         runner = ProbeRunner(fetch_fn=fetch, clock=make_clock(), manifest_path=manifest_path)
         report_path = tmp_path / "report.json"
         snapshot_path = tmp_path / "custom-snap.json"
 
-        # Provenance diverging from the Appendix-A fallback: qwen3_asr here.
+        # Partial provenance (1 entry, reclassified): must fail the run.
         snapshot_path.write_text(
             json.dumps(
                 {
@@ -325,24 +328,28 @@ class TestProbeRunner:
             ],
             runner_factory=lambda: runner,
             url_resolver=lambda specs: [
-                setattr(s, "youtube_url", "https://www.youtube.com/watch?v=vid9") for s in specs
+                setattr(s, "youtube_url", f"https://www.youtube.com/watch?v={s.song_id}")
+                for s in specs
             ],
         )
 
-        # The single seeded song carries qwen3_asr per the CUSTOM snapshot:
-        # if the DEFAULT snapshot (6 youtube_transcript + 1 qwen3_asr + 1
-        # manual_upload seeds) had been used instead, the qwen3_asr songs
-        # would be retrieved via the same video and the self-check would
-        # fail with 'unexpectedly retrievable'.
-        assert code == 0
+        assert code == 1
         report = json.loads(report_path.read_text())
         assert report["source_of"] == "snapshot"
-        assert report["asserted"] == 1
-        assert report["results"]["wo_jing_bai_mi__ye_su_e6dd6146"]["retrievable"] is False
+        assert report["passed"] is False
+        assert report["asserted"] == 7  # pinned expectation, not the 1-entry snapshot
+        assert len(report["divergences"]) == 8  # 7 missing + 1 reclassified
+        assert any("missing from snapshot provenance" in d for d in report["divergences"])
+        assert any(
+            "snapshot='qwen3_asr' vs pinned='youtube_transcript'" in d
+            for d in report["divergences"]
+        )
+        # all 8 pinned seeds were still probed/evaluated
+        assert len(report["results"]) == 8
 
 
 # --------------------------------------------------------------------------
-# Self-check evaluation (pure)
+# Seed self-check
 # --------------------------------------------------------------------------
 
 
@@ -401,3 +408,61 @@ class TestEvaluateSelfCheck:
         assert report["passed"] is True
         assert report["asserted"] == 0
         assert report["recorded_only"] == ["x"]
+
+
+class TestProvenanceGuard:
+    """The pinned Appendix-A map is the assertion target; the snapshot's
+    provenance is a cross-check that must fail loudly on divergence."""
+
+    def test_matching_provenance_yields_no_divergences(self):
+        from probe_transcript_retrievability import (
+            SEED_NEGATIVE_SOURCES,
+            provenance_divergences,
+        )
+
+        assert provenance_divergences(SEED_NEGATIVE_SOURCES, SEED_NEGATIVE_SOURCES) == []
+
+    def test_none_provenance_diverges(self):
+        from probe_transcript_retrievability import provenance_divergences
+
+        divergences = provenance_divergences({"s1": "youtube_transcript"}, None)
+        assert divergences == ["snapshot has no seed_subsets.negative.lrc_source_provenance"]
+
+    def test_missing_and_reclassified_and_extra_seeds_reported(self):
+        from probe_transcript_retrievability import provenance_divergences
+
+        pinned = {"s1": "youtube_transcript", "s2": "qwen3_asr", "s3": "manual_upload"}
+        snapshot = {"s1": "qwen3_asr", "s2": "qwen3_asr", "sX": "youtube_transcript"}
+        divergences = provenance_divergences(pinned, snapshot)
+        assert any(
+            "s1" in d and "qwen3_asr" in d and "youtube_transcript" in d for d in divergences
+        )
+        assert any("s3" in d and "missing" in d for d in divergences)
+        assert any("sX" in d and "unexpected extra" in d for d in divergences)
+
+    def test_run_self_check_passes_on_fallback_when_snapshot_lacks_provenance(self, tmp_path):
+        """A snapshot with no provenance entry → pinned map still drives the
+        evaluation (recorded manual_upload, source_of='fallback')."""
+        from probe_transcript_retrievability import ProbeRunner, run_self_check
+
+        lines = [f"line{i}" for i in range(12)]
+        runner = ProbeRunner(
+            fetch_fn=lambda url: lines,
+            clock=make_clock(),
+            manifest_path=tmp_path / "m.json",
+        )
+        empty_snapshot = tmp_path / "snap.json"
+        empty_snapshot.write_text(json.dumps({"review_queue": []}))
+
+        report = run_self_check(
+            runner,
+            config_path=None,
+            snapshot_path=empty_snapshot,
+            url_resolver=lambda specs: [
+                setattr(s, "youtube_url", f"https://www.youtube.com/watch?v={s.song_id}")
+                for s in specs
+            ],
+        )
+        assert report["source_of"] == "fallback"
+        assert report["asserted"] == 7
+        assert report["passed"] is False  # qwen3_asr seed unexpectedly retrievable

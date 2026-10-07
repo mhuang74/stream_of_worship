@@ -362,9 +362,13 @@ class ProbeRunner:
 # Seed self-check
 # --------------------------------------------------------------------------
 
-# Fallback only: the authoritative seed map is the Phase 0a snapshot's
-# seed_subsets.negative.lrc_source_provenance — loaded from there first,
-# so the self-check cannot silently drift from the anchored map.
+# Authoritative assertion target (specs/...design-v2.md Appendix A, pin
+# snapshot 2026-10-07): the self-check asserts THIS map's expectation —
+# 6 youtube_transcript retrievable, the qwen3_asr seed not, the
+# manual_upload anomaly recorded only. The Phase 0a snapshot's
+# seed_subsets.negative.lrc_source_provenance is only a cross-check: a
+# drifting/partial provenance must FAIL loudly here (divergences below),
+# never silently shrink the assertion set.
 SEED_NEGATIVE_SOURCES = {
     "bu_ting_zan_mei_mi_e937a9d3": "manual_upload",  # anomaly: recorded, not asserted
     "shu_bu_jin_71fba0ce": "youtube_transcript",
@@ -376,19 +380,46 @@ SEED_NEGATIVE_SOURCES = {
     "ai_shi_wo_men_yong_gan_6d1865b8": "qwen3_asr",
 }
 
+EXPECTED_ASSERTED = 7  # 6 youtube_transcript + 1 qwen3_asr seeds
 
-def load_seed_sources(snapshot_path: Path) -> tuple[dict[str, str], str]:
-    """Seed song_id → lrc_source from the Phase 0a snapshot's provenance map.
 
-    Returns (sources, source) where source is 'snapshot' or 'fallback', so
-    the self-check report records which anchor was used.
+def load_seed_sources(
+    snapshot_path: Path,
+) -> tuple[dict[str, str], dict[str, str] | None, str]:
+    """Load the pinned seed map plus the snapshot's provenance for
+    cross-checking.
+
+    Returns (sources, snapshot_provenance, source_of) where ``sources`` is
+    always the pinned SEED_NEGATIVE_SOURCES (the assertion target) and
+    ``snapshot_provenance`` is the snapshot's map (None when absent), so the
+    caller can report divergence instead of adopting it wholesale.
     """
     if snapshot_path.exists():
         data = json.loads(snapshot_path.read_text(encoding="utf-8"))
         provenance = data.get("seed_subsets", {}).get("negative", {}).get("lrc_source_provenance")
         if provenance:
-            return dict(provenance), "snapshot"
-    return dict(SEED_NEGATIVE_SOURCES), "fallback"
+            return dict(SEED_NEGATIVE_SOURCES), dict(provenance), "snapshot"
+    return dict(SEED_NEGATIVE_SOURCES), None, "fallback"
+
+
+def provenance_divergences(
+    pinned: dict[str, str], snapshot_provenance: dict[str, str] | None
+) -> list[str]:
+    """Human-readable divergence list between pinned and snapshot maps."""
+    if snapshot_provenance is None:
+        return ["snapshot has no seed_subsets.negative.lrc_source_provenance"]
+    divergences: list[str] = []
+    for song_id, source in pinned.items():
+        if song_id not in snapshot_provenance:
+            divergences.append(f"{song_id}: missing from snapshot provenance")
+        elif snapshot_provenance[song_id] != source:
+            divergences.append(
+                f"{song_id}: snapshot={snapshot_provenance[song_id]!r} vs pinned={source!r}"
+            )
+    for song_id in snapshot_provenance:
+        if song_id not in pinned:
+            divergences.append(f"{song_id}: unexpected extra seed in snapshot provenance")
+    return divergences
 
 
 def evaluate_self_check(
@@ -510,20 +541,47 @@ def run_self_check(
     runner: ProbeRunner,
     config_path: str | None,
     snapshot_path: Path | None = None,
+    url_resolver: Callable[[list[SongProbeSpec]], None] | None = None,
 ) -> dict[str, Any]:
-    """Probe the 8 seed negatives and evaluate the seed expectations."""
-    sources, source_of = load_seed_sources(snapshot_path or DEFAULT_SNAPSHOT)
+    """Probe the 8 seed negatives and evaluate the pinned seed expectations.
+
+    The pinned map (SEED_NEGATIVE_SOURCES) is the assertion target; the
+    snapshot's provenance is cross-checked and any divergence is recorded
+    AND fails the self-check, so a drifted/partial snapshot provenance can
+    never silently shrink the assertion set.
+    """
+    sources, snapshot_provenance, source_of = load_seed_sources(snapshot_path or DEFAULT_SNAPSHOT)
+    divergences = provenance_divergences(sources, snapshot_provenance)
     specs = [
         SongProbeSpec(song_id=song_id, youtube_url="", lrc_source=source)
         for song_id, source in sources.items()
     ]
-    resolve_urls(specs, config_path)
+    if url_resolver is not None:
+        url_resolver(specs)
+    else:
+        resolve_urls(specs, config_path)
     missing = [s.song_id for s in specs if not s.youtube_url]
     if missing:
         raise SystemExit(f"no youtube_url in DB for seed songs: {missing}")
     results = {s.song_id: r for s, r in zip(specs, runner.run(specs))}
     report = evaluate_self_check(results, sources)
     report["source_of"] = source_of
+    report["divergences"] = divergences
+    report["failures"] = report["failures"] + [
+        {"song_id": "*", "problem": f"seed provenance divergence: {d}"} for d in divergences
+    ]
+    report["passed"] = not report["failures"]
+    if report["asserted"] != EXPECTED_ASSERTED:
+        report["failures"].append(
+            {
+                "song_id": "*",
+                "problem": (
+                    f"asserted count {report['asserted']} != expected {EXPECTED_ASSERTED} "
+                    "(partial provenance silently shrank the assertion set)"
+                ),
+            }
+        )
+        report["passed"] = False
     report["results"] = {
         sid: {
             "retrievable": r.retrievable,
