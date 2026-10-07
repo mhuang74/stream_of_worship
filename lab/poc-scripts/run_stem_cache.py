@@ -23,6 +23,13 @@ Usage (from repo root):
         python lab/poc-scripts/run_stem_cache.py \
         [--set phase12] [--cache-dir <path>] [--manifest <path>] [--dry-run]
 
+Cache root defaults to ``sow_legacy_cli_tui.core.paths.get_cache_dir()``
+(``~/.cache/stream-of-worship`` on Linux) — the same root the Phase 1/2
+consumer ``poc/experiment_lrc_signals.py`` resolves stems from; override
+with ``--cache-dir``. Layout per song:
+``<cache_root>/<hash_prefix>/stems/clean_vocals.flac`` (+ ``audio/audio.mp3``
+input).
+
 Set ``MVSEP_API_KEY`` in the environment for the separation path.
 """
 
@@ -30,23 +37,22 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from stem_cache import (  # noqa: E402
+from stem_cache import (
     CacheStatus,
+    SongRef,
     StemCacheError,
     StemCacheManifest,
-    SongRef,
     load_or_init_manifest,
     lookup_r2_clean_vocals,
     next_pending,
     pick_dry_vocals,
     record_result,
-    save_manifest,
     try_lock_serial,
 )
 
@@ -128,8 +134,9 @@ def _mvsep_separate(
     stage1_dir = output_dir / "stage1_vocal_separation"
     stage2_dir = output_dir / "stage2_dereverb"
 
-    print(f"  [mvsep] Stage 1: sep_type={MVSEP_STAGE1_SEP_TYPE} "
-          f"add_opt1={MVSEP_STAGE1_ADD_OPT1}")
+    print(
+        f"  [mvsep] Stage 1: sep_type={MVSEP_STAGE1_SEP_TYPE} " f"add_opt1={MVSEP_STAGE1_ADD_OPT1}"
+    )
     job_hash = submit_job(
         audio_path,
         api_token,
@@ -143,8 +150,9 @@ def _mvsep_separate(
     if vocals is None:
         raise StemCacheError(f"MVSEP stage 1 produced no vocals file: {stage1_paths}")
 
-    print(f"  [mvsep] Stage 2: sep_type={MVSEP_STAGE2_SEP_TYPE} "
-          f"add_opt1={MVSEP_STAGE2_ADD_OPT1}")
+    print(
+        f"  [mvsep] Stage 2: sep_type={MVSEP_STAGE2_SEP_TYPE} " f"add_opt1={MVSEP_STAGE2_ADD_OPT1}"
+    )
     job_hash = submit_job(
         vocals,
         api_token,
@@ -159,14 +167,14 @@ def _mvsep_separate(
 
 
 def process_song(
-    ref: tuple[str, str],
+    ref: SongRef,
     *,
     cache_root: Path,
     manifest: StemCacheManifest,
     manifest_path: Path,
     r2_client,
     mvsep_fn: Callable[[Path, Path], list[Path]],
-    mvsep_token: Optional[str] = None,
+    mvsep_token: str | None = None,
 ) -> tuple[str, CacheStatus, str]:
     """Resolve clean vocals for one song through the priority chain.
 
@@ -174,7 +182,7 @@ def process_song(
     ``cached`` (de-echoed clean vocals), ``fallback`` (wet vocal stem
     explicitly recorded — never presented as clean), or ``failed``.
     """
-    song_id, hash_prefix = ref
+    song_id, hash_prefix = ref.song_id, ref.hash_prefix
     song_dir = cache_root / hash_prefix
     stems_dir = song_dir / "stems"
     clean_path = stems_dir / "clean_vocals.flac"
@@ -265,7 +273,7 @@ def run(
     cache_root: Path,
     manifest_path: Path,
     lock_path: Path,
-    config_path: Optional[Path],
+    config_path: Path | None,
     dry_run: bool,
 ) -> RunSummary:
     summary = RunSummary()
@@ -290,26 +298,31 @@ def run(
         )
 
         manifest = load_or_init_manifest(manifest_path)
-        pending = next_pending(
-            manifest, [SongRef(sid, hp) for sid, hp in refs]
-        )
-        resolved = {sid: (sid, hp) for sid, hp in refs}
+        pending = next_pending(manifest, [SongRef(sid, hp) for sid, hp in refs])
         summary.skipped = len(refs) - len(pending)
-        print(f"songs: {len(refs)} total, {summary.skipped} already resolved, "
-              f"{len(pending)} pending")
+        print(
+            f"songs: {len(refs)} total, {summary.skipped} already resolved, "
+            f"{len(pending)} pending"
+        )
 
         if dry_run:
-            for sid, _ in pending:
-                print(f"  pending: {sid}")
+            for ref in pending:
+                print(f"  pending: {ref.song_id}")
             return summary
 
         import os
 
         mvsep_token = os.environ.get("MVSEP_API_KEY")
-        mvsep_fn = _mvsep_separate
+        if not mvsep_token:
+            raise StemCacheError(
+                "MVSEP_API_KEY not set; required for songs without cached R2 stems"
+            )
+
+        def mvsep_fn(audio_path: Path, output_dir: Path) -> list[Path]:
+            return _mvsep_separate(audio_path, output_dir, mvsep_token)
 
         for ref in pending:
-            song_id = ref[0]
+            song_id = ref.song_id
             try:
                 _, status, source = process_song(
                     ref,
@@ -324,7 +337,7 @@ def run(
                 record_result(
                     manifest,
                     manifest_path,
-                    SongRef(*ref),
+                    ref,
                     status=CacheStatus.FAILED,
                     error=f"{type(e).__name__}: {e}",
                 )
@@ -385,9 +398,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cache_dir is not None:
         cache_root = args.cache_dir
     else:
-        from stream_of_worship.admin.config import get_cache_dir
+        # Default to the same root the Phase 1/2 consumer
+        # (poc/experiment_lrc_signals.py, via sow_legacy_cli_tui paths) resolves
+        # stems from: ~/.cache/stream-of-worship on Linux — NOT the
+        # sow-admin cache dir.
+        from sow_legacy_cli_tui.core.paths import get_cache_dir as legacy_get_cache_dir
 
-        cache_root = get_cache_dir()
+        cache_root = legacy_get_cache_dir()
 
     try:
         summary = run(

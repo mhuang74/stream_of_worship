@@ -16,16 +16,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from stem_cache import (
     CacheStatus,
-    StemCacheError,
-    StemCacheManifest,
     SongRef,
+    StemCacheError,
     load_or_init_manifest,
     lookup_r2_clean_vocals,
     next_pending,
     record_result,
     try_lock_serial,
 )
-
 
 # --------------------------------------------------------------------------
 # Manifest load/init
@@ -220,13 +218,12 @@ class TestNextPending:
     def test_hash_prefix_mismatch_is_error(self, tmp_path: Path):
         path = tmp_path / "manifest.json"
         manifest = load_or_init_manifest(path)
+        # manifest claims a different prefix for the same song id
+        manifest.songs["song_a"] = {
+            "status": "pending",
+            "hash_prefix": "ffffffffffff",
+        }
         with pytest.raises(StemCacheError, match="hash_prefix"):
-            next_pending(manifest, [_song("song_a", "aaaaaaaaaaaa")])
-            # manifest claims a different prefix for the same song id
-            manifest.songs["song_a"] = {
-                "status": "pending",
-                "hash_prefix": "ffffffffffff",
-            }
             next_pending(manifest, [_song("song_a", "aaaaaaaaaaaa")])
 
 
@@ -238,10 +235,12 @@ class TestNextPending:
 class TestSerialLock:
     def test_second_concurrent_invocation_fails_loudly(self, tmp_path: Path):
         lock_path = tmp_path / "serial.lock"
-        with try_lock_serial(lock_path):
+        with (
+            try_lock_serial(lock_path),
+            pytest.raises(StemCacheError, match="already running"),
+        ):
             # a second acquire while held must raise, not block
-            with pytest.raises(StemCacheError, match="already running"):
-                try_lock_serial(lock_path).__enter__()
+            try_lock_serial(lock_path).__enter__()
 
     def test_lock_released_after_context(self, tmp_path: Path):
         lock_path = tmp_path / "serial.lock"

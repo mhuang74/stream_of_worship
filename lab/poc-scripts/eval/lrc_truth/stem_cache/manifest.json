@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-07T14:14:19+00:00",
+  "updated_at": "2026-10-07T14:41:43+00:00",
+  "songs": {
+    "zhu_a__wo_yao_gen_sui_mi_83163301": {
+      "status": "cached",
+      "hash_prefix": "dbd506660aa3",
+      "resolved_at": "2026-10-07T14:15:19+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "hereforyou_62e79ae9": {
+      "status": "cached",
+      "hash_prefix": "20379ea26256",
+      "resolved_at": "2026-10-07T14:15:24+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "xin_kao_mei_yi_ju_ying_xu_df457941": {
+      "status": "cached",
+      "hash_prefix": "558c2421ab8c",
+      "resolved_at": "2026-10-07T14:15:27+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "cong_zao_chen_dao_ye_wan_b035044f": {
+      "status": "cached",
+      "hash_prefix": "e5c16c2f35f2",
+      "resolved_at": "2026-10-07T14:15:32+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "mei_hao_de_chuang_zao_3d42d76e": {
+      "status": "cached",
+      "hash_prefix": "196669aa37bd",
+      "resolved_at": "2026-10-07T14:15:36+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "shu_bu_jin_71fba0ce": {
+      "status": "cached",
+      "hash_prefix": "777480bb9d96",
+      "resolved_at": "2026-10-07T14:20:44+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "wo_neng_gei_ni_shen_me_03b2dcb2": {
+      "status": "cached",
+      "hash_prefix": "41f1236fc61a",
+      "resolved_at": "2026-10-07T14:27:23+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "jing_bai_ye_su_b08227a2": {
+      "status": "cached",
+      "hash_prefix": "609d8b53875b",
+      "resolved_at": "2026-10-07T14:41:43+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "ai_shi_wo_men_yong_gan_6d1865b8": {
+      "status": "cached",
+      "hash_prefix": "4814d8d1131e",
+      "resolved_at": "2026-10-07T14:15:45+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac"
+    },
+    "bu_ting_zan_mei_mi_e937a9d3": {
+      "status": "cached",
+      "hash_prefix": "689ad50aaebf",
+      "resolved_at": "2026-10-07T14:15:49+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac"
+    }
+  }
+}

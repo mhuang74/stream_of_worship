@@ -28,7 +28,6 @@ from stem_cache import (
     record_result,
 )
 
-
 # --------------------------------------------------------------------------
 # Phase 1/2 song set
 # --------------------------------------------------------------------------
@@ -98,8 +97,8 @@ class TestProcessSong:
         r2.file_exists.side_effect = lambda key: key == "aaaaaaaaaaaa/stems/vocals_dry.flac"
         r2.download_file.side_effect = lambda key, dest: dest.write_bytes(b"flac-bytes")
 
-        song_id, status, source = process_song(
-            ("song_a", "aaaaaaaaaaaa"),
+        _song_id, status, source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
             cache_root=cache_root,
             manifest=manifest,
             manifest_path=manifest_path,
@@ -112,7 +111,9 @@ class TestProcessSong:
         assert stored["status"] == "cached"
         assert stored["audio"] == "stems/clean_vocals.flac"
         # copied into the canonical clean_vocals.flac slot
-        assert (cache_root / "aaaaaaaaaaaa" / "stems" / "clean_vocals.flac").read_bytes() == b"flac-bytes"
+        assert (
+            cache_root / "aaaaaaaaaaaa" / "stems" / "clean_vocals.flac"
+        ).read_bytes() == b"flac-bytes"
         r2.download_file.assert_called_once_with(
             "aaaaaaaaaaaa/stems/vocals_dry.flac",
             cache_root / "aaaaaaaaaaaa" / "stems" / "vocals_dry.flac",
@@ -126,8 +127,8 @@ class TestProcessSong:
         r2.file_exists.side_effect = lambda key: key == "aaaaaaaaaaaa/stems/vocals.flac"
         r2.download_file.side_effect = lambda key, dest: dest.write_bytes(b"wet")
 
-        song_id, status, source = process_song(
-            ("song_a", "aaaaaaaaaaaa"),
+        _song_id, status, source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
             cache_root=cache_root,
             manifest=manifest,
             manifest_path=manifest_path,
@@ -150,8 +151,8 @@ class TestProcessSong:
         dry.write_bytes(b"clean")
         mvsep = MagicMock(return_value=[dry])
 
-        song_id, status, source = process_song(
-            ("song_a", "aaaaaaaaaaaa"),
+        _song_id, status, source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
             cache_root=cache_root,
             manifest=manifest,
             manifest_path=manifest_path,
@@ -177,8 +178,8 @@ class TestProcessSong:
         def boom(*a, **kw):
             raise RuntimeError("MVSEP queue full")
 
-        song_id, status, source = process_song(
-            ("song_a", "aaaaaaaaaaaa"),
+        _song_id, status, _source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
             cache_root=cache_root,
             manifest=manifest,
             manifest_path=manifest_path,
@@ -201,8 +202,8 @@ class TestProcessSong:
 
         mvsep = MagicMock(return_value=[])
 
-        song_id, status, source = process_song(
-            ("song_a", "aaaaaaaaaaaa"),
+        _song_id, status, _source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
             cache_root=cache_root,
             manifest=manifest,
             manifest_path=manifest_path,
@@ -231,8 +232,8 @@ class TestProcessSong:
         r2.file_exists.side_effect = lambda key: key == "aaaaaaaaaaaa/stems/vocals_dry.flac"
         r2.download_file.side_effect = lambda key, dest: dest.write_bytes(b"flac")
 
-        song_id, status, source = process_song(
-            ("song_a", "aaaaaaaaaaaa"),
+        _song_id, status, _source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
             cache_root=cache_root,
             manifest=manifest2,
             manifest_path=manifest_path,
@@ -252,8 +253,8 @@ class TestProcessSong:
         manifest, manifest_path = _make_ctx(cache_root, tmp_path)
 
         r2 = MagicMock(side_effect=AssertionError("R2 must not be touched"))
-        song_id, status, source = process_song(
-            ("song_a", "aaaaaaaaaaaa"),
+        _song_id, status, source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
             cache_root=cache_root,
             manifest=manifest,
             manifest_path=manifest_path,
@@ -293,7 +294,7 @@ class TestRunnerIdempotence:
         )
         assert pending == []
 
-        r2 = MagicMock(side_effect=AssertionError("cached song must not be touched"))
+        MagicMock(side_effect=AssertionError("cached song must not be touched"))
         # no process_song call happens for a song with no pending work —
         # the runner's loop only calls process_song on next_pending entries.
         assert before == json.loads(manifest_path.read_text(encoding="utf-8"))

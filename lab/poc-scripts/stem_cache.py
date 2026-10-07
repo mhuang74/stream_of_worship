@@ -30,12 +30,13 @@ import fcntl
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
 MANIFEST_SCHEMA_VERSION = 1
 
@@ -69,7 +70,7 @@ class SongRef:
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 class StemCacheManifest:
@@ -119,9 +120,7 @@ def save_manifest(manifest: StemCacheManifest, path: Path) -> None:
     """Atomically persist the manifest (temp file + rename, no partial reads)."""
     manifest.data["updated_at"] = _utcnow()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
-    )
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(manifest.to_json())
@@ -140,9 +139,9 @@ def record_result(
     song: SongRef,
     *,
     status: CacheStatus,
-    source: Optional[str] = None,
-    audio: Optional[str] = None,
-    error: Optional[str] = None,
+    source: str | None = None,
+    audio: str | None = None,
+    error: str | None = None,
 ) -> None:
     """Record one song's outcome and persist the manifest atomically.
 
@@ -208,7 +207,7 @@ def try_lock_serial(lock_path: Path) -> Iterator[None]:
     rather than queueing, a second invocation errors out.
     """
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = open(lock_path, "w")
+    handle = open(lock_path, "w")  # noqa: SIM115 — lock fd must outlive the yield
     try:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -224,7 +223,7 @@ def try_lock_serial(lock_path: Path) -> Iterator[None]:
             handle.close()
 
 
-def lookup_r2_clean_vocals(r2_client: Any, hash_prefix: str) -> Optional[tuple[str, str]]:
+def lookup_r2_clean_vocals(r2_client: Any, hash_prefix: str) -> tuple[str, str] | None:
     """Best available vocal stem in R2 for *hash_prefix*.
 
     Returns (source_name, relative_audio_path) or None when the recording has
@@ -238,7 +237,7 @@ def lookup_r2_clean_vocals(r2_client: Any, hash_prefix: str) -> Optional[tuple[s
     return None
 
 
-def pick_dry_vocals(downloaded: list[Path]) -> Optional[Path]:
+def pick_dry_vocals(downloaded: list[Path]) -> Path | None:
     """Pick the dry-vocals file from downloaded MVSEP outputs.
 
     MVSEP de-reverb outputs are named like "vocals_(No Reverb).flac"; fall
