@@ -79,7 +79,9 @@ def is_ms_epoch(ts: str) -> bool:
 def parse_lrc_lines(text: str) -> list[dict]:
     """Parse LRC into [{time_s, text}] preserving order; blank-text placeholder
     lines (ADR-0008) keep their timestamp with text=''. Non-timestamped lines
-    (metadata tags) are dropped."""
+    (metadata tags) are dropped. Internal whitespace runs (multi-space, CJK
+    spacing churn) collapse to a single space so spacing-only variants do not
+    become phantom dropped/added texts."""
     rows = []
     for raw in text.splitlines():
         line = raw.rstrip("\n")
@@ -88,7 +90,7 @@ def parse_lrc_lines(text: str) -> list[dict]:
             continue
         minutes, seconds, frac = m.groups()
         time_s = int(minutes) * 60 + int(seconds) + int(frac or 0) / 10 ** len(frac or "0")
-        text_part = line.strip()[m.end() :].strip()
+        text_part = re.sub(r"\s+", " ", line.strip()[m.end() :]).strip()
         rows.append({"time_s": round(time_s, 3), "text": text_part})
     return rows
 
@@ -131,34 +133,38 @@ def _normalized(text: str) -> str:
 
 
 def _reconstructs(target: str, pieces: list[str]) -> bool:
-    """True when ≥2 pieces (spaces stripped, concatenated) equal ``target``
-    (spaces stripped) — a real split/merge shares ALL its text. A single
-    equal piece is a pure re-spacing of the same line, not a split.
+    """True when ≥2 pieces (spaces stripped) exactly partition ``target``
+    (spaces stripped) as contiguous substrings, in any order — a real
+    split/merge shares ALL its text, with line boundaries moved. A single
+    equal piece is a pure re-spacing of the same line, not a split (n≥2
+    enforced via the piece count in the DP state).
 
-    Order-insensitive: pieces are matched in list order first, then in sorted
-    order (the merge direction enumerates dropped texts in *before*-list
-    order, which need not match the target's reading order). Length-pruned
-    combinations keep this cheap on large delta lists.
+    DP over target positions (O(len(target)·|pieces|)): order-insensitive
+    yet exact — each piece must match a contiguous span and the spans must
+    tile the target, so reordered merges are caught while near-anagrams
+    (reordered chars, not reordered lines) are not.
 
     Deliberately exact: partial resegmentation (a moved split point where a
     refrain tail lands elsewhere) is indistinguishable from a rewrite when
     refrains repeat, so it is NOT flagged — zero false positives preferred
     for a calibration dataset."""
-    import itertools
-
     t = _normalized(target)
     if not t:
         return False
-    usable = [_normalized(p) for p in pieces if p]
-    t_sorted = "".join(sorted(t))
-    for n in range(2, len(usable) + 1):
-        for combo in itertools.combinations(usable, n):
-            if sum(map(len, combo)) != len(t):
+    usable = sorted({_normalized(p) for p in pieces if p}, key=len, reverse=True)
+    usable = [p for p in usable if p]
+    # State (pos, min(pieces_used, 2)): reaching (len(t), 2) means the target
+    # is fully tiled by ≥2 pieces. Capping the count at 2 bounds the state
+    # space; any count ≥2 is equivalent for the flag.
+    reachable = {(0, 0)}
+    for pos in range(len(t)):
+        for count in (0, 1):
+            if (pos, count) not in reachable:
                 continue
-            joined = "".join(combo)
-            if joined == t or "".join(sorted(joined)) == t_sorted:
-                return True
-    return False
+            for p in usable:
+                if t.startswith(p, pos):
+                    reachable.add((pos + len(p), min(count + 1, 2)))
+    return (len(t), 2) in reachable
 
 
 def classify_edits(before: list[dict], after: list[dict]) -> dict:

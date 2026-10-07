@@ -103,8 +103,10 @@ Backup keys mix two timestamp sources:
   what the live recording actually sings in the outro. 38→37 sung lines,
   3 blank ADR-0008 placeholders kept. Per-text counts
   (`count_changes`): the chorus lines drop 5→3 / 5→3 / 7→5; the outro lines
-  appear 0→2 / 0→2 / 0→1. Occurrence-index timing: 32/38 lines matched,
-  all shifts zero. Not a split/merge (`line_splits_or_merges=false`).
+  appear 0→2 / 0→2 / 0→1. Occurrence-index timing: 32/38 lines matched;
+  the 32 unchanged-text lines all keep their timestamps, while 6 reworded
+  lines re-anchor with shifts up to 19.66 s. Not a split/merge
+  (`line_splits_or_merges=false`).
 
 ## Anomaly inspection: manual_upload seed negative
 
@@ -128,6 +130,9 @@ inspect" seed negative. Findings:
      the YouTube structured lyrics carry the bridge only 2×. The 09-25 fix
      also added outro lines (`我要讚美 不停讚美`, `大聲讚美`) 0→2 and a final
      `讚美祢` tag 0→1.
+   - occurrence-index timing: 32/38 lines matched, near-zero shifts
+     (−0.69…+0.79 s, mean +0.003 s) — the fix was text/structure-only, not a
+     retime; the 6 unmatched lines are the reworded bridge/chorus lines.
    - the 20-silent-second instrumental gaps carried no ADR-0008 placeholder
      lines (0 blanks) — the fix inserted 3.
 3. **Canonical catalog text is unusable for comparison**: `songs.lyrics_lines`
@@ -154,12 +159,17 @@ inspect" seed negative. Findings:
   output, i.e. exactly the failures a checker must catch; pairs with
   `all_zero` timing are the text-only-edit subset.
 - Classifier precision note: `line_splits_or_merges` fires only on exact
-  reconstruction (≥2 added texts concatenating, spaces stripped, to a dropped
-  text, or vice versa). Deliberately zero-false-positive: partial
-  resegmentation (moved split points, e.g. `shi_jia_de_ai_288ba1c9`) and
-  pure re-spacing (`wo_xuan_ze_xi_le_e2ec9095`) are NOT flagged, because
-  repeated refrains make fuzzy matching indistinguishable from rewrites.
-  Consumers wanting those cases should use the per-pair `diff` directly.
+  reconstruction — ≥2 added texts whose space-stripped strings tile a dropped
+  text as contiguous spans (DP over target positions, order-insensitive), or
+  vice versa. Deliberately zero-false-positive: char anagrams, partial
+  resegmentation (moved split points, e.g. `shi_jia_de_ai_288ba1c9`), and
+  pure re-spacing (`wo_xuan_ze_xi_le_e2ec9095`; internal whitespace collapses
+  at parse time) are NOT flagged, because repeated refrains make fuzzy
+  matching indistinguishable from rewrites. Consumers wanting those cases
+  should use the per-pair `diff` directly. Known limitation: a split whose
+  tail text already exists elsewhere (net count unchanged, e.g.
+  `wo_de_ye_su_4c27d159`) leaves no delta-list trace — read its `diff` and
+  per-line timing instead.
 - The 6 youtube_transcript + 1 qwen3_asr seed negatives each have a
   2026-09-24 00:21–00:26 batch backup that preserves their **pre-regen**
   (feedback-time) state; current content differs (post-regen). The same

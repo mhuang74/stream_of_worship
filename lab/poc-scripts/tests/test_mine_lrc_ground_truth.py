@@ -160,14 +160,15 @@ class TestClassifyEdits:
         assert edits["added_texts"] == []
 
     def test_respacing_only_not_flagged(self):
-        # whole ladder re-spaced (multi-space -> single-space): texts differ
-        # as strings but normalize equal → re-spacing, not a split/merge
+        # whole ladder re-spaced (multi-space -> single-space): parse-time
+        # whitespace collapse makes the texts identical → no phantom delta
         before = parse_lrc_lines("[00:10.0]禱告   凡事謝恩\n[00:20.0]神在這裡   喜樂無止盡")
         after = parse_lrc_lines("[00:10.0]禱告 凡事謝恩\n[00:20.0]神在這裡 喜樂無止盡")
         edits = classify_edits(before, after)
-        assert edits["dropped_texts"] == ["禱告   凡事謝恩", "神在這裡   喜樂無止盡"]
-        assert edits["added_texts"] == ["禱告 凡事謝恩", "神在這裡 喜樂無止盡"]
+        assert edits["dropped_texts"] == []
+        assert edits["added_texts"] == []
         assert edits["line_splits_or_merges"] is False
+        assert edits["timing"]["matched_lines"] == 2
 
     def test_short_phrase_overlap_not_flagged(self):
         # "大聲讚美" appears inside the dropped "不停讚美祢 大聲讚美祢" but the
@@ -214,6 +215,28 @@ class TestReconstructs:
                 ["祢與我同坐席 傾聽我心意", "我的耶穌"],
             )
             is True
+        )
+
+    def test_reordered_merge_detected(self):
+        # pieces may appear in any order relative to the target's reading
+        # order (DP over target positions, not list-order concatenation)
+        from mine_lrc_ground_truth import _reconstructs
+
+        assert (
+            _reconstructs(
+                "我的耶穌祢與我同坐席 傾聽我心意", ["祢與我同坐席 傾聽我心意", "我的耶穌"]
+            )
+            is True
+        )
+
+    def test_char_anagram_not_detected(self):
+        # chars reordered across the union: NOT a split/merge — pieces must
+        # be contiguous substrings tiling the target
+        from mine_lrc_ground_truth import _reconstructs
+
+        assert (
+            _reconstructs("祢與我同坐席 傾聽我心意 我的耶穌", ["我與耶祢心意傾聽同坐席我的"])
+            is False
         )
 
     def test_single_identical_piece_is_respacing_not_split(self):

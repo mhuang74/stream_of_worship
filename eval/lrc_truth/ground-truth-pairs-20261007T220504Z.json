@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "created_at": "2026-10-07T21:51:53+00:00",
+  "created_at": "2026-10-07T22:04:31+00:00",
   "spec": "specs/lrc-review-triage-cascade-design-v2.md",
   "phase": "0b",
   "pairing_rule": "backup → successor paired ONLY when the successor is the recording's current content AND is attributable to a human edit, by one of two paths: (1) recordings.lrc_source ∈ {manual_upload, llm_edit}, or (2) editor-draft mechanism — the newest official backup's content hash equals the newest editor-session draft's hash, proving that session uploaded current (used for pre-2026-09-23 recordings whose lrc_source is NULL). backup→backup successors have no per-version provenance and are skipped with accounting entries, never paired (never diff two machine outputs)",
@@ -830,14 +830,14 @@
         "dropped_texts": [],
         "added_texts": [
           "願祢來設立寶座在這裡",
-          "我們要張開口  不停讚美祢"
+          "我們要張開口 不停讚美祢"
         ],
         "count_changes": {
           "願祢來設立寶座在這裡": {
             "before": 0,
             "after": 3
           },
-          "我們要張開口  不停讚美祢": {
+          "我們要張開口 不停讚美祢": {
             "before": 0,
             "after": 3
           }
@@ -1914,30 +1914,30 @@
         "blank_lines_before": 0,
         "blank_lines_after": 2,
         "dropped_texts": [
-          "凡勞苦重擔  當親近耶穌",
-          "凡飢渴慕義  來尋求耶穌",
-          "必享甘泉  必得飽足",
-          "注目看耶穌　定睛看耶穌",
+          "凡勞苦重擔 當親近耶穌",
+          "凡飢渴慕義 來尋求耶穌",
+          "必享甘泉 必得飽足",
+          "注目看耶穌 定睛看耶穌",
           "跟著祂同步",
           "耶穌"
         ],
         "added_texts": [
-          "謙卑親近主　跟著祂同步"
+          "謙卑親近主 跟著祂同步"
         ],
         "count_changes": {
-          "凡勞苦重擔  當親近耶穌": {
+          "凡勞苦重擔 當親近耶穌": {
             "before": 3,
             "after": 2
           },
-          "凡飢渴慕義  來尋求耶穌": {
+          "凡飢渴慕義 來尋求耶穌": {
             "before": 3,
             "after": 2
           },
-          "必享甘泉  必得飽足": {
+          "必享甘泉 必得飽足": {
             "before": 3,
             "after": 2
           },
-          "注目看耶穌　定睛看耶穌": {
+          "注目看耶穌 定睛看耶穌": {
             "before": 25,
             "after": 10
           },
@@ -1949,7 +1949,7 @@
             "before": 1,
             "after": 0
           },
-          "謙卑親近主　跟著祂同步": {
+          "謙卑親近主 跟著祂同步": {
             "before": 3,
             "after": 5
           }
@@ -2193,17 +2193,12 @@
         "blank_lines_before": 4,
         "blank_lines_after": 0,
         "dropped_texts": [
-          "我要讚美祢的作為 耶穌我救主",
-          "我要讚美祢的作為 祢的名在全地何其美",
           "祢的名在全地何其美",
           "我要讚美祢的作為",
           "祢賜給我生命氣息",
           "又用寶血將我洗淨",
           "現在活著不再是我",
-          "祢的名在全地何其美 祢的榮耀高過諸天",
-          "祢的能力傳到地極 耶穌我救主",
           "耶穌我救主 祢永遠活著",
-          "我要讚美祢的作為 我要稱頌祢奇妙恩典",
           "自從認識祢之後我的生命從此改變",
           "聖經說「在祢裡面比那世界更大」",
           "主祢就在我裡面 我什麼都不怕",
@@ -2221,25 +2216,15 @@
           "而是打從心中大聲的宣告"
         ],
         "added_texts": [
+          "我要讚美祢的作為 耶穌我救主",
+          "我要讚美祢的作為 祢的名在全地何其美",
           "祢永遠活著",
-          "我要讚美祢的作為  我要稱頌祢奇妙恩典",
-          "我要讚美祢的作為  耶穌我救主",
-          "我要讚美祢的作為  祢的名在全地何其美",
-          "祢賜給我生命氣息  又用寶血將我洗淨",
-          "現在活著不再是我  耶穌我救主",
-          "祢的名在全地何其美  祢的榮耀高過諸天",
-          "祢的能力傳到地極  耶穌我救主",
+          "我要讚美祢的作為 我要稱頌祢奇妙恩典",
+          "祢賜給我生命氣息 又用寶血將我洗淨",
+          "現在活著不再是我 耶穌我救主",
           "<自由敬拜>"
         ],
         "count_changes": {
-          "我要讚美祢的作為 耶穌我救主": {
-            "before": 5,
-            "after": 0
-          },
-          "我要讚美祢的作為 祢的名在全地何其美": {
-            "before": 1,
-            "after": 0
-          },
           "祢的名在全地何其美": {
             "before": 1,
             "after": 0
@@ -2260,19 +2245,7 @@
             "before": 1,
             "after": 0
           },
-          "祢的名在全地何其美 祢的榮耀高過諸天": {
-            "before": 1,
-            "after": 0
-          },
-          "祢的能力傳到地極 耶穌我救主": {
-            "before": 1,
-            "after": 0
-          },
           "耶穌我救主 祢永遠活著": {
-            "before": 2,
-            "after": 0
-          },
-          "我要讚美祢的作為 我要稱頌祢奇妙恩典": {
             "before": 2,
             "after": 0
           },
@@ -2336,35 +2309,27 @@
             "before": 1,
             "after": 0
           },
+          "我要讚美祢的作為 耶穌我救主": {
+            "before": 5,
+            "after": 6
+          },
+          "我要讚美祢的作為 祢的名在全地何其美": {
+            "before": 1,
+            "after": 3
+          },
           "祢永遠活著": {
             "before": 2,
             "after": 4
           },
-          "我要讚美祢的作為  我要稱頌祢奇妙恩典": {
-            "before": 0,
+          "我要讚美祢的作為 我要稱頌祢奇妙恩典": {
+            "before": 2,
             "after": 3
           },
-          "我要讚美祢的作為  耶穌我救主": {
-            "before": 0,
-            "after": 6
-          },
-          "我要讚美祢的作為  祢的名在全地何其美": {
-            "before": 0,
-            "after": 3
-          },
-          "祢賜給我生命氣息  又用寶血將我洗淨": {
+          "祢賜給我生命氣息 又用寶血將我洗淨": {
             "before": 0,
             "after": 1
           },
-          "現在活著不再是我  耶穌我救主": {
-            "before": 0,
-            "after": 1
-          },
-          "祢的名在全地何其美  祢的榮耀高過諸天": {
-            "before": 0,
-            "after": 1
-          },
-          "祢的能力傳到地極  耶穌我救主": {
+          "現在活著不再是我 耶穌我救主": {
             "before": 0,
             "after": 1
           },
@@ -2375,11 +2340,11 @@
         },
         "line_splits_or_merges": true,
         "timing": {
-          "matched_lines": 4,
+          "matched_lines": 14,
           "total_sung_before": 41,
-          "shift_seconds_min": -44.58,
+          "shift_seconds_min": -107.23,
           "shift_seconds_max": 150.84,
-          "shift_seconds_mean": 30.97,
+          "shift_seconds_mean": -1.95,
           "all_zero": false
         }
       }
@@ -2642,113 +2607,22 @@
         "blank_lines_before": 0,
         "blank_lines_after": 1,
         "dropped_texts": [
-          "我來到神面前    最喜樂神面前    彈琴   跳舞   大聲歡呼",
-          "我來到神面前    最喜樂神面前    有了祢   我就喜樂",
-          "我選擇喜樂   喜樂    喜樂   喜樂",
-          "我選擇喜樂   喜樂   喜樂",
-          "神在這裡   喜樂無止盡",
-          "我選擇相信   相信   相信   相信",
-          "禱告   凡事謝恩",
-          "我選擇相信   相信   相信",
-          "凡事感恩   凡事相信"
-        ],
-        "added_texts": [
-          "我來到神面前 最喜樂神面前  彈琴 跳舞 大聲歡呼",
-          "我來到神面前 最喜樂神面前  有了祢 我就喜樂",
-          "我選擇喜樂 喜樂  喜樂 喜樂",
-          "我選擇喜樂 喜樂 喜樂",
-          "神在這裡 喜樂無止盡",
-          "我來到神面前 最喜樂神面前 有了祢 我就喜樂",
-          "我選擇相信 相信 相信 相信",
-          "禱告 凡事謝恩",
-          "我選擇相信 相信 相信",
           "凡事感恩 凡事相信"
         ],
+        "added_texts": [],
         "count_changes": {
-          "我來到神面前    最喜樂神面前    彈琴   跳舞   大聲歡呼": {
-            "before": 2,
-            "after": 0
-          },
-          "我來到神面前    最喜樂神面前    有了祢   我就喜樂": {
-            "before": 2,
-            "after": 0
-          },
-          "我選擇喜樂   喜樂    喜樂   喜樂": {
-            "before": 2,
-            "after": 0
-          },
-          "我選擇喜樂   喜樂   喜樂": {
-            "before": 2,
-            "after": 0
-          },
-          "神在這裡   喜樂無止盡": {
-            "before": 2,
-            "after": 0
-          },
-          "我選擇相信   相信   相信   相信": {
-            "before": 1,
-            "after": 0
-          },
-          "禱告   凡事謝恩": {
-            "before": 1,
-            "after": 0
-          },
-          "我選擇相信   相信   相信": {
-            "before": 1,
-            "after": 0
-          },
-          "凡事感恩   凡事相信": {
-            "before": 6,
-            "after": 0
-          },
-          "我來到神面前 最喜樂神面前  彈琴 跳舞 大聲歡呼": {
-            "before": 0,
-            "after": 2
-          },
-          "我來到神面前 最喜樂神面前  有了祢 我就喜樂": {
-            "before": 0,
-            "after": 1
-          },
-          "我選擇喜樂 喜樂  喜樂 喜樂": {
-            "before": 0,
-            "after": 2
-          },
-          "我選擇喜樂 喜樂 喜樂": {
-            "before": 0,
-            "after": 2
-          },
-          "神在這裡 喜樂無止盡": {
-            "before": 0,
-            "after": 2
-          },
-          "我來到神面前 最喜樂神面前 有了祢 我就喜樂": {
-            "before": 0,
-            "after": 1
-          },
-          "我選擇相信 相信 相信 相信": {
-            "before": 0,
-            "after": 1
-          },
-          "禱告 凡事謝恩": {
-            "before": 0,
-            "after": 1
-          },
-          "我選擇相信 相信 相信": {
-            "before": 0,
-            "after": 1
-          },
           "凡事感恩 凡事相信": {
-            "before": 0,
+            "before": 6,
             "after": 3
           }
         },
         "line_splits_or_merges": false,
         "timing": {
-          "matched_lines": 2,
+          "matched_lines": 18,
           "total_sung_before": 21,
           "shift_seconds_min": -0.19,
-          "shift_seconds_max": 20.97,
-          "shift_seconds_mean": 10.39,
+          "shift_seconds_max": 21.09,
+          "shift_seconds_mean": 12.376,
           "all_zero": false
         }
       }
@@ -3225,16 +3099,16 @@
         "blank_lines_before": 0,
         "blank_lines_after": 2,
         "dropped_texts": [
-          "祢的話在我心  使我腳步不偏離",
-          "祢的愛在我心  祢必與我同行"
+          "祢的話在我心 使我腳步不偏離",
+          "祢的愛在我心 祢必與我同行"
         ],
         "added_texts": [],
         "count_changes": {
-          "祢的話在我心  使我腳步不偏離": {
+          "祢的話在我心 使我腳步不偏離": {
             "before": 3,
             "after": 2
           },
-          "祢的愛在我心  祢必與我同行": {
+          "祢的愛在我心 祢必與我同行": {
             "before": 3,
             "after": 2
           }
@@ -3346,42 +3220,42 @@
         "blank_lines_before": 0,
         "blank_lines_after": 1,
         "dropped_texts": [
-          "祢同在裡　我願永遠棲息 (我心永遠屬祢)"
+          "祢同在裡 我願永遠棲息 (我心永遠屬祢)"
         ],
         "added_texts": [
-          "宇宙浩瀚　惟祢所造",
-          "祢就是唯一　點亮我生命的奇蹟",
-          "自從遇見祢　期盼每個黎明",
-          "被祢愛吸引　深知道我值得被珍惜",
-          "祢同在裡　我願永遠棲息",
-          "祢同在裡　我心永遠屬祢"
+          "宇宙浩瀚 惟祢所造",
+          "祢就是唯一 點亮我生命的奇蹟",
+          "自從遇見祢 期盼每個黎明",
+          "被祢愛吸引 深知道我值得被珍惜",
+          "祢同在裡 我願永遠棲息",
+          "祢同在裡 我心永遠屬祢"
         ],
         "count_changes": {
-          "祢同在裡　我願永遠棲息 (我心永遠屬祢)": {
+          "祢同在裡 我願永遠棲息 (我心永遠屬祢)": {
             "before": 3,
             "after": 0
           },
-          "宇宙浩瀚　惟祢所造": {
+          "宇宙浩瀚 惟祢所造": {
             "before": 1,
             "after": 2
           },
-          "祢就是唯一　點亮我生命的奇蹟": {
+          "祢就是唯一 點亮我生命的奇蹟": {
             "before": 2,
             "after": 3
           },
-          "自從遇見祢　期盼每個黎明": {
+          "自從遇見祢 期盼每個黎明": {
             "before": 2,
             "after": 3
           },
-          "被祢愛吸引　深知道我值得被珍惜": {
+          "被祢愛吸引 深知道我值得被珍惜": {
             "before": 2,
             "after": 3
           },
-          "祢同在裡　我願永遠棲息": {
+          "祢同在裡 我願永遠棲息": {
             "before": 0,
             "after": 2
           },
-          "祢同在裡　我心永遠屬祢": {
+          "祢同在裡 我心永遠屬祢": {
             "before": 0,
             "after": 1
           }
