@@ -4362,8 +4362,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/youtube.py": {
-    "mtime": 1791410215.2100272,
-    "seen": 1791410285.6240122,
+    "mtime": 1791410723.6222134,
+    "seen": 1791410811.7474785,
     "ast_hash": "8b8e5800331465b64ce8a17f92669f23",
     "semantic_hash": ""
   },
@@ -5460,27 +5460,27 @@
     "semantic_hash": ""
   },
   "eval/lrc_truth/_raw/backup_ladders.json": {
-    "mtime": 1791410107.854353,
-    "seen": 1791410285.6075191,
+    "mtime": 1791410699.3912337,
+    "seen": 1791410811.7117443,
     "ast_hash": "e0f91414f6eb49adc9a0bdb2d8dc53c5",
     "semantic_hash": ""
   },
   "eval/lrc_truth/_raw/editor_backups.json": {
-    "mtime": 1791410123.7093,
-    "seen": 1791410285.607522,
+    "mtime": 1791410704.893229,
+    "seen": 1791410811.7117481,
     "ast_hash": "91875a527b786fc122c257e9b9c3207f",
     "semantic_hash": ""
   },
   "eval/lrc_truth/_raw/r2_ladder_index.json": {
-    "mtime": 1791410073.3194747,
-    "seen": 1791410285.6075246,
+    "mtime": 1791410687.690244,
+    "seen": 1791410811.7117517,
     "ast_hash": "ad49f380ca23ada95c49a225acedf131",
     "semantic_hash": ""
   },
   "eval/lrc_truth/ground-truth-pairs-latest.json": {
-    "mtime": 1791410123.7573,
-    "seen": 1791410285.6075315,
-    "ast_hash": "7eb1c0563d630487f7caac94e051931c",
+    "mtime": 1791410704.917229,
+    "seen": 1791410811.7117596,
+    "ast_hash": "2261ed69c3713ec4fbcbfbbaed40b850",
     "semantic_hash": ""
   },
   "lab/poc-scripts/eval/lrc_truth/stem_cache/manifest.json": {
@@ -5490,9 +5490,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/mine_lrc_ground_truth.py": {
-    "mtime": 1791410055.5955408,
-    "seen": 1791410285.6129432,
-    "ast_hash": "dee2c849e1a39ecbf1aef5c566feb90f",
+    "mtime": 1791410546.2843957,
+    "seen": 1791410811.7233446,
+    "ast_hash": "4d6642290b307e4eadf4e21c5cc0aa78",
     "semantic_hash": ""
   },
   "lab/poc-scripts/run_stem_cache.py": {
@@ -5508,15 +5508,9 @@
     "semantic_hash": ""
   },
   "eval/lrc_truth/GROUND_TRUTH_MINING.md": {
-    "mtime": 1791410170.2761545,
-    "seen": 1791410285.6382608,
-    "ast_hash": "b9cdbc9d9c514cceaa2fc3c0f0a552e9",
-    "semantic_hash": ""
-  },
-  "eval/lrc_truth/ground-truth-pairs-20261007T215523Z.json": {
-    "mtime": 1791410123.7353,
-    "seen": 1791410285.6075287,
-    "ast_hash": "7eb1c0563d630487f7caac94e051931c",
+    "mtime": 1791410650.2212791,
+    "seen": 1791410811.7715278,
+    "ast_hash": "a22fa8ed92aa1e3d9b8ae10b36f770d4",
     "semantic_hash": ""
   },
   "eval/lrc_truth/snapshot-20261007T212426Z.json": {
@@ -5538,9 +5532,15 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/probe_transcript_retrievability.py": {
-    "mtime": 1791410281.2218614,
-    "seen": 1791410285.6130545,
-    "ast_hash": "5f313b86ae2d6783a5deec32ae99e9ca",
+    "mtime": 1791410313.0687897,
+    "seen": 1791410811.7236981,
+    "ast_hash": "0f6b837122051d48fdcd6d488116acd0",
+    "semantic_hash": ""
+  },
+  "eval/lrc_truth/ground-truth-pairs-20261007T220504Z.json": {
+    "mtime": 1791410704.905229,
+    "seen": 1791410811.7117562,
+    "ast_hash": "2261ed69c3713ec4fbcbfbbaed40b850",
     "semantic_hash": ""
   }
 }
