@@ -74,8 +74,11 @@ PHASE12_SET: tuple[str, ...] = (
     "bu_ting_zan_mei_mi_e937a9d3",  # manual_upload
 )
 
-DEFAULT_MANIFEST = Path("lab/poc-scripts/eval/lrc_truth/stem_cache/manifest.json")
-DEFAULT_LOCK = Path("lab/poc-scripts/eval/lrc_truth/stem_cache/serial.lock")
+_SCRIPT_DIR = Path(__file__).resolve().parent
+# Anchored to the module directory, not cwd: the serial lock must be the same
+# file no matter where the runner is invoked from.
+DEFAULT_MANIFEST = _SCRIPT_DIR / "eval/lrc_truth/stem_cache/manifest.json"
+DEFAULT_LOCK = _SCRIPT_DIR / "eval/lrc_truth/stem_cache/serial.lock"
 
 MVSEP_STAGE1_SEP_TYPE = 48  # MelBand Roformer (matches prod analysis service)
 MVSEP_STAGE1_ADD_OPT1 = 11  # becruily deux, best vocals
@@ -110,12 +113,20 @@ def build_song_refs(conn, song_ids: list[str]) -> list[tuple[str, str]]:
             """,
             (song_ids,),
         )
-        rows = {row[0]: row[1] for row in cur.fetchall()}
+        rows: dict[str, list[str]] = {}
+        for sid, hp in cur.fetchall():
+            rows.setdefault(sid, []).append(hp)
     missing = [sid for sid in song_ids if sid not in rows]
     if missing:
         raise StemCacheError(f"songs not found in DB (deleted or unknown): {missing}")
+    ambiguous = {sid: hps for sid, hps in rows.items() if len(hps) > 1}
+    if ambiguous:
+        raise StemCacheError(
+            "songs with multiple live recordings - cannot pick a canonical "
+            f"hash_prefix; resolve manually: {ambiguous}"
+        )
     # preserve the caller's order (the runner's deterministic serial order)
-    return [(sid, rows[sid]) for sid in song_ids]
+    return [(sid, rows[sid][0]) for sid in song_ids]
 
 
 def _mvsep_separate(
@@ -212,10 +223,14 @@ def process_song(
             target.write_bytes(dest.read_bytes())
             audio_rel = "stems/clean_vocals.flac"
         else:
-            # wet vocal stem: explicit fallback record; consumers resolve
-            # clean_vocals.flac → vocals.wav themselves (per priority chain)
+            # wet vocal stem: explicit fallback record. Materialize it at
+            # stems/vocals.wav — the exact path the Phase 1/2 consumer
+            # (experiment_lrc_signals.py) resolves when clean_vocals.flac is
+            # absent — so the fallback is actually readable downstream.
             target_status = CacheStatus.FALLBACK
-            audio_rel = rel_stem_path
+            fallback = stems_dir / "vocals.wav"
+            fallback.write_bytes(dest.read_bytes())
+            audio_rel = "stems/vocals.wav"
         record_result(
             manifest,
             manifest_path,
@@ -313,12 +328,14 @@ def run(
         import os
 
         mvsep_token = os.environ.get("MVSEP_API_KEY")
-        if not mvsep_token:
-            raise StemCacheError(
-                "MVSEP_API_KEY not set; required for songs without cached R2 stems"
-            )
 
         def mvsep_fn(audio_path: Path, output_dir: Path) -> list[Path]:
+            if not mvsep_token:
+                # Lazy check: a tokenless run may still fully resolve via the
+                # R2 chain; only fail when separation is actually reached.
+                raise StemCacheError(
+                    "MVSEP_API_KEY not set; required for songs without cached " "R2 vocal stems"
+                )
             return _mvsep_separate(audio_path, output_dir, mvsep_token)
 
         for ref in pending:

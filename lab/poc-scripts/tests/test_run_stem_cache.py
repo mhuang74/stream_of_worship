@@ -137,7 +137,9 @@ class TestProcessSong:
         )
         assert status == CacheStatus.FALLBACK
         assert source == "r2_vocals"
-        assert manifest.songs["song_a"]["audio"] == "stems/vocals.flac"
+        assert manifest.songs["song_a"]["audio"] == "stems/vocals.wav"
+        # the fallback stem must be materialized at the consumer-resolvable path
+        assert (cache_root / "aaaaaaaaaaaa" / "stems" / "vocals.wav").read_bytes() == b"wet"
 
     def test_mvsep_used_when_no_r2_stems(self, tmp_path: Path):
         cache_root = tmp_path / "cache"
@@ -272,8 +274,12 @@ class TestProcessSong:
 
 
 class TestRunnerIdempotence:
-    def test_rerun_after_complete_run_changes_nothing(self, tmp_path: Path):
-        """process_song on a cached entry is skipped before any I/O."""
+    def test_rerun_after_complete_run_changes_nothing(self, tmp_path, monkeypatch):
+        """run() on a fully-resolved set performs no R2/DB I/O beyond ref
+        resolution and leaves the manifest untouched."""
+
+        from run_stem_cache import run as run_cache
+
         cache_root = tmp_path / "cache"
         manifest, manifest_path = _make_ctx(cache_root, tmp_path)
         record_result(
@@ -286,15 +292,66 @@ class TestRunnerIdempotence:
         )
         before = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        from stem_cache import next_pending
+        class _ExplodingR2:
+            def __getattr__(self, name):
+                def _boom(*a, **k):
+                    raise AssertionError(f"R2.{name} must not be touched on resume")
 
-        pending = next_pending(
-            load_or_init_manifest(manifest_path),
-            [SongRef("song_a", "aaaaaaaaaaaa")],
+                return _boom
+
+        class _FakeConn:
+            def cursor(self):
+                raise AssertionError("DB must not be touched on resume")
+
+        class _FakeProvider:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def get_connection(self):
+                return _FakeConn()
+
+            def close(self):
+                pass
+
+        class _FakeConfig:
+            r2_bucket = "bucket"
+            r2_endpoint_url = "http://localhost"
+            r2_region = "us-east-1"
+
+            def get_connection_url(self):
+                # run() evaluates the URL eagerly; the DB-isolation guard is
+                # _FakeConn.cursor below (and build_song_refs is stubbed).
+                return "postgresql://unused"
+
+        monkeypatch.setattr(
+            "stream_of_worship.admin.config.AdminConfig.load", lambda p: _FakeConfig()
         )
-        assert pending == []
+        monkeypatch.setattr(
+            "stream_of_worship.db.connection.ConnectionProvider",
+            lambda url: _FakeProvider(),
+        )
+        monkeypatch.setattr(
+            "stream_of_worship.admin.services.r2.R2Client", lambda **k: _ExplodingR2()
+        )
 
-        MagicMock(side_effect=AssertionError("cached song must not be touched"))
-        # no process_song call happens for a song with no pending work —
-        # the runner's loop only calls process_song on next_pending entries.
+        # build_song_refs must still resolve refs (read-only DB): stub it at
+        # module level since run() calls it by global name.
+        monkeypatch.setattr(
+            "run_stem_cache.build_song_refs",
+            lambda conn, ids: [("song_a", "aaaaaaaaaaaa")],
+        )
+
+        summary = run_cache(
+            song_ids=["song_a"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=False,
+        )
+        assert summary.cached == 0 and summary.fallback == 0 and summary.failed == 0
+        assert summary.skipped == 1
         assert before == json.loads(manifest_path.read_text(encoding="utf-8"))

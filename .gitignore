@@ -313,3 +313,6 @@ published_songs.lst
 # The LLM segmentation tuning loop's committed env documentation (safe to commit).
 !ops/analysis-service/.env.segmentation-tuning.example
 .vercel
+
+# LRC triage stem-cache runtime lock (issue #244)
+lab/poc-scripts/eval/lrc_truth/stem_cache/serial.lock
