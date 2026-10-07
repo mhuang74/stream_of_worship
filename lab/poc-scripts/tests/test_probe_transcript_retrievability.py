@@ -289,6 +289,57 @@ class TestProbeRunner:
         assert report["stopped_at_song"] == "s1"
         assert "YouTube Data API" in report["note"]
 
+    def test_main_self_check_honors_injected_snapshot(self, tmp_path):
+        """--snapshot must win over DEFAULT_SNAPSHOT for seed provenance."""
+        from probe_transcript_retrievability import main
+
+        fetch = make_fetch([["  ".join([f"line{i}" for i in range(12)])]])
+        manifest_path = tmp_path / "m.json"
+        runner = ProbeRunner(fetch_fn=fetch, clock=make_clock(), manifest_path=manifest_path)
+        report_path = tmp_path / "report.json"
+        snapshot_path = tmp_path / "custom-snap.json"
+
+        # Provenance diverging from the Appendix-A fallback: qwen3_asr here.
+        snapshot_path.write_text(
+            json.dumps(
+                {
+                    "seed_subsets": {
+                        "negative": {
+                            "lrc_source_provenance": {"wo_jing_bai_mi__ye_su_e6dd6146": "qwen3_asr"}
+                        }
+                    },
+                    "review_queue": [],
+                }
+            )
+        )
+
+        code = main(
+            [
+                "--self-check-only",
+                "--manifest",
+                str(manifest_path),
+                "--snapshot",
+                str(snapshot_path),
+                "--report",
+                str(report_path),
+            ],
+            runner_factory=lambda: runner,
+            url_resolver=lambda specs: [
+                setattr(s, "youtube_url", "https://www.youtube.com/watch?v=vid9") for s in specs
+            ],
+        )
+
+        # The single seeded song carries qwen3_asr per the CUSTOM snapshot:
+        # if the DEFAULT snapshot (6 youtube_transcript + 1 qwen3_asr + 1
+        # manual_upload seeds) had been used instead, the qwen3_asr songs
+        # would be retrieved via the same video and the self-check would
+        # fail with 'unexpectedly retrievable'.
+        assert code == 0
+        report = json.loads(report_path.read_text())
+        assert report["source_of"] == "snapshot"
+        assert report["asserted"] == 1
+        assert report["results"]["wo_jing_bai_mi__ye_su_e6dd6146"]["retrievable"] is False
+
 
 # --------------------------------------------------------------------------
 # Self-check evaluation (pure)
