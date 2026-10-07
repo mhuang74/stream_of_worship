@@ -354,11 +354,13 @@ def _fetch_transcript_draft(
         raise RuntimeError("youtube-transcript-api is not installed") from e
 
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=requested_languages)
+        api = YouTubeTranscriptApi()
+        transcript = api.fetch(video_id, languages=requested_languages)
         source = f"YouTube transcript ({','.join(requested_languages)})"
     except Exception:
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            api = YouTubeTranscriptApi()
+            transcript_list = api.list(video_id)
             best = _find_best_transcript(transcript_list)
             if best is None:
                 raise RuntimeError("No suitable transcript available")
@@ -370,7 +372,8 @@ def _fetch_transcript_draft(
 
     lines = []
     for snippet in transcript:
-        line = _cleanup_transcript_line(snippet.get("text", ""))
+        text = snippet["text"] if isinstance(snippet, dict) else snippet.text
+        line = _cleanup_transcript_line(text or "")
         if line:
             lines.append(line)
 

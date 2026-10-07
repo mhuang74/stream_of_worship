@@ -508,53 +508,53 @@ class TestMetadataHelpers:
 
 
 class TestTranscriptDrafts:
-    def test_fetch_transcript_lines_cleans_cues_and_whitespace(self, monkeypatch):
-        class FakeApi:
-            @staticmethod
-            def get_transcript(video_id, languages):
-                return [
-                    {"text": "[Music]"},
-                    {"text": "  Here   I  bow "},
-                    {"text": "[Laughter]"},
-                    {"text": "Here I bow"},
-                ]
+    @staticmethod
+    def _fake_module(snippet_texts):
+        """Build a fake youtube_transcript_api module (v1.x instance API).
 
-        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
-        monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
+        Direct fetch always fails; the list fallback yields one en transcript
+        whose fetch() returns the given dict snippets.
+        """
+        from youtube_transcript_api import CouldNotRetrieveTranscript
+
+        class FakeTranscript:
+            language_code = "en"
+            language = "English"
+            is_generated = True
+
+            def fetch(self):
+                return [{"text": t} for t in snippet_texts]
+
+        class FakeApi:
+            def fetch(self, video_id, languages, preserve_formatting=False):
+                raise CouldNotRetrieveTranscript("direct fetch unavailable")
+
+            def list(self, video_id):
+                return [FakeTranscript()]
+
+        return types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
+
+    def test_fetch_transcript_lines_cleans_cues_and_whitespace(self, monkeypatch):
+        monkeypatch.setitem(
+            sys.modules,
+            "youtube_transcript_api",
+            self._fake_module(
+                ["[Music]", "  Here   I  bow ", "[Laughter]", "Here I bow"]
+            ),
+        )
 
         lines = fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
 
         assert lines == ["Here I bow", "Here I bow"]
 
-    def test_fetch_transcript_lines_falls_back_to_best_available_transcript(self, monkeypatch):
-        class FakeTranscript:
-            def __init__(self, language_code, language, is_generated, snippets):
-                self.language_code = language_code
-                self.language = language
-                self.is_generated = is_generated
-                self._snippets = snippets
-
-            def fetch(self):
-                return self._snippets
-
-        fallback_transcript = FakeTranscript(
-            "en",
-            "English",
-            True,
-            [{"text": " Grace upon grace "}],
+    def test_fetch_transcript_lines_falls_back_to_best_available_transcript(
+        self, monkeypatch
+    ):
+        monkeypatch.setitem(
+            sys.modules,
+            "youtube_transcript_api",
+            self._fake_module([" Grace upon grace "]),
         )
-
-        class FakeApi:
-            @staticmethod
-            def get_transcript(video_id, languages):
-                raise RuntimeError("preferred transcript unavailable")
-
-            @staticmethod
-            def list_transcripts(video_id):
-                return [fallback_transcript]
-
-        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
-        monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
 
         lines = fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
 
