@@ -540,15 +540,15 @@ class TestDatabaseClientIntegration:
         updated = admin_client.get_recording_by_hash("abc123")
         assert updated.visibility_status == "published"
 
-    def test_update_recording_lrc_auto_publishes_null_visibility(self, admin_client):
-        """Default LRC update completes LRC and auto-publishes null visibility."""
+    def test_update_recording_lrc_defaults_null_visibility_to_review(self, admin_client):
+        """Default LRC update completes LRC and defaults null visibility to review."""
         _insert_lrc_test_recording(admin_client)
         admin_client.update_recording_lrc("abc123", "https://r2.example.com/lrc")
 
         result = admin_client.get_recording_by_hash("abc123")
         assert result.lrc_status == "completed"
         assert result.r2_lrc_url == "https://r2.example.com/lrc"
-        assert result.visibility_status == "published"
+        assert result.visibility_status == "review"
 
     def test_update_recording_lrc_forces_review_visibility(self, admin_client):
         """Generated/reconciled LRC updates can force review visibility."""

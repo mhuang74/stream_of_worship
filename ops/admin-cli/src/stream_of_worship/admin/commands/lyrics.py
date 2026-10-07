@@ -647,8 +647,8 @@ def _poll_lrc_batch(
 
     - completed: confirm the LRC on R2 (service-first, R2 fallback), then
       ``update_recording_lrc(..., visibility_status='review', ...)`` — the
-      explicit ``'review'`` kwarg is required because ``update_recording_lrc``
-      otherwise promotes NULL visibility to 'published' (COALESCE).
+      explicit ``'review'`` kwarg also demotes an existing ``'published'``
+      visibility; the method's NULL default is now ``'review'`` as well.
     - failed/cancelled: ``lrc_status='failed'``.
     - 404 (job lost): fall back to R2; if not there, mark failed.
 

@@ -1219,7 +1219,7 @@ class DatabaseClient:
     ) -> None:
         """Update recording with LRC results.
 
-        Auto-publishes the recording when ``visibility_status`` is ``NULL`` unless
+        Sets ``visibility_status`` to ``'review'`` when it is ``NULL`` unless
         an explicit visibility status override is provided.
 
         Args:
@@ -1250,7 +1250,7 @@ class DatabaseClient:
                             r2_lrc_url = %s,
                             lrc_status = 'completed',
                             lrc_source = COALESCE(%s, lrc_source),
-                            visibility_status = COALESCE(visibility_status, 'published'),
+                            visibility_status = COALESCE(visibility_status, 'review'),
                             updated_at = NOW()
                         WHERE hash_prefix = %s
                         """,

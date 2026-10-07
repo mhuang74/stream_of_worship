@@ -1937,8 +1937,8 @@ def set_visibility(
     """Set the visibility status for one or more recordings.
 
     Controls whether a recording appears in the User App browse list.
-    - published: Visible to users (auto-set when LRC completes)
-    - review: Hidden, needs manual review
+    - published: Visible to users
+    - review: Hidden, needs manual review; default when LRC completes on a recording with no visibility set
     - hold: Hidden, on hold
 
     Batch mode: pass --stdin to read song IDs from stdin (one per line).
