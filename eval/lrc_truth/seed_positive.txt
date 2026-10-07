@@ -1,0 +1,61 @@
+# Appendix A seed truth lists (specs/lrc-review-triage-cascade-design-v2.md).
+# Snapshot 2026-10-07. Authoritative for these songs even if a live query
+# diverges later; divergences are recorded in the snapshot JSON.
+#
+# Seed positives (46, must-PASS regression anchor for positive.txt):
+zhu_a__wo_yao_gen_sui_mi_83163301
+hereforyou_62e79ae9
+ye_he_hua_ni_xi_afde0692
+shi_jia_de_ai_288ba1c9
+yi_sheng_jing_bai_mi_da2173d0
+xin_kao_mei_yi_ju_ying_xu_df457941
+jun_wang_jiu_zai_zhe_li_1c32724c
+xi_le_he_liu_6f4d65a7
+wei_rao_wo_997c78c0
+zai_zhe_li_9cdbc9e8
+de_sheng_you_yu_ca88c8ec
+cong_zao_chen_dao_ye_wan_b035044f
+wo_ke_wang_kan_jian_7788db93
+wo_de_sheng_yin_dai_you_neng_li_c4082100
+suo_you_de_rong_yao_gui_yu_mi_d671f1cb
+da_kai_tian_chuang_dda69298
+geng_xiang_mi_07e6dd27
+shui_shen_zhi_chu_68301d63
+mei_hao_de_chuang_zao_3d42d76e
+iwillsinghallelujah_wo_yao_chang_ha_li_lu_ya__f5b0bc26
+he_deng_rong_yao_mei_li_de_zhu_b0ee74b5
+wei_da_de_shen_fa92f6d2
+da_shan_ke_yi_nuo_kai__zhu_de_ci_ai__8da4d2ce
+de_sheng_de_xuan_gao_c1168cd3
+wo_men_gao_ju_ye_su_de_ming_9d078cac
+wo_zai_zhe_li_97e552ed
+wo_shi_tian_fu_de_hai_zi_73c3756b
+dang_mi_zou_jin_wo_men_dang_zhong_3975a746
+mi_shi_wo_de_shi_ge_83c516ec
+ye_su_yong_yuan_zhang_quan_11c37c63
+sheng_ling_de_huo_2a76916d
+geng_shen_zhi_chu_872a8c58
+mei_yi_tian_wo_xu_yao_mi_4f6d59fd
+xian_shang_zun_rong_71b624f0
+xing_shen_ji_de_shen_60d27779
+quan_xin_de_sheng_ming_5a797042
+yin_zhu_shi_jia_e5a7765f
+mi_yong_yuan_huo_zhu_f461da22
+xi_le_quan_yuan_88cd7a75
+pi_shang_zan_mei_yi_9621c199
+zhu_mu_kan_ye_su_d9d7c511
+zhu_ci_fu_ru_chun_yu_d1fce01c
+mi_jiu_shi_wei_yi_aae2bf2f
+wei_you_zhu_ye_su_de_bao_xue_396220cd
+you_yi_wei_shen_c33ea762
+rang_zan_mei_fei_yang__gu_dian_ban__6eedd5e5
+
+# Seed negatives (8, must-FAIL regression anchor for negative.txt):
+# bu_ting_zan_mei_mi_e937a9d3  (manual_upload — anomaly, inspect)
+# shu_bu_jin_71fba0ce          (youtube_transcript)
+# wo_neng_gei_ni_shen_me_03b2dcb2  (youtube_transcript)
+# jing_bai_ye_su_b08227a2      (youtube_transcript)
+# wo_jing_bai_mi__ye_su_e6dd6146   (youtube_transcript)
+# na_me_shen_de_ke_mu_ff92abd9     (youtube_transcript)
+# cang_shen_zhi_chu_39437ec0       (youtube_transcript)
+# ai_shi_wo_men_yong_gan_6d1865b8  (qwen3_asr)

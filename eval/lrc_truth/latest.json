@@ -1,0 +1,3402 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-07T13:14:21+00:00",
+  "spec": "specs/lrc-review-triage-cascade-design-v2.md",
+  "phase": "0a",
+  "queries": {
+    "positive": {
+      "command": "sow-admin audio list --visibility published --format ids",
+      "sql_equivalent": "SELECT DISTINCT s.id FROM recordings r JOIN songs s ON s.id = r.song_id WHERE r.visibility_status = 'published' AND r.deleted_at IS NULL",
+      "started_at": "2026-10-07T13:14:21+00:00",
+      "finished_at": "2026-10-07T13:14:21+00:00",
+      "count": 54
+    },
+    "negative": {
+      "command": "sow-admin lyrics feedback list --rating poor --format ids",
+      "sql_equivalent": "SELECT DISTINCT s.id FROM lyrics_feedback f JOIN recordings r ON r.content_hash = f.recording_content_hash JOIN songs s ON s.id = r.song_id WHERE f.resolved_at IS NULL AND f.rating = 'sad' AND r.deleted_at IS NULL",
+      "started_at": "2026-10-07T13:14:21+00:00",
+      "finished_at": "2026-10-07T13:14:21+00:00",
+      "count": 8
+    },
+    "review_queue": {
+      "command": "review-visibility recordings snapshot (song_id, hash_prefix, lrc_source, lrc_status, youtube_url presence)",
+      "started_at": "2026-10-07T13:14:21+00:00",
+      "finished_at": "2026-10-07T13:14:21+00:00",
+      "count": 391
+    }
+  },
+  "seed_subsets": {
+    "source": "specs/lrc-review-triage-cascade-design-v2.md Appendix A",
+    "authoritative": "seed lists stay authoritative per-song; divergences recorded here, never dropped",
+    "positive": {
+      "seed_count": 46,
+      "all_present": true,
+      "per_song": [
+        {
+          "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "hereforyou_62e79ae9",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "ye_he_hua_ni_xi_afde0692",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "shi_jia_de_ai_288ba1c9",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "yi_sheng_jing_bai_mi_da2173d0",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "xin_kao_mei_yi_ju_ying_xu_df457941",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "jun_wang_jiu_zai_zhe_li_1c32724c",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "xi_le_he_liu_6f4d65a7",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wei_rao_wo_997c78c0",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "zai_zhe_li_9cdbc9e8",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "de_sheng_you_yu_ca88c8ec",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "cong_zao_chen_dao_ye_wan_b035044f",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wo_ke_wang_kan_jian_7788db93",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wo_de_sheng_yin_dai_you_neng_li_c4082100",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "suo_you_de_rong_yao_gui_yu_mi_d671f1cb",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "da_kai_tian_chuang_dda69298",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "geng_xiang_mi_07e6dd27",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "shui_shen_zhi_chu_68301d63",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "mei_hao_de_chuang_zao_3d42d76e",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "iwillsinghallelujah_wo_yao_chang_ha_li_lu_ya__f5b0bc26",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "he_deng_rong_yao_mei_li_de_zhu_b0ee74b5",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wei_da_de_shen_fa92f6d2",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "da_shan_ke_yi_nuo_kai__zhu_de_ci_ai__8da4d2ce",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "de_sheng_de_xuan_gao_c1168cd3",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wo_men_gao_ju_ye_su_de_ming_9d078cac",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wo_zai_zhe_li_97e552ed",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wo_shi_tian_fu_de_hai_zi_73c3756b",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "dang_mi_zou_jin_wo_men_dang_zhong_3975a746",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "mi_shi_wo_de_shi_ge_83c516ec",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "ye_su_yong_yuan_zhang_quan_11c37c63",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "sheng_ling_de_huo_2a76916d",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "geng_shen_zhi_chu_872a8c58",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "mei_yi_tian_wo_xu_yao_mi_4f6d59fd",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "xian_shang_zun_rong_71b624f0",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "xing_shen_ji_de_shen_60d27779",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "quan_xin_de_sheng_ming_5a797042",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "yin_zhu_shi_jia_e5a7765f",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "mi_yong_yuan_huo_zhu_f461da22",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "xi_le_quan_yuan_88cd7a75",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "pi_shang_zan_mei_yi_9621c199",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "zhu_mu_kan_ye_su_d9d7c511",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "zhu_ci_fu_ru_chun_yu_d1fce01c",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "mi_jiu_shi_wei_yi_aae2bf2f",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wei_you_zhu_ye_su_de_bao_xue_396220cd",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "you_yi_wei_shen_c33ea762",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "rang_zan_mei_fei_yang__gu_dian_ban__6eedd5e5",
+          "in_snapshot": true
+        }
+      ]
+    },
+    "negative": {
+      "seed_count": 8,
+      "all_present": true,
+      "per_song": [
+        {
+          "song_id": "bu_ting_zan_mei_mi_e937a9d3",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "shu_bu_jin_71fba0ce",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wo_neng_gei_ni_shen_me_03b2dcb2",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "jing_bai_ye_su_b08227a2",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "wo_jing_bai_mi__ye_su_e6dd6146",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "na_me_shen_de_ke_mu_ff92abd9",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "cang_shen_zhi_chu_39437ec0",
+          "in_snapshot": true
+        },
+        {
+          "song_id": "ai_shi_wo_men_yong_gan_6d1865b8",
+          "in_snapshot": true
+        }
+      ]
+    }
+  },
+  "review_queue_summary": {
+    "total": 391,
+    "lrc_source_counts": {
+      "null": 383,
+      "youtube_transcript": 6,
+      "qwen3_asr": 1,
+      "manual_upload": 1
+    },
+    "with_youtube_url": 391,
+    "without_youtube_url": 0
+  },
+  "review_queue": [
+    {
+      "song_id": "gan_xie_tian_fu_32e74536",
+      "hash_prefix": "6633c0edc617",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-09-08T09:15:34.977237"
+    },
+    {
+      "song_id": "geng_duo_ai_mi_77bb3b6e",
+      "hash_prefix": "44136475f459",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-09-06T17:59:11.363433"
+    },
+    {
+      "song_id": "ping_an__yue_yu__0d44151f",
+      "hash_prefix": "c9637793bf37",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-09-05T18:21:40.104924"
+    },
+    {
+      "song_id": "zhuan_xin_lai_ai_mi_233eff97",
+      "hash_prefix": "c6bf2b7ac42c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-09-05T16:01:15.509544"
+    },
+    {
+      "song_id": "ibelieve_wo_xiang_xin__05ac401d",
+      "hash_prefix": "13ff976cf127",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-09-05T15:37:36.482196"
+    },
+    {
+      "song_id": "qiu_zhu_chong_man_wo_5fc89031",
+      "hash_prefix": "3ab6d60f7ede",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-10T10:41:49.445347"
+    },
+    {
+      "song_id": "quan_xin_de_ni_6617981c",
+      "hash_prefix": "fedafbf5c8de",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-10T10:40:26.241897"
+    },
+    {
+      "song_id": "chu_mi_yi_wai_66dbc1d5",
+      "hash_prefix": "2d26395bac29",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:08:45.597873"
+    },
+    {
+      "song_id": "sheng_ming_de_kai_ge_9c5a45c4",
+      "hash_prefix": "28c8fc980e72",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:08:31.057941"
+    },
+    {
+      "song_id": "wo_de_xin__ni_yao_cheng_song_ye_he_hua_dd69e9d3",
+      "hash_prefix": "b902f46ee467",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:07:52.155312"
+    },
+    {
+      "song_id": "mai_xiang_xin_de_sheng_ming_22aebb2f",
+      "hash_prefix": "6fd7a9eae190",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:07:17.467673"
+    },
+    {
+      "song_id": "fan_zhuan_di_qiu_52503759",
+      "hash_prefix": "b570a9604c45",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:07:05.541990"
+    },
+    {
+      "song_id": "shen_shen_ai_mu_mi_48f295ef",
+      "hash_prefix": "7d299ce2f355",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:06:24.024113"
+    },
+    {
+      "song_id": "zhuan_xin_yang_wang_ye_su_588b1316",
+      "hash_prefix": "8cbf0a271347",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:05:32.373231"
+    },
+    {
+      "song_id": "mi_en_dian_bu_li_kai_87b58eb3",
+      "hash_prefix": "e47c3054a15d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:05:01.071153"
+    },
+    {
+      "song_id": "bu_yao_fang_qi_8baf1279",
+      "hash_prefix": "218b53155bb3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T20:04:58.978986"
+    },
+    {
+      "song_id": "shun_fu_f14625a0",
+      "hash_prefix": "d82c45ff6c32",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:52.276956"
+    },
+    {
+      "song_id": "zhe_li_you_rong_yao_6fd21f02",
+      "hash_prefix": "c8b2dc9febb9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:46.121419"
+    },
+    {
+      "song_id": "xie_xie_mi_fba8b601",
+      "hash_prefix": "a78002f5e893",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:42.686352"
+    },
+    {
+      "song_id": "ye_he_hua_da_neng_de_jun_dui_b02d5f17",
+      "hash_prefix": "580cc19565b3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:36.909019"
+    },
+    {
+      "song_id": "ji_da_de_sheng_yin_789c2e90",
+      "hash_prefix": "925f3622ec4f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:28.999831"
+    },
+    {
+      "song_id": "yong_heng_wei_yi_de_pan_wang_bb1aa623",
+      "hash_prefix": "5cae05934099",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:26.199953"
+    },
+    {
+      "song_id": "geng_duo_chong_man_ce2eb531",
+      "hash_prefix": "0afc34c7fcb1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:21.466958"
+    },
+    {
+      "song_id": "wo_men_huan_ying_jun_wang_jiang_lin_7a79edf7",
+      "hash_prefix": "fc95420368c1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:10.688307"
+    },
+    {
+      "song_id": "wo_xin_wei_yi_ai_mu_037fb020",
+      "hash_prefix": "c60b92a819b8",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:09.849782"
+    },
+    {
+      "song_id": "ai_zhong_xiang_yu_e93451bb",
+      "hash_prefix": "f80e410a0aee",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:10:04.478672"
+    },
+    {
+      "song_id": "cong_zhe_dai_dao_na_dai_ee88b6be",
+      "hash_prefix": "d26bd09bba57",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:09:51.580823"
+    },
+    {
+      "song_id": "da_shou_qian_zhu_xiao_shou_f8374aa8",
+      "hash_prefix": "3fc133a5b56e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:09:50.428512"
+    },
+    {
+      "song_id": "yi_ma_nei_li_80801d2c",
+      "hash_prefix": "5ba6da44112c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:09:46.967215"
+    },
+    {
+      "song_id": "zan_mei_zhi_quan_2a240c3c",
+      "hash_prefix": "b664a6fa900e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:09:06.826265"
+    },
+    {
+      "song_id": "wan_jun_zhi_ye_he_hua_5404d9df",
+      "hash_prefix": "3502fddf6a49",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:52.191362"
+    },
+    {
+      "song_id": "shui_neng_xiang_mi_70ade820",
+      "hash_prefix": "a7a5745b439e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:48.598837"
+    },
+    {
+      "song_id": "sheng_ming_de_duo_shou_9ffd3d12",
+      "hash_prefix": "e0f29f052999",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:32.282643"
+    },
+    {
+      "song_id": "xin_zao_de_ren_a64e5bd7",
+      "hash_prefix": "bcf57f2d33f4",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:28.338636"
+    },
+    {
+      "song_id": "wo_men_shi_guang_ming_zhi_zi_829b91b5",
+      "hash_prefix": "5d33151efb1e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:19.080181"
+    },
+    {
+      "song_id": "quan_ran_xiang_mi_79bb05cb",
+      "hash_prefix": "8720ed26892f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:16.991137"
+    },
+    {
+      "song_id": "guang_ming_zhi_zi_fc796881",
+      "hash_prefix": "a7c987ce9b53",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:07.314283"
+    },
+    {
+      "song_id": "yuan_wei_zhu_shan_liang_080c153c",
+      "hash_prefix": "1484a6d9c88a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:08:03.086716"
+    },
+    {
+      "song_id": "pei_wo_zou_edee52c2",
+      "hash_prefix": "d92c9f713880",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:07:58.943755"
+    },
+    {
+      "song_id": "zhe_yi_sheng_zui_mei_de_zhu_fu_20babfd6",
+      "hash_prefix": "8cf17f4e75b4",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:07:51.115030"
+    },
+    {
+      "song_id": "rang_ai_zou_dong_eb895b1e",
+      "hash_prefix": "e544881d7018",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:07:44.235927"
+    },
+    {
+      "song_id": "qiu_yu_zhi_fu_d5034b96",
+      "hash_prefix": "114a498df8bb",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:07:40.452633"
+    },
+    {
+      "song_id": "mi_shi_wo_shuang_jiao_tiao_wu_bc2ca4bb",
+      "hash_prefix": "a5f7ebf01fe3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:07:25.735332"
+    },
+    {
+      "song_id": "bao_zuo_qian_de_jing_bai_6e9f8be0",
+      "hash_prefix": "50b2de3b916c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:07:20.225973"
+    },
+    {
+      "song_id": "gai_bian_wo__gai_bian_shi_jie_186abce7",
+      "hash_prefix": "95e5f58ead3b",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:07:06.904985"
+    },
+    {
+      "song_id": "qi_miao_de_ai_a90315e0",
+      "hash_prefix": "8a6a90e97963",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:06:44.815181"
+    },
+    {
+      "song_id": "yang_wang_en_dian_5d8b00ab",
+      "hash_prefix": "83566153ffea",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:06:44.129843"
+    },
+    {
+      "song_id": "zai_zhu_ai_zhong_0138ebdb",
+      "hash_prefix": "537b5965a406",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:06:41.312347"
+    },
+    {
+      "song_id": "zhu_de_en_dian_nai_shi_yi_sheng_zhi_jiu_722b03f3",
+      "hash_prefix": "c9eb16755bd8",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:06:27.114846"
+    },
+    {
+      "song_id": "yi_tong_qi_sheng_xuan_yang_b601efb3",
+      "hash_prefix": "71cfb7245b54",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:06:07.339956"
+    },
+    {
+      "song_id": "ai_de_yue_ding_2a317bc9",
+      "hash_prefix": "f01b197d1028",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:06:03.667041"
+    },
+    {
+      "song_id": "ren_shi_mi_zhen_hao_c0b1576e",
+      "hash_prefix": "8989563f78a8",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:04:38.922438"
+    },
+    {
+      "song_id": "ju_mu_xiang_shan_1ae1cf76",
+      "hash_prefix": "188e24cbbae4",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:04:37.842833"
+    },
+    {
+      "song_id": "xi_sheng_de_ai_d54abf93",
+      "hash_prefix": "0e6dd95de21c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:04:19.182688"
+    },
+    {
+      "song_id": "ai__xi_le__sheng_ming_06e6d0d6",
+      "hash_prefix": "8f0969d3d999",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:04:12.286596"
+    },
+    {
+      "song_id": "cong_jin_tian_qi_782962fa",
+      "hash_prefix": "523143d3df3a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:04:08.102524"
+    },
+    {
+      "song_id": "ni_men_yao_zan_mei_ye_he_hua_0f4bb198",
+      "hash_prefix": "b12fe60dacd0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:53.842637"
+    },
+    {
+      "song_id": "ye_su__quan_di_de_zhu_022b8130",
+      "hash_prefix": "6b4548a584d5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:36.401955"
+    },
+    {
+      "song_id": "zan_mei_ye_he_hua_4d8f3339",
+      "hash_prefix": "a41bd5693ef8",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:35.899780"
+    },
+    {
+      "song_id": "ye_su_mi_teng_wo_f33fb6d8",
+      "hash_prefix": "5d47bda8599c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:31.948980"
+    },
+    {
+      "song_id": "mi_shi_xin_shi_de_shang_di_18fdde20",
+      "hash_prefix": "01432c52f57f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:17.229937"
+    },
+    {
+      "song_id": "wo_yao_yang_wang_ye_he_hua_58684b17",
+      "hash_prefix": "77246dd6a1d5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:15.490697"
+    },
+    {
+      "song_id": "wo_de_shang_di_wo_de_wang_a9f25e68",
+      "hash_prefix": "8e9b8fb74565",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:02.238824"
+    },
+    {
+      "song_id": "wo_he_wo_de_jia_a8d36ebc",
+      "hash_prefix": "e0dd1d6dd9a0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:03:00.179940"
+    },
+    {
+      "song_id": "cong_ri_chu_dao_ri_luo_3b31cd18",
+      "hash_prefix": "513f535641a6",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:55.523239"
+    },
+    {
+      "song_id": "fan_ruo_yi_kao_ye_he_hua_05a20f2f",
+      "hash_prefix": "c77bd1687dcd",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:42.602149"
+    },
+    {
+      "song_id": "zhuan_hua_8df355e3",
+      "hash_prefix": "5f28f76c221d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:38.947237"
+    },
+    {
+      "song_id": "rang_ai_fei_xiang_0a25b749",
+      "hash_prefix": "1ea98d71fd7a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:30.235286"
+    },
+    {
+      "song_id": "cang_bu_zhu_063916d4",
+      "hash_prefix": "8fc437cee6de",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:27.811365"
+    },
+    {
+      "song_id": "ye_su__lai_de_zhu_zhe_di_516260eb",
+      "hash_prefix": "cc7d0fef7591",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:22.860554"
+    },
+    {
+      "song_id": "ye_he_hua_en_nian_yi_lai_dao_6565d5f9",
+      "hash_prefix": "70084a26617a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:14.025508"
+    },
+    {
+      "song_id": "xiang_xin_you_ai_jiu_you_qi_ji_afaf97f8",
+      "hash_prefix": "cb799ea1d31f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:02:08.727334"
+    },
+    {
+      "song_id": "xun_jian_ba5192bd",
+      "hash_prefix": "3d2655aa62f6",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:51.543109"
+    },
+    {
+      "song_id": "zun_gui_quan_neng_shen_2be47ebf",
+      "hash_prefix": "9e607da2d904",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:48.846360"
+    },
+    {
+      "song_id": "tian_shi_xin_9f9147c8",
+      "hash_prefix": "53bc26578fad",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:44.741734"
+    },
+    {
+      "song_id": "wei_you_ye_su_e5faf5e8",
+      "hash_prefix": "4719b8baab68",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:35.659478"
+    },
+    {
+      "song_id": "zai_ye_su_de_jiao_qian_e68f53c9",
+      "hash_prefix": "e75eccee6ce9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:29.674247"
+    },
+    {
+      "song_id": "jiao_wo_tai_qi_tou_de_shen_99d0b5e2",
+      "hash_prefix": "45b1b705623d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:27.917627"
+    },
+    {
+      "song_id": "ba_fu_9c5ce541",
+      "hash_prefix": "a4e312dccdd8",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:12.700928"
+    },
+    {
+      "song_id": "zhu_mi_shi_wo_pan_wang_b87b5c56",
+      "hash_prefix": "ef78290598b8",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:10.647930"
+    },
+    {
+      "song_id": "zhu_zai_mi_li_mian_4118b9e3",
+      "hash_prefix": "37b036fe3111",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:01:05.446654"
+    },
+    {
+      "song_id": "shang_di_de_ai_zhen_qi_miao_3d0f19cd",
+      "hash_prefix": "fc129bb26c41",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:00:49.763630"
+    },
+    {
+      "song_id": "feng_sheng_de_ren_sheng_c3051c08",
+      "hash_prefix": "aacedad01227",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:00:16.672935"
+    },
+    {
+      "song_id": "xing_qi_wei_ye_su_b4ed0bf0",
+      "hash_prefix": "d6f97bacbe31",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T19:00:01.334851"
+    },
+    {
+      "song_id": "gei_wo_qing_jie_de_xin_441bcd80",
+      "hash_prefix": "4c398f507da0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:59:54.391054"
+    },
+    {
+      "song_id": "su_xing_cb0e9895",
+      "hash_prefix": "446ee6cc4768",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:59:46.007892"
+    },
+    {
+      "song_id": "zhu_wo_jing_bai_mi_6c3718ae",
+      "hash_prefix": "02bb612ef347",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:59:21.935615"
+    },
+    {
+      "song_id": "jin_ru_feng_sheng_06944b2d",
+      "hash_prefix": "75c9ada10576",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:58:33.232544"
+    },
+    {
+      "song_id": "sheng_jie_de_jing_bai_37ccc8e9",
+      "hash_prefix": "17ee44e75a0c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:58:24.942513"
+    },
+    {
+      "song_id": "mi_shi_pei_de_zan_mei_b3bd9b3e",
+      "hash_prefix": "0bd7ae0bf08d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:58:16.180000"
+    },
+    {
+      "song_id": "kan_jian_fu_xing_4b6f8d75",
+      "hash_prefix": "f0eb8f88a8e5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:59.572948"
+    },
+    {
+      "song_id": "shen_chu_wo_xin_a09489dc",
+      "hash_prefix": "76d68d571308",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:57.105161"
+    },
+    {
+      "song_id": "shen_shen_ai_mi_ff7d3e73",
+      "hash_prefix": "03d88bb303da",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:52.855060"
+    },
+    {
+      "song_id": "rong_yao_gao_yang_d73e0a3e",
+      "hash_prefix": "6dbcc6ca83f4",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:40.209731"
+    },
+    {
+      "song_id": "wo_de_jiu_shu_zhe_huo_zhu_3cde60a8",
+      "hash_prefix": "a8daf6bb4666",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:36.753723"
+    },
+    {
+      "song_id": "wo_quan_xin_song_zan_87bb2f69",
+      "hash_prefix": "991f0416574c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:27.055963"
+    },
+    {
+      "song_id": "ci_ai_tian_fu_2477b370",
+      "hash_prefix": "6856e2f00d6c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:21.103276"
+    },
+    {
+      "song_id": "fan_shi_dou_neng_zuo_50a4ffcb",
+      "hash_prefix": "fdfbdae98e04",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:19.106921"
+    },
+    {
+      "song_id": "zhu_de_xi_le_shi_wo_li_liang_e1084c5e",
+      "hash_prefix": "1c172aa74bfe",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:07.160502"
+    },
+    {
+      "song_id": "a_ba_tian_fu_49b78dba",
+      "hash_prefix": "c81c3ec66cec",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:03.169831"
+    },
+    {
+      "song_id": "yi_sheng_ai_mi_5ce02e8f",
+      "hash_prefix": "f253c8ec94ab",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:57:02.894920"
+    },
+    {
+      "song_id": "ci_fu_yu_ni_229d76ff",
+      "hash_prefix": "6615ee5ac4b3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:47.018750"
+    },
+    {
+      "song_id": "ye_su_ji_du_shi_zhu_d42a75a8",
+      "hash_prefix": "5eae7c55ecd3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:43.422249"
+    },
+    {
+      "song_id": "ye_he_hua_kao_jin_shang_xin_de_ren_ccbb6887",
+      "hash_prefix": "0b2412abd69e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:40.075406"
+    },
+    {
+      "song_id": "mi_de_zui_ai_3a9689ff",
+      "hash_prefix": "4815b0b9a775",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:32.317041"
+    },
+    {
+      "song_id": "sha_mo_zhong_de_zan_mei_cc2f680d",
+      "hash_prefix": "70cf2d92513d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:22.071419"
+    },
+    {
+      "song_id": "zhang_shang_ming_zhu_15f2c480",
+      "hash_prefix": "dbeb8fe422e1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:17.347762"
+    },
+    {
+      "song_id": "wo_yao_ge_chang_7ac8fd05",
+      "hash_prefix": "ca33d10ed317",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:14.863741"
+    },
+    {
+      "song_id": "wo_de_tian_tang_348b08be",
+      "hash_prefix": "f084f6890617",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:05.176322"
+    },
+    {
+      "song_id": "wo_men_ai__rang_shi_jie_bu_yi_yang__bcdab94a",
+      "hash_prefix": "237479fb9291",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:56:01.313169"
+    },
+    {
+      "song_id": "tian_fu_de_hua_yuan_349562f7",
+      "hash_prefix": "0b3dda81cbf1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:58.615774"
+    },
+    {
+      "song_id": "shi_jie_zhi_guang_fec5a64e",
+      "hash_prefix": "1438a0390378",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:40.748155"
+    },
+    {
+      "song_id": "lai_huan_hu_zan_mei_17680974",
+      "hash_prefix": "e88c0a08f9c7",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:39.445304"
+    },
+    {
+      "song_id": "zhen_dong_tian_di_47044855",
+      "hash_prefix": "4a88f7d5ab9d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:30.612435"
+    },
+    {
+      "song_id": "ci_sheng_ming_de_zhu_fe0acebd",
+      "hash_prefix": "ea6c041dee54",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:24.245784"
+    },
+    {
+      "song_id": "ye_su_wo_ai_mi_1faca79e",
+      "hash_prefix": "588c7e903a98",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:21.693352"
+    },
+    {
+      "song_id": "mi_shi_pei_de_64077947",
+      "hash_prefix": "0ac8d6141069",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:13.969734"
+    },
+    {
+      "song_id": "sheng_ming_huo_shui_chong_man_wo_09c392fa",
+      "hash_prefix": "02065c066909",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:06.667687"
+    },
+    {
+      "song_id": "mi_shi_he_deng_rong_mei_bd957459",
+      "hash_prefix": "9ef7d13b8b23",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:55:03.200939"
+    },
+    {
+      "song_id": "yong_yuan_zun_gui_3b21305c",
+      "hash_prefix": "1626d546f237",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:54:55.588402"
+    },
+    {
+      "song_id": "wo_yao_huan_chang_df31afc6",
+      "hash_prefix": "cd195653a205",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:54:44.747968"
+    },
+    {
+      "song_id": "wo_jing_bai_mi_9aea04e2",
+      "hash_prefix": "325c47ca9058",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:54:37.497994"
+    },
+    {
+      "song_id": "wo_xian_shang_gan_xie_3147a899",
+      "hash_prefix": "fb266b7667bc",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:54:36.965307"
+    },
+    {
+      "song_id": "wo_men_hu_qiu_7924945c",
+      "hash_prefix": "9e651ad42b3f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:54:28.030844"
+    },
+    {
+      "song_id": "zai_yi_ci_65fe4009",
+      "hash_prefix": "fe0ec510c1b1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:54:14.573126"
+    },
+    {
+      "song_id": "xuan_ze_xiang_xin_ff59ba58",
+      "hash_prefix": "e251c48a0d6c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:57.058748"
+    },
+    {
+      "song_id": "ye_su_de_ai_447ef0dc",
+      "hash_prefix": "aea4ada716ab",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:53.889993"
+    },
+    {
+      "song_id": "mi_de_ai_ae5edeb8",
+      "hash_prefix": "d003392a3d33",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:52.909399"
+    },
+    {
+      "song_id": "mi_shi_wo_sheng_ming_mei_li_c40b9bd4",
+      "hash_prefix": "d2e22664f15a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:35.806311"
+    },
+    {
+      "song_id": "shen_shi_wo_men_de_bi_nan_suo_7ebb2d2c",
+      "hash_prefix": "78ba0ca110ae",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:34.702417"
+    },
+    {
+      "song_id": "sheng_ming_de_hua_yu_a868c612",
+      "hash_prefix": "459a4184b0a9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:21.041403"
+    },
+    {
+      "song_id": "wo_yao_xiang_gao_shan_ju_mu_735dcf46",
+      "hash_prefix": "f74699f60d8b",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:19.079319"
+    },
+    {
+      "song_id": "zui_zhen_gui_de_jiao_luo_e1cf618a",
+      "hash_prefix": "3c0772a6c961",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:18.255871"
+    },
+    {
+      "song_id": "zhuan_ai_4669c315",
+      "hash_prefix": "81b9463d882b",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:01.567163"
+    },
+    {
+      "song_id": "ai_ku_bian_wei_tiao_wu_55357f07",
+      "hash_prefix": "5e4d60765f02",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:53:00.017825"
+    },
+    {
+      "song_id": "yong_gan_zou_chu_qu_3378a163",
+      "hash_prefix": "40b35fa6fc57",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:52:43.166404"
+    },
+    {
+      "song_id": "zhi_yin_mi_21c92359",
+      "hash_prefix": "a3fde0d9d215",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:52:42.925674"
+    },
+    {
+      "song_id": "jiang_xia_mi_da_neng_8bba477e",
+      "hash_prefix": "ef382743918c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:52:42.450901"
+    },
+    {
+      "song_id": "yuan_mi_guo_du_jiang_lin_96a851e4",
+      "hash_prefix": "190a4735dc6d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:52:23.913825"
+    },
+    {
+      "song_id": "yi_zhi_wo_9cf7d1d1",
+      "hash_prefix": "743eb66cd394",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:52:16.029510"
+    },
+    {
+      "song_id": "neng_bu_neng_839c7519",
+      "hash_prefix": "2772076bb7de",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:52:04.263503"
+    },
+    {
+      "song_id": "mi_de_qi_min_4fa4c59e",
+      "hash_prefix": "97d239087362",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:57.394263"
+    },
+    {
+      "song_id": "gei_meng_xiang_yi_shuang_chi_bang_05446a6d",
+      "hash_prefix": "fd315463a38c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:56.591485"
+    },
+    {
+      "song_id": "rong_yao_de_hu_zhao_f0853897",
+      "hash_prefix": "f15e31be9efd",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:45.838412"
+    },
+    {
+      "song_id": "rong_yao_da_jun_wang_34c4aebf",
+      "hash_prefix": "d02319d5e85f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:39.854364"
+    },
+    {
+      "song_id": "xin_de_shi_jiang_yao_cheng_jiu_18311364",
+      "hash_prefix": "b4b73bf0d406",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:27.608765"
+    },
+    {
+      "song_id": "xin_de_yi_xiang__xin_de_fang_xiang_2c99ffe4",
+      "hash_prefix": "603ecb93b861",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:27.604208"
+    },
+    {
+      "song_id": "zhao_yi_ge_di_fang_ac86c7c5",
+      "hash_prefix": "250fe855834e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:08.896659"
+    },
+    {
+      "song_id": "jing_bai_rang_shi_jie_zhen_dong_e2d66456",
+      "hash_prefix": "af16902cf38f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:07.079860"
+    },
+    {
+      "song_id": "wo_men_ai_dai_de_wang_ccd678e3",
+      "hash_prefix": "00ab201f126c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:51:03.155202"
+    },
+    {
+      "song_id": "an_jing_adb394aa",
+      "hash_prefix": "1862ddfb0e81",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:50:52.598478"
+    },
+    {
+      "song_id": "ben_pao_bu_fang_qi_467222a5",
+      "hash_prefix": "7813486c9057",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:50:50.015987"
+    },
+    {
+      "song_id": "zhi_yao_you_mi_zai_wo_zuo_you_96ef583c",
+      "hash_prefix": "94e3ca592194",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:50:43.806914"
+    },
+    {
+      "song_id": "qian_lai_jing_bai_a9a55a69",
+      "hash_prefix": "e8cd48cc3d7f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:50:27.133118"
+    },
+    {
+      "song_id": "qing_dao_6dc33fed",
+      "hash_prefix": "376be72a9f12",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:50:15.902528"
+    },
+    {
+      "song_id": "san_bai_liu_shi_wu_tian_200ed90e",
+      "hash_prefix": "a4ca7fde519d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:50:07.004296"
+    },
+    {
+      "song_id": "zhe_shi_ye_he_hua_suo_ding_ri_zi_fd060938",
+      "hash_prefix": "804c19972c85",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:49:11.310921"
+    },
+    {
+      "song_id": "zhe_shi_dai_yao_hu_qiu_mi_f8284145",
+      "hash_prefix": "72d4c264a465",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:49:10.300611"
+    },
+    {
+      "song_id": "jin_qian_lai_a59240ef",
+      "hash_prefix": "851b2eb1f0c9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:49:08.172480"
+    },
+    {
+      "song_id": "rang_wo_de_jian_mi_de_rong_mian_39214fe8",
+      "hash_prefix": "c05ce7077a60",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:48:54.520138"
+    },
+    {
+      "song_id": "mi_bi_cheng_jiu_mei_hao_shi_95805c94",
+      "hash_prefix": "8962a2206648",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:48:46.207925"
+    },
+    {
+      "song_id": "wei_ai_er_sheng_21d2c05b",
+      "hash_prefix": "079b96335928",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:48:26.408233"
+    },
+    {
+      "song_id": "wo_yao_kan_jian_6acb645d",
+      "hash_prefix": "a58117e12a59",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:48:04.988021"
+    },
+    {
+      "song_id": "zai_zhi_gao_zhi_chu_1d61a6dd",
+      "hash_prefix": "dd4fb3f337ae",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:48:04.132015"
+    },
+    {
+      "song_id": "qi_wei_ci_di_hu_qiu_3063cb51",
+      "hash_prefix": "75705fdc1a26",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:53.664587"
+    },
+    {
+      "song_id": "yuan_tian_huan_xi_1f7705eb",
+      "hash_prefix": "50ec095f2199",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:45.582620"
+    },
+    {
+      "song_id": "feng_sheng_de_ying_xu_cb2cd3c8",
+      "hash_prefix": "0cc400bc33d9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:43.994888"
+    },
+    {
+      "song_id": "ren_ding_mi_31f4b2cd",
+      "hash_prefix": "5815f7c0e5f3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:33.263585"
+    },
+    {
+      "song_id": "yu_mi_tong_hang_a72edff0",
+      "hash_prefix": "051bd5dfdc10",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:28.550147"
+    },
+    {
+      "song_id": "ye_su_de_ming_d32cf7ce",
+      "hash_prefix": "4bf8f19e033d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:27.814922"
+    },
+    {
+      "song_id": "shen_gao_yang_0b98cd31",
+      "hash_prefix": "e3ca50f3eb7e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:13.061756"
+    },
+    {
+      "song_id": "ye_he_hua_sha_long_98e1c100",
+      "hash_prefix": "4a367663a50e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:09.422916"
+    },
+    {
+      "song_id": "zui_hao_de_peng_you_f598b650",
+      "hash_prefix": "7edb61d3a179",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:47:09.076667"
+    },
+    {
+      "song_id": "wo_yao_quan_xin_zan_mei_fa2e42f1",
+      "hash_prefix": "95d54bac23aa",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:51.555848"
+    },
+    {
+      "song_id": "wo_yao_yi_xin_cheng_xie_mi_062e6921",
+      "hash_prefix": "73bc1279cdc0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:50.848673"
+    },
+    {
+      "song_id": "wo_de_jia_yao_rong_yao_zhu_8372473f",
+      "hash_prefix": "7b0e9bae5d3f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:47.277845"
+    },
+    {
+      "song_id": "ai_ke_yi_zai_geng_duo_yi_dian_dian_e1ce3db2",
+      "hash_prefix": "5dc197329a23",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:35.716209"
+    },
+    {
+      "song_id": "dan_dan_ai_mi_f6653864",
+      "hash_prefix": "981a0c623030",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:31.959987"
+    },
+    {
+      "song_id": "de_shi_fang_37db94f7",
+      "hash_prefix": "92620b70b6f1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:28.249229"
+    },
+    {
+      "song_id": "yuan_mi_jiang_lin_a95a16a8",
+      "hash_prefix": "6843288844a9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:14.921083"
+    },
+    {
+      "song_id": "qi_lai_zan_mei_1d7bea36",
+      "hash_prefix": "3e495368abcf",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:12.059104"
+    },
+    {
+      "song_id": "sheng_ling_de_jiang_he_ffee65b7",
+      "hash_prefix": "978e21a44504",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:46:08.680257"
+    },
+    {
+      "song_id": "ye_he_hua_zuo_le_wo_de_gao_tai_cc968e36",
+      "hash_prefix": "f043620fddaa",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:56.826511"
+    },
+    {
+      "song_id": "dao_gao_de_da_jun_8e329f27",
+      "hash_prefix": "1c320a3ed6b0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:51.467932"
+    },
+    {
+      "song_id": "shen_ke_de_ai_af637615",
+      "hash_prefix": "378be93c7b08",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:50.807760"
+    },
+    {
+      "song_id": "yong_yuan_bu_fen_li_5d8f1e99",
+      "hash_prefix": "ca15b2534d31",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:37.881275"
+    },
+    {
+      "song_id": "shi_mi_de_ai_d490c106",
+      "hash_prefix": "67d9e84edb34",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:32.632049"
+    },
+    {
+      "song_id": "xin_de_yi_tian_70410a0c",
+      "hash_prefix": "3d4b3374eeff",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:31.490074"
+    },
+    {
+      "song_id": "wo_you_xi_le_cf818e2a",
+      "hash_prefix": "5654db5a9189",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:21.307981"
+    },
+    {
+      "song_id": "dai_wo_jin_ru_mi_de_tong_zai_9f65409d",
+      "hash_prefix": "556ad0c49cbb",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:17.242321"
+    },
+    {
+      "song_id": "cong_xin_he_yi_f96b5383",
+      "hash_prefix": "9319a31cebd9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:14.907517"
+    },
+    {
+      "song_id": "tian_shang_de_jia_0cfe92bd",
+      "hash_prefix": "0761181ae32c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:45:02.138772"
+    },
+    {
+      "song_id": "xin_xiang_wan_ji_6f0bb3c4",
+      "hash_prefix": "a00d996d2619",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:55.885369"
+    },
+    {
+      "song_id": "hui_jia_f08c87a8",
+      "hash_prefix": "d7df9972d29e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:54.429914"
+    },
+    {
+      "song_id": "ci_wo_zi_you_7ab783a2",
+      "hash_prefix": "054c1ec0fb9e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:38.427732"
+    },
+    {
+      "song_id": "yu_ni_you_yue_ee60fd72",
+      "hash_prefix": "656138e21ca7",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:31.284858"
+    },
+    {
+      "song_id": "ji_qi_sheng_ming_de_lang_hua_90aaa7df",
+      "hash_prefix": "10634a1f0086",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:27.175766"
+    },
+    {
+      "song_id": "shi_ye_su_f8d7c4a7",
+      "hash_prefix": "31676c05b3c1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:15.835216"
+    },
+    {
+      "song_id": "ai__wo_yuan_yi_18ea1d64",
+      "hash_prefix": "aeecd35859f3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:13.539979"
+    },
+    {
+      "song_id": "wo_dui_mi_de_ai_yong_bu_bian_3f13f974",
+      "hash_prefix": "1062f3af8199",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:44:11.094433"
+    },
+    {
+      "song_id": "cai_hong_xia_de_yue_ding_075aab50",
+      "hash_prefix": "daace3c32239",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:43:58.433058"
+    },
+    {
+      "song_id": "xun_zhao_31649bb4",
+      "hash_prefix": "80dbea3d2f79",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:43:52.883067"
+    },
+    {
+      "song_id": "yi_qie_ge_song_zan_mei_68275feb",
+      "hash_prefix": "0c9795e28ec3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:43:45.305851"
+    },
+    {
+      "song_id": "tian_fu_de_hai_zi_3307b0c7",
+      "hash_prefix": "6e8f2b0b9ad3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:43:42.677907"
+    },
+    {
+      "song_id": "bei_ai_fb3bf9d6",
+      "hash_prefix": "51a9707473e8",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:56.278701"
+    },
+    {
+      "song_id": "mi_de_en_dian_gou_wo_yong_e5c26145",
+      "hash_prefix": "b17e383709b3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:49.466332"
+    },
+    {
+      "song_id": "fa_xian_ai_a602f054",
+      "hash_prefix": "a13bc494c174",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:38.922560"
+    },
+    {
+      "song_id": "wu_jin_en_dian_5203c634",
+      "hash_prefix": "445ace604b36",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:38.287061"
+    },
+    {
+      "song_id": "wo_zai_zhe_li_jing_bai_1aca7fe5",
+      "hash_prefix": "fc773871709e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:31.809709"
+    },
+    {
+      "song_id": "ping_an_dffe8031",
+      "hash_prefix": "738c362fca1c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:19.462936"
+    },
+    {
+      "song_id": "an_jing_deng_hou_mi_e1f8265a",
+      "hash_prefix": "d440a73895e0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:14.126418"
+    },
+    {
+      "song_id": "fu_fu_4aa6bb78",
+      "hash_prefix": "4c9452897673",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:42:02.740527"
+    },
+    {
+      "song_id": "zai_hu_ye_he_hua_60a9c976",
+      "hash_prefix": "c9cd690fae1c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:41:58.854309"
+    },
+    {
+      "song_id": "wan_guo_dao_gao_de_dian_eb12f817",
+      "hash_prefix": "42fe8051d6b9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:41:42.932033"
+    },
+    {
+      "song_id": "yuan_mi_rong_yao_guo_du_jiang_lin_013d1fb0",
+      "hash_prefix": "2e95a88772cd",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:41:41.802946"
+    },
+    {
+      "song_id": "ye_su__chao_hu_wan_ming_zhi_ming_390c8318",
+      "hash_prefix": "1a7b9fde0aea",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:41:39.789833"
+    },
+    {
+      "song_id": "ye_su__wo_de_ye_su_5c94f17b",
+      "hash_prefix": "350ddd95dae9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:41:21.219399"
+    },
+    {
+      "song_id": "geng_shen_ke_mu_mi_76959512",
+      "hash_prefix": "8cc896c679d4",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:41:20.913019"
+    },
+    {
+      "song_id": "wo_yuan_chu_dong_mi_xin_xian_7c55fd97",
+      "hash_prefix": "cbfe02a1fd3e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:41:16.382447"
+    },
+    {
+      "song_id": "fu_xing_sheng_jie_53a90875",
+      "hash_prefix": "0ba597e7429a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:40:59.530257"
+    },
+    {
+      "song_id": "dan_qin_ge_chang_zan_mei_mi_5dd9d103",
+      "hash_prefix": "1e9a0a814cb4",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:40:52.466923"
+    },
+    {
+      "song_id": "zhan_kai_qing_chen_de_chi_bang_44a8f2f4",
+      "hash_prefix": "138f339e3dce",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:40:49.318898"
+    },
+    {
+      "song_id": "ru_guo_ni_xiang_zhi_dao_c696f125",
+      "hash_prefix": "63e0de913b41",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:40:32.851471"
+    },
+    {
+      "song_id": "zhu_dao_wen_2d92b37b",
+      "hash_prefix": "a724c23c0700",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:40:31.560475"
+    },
+    {
+      "song_id": "zai_mi_shou_zhong_d0eba77a",
+      "hash_prefix": "bd08f2fb7a56",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:40:29.747797"
+    },
+    {
+      "song_id": "zi_you_di_ge_chang_23fe2a5a",
+      "hash_prefix": "47ee4455473b",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:49.800208"
+    },
+    {
+      "song_id": "pei_de_song_yang_5d1adf92",
+      "hash_prefix": "011bd97933a5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:49.662751"
+    },
+    {
+      "song_id": "wei_ye_lu_sa_leng_qi_dao_31aa3a61",
+      "hash_prefix": "a11cccf2aaff",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:34.877732"
+    },
+    {
+      "song_id": "huo_zhu_wei_yao_jing_bai_mi_82e78f8e",
+      "hash_prefix": "51293995336d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:31.287292"
+    },
+    {
+      "song_id": "ri_ri_ye_ye_c6f77ae1",
+      "hash_prefix": "a2135379d96a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:24.428091"
+    },
+    {
+      "song_id": "xin_ye_lu_sa_leng_bfde81c3",
+      "hash_prefix": "a09d46dce836",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:18.477103"
+    },
+    {
+      "song_id": "jiu_shu_de_en_dian_25c7773b",
+      "hash_prefix": "8ca86af913a6",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:13.284851"
+    },
+    {
+      "song_id": "wo_yao_shun_fu_729f535f",
+      "hash_prefix": "4588da1529ad",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:39:03.773983"
+    },
+    {
+      "song_id": "wo_yi_de_zi_you_3e538904",
+      "hash_prefix": "0de5cad8245f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:58.012600"
+    },
+    {
+      "song_id": "jiu_shi_zhe_ge_shi_ke_00d10607",
+      "hash_prefix": "c5c4a903df62",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:56.121315"
+    },
+    {
+      "song_id": "jiang_tian_chang_kai_461be3c9",
+      "hash_prefix": "4fcc504a2956",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:47.994396"
+    },
+    {
+      "song_id": "tong_xin_gao_ju_shi_jia_eb837bcf",
+      "hash_prefix": "b977a300d41f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:40.192814"
+    },
+    {
+      "song_id": "yi_tong_qi_wu_e8b60433",
+      "hash_prefix": "b09660a486cc",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:32.464093"
+    },
+    {
+      "song_id": "zhe_shi_dai_94fec912",
+      "hash_prefix": "a2ca043daa7e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:24.892208"
+    },
+    {
+      "song_id": "sheng_ling_jiang_xia_en_yu_2af457cc",
+      "hash_prefix": "ddebe19f53cf",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:17.565004"
+    },
+    {
+      "song_id": "sheng_zai_sheng_zai_sheng_zai_727582b0",
+      "hash_prefix": "a1cd5448af0a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:12.996593"
+    },
+    {
+      "song_id": "mi_shi_sheng_jie_9f9ce375",
+      "hash_prefix": "aefbf890b07a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:38:06.637942"
+    },
+    {
+      "song_id": "huo_shi_1b450d2d",
+      "hash_prefix": "819f1b33eed5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:58.613800"
+    },
+    {
+      "song_id": "jing_bai_mi_c2ec357a",
+      "hash_prefix": "9532a579cedd",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:55.144807"
+    },
+    {
+      "song_id": "jian_xuan_88096ba4",
+      "hash_prefix": "bff6d38626d2",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:46.844316"
+    },
+    {
+      "song_id": "xiao_xiao_de_meng_xiang_318bb659",
+      "hash_prefix": "176b7ceab778",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:40.093224"
+    },
+    {
+      "song_id": "zai_mi_bao_zuo_qian_8c6c1e8e",
+      "hash_prefix": "c92d4a82f0da",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:30.282237"
+    },
+    {
+      "song_id": "bao_gui_shi_jia_10c5cc05",
+      "hash_prefix": "88496965e4c5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:30.180685"
+    },
+    {
+      "song_id": "o__shi_zi_jia_283b8a4d",
+      "hash_prefix": "bebc15628f63",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:20.244286"
+    },
+    {
+      "song_id": "zhu_mi_shi_wo_li_liang_bd7f9a85",
+      "hash_prefix": "639b1d624630",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:11.375878"
+    },
+    {
+      "song_id": "qin_jin_mi_d29ef2c8",
+      "hash_prefix": "c10041488d6c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:10.056083"
+    },
+    {
+      "song_id": "sheng_jie_quan_neng_zhu_ce3687ac",
+      "hash_prefix": "2d0b19984f25",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:37:04.275653"
+    },
+    {
+      "song_id": "ye_he_hua_shi_wo_mu_zhe_be32dee2",
+      "hash_prefix": "09c478ef7e9e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:48.551291"
+    },
+    {
+      "song_id": "ye_he_hua_zuo_zhu_wei_wang_d0500683",
+      "hash_prefix": "4963499b7bee",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:46.573070"
+    },
+    {
+      "song_id": "dao_gao_15217487",
+      "hash_prefix": "6569cef94b47",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:30.953380"
+    },
+    {
+      "song_id": "mi_de_tong_zai_ea5f8dfe",
+      "hash_prefix": "db7ba125d5e2",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:26.938148"
+    },
+    {
+      "song_id": "mi_mei_hao_ying_xu_a9a63ba1",
+      "hash_prefix": "3c443ab5fdf1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:23.307577"
+    },
+    {
+      "song_id": "wo_xin_qie_qie_ke_mu_mi_5c36fb26",
+      "hash_prefix": "e9d813406266",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:08.932138"
+    },
+    {
+      "song_id": "sha_lun_de_mei_gui_98a6f107",
+      "hash_prefix": "b1e127927f35",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:07.774644"
+    },
+    {
+      "song_id": "dan_dan_zhi_wei_mi_ba69e746",
+      "hash_prefix": "6f5db0bd0bfa",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:36:05.694380"
+    },
+    {
+      "song_id": "quan_di_dang_zan_mei_9233a5a7",
+      "hash_prefix": "db3f8e87c3d3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:35:48.954746"
+    },
+    {
+      "song_id": "zhu_wo_gen_mi_zou_867a1129",
+      "hash_prefix": "56622ec3ffce",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:35:46.855182"
+    },
+    {
+      "song_id": "hei_an_zhong_de_guang_mang_63ed2fec",
+      "hash_prefix": "1167a2d96ee0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:34:45.670215"
+    },
+    {
+      "song_id": "yuan_mi_guo_jiang_lin_62f41e91",
+      "hash_prefix": "8a369fe394fe",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:34:36.188912"
+    },
+    {
+      "song_id": "yun_shang_tai_yang_c51e2ec1",
+      "hash_prefix": "f204143d48e6",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:34:22.999133"
+    },
+    {
+      "song_id": "xian_shang_zi_ji_wei_ji_f94001cf",
+      "hash_prefix": "ea4172966b56",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:34:22.318906"
+    },
+    {
+      "song_id": "qiu_mi_yang_qi_lian_lai_d3eee0a5",
+      "hash_prefix": "b6a0fcf08df5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:34:13.807262"
+    },
+    {
+      "song_id": "yong_huo_quan_neng_de_shen_c00c7d70",
+      "hash_prefix": "6967630ec21e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:34:04.878979"
+    },
+    {
+      "song_id": "wo_xin_yao_cheng_xie_ye_he_hua_3300006a",
+      "hash_prefix": "fad1ddd19557",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:34:02.161490"
+    },
+    {
+      "song_id": "fu_xing_de_huo_8a58e28f",
+      "hash_prefix": "125267209115",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:33:53.560127"
+    },
+    {
+      "song_id": "chang_chang_xi_le_b54b84b7",
+      "hash_prefix": "4123b85c4ad9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:33:44.360173"
+    },
+    {
+      "song_id": "qing_ting_wo_de_xin_db41fd27",
+      "hash_prefix": "32f010b925a7",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:33:43.823104"
+    },
+    {
+      "song_id": "quan_neng_de_chuang_zao_zhu_3569e6da",
+      "hash_prefix": "48e4363aa723",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:33:38.289434"
+    },
+    {
+      "song_id": "jin_ru_mi_de_tong_zai_156a479d",
+      "hash_prefix": "48f25e71b129",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:33:20.118850"
+    },
+    {
+      "song_id": "ye_su_ai_ni_f6fd8bcd",
+      "hash_prefix": "70f98bb06b0f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:33:11.621498"
+    },
+    {
+      "song_id": "ye_he_hua_mi_shi_wo_de_shen_f22a830b",
+      "hash_prefix": "a69092f0fde0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:33:06.956259"
+    },
+    {
+      "song_id": "rong_yao_dou_gui_mi_65d82e76",
+      "hash_prefix": "ffa2413333d0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:58.419576"
+    },
+    {
+      "song_id": "ba_leng_mo_bian_cheng_ai_c18615f5",
+      "hash_prefix": "55122d231992",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:55.378225"
+    },
+    {
+      "song_id": "wo_zhu_wo_de_shen_6454c84f",
+      "hash_prefix": "cd5bb2cd8b21",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:44.352259"
+    },
+    {
+      "song_id": "wo_yi_sheng_yao_zan_mei_mi_35c47193",
+      "hash_prefix": "deaa2c330bcb",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:44.165111"
+    },
+    {
+      "song_id": "bi_ci_xiang_ai_77322c8d",
+      "hash_prefix": "8d5f93c2cc2f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:38.012003"
+    },
+    {
+      "song_id": "nian_sui_de_guan_mian_d1da5835",
+      "hash_prefix": "a7729deb6aaa",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:26.203704"
+    },
+    {
+      "song_id": "tian_tang_zai_wo_xin_b04f1148",
+      "hash_prefix": "0af611b20628",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:24.061807"
+    },
+    {
+      "song_id": "zhe_jiu_shi_ni_de_ai_9725c976",
+      "hash_prefix": "82ad6b6c2182",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:10.459976"
+    },
+    {
+      "song_id": "sheng_dan_zhi_yuan_c4692f5b",
+      "hash_prefix": "cacf2bff702e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:32:03.839184"
+    },
+    {
+      "song_id": "mi_de_ci_ai_561c42d2",
+      "hash_prefix": "36b73b08c891",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:51.234437"
+    },
+    {
+      "song_id": "jian_dan_de_ge_4e441202",
+      "hash_prefix": "9ed6fcddb304",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:51.137884"
+    },
+    {
+      "song_id": "mi_shi_wo_de_yi_qie_b011f3ba",
+      "hash_prefix": "4791925366b5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:46.803488"
+    },
+    {
+      "song_id": "qiu_ting_wo_hu_qiu_d894fc03",
+      "hash_prefix": "1aa4673cdf0d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:36.066427"
+    },
+    {
+      "song_id": "wo_yao_chang_chang_xi_le_fe95805b",
+      "hash_prefix": "efb1fc7ccaea",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:34.461325"
+    },
+    {
+      "song_id": "ning_jing_gu_29a516d8",
+      "hash_prefix": "91177ce44c7e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:20.604799"
+    },
+    {
+      "song_id": "wo_xiang_xin_b69bea2f",
+      "hash_prefix": "6e79f15f7766",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:19.278389"
+    },
+    {
+      "song_id": "quan_ran_mei_li_8a1aae8c",
+      "hash_prefix": "80033f4711b2",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:16.770984"
+    },
+    {
+      "song_id": "si_hu_zai_tian_tang_7c3c0e56",
+      "hash_prefix": "cf3bdb000a09",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:31:01.862593"
+    },
+    {
+      "song_id": "comeawaywithme_d4767cb8",
+      "hash_prefix": "8734adbb5d97",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:59.358719"
+    },
+    {
+      "song_id": "zhe_shi_sheng_jie_zhi_di_b349aa5b",
+      "hash_prefix": "d14c4147965f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:53.542632"
+    },
+    {
+      "song_id": "sheng_jie_gui_yu_mi_7df48df1",
+      "hash_prefix": "eb4345c78920",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:43.470374"
+    },
+    {
+      "song_id": "ye_su_mi_yi_zhi_018b8c71",
+      "hash_prefix": "96d882fbd451",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:41.533571"
+    },
+    {
+      "song_id": "ye_he_hua_xing_le_da_shi_de94d09b",
+      "hash_prefix": "80e4b7f61085",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:31.321261"
+    },
+    {
+      "song_id": "ye_he_hua_wo_de_pan_shi_165c642e",
+      "hash_prefix": "edfe77dc40ae",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:26.154640"
+    },
+    {
+      "song_id": "mi_de_ai_zhang_kuo_gao_shen_b9a9ae38",
+      "hash_prefix": "92dd4b952334",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:25.947797"
+    },
+    {
+      "song_id": "zhen_shi_de_hui_gai_26c13013",
+      "hash_prefix": "c3881a76a7de",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:15.662751"
+    },
+    {
+      "song_id": "man_you_neng_li_766bb54f",
+      "hash_prefix": "8231842e7573",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:30:00.641442"
+    },
+    {
+      "song_id": "ge_song_51da53ff",
+      "hash_prefix": "f5eac9de9392",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:29:57.751779"
+    },
+    {
+      "song_id": "zui_mei_de_li_wu_0c009d48",
+      "hash_prefix": "24da71d68963",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:29:51.843907"
+    },
+    {
+      "song_id": "en_dian_zhi_lu_b7b9dd90",
+      "hash_prefix": "7a808cf78f76",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:29:43.180817"
+    },
+    {
+      "song_id": "wo_gao_ju_shuang_shou_2861b39a",
+      "hash_prefix": "59b7cd6d171d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:29:41.666485"
+    },
+    {
+      "song_id": "yi_kao_21a3b910",
+      "hash_prefix": "767bfd39be43",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:29:35.579681"
+    },
+    {
+      "song_id": "xin_shi_de_shen_183f60ac",
+      "hash_prefix": "760bdc412257",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:29:26.300067"
+    },
+    {
+      "song_id": "he_deng_en_dian_8d6abedb",
+      "hash_prefix": "60152adbef55",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:29:23.201154"
+    },
+    {
+      "song_id": "dao_gao_de_li_liang_2bbaa828",
+      "hash_prefix": "cc45172ef8fd",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:28:11.319211"
+    },
+    {
+      "song_id": "mi_yan_mu_bi_kan_gu_zhe_di_584a1aad",
+      "hash_prefix": "4e7938fb01c7",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:28:05.614477"
+    },
+    {
+      "song_id": "mi_yong_yuan_ru_ci_shen_ai_zhu_wo_020b2b34",
+      "hash_prefix": "9e8a277928f1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:28:02.756938"
+    },
+    {
+      "song_id": "ta_cong_gao_chu_shen_shou_f422b042",
+      "hash_prefix": "fb70bfa5901e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:54.484284"
+    },
+    {
+      "song_id": "tian_fu_5ea5afe7",
+      "hash_prefix": "ac495a252a11",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:45.949921"
+    },
+    {
+      "song_id": "de_sheng_de_ge_b1b44a55",
+      "hash_prefix": "5dd783eb2172",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:42.894600"
+    },
+    {
+      "song_id": "da_shan_wei_wo_nuo_kai_a162fec6",
+      "hash_prefix": "6f73e0db794d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:37.731119"
+    },
+    {
+      "song_id": "zai_ye_su_li_bi_ci_xiang_ai_a58448eb",
+      "hash_prefix": "94791cfc1730",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:24.200574"
+    },
+    {
+      "song_id": "jun_zun_de_ji_si_1ff1df27",
+      "hash_prefix": "1b6b2cb740df",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:22.499425"
+    },
+    {
+      "song_id": "shi_zi_jia_a5203e7d",
+      "hash_prefix": "210344eabd33",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:19.566948"
+    },
+    {
+      "song_id": "chong_man_zai_zhe_li_fbd68395",
+      "hash_prefix": "7a09bf3dec50",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:06.734044"
+    },
+    {
+      "song_id": "lai_huan_hu_lai_zan_mei_213de04b",
+      "hash_prefix": "2889fbb03e37",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:27:03.923388"
+    },
+    {
+      "song_id": "lai_xiang_ye_he_hua_ge_chang_6ffef792",
+      "hash_prefix": "68b4a7c4fdb1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:26:59.326557"
+    },
+    {
+      "song_id": "wan_guo_de_zhi_mi_de_jiu_en_8d93862c",
+      "hash_prefix": "91abc3a4d403",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:26:07.524714"
+    },
+    {
+      "song_id": "jin_jin_zhua_zhu_mi_5895101d",
+      "hash_prefix": "d016ce0535e4",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:26:02.938657"
+    },
+    {
+      "song_id": "zhu_ni_sheng_ri_kuai_le_b6941ae9",
+      "hash_prefix": "86e7a8e89026",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:25:52.256369"
+    },
+    {
+      "song_id": "yong_yuan_chang_zhu_zan_mei_e47e3924",
+      "hash_prefix": "b0fbcc7b6ea1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:25:50.706470"
+    },
+    {
+      "song_id": "sheng_ming_ju_chang_f26dcb61",
+      "hash_prefix": "9510e701c246",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:25:47.138942"
+    },
+    {
+      "song_id": "xi_le_de_xuan_lv_6e08530f",
+      "hash_prefix": "75666e148a2c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-09T18:25:30.144158"
+    },
+    {
+      "song_id": "reachonemore_zai_ying_de_yi_ge_ling_hun__49a1c779",
+      "hash_prefix": "6a388fe58b99",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T10:47:04.656479"
+    },
+    {
+      "song_id": "holyholy_sheng_jie_rong_yao_zhu__21af51e1",
+      "hash_prefix": "4d2cc303b5d5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T10:46:28.394871"
+    },
+    {
+      "song_id": "xie_xie_ni_cheng_wei_wo_de_jia_8cdb19ed",
+      "hash_prefix": "0be640267fad",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T06:16:01.057545"
+    },
+    {
+      "song_id": "sheng_jie_de_gao_yang_6c8e17b1",
+      "hash_prefix": "751e0e5286bc",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T06:15:50.840535"
+    },
+    {
+      "song_id": "wei_rong_yao_de_chuang_zao_9b0213a7",
+      "hash_prefix": "55ac6174fcaf",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T06:15:45.657280"
+    },
+    {
+      "song_id": "shen_ai_ye_su_8ec7ab87",
+      "hash_prefix": "5532b60c2619",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T06:15:43.959444"
+    },
+    {
+      "song_id": "you_ni_zai_de_di_fang_5d7fccd4",
+      "hash_prefix": "a59a40896260",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T06:15:30.089550"
+    },
+    {
+      "song_id": "he_san_na__huan_ying_jun_wang_a3523206",
+      "hash_prefix": "1a9e53858778",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T06:15:15.696924"
+    },
+    {
+      "song_id": "bu_yao_wang_ji_bc979763",
+      "hash_prefix": "4772693877bd",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T06:15:12.603643"
+    },
+    {
+      "song_id": "na_me_shen_de_ke_mu_ff92abd9",
+      "hash_prefix": "328aba5ad346",
+      "lrc_source": "youtube_transcript",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:35:13.578646"
+    },
+    {
+      "song_id": "cang_shen_zhi_chu_39437ec0",
+      "hash_prefix": "36a6e4e0912b",
+      "lrc_source": "youtube_transcript",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:35:08.883473"
+    },
+    {
+      "song_id": "yu_mi_man_bu_e46c5fe7",
+      "hash_prefix": "28a0ed6e1408",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:35:04.884621"
+    },
+    {
+      "song_id": "ye_he_hua_shi_ying_dang_cheng_song_de_2a5b5904",
+      "hash_prefix": "fe07e3d2998e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:56.754729"
+    },
+    {
+      "song_id": "lang_zi_de_wo_bed27a7d",
+      "hash_prefix": "cc58882d2ecf",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:55.049809"
+    },
+    {
+      "song_id": "you_yi_jian_shi_013139fc",
+      "hash_prefix": "14550a91476c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:50.485287"
+    },
+    {
+      "song_id": "wo_neng_gei_ni_shen_me_03b2dcb2",
+      "hash_prefix": "41f1236fc61a",
+      "lrc_source": "youtube_transcript",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:42.382385"
+    },
+    {
+      "song_id": "wo_xuan_ze_xi_le_e2ec9095",
+      "hash_prefix": "9e2eb249c3de",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:40.032047"
+    },
+    {
+      "song_id": "wo_huo_zhu_yao_cheng_song_mi_48f285e8",
+      "hash_prefix": "cc8f923fa60d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:34.175156"
+    },
+    {
+      "song_id": "wo_jing_bai_mi__ye_su_e6dd6146",
+      "hash_prefix": "28f09e4d4382",
+      "lrc_source": "youtube_transcript",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:27.030570"
+    },
+    {
+      "song_id": "wo_yang_sheng_jing_bai_38fa135f",
+      "hash_prefix": "f8cfc4464e96",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:24.966905"
+    },
+    {
+      "song_id": "hao_xi_huan_yu_ni_zai_yi_qi_c3d24903",
+      "hash_prefix": "8cabe5e9b15b",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:18.686445"
+    },
+    {
+      "song_id": "zhi_yuan_you_ye_su_a98ac0aa",
+      "hash_prefix": "8986c71fdd01",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:12.070830"
+    },
+    {
+      "song_id": "bu_guan_shi_jie_ru_he_kan_wo_debe2b00",
+      "hash_prefix": "1991e5d50a4d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:04.880896"
+    },
+    {
+      "song_id": "yi_qi_yang_wang_ye_su_fd8d902a",
+      "hash_prefix": "69996a89d6c0",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:34:04.757043"
+    },
+    {
+      "song_id": "ci_fu_zai_zhe_di_c2353db4",
+      "hash_prefix": "780d0c81d058",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:57.182974"
+    },
+    {
+      "song_id": "gao_ju_shuang_shou_jing_bai_ec623a6e",
+      "hash_prefix": "51208e342a41",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:48.989148"
+    },
+    {
+      "song_id": "shu_bu_jin_71fba0ce",
+      "hash_prefix": "777480bb9d96",
+      "lrc_source": "youtube_transcript",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:45.758423"
+    },
+    {
+      "song_id": "jing_bai_ye_su_b08227a2",
+      "hash_prefix": "609d8b53875b",
+      "lrc_source": "youtube_transcript",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:35.955108"
+    },
+    {
+      "song_id": "wo_quan_ran_xian_shang_525da053",
+      "hash_prefix": "f3ff32fc65b9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:35.095100"
+    },
+    {
+      "song_id": "ai_mi_zhi_dao_yong_yuan_8bdcd4fe",
+      "hash_prefix": "52fcbc4a4107",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:29.941686"
+    },
+    {
+      "song_id": "shi_jia_de_da_neng_16719c15",
+      "hash_prefix": "031f3f721fb3",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:17.474415"
+    },
+    {
+      "song_id": "hui_fu_jing_bai_d11d8c5e",
+      "hash_prefix": "d296e0efeb01",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:16.587633"
+    },
+    {
+      "song_id": "ai_shi_wo_men_yong_gan_6d1865b8",
+      "hash_prefix": "4814d8d1131e",
+      "lrc_source": "qwen3_asr",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:28:13.727512"
+    },
+    {
+      "song_id": "shen_shen_di_jing_bai_2447a6b3",
+      "hash_prefix": "866186701568",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:10:44.522177"
+    },
+    {
+      "song_id": "rong_yao_zhi_gao_shen_0f0b70f4",
+      "hash_prefix": "27cb588972a6",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:10:41.762656"
+    },
+    {
+      "song_id": "rong_yao_rong_yao_rong_yao_088f5c99",
+      "hash_prefix": "b115b06197c5",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:10:33.168634"
+    },
+    {
+      "song_id": "shi_mi__ye_su_7d3beca8",
+      "hash_prefix": "65b66ba00366",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:10:31.215163"
+    },
+    {
+      "song_id": "wo_shi_cheng_zai_shen_rong_yao_de_qi_min_74f35f2d",
+      "hash_prefix": "559c3259d95e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:10:28.700271"
+    },
+    {
+      "song_id": "wo_men_de_shen_433afb17",
+      "hash_prefix": "6f5685ee6113",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T05:08:51.832296"
+    },
+    {
+      "song_id": "tian_fu_mi_ai_wo_48475778",
+      "hash_prefix": "e1d2324b1ddf",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-03T04:23:06.245827"
+    },
+    {
+      "song_id": "zai_mi_mei_you_nan_cheng_de_shi_355a5f49",
+      "hash_prefix": "e264d7e126ce",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T20:52:25.464335"
+    },
+    {
+      "song_id": "sheng_jie_he_rong_yao_ef11bbd4",
+      "hash_prefix": "685609a3f62e",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T20:13:17.326432"
+    },
+    {
+      "song_id": "ai_mi__shi_wo_yi_sheng_de_hu_zhao_e3f1663f",
+      "hash_prefix": "154a2f57586f",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T20:02:46.685387"
+    },
+    {
+      "song_id": "zan_mei_zhong_xin_xin_bu_duan_sheng_qi_cdbc343d",
+      "hash_prefix": "d72bf7ae9a6a",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T13:55:05.528279"
+    },
+    {
+      "song_id": "zheng_zhan_de_sheng_zai_yu_mi_fc8df977",
+      "hash_prefix": "f5272b32c0cb",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T13:54:52.449242"
+    },
+    {
+      "song_id": "kuang_ye_zhong_wei_yi_de_li_liang_e6cff85d",
+      "hash_prefix": "c629d964cacf",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T13:54:33.322388"
+    },
+    {
+      "song_id": "wo_xin_jian_ding_yu_mi_40394d9a",
+      "hash_prefix": "672464bebe51",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T13:54:22.814619"
+    },
+    {
+      "song_id": "zai_mi_dian_zhong_a337a1c7",
+      "hash_prefix": "e3d6776d5538",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T13:50:11.283554"
+    },
+    {
+      "song_id": "meng_en_06f4c027",
+      "hash_prefix": "d73ec8e3a1af",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T10:35:54.165643"
+    },
+    {
+      "song_id": "rang_wo_xun_jian_mi_5a1ef367",
+      "hash_prefix": "2b051828f3a9",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-02T10:33:47.047658"
+    },
+    {
+      "song_id": "song_zan_gui_yu_mi_d0e41287",
+      "hash_prefix": "441e02a0dbc7",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:04:21.246412"
+    },
+    {
+      "song_id": "ting_jian_zhe_shi_dai_de_hu_huan_68671ecf",
+      "hash_prefix": "fa3092b8cd96",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:03:53.705060"
+    },
+    {
+      "song_id": "ye_he_hua_zuo_wang_1c0be4ec",
+      "hash_prefix": "5c5e916047b7",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:03:37.200047"
+    },
+    {
+      "song_id": "jin_qing_di_wei_xiao_2970d09a",
+      "hash_prefix": "aab9e032066d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:03:11.404110"
+    },
+    {
+      "song_id": "xian_shang_zan_mei_ji_7c7fc894",
+      "hash_prefix": "0fdb6f105b34",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:02:56.274249"
+    },
+    {
+      "song_id": "shen_bu_jian_di_de_ai_34144018",
+      "hash_prefix": "872698a1f72c",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:02:45.674644"
+    },
+    {
+      "song_id": "zui_da_de_fu_fen_1f9a7302",
+      "hash_prefix": "b83fd5dddef1",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:02:35.544123"
+    },
+    {
+      "song_id": "wo_shi_bei_zhu_zhong_jia_mai_hui_de_ren_f5311397",
+      "hash_prefix": "9629b3491d38",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:02:18.420050"
+    },
+    {
+      "song_id": "wo_men_deng_hou_ai_mu_ye_su_cd6ad514",
+      "hash_prefix": "cabaff4d0b8d",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:02:07.389097"
+    },
+    {
+      "song_id": "hou_en_dai_wo_4216a8de",
+      "hash_prefix": "3119dd75fa38",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:01:54.170187"
+    },
+    {
+      "song_id": "bu_dong_yao_de_xin_xin_c8efa2cb",
+      "hash_prefix": "99083df13975",
+      "lrc_source": null,
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-07-01T19:01:40.844375"
+    },
+    {
+      "song_id": "bu_ting_zan_mei_mi_e937a9d3",
+      "hash_prefix": "689ad50aaebf",
+      "lrc_source": "manual_upload",
+      "lrc_status": "completed",
+      "has_youtube_url": true,
+      "imported_at": "2026-06-10T19:15:04.790875"
+    }
+  ],
+  "notes": "Spec measured 399 review songs on 2026-10-07; live count is 391 at snapshot time. Live count is authoritative for later phases; this note records the divergence."
+}

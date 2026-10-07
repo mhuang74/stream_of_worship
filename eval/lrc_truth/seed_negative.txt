@@ -1,0 +1,26 @@
+# Appendix A seed truth lists (specs/lrc-review-triage-cascade-design-v2.md).
+# Snapshot 2026-10-07. Authoritative for these songs even if a live query
+# diverges later; divergences are recorded in the snapshot JSON.
+#
+# Seed negatives (8, must-FAIL regression anchor for negative.txt):
+bu_ting_zan_mei_mi_e937a9d3
+shu_bu_jin_71fba0ce
+wo_neng_gei_ni_shen_me_03b2dcb2
+jing_bai_ye_su_b08227a2
+wo_jing_bai_mi__ye_su_e6dd6146
+na_me_shen_de_ke_mu_ff92abd9
+cang_shen_zhi_chu_39437ec0
+ai_shi_wo_men_yong_gan_6d1865b8
+
+# Per-song lrc_source provenance (from the spec's Appendix A):
+# bu_ting_zan_mei_mi_e937a9d3  manual_upload — anomaly, inspect
+# shu_bu_jin_71fba0ce          youtube_transcript
+# wo_neng_gei_ni_shen_me_03b2dcb2  youtube_transcript
+# jing_bai_ye_su_b08227a2      youtube_transcript
+# wo_jing_bai_mi__ye_su_e6dd6146   youtube_transcript
+# na_me_shen_de_ke_mu_ff92abd9     youtube_transcript
+# cang_shen_zhi_chu_39437ec0       youtube_transcript
+# ai_shi_wo_men_yong_gan_6d1865b8  qwen3_asr
+
+# Seed positives (46, must-PASS regression anchor for positive.txt) live in
+# seed_positive.txt (the Appendix A block has no per-song annotations).
