@@ -243,6 +243,52 @@ class TestProbeRunner:
         with pytest.raises(Exception, match="schema_version"):
             load_probe_manifest(path)
 
+    def test_main_ip_block_writes_report_and_exits_2(self, tmp_path):
+        from probe_transcript_retrievability import main
+
+        err = RuntimeError("blocked")
+        err.__cause__ = FakeTranscriptApiErrors.IpBlocked("blocked")
+        fetch = make_fetch([err])
+        manifest_path = tmp_path / "m.json"
+        runner = ProbeRunner(fetch_fn=fetch, clock=make_clock(), manifest_path=manifest_path)
+        report_path = tmp_path / "report.json"
+        snapshot_path = tmp_path / "snap.json"
+
+        snapshot_path.write_text(
+            json.dumps(
+                {
+                    "review_queue": [
+                        {"song_id": "s1", "hash_prefix": "h1", "lrc_source": "youtube_transcript"},
+                        {"song_id": "s2", "hash_prefix": "h2", "lrc_source": "youtube_transcript"},
+                    ]
+                }
+            )
+        )
+
+        # DB and YouTube are unreachable from unit tests anyway; the run must
+        # abort inside the first probe_song before any real network access.
+        code = main(
+            [
+                "--manifest",
+                str(manifest_path),
+                "--snapshot",
+                str(snapshot_path),
+                "--report",
+                str(report_path),
+            ],
+            runner_factory=lambda: runner,
+            url_resolver=lambda specs: [
+                setattr(s, "youtube_url", f"https://www.youtube.com/watch?v={s.song_id}-vid")
+                for s in specs
+            ],
+        )
+
+        assert code == 2
+        report = json.loads(report_path.read_text())
+        assert report["status"] == "stopped_ip_blocked"
+        assert report["stopped_at_song"] == "s1"
+        assert "YouTube Data API" in report["note"]
+
 
 # --------------------------------------------------------------------------
 # Self-check evaluation (pure)

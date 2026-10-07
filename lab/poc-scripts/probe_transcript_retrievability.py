@@ -362,8 +362,10 @@ class ProbeRunner:
 # Seed self-check
 # --------------------------------------------------------------------------
 
+# Fallback only: the authoritative seed map is the Phase 0a snapshot's
+# seed_subsets.negative.lrc_source_provenance — loaded from there first,
+# so the self-check cannot silently drift from the anchored map.
 SEED_NEGATIVE_SOURCES = {
-    # from specs/...design-v2.md Appendix A (snapshot 2026-10-07)
     "bu_ting_zan_mei_mi_e937a9d3": "manual_upload",  # anomaly: recorded, not asserted
     "shu_bu_jin_71fba0ce": "youtube_transcript",
     "wo_neng_gei_ni_shen_me_03b2dcb2": "youtube_transcript",
@@ -373,6 +375,20 @@ SEED_NEGATIVE_SOURCES = {
     "cang_shen_zhi_chu_39437ec0": "youtube_transcript",
     "ai_shi_wo_men_yong_gan_6d1865b8": "qwen3_asr",
 }
+
+
+def load_seed_sources(snapshot_path: Path) -> tuple[dict[str, str], str]:
+    """Seed song_id → lrc_source from the Phase 0a snapshot's provenance map.
+
+    Returns (sources, source) where source is 'snapshot' or 'fallback', so
+    the self-check report records which anchor was used.
+    """
+    if snapshot_path.exists():
+        data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        provenance = data.get("seed_subsets", {}).get("negative", {}).get("lrc_source_provenance")
+        if provenance:
+            return dict(provenance), "snapshot"
+    return dict(SEED_NEGATIVE_SOURCES), "fallback"
 
 
 def evaluate_self_check(
@@ -445,7 +461,12 @@ def load_review_snapshot(path: Path) -> list[SongProbeSpec]:
 
 
 def resolve_urls(specs: list[SongProbeSpec], config_path: str | None) -> None:
-    """Fill youtube_url from the DB (read-only)."""
+    """Fill youtube_url from the DB (read-only).
+
+    Review-queue rows can be songless recordings (snapshot LEFT JOIN keeps
+    them with a hash_prefix but no song id), so the lookup matches either
+    song_id or hash_prefix in one query.
+    """
     from stream_of_worship.admin.config import AdminConfig
     from stream_of_worship.db.connection import ConnectionProvider
 
@@ -454,15 +475,33 @@ def resolve_urls(specs: list[SongProbeSpec], config_path: str | None) -> None:
     conn = provider.get_connection()
     try:
         with conn.cursor() as cur:
+            keys = [s.song_id for s in specs]
+            cur.execute(
+                """
+                SELECT song_id, hash_prefix, youtube_url
+                FROM (
+                    SELECT r.song_id, r.hash_prefix, r.youtube_url,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY COALESCE(r.song_id, r.hash_prefix)
+                               ORDER BY r.imported_at DESC
+                           ) AS rn
+                    FROM recordings r
+                    WHERE r.deleted_at IS NULL
+                      AND r.youtube_url IS NOT NULL
+                      AND (r.song_id = ANY(%(keys)s) OR r.hash_prefix = ANY(%(keys)s))
+                ) ranked
+                WHERE rn = 1
+                """,
+                {"keys": keys},
+            )
+            url_by_key = {}
+            for song_id, hash_prefix, url in cur.fetchall():
+                if song_id:
+                    url_by_key[song_id] = url
+                if hash_prefix:
+                    url_by_key[hash_prefix] = url
             for song in specs:
-                cur.execute(
-                    "SELECT youtube_url FROM recordings "
-                    "WHERE song_id = %s AND deleted_at IS NULL "
-                    "AND youtube_url IS NOT NULL ORDER BY imported_at DESC LIMIT 1",
-                    (song.song_id,),
-                )
-                row = cur.fetchone()
-                song.youtube_url = row[0] if row else ""
+                song.youtube_url = url_by_key.get(song.song_id, "")
     finally:
         provider.close()
 
@@ -470,9 +509,10 @@ def resolve_urls(specs: list[SongProbeSpec], config_path: str | None) -> None:
 def run_self_check(
     runner: ProbeRunner,
     config_path: str | None,
+    snapshot_path: Path | None = None,
 ) -> dict[str, Any]:
     """Probe the 8 seed negatives and evaluate the seed expectations."""
-    sources = dict(SEED_NEGATIVE_SOURCES)
+    sources, source_of = load_seed_sources(snapshot_path or DEFAULT_SNAPSHOT)
     specs = [
         SongProbeSpec(song_id=song_id, youtube_url="", lrc_source=source)
         for song_id, source in sources.items()
@@ -483,6 +523,7 @@ def run_self_check(
         raise SystemExit(f"no youtube_url in DB for seed songs: {missing}")
     results = {s.song_id: r for s, r in zip(specs, runner.run(specs))}
     report = evaluate_self_check(results, sources)
+    report["source_of"] = source_of
     report["results"] = {
         sid: {
             "retrievable": r.retrievable,
@@ -496,7 +537,7 @@ def run_self_check(
     return report
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, runner_factory=None, url_resolver=None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -529,7 +570,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    runner = ProbeRunner(manifest_path=args.manifest)
+    runner = (
+        runner_factory() if runner_factory is not None else ProbeRunner(manifest_path=args.manifest)
+    )
     report_path = args.report or args.manifest.parent / "probe_report.json"
 
     # Partial-report skeleton persisted BEFORE probing: a mid-run abort
@@ -545,7 +588,10 @@ def main(argv: list[str] | None = None) -> int:
             report = run_self_check(runner, str(args.config) if args.config else None)
         else:
             specs = load_review_snapshot(args.snapshot)
-            resolve_urls(specs, str(args.config) if args.config else None)
+            if url_resolver is not None:
+                url_resolver(specs)
+            else:
+                resolve_urls(specs, str(args.config) if args.config else None)
             if args.limit:
                 specs = specs[: args.limit]
             results = runner.run(specs)
