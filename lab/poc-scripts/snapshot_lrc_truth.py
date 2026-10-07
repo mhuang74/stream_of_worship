@@ -118,6 +118,9 @@ def load_seed_ids(path: Path) -> list[str]:
     return ids
 
 
+EXPECTED_SEED_COUNTS = {"positive": 46, "negative": 8}
+
+
 def extract_seed_lists_from_spec(
     spec_path: Path,
 ) -> tuple[list[str], list[str], dict[str, str]]:
@@ -125,6 +128,10 @@ def extract_seed_lists_from_spec(
 
     Mechanically derived from the spec so the anchor can never be corrupted by
     a transcription typo. Returns (positives, negatives, negative_lrc_sources).
+
+    Fails loudly if the parse yields anything other than the spec's stated
+    counts (46/8) — a spec reformat that silently shrinks the parsed block
+    would otherwise overwrite the frozen anchor and still report success.
     """
     text = spec_path.read_text(encoding="utf-8")
     pos_block = _appendix_block(text, "Seed positives")
@@ -147,6 +154,25 @@ def extract_seed_lists_from_spec(
             if f"({source}" in line or f"— {source}" in line:
                 negative_sources[song_id] = source
                 break
+
+    if len(positives) != EXPECTED_SEED_COUNTS["positive"]:
+        raise SystemExit(
+            f"{spec_path}: parsed {len(positives)} seed positives from Appendix A, "
+            f"expected {EXPECTED_SEED_COUNTS['positive']} — spec format changed or "
+            "parse failed; refusing to overwrite the seed anchor"
+        )
+    if len(negatives) != EXPECTED_SEED_COUNTS["negative"]:
+        raise SystemExit(
+            f"{spec_path}: parsed {len(negatives)} seed negatives from Appendix A, "
+            f"expected {EXPECTED_SEED_COUNTS['negative']} — spec format changed or "
+            "parse failed; refusing to overwrite the seed anchor"
+        )
+    if len(negative_sources) != len(negatives):
+        raise SystemExit(
+            f"{spec_path}: lrc_source provenance parsed for "
+            f"{len(negative_sources)}/{len(negatives)} seed negatives — "
+            "Appendix A annotations changed; refusing to overwrite the seed anchor"
+        )
     return positives, negatives, negative_sources
 
 
