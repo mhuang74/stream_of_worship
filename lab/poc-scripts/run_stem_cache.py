@@ -18,10 +18,23 @@ invocations fail loudly. Failed songs are recorded and retried on the next
 invocation. Zero writes to canonical Lyrics, catalog status, provenance, or
 visibility.
 
+Scale-out populations (issue #247):
+
+- ``--set phase12`` — the Phase 1/2 ten-song set (default).
+- ``--set phase3_positive`` — the Phase 3 calibration population: a seeded
+  random sample of ≤60 songs from ``eval/lrc_truth/positive.txt`` (all of it
+  when ≤60; 54 songs today → all 54).
+- ``--set review_queue`` — the full triage population from the Phase 0a
+  review-queue snapshot (``eval/lrc_truth/latest.json``; 391 songs at
+  snapshot time vs. the spec's 399 — the live snapshot count is
+  authoritative, per issue #243). Snapshot hash_prefixes are verified
+  against the live DB before caching; a moved/deleted song fails loudly.
+
 Usage (from repo root):
     uv run --project lab/poc-scripts --extra stem_separation --extra test \
         python lab/poc-scripts/run_stem_cache.py \
-        [--set phase12] [--cache-dir <path>] [--manifest <path>] [--dry-run]
+        [--set phase12|phase3_positive|review_queue] [--snapshot <path>] \
+        [--cache-dir <path>] [--manifest <path>] [--dry-run]
 
 Cache root defaults to ``sow_legacy_cli_tui.core.paths.get_cache_dir()``
 (``~/.cache/stream-of-worship`` on Linux) — the same root the Phase 1/2
@@ -36,6 +49,8 @@ Set ``MVSEP_API_KEY`` in the environment for the separation path.
 from __future__ import annotations
 
 import argparse
+import json
+import random
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -75,10 +90,80 @@ PHASE12_SET: tuple[str, ...] = (
 )
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-# Anchored to the module directory, not cwd: the serial lock must be the same
-# file no matter where the runner is invoked from.
+# Anchored to the module directory, not cwd: the manifest/lock paths and the
+# truth-list paths must be the same files no matter where the runner is
+# invoked from.
 DEFAULT_MANIFEST = _SCRIPT_DIR / "eval/lrc_truth/stem_cache/manifest.json"
 DEFAULT_LOCK = _SCRIPT_DIR / "eval/lrc_truth/stem_cache/serial.lock"
+DEFAULT_TRUTH_DIR = _SCRIPT_DIR.parent.parent / "eval" / "lrc_truth"
+DEFAULT_SNAPSHOT = DEFAULT_TRUTH_DIR / "latest.json"
+
+# Scale-out populations (issue #247 — Phase 3 positive sample, Phase 4 triage)
+
+# Phase 3 sample size limit (spec: "seeded random sample of 60 (serial
+# stem-separation bound; if ≤60, use all of it)"). Default seed: picked so a
+# rerun reproduces the exact same sample.
+PHASE3_SAMPLE_SIZE = 60
+SEED = 42
+
+
+def load_positive_ids(truth_dir: Path = DEFAULT_TRUTH_DIR) -> list[str]:
+    """Phase 3 positive sample population: the published-LRC snapshot list.
+
+    ``eval/lrc_truth/positive.txt`` is written verbatim from the live
+    ``sow-admin lyrics feedback list`` stdout by ``snapshot_lrc_truth.py``
+    (Phase 0a); rerunning the snapshotter regenerates it, so it stays fresh
+    without a code change.
+    """
+    path = truth_dir / "positive.txt"
+    ids = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not ids:
+        raise StemCacheError(f"positive population {path} is empty; run snapshot_lrc_truth.py")
+    return ids
+
+
+def load_review_queue_ids(
+    snapshot_path: Path = DEFAULT_SNAPSHOT,
+) -> list[tuple[str, str]]:
+    """Phase 4 triage population: the full review queue from the Phase 0a
+    snapshot (eval/lrc_truth/latest.json).
+    """
+    data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    rows = data.get("review_queue")
+    if not rows:
+        raise StemCacheError(
+            f"snapshot {snapshot_path} has no review_queue; rerun snapshot_lrc_truth.py"
+        )
+    refs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for row in rows:
+        song_id = row.get("song_id")
+        hash_prefix = row.get("hash_prefix")
+        if not song_id or not hash_prefix:
+            raise StemCacheError(f"snapshot row missing song_id/hash_prefix: {row!r}")
+        if song_id in seen:
+            raise StemCacheError(f"snapshot contains duplicate song_id {song_id!r}")
+        seen.add(song_id)
+        refs.append((song_id, hash_prefix))
+    return refs
+
+
+def sample_positive(
+    ids: list[str], seed: int = SEED, sample_size: int = PHASE3_SAMPLE_SIZE
+) -> list[str]:
+    """Phase 3 positive sample (spec line 242): seeded random sample of
+    *sample_size* songs, or all songs when the population is at or below the
+    sample size — no sampling, input order preserved (serial bound respected).
+    """
+    if len(ids) <= sample_size:
+        return list(ids)
+    rng = random.Random(seed)
+    return sorted(rng.sample(ids, sample_size))
+
 
 MVSEP_STAGE1_SEP_TYPE = 48  # MelBand Roformer (matches prod analysis service)
 MVSEP_STAGE1_ADD_OPT1 = 11  # becruily deux, best vocals
@@ -101,8 +186,21 @@ class RunSummary:
         )
 
 
-def build_song_refs(conn, song_ids: list[str]) -> list[tuple[str, str]]:
-    """Resolve song IDs → hash prefixes via a read-only DB query."""
+def build_song_refs(
+    conn, song_ids: list[str], known_prefixes: dict[str, str] | None = None
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Resolve song IDs → hash prefixes via a read-only DB query.
+
+    With *known_prefixes* (review-queue snapshot, issue #247), each song_id
+    must map to exactly the recorded prefix: the snapshot is verified against
+    the live DB before caching, so a moved song fails loudly instead of
+    caching stems under the wrong recording.
+
+    Returns (refs, missing): *missing* lists songs absent from the DB
+    (deleted since the snapshot). In verification mode they are reported to
+    the caller for per-song FAILED records and the run continues; without
+    known_prefixes (implicit-population mode) a missing song is an error.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -117,7 +215,7 @@ def build_song_refs(conn, song_ids: list[str]) -> list[tuple[str, str]]:
         for sid, hp in cur.fetchall():
             rows.setdefault(sid, []).append(hp)
     missing = [sid for sid in song_ids if sid not in rows]
-    if missing:
+    if missing and known_prefixes is None:
         raise StemCacheError(f"songs not found in DB (deleted or unknown): {missing}")
     ambiguous = {sid: hps for sid, hps in rows.items() if len(hps) > 1}
     if ambiguous:
@@ -125,8 +223,21 @@ def build_song_refs(conn, song_ids: list[str]) -> list[tuple[str, str]]:
             "songs with multiple live recordings - cannot pick a canonical "
             f"hash_prefix; resolve manually: {ambiguous}"
         )
+    mismatched = {
+        sid: (rows[sid][0], known_prefixes[sid])
+        for sid in song_ids
+        if known_prefixes is not None
+        and sid in known_prefixes
+        and sid in rows
+        and rows[sid][0] != known_prefixes[sid]
+    }
+    if mismatched:
+        raise StemCacheError(
+            "hash_prefix mismatch between snapshot and live DB: "
+            + "; ".join(f"{sid}: snapshot={sp} db={dp}" for sid, (dp, sp) in mismatched.items())
+        )
     # preserve the caller's order (the runner's deterministic serial order)
-    return [(sid, rows[sid][0]) for sid in song_ids]
+    return [(sid, rows[sid][0]) for sid in song_ids if sid in rows], missing
 
 
 def _mvsep_separate(
@@ -295,7 +406,14 @@ def run(
     lock_path: Path,
     config_path: Path | None,
     dry_run: bool,
+    override_refs: list[tuple[str, str]] | None = None,
 ) -> RunSummary:
+    """Resolve clean vocals for every song in *song_ids*.
+
+    *override_refs* (issue #247 scale-out, review_queue set) supplies
+    song_id → hash_prefix pairs straight from the Phase 0a snapshot; they
+    are verified against the live DB instead of re-resolved.
+    """
     summary = RunSummary()
 
     with try_lock_serial(lock_path):
@@ -306,8 +424,31 @@ def run(
         config = AdminConfig.load(config_path)
         provider = ConnectionProvider(config.get_connection_url())
         conn = provider.get_connection()
+        manifest = load_or_init_manifest(manifest_path)
         try:
-            refs = build_song_refs(conn, song_ids)
+            if override_refs is not None:
+                built, missing = build_song_refs(
+                    conn,
+                    [sid for sid, _ in override_refs],
+                    known_prefixes=dict(override_refs),
+                )
+                # Snapshot songs deleted from the catalog since the Phase 0a
+                # snapshot: per-song FAILED record (explicit fallback record,
+                # issue #247) so the serial run continues and is resumable —
+                # never a wholesale abort.
+                for sid in missing:
+                    hp = dict(override_refs)[sid]
+                    summary.failed += 1
+                    print(f"  {sid}: not in DB (deleted since snapshot) - recording failed")
+                    record_result(
+                        manifest,
+                        manifest_path,
+                        SongRef(sid, hp),
+                        status=CacheStatus.FAILED,
+                        error="song not found in DB (deleted since snapshot)",
+                    )
+            else:
+                built, _ = build_song_refs(conn, song_ids)
         finally:
             provider.close()
 
@@ -317,13 +458,12 @@ def run(
             region=config.r2_region,
         )
 
-        manifest = load_or_init_manifest(manifest_path)
         pending = next_pending(
-            manifest, [SongRef(sid, hp) for sid, hp in refs], cache_root=cache_root
+            manifest, [SongRef(sid, hp) for sid, hp in built], cache_root=cache_root
         )
-        summary.skipped = len(refs) - len(pending)
+        summary.skipped = len(built) - len(pending)
         print(
-            f"songs: {len(refs)} total, {summary.skipped} already resolved, "
+            f"songs: {len(built)} total, {summary.skipped} already resolved, "
             f"{len(pending)} pending"
         )
 
@@ -389,15 +529,26 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--set",
-        choices=("phase12",),
+        choices=("phase12", "phase3_positive", "review_queue"),
         default="phase12",
-        help="Which song set to process (default: phase12)",
+        help=(
+            "Which song set to process (default: phase12). phase3_positive: "
+            "seeded random sample (<=60) of the Phase 0a positive snapshot "
+            "(eval/lrc_truth/positive.txt). review_queue: every song in the "
+            "Phase 0a review-queue snapshot (eval/lrc_truth/latest.json)."
+        ),
     )
     parser.add_argument(
         "--song-id",
         action="append",
         default=None,
         help="Explicit song IDs (overrides --set; repeatable)",
+    )
+    parser.add_argument(
+        "--snapshot",
+        type=Path,
+        default=DEFAULT_SNAPSHOT,
+        help=f"Phase 0a snapshot JSON (--set review_queue; default: {DEFAULT_SNAPSHOT})",
     )
     parser.add_argument(
         "--cache-dir",
@@ -425,7 +576,27 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    song_ids = list(PHASE12_SET) if args.song_id is None else list(args.song_id)
+    refs: list[tuple[str, str]] | None = None
+    if args.song_id is not None:
+        song_ids = list(args.song_id)
+    elif args.set == "phase12":
+        song_ids = list(PHASE12_SET)
+    elif args.set == "phase3_positive":
+        # Phase 3 calibration sample: seeded random sample of <=60 positives
+        # (all of them when the snapshot has <=60); DB lookup still resolves
+        # each song's canonical hash_prefix.
+        song_ids = sample_positive(load_positive_ids())
+        print(
+            f"phase3 positive sample: {len(song_ids)} songs "
+            f"(seed={SEED}, sample_size={PHASE3_SAMPLE_SIZE})"
+        )
+    else:  # review_queue
+        # Full triage population straight from the Phase 0a snapshot. The
+        # snapshot's hash_prefix column is verified against the live DB
+        # inside run() before anything is cached.
+        refs = load_review_queue_ids(args.snapshot)
+        song_ids = [sid for sid, _ in refs]
+        print(f"review queue: {len(refs)} songs from {args.snapshot}")
 
     if args.cache_dir is not None:
         cache_root = args.cache_dir
@@ -446,6 +617,7 @@ def main(argv: list[str] | None = None) -> int:
             lock_path=args.lock,
             config_path=args.config,
             dry_run=args.dry_run,
+            override_refs=refs,
         )
     except StemCacheError as e:
         print(f"error: {e}", file=sys.stderr)

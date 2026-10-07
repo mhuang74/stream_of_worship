@@ -15,10 +15,17 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import run_stem_cache as rsc
 from run_stem_cache import (
+    PHASE3_SAMPLE_SIZE,
     PHASE12_SET,
+    SEED,
     build_song_refs,
+    load_positive_ids,
+    load_review_queue_ids,
     process_song,
+    run as run_stem_cache,
+    sample_positive,
 )
 from stem_cache import (
     CacheStatus,
@@ -49,6 +56,115 @@ class TestPhase12Set:
 
 
 # --------------------------------------------------------------------------
+# Scale-out populations (issue #247)
+# --------------------------------------------------------------------------
+
+
+def _write_positive_list(tmp_path: Path, ids: list[str]) -> Path:
+    truth_dir = tmp_path / "truth"
+    truth_dir.mkdir(parents=True, exist_ok=True)
+    (truth_dir / "positive.txt").write_text("\n".join(ids) + "\n", encoding="utf-8")
+    return truth_dir
+
+
+def _write_snapshot(tmp_path: Path, rows: list[dict] | None = None) -> Path:
+    snapshot = tmp_path / "latest.json"
+    snapshot.write_text(json.dumps({"review_queue": rows or []}), encoding="utf-8")
+    return snapshot
+
+
+class TestLoadPositiveIds:
+    def test_reads_positive_txt_from_truth_dir(self, tmp_path: Path):
+        ids = ["a", "b", "c"]
+        truth_dir = _write_positive_list(tmp_path, ids)
+        assert load_positive_ids(truth_dir) == ids
+
+    def test_skips_blank_lines(self, tmp_path: Path):
+        truth_dir = _write_positive_list(tmp_path, ["a", "", "b"])
+        assert load_positive_ids(truth_dir) == ["a", "b"]
+
+    def test_empty_list_raises(self, tmp_path: Path):
+        truth_dir = _write_positive_list(tmp_path, [])
+        with pytest.raises(StemCacheError, match="empty"):
+            load_positive_ids(truth_dir)
+
+    def test_live_positive_snapshot_within_sample_bound(self):
+        """The real positive.txt population must parse; today it is ≤60 songs
+        (all of it becomes the Phase 3 sample, no sampling needed)."""
+        ids = load_positive_ids()
+        assert len(ids) < 399
+        assert all("_" in i for i in ids)
+
+
+class TestLoadReviewQueueIds:
+    def test_reads_song_id_and_hash_prefix_pairs(self, tmp_path: Path):
+        rows = [
+            {"song_id": "s1", "hash_prefix": "aaaaaaaaaaaa", "lrc_source": None},
+            {"song_id": "s2", "hash_prefix": "bbbbbbbbbbbb", "lrc_source": "youtube_transcript"},
+        ]
+        snapshot = _write_snapshot(tmp_path, rows)
+        assert load_review_queue_ids(snapshot) == [("s1", "aaaaaaaaaaaa"), ("s2", "bbbbbbbbbbbb")]
+
+    def test_empty_review_queue_raises(self, tmp_path: Path):
+        snapshot = _write_snapshot(tmp_path, [])
+        with pytest.raises(StemCacheError, match="no review_queue"):
+            load_review_queue_ids(snapshot)
+
+    def test_missing_key_raises(self, tmp_path: Path):
+        snapshot = tmp_path / "latest.json"
+        snapshot.write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
+        with pytest.raises(StemCacheError, match="no review_queue"):
+            load_review_queue_ids(snapshot)
+
+    def test_missing_hash_prefix_raises(self, tmp_path: Path):
+        snapshot = _write_snapshot(tmp_path, [{"song_id": "s1", "hash_prefix": None}])
+        with pytest.raises(StemCacheError, match="missing song_id/hash_prefix"):
+            load_review_queue_ids(snapshot)
+
+    def test_duplicate_song_id_raises(self, tmp_path: Path):
+        rows = [
+            {"song_id": "s1", "hash_prefix": "aaaaaaaaaaaa"},
+            {"song_id": "s1", "hash_prefix": "bbbbbbbbbbbb"},
+        ]
+        snapshot = _write_snapshot(tmp_path, rows)
+        with pytest.raises(StemCacheError, match="duplicate"):
+            load_review_queue_ids(snapshot)
+
+    def test_live_snapshot_parses_and_is_nonempty(self):
+        """The real Phase 0a snapshot (eval/lrc_truth/latest.json) must parse;
+        spec measured 399 but the live snapshot count is authoritative
+        (issue #243), so the count is only sanity-bounded here."""
+        refs = load_review_queue_ids()
+        assert refs
+        assert all(song_id and hash_prefix for song_id, hash_prefix in refs)
+
+
+class TestSamplePositive:
+    def test_at_or_below_limit_returns_all_in_order(self):
+        ids = ["s3", "s1", "s2"]
+        assert sample_positive(ids, seed=SEED, sample_size=PHASE3_SAMPLE_SIZE) == ids
+
+    def test_exactly_limit_returns_all(self):
+        ids = [f"s{i}" for i in range(PHASE3_SAMPLE_SIZE)]
+        assert sample_positive(ids) == ids
+
+    def test_above_limit_samples_exact_size(self):
+        ids = [f"s{i}" for i in range(100)]
+        out = sample_positive(ids)
+        assert len(out) == PHASE3_SAMPLE_SIZE
+        assert set(out) <= set(ids)
+        assert len(set(out)) == len(out)
+
+    def test_deterministic_for_fixed_seed(self):
+        ids = [f"s{i}" for i in range(100)]
+        assert sample_positive(ids, seed=7) == sample_positive(ids, seed=7)
+
+    def test_different_seed_can_differ(self):
+        ids = [f"s{i}" for i in range(100)]
+        assert sample_positive(ids, seed=SEED) != sample_positive(ids, seed=SEED + 1)
+
+
+# --------------------------------------------------------------------------
 # build_song_refs: DB lookup (mocked connection)
 # --------------------------------------------------------------------------
 
@@ -62,19 +178,53 @@ class TestBuildSongRefs:
             ("song_a", "aaaaaaaaaaaa"),
             ("song_b", "bbbbbbbbbbbb"),
         ]
-        refs = build_song_refs(conn, ["song_a", "song_b"])
+        refs, missing = build_song_refs(conn, ["song_a", "song_b"])
         assert refs == [
             ("song_a", "aaaaaaaaaaaa"),
             ("song_b", "bbbbbbbbbbbb"),
         ]
+        assert missing == []
 
-    def test_missing_song_raises(self):
+    def test_missing_song_raises_without_known_prefixes(self):
         conn = MagicMock()
         cursor = MagicMock()
         conn.cursor.return_value.__enter__.return_value = cursor
         cursor.fetchall.return_value = [("song_a", "aaaaaaaaaaaa")]
         with pytest.raises(StemCacheError, match="song_b"):
             build_song_refs(conn, ["song_a", "song_b"])
+
+    def test_known_prefix_match_passes_through(self):
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [("song_a", "aaaaaaaaaaaa")]
+        refs, missing = build_song_refs(
+            conn, ["song_a"], known_prefixes={"song_a": "aaaaaaaaaaaa"}
+        )
+        assert refs == [("song_a", "aaaaaaaaaaaa")]
+        assert missing == []
+
+    def test_known_prefix_mismatch_raises(self):
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [("song_a", "aaaaaaaaaaaa")]
+        with pytest.raises(StemCacheError, match="mismatch"):
+            build_song_refs(conn, ["song_a"], known_prefixes={"song_a": "zzzzzzzzzzzz"})
+
+    def test_known_prefix_missing_song_returned_not_raised(self):
+        """Verification mode (issue #247): a snapshot song deleted from the
+        DB comes back in *missing* so the runner records per-song FAILED and
+        continues; only implicit-population mode raises."""
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [("song_a", "aaaaaaaaaaaa")]
+        refs, missing = build_song_refs(
+            conn, ["song_a", "song_b"], known_prefixes={"song_b": "bbbbbbbbbbbb"}
+        )
+        assert refs == [("song_a", "aaaaaaaaaaaa")]
+        assert missing == ["song_b"]
 
 
 # --------------------------------------------------------------------------
@@ -332,7 +482,7 @@ def _stub_run_infra(monkeypatch, r2=None):
     )
     monkeypatch.setattr(
         "run_stem_cache.build_song_refs",
-        lambda conn, ids: [("song_a", "aaaaaaaaaaaa")],
+        lambda conn, ids, known_prefixes=None: ([(sid, "aaaaaaaaaaaa") for sid in ids], []),
     )
 
 
@@ -420,3 +570,140 @@ class TestRunnerIdempotence:
         # ...but the terminal entry survives (no clobbering) modulo resolved_at
         assert after["songs"]["song_a"]["status"] == "cached"
         assert after["songs"]["song_a"]["source"] == before["songs"]["song_a"]["source"]
+
+
+# --------------------------------------------------------------------------
+# Runner scale-out (issue #247): refs override from the Phase 0a snapshot
+# --------------------------------------------------------------------------
+
+
+class TestRunnerScaleOutRefs:
+    def test_snapshot_refs_run_and_manifest_recs_keyed_by_song_id(self, tmp_path, monkeypatch):
+        """run(refs=...) processes the snapshot songs: both resolve via the
+        R2 dry-stem chain with no MVSEP, and their statuses land in the
+        manifest under the given song_ids."""
+        cache_root = tmp_path / "cache"
+        manifest, manifest_path = _make_ctx(cache_root, tmp_path)
+
+        r2 = MagicMock()
+        r2.file_exists.side_effect = lambda key: key.endswith(
+            ("aaaaaaaaaaaa/stems/vocals_dry.flac", "bbbbbbbbbbbb/stems/vocals_dry.flac")
+        )
+        r2.download_file.side_effect = lambda key, dest: dest.write_bytes(b"flac")
+
+        # snapshot provides known prefixes matching what build_song_refs sees
+        _stub_run_infra(monkeypatch, r2=r2)
+
+        monkeypatch.setattr(
+            rsc,
+            "build_song_refs",
+            lambda conn, ids, known_prefixes=None: (
+                [(sid, known_prefixes[sid]) for sid in ids],
+                [],
+            ),
+        )
+
+        summary = run_stem_cache(
+            song_ids=["s1", "s2"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=False,
+            override_refs=[("s1", "aaaaaaaaaaaa"), ("s2", "bbbbbbbbbbbb")],
+        )
+        assert summary.cached == 2
+        assert summary.failed == 0
+        # run() reloads the manifest internally; assert on the persisted state
+        persisted = json.loads(manifest_path.read_text(encoding="utf-8"))["songs"]
+        assert set(persisted) == {"s1", "s2"}
+        # entries carry the snapshot's own hash_prefixes
+        assert persisted["s1"]["hash_prefix"] == "aaaaaaaaaaaa"
+        assert persisted["s2"]["hash_prefix"] == "bbbbbbbbbbbb"
+
+    def test_snapshot_ref_mismatch_fails_run_without_manifest_writes(self, tmp_path, monkeypatch):
+        """A snapshot prefix disagreeing with the live DB aborts loudly
+        before any song is processed (fail-closed, no partial cache)."""
+
+        _stub_run_infra(monkeypatch, r2=_ExplodingR2())
+        monkeypatch.setattr(
+            rsc,
+            "build_song_refs",
+            MagicMock(side_effect=StemCacheError("hash_prefix mismatch between snapshot")),
+        )
+
+        with pytest.raises(StemCacheError, match="mismatch"):
+            run_stem_cache(
+                song_ids=["s1"],
+                cache_root=tmp_path / "cache",
+                manifest_path=tmp_path / "manifest.json",
+                lock_path=tmp_path / "serial.lock",
+                config_path=None,
+                dry_run=False,
+                override_refs=[("s1", "aaaaaaaaaaaa")],
+            )
+
+    def test_refs_none_keeps_db_resolved_path(self, tmp_path, monkeypatch):
+        """refs=None (phase12 default) must still resolve prefixes via the
+        plain DB query, unchanged from issue #244 behavior."""
+
+        calls = []
+
+        def fake_build(conn, ids, known_prefixes=None):
+            calls.append((list(ids), known_prefixes))
+            return [(sid, "aaaaaaaaaaaa") for sid in ids], []
+
+        _stub_run_infra(monkeypatch, r2=_ExplodingR2())  # explodes only if processed
+        monkeypatch.setattr(rsc, "build_song_refs", fake_build)
+
+        summary = run_stem_cache(
+            song_ids=["song_a"],
+            cache_root=tmp_path / "cache",
+            manifest_path=tmp_path / "manifest.json",
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=True,
+        )
+        assert summary.skipped == 0
+        assert calls == [(["song_a"], None)]
+
+    def test_snapshot_deleted_song_recorded_failed_and_run_continues(
+        self, tmp_path, monkeypatch
+    ):
+        """A snapshot song deleted from the DB since Phase 0a gets its own
+        FAILED manifest record and does NOT abort the remaining songs
+        (issue #247 acceptance: fallback-recorded, resumable)."""
+        manifest_path = tmp_path / "manifest.json"
+        cache_root = tmp_path / "cache"
+
+        r2 = MagicMock()
+        r2.file_exists.side_effect = lambda key: key.endswith(
+            "aaaaaaaaaaaa/stems/vocals_dry.flac"
+        )
+        r2.download_file.side_effect = lambda key, dest: dest.write_bytes(b"flac")
+
+        _stub_run_infra(monkeypatch, r2=r2)
+        monkeypatch.setattr(
+            rsc,
+            "build_song_refs",
+            lambda conn, ids, known_prefixes=None: (
+                [(sid, known_prefixes[sid]) for sid in ids if sid != "s_gone"],
+                ["s_gone"],
+            ),
+        )
+
+        summary = run_stem_cache(
+            song_ids=["s_gone", "s1"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=False,
+            override_refs=[("s_gone", "deadbeefdead"), ("s1", "aaaaaaaaaaaa")],
+        )
+        assert summary.failed == 1  # only the deleted song
+        assert summary.cached == 1  # s1 still resolved
+        persisted = json.loads(manifest_path.read_text(encoding="utf-8"))["songs"]
+        assert persisted["s_gone"]["status"] == "failed"
+        assert "deleted since snapshot" in persisted["s_gone"]["error"]
+        assert persisted["s1"]["status"] == "cached"

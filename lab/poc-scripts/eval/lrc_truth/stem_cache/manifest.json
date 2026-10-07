@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "created_at": "2026-10-07T14:14:19+00:00",
-  "updated_at": "2026-10-07T14:41:43+00:00",
+  "updated_at": "2026-10-07T23:47:37+00:00",
   "songs": {
     "zhu_a__wo_yao_gen_sui_mi_83163301": {
       "status": "cached",
@@ -13,30 +13,34 @@
     "hereforyou_62e79ae9": {
       "status": "cached",
       "hash_prefix": "20379ea26256",
-      "resolved_at": "2026-10-07T14:15:24+00:00",
+      "resolved_at": "2026-10-07T22:19:38+00:00",
       "source": "r2_vocals_dry",
-      "audio": "stems/clean_vocals.flac"
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
     },
     "xin_kao_mei_yi_ju_ying_xu_df457941": {
       "status": "cached",
       "hash_prefix": "558c2421ab8c",
-      "resolved_at": "2026-10-07T14:15:27+00:00",
+      "resolved_at": "2026-10-07T22:35:44+00:00",
       "source": "r2_vocals_dry",
-      "audio": "stems/clean_vocals.flac"
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
     },
     "cong_zao_chen_dao_ye_wan_b035044f": {
       "status": "cached",
       "hash_prefix": "e5c16c2f35f2",
-      "resolved_at": "2026-10-07T14:15:32+00:00",
+      "resolved_at": "2026-10-07T22:39:27+00:00",
       "source": "r2_vocals_dry",
-      "audio": "stems/clean_vocals.flac"
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
     },
     "mei_hao_de_chuang_zao_3d42d76e": {
       "status": "cached",
       "hash_prefix": "196669aa37bd",
-      "resolved_at": "2026-10-07T14:15:36+00:00",
+      "resolved_at": "2026-10-07T22:39:47+00:00",
       "source": "r2_vocals_dry",
-      "audio": "stems/clean_vocals.flac"
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
     },
     "shu_bu_jin_71fba0ce": {
       "status": "cached",
@@ -72,6 +76,650 @@
       "resolved_at": "2026-10-07T14:15:49+00:00",
       "source": "r2_vocals_dry",
       "audio": "stems/clean_vocals.flac"
+    },
+    "hereibow_a9271bf4": {
+      "status": "cached",
+      "hash_prefix": "6a410a5c222a",
+      "resolved_at": "2026-10-07T22:19:34+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "lian_jing_wo_a28b0d9e": {
+      "status": "cached",
+      "hash_prefix": "5c81077aad94",
+      "resolved_at": "2026-10-07T22:23:08+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "ye_he_hua_ni_xi_afde0692": {
+      "status": "cached",
+      "hash_prefix": "e4938fe5f03e",
+      "resolved_at": "2026-10-07T22:23:10+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "shi_jia_de_ai_288ba1c9": {
+      "status": "cached",
+      "hash_prefix": "7f0364d2caee",
+      "resolved_at": "2026-10-07T22:26:38+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "zai_mi_tong_zai_li_d23a1255": {
+      "status": "cached",
+      "hash_prefix": "a161921cc6cd",
+      "resolved_at": "2026-10-07T22:32:12+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "yi_sheng_jing_bai_mi_da2173d0": {
+      "status": "cached",
+      "hash_prefix": "cf8d0dde06f0",
+      "resolved_at": "2026-10-07T22:35:42+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "jun_wang_jiu_zai_zhe_li_1c32724c": {
+      "status": "cached",
+      "hash_prefix": "8a4663283a5c",
+      "resolved_at": "2026-10-07T22:35:50+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "xi_le_he_liu_6f4d65a7": {
+      "status": "cached",
+      "hash_prefix": "2556561a5f99",
+      "resolved_at": "2026-10-07T22:35:52+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "wei_rao_wo_997c78c0": {
+      "status": "cached",
+      "hash_prefix": "5f168a3e9c9f",
+      "resolved_at": "2026-10-07T22:35:55+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "zai_zhe_li_9cdbc9e8": {
+      "status": "cached",
+      "hash_prefix": "736dfab8d42e",
+      "resolved_at": "2026-10-07T22:39:22+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "de_sheng_you_yu_ca88c8ec": {
+      "status": "cached",
+      "hash_prefix": "c73bd6900d9d",
+      "resolved_at": "2026-10-07T22:39:25+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "wo_ke_wang_kan_jian_7788db93": {
+      "status": "cached",
+      "hash_prefix": "bc944ce00a99",
+      "resolved_at": "2026-10-07T22:39:31+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "wo_de_sheng_yin_dai_you_neng_li_c4082100": {
+      "status": "cached",
+      "hash_prefix": "fe792ccc0755",
+      "resolved_at": "2026-10-07T22:39:34+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "suo_you_de_rong_yao_gui_yu_mi_d671f1cb": {
+      "status": "cached",
+      "hash_prefix": "36547af30f79",
+      "resolved_at": "2026-10-07T22:39:36+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "da_kai_tian_chuang_dda69298": {
+      "status": "cached",
+      "hash_prefix": "5b1dd3486608",
+      "resolved_at": "2026-10-07T22:39:39+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "geng_xiang_mi_07e6dd27": {
+      "status": "cached",
+      "hash_prefix": "da572bb42b36",
+      "resolved_at": "2026-10-07T22:39:42+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "shui_shen_zhi_chu_68301d63": {
+      "status": "cached",
+      "hash_prefix": "8474e9c03169",
+      "resolved_at": "2026-10-07T22:39:45+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "iwillsinghallelujah_wo_yao_chang_ha_li_lu_ya__f5b0bc26": {
+      "status": "cached",
+      "hash_prefix": "d6c37597e208",
+      "resolved_at": "2026-10-07T22:43:21+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "he_deng_rong_yao_mei_li_de_zhu_b0ee74b5": {
+      "status": "cached",
+      "hash_prefix": "621bf97917af",
+      "resolved_at": "2026-10-07T22:48:55+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "wei_da_de_shen_fa92f6d2": {
+      "status": "cached",
+      "hash_prefix": "a3925e3d94bc",
+      "resolved_at": "2026-10-07T22:48:57+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "da_shan_ke_yi_nuo_kai__zhu_de_ci_ai__8da4d2ce": {
+      "status": "cached",
+      "hash_prefix": "89aa957729b7",
+      "resolved_at": "2026-10-07T22:52:24+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "de_sheng_de_xuan_gao_c1168cd3": {
+      "status": "cached",
+      "hash_prefix": "13c379af0bdd",
+      "resolved_at": "2026-10-07T22:56:27+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "wo_men_gao_ju_ye_su_de_ming_9d078cac": {
+      "status": "cached",
+      "hash_prefix": "2be27404773e",
+      "resolved_at": "2026-10-07T23:00:01+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "wo_zai_zhe_li_97e552ed": {
+      "status": "cached",
+      "hash_prefix": "4bee85caecd0",
+      "resolved_at": "2026-10-07T23:03:35+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "wo_shi_tian_fu_de_hai_zi_73c3756b": {
+      "status": "cached",
+      "hash_prefix": "0059761b1734",
+      "resolved_at": "2026-10-07T23:06:31+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "dang_mi_zou_jin_wo_men_dang_zhong_3975a746": {
+      "status": "cached",
+      "hash_prefix": "863331f713b5",
+      "resolved_at": "2026-10-07T23:11:08+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "mi_shi_wo_de_shi_ge_83c516ec": {
+      "status": "cached",
+      "hash_prefix": "5579ff1f78d6",
+      "resolved_at": "2026-10-07T23:15:09+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "mi_de_jiu_en_5c1dbb88": {
+      "status": "cached",
+      "hash_prefix": "50f6419044cb",
+      "resolved_at": "2026-10-07T23:18:12+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "ye_su_yong_yuan_zhang_quan_11c37c63": {
+      "status": "cached",
+      "hash_prefix": "9c3489a3f60b",
+      "resolved_at": "2026-10-07T23:21:16+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "sheng_ling_de_huo_2a76916d": {
+      "status": "cached",
+      "hash_prefix": "301d6a2492a8",
+      "resolved_at": "2026-10-07T23:21:19+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "zhu_a__wo_men_jing_wei_mi_1eb5d053": {
+      "status": "cached",
+      "hash_prefix": "b275c5784170",
+      "resolved_at": "2026-10-07T23:24:27+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "geng_shen_zhi_chu_872a8c58": {
+      "status": "cached",
+      "hash_prefix": "415fdcc87171",
+      "resolved_at": "2026-10-07T23:28:02+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "mei_yi_tian_wo_xu_yao_mi_4f6d59fd": {
+      "status": "cached",
+      "hash_prefix": "e4ec80ab3655",
+      "resolved_at": "2026-10-07T23:31:37+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "xian_shang_zun_rong_71b624f0": {
+      "status": "cached",
+      "hash_prefix": "6d7bcefef53b",
+      "resolved_at": "2026-10-07T23:35:09+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "xing_shen_ji_de_shen_60d27779": {
+      "status": "cached",
+      "hash_prefix": "832fbc2772e5",
+      "resolved_at": "2026-10-07T23:38:09+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "quan_xin_de_sheng_ming_5a797042": {
+      "status": "cached",
+      "hash_prefix": "55b7fae84a6e",
+      "resolved_at": "2026-10-07T23:38:12+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "yin_zhu_shi_jia_e5a7765f": {
+      "status": "cached",
+      "hash_prefix": "57a167c3ff6f",
+      "resolved_at": "2026-10-07T23:41:40+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
+    },
+    "mi_yong_yuan_huo_zhu_f461da22": {
+      "status": "cached",
+      "hash_prefix": "85001d8b5273",
+      "resolved_at": "2026-10-07T23:41:43+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "xi_le_quan_yuan_88cd7a75": {
+      "status": "failed",
+      "hash_prefix": "33b8c5a4ee53",
+      "resolved_at": "2026-10-07T23:41:49+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "xiang_wo_de_shen_xian_shang_gan_xie_ec1d7b3c": {
+      "status": "failed",
+      "hash_prefix": "7ff6be9c4e1e",
+      "resolved_at": "2026-10-07T23:41:55+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "wo_de_ye_su_4c27d159": {
+      "status": "failed",
+      "hash_prefix": "675d313d8ba3",
+      "resolved_at": "2026-10-07T23:42:00+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "pi_shang_zan_mei_yi_9621c199": {
+      "status": "failed",
+      "hash_prefix": "c04e746de0fa",
+      "resolved_at": "2026-10-07T23:42:06+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "zhu_mu_kan_ye_su_d9d7c511": {
+      "status": "cached",
+      "hash_prefix": "78e29c9840fa",
+      "resolved_at": "2026-10-07T23:42:09+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "zhu_ci_fu_ru_chun_yu_d1fce01c": {
+      "status": "cached",
+      "hash_prefix": "1835741ecfc8",
+      "resolved_at": "2026-10-07T23:42:11+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "mi_jiu_shi_wei_yi_aae2bf2f": {
+      "status": "cached",
+      "hash_prefix": "e309186fa975",
+      "resolved_at": "2026-10-07T23:42:14+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "wei_you_zhu_ye_su_de_bao_xue_396220cd": {
+      "status": "cached",
+      "hash_prefix": "fe4f11da783d",
+      "resolved_at": "2026-10-07T23:42:15+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "you_yi_wei_shen_c33ea762": {
+      "status": "cached",
+      "hash_prefix": "8ce554a1a91f",
+      "resolved_at": "2026-10-07T23:42:17+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "rang_zan_mei_fei_yang__gu_dian_ban__6eedd5e5": {
+      "status": "cached",
+      "hash_prefix": "91682eed183b",
+      "resolved_at": "2026-10-07T23:42:20+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "lian_jing_guo_de_sheng_ming_cb1da399": {
+      "status": "failed",
+      "hash_prefix": "8459a62e2e62",
+      "resolved_at": "2026-10-07T23:42:26+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "gan_xie_tian_fu_32e74536": {
+      "status": "cached",
+      "hash_prefix": "6633c0edc617",
+      "resolved_at": "2026-10-07T23:43:37+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "geng_duo_ai_mi_77bb3b6e": {
+      "status": "failed",
+      "hash_prefix": "44136475f459",
+      "resolved_at": "2026-10-07T23:43:48+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "ping_an__yue_yu__0d44151f": {
+      "status": "failed",
+      "hash_prefix": "c9637793bf37",
+      "resolved_at": "2026-10-07T23:43:55+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "zhuan_xin_lai_ai_mi_233eff97": {
+      "status": "failed",
+      "hash_prefix": "c6bf2b7ac42c",
+      "resolved_at": "2026-10-07T23:44:01+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "ibelieve_wo_xiang_xin__05ac401d": {
+      "status": "failed",
+      "hash_prefix": "13ff976cf127",
+      "resolved_at": "2026-10-07T23:44:07+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "qiu_zhu_chong_man_wo_5fc89031": {
+      "status": "failed",
+      "hash_prefix": "3ab6d60f7ede",
+      "resolved_at": "2026-10-07T23:44:15+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "quan_xin_de_ni_6617981c": {
+      "status": "failed",
+      "hash_prefix": "fedafbf5c8de",
+      "resolved_at": "2026-10-07T23:44:21+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "chu_mi_yi_wai_66dbc1d5": {
+      "status": "failed",
+      "hash_prefix": "2d26395bac29",
+      "resolved_at": "2026-10-07T23:44:27+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "sheng_ming_de_kai_ge_9c5a45c4": {
+      "status": "cached",
+      "hash_prefix": "28c8fc980e72",
+      "resolved_at": "2026-10-07T23:44:29+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "wo_de_xin__ni_yao_cheng_song_ye_he_hua_dd69e9d3": {
+      "status": "cached",
+      "hash_prefix": "b902f46ee467",
+      "resolved_at": "2026-10-07T23:44:46+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "mai_xiang_xin_de_sheng_ming_22aebb2f": {
+      "status": "failed",
+      "hash_prefix": "6fd7a9eae190",
+      "resolved_at": "2026-10-07T23:44:51+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "fan_zhuan_di_qiu_52503759": {
+      "status": "cached",
+      "hash_prefix": "b570a9604c45",
+      "resolved_at": "2026-10-07T23:44:53+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "shen_shen_ai_mu_mi_48f295ef": {
+      "status": "failed",
+      "hash_prefix": "7d299ce2f355",
+      "resolved_at": "2026-10-07T23:45:00+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "zhuan_xin_yang_wang_ye_su_588b1316": {
+      "status": "failed",
+      "hash_prefix": "8cbf0a271347",
+      "resolved_at": "2026-10-07T23:45:06+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "mi_en_dian_bu_li_kai_87b58eb3": {
+      "status": "failed",
+      "hash_prefix": "e47c3054a15d",
+      "resolved_at": "2026-10-07T23:45:12+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "bu_yao_fang_qi_8baf1279": {
+      "status": "failed",
+      "hash_prefix": "218b53155bb3",
+      "resolved_at": "2026-10-07T23:45:18+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "shun_fu_f14625a0": {
+      "status": "failed",
+      "hash_prefix": "d82c45ff6c32",
+      "resolved_at": "2026-10-07T23:45:24+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "zhe_li_you_rong_yao_6fd21f02": {
+      "status": "failed",
+      "hash_prefix": "c8b2dc9febb9",
+      "resolved_at": "2026-10-07T23:45:30+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "xie_xie_mi_fba8b601": {
+      "status": "failed",
+      "hash_prefix": "a78002f5e893",
+      "resolved_at": "2026-10-07T23:45:36+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "ye_he_hua_da_neng_de_jun_dui_b02d5f17": {
+      "status": "failed",
+      "hash_prefix": "580cc19565b3",
+      "resolved_at": "2026-10-07T23:45:42+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "ji_da_de_sheng_yin_789c2e90": {
+      "status": "failed",
+      "hash_prefix": "925f3622ec4f",
+      "resolved_at": "2026-10-07T23:45:48+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "yong_heng_wei_yi_de_pan_wang_bb1aa623": {
+      "status": "failed",
+      "hash_prefix": "5cae05934099",
+      "resolved_at": "2026-10-07T23:45:54+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "geng_duo_chong_man_ce2eb531": {
+      "status": "failed",
+      "hash_prefix": "0afc34c7fcb1",
+      "resolved_at": "2026-10-07T23:46:00+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "wo_men_huan_ying_jun_wang_jiang_lin_7a79edf7": {
+      "status": "failed",
+      "hash_prefix": "fc95420368c1",
+      "resolved_at": "2026-10-07T23:46:07+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "wo_xin_wei_yi_ai_mu_037fb020": {
+      "status": "failed",
+      "hash_prefix": "c60b92a819b8",
+      "resolved_at": "2026-10-07T23:46:12+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "ai_zhong_xiang_yu_e93451bb": {
+      "status": "failed",
+      "hash_prefix": "f80e410a0aee",
+      "resolved_at": "2026-10-07T23:46:19+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "cong_zhe_dai_dao_na_dai_ee88b6be": {
+      "status": "failed",
+      "hash_prefix": "d26bd09bba57",
+      "resolved_at": "2026-10-07T23:46:25+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "da_shou_qian_zhu_xiao_shou_f8374aa8": {
+      "status": "cached",
+      "hash_prefix": "3fc133a5b56e",
+      "resolved_at": "2026-10-07T23:46:28+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "yi_ma_nei_li_80801d2c": {
+      "status": "failed",
+      "hash_prefix": "5ba6da44112c",
+      "resolved_at": "2026-10-07T23:46:34+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "zan_mei_zhi_quan_2a240c3c": {
+      "status": "failed",
+      "hash_prefix": "b664a6fa900e",
+      "resolved_at": "2026-10-07T23:46:41+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "wan_jun_zhi_ye_he_hua_5404d9df": {
+      "status": "failed",
+      "hash_prefix": "3502fddf6a49",
+      "resolved_at": "2026-10-07T23:46:48+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "shui_neng_xiang_mi_70ade820": {
+      "status": "failed",
+      "hash_prefix": "a7a5745b439e",
+      "resolved_at": "2026-10-07T23:46:54+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "sheng_ming_de_duo_shou_9ffd3d12": {
+      "status": "cached",
+      "hash_prefix": "e0f29f052999",
+      "resolved_at": "2026-10-07T23:46:56+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "xin_zao_de_ren_a64e5bd7": {
+      "status": "failed",
+      "hash_prefix": "bcf57f2d33f4",
+      "resolved_at": "2026-10-07T23:47:02+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "wo_men_shi_guang_ming_zhi_zi_829b91b5": {
+      "status": "failed",
+      "hash_prefix": "5d33151efb1e",
+      "resolved_at": "2026-10-07T23:47:08+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "quan_ran_xiang_mi_79bb05cb": {
+      "status": "cached",
+      "hash_prefix": "8720ed26892f",
+      "resolved_at": "2026-10-07T23:47:11+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "guang_ming_zhi_zi_fc796881": {
+      "status": "cached",
+      "hash_prefix": "a7c987ce9b53",
+      "resolved_at": "2026-10-07T23:47:13+00:00",
+      "source": "r2_vocals_dry",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "analysis_service_mel_band_roformer_ep_3005"
+    },
+    "yuan_wei_zhu_shan_liang_080c153c": {
+      "status": "failed",
+      "hash_prefix": "1484a6d9c88a",
+      "resolved_at": "2026-10-07T23:47:19+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "pei_wo_zou_edee52c2": {
+      "status": "failed",
+      "hash_prefix": "d92c9f713880",
+      "resolved_at": "2026-10-07T23:47:26+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "zhe_yi_sheng_zui_mei_de_zhu_fu_20babfd6": {
+      "status": "failed",
+      "hash_prefix": "8cf17f4e75b4",
+      "resolved_at": "2026-10-07T23:47:32+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+    },
+    "rang_ai_zou_dong_eb895b1e": {
+      "status": "failed",
+      "hash_prefix": "e544881d7018",
+      "resolved_at": "2026-10-07T23:47:37+00:00",
+      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
     }
   }
 }
