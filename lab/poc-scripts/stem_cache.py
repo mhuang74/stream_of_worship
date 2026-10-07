@@ -142,6 +142,7 @@ def record_result(
     source: str | None = None,
     audio: str | None = None,
     error: str | None = None,
+    producer: str | None = None,
 ) -> None:
     """Record one song's outcome and persist the manifest atomically.
 
@@ -149,9 +150,13 @@ def record_result(
     completed run must never corrupt or invalidate existing cache entries.
     """
     existing = manifest.songs.get(song.song_id)
-    if existing and existing.get("status") in (
-        CacheStatus.CACHED.value,
-        CacheStatus.FALLBACK.value,
+    if (
+        existing
+        and existing.get("status") in (
+            CacheStatus.CACHED.value,
+            CacheStatus.FALLBACK.value,
+        )
+        and existing.get("status") != status.value
     ):
         raise StemCacheError(
             f"{song.song_id}: refusing to overwrite terminal status "
@@ -166,18 +171,30 @@ def record_result(
         entry["source"] = source
     if audio is not None:
         entry["audio"] = audio
+    if producer is not None:
+        # separation model / producer provenance (e.g. which Roformer variant
+        # made the stem) — the cache can mix producers across songs
+        entry["producer"] = producer
     if error is not None:
         entry["error"] = error
     manifest.songs[song.song_id] = entry
     save_manifest(manifest, path)
 
 
-def next_pending(manifest: StemCacheManifest, songs: list[SongRef]) -> list[SongRef]:
+def next_pending(
+    manifest: StemCacheManifest,
+    songs: list[SongRef],
+    cache_root: Path | None = None,
+) -> list[SongRef]:
     """Songs not yet resolved: pending and failed entries, in input order.
 
-    Cached and fallback entries are skipped (resume). A song whose manifest
-    entry carries a different hash_prefix than the DB says is an invariant
-    violation — cache entries are keyed by song but rooted at a recording.
+    Cached and fallback entries are skipped (resume) — unless *cache_root* is
+    given and the recorded audio file is missing or empty on this machine.
+    The manifest is committed to the repo but the audio is machine-local, so
+    a fresh clone must re-resolve rather than silently "resume" with nothing
+    on disk. A song whose manifest entry carries a different hash_prefix than
+    the DB says is an invariant violation — cache entries are keyed by song
+    but rooted at a recording.
     """
     pending: list[SongRef] = []
     for song in songs:
@@ -196,6 +213,15 @@ def next_pending(manifest: StemCacheManifest, songs: list[SongRef]) -> list[Song
             CacheStatus.FALLBACK.value,
         ):
             pending.append(song)
+            continue
+        if cache_root is not None:
+            audio_rel = entry.get("audio")
+            audio_path = (
+                cache_root / song.hash_prefix / audio_rel if audio_rel else None
+            )
+            if audio_path is None or not audio_path.exists() or audio_path.stat().st_size == 0:
+                # recorded but absent/empty locally: re-resolve
+                pending.append(song)
     return pending
 
 

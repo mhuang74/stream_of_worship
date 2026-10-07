@@ -290,6 +290,10 @@ class TestRunnerIdempotence:
             source="r2_vocals_dry",
             audio="stems/clean_vocals.flac",
         )
+        # the recorded audio must exist locally for resume to skip it
+        cached_file = cache_root / "aaaaaaaaaaaa" / "stems" / "clean_vocals.flac"
+        cached_file.parent.mkdir(parents=True, exist_ok=True)
+        cached_file.write_bytes(b"flac-bytes")
         before = json.loads(manifest_path.read_text(encoding="utf-8"))
 
         class _ExplodingR2:
@@ -355,3 +359,55 @@ class TestRunnerIdempotence:
         assert summary.cached == 0 and summary.fallback == 0 and summary.failed == 0
         assert summary.skipped == 1
         assert before == json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    def test_stale_terminal_entry_requeued_and_failed_without_run_abort(
+        self, tmp_path, monkeypatch
+    ):
+        """A terminal entry whose local file vanished is re-resolved; if
+        resolution fails, the run continues and the manifest keeps the
+        terminal status (no downgrade to failed)."""
+        import json
+
+        from run_stem_cache import run as run_cache
+
+        cache_root = tmp_path / "cache"
+        manifest, manifest_path = _make_ctx(cache_root, tmp_path)
+        record_result(
+            manifest,
+            manifest_path,
+            SongRef("song_a", "aaaaaaaaaaaa"),
+            status=CacheStatus.CACHED,
+            source="r2_vocals_dry",
+            audio="stems/clean_vocals.flac",
+        )
+        before = json.loads(manifest_path.read_text(encoding="utf-8"))
+        # no file materialized -> requeued, then R2 explodes -> per-song failure
+
+        class _ExplodingR2:
+            def __getattr__(self, name):
+                def _boom(*a, **k):
+                    raise RuntimeError("R2 unreachable")
+
+                return _boom
+
+        monkeypatch.setattr(
+            "stream_of_worship.admin.services.r2.R2Client", lambda **k: _ExplodingR2()
+        )
+        monkeypatch.setattr(
+            "run_stem_cache.build_song_refs",
+            lambda conn, ids: [("song_a", "aaaaaaaaaaaa")],
+        )
+
+        summary = run_cache(
+            song_ids=["song_a"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=False,
+        )
+        assert summary.failed == 1  # recorded as failed for this run...
+        after = json.loads(manifest_path.read_text(encoding="utf-8"))
+        # ...but the terminal entry survives (no clobbering) modulo resolved_at
+        assert after["songs"]["song_a"]["status"] == "cached"
+        assert after["songs"]["song_a"]["source"] == before["songs"]["song_a"]["source"]

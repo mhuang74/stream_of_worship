@@ -238,6 +238,7 @@ def process_song(
             status=target_status,
             source=f"r2_{source_name}",
             audio=audio_rel,
+            producer="analysis_service_mel_band_roformer_ep_3005",
         )
         return song_id, target_status, f"r2_{source_name}"
 
@@ -278,6 +279,10 @@ def process_song(
         status=CacheStatus.CACHED,
         source="mvsep",
         audio="stems/clean_vocals.flac",
+        producer=(
+            f"mvsep_sep_type{MVSEP_STAGE1_SEP_TYPE}_opt{MVSEP_STAGE1_ADD_OPT1}"
+            f"+sep_type{MVSEP_STAGE2_SEP_TYPE}_opt{MVSEP_STAGE2_ADD_OPT1}"
+        ),
     )
     return song_id, CacheStatus.CACHED, "mvsep"
 
@@ -313,7 +318,9 @@ def run(
         )
 
         manifest = load_or_init_manifest(manifest_path)
-        pending = next_pending(manifest, [SongRef(sid, hp) for sid, hp in refs])
+        pending = next_pending(
+            manifest, [SongRef(sid, hp) for sid, hp in refs], cache_root=cache_root
+        )
         summary.skipped = len(refs) - len(pending)
         print(
             f"songs: {len(refs)} total, {summary.skipped} already resolved, "
@@ -351,14 +358,22 @@ def run(
                     mvsep_token=mvsep_token,
                 )
             except Exception as e:  # noqa: BLE001 — record and continue serially
-                record_result(
-                    manifest,
-                    manifest_path,
-                    ref,
-                    status=CacheStatus.FAILED,
-                    error=f"{type(e).__name__}: {e}",
-                )
-                status, source = CacheStatus.FAILED, type(e).__name__
+                try:
+                    record_result(
+                        manifest,
+                        manifest_path,
+                        ref,
+                        status=CacheStatus.FAILED,
+                        error=f"{type(e).__name__}: {e}",
+                    )
+                except StemCacheError as guard_err:
+                    # A terminal entry requeued for a missing local file must
+                    # not be downgraded to failed: keep the terminal status
+                    # and let the per-song error surface in the summary.
+                    print(f"  [warn] {song_id}: keeping manifest status ({guard_err})")
+                    status, source = CacheStatus.FAILED, "guard"
+                else:
+                    status, source = CacheStatus.FAILED, type(e).__name__
             if status == CacheStatus.CACHED:
                 summary.cached += 1
             elif status == CacheStatus.FALLBACK:

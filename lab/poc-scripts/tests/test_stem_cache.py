@@ -208,6 +208,32 @@ class TestNextPending:
         pending = next_pending(manifest, songs)
         assert [s.song_id for s in pending] == ["failed_song", "fresh_song"]
 
+    def test_missing_local_file_requeues_terminal_entry(self, tmp_path: Path):
+        """Manifest is committed to the repo; audio is machine-local. A
+        terminal entry whose recorded audio is absent must re-resolve."""
+        path = tmp_path / "manifest.json"
+        manifest = load_or_init_manifest(path)
+        record_result(
+            manifest,
+            path,
+            _song("song_a", "aaaaaaaaaaaa"),
+            status=CacheStatus.CACHED,
+            source="r2_vocals_dry",
+            audio="stems/clean_vocals.flac",
+        )
+        cache_root = tmp_path / "cache"
+        songs = [_song("song_a", "aaaaaaaaaaaa")]
+        # no file on disk: pending again
+        assert next_pending(manifest, songs, cache_root=cache_root) == songs
+        # file present but empty: pending again
+        f = cache_root / "aaaaaaaaaaaa" / "stems" / "clean_vocals.flac"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"")
+        assert next_pending(manifest, songs, cache_root=cache_root) == songs
+        # file present with content: skipped
+        f.write_bytes(b"flac")
+        assert next_pending(manifest, songs, cache_root=cache_root) == []
+
     def test_empty_manifest_all_pending_in_order(self, tmp_path: Path):
         path = tmp_path / "manifest.json"
         manifest = load_or_init_manifest(path)
