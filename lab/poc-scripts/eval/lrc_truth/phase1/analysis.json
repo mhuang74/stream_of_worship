@@ -1,0 +1,470 @@
+{
+  "per_song": [
+    {
+      "song_id": "ai_shi_wo_men_yong_gan_6d1865b8",
+      "truth": "negative",
+      "source": "qwen3_asr",
+      "bpm": 129.2,
+      "n_sung": 44,
+      "n_matched": 44,
+      "match_rate": 1.0,
+      "lead_s_mean": 0.541,
+      "lead_s_median": -0.045,
+      "lead_s_stdev": 2.763,
+      "lead_beats_p10": -3.97,
+      "lead_beats_p90": 8.04,
+      "n_late_lines": 23
+    },
+    {
+      "song_id": "bu_ting_zan_mei_mi_e937a9d3",
+      "truth": "negative",
+      "source": "manual_upload",
+      "bpm": 99.4,
+      "n_sung": 37,
+      "n_matched": 37,
+      "match_rate": 1.0,
+      "lead_s_mean": -0.43,
+      "lead_s_median": -0.47,
+      "lead_s_stdev": 0.646,
+      "lead_beats_p10": -1.95,
+      "lead_beats_p90": 0.54,
+      "n_late_lines": 33
+    },
+    {
+      "song_id": "cong_zao_chen_dao_ye_wan_b035044f",
+      "truth": "positive",
+      "source": "unknown",
+      "bpm": 68.0,
+      "n_sung": 36,
+      "n_matched": 36,
+      "match_rate": 1.0,
+      "lead_s_mean": 0.262,
+      "lead_s_median": 0.315,
+      "lead_s_stdev": 1.031,
+      "lead_beats_p10": -1.38,
+      "lead_beats_p90": 1.9,
+      "n_late_lines": 14
+    },
+    {
+      "song_id": "hereforyou_62e79ae9",
+      "truth": "positive",
+      "source": "unknown",
+      "bpm": 86.13281,
+      "n_sung": 90,
+      "n_matched": 58,
+      "match_rate": 0.644,
+      "lead_s_mean": 1.212,
+      "lead_s_median": 0.685,
+      "lead_s_stdev": 1.919,
+      "lead_beats_p10": -0.81,
+      "lead_beats_p90": 5.66,
+      "n_late_lines": 9
+    },
+    {
+      "song_id": "jing_bai_ye_su_b08227a2",
+      "truth": "negative",
+      "source": "youtube_transcript",
+      "bpm": 69.8,
+      "n_sung": 39,
+      "n_matched": 32,
+      "match_rate": 0.821,
+      "lead_s_mean": 0.365,
+      "lead_s_median": -0.27,
+      "lead_s_stdev": 2.73,
+      "lead_beats_p10": -1.71,
+      "lead_beats_p90": 2.78,
+      "n_late_lines": 19
+    },
+    {
+      "song_id": "mei_hao_de_chuang_zao_3d42d76e",
+      "truth": "positive",
+      "source": "unknown",
+      "bpm": 103.4,
+      "n_sung": 56,
+      "n_matched": 53,
+      "match_rate": 0.946,
+      "lead_s_mean": -0.156,
+      "lead_s_median": -0.26,
+      "lead_s_stdev": 1.132,
+      "lead_beats_p10": -2.75,
+      "lead_beats_p90": 0.94,
+      "n_late_lines": 41
+    },
+    {
+      "song_id": "shu_bu_jin_71fba0ce",
+      "truth": "negative",
+      "source": "youtube_transcript",
+      "bpm": 66.3,
+      "n_sung": 32,
+      "n_matched": 30,
+      "match_rate": 0.938,
+      "lead_s_mean": 0.683,
+      "lead_s_median": 0.005,
+      "lead_s_stdev": 1.669,
+      "lead_beats_p10": -0.89,
+      "lead_beats_p90": 3.93,
+      "n_late_lines": 15
+    },
+    {
+      "song_id": "wo_neng_gei_ni_shen_me_03b2dcb2",
+      "truth": "negative",
+      "source": "youtube_transcript",
+      "bpm": 66.3,
+      "n_sung": 42,
+      "n_matched": 42,
+      "match_rate": 1.0,
+      "lead_s_mean": 0.495,
+      "lead_s_median": 0.325,
+      "lead_s_stdev": 1.179,
+      "lead_beats_p10": -0.91,
+      "lead_beats_p90": 2.15,
+      "n_late_lines": 12
+    },
+    {
+      "song_id": "xin_kao_mei_yi_ju_ying_xu_df457941",
+      "truth": "positive",
+      "source": "unknown",
+      "bpm": 112.3,
+      "n_sung": 31,
+      "n_matched": 31,
+      "match_rate": 1.0,
+      "lead_s_mean": -0.127,
+      "lead_s_median": -0.32,
+      "lead_s_stdev": 1.341,
+      "lead_beats_p10": -2.96,
+      "lead_beats_p90": 3.77,
+      "n_late_lines": 25
+    },
+    {
+      "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+      "truth": "positive",
+      "source": "unknown",
+      "bpm": 71.8,
+      "n_sung": 34,
+      "n_matched": 34,
+      "match_rate": 1.0,
+      "lead_s_mean": 0.079,
+      "lead_s_median": 0.035,
+      "lead_s_stdev": 0.69,
+      "lead_beats_p10": -0.93,
+      "lead_beats_p90": 1.29,
+      "n_late_lines": 17
+    }
+  ],
+  "separation": {
+    "positive_lead_beats_mean": 0.44,
+    "positive_lead_beats_median": -0.01,
+    "positive_lead_beats_stdev": 2.21,
+    "timing_negative_lead_beats_mean": 0.57,
+    "timing_negative_lead_beats_median": 0.11,
+    "timing_negative_lead_beats_stdev": 2.16,
+    "other_negative_lead_beats_mean": 0.31,
+    "other_negative_lead_beats_median": -0.75,
+    "n_positive_leads": 212,
+    "n_timing_negative_leads": 104,
+    "n_other_negative_leads": 81
+  },
+  "recoverability": [
+    {
+      "song_id": "ai_shi_wo_men_yong_gan_6d1865b8",
+      "injected_s": 0.5,
+      "n_lines": 44,
+      "n_sung": 44,
+      "recovered_mean_s": 0.311,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 31,
+      "fraction_within": 0.705,
+      "fraction_within_matched": 0.705
+    },
+    {
+      "song_id": "ai_shi_wo_men_yong_gan_6d1865b8",
+      "injected_s": 1.0,
+      "n_lines": 43,
+      "n_sung": 44,
+      "recovered_mean_s": 0.587,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 25,
+      "fraction_within": 0.568,
+      "fraction_within_matched": 0.581
+    },
+    {
+      "song_id": "bu_ting_zan_mei_mi_e937a9d3",
+      "injected_s": 0.5,
+      "n_lines": 37,
+      "n_sung": 37,
+      "recovered_mean_s": 0.5,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 37,
+      "fraction_within": 1.0,
+      "fraction_within_matched": 1.0
+    },
+    {
+      "song_id": "bu_ting_zan_mei_mi_e937a9d3",
+      "injected_s": 1.0,
+      "n_lines": 37,
+      "n_sung": 37,
+      "recovered_mean_s": 0.849,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 32,
+      "fraction_within": 0.865,
+      "fraction_within_matched": 0.865
+    },
+    {
+      "song_id": "cong_zao_chen_dao_ye_wan_b035044f",
+      "injected_s": 0.5,
+      "n_lines": 36,
+      "n_sung": 36,
+      "recovered_mean_s": 0.2,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 33,
+      "fraction_within": 0.917,
+      "fraction_within_matched": 0.917
+    },
+    {
+      "song_id": "cong_zao_chen_dao_ye_wan_b035044f",
+      "injected_s": 1.0,
+      "n_lines": 36,
+      "n_sung": 36,
+      "recovered_mean_s": 0.642,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 32,
+      "fraction_within": 0.889,
+      "fraction_within_matched": 0.889
+    },
+    {
+      "song_id": "hereforyou_62e79ae9",
+      "injected_s": 0.5,
+      "n_lines": 58,
+      "n_sung": 90,
+      "recovered_mean_s": 0.5,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 58,
+      "fraction_within": 0.644,
+      "fraction_within_matched": 1.0
+    },
+    {
+      "song_id": "hereforyou_62e79ae9",
+      "injected_s": 1.0,
+      "n_lines": 56,
+      "n_sung": 90,
+      "recovered_mean_s": 0.901,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 54,
+      "fraction_within": 0.6,
+      "fraction_within_matched": 0.964
+    },
+    {
+      "song_id": "jing_bai_ye_su_b08227a2",
+      "injected_s": 0.5,
+      "n_lines": 32,
+      "n_sung": 39,
+      "recovered_mean_s": 0.298,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 29,
+      "fraction_within": 0.744,
+      "fraction_within_matched": 0.906
+    },
+    {
+      "song_id": "jing_bai_ye_su_b08227a2",
+      "injected_s": 1.0,
+      "n_lines": 32,
+      "n_sung": 39,
+      "recovered_mean_s": 0.68,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 27,
+      "fraction_within": 0.692,
+      "fraction_within_matched": 0.844
+    },
+    {
+      "song_id": "mei_hao_de_chuang_zao_3d42d76e",
+      "injected_s": 0.5,
+      "n_lines": 53,
+      "n_sung": 56,
+      "recovered_mean_s": 0.257,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 47,
+      "fraction_within": 0.839,
+      "fraction_within_matched": 0.887
+    },
+    {
+      "song_id": "mei_hao_de_chuang_zao_3d42d76e",
+      "injected_s": 1.0,
+      "n_lines": 53,
+      "n_sung": 56,
+      "recovered_mean_s": 0.677,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 45,
+      "fraction_within": 0.804,
+      "fraction_within_matched": 0.849
+    },
+    {
+      "song_id": "shu_bu_jin_71fba0ce",
+      "injected_s": 0.5,
+      "n_lines": 30,
+      "n_sung": 32,
+      "recovered_mean_s": 0.5,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 30,
+      "fraction_within": 0.938,
+      "fraction_within_matched": 1.0
+    },
+    {
+      "song_id": "shu_bu_jin_71fba0ce",
+      "injected_s": 1.0,
+      "n_lines": 30,
+      "n_sung": 32,
+      "recovered_mean_s": 0.941,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 29,
+      "fraction_within": 0.906,
+      "fraction_within_matched": 0.967
+    },
+    {
+      "song_id": "wo_neng_gei_ni_shen_me_03b2dcb2",
+      "injected_s": 0.5,
+      "n_lines": 42,
+      "n_sung": 42,
+      "recovered_mean_s": 0.487,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 41,
+      "fraction_within": 0.976,
+      "fraction_within_matched": 0.976
+    },
+    {
+      "song_id": "wo_neng_gei_ni_shen_me_03b2dcb2",
+      "injected_s": 1.0,
+      "n_lines": 42,
+      "n_sung": 42,
+      "recovered_mean_s": 0.774,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 39,
+      "fraction_within": 0.929,
+      "fraction_within_matched": 0.929
+    },
+    {
+      "song_id": "xin_kao_mei_yi_ju_ying_xu_df457941",
+      "injected_s": 0.5,
+      "n_lines": 31,
+      "n_sung": 31,
+      "recovered_mean_s": 0.291,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 28,
+      "fraction_within": 0.903,
+      "fraction_within_matched": 0.903
+    },
+    {
+      "song_id": "xin_kao_mei_yi_ju_ying_xu_df457941",
+      "injected_s": 1.0,
+      "n_lines": 31,
+      "n_sung": 31,
+      "recovered_mean_s": 0.588,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 26,
+      "fraction_within": 0.839,
+      "fraction_within_matched": 0.839
+    },
+    {
+      "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+      "injected_s": 0.5,
+      "n_lines": 34,
+      "n_sung": 34,
+      "recovered_mean_s": 0.431,
+      "recovered_median_s": 0.5,
+      "within_tolerance": 33,
+      "fraction_within": 0.971,
+      "fraction_within_matched": 0.971
+    },
+    {
+      "song_id": "zhu_a__wo_yao_gen_sui_mi_83163301",
+      "injected_s": 1.0,
+      "n_lines": 34,
+      "n_sung": 34,
+      "recovered_mean_s": 0.931,
+      "recovered_median_s": 1.0,
+      "within_tolerance": 33,
+      "fraction_within": 0.971,
+      "fraction_within_matched": 0.971
+    }
+  ],
+  "gate": {
+    "recoverability_per_offset": {
+      "0.5": {
+        "n_songs": 10,
+        "n_pass": 6,
+        "song_fraction": 0.6,
+        "passing_songs": [
+          "bu_ting_zan_mei_mi_e937a9d3",
+          "cong_zao_chen_dao_ye_wan_b035044f",
+          "shu_bu_jin_71fba0ce",
+          "wo_neng_gei_ni_shen_me_03b2dcb2",
+          "xin_kao_mei_yi_ju_ying_xu_df457941",
+          "zhu_a__wo_yao_gen_sui_mi_83163301"
+        ],
+        "failing_songs": [
+          "ai_shi_wo_men_yong_gan_6d1865b8",
+          "hereforyou_62e79ae9",
+          "jing_bai_ye_su_b08227a2",
+          "mei_hao_de_chuang_zao_3d42d76e"
+        ],
+        "n_pass_matched_denom": 8,
+        "song_fraction_matched_denom": 0.8,
+        "passing_songs_matched_denom": [
+          "bu_ting_zan_mei_mi_e937a9d3",
+          "cong_zao_chen_dao_ye_wan_b035044f",
+          "hereforyou_62e79ae9",
+          "jing_bai_ye_su_b08227a2",
+          "shu_bu_jin_71fba0ce",
+          "wo_neng_gei_ni_shen_me_03b2dcb2",
+          "xin_kao_mei_yi_ju_ying_xu_df457941",
+          "zhu_a__wo_yao_gen_sui_mi_83163301"
+        ]
+      },
+      "1.0": {
+        "n_songs": 10,
+        "n_pass": 3,
+        "song_fraction": 0.3,
+        "passing_songs": [
+          "shu_bu_jin_71fba0ce",
+          "wo_neng_gei_ni_shen_me_03b2dcb2",
+          "zhu_a__wo_yao_gen_sui_mi_83163301"
+        ],
+        "failing_songs": [
+          "ai_shi_wo_men_yong_gan_6d1865b8",
+          "bu_ting_zan_mei_mi_e937a9d3",
+          "cong_zao_chen_dao_ye_wan_b035044f",
+          "hereforyou_62e79ae9",
+          "jing_bai_ye_su_b08227a2",
+          "mei_hao_de_chuang_zao_3d42d76e",
+          "xin_kao_mei_yi_ju_ying_xu_df457941"
+        ],
+        "n_pass_matched_denom": 4,
+        "song_fraction_matched_denom": 0.4,
+        "passing_songs_matched_denom": [
+          "hereforyou_62e79ae9",
+          "shu_bu_jin_71fba0ce",
+          "wo_neng_gei_ni_shen_me_03b2dcb2",
+          "zhu_a__wo_yao_gen_sui_mi_83163301"
+        ]
+      }
+    },
+    "recoverability_pass": false,
+    "separation": {
+      "attribution_note": "Only youtube_transcript negatives carry timing failure ground truth; qwen3_asr (content) and manual_upload (anomaly) negatives are excluded from the separation test.",
+      "positive_lead_s_quantiles_p10_p50_p90": [
+        -1.072,
+        -0.005,
+        1.757
+      ],
+      "timing_negative_lead_s_quantiles_p10_p50_p90": [
+        -0.925,
+        0.095,
+        2.29
+      ],
+      "timing_negative_median_s": 0.095,
+      "median_outside_positive_band": false,
+      "iqr_disjoint": false
+    },
+    "separation_pass": false,
+    "gate_pass": false
+  }
+}

@@ -507,12 +507,29 @@ def extract_lrc_lines(content: str) -> list[tuple[float, str]]:
 ENGINES = ["whisper", "sensevoice", "paraformer"]
 
 
+_WHISPER_MODEL_CACHE: dict[tuple[str, str, str], object] = {}
+
+
+def _get_whisper_model(model_name: str, device: str, compute_type: str):
+    """Return a cached WhisperModel, loading only on first use.
+
+    Per-segment transcription paths otherwise reload the ~3GB model for every
+    short clip; the cache keeps large-v3 resident across segments/songs.
+    """
+    key = (model_name, device, compute_type)
+    if key not in _WHISPER_MODEL_CACHE:
+        from faster_whisper import WhisperModel
+
+        _WHISPER_MODEL_CACHE[key] = WhisperModel(model_name, device=device, compute_type=compute_type)
+    return _WHISPER_MODEL_CACHE[key]
+
+
 def transcribe_with_whisper(
     audio_path: Path,
     model_name: str = "large-v2",
     device: str = "cpu",
     compute_type: str = "int8",
-    language: str = "zh",
+    language: Optional[str] = "zh",
     lyrics_text: Optional[str] = None,
 ) -> list[PinyinWord]:
     """Transcribe audio using faster-whisper with word-level timestamps.
@@ -528,12 +545,10 @@ def transcribe_with_whisper(
     Returns:
         List of PinyinWord with pinyin and timestamps
     """
-    from faster_whisper import WhisperModel
-
     console = Console(stderr=True)
     console.print(f"[whisper] Loading model: {model_name} on {device}", style="dim")
 
-    model = WhisperModel(model_name, device=device, compute_type=compute_type)
+    model = _get_whisper_model(model_name, device, compute_type)
 
     console.print(f"[whisper] Transcribing: {audio_path}", style="dim")
 
@@ -547,8 +562,10 @@ def transcribe_with_whisper(
         console.print(
             f"[whisper] Using lyrics-enhanced prompt ({len(lyrics_truncated)} chars)", style="dim"
         )
-    else:
+    elif language == "zh":
         initial_prompt = "这是一首中文敬拜诗歌"
+    else:
+        initial_prompt = None
 
     segments, info = model.transcribe(
         str(audio_path),
@@ -566,8 +583,14 @@ def transcribe_with_whisper(
                 text = word.word.strip()
                 if text:
                     pinyin_list = chinese_to_pinyin(text)
-                    for py in pinyin_list:
-                        result.append(PinyinWord(text=text, pinyin=py, time_seconds=word.start))
+                    if pinyin_list:
+                        for py in pinyin_list:
+                            result.append(PinyinWord(text=text, pinyin=py, time_seconds=word.start))
+                    else:
+                        # Non-CJK token (e.g. English "to you our"): keep the
+                        # word with empty pinyin so latin-token alignment can
+                        # still consume it.
+                        result.append(PinyinWord(text=text, pinyin="", time_seconds=word.start))
 
     console.print(f"[whisper] Transcribed {len(result)} pinyin syllables", style="dim")
     return result
@@ -880,6 +903,7 @@ def transcribe_audio(
     paraformer_vad_threshold: float = 0.5,
     # Whisper-specific
     lyrics_text: Optional[str] = None,
+    language: Optional[str] = None,
     # Debug
     debug: bool = False,
 ) -> list[PinyinWord]:
@@ -912,6 +936,7 @@ def transcribe_audio(
             device=device,
             compute_type=compute_type,
             lyrics_text=lyrics_text,
+            language=language,
         )
     elif engine == "sensevoice":
         return transcribe_with_sensevoice(
@@ -1094,6 +1119,7 @@ def transcribe_segment(
     paraformer_vad_threshold: float = 0.5,
     # Whisper-specific
     lyrics_text: Optional[str] = None,
+    language: Optional[str] = None,
     # Debug
     debug: bool = False,
 ) -> list[PinyinWord]:
@@ -1142,6 +1168,7 @@ def transcribe_segment(
             paraformer_vad_max_silence=paraformer_vad_max_silence,
             paraformer_vad_threshold=paraformer_vad_threshold,
             lyrics_text=lyrics_text,
+            language=language,
             debug=debug,
         )
 
@@ -1224,6 +1251,7 @@ def transcribe_with_segmentation(
     paraformer_vad_threshold: float = 0.5,
     # Whisper-specific
     lyrics_text: Optional[str] = None,
+    language: Optional[str] = "zh",  # None = faster-whisper auto-detect
     # Debug
     debug: bool = False,
 ) -> list[PinyinWord]:
@@ -1278,6 +1306,7 @@ def transcribe_with_segmentation(
             paraformer_vad_max_silence=paraformer_vad_max_silence,
             paraformer_vad_threshold=paraformer_vad_threshold,
             lyrics_text=lyrics_text,
+            language=language,
             debug=debug,
         )
 
@@ -1304,6 +1333,7 @@ def transcribe_with_segmentation(
                 paraformer_vad_max_silence=paraformer_vad_max_silence,
                 paraformer_vad_threshold=paraformer_vad_threshold,
                 lyrics_text=lyrics_text,
+                language=language,
                 debug=debug,
             )
         segments = build_lrc_segments(lrc_lines)
@@ -1331,6 +1361,7 @@ def transcribe_with_segmentation(
                 paraformer_vad_max_silence=paraformer_vad_max_silence,
                 paraformer_vad_threshold=paraformer_vad_threshold,
                 lyrics_text=lyrics_text,
+                language=language,
                 debug=debug,
             )
     else:
@@ -1401,6 +1432,7 @@ def transcribe_with_segmentation(
             paraformer_vad_max_silence=paraformer_vad_max_silence,
             paraformer_vad_threshold=paraformer_vad_threshold,
             lyrics_text=seg_lyrics,
+            language=language,
             debug=debug,
         )
         all_words.extend(words)
