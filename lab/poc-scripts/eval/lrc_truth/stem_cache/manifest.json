@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "created_at": "2026-10-07T14:14:19+00:00",
-  "updated_at": "2026-10-08T20:32:03+00:00",
+  "updated_at": "2026-10-08T23:34:32+00:00",
   "songs": {
     "zhu_a__wo_yao_gen_sui_mi_83163301": {
       "status": "cached",
@@ -2657,10 +2657,12 @@
       "producer": "analysis_service_mel_band_roformer_ep_3005"
     },
     "na_me_shen_de_ke_mu_ff92abd9": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "328aba5ad346",
-      "resolved_at": "2026-10-08T15:27:24+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:34:32+00:00",
+      "source": "local",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "local_audio_separator_mel_band_ep_3005"
     },
     "cang_shen_zhi_chu_39437ec0": {
       "status": "cached",
@@ -2711,10 +2713,12 @@
       "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
     },
     "wo_jing_bai_mi__ye_su_e6dd6146": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "28f09e4d4382",
-      "resolved_at": "2026-10-08T15:27:53+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T22:16:58+00:00",
+      "source": "local",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "local_audio_separator_mel_band_ep_3005"
     },
     "wo_yang_sheng_jing_bai_38fa135f": {
       "status": "failed",
