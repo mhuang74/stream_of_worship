@@ -9,9 +9,16 @@ Phase 0c (issue #244). For each song in the target set:
    recording (crash recovery).
 3. Download the best R2 vocal stem (``vocals_dry.flac`` preferred) and copy
    it to ``stems/clean_vocals.flac`` — no separation needed.
-4. Else download the full mix and run two-stage MVSEP separation
-   (BS-Roformer + Reverb Removal, matching the prod analysis-service
-   configuration), then record the dry output as ``clean_vocals.flac``.
+4. Else download the full mix and run two-stage separation, then record the
+   dry output as ``clean_vocals.flac``:
+   - default: MVSEP cloud API (BS-Roformer + Reverb Removal, matching the
+     prod analysis-service configuration; free tier = 50 separations/day,
+     replenished 24h after exhaustion — failed songs retry next invocation)
+   - ``--local``: local audio-separator with the same MelBand Roformer
+     ep_3005 + UVR-De-Echo models (quota-free; needs an env with
+     audio-separator installed, e.g. ``uv run --project
+     ops/analysis-service --extra service``; models cached at
+     ``~/.cache/audio-separator``)
 
 Everything runs strictly serially; a flock guard makes concurrent runner
 invocations fail loudly. Failed songs are recorded and retried on the next
@@ -34,7 +41,7 @@ Usage (from repo root):
     uv run --project lab/poc-scripts --extra stem_separation --extra test \
         python lab/poc-scripts/run_stem_cache.py \
         [--set phase12|phase3_positive|review_queue] [--snapshot <path>] \
-        [--cache-dir <path>] [--manifest <path>] [--dry-run]
+        [--local] [--cache-dir <path>] [--manifest <path>] [--dry-run]
 
 Cache root defaults to ``sow_legacy_cli_tui.core.paths.get_cache_dir()``
 (``~/.cache/stream-of-worship`` on Linux) — the same root the Phase 1/2
@@ -50,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 from collections.abc import Callable
@@ -171,6 +179,18 @@ MVSEP_STAGE2_SEP_TYPE = 22  # Reverb Removal
 MVSEP_STAGE2_ADD_OPT1 = 0
 MVSEP_OUTPUT_FORMAT = 2  # FLAC 16-bit
 
+# Local separation (--local): model filenames mirror the prod analysis-service
+# config (ops/analysis-service config.py SOW_VOCAL_SEPARATION_MODEL /
+# SOW_DEREVERB_MODEL) so the local product matches the R2
+# "analysis_service_mel_band_roformer_ep_3005" stems.
+LOCAL_VOCAL_MODEL = "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
+LOCAL_DEREVERB_MODEL = "UVR-De-Echo-Normal.pth"
+LOCAL_MODEL_PRODUCER = "local_audio_separator_mel_band_ep_3005"
+# audio-separator defaults model_file_dir to /tmp/audio-separator-models/ and
+# would silently re-download the 1GB MelBand model; point it at the machine's
+# model cache instead (Separator also honors the env var, set explicitly).
+DEFAULT_LOCAL_MODEL_DIR = Path.home() / ".cache" / "audio-separator"
+
 
 @dataclass
 class RunSummary:
@@ -288,6 +308,35 @@ def _mvsep_separate(
     return stage2_paths
 
 
+def _local_separate(audio_path: Path, output_dir: Path, model_dir: Path) -> list[Path]:
+    """Run two-stage LOCAL separation via audio-separator (issue #247).
+
+    Wraps ``poc.gen_clean_vocal_stem.extract_vocals_two_stage`` (the script
+    version): stage 1 MelBand Roformer vocals, stage 2 UVR-De-Echo — same
+    models as the prod analysis service. Returns produced files; the caller
+    picks the dry vocals with ``pick_dry_vocals`` (stage-2 outputs carry
+    "No Echo"/"No Reverb" names).
+    """
+    from poc.gen_clean_vocal_stem import extract_vocals_two_stage
+
+    # audio-separator defaults model_file_dir to /tmp/audio-separator-models
+    # and would re-download the 1GB MelBand model; point it at the machine's
+    # model cache. The env var wins inside Separator even before the
+    # (unset) model_file_dir parameter.
+    os.environ["AUDIO_SEPARATOR_MODEL_DIR"] = str(model_dir)
+
+    results = extract_vocals_two_stage(
+        audio_path,
+        output_dir,
+        vocal_model=LOCAL_VOCAL_MODEL,
+        dereverb_model=LOCAL_DEREVERB_MODEL,
+    )
+    outputs: list[Path] = []
+    for stage in ("stage1", "stage2"):
+        outputs.extend(Path(p) for p in results["stages"][stage]["outputs"])
+    return outputs
+
+
 def process_song(
     ref: SongRef,
     *,
@@ -297,8 +346,14 @@ def process_song(
     r2_client,
     mvsep_fn: Callable[[Path, Path], list[Path]],
     mvsep_token: str | None = None,
+    sep_source: str = "mvsep",
+    sep_producer: str | None = None,
 ) -> tuple[str, CacheStatus, str]:
     """Resolve clean vocals for one song through the priority chain.
+
+    *sep_source*/*sep_producer* label the active separation backend
+    ("mvsep" + its model spec, or "local" + LOCAL_MODEL_PRODUCER) for
+    manifest provenance.
 
     Returns (song_id, terminal_status, source). Terminal statuses are
     ``cached`` (de-echoed clean vocals), ``fallback`` (wet vocal stem
@@ -353,13 +408,13 @@ def process_song(
         )
         return song_id, target_status, f"r2_{source_name}"
 
-    # 3. No R2 stems: download the full mix and separate serially via MVSEP.
+    # 3. No R2 stems: download the full mix and separate serially.
     audio_dir = song_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     audio_path = audio_dir / "audio.mp3"
     if not audio_path.exists() or audio_path.stat().st_size == 0:
         r2_client.download_audio(hash_prefix, audio_path)
-    print(f"  separating {song_id} via MVSEP (input: {audio_path.name})")
+    print(f"  separating {song_id} via {sep_source} (input: {audio_path.name})")
     try:
         outputs = mvsep_fn(audio_path, song_dir)
     except Exception as e:  # noqa: BLE001 — record and retry on next invocation
@@ -370,7 +425,7 @@ def process_song(
             status=CacheStatus.FAILED,
             error=f"{type(e).__name__}: {e}",
         )
-        return song_id, CacheStatus.FAILED, "mvsep"
+        return song_id, CacheStatus.FAILED, sep_source
     dry = pick_dry_vocals(outputs)
     if dry is None:
         record_result(
@@ -378,9 +433,9 @@ def process_song(
             manifest_path,
             SongRef(song_id, hash_prefix),
             status=CacheStatus.FAILED,
-            error="MVSEP produced no output files",
+            error="separation produced no output files",
         )
-        return song_id, CacheStatus.FAILED, "mvsep"
+        return song_id, CacheStatus.FAILED, sep_source
     stems_dir.mkdir(parents=True, exist_ok=True)
     (stems_dir / "clean_vocals.flac").write_bytes(dry.read_bytes())
     record_result(
@@ -388,14 +443,11 @@ def process_song(
         manifest_path,
         SongRef(song_id, hash_prefix),
         status=CacheStatus.CACHED,
-        source="mvsep",
+        source=sep_source,
         audio="stems/clean_vocals.flac",
-        producer=(
-            f"mvsep_sep_type{MVSEP_STAGE1_SEP_TYPE}_opt{MVSEP_STAGE1_ADD_OPT1}"
-            f"+sep_type{MVSEP_STAGE2_SEP_TYPE}_opt{MVSEP_STAGE2_ADD_OPT1}"
-        ),
+        producer=sep_producer,
     )
-    return song_id, CacheStatus.CACHED, "mvsep"
+    return song_id, CacheStatus.CACHED, sep_source
 
 
 def run(
@@ -407,12 +459,17 @@ def run(
     config_path: Path | None,
     dry_run: bool,
     override_refs: list[tuple[str, str]] | None = None,
+    local: bool = False,
 ) -> RunSummary:
     """Resolve clean vocals for every song in *song_ids*.
 
     *override_refs* (issue #247 scale-out, review_queue set) supplies
     song_id → hash_prefix pairs straight from the Phase 0a snapshot; they
     are verified against the live DB instead of re-resolved.
+
+    *local* (issue #247): separate with the local audio-separator two-stage
+    pipeline (same models as the prod analysis service) instead of the
+    MVSEP cloud API — no daily separation quota.  Still strictly serial.
     """
     summary = RunSummary()
 
@@ -474,16 +531,42 @@ def run(
 
         import os
 
-        mvsep_token = os.environ.get("MVSEP_API_KEY")
-
-        def mvsep_fn(audio_path: Path, output_dir: Path) -> list[Path]:
-            if not mvsep_token:
-                # Lazy check: a tokenless run may still fully resolve via the
-                # R2 chain; only fail when separation is actually reached.
+        if local:
+            # Local audio-separator backend: no quota, models from
+            # AUDIO_SEPARATOR_MODEL_DIR or DEFAULT_LOCAL_MODEL_DIR. Fail
+            # early with a clear message instead of per-song import errors.
+            model_dir = Path(
+                os.environ.get("AUDIO_SEPARATOR_MODEL_DIR", str(DEFAULT_LOCAL_MODEL_DIR))
+            )
+            if not model_dir.exists():
                 raise StemCacheError(
-                    "MVSEP_API_KEY not set; required for songs without cached " "R2 vocal stems"
+                    f"local separation requested but model dir {model_dir} does not "
+                    "exist; set AUDIO_SEPARATOR_MODEL_DIR to the audio-separator "
+                    "model cache"
                 )
-            return _mvsep_separate(audio_path, output_dir, mvsep_token)
+            sep_source = "local"
+            sep_producer = LOCAL_MODEL_PRODUCER
+
+            def mvsep_fn(audio_path: Path, output_dir: Path) -> list[Path]:
+                return _local_separate(audio_path, output_dir, model_dir)
+
+        else:
+            mvsep_token = os.environ.get("MVSEP_API_KEY")
+            sep_source = "mvsep"
+            sep_producer = (
+                f"mvsep_sep_type{MVSEP_STAGE1_SEP_TYPE}_opt{MVSEP_STAGE1_ADD_OPT1}"
+                f"+sep_type{MVSEP_STAGE2_SEP_TYPE}_opt{MVSEP_STAGE2_ADD_OPT1}"
+            )
+
+            def mvsep_fn(audio_path: Path, output_dir: Path) -> list[Path]:
+                if not mvsep_token:
+                    # Lazy check: a tokenless run may still fully resolve via
+                    # the R2 chain; only fail when separation is reached.
+                    raise StemCacheError(
+                        "MVSEP_API_KEY not set; required for songs without cached "
+                        "R2 vocal stems (or rerun with --local for local separation)"
+                    )
+                return _mvsep_separate(audio_path, output_dir, mvsep_token)
 
         for ref in pending:
             song_id = ref.song_id
@@ -495,7 +578,9 @@ def run(
                     manifest_path=manifest_path,
                     r2_client=r2_client,
                     mvsep_fn=mvsep_fn,
-                    mvsep_token=mvsep_token,
+                    mvsep_token=None,
+                    sep_source=sep_source,
+                    sep_producer=sep_producer,
                 )
             except Exception as e:  # noqa: BLE001 — record and continue serially
                 try:
@@ -570,6 +655,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--config", type=Path, default=None, help="Admin config path")
     parser.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "Separate locally with audio-separator (MelBand Roformer ep_3005 "
+            f"+ UVR-De-Echo, models from {DEFAULT_LOCAL_MODEL_DIR}) instead of "
+            "the MVSEP cloud API — no daily quota. Requires an env with "
+            "audio-separator installed (e.g. ops/analysis-service --extra "
+            "service)."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="List pending songs without downloading or separating",
@@ -618,6 +714,7 @@ def main(argv: list[str] | None = None) -> int:
             config_path=args.config,
             dry_run=args.dry_run,
             override_refs=refs,
+            local=args.local,
         )
     except StemCacheError as e:
         print(f"error: {e}", file=sys.stderr)

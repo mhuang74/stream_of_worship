@@ -707,3 +707,71 @@ class TestRunnerScaleOutRefs:
         assert persisted["s_gone"]["status"] == "failed"
         assert "deleted since snapshot" in persisted["s_gone"]["error"]
         assert persisted["s1"]["status"] == "cached"
+
+
+# --------------------------------------------------------------------------
+# Local separation backend (issue #247 --local)
+# --------------------------------------------------------------------------
+
+
+class TestLocalBackend:
+    def test_process_song_records_local_source_and_producer(self, tmp_path: Path):
+        """--local flow: process_song records source='local' and the local
+        model producer, and consumes pick_dry_vocals on the wrapped outputs."""
+        cache_root = tmp_path / "cache"
+        manifest, manifest_path = _make_ctx(cache_root, tmp_path)
+
+        r2 = MagicMock()
+        r2.file_exists.return_value = False
+        r2.download_audio.side_effect = lambda prefix, dest: dest.write_bytes(b"mp3")
+
+        dry = tmp_path / "vocals_(No Echo).flac"
+        dry.write_bytes(b"clean")
+        mvsep = MagicMock(return_value=[dry])
+
+        _song_id, status, source = process_song(
+            SongRef("song_a", "aaaaaaaaaaaa"),
+            cache_root=cache_root,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            r2_client=r2,
+            mvsep_fn=mvsep,
+            sep_source="local",
+            sep_producer="local_audio_separator_mel_band_ep_3005",
+        )
+        assert status == CacheStatus.CACHED
+        assert source == "local"
+        stored = manifest.songs["song_a"]
+        assert stored["source"] == "local"
+        assert stored["producer"] == "local_audio_separator_mel_band_ep_3005"
+
+    def test_run_local_missing_model_dir_fails_loudly(self, tmp_path, monkeypatch):
+        """run(local=True) without a model dir errors before any song is
+        processed (early check, not per-song import failures)."""
+        from run_stem_cache import run as run_cache
+        import os as _os
+
+        monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(tmp_path / "nonexistent-models"))
+        _stub_run_infra(monkeypatch, r2=_ExplodingR2())
+
+        with pytest.raises(StemCacheError, match="model dir"):
+            run_cache(
+                song_ids=["song_a"],
+                cache_root=tmp_path / "cache",
+                manifest_path=tmp_path / "manifest.json",
+                lock_path=tmp_path / "serial.lock",
+                config_path=None,
+                dry_run=False,
+                local=True,
+            )
+
+    def test_module_constants_match_prod_models(self):
+        """Local models must mirror the prod analysis-service config so the
+        local product is the same stem the R2 fallback records."""
+        from run_stem_cache import (
+            LOCAL_DEREVERB_MODEL,
+            LOCAL_VOCAL_MODEL,
+        )
+
+        assert LOCAL_VOCAL_MODEL == "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
+        assert LOCAL_DEREVERB_MODEL == "UVR-De-Echo-Normal.pth"
