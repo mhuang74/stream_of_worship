@@ -25,7 +25,8 @@ report degenerates to a REGEN-probe/MANUAL split with no auto-PASS.
 For each of the 10 set songs (5 seed positives + 5 seed negatives):
 
 1. Transcribe `clean_vocals.flac` (cached stems) with faster-whisper large-v3,
-   CPU, Silero/FunASR VAD segmentation, **auto language detection**
+   CPU, in a single whole-file pass with faster-whisper's internal Silero VAD
+   (`vad_filter=True`), **auto language detection**
    (`language=None` — one song's LRC is English; the zh-forced default
    hallucinated Chinese on it and produced a 0% match rate).
 2. Parse LRC lines (ADR-0008 gap placeholders excluded from scoring).
@@ -143,9 +144,11 @@ not a reliable basis for the PASS decision at Phase 1 scale.
   path (`align_sequences_per_line_raw`) for all-non-CJK LRCs. Its per-song
   numbers are reported as-is; its 32 no-pinyin lines are the entire
   strict-vs-permissive denominator gap, so the verdict is unaffected.
-- The funasr fsmn-vad segmenter is Chinese-tuned; on the English song it
-  yields many short segments (92). This affects segmentation granularity,
-  not transcription language or alignment correctness.
+- Transcription is a single whole-file pass with faster-whisper's internal
+  Silero VAD (`vad_filter=True`); its VAD is tuned for speech, so on sung
+  vocals it can hold segments through instrumental gaps. This affects
+  segmentation granularity, not transcription language or alignment
+  correctness.
 - The spec allows one retry with the Phase 2 bake-off winner if the gate
   fails with Whisper. We did not exercise it: the failure mode is
   line-level alignment brittleness (matcher flips to a different word under
@@ -154,8 +157,9 @@ not a reliable basis for the PASS decision at Phase 1 scale.
   (positives center at ≈ 0 s lead, not [1, 3] beats) would need
   hand-labeled ground truth to disprove, which no alternative engine
   provides.
-- `_song_source` prefers live `recordings.lrc_source` from the production
-  DB, falling back to the spec's Appendix A mapping; per-song `source`
+- `_song_source` reads LRC provenance from the Phase 0 snapshot
+  (`eval/lrc_truth/latest.json` → `seed_subsets.negative.lrc_source_provenance`),
+  falling back to the spec's Appendix A mapping; per-song `source`
   fields in `analysis.json` reflect that resolution.
 
 ## Consequences (per spec fallback)

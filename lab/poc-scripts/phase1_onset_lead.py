@@ -3,8 +3,9 @@
 Implements Phase 1 of ``specs/lrc-review-triage-cascade-design-v2.md`` (issue #245):
 
 For each song, transcribe ``clean_vocals.flac`` with faster-whisper large-v3
-(whisper engine) under Silero/FunASR VAD segmentation (``--segment-mode vad``
-equivalent, never the LRC's own timestamps), then compute per-line onset-lead:
+in a single whole-file pass (faster-whisper's internal Silero VAD via
+``vad_filter=True``, auto language detection; never the LRC's own
+timestamps), then compute per-line onset-lead:
 
     lead_s = (onset_time_of_line_first_matched_word - lrc_line_timestamp)
     lead_beats = lead_s * BPM / 60
@@ -33,6 +34,7 @@ Usage:
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import statistics
@@ -84,12 +86,11 @@ RECOVERY_SONG_FRACTION = 8 / 10
 def load_song_set() -> list[dict]:
     """Load the 10-song Phase 1 set: 5 seed positives + 5 seed negatives.
 
-    Per the spec: seed positives = first 5 of seed_positive.txt with cached
-    stems; negatives must include the qwen3_asr (ai_shi_wo_men_yong_gan) and
-    manual_upload (bu_ting_zan_mei_mi) negatives. The stem-cache manifest is
-    authoritative for what's available; it already contains exactly 5 seed
-    positives + 5 seed negatives (6 youtube_transcript + qwen3_asr would be 7,
-    but the manifest was sized to 10: 3 youtube_transcript + qwen3 + manual).
+    Set membership = cached stem (stem_cache manifest) AND fetched LRC
+    (eval/lrc_truth/lrcs/) AND listed in a seed list. The stem-cache manifest
+    covers 46 seed positives, but LRCs were only fetched for the Phase 1
+    set, so the intersection is exactly the 10 spec songs (5 positives,
+    5 negatives incl. the qwen3_asr and manual_upload ones).
     """
     manifest = json.loads(STEM_MANIFEST.read_text())
     positives = [l.strip() for l in (TRUTH_LISTS_DIR / "seed_positive.txt").read_text().split() if l.strip()]
@@ -98,6 +99,11 @@ def load_song_set() -> list[dict]:
     songs = []
     for sid, ent in manifest["songs"].items():
         if ent.get("status") != "cached":
+            continue
+        if not (LRC_DIR / f"{sid}.lrc").exists():
+            # LRC fetch is sized to the Phase 1 set; a cached stem without a
+            # fetched LRC is outside the set (keeps the gate denominator at
+            # the spec's 10 songs rather than every cached seed song).
             continue
         truth = "positive" if sid in positives else "negative" if sid in negatives else None
         if truth is None:
@@ -365,45 +371,41 @@ def align_sequences_nocjk(
     return result
 
 
-def _song_source(song_id: str) -> str:
-    """LRC provenance for a song, queried live from the recordings table.
+_PROVENANCE_JSON = REPO_ROOT / "eval/lrc_truth/latest.json"
 
-    The stem-cache manifest's ``source`` field is stem-separation provenance
-    (mvsep / r2_vocals_dry), NOT LRC provenance — using it made the
-    youtube_transcript timing-negative bucket empty. The authoritative source
-    is recordings.lrc_source (matches snapshot eval/lrc_truth/latest.json for
-    review-queue rows).
+
+@functools.lru_cache(maxsize=None)
+def _provenance_map() -> dict[str, str]:
+    """LRC provenance from the Phase 0 snapshot (eval/lrc_truth/latest.json).
+
+    The snapshot's ``seed_subsets.negative.lrc_source_provenance`` is
+    self-described as authoritative and was captured with the truth lists; a
+    live DB query adds nothing and risks drift between the snapshot and the
+    analysis. The stem-cache manifest's ``source`` field is stem-separation
+    provenance (mvsep / r2_vocals_dry), NOT LRC provenance.
     """
     try:
-        from stream_of_worship.admin.config import ensure_config_exists
-        from stream_of_worship.db.connection import ConnectionProvider
+        d = json.loads(_PROVENANCE_JSON.read_text())
+        return dict(d["seed_subsets"]["negative"]["lrc_source_provenance"])
+    except (OSError, KeyError, json.JSONDecodeError):
+        # Fallback: seed lists in the spec (Appendix A) — only authoritative
+        # for the 8 songs listed there.
+        spec_sources = {
+            "bu_ting_zan_mei_mi_e937a9d3": "manual_upload",
+            "shu_bu_jin_71fba0ce": "youtube_transcript",
+            "wo_neng_gei_ni_shen_me_03b2dcb2": "youtube_transcript",
+            "jing_bai_ye_su_b08227a2": "youtube_transcript",
+            "wo_jing_bai_mi__ye_su_e6dd6146": "youtube_transcript",
+            "na_me_shen_de_ke_mu_ff92abd9": "youtube_transcript",
+            "cang_shen_zhi_chu_39437ec0": "youtube_transcript",
+            "ai_shi_wo_men_yong_gan_6d1865b8": "qwen3_asr",
+        }
+        return spec_sources
 
-        cfg = ensure_config_exists()
-        conn = ConnectionProvider(cfg.get_connection_url()).get_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT r.lrc_source FROM recordings r JOIN songs s ON s.id=r.song_id WHERE s.id=%s",
-                (song_id,),
-            )
-            row = cur.fetchone()
-        conn.close()
-        if row and row[0]:
-            return row[0]
-    except Exception:
-        pass
-    # Fallback: seed lists in the spec (Appendix A) — only authoritative for
-    # the 7 songs listed there; DB is primary.
-    spec_sources = {
-        "bu_ting_zan_mei_mi_e937a9d3": "manual_upload",
-        "shu_bu_jin_71fba0ce": "youtube_transcript",
-        "wo_neng_gei_ni_shen_me_03b2dcb2": "youtube_transcript",
-        "jing_bai_ye_su_b08227a2": "youtube_transcript",
-        "wo_jing_bai_mi__ye_su_e6dd6146": "youtube_transcript",
-        "na_me_shen_de_ke_mu_ff92abd9": "youtube_transcript",
-        "cang_shen_zhi_chu_39437ec0": "youtube_transcript",
-        "ai_shi_wo_men_yong_gan_6d1865b8": "qwen3_asr",
-    }
-    return spec_sources.get(song_id, "unknown")
+
+def _song_source(song_id: str) -> str:
+    """LRC provenance for a song, from the Phase 0 snapshot provenance map."""
+    return _provenance_map().get(song_id, "unknown")
 
 
 def load_or_transcribe_audio_words(song: dict, audio_path: Path) -> list[eval_lrc.PinyinWord]:
@@ -423,8 +425,9 @@ def load_or_transcribe_audio_words(song: dict, audio_path: Path) -> list[eval_lr
             eval_lrc.PinyinWord(text=w["text"], pinyin=w["pinyin"], time_seconds=w["time_seconds"])
             for w in json.loads(cache.read_text())
         ]
-    # Single full-file pass with faster-whisper's internal VAD. The generic
-    # transcribe_with_segmentation("vad") path re-runs the model on dozens of
+    # Single full-file pass with faster-whisper's internal Silero VAD
+    # (vad_filter=True). The generic transcribe_with_segmentation("vad") path
+    # re-runs the model on dozens of
     # short clips (~2 min/clip on this CPU); a whole-file pass is one order
     # of magnitude faster and yields the same word stream with word
     # timestamps.
@@ -804,6 +807,7 @@ def analyze() -> None:
     # Gate (b): fraction-within ≥90% of sung lines for ≥8/10 songs, per
     # injected offset. Injections run over all 10 songs (estimator under test).
     rec_by_offset = {}
+    missing: dict[float, list[str]] = {}
     for offset in INJECTED_OFFSETS:
         rows = [r for r in report["recoverability"] if r["injected_s"] == offset]
         passed = [r for r in rows if r["fraction_within"] is not None and r["fraction_within"] >= RECOVERY_LINE_FRACTION]
@@ -872,16 +876,38 @@ def analyze() -> None:
         "iqr_disjoint": iqr_disjoint,
     }
 
+    # Hardening: the gate must not benefit from a shrunken denominator. If
+    # any set song is missing an injection measurement, fail the offset
+    # rather than computing song_fraction over fewer songs.
+    expected_songs = {s["song_id"] for s in load_song_set()}
+    for offset in INJECTED_OFFSETS:
+        have = {r["song_id"] for r in report["recoverability"] if r["injected_s"] == offset}
+        missing[offset] = sorted(expected_songs - have)
+
+    # Hardening: separation needs the timing-attributed negative bucket to be
+    # populated. The expected count is the youtube_transcript negatives
+    # actually in the set (per the snapshot provenance); if the resolved
+    # count differs, the test is invalid, not "passed trivially".
+    expected_timing_neg = {
+        sid
+        for sid in expected_songs
+        if _song_source(sid) == "youtube_transcript"
+        and next(s for s in load_song_set() if s["song_id"] == sid)["truth"] == "negative"
+    }
+
     rec_ok = (
         all(v["song_fraction"] is not None and v["song_fraction"] >= RECOVERY_SONG_FRACTION for v in rec_by_offset.values())
         and all(v["n_songs"] == 10 for v in rec_by_offset.values())
     )
-    sep_ok = bool(median_separated and iqr_disjoint)
+    n_timing_neg_songs = len({r_sid for r_sid, r in base.items() if r["truth"] == "negative" and _song_source(r_sid) == "youtube_transcript"})
+    sep_ok = bool(median_separated and iqr_disjoint) and n_timing_neg_songs == len(expected_timing_neg)
     gate = {
         "recoverability_per_offset": rec_by_offset,
         "recoverability_pass": rec_ok,
+        "missing_injections": {o: m for o, m in missing.items() if m},
         "separation": sep_report,
         "separation_pass": sep_ok,
+        "n_timing_negative_songs": n_timing_neg_songs,
         "gate_pass": rec_ok and sep_ok,
     }
     report["gate"] = gate

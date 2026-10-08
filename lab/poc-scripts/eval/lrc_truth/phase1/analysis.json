@@ -448,6 +448,7 @@
       }
     },
     "recoverability_pass": false,
+    "missing_injections": {},
     "separation": {
       "attribution_note": "Only youtube_transcript negatives carry timing failure ground truth; qwen3_asr (content) and manual_upload (anomaly) negatives are excluded from the separation test.",
       "positive_lead_s_quantiles_p10_p50_p90": [
@@ -465,6 +466,7 @@
       "iqr_disjoint": false
     },
     "separation_pass": false,
+    "n_timing_negative_songs": 3,
     "gate_pass": false
   }
 }
