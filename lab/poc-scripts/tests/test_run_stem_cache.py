@@ -775,3 +775,62 @@ class TestLocalBackend:
 
         assert LOCAL_VOCAL_MODEL == "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
         assert LOCAL_DEREVERB_MODEL == "UVR-De-Echo-Normal.pth"
+
+
+class TestLocalSeparate:
+    def test_relative_stage2_outputs_resolved_against_stage_dir(self, tmp_path, monkeypatch):
+        """Regression: audio-separator returns bare filenames for outputs;
+        unresolved relative paths made fully-separated songs record FAILED
+        after 75 min of compute (read_bytes() from the runner CWD)."""
+        import run_stem_cache as rsc
+
+        output_dir = tmp_path / "song"
+        stage2 = output_dir / "stage2_dereverb"
+        stage2.mkdir(parents=True)
+        dry = stage2 / "audio_(Vocals)_(No Echo)_UVR-De-Echo-Normal.flac"
+        dry.write_bytes(b"clean")
+
+        def fake_extract(audio_path, out_dir, vocal_model, dereverb_model):
+            assert out_dir == output_dir
+            return {
+                "stages": {
+                    "stage1": {"outputs": [str(out_dir / "stage1_vocal_separation" / "v.flac")]},
+                    "stage2": {
+                        # bare filename, as separator.separate() returns
+                        "outputs": ["audio_(Vocals)_(No Echo)_UVR-De-Echo-Normal.flac"]
+                    },
+                }
+            }
+
+        monkeypatch.setattr(
+            "poc.gen_clean_vocal_stem.extract_vocals_two_stage", fake_extract
+        )
+        env_dir = tmp_path / "models"
+        env_dir.mkdir()
+        monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(env_dir))
+
+        outs = rsc._local_separate(tmp_path / "in.mp3", output_dir, env_dir)
+        assert dry in outs
+
+    def test_model_dir_env_set_for_cached_models(self, tmp_path, monkeypatch):
+        """_local_separate must point audio-separator at the machine model
+        cache via AUDIO_SEPARATOR_MODEL_DIR (default /tmp would re-download
+        the 1GB MelBand ckpt)."""
+        import os as _os
+
+        import run_stem_cache as rsc
+
+        env_dir = tmp_path / "models"
+        env_dir.mkdir()
+        monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(env_dir))
+        seen = {}
+
+        def fake_extract(audio_path, out_dir, vocal_model, dereverb_model):
+            seen["env"] = _os.environ.get("AUDIO_SEPARATOR_MODEL_DIR")
+            return {"stages": {"stage1": {"outputs": []}, "stage2": {"outputs": []}}}
+
+        monkeypatch.setattr(
+            "poc.gen_clean_vocal_stem.extract_vocals_two_stage", fake_extract
+        )
+        rsc._local_separate(tmp_path / "in.mp3", tmp_path / "out", env_dir)
+        assert seen["env"] == str(env_dir)

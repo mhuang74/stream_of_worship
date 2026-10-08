@@ -316,6 +316,12 @@ def _local_separate(audio_path: Path, output_dir: Path, model_dir: Path) -> list
     models as the prod analysis service. Returns produced files; the caller
     picks the dry vocals with ``pick_dry_vocals`` (stage-2 outputs carry
     "No Echo"/"No Reverb" names).
+
+    audio-separator's ``separate()`` returns bare filenames for outputs
+    written into its output_dir; the script's stage-1 section resolves them
+    against the stage dir, but its stage-2 "outputs" list stays raw (a
+    relative name would break ``read_bytes()`` from the runner's CWD and
+    waste the full separation). Resolve both stages' entries explicitly.
     """
     from poc.gen_clean_vocal_stem import extract_vocals_two_stage
 
@@ -331,10 +337,18 @@ def _local_separate(audio_path: Path, output_dir: Path, model_dir: Path) -> list
         vocal_model=LOCAL_VOCAL_MODEL,
         dereverb_model=LOCAL_DEREVERB_MODEL,
     )
-    outputs: list[Path] = []
-    for stage in ("stage1", "stage2"):
-        outputs.extend(Path(p) for p in results["stages"][stage]["outputs"])
-    return outputs
+    resolved: list[Path] = []
+    for stage, subdir in (
+        ("stage1", "stage1_vocal_separation"),
+        ("stage2", "stage2_dereverb"),
+    ):
+        stage_dir = output_dir / subdir
+        for raw in results["stages"][stage]["outputs"]:
+            p = Path(raw)
+            if not p.is_absolute():
+                p = stage_dir / p.name
+            resolved.append(p)
+    return resolved
 
 
 def process_song(
