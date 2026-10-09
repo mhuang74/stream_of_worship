@@ -565,6 +565,10 @@ def process_song(
     #    MVSEP quota, so recording here is the cheapest possible drain step.
     if has_clean_stem(song_dir):
         claim = read_claim(song_dir)
+        # Same rule as record_claims: a claim is the only proof of local
+        # provenance; a claim-less stem (drain crash between the stem write
+        # and the claim/write, or pre-claim run) is a generic on-disk hit —
+        # never attribute it to a specific model.
         record_result(
             manifest,
             manifest_path,
@@ -572,7 +576,7 @@ def process_song(
             status=CacheStatus.CACHED,
             source="local" if claim else "local_clean_vocals",
             audio=CLEAN_VOCALS_REL,
-            producer=(claim or {}).get("producer") or LOCAL_MODEL_PRODUCER,
+            producer=claim.get("producer") if claim else None,
         )
         return song_id, CacheStatus.CACHED, "local_clean_vocals"
 

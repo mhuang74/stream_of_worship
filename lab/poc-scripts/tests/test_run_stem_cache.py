@@ -994,6 +994,7 @@ class TestDualBackendCoordination:
             cache_root=cache_root,
             manifest_path=manifest_path,
             config_path=None,
+            produce_lock_path=tmp_path / "produce.lock",
         )
 
         assert summary.cached == 1
@@ -1114,6 +1115,7 @@ class TestDualBackendCoordination:
             cache_root=cache_root,
             manifest_path=manifest_path,
             config_path=None,
+            produce_lock_path=tmp_path / "produce.lock",
         )
         assert len(separates) == 1, "only the un-produced song may separate"
         assert summary.skipped == 2
@@ -1160,7 +1162,31 @@ class TestDualBackendCoordination:
             mvsep_fn=MagicMock(side_effect=AssertionError("no separation")),
         )
         assert status == CacheStatus.CACHED
-        assert manifest.songs["s1"]["source"] == "local_clean_vocals"
+        persisted = manifest.songs["s1"]
+        assert persisted["source"] == "local_clean_vocals"
+        # no claim -> no fabricated producer attribution
+        assert "producer" not in persisted
+
+    def test_drain_disk_hit_with_claim_records_claim_producer_not_default(self, tmp_path):
+        """Both manifest writers must agree: a claimed stem is recorded with
+        the claim's producer, never silently defaulted to the local model."""
+        cache_root = tmp_path / "cache"
+        song_dir = cache_root / "aaaaaaaaaaaa"
+        (song_dir / "stems").mkdir(parents=True)
+        (song_dir / "stems" / "clean_vocals.flac").write_bytes(b"clean")
+        rsc.write_claim(song_dir, hash_prefix="aaaaaaaaaaaa", producer="custom_producer_v1")
+        manifest, manifest_path = _make_ctx(cache_root, tmp_path)
+        process_song(
+            SongRef("s1", "aaaaaaaaaaaa"),
+            cache_root=cache_root,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            r2_client=MagicMock(),
+            mvsep_fn=MagicMock(side_effect=AssertionError("no separation")),
+        )
+        persisted = manifest.songs["s1"]
+        assert persisted["source"] == "local"
+        assert persisted["producer"] == "custom_producer_v1"
 
     def test_producer_lock_is_distinct_from_drain_lock_and_exclusive(self, tmp_path, monkeypatch):
         """The producer must not contend with the drain (distinct lock) yet a
@@ -1249,6 +1275,7 @@ class TestDualBackendCoordination:
             cache_root=cache_root,
             manifest_path=manifest_path,
             config_path=None,
+            produce_lock_path=tmp_path / "produce.lock",
         )
         assert (stems_dir / "clean_vocals.flac").read_bytes() == b"MVSEP-PRODUCED"
         assert rsc.read_claim(stems_dir.parent) is None, "must not claim a stem it did not write"
