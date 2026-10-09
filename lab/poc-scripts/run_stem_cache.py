@@ -192,6 +192,10 @@ LOCAL_MODEL_PRODUCER = "local_audio_separator_mel_band_ep_3005"
 DEFAULT_LOCAL_MODEL_DIR = Path.home() / ".cache" / "audio-separator"
 
 # Substrings MVSEP uses for the daily free-tier separation wall (issue #247).
+# Empirical, free-tier: 400s begin at 49-50 creates in a rolling 24h window
+# (a song = 2 creates). NOT a permanent invariant - the account carries
+# premium_minutes, and history shows 78 creates on 2026-07-10, so the cap is
+# tier-dependent.
 # Checked against the response body surfaced by the poc MVSEP client; any hit
 # means every remaining song in the pass would fail identically, so the run
 # stops instead of rewriting ~275 FAILED entries.
