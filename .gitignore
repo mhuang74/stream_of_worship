@@ -314,5 +314,6 @@ published_songs.lst
 !ops/analysis-service/.env.segmentation-tuning.example
 .vercel
 
-# LRC triage stem-cache runtime lock (issue #244)
+# LRC triage stem-cache runtime locks (issue #244, #247)
 lab/poc-scripts/eval/lrc_truth/stem_cache/serial.lock
+lab/poc-scripts/eval/lrc_truth/stem_cache/serial.produce.lock

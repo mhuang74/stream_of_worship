@@ -199,9 +199,7 @@ class TestBuildSongRefs:
         cursor = MagicMock()
         conn.cursor.return_value.__enter__.return_value = cursor
         cursor.fetchall.return_value = [("song_a", "aaaaaaaaaaaa")]
-        refs, missing = build_song_refs(
-            conn, ["song_a"], known_prefixes={"song_a": "aaaaaaaaaaaa"}
-        )
+        refs, missing = build_song_refs(conn, ["song_a"], known_prefixes={"song_a": "aaaaaaaaaaaa"})
         assert refs == [("song_a", "aaaaaaaaaaaa")]
         assert missing == []
 
@@ -470,9 +468,7 @@ class _FakeConfig:
 def _stub_run_infra(monkeypatch, r2=None):
     """Patch AdminConfig/ConnectionProvider/R2Client so run() touches no
     real config file, DB, or R2. Pass r2= to customize the R2 stub."""
-    monkeypatch.setattr(
-        "stream_of_worship.admin.config.AdminConfig.load", lambda p: _FakeConfig()
-    )
+    monkeypatch.setattr("stream_of_worship.admin.config.AdminConfig.load", lambda p: _FakeConfig())
     monkeypatch.setattr(
         "stream_of_worship.db.connection.ConnectionProvider",
         lambda url: _FakeProvider(),
@@ -510,9 +506,7 @@ class TestRunnerIdempotence:
         cached_file.write_bytes(b"flac-bytes")
         before = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        _stub_run_infra(
-            monkeypatch, r2=_ExplodingR2("R2 (resume must not touch)")
-        )
+        _stub_run_infra(monkeypatch, r2=_ExplodingR2("R2 (resume must not touch)"))
 
         summary = run_cache(
             song_ids=["song_a"],
@@ -668,9 +662,7 @@ class TestRunnerScaleOutRefs:
         assert summary.skipped == 0
         assert calls == [(["song_a"], None)]
 
-    def test_snapshot_deleted_song_recorded_failed_and_run_continues(
-        self, tmp_path, monkeypatch
-    ):
+    def test_snapshot_deleted_song_recorded_failed_and_run_continues(self, tmp_path, monkeypatch):
         """A snapshot song deleted from the DB since Phase 0a gets its own
         FAILED manifest record and does NOT abort the remaining songs
         (issue #247 acceptance: fallback-recorded, resumable)."""
@@ -678,9 +670,7 @@ class TestRunnerScaleOutRefs:
         cache_root = tmp_path / "cache"
 
         r2 = MagicMock()
-        r2.file_exists.side_effect = lambda key: key.endswith(
-            "aaaaaaaaaaaa/stems/vocals_dry.flac"
-        )
+        r2.file_exists.side_effect = lambda key: key.endswith("aaaaaaaaaaaa/stems/vocals_dry.flac")
         r2.download_file.side_effect = lambda key, dest: dest.write_bytes(b"flac")
 
         _stub_run_infra(monkeypatch, r2=r2)
@@ -778,9 +768,7 @@ class TestRunnerScaleOutRefs:
         assert persisted["s_cached_gone"]["status"] == "cached"
         assert summary.failed == 1  # counted, but the run survived
 
-    def test_quota_exhaustion_stops_pass_instead_of_walking_all_songs(
-        self, tmp_path, monkeypatch
-    ):
+    def test_quota_exhaustion_stops_pass_instead_of_walking_all_songs(self, tmp_path, monkeypatch):
         """When MVSEP reports the daily wall, the pass must stop instead of
         attempting (and recording FAILED for) every remaining song."""
         manifest_path = tmp_path / "manifest.json"
@@ -874,7 +862,6 @@ class TestLocalBackend:
         """run(local=True) without a model dir errors before any song is
         processed (early check, not per-song import failures)."""
         from run_stem_cache import run as run_cache
-        import os as _os
 
         monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(tmp_path / "nonexistent-models"))
         _stub_run_infra(monkeypatch, r2=_ExplodingR2())
@@ -927,9 +914,7 @@ class TestLocalSeparate:
                 }
             }
 
-        monkeypatch.setattr(
-            "poc.gen_clean_vocal_stem.extract_vocals_two_stage", fake_extract
-        )
+        monkeypatch.setattr("poc.gen_clean_vocal_stem.extract_vocals_two_stage", fake_extract)
         env_dir = tmp_path / "models"
         env_dir.mkdir()
         monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(env_dir))
@@ -954,8 +939,317 @@ class TestLocalSeparate:
             seen["env"] = _os.environ.get("AUDIO_SEPARATOR_MODEL_DIR")
             return {"stages": {"stage1": {"outputs": []}, "stage2": {"outputs": []}}}
 
-        monkeypatch.setattr(
-            "poc.gen_clean_vocal_stem.extract_vocals_two_stage", fake_extract
-        )
+        monkeypatch.setattr("poc.gen_clean_vocal_stem.extract_vocals_two_stage", fake_extract)
         rsc._local_separate(tmp_path / "in.mp3", tmp_path / "out", env_dir)
         assert seen["env"] == str(env_dir)
+
+
+# --------------------------------------------------------------------------
+# Dual backend: local producer + MVSEP recorder (issue #247)
+# --------------------------------------------------------------------------
+
+
+class TestDualBackendCoordination:
+    """The local worker must never write the manifest (single-writer), and the
+    recorder must fold its output in without spending MVSEP quota."""
+
+    def _stub(self, monkeypatch, tmp_path, song_ids):
+        # Distinct prefix per song: songs must not share a cache directory,
+        # or one song's stem would masquerade as another's.
+        prefix = {sid: f"{i:012x}" for i, sid in enumerate(song_ids)}
+        monkeypatch.setattr(
+            rsc,
+            "build_song_refs",
+            lambda conn, ids, known_prefixes=None: (
+                [(sid, prefix[sid]) for sid in ids],
+                [],
+            ),
+        )
+        self._prefix = prefix
+        monkeypatch.setattr(
+            "stream_of_worship.admin.config.AdminConfig.load", lambda p: _FakeConfig()
+        )
+        monkeypatch.setattr(
+            "stream_of_worship.db.connection.ConnectionProvider",
+            lambda url: _FakeProvider(),
+        )
+        r2 = MagicMock()
+        r2.download_audio.side_effect = lambda prefix, dest: dest.write_bytes(b"mp3")
+        monkeypatch.setattr("stream_of_worship.admin.services.r2.R2Client", lambda **k: r2)
+
+    def test_produce_only_writes_no_manifest_and_claims_the_song(self, tmp_path, monkeypatch):
+        """--produce-only: stem + claim land in the cache; the manifest is
+        untouched, and the producer runs without taking the serial lock."""
+        cache_root = tmp_path / "cache"
+        manifest_path = tmp_path / "manifest.json"
+        self._stub(monkeypatch, tmp_path, ["s1"])
+
+        dry = tmp_path / "vocals_(No Echo).flac"
+        dry.write_bytes(b"clean-vocals")
+        monkeypatch.setattr(rsc, "_local_separate", lambda a, o, m: [dry])
+        monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(tmp_path))
+
+        summary = rsc.run_produce_only(
+            song_ids=["s1"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            config_path=None,
+        )
+
+        assert summary.cached == 1
+        hp = self._prefix["s1"]
+        assert (cache_root / hp / "stems" / "clean_vocals.flac").read_bytes() == b"clean-vocals"
+        claim = rsc.read_claim(cache_root / hp)
+        assert claim and claim["producer"] == rsc.LOCAL_MODEL_PRODUCER
+        # the single-writer invariant: the producer never writes the manifest,
+        # not even a missing-file skeleton
+        assert not manifest_path.exists()
+
+    def test_recorder_folds_claims_into_manifest_without_separation(self, tmp_path, monkeypatch):
+        """--record-claims records a produced stem as cached/local — no MVSEP
+        call, no R2 I/O beyond ref resolution."""
+        cache_root = tmp_path / "cache"
+        manifest_path = tmp_path / "manifest.json"
+        self._stub(monkeypatch, tmp_path, ["s1"])
+        song_dir = cache_root / self._prefix["s1"]
+        (song_dir / "stems").mkdir(parents=True)
+        (song_dir / "stems" / "clean_vocals.flac").write_bytes(b"clean-vocals")
+        rsc.write_claim(song_dir, hash_prefix=self._prefix["s1"], producer="local_x")
+        monkeypatch.setattr(rsc, "_local_separate", lambda *a: pytest.fail("must not separate"))
+
+        summary = rsc.record_claims(
+            song_ids=["s1"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            config_path=None,
+        )
+        assert summary.cached == 1
+        persisted = json.loads(manifest_path.read_text(encoding="utf-8"))["songs"]
+        assert persisted["s1"]["status"] == "cached"
+        assert persisted["s1"]["source"] == "local"
+        assert persisted["s1"]["producer"] == "local_x"
+
+    def test_recorder_skips_songs_without_stems(self, tmp_path, monkeypatch):
+        """Nothing produced -> nothing recorded (no FAILED noise)."""
+        cache_root = tmp_path / "cache"
+        manifest_path = tmp_path / "manifest.json"
+        self._stub(monkeypatch, tmp_path, ["s1"])
+
+        summary = rsc.record_claims(
+            song_ids=["s1"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            config_path=None,
+        )
+        assert summary.cached == 0 and summary.failed == 0
+        assert not manifest_path.exists(), "recorder must not create the manifest"
+
+    def test_drain_records_claim_provenance_on_disk_hit(self, tmp_path, monkeypatch):
+        """The MVSEP drain's step-1 disk check picks up a locally produced,
+        unrecorded stem at zero quota — recording the producer from the claim."""
+        cache_root = tmp_path / "cache"
+        song_dir = cache_root / "aaaaaaaaaaaa"
+        (song_dir / "stems").mkdir(parents=True)
+        (song_dir / "stems" / "clean_vocals.flac").write_bytes(b"clean-vocals")
+        rsc.write_claim(
+            song_dir, hash_prefix="aaaaaaaaaaaa", producer="local_audio_separator_mel_band_ep_3005"
+        )
+
+        manifest, manifest_path = _make_ctx(cache_root, tmp_path)
+        mvsep = MagicMock(side_effect=AssertionError("must not spend quota"))
+        r2 = MagicMock()
+        r2.file_exists.return_value = False
+
+        _sid, status, source = process_song(
+            SongRef("s1", "aaaaaaaaaaaa"),
+            cache_root=cache_root,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            r2_client=r2,
+            mvsep_fn=mvsep,
+            sep_source="mvsep",
+            sep_producer="mvsep_x",
+        )
+        assert status == CacheStatus.CACHED
+        assert mvsep.call_count == 0
+        stored = manifest.songs["s1"]
+        assert stored["source"] == "local"
+        assert stored["producer"] == "local_audio_separator_mel_band_ep_3005"
+
+    def test_produce_only_skips_already_recorded_and_claimed_songs(self, tmp_path, monkeypatch):
+        """Re-running the producer never redoes work: recorded songs and
+        already-claimed stems are skipped, so the two backends can't
+        double-separate a song."""
+        cache_root = tmp_path / "cache"
+        manifest_path = tmp_path / "manifest.json"
+        self._stub(monkeypatch, tmp_path, ["s_done", "s_claimed", "s_new"])
+
+        manifest = load_or_init_manifest(manifest_path)
+        record_result(
+            manifest,
+            manifest_path,
+            SongRef("s_done", self._prefix["s_done"]),
+            status=CacheStatus.CACHED,
+            source="r2_vocals_dry",
+            audio="stems/clean_vocals.flac",
+        )
+        claimed = cache_root / self._prefix["s_claimed"]
+        (claimed / "stems").mkdir(parents=True)
+        (claimed / "stems" / "clean_vocals.flac").write_bytes(b"x")
+        rsc.write_claim(claimed, hash_prefix=self._prefix["s_claimed"], producer="local_x")
+
+        separates = []
+
+        def fake_local(audio_path, out_dir, model_dir):
+            separates.append(audio_path)
+            dry = tmp_path / "dry.flac"
+            dry.write_bytes(b"new")
+            return [dry]
+
+        monkeypatch.setattr(rsc, "_local_separate", fake_local)
+        monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(tmp_path))
+
+        summary = rsc.run_produce_only(
+            song_ids=["s_done", "s_claimed", "s_new"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            config_path=None,
+        )
+        assert len(separates) == 1, "only the un-produced song may separate"
+        assert summary.skipped == 2
+        assert summary.cached == 1
+
+    def test_mvsep_stems_get_no_claim_but_local_stems_do(self, tmp_path):
+        """Claims mark local provenance only. An MVSEP-produced stem must not
+        carry one, or a later disk-hit would relabel it source='local'."""
+        for sep_source, expect_claim in (("mvsep", False), ("local", True)):
+            cache_root = tmp_path / f"cache_{sep_source}"
+            manifest, manifest_path = _make_ctx(cache_root, tmp_path / f"mf_{sep_source}")
+            r2 = MagicMock()
+            r2.file_exists.return_value = False
+            r2.download_audio.side_effect = lambda prefix, dest: dest.write_bytes(b"mp3")
+            dry = tmp_path / f"dry_{sep_source}.flac"
+            dry.write_bytes(b"clean")
+            process_song(
+                SongRef("s1", "aaaaaaaaaaaa"),
+                cache_root=cache_root,
+                manifest=manifest,
+                manifest_path=manifest_path,
+                r2_client=r2,
+                mvsep_fn=MagicMock(return_value=[dry]),
+                sep_source=sep_source,
+                sep_producer="p",
+            )
+            claim = rsc.read_claim(cache_root / "aaaaaaaaaaaa")
+            assert (claim is not None) is expect_claim, sep_source
+
+    def test_disk_hit_of_mvsep_stem_without_claim_is_not_labelled_local(self, tmp_path):
+        """An unrecorded MVSEP stem on disk resolves as generic cached, never
+        as a local-produced stem."""
+        cache_root = tmp_path / "cache"
+        song_dir = cache_root / "aaaaaaaaaaaa"
+        (song_dir / "stems").mkdir(parents=True)
+        (song_dir / "stems" / "clean_vocals.flac").write_bytes(b"clean")
+        manifest, manifest_path = _make_ctx(cache_root, tmp_path)
+        _sid, status, _src = process_song(
+            SongRef("s1", "aaaaaaaaaaaa"),
+            cache_root=cache_root,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            r2_client=MagicMock(),
+            mvsep_fn=MagicMock(side_effect=AssertionError("no separation")),
+        )
+        assert status == CacheStatus.CACHED
+        assert manifest.songs["s1"]["source"] == "local_clean_vocals"
+
+    def test_producer_lock_is_distinct_from_drain_lock_and_exclusive(self, tmp_path, monkeypatch):
+        """The producer must not contend with the drain (distinct lock) yet a
+        second producer must fail loudly (no parallel local separation)."""
+        assert rsc.DEFAULT_PRODUCE_LOCK != rsc.DEFAULT_LOCK
+        cache_root = tmp_path / "cache"
+        self._stub(monkeypatch, tmp_path, ["s1"])
+        monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(tmp_path))
+        lock = tmp_path / "produce.lock"
+        (tmp_path / "dry.flac").write_bytes(b"x")
+        monkeypatch.setattr(
+            rsc,
+            "_local_separate",
+            lambda a, o, m: [tmp_path / "dry.flac"],
+        )
+
+        # Hold the producer lock, then attempt a second producer run.
+        with rsc.try_lock_serial(lock):
+            with pytest.raises(StemCacheError, match="already running"):
+                rsc.run_produce_only(
+                    song_ids=["s1"],
+                    cache_root=cache_root,
+                    manifest_path=tmp_path / "manifest.json",
+                    config_path=None,
+                    produce_lock_path=lock,
+                )
+        # Lock released -> the same call now proceeds.
+        summary = rsc.run_produce_only(
+            song_ids=["s1"],
+            cache_root=cache_root,
+            manifest_path=tmp_path / "manifest.json",
+            config_path=None,
+            produce_lock_path=lock,
+        )
+        assert summary.cached == 1
+
+    def test_recorder_does_not_fabricate_local_provenance_for_claimless_stems(
+        self, tmp_path, monkeypatch
+    ):
+        """A pre-claim stem (older drain run, or a crash before write_claim) on
+        disk is recorded as a generic on-disk hit — the manifest is committed
+        experiment ground truth, so it must not claim local production."""
+        cache_root = tmp_path / "cache"
+        manifest_path = tmp_path / "manifest.json"
+        self._stub(monkeypatch, tmp_path, ["s1"])
+        song_dir = cache_root / self._prefix["s1"]
+        (song_dir / "stems").mkdir(parents=True)
+        (song_dir / "stems" / "clean_vocals.flac").write_bytes(b"stem")
+        assert rsc.read_claim(song_dir) is None  # no claim: provenance unknown
+
+        summary = rsc.record_claims(
+            song_ids=["s1"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            config_path=None,
+        )
+        assert summary.cached == 1
+        entry = json.loads(manifest_path.read_text(encoding="utf-8"))["songs"]["s1"]
+        assert entry["source"] == "local_clean_vocals"
+        assert "producer" not in entry
+
+    def test_producer_never_clobbers_a_stem_that_appeared_during_separation(
+        self, tmp_path, monkeypatch
+    ):
+        """If the drain finishes a song while the local worker is separating it,
+        the drain's stem (and its provenance) wins — the worker must not
+        os.replace over it nor stamp a local claim."""
+        cache_root = tmp_path / "cache"
+        manifest_path = tmp_path / "manifest.json"
+        self._stub(monkeypatch, tmp_path, ["s1"])
+        monkeypatch.setenv("AUDIO_SEPARATOR_MODEL_DIR", str(tmp_path))
+        stems_dir = cache_root / self._prefix["s1"] / "stems"
+
+        def fake_local(audio_path, out_dir, model_dir):
+            # The drain lands its stem mid-separation.
+            stems_dir.mkdir(parents=True, exist_ok=True)
+            (stems_dir / "clean_vocals.flac").write_bytes(b"MVSEP-PRODUCED")
+            dry = tmp_path / "mine.flac"
+            dry.write_bytes(b"MINE")
+            return [dry]
+
+        monkeypatch.setattr(rsc, "_local_separate", fake_local)
+
+        summary = rsc.run_produce_only(
+            song_ids=["s1"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            config_path=None,
+        )
+        assert (stems_dir / "clean_vocals.flac").read_bytes() == b"MVSEP-PRODUCED"
+        assert rsc.read_claim(stems_dir.parent) is None, "must not claim a stem it did not write"
+        assert summary.cached == 0 and summary.skipped == 1

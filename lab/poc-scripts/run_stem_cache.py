@@ -25,6 +25,27 @@ invocations fail loudly. Failed songs are recorded and retried on the next
 invocation. Zero writes to canonical Lyrics, catalog status, provenance, or
 visibility.
 
+Dual backend (issue #247): the quota-limited MVSEP drain and a quota-free
+local worker can run in parallel over disjoint slices of the same cache,
+without contending on the manifest (one writer only) or on the serial lock:
+
+- ``--produce-only`` — local worker. Separates songs and writes the stem
+  plus a claim file (``stems/clean_vocals.claim.json``, recording the
+  producing model) into the cache, but never writes the manifest and never
+  takes the serial lock. Pair with ``--produce-slice tail:N`` so its slice is
+  disjoint from the drain, which consumes the pending order from the head.
+  Resumable: already-claimed or already-recorded songs are skipped, and a
+  stem that appears mid-separation (the drain finished it first) is kept
+  rather than clobbered.
+- ``--record-claims`` — recorder. Folds stems already on disk into the
+  manifest as ``cached``, taking ``source``/``producer`` from the claim when
+  one is present (``source=local``) and recording a claim-less stem as a
+  generic on-disk hit otherwise — the manifest is committed experiment ground
+  truth, so provenance is never invented. Holds the drain's lock (both write
+  the whole-file manifest) and spends no MVSEP quota, so it makes progress
+  even when MVSEP is exhausted. The normal drain pass also picks claims up in
+  its crash-recovery step 2, for free.
+
 Scale-out populations (issue #247):
 
 - ``--set phase12`` — the Phase 1/2 ten-song set (default).
@@ -41,7 +62,8 @@ Usage (from repo root):
     uv run --project lab/poc-scripts --extra stem_separation --extra test \
         python lab/poc-scripts/run_stem_cache.py \
         [--set phase12|phase3_positive|review_queue] [--snapshot <path>] \
-        [--local] [--cache-dir <path>] [--manifest <path>] [--dry-run]
+        [--local] [--produce-only [--produce-slice tail:N] [--produce-limit N]] \
+        [--record-claims] [--cache-dir <path>] [--manifest <path>] [--dry-run]
 
 Cache root defaults to ``sow_legacy_cli_tui.core.paths.get_cache_dir()``
 (``~/.cache/stream-of-worship`` on Linux) — the same root the Phase 1/2
@@ -60,17 +82,21 @@ import json
 import os
 import random
 import sys
+import tempfile
 from collections.abc import Callable
+from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from stem_cache import (
+    utcnow,
     CacheStatus,
     SongRef,
     StemCacheError,
     StemCacheManifest,
+    load_manifest_if_present,
     load_or_init_manifest,
     lookup_r2_clean_vocals,
     next_pending,
@@ -103,6 +129,9 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 # invoked from.
 DEFAULT_MANIFEST = _SCRIPT_DIR / "eval/lrc_truth/stem_cache/manifest.json"
 DEFAULT_LOCK = _SCRIPT_DIR / "eval/lrc_truth/stem_cache/serial.lock"
+# Distinct lock so the local producer and the MVSEP drain never contend; the
+# flock still makes a second *producer* fail loudly.
+DEFAULT_PRODUCE_LOCK = _SCRIPT_DIR / "eval/lrc_truth/stem_cache/serial.produce.lock"
 DEFAULT_TRUTH_DIR = _SCRIPT_DIR.parent.parent / "eval" / "lrc_truth"
 DEFAULT_SNAPSHOT = DEFAULT_TRUTH_DIR / "latest.json"
 
@@ -124,11 +153,7 @@ def load_positive_ids(truth_dir: Path = DEFAULT_TRUTH_DIR) -> list[str]:
     without a code change.
     """
     path = truth_dir / "positive.txt"
-    ids = [
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    ids = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not ids:
         raise StemCacheError(f"positive population {path} is empty; run snapshot_lrc_truth.py")
     return ids
@@ -214,6 +239,107 @@ def _is_quota_exhausted_error(exc: BaseException) -> bool:
     return any(marker in text for marker in QUOTA_EXHAUSTED_MARKERS)
 
 
+# --- Dual-backend coordination (issue #247) -------------------------------
+# The manifest has exactly ONE writer (the MVSEP/drain side); a local producer
+# must never touch it (two whole-file writers lose updates). Instead the local
+# worker drops the stem plus a JSON claim, and the recorder turns a claim into
+# a manifest entry at zero quota cost via process_song's step-1 disk check.
+CLEAN_VOCALS_REL = "stems/clean_vocals.flac"
+CLAIM_SUFFIX = ".claim.json"
+
+
+def write_clean_vocals_atomic(dry: Path, stems_dir: Path) -> Path:
+    """Write the dry stem to stems/clean_vocals.flac via temp + rename.
+
+    Never leave a truncated file visible: a concurrent recorder (MVSEP side)
+    checks for this path and would otherwise record a partially-written stem.
+    """
+    stems_dir.mkdir(parents=True, exist_ok=True)
+    target = stems_dir / "clean_vocals.flac"
+    fd, tmp_name = tempfile.mkstemp(prefix=target.name + ".", suffix=".part", dir=str(stems_dir))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(dry.read_bytes())
+        os.replace(tmp_name, target)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
+    return target
+
+
+TERMINAL_STATUSES = (CacheStatus.CACHED, CacheStatus.FALLBACK)
+
+
+def resolve_local_model_dir() -> Path:
+    """The audio-separator model cache, checked for existence.
+
+    Pinned via ``AUDIO_SEPARATOR_MODEL_DIR`` so audio-separator's /tmp default
+    cannot silently re-download the ~1GB MelBand checkpoint.
+    """
+    model_dir = Path(os.environ.get("AUDIO_SEPARATOR_MODEL_DIR", str(DEFAULT_LOCAL_MODEL_DIR)))
+    if not model_dir.exists():
+        raise StemCacheError(
+            f"local separation requested but model dir {model_dir} does not exist; "
+            "set AUDIO_SEPARATOR_MODEL_DIR to the audio-separator model cache"
+        )
+    return model_dir
+
+
+def has_clean_stem(song_dir: Path) -> bool:
+    """True when a usable ``clean_vocals.flac`` already sits in *song_dir*."""
+    clean = song_dir / CLEAN_VOCALS_REL
+    return clean.exists() and clean.stat().st_size > 0
+
+
+def is_terminal_entry(manifest: StemCacheManifest, song_id: str) -> bool:
+    """True when the manifest already resolves *song_id* (cached/fallback)."""
+    entry = manifest.songs.get(song_id) or {}
+    return entry.get("status") in tuple(st.value for st in TERMINAL_STATUSES)
+
+
+def claim_path(song_dir: Path) -> Path:
+    return song_dir / (CLEAN_VOCALS_REL.split("/")[-1] + CLAIM_SUFFIX)
+
+
+def write_claim(song_dir: Path, *, hash_prefix: str, producer: str) -> Path:
+    """Record that *song_dir* already holds a producer-made clean stem."""
+    path = claim_path(song_dir)
+    payload = {
+        "hash_prefix": hash_prefix,
+        "producer": producer,
+        "audio": CLEAN_VOCALS_REL,
+        "claimed_at": utcnow(),
+    }
+    song_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(song_dir))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(payload, indent=2, sort_keys=True))
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
+    return path
+
+
+def read_claim(song_dir: Path) -> dict[str, Any] | None:
+    """The claim for *song_dir* when a clean stem is present and claimed."""
+    path = claim_path(song_dir)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 class QuotaExhausted(StemCacheError):
     """MVSEP's daily separation wall: the whole pass cannot make progress.
 
@@ -234,6 +360,36 @@ class RunSummary:
             f"cached={self.cached} fallback={self.fallback} "
             f"failed={self.failed} skipped={self.skipped}"
         )
+
+
+def resolve_song_refs(
+    song_ids: list[str],
+    config_path: Path | None,
+    override_refs: list[tuple[str, str]] | None = None,
+):
+    """Open the catalog (read-only), resolve song → hash_prefix, close.
+
+    Shared by the drain, the local producer, and the recorder. Returns
+    (config, refs, missing): *config* is reused by callers that also need R2.
+    """
+    from stream_of_worship.admin.config import AdminConfig
+    from stream_of_worship.db.connection import ConnectionProvider
+
+    config = AdminConfig.load(config_path)
+    provider = ConnectionProvider(config.get_connection_url())
+    conn = provider.get_connection()
+    try:
+        if override_refs is not None:
+            refs, missing = build_song_refs(
+                conn,
+                [sid for sid, _ in override_refs],
+                known_prefixes=dict(override_refs),
+            )
+        else:
+            refs, missing = build_song_refs(conn, song_ids)
+    finally:
+        provider.close()
+    return config, refs, missing
 
 
 def build_song_refs(
@@ -306,9 +462,7 @@ def _mvsep_separate(
     stage1_dir = output_dir / "stage1_vocal_separation"
     stage2_dir = output_dir / "stage2_dereverb"
 
-    print(
-        f"  [mvsep] Stage 1: sep_type={MVSEP_STAGE1_SEP_TYPE} " f"add_opt1={MVSEP_STAGE1_ADD_OPT1}"
-    )
+    print(f"  [mvsep] Stage 1: sep_type={MVSEP_STAGE1_SEP_TYPE} add_opt1={MVSEP_STAGE1_ADD_OPT1}")
     job_hash = submit_job(
         audio_path,
         api_token,
@@ -322,9 +476,7 @@ def _mvsep_separate(
     if vocals is None:
         raise StemCacheError(f"MVSEP stage 1 produced no vocals file: {stage1_paths}")
 
-    print(
-        f"  [mvsep] Stage 2: sep_type={MVSEP_STAGE2_SEP_TYPE} " f"add_opt1={MVSEP_STAGE2_ADD_OPT1}"
-    )
+    print(f"  [mvsep] Stage 2: sep_type={MVSEP_STAGE2_SEP_TYPE} add_opt1={MVSEP_STAGE2_ADD_OPT1}")
     job_hash = submit_job(
         vocals,
         api_token,
@@ -406,17 +558,21 @@ def process_song(
     song_id, hash_prefix = ref.song_id, ref.hash_prefix
     song_dir = cache_root / hash_prefix
     stems_dir = song_dir / "stems"
-    clean_path = stems_dir / "clean_vocals.flac"
 
-    # 1. On-disk cache hit from an earlier run (possibly unrecorded).
-    if clean_path.exists() and clean_path.stat().st_size > 0:
+    # 1. On-disk cache hit from an earlier run (possibly unrecorded), or a
+    #    stem produced by the parallel local worker (which cannot write the
+    #    manifest itself — see the dual-backend note above). Both cost no
+    #    MVSEP quota, so recording here is the cheapest possible drain step.
+    if has_clean_stem(song_dir):
+        claim = read_claim(song_dir)
         record_result(
             manifest,
             manifest_path,
             SongRef(song_id, hash_prefix),
             status=CacheStatus.CACHED,
-            source="local_clean_vocals",
-            audio="stems/clean_vocals.flac",
+            source="local" if claim else "local_clean_vocals",
+            audio=CLEAN_VOCALS_REL,
+            producer=(claim or {}).get("producer") or LOCAL_MODEL_PRODUCER,
         )
         return song_id, CacheStatus.CACHED, "local_clean_vocals"
 
@@ -483,8 +639,14 @@ def process_song(
             error="separation produced no output files",
         )
         return song_id, CacheStatus.FAILED, sep_source
-    stems_dir.mkdir(parents=True, exist_ok=True)
-    (stems_dir / "clean_vocals.flac").write_bytes(dry.read_bytes())
+    write_clean_vocals_atomic(dry, stems_dir)
+    if sep_source == "local":
+        # Claim = the local producer's completion marker. Never write one for
+        # a cloud-produced stem: a later disk-hit resolution reads the claim
+        # as proof of local provenance (source="local").
+        write_claim(
+            song_dir, hash_prefix=hash_prefix, producer=sep_producer or LOCAL_MODEL_PRODUCER
+        )
     record_result(
         manifest,
         manifest_path,
@@ -495,6 +657,189 @@ def process_song(
         producer=sep_producer,
     )
     return song_id, CacheStatus.CACHED, sep_source
+
+
+def run_produce_only(
+    *,
+    song_ids: list[str],
+    cache_root: Path,
+    manifest_path: Path,
+    config_path: Path | None,
+    produce_limit: int = 0,
+    override_refs: list[tuple[str, str]] | None = None,
+    dry_run: bool = False,
+    produce_lock_path: Path | None = None,
+) -> RunSummary:
+    """Local worker: produce clean stems + claims for a disjoint song slice.
+
+    Runs in parallel with the MVSEP drain, so it must not contend on the
+    drain's serial lock and must not write the manifest (one writer only).
+    The drain side folds each claim into the manifest at zero quota cost
+    (``--record-claims`` / its own step-1 disk check).
+    """
+    summary = RunSummary()
+    from stream_of_worship.admin.services.r2 import R2Client
+
+    config, built, _ = resolve_song_refs(song_ids, config_path, override_refs)
+    # Read-only: the producer must never write the manifest, not even a
+    # missing-file skeleton (the drain is its single writer).
+    manifest = load_manifest_if_present(manifest_path)
+
+    r2_client = R2Client(
+        bucket=config.r2_bucket,
+        endpoint_url=config.r2_endpoint_url,
+        region=config.r2_region,
+    )
+    lock_path = produce_lock_path or DEFAULT_PRODUCE_LOCK
+    with try_lock_serial(lock_path):
+        return _produce_only_locked(
+            built=built,
+            summary=summary,
+            cache_root=cache_root,
+            manifest=manifest,
+            r2_client=r2_client,
+            produce_limit=produce_limit,
+            dry_run=dry_run,
+        )
+
+
+def _produce_only_locked(
+    *,
+    built: list[tuple[str, str]],
+    summary: RunSummary,
+    cache_root: Path,
+    manifest: StemCacheManifest,
+    r2_client: Any,
+    produce_limit: int,
+    dry_run: bool,
+) -> RunSummary:
+    """Inner --produce-only pass (runs holding the producer lock)."""
+    if dry_run:
+        # Same contract as run(): list what would be produced, touch nothing.
+        for sid, hp in built:
+            song_dir = cache_root / hp
+            if not is_terminal_entry(manifest, sid) and not has_clean_stem(song_dir):
+                print(f"  pending: {sid}")
+        return summary
+    model_dir = resolve_local_model_dir()
+
+    produced = 0
+    for sid, hp in built:
+        song_dir = cache_root / hp
+        stems_dir = song_dir / "stems"
+        # A claim (our own completion marker) or a terminal manifest entry
+        # means the song is resolved: never duplicate that work. Re-resolving a
+        # recorded-but-locally-absent stem is the drain's job and is free when
+        # R2 has the vocals — separating it locally would cost ~75 min.
+        if read_claim(song_dir) is not None or is_terminal_entry(manifest, sid):
+            summary.skipped += 1
+            continue
+        if produce_limit and produced >= produce_limit:
+            print(f"  produce limit {produce_limit} reached; stopping")
+            break
+        audio_dir = song_dir / "audio"
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        audio_path = audio_dir / "audio.mp3"
+        try:
+            if not audio_path.exists() or audio_path.stat().st_size == 0:
+                r2_client.download_audio(hp, audio_path)
+            print(f"  producing {sid} (local)")
+            outputs = _local_separate(audio_path, song_dir, model_dir)
+            dry = pick_dry_vocals(outputs)
+            if dry is None:
+                print(f"  {sid}: no dry vocals produced - skipped")
+                summary.failed += 1
+                continue
+            if has_clean_stem(song_dir):
+                # The drain finished this song while we separated: its stem
+                # (possibly cloud-produced) wins. Never clobber it, and never
+                # stamp a local claim on it.
+                print(f"  {sid}: stem appeared during separation - keeping it")
+                summary.skipped += 1
+                continue
+            write_clean_vocals_atomic(dry, stems_dir)
+            write_claim(song_dir, hash_prefix=hp, producer=LOCAL_MODEL_PRODUCER)
+            produced += 1
+            summary.cached += 1
+            print(f"  {sid}: produced (local, unrecorded)")
+        except Exception as e:  # noqa: BLE001 — keep going through the slice
+            print(f"  {sid}: produce error ({type(e).__name__}: {e})")
+            summary.failed += 1
+    return summary
+
+
+def record_claims(
+    *,
+    song_ids: list[str],
+    cache_root: Path,
+    manifest_path: Path,
+    config_path: Path | None,
+    dry_run: bool = False,
+    lock_path: Path | None = None,
+) -> RunSummary:
+    """Fold already-produced stems into the manifest (no separation, no quota)."""
+    summary = RunSummary()
+
+    _config, built, _ = resolve_song_refs(song_ids, config_path)
+
+    if dry_run:
+        # Read-only: never hold the drain's lock for a dry run.
+        return _record_claims_locked(
+            built=built,
+            summary=summary,
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            dry_run=True,
+        )
+    # Same lock as the drain: both write the whole-file manifest, and a
+    # concurrent writer would silently drop the other's entries.
+    with try_lock_serial(lock_path or DEFAULT_LOCK):
+        return _record_claims_locked(
+            built=built,
+            summary=summary,
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            dry_run=dry_run,
+        )
+
+
+def _record_claims_locked(
+    *,
+    built: list[tuple[str, str]],
+    summary: RunSummary,
+    cache_root: Path,
+    manifest_path: Path,
+    dry_run: bool,
+) -> RunSummary:
+    """Inner recorder pass (runs holding the drain lock)."""
+    manifest = load_manifest_if_present(manifest_path)
+    for sid, hp in built:
+        song_dir = cache_root / hp
+        if not has_clean_stem(song_dir):
+            continue
+        if is_terminal_entry(manifest, sid):
+            summary.skipped += 1
+            continue
+        if dry_run:
+            print(f"  would record: {sid}")
+            summary.cached += 1
+            continue
+        claim = read_claim(song_dir)
+        record_result(
+            manifest,
+            manifest_path,
+            SongRef(sid, hp),
+            status=CacheStatus.CACHED,
+            # A claim is the only proof of local provenance; a pre-claim stem
+            # (older drain run, or a crash between the stem write and the
+            # claim) is recorded as a generic on-disk hit, never as local.
+            source="local" if claim else "local_clean_vocals",
+            audio=CLEAN_VOCALS_REL,
+            producer=claim.get("producer") if claim else None,
+        )
+        summary.cached += 1
+        print(f"  {sid}: recorded cached ({'local' if claim else 'on-disk'})")
+    return summary
 
 
 def run(
@@ -521,25 +866,10 @@ def run(
     summary = RunSummary()
 
     with try_lock_serial(lock_path):
-        from stream_of_worship.admin.config import AdminConfig
         from stream_of_worship.admin.services.r2 import R2Client
-        from stream_of_worship.db.connection import ConnectionProvider
 
-        config = AdminConfig.load(config_path)
-        provider = ConnectionProvider(config.get_connection_url())
-        conn = provider.get_connection()
+        config, built, missing = resolve_song_refs(song_ids, config_path, override_refs)
         manifest = load_or_init_manifest(manifest_path)
-        try:
-            if override_refs is not None:
-                built, missing = build_song_refs(
-                    conn,
-                    [sid for sid, _ in override_refs],
-                    known_prefixes=dict(override_refs),
-                )
-            else:
-                built, missing = build_song_refs(conn, song_ids)
-        finally:
-            provider.close()
 
         r2_client = R2Client(
             bucket=config.r2_bucket,
@@ -552,8 +882,7 @@ def run(
         )
         summary.skipped = len(built) - len(pending)
         print(
-            f"songs: {len(built)} total, {summary.skipped} already resolved, "
-            f"{len(pending)} pending"
+            f"songs: {len(built)} total, {summary.skipped} already resolved, {len(pending)} pending"
         )
 
         if dry_run:
@@ -584,21 +913,10 @@ def run(
             except StemCacheError as guard_err:
                 print(f"  [warn] {sid}: keeping manifest status ({guard_err})")
 
-        import os
-
         if local:
-            # Local audio-separator backend: no quota, models from
-            # AUDIO_SEPARATOR_MODEL_DIR or DEFAULT_LOCAL_MODEL_DIR. Fail
-            # early with a clear message instead of per-song import errors.
-            model_dir = Path(
-                os.environ.get("AUDIO_SEPARATOR_MODEL_DIR", str(DEFAULT_LOCAL_MODEL_DIR))
-            )
-            if not model_dir.exists():
-                raise StemCacheError(
-                    f"local separation requested but model dir {model_dir} does not "
-                    "exist; set AUDIO_SEPARATOR_MODEL_DIR to the audio-separator "
-                    "model cache"
-                )
+            # Local audio-separator backend: no quota. Fail early with a clear
+            # message instead of per-song import errors.
+            model_dir = resolve_local_model_dir()
             sep_source = "local"
             sep_producer = LOCAL_MODEL_PRODUCER
 
@@ -695,6 +1013,52 @@ def main(argv: list[str] | None = None) -> int:
         help="Explicit song IDs (overrides --set; repeatable)",
     )
     parser.add_argument(
+        "--produce-only",
+        action="store_true",
+        help=(
+            "Local worker mode: separate songs and write stems/claims into the "
+            "cache, but never touch the manifest (single-writer invariant) and "
+            "never take the serial lock. For running in parallel with an MVSEP "
+            "drain; the drain records produced stems at zero quota cost. "
+            "Pair with --produce-slice tail:N to stay off the drain's slice."
+        ),
+    )
+    parser.add_argument(
+        "--record-claims",
+        action="store_true",
+        help=(
+            "Recorder mode: fold stems already on disk (produced by a "
+            "--produce-only worker) into the manifest. No MVSEP quota, no "
+            "separation."
+        ),
+    )
+    parser.add_argument(
+        "--produce-lock",
+        type=Path,
+        default=DEFAULT_PRODUCE_LOCK,
+        help=(
+            "Lock for --produce-only. Distinct from --lock so the local worker "
+            "and the MVSEP drain can run simultaneously; a second worker fails "
+            f"loudly (default: {DEFAULT_PRODUCE_LOCK})."
+        ),
+    )
+    parser.add_argument(
+        "--produce-limit",
+        type=int,
+        default=0,
+        help="--produce-only: stop after this many newly produced songs (0 = all).",
+    )
+    parser.add_argument(
+        "--produce-slice",
+        default="",
+        help=(
+            "--produce-only: disjoint-slice selector, e.g. 'tail:150' (the last "
+            "150 pending songs) or 'head:150'. The MVSEP drain consumes the head "
+            "of the pending order first, so the default tail slice cannot "
+            "duplicate its work."
+        ),
+    )
+    parser.add_argument(
         "--snapshot",
         type=Path,
         default=DEFAULT_SNAPSHOT,
@@ -759,6 +1123,32 @@ def main(argv: list[str] | None = None) -> int:
         song_ids = [sid for sid, _ in refs]
         print(f"review queue: {len(refs)} songs from {args.snapshot}")
 
+    if args.produce_slice:
+        # Disjoint slice for the parallel local worker: the MVSEP drain eats
+        # the head of the pending order, so a tail slice cannot duplicate it.
+        try:
+            which, _, count_s = args.produce_slice.partition(":")
+            count = int(count_s)
+        except ValueError:
+            print(f"error: bad --produce-slice {args.produce_slice!r}", file=sys.stderr)
+            return 2
+        if count < 1:
+            # tail:-5 would slice from the wrong end and tail:0 selects nothing.
+            print("error: --produce-slice count must be >= 1", file=sys.stderr)
+            return 2
+        if which == "tail":
+            song_ids = song_ids[-count:]
+            if refs is not None:
+                refs = refs[-count:]
+        elif which == "head":
+            song_ids = song_ids[:count]
+            if refs is not None:
+                refs = refs[:count]
+        else:
+            print("error: --produce-slice must be head:N or tail:N", file=sys.stderr)
+            return 2
+        print(f"produce slice {args.produce_slice}: {len(song_ids)} songs")
+
     if args.cache_dir is not None:
         cache_root = args.cache_dir
     else:
@@ -771,16 +1161,37 @@ def main(argv: list[str] | None = None) -> int:
         cache_root = legacy_get_cache_dir()
 
     try:
-        summary = run(
-            song_ids=song_ids,
-            cache_root=cache_root,
-            manifest_path=args.manifest,
-            lock_path=args.lock,
-            config_path=args.config,
-            dry_run=args.dry_run,
-            override_refs=refs,
-            local=args.local,
-        )
+        if args.produce_only:
+            summary = run_produce_only(
+                song_ids=song_ids,
+                cache_root=cache_root,
+                manifest_path=args.manifest,
+                config_path=args.config,
+                produce_limit=args.produce_limit,
+                override_refs=refs,
+                dry_run=args.dry_run,
+                produce_lock_path=args.produce_lock,
+            )
+        elif args.record_claims:
+            summary = record_claims(
+                song_ids=song_ids,
+                cache_root=cache_root,
+                manifest_path=args.manifest,
+                config_path=args.config,
+                dry_run=args.dry_run,
+                lock_path=args.lock,
+            )
+        else:
+            summary = run(
+                song_ids=song_ids,
+                cache_root=cache_root,
+                manifest_path=args.manifest,
+                lock_path=args.lock,
+                config_path=args.config,
+                dry_run=args.dry_run,
+                override_refs=refs,
+                local=args.local,
+            )
     except StemCacheError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

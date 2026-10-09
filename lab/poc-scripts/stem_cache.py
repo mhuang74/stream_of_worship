@@ -69,7 +69,8 @@ class SongRef:
     hash_prefix: str
 
 
-def _utcnow() -> str:
+def utcnow() -> str:
+    """UTC timestamp (ISO-8601, second precision) used by manifest entries."""
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
@@ -103,7 +104,7 @@ def load_or_init_manifest(path: Path) -> StemCacheManifest:
             )
         data.setdefault("songs", {})
         return StemCacheManifest(data)
-    now = _utcnow()
+    now = utcnow()
     manifest = StemCacheManifest(
         {
             "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -116,9 +117,30 @@ def load_or_init_manifest(path: Path) -> StemCacheManifest:
     return manifest
 
 
+def load_manifest_if_present(path: Path) -> StemCacheManifest:
+    """Read *path* without ever creating it (read-only consumers).
+
+    The local producer must not write the manifest at all — not even the
+    empty skeleton ``load_or_init_manifest`` writes for a missing file —
+    because the drain owns that file (single-writer invariant). A missing
+    manifest simply means "nothing recorded yet".
+    """
+    if not path.exists():
+        now = utcnow()
+        return StemCacheManifest(
+            {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "created_at": now,
+                "updated_at": now,
+                "songs": {},
+            }
+        )
+    return load_or_init_manifest(path)
+
+
 def save_manifest(manifest: StemCacheManifest, path: Path) -> None:
     """Atomically persist the manifest (temp file + rename, no partial reads)."""
-    manifest.data["updated_at"] = _utcnow()
+    manifest.data["updated_at"] = utcnow()
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
@@ -152,7 +174,8 @@ def record_result(
     existing = manifest.songs.get(song.song_id)
     if (
         existing
-        and existing.get("status") in (
+        and existing.get("status")
+        in (
             CacheStatus.CACHED.value,
             CacheStatus.FALLBACK.value,
         )
@@ -165,7 +188,7 @@ def record_result(
     entry: dict[str, Any] = {
         "status": status.value,
         "hash_prefix": song.hash_prefix,
-        "resolved_at": _utcnow(),
+        "resolved_at": utcnow(),
     }
     if source is not None:
         entry["source"] = source
@@ -216,9 +239,7 @@ def next_pending(
             continue
         if cache_root is not None:
             audio_rel = entry.get("audio")
-            audio_path = (
-                cache_root / song.hash_prefix / audio_rel if audio_rel else None
-            )
+            audio_path = cache_root / song.hash_prefix / audio_rel if audio_rel else None
             if audio_path is None or not audio_path.exists() or audio_path.stat().st_size == 0:
                 # recorded but absent/empty locally: re-resolve
                 pending.append(song)
