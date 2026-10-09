@@ -129,12 +129,16 @@ with clean CJK streams half the raw outliers are correctly suppressed
 sit in-window at 133.2–136.8 → whole-line fraction 1.0 → not verified; its
 li=25 at frac 0.31 survives).
 
-On the negative side, `jing_bai` li=35 (+13.95 s) — a genuinely misplaced
-line, words sung at 311–319 s against a 297.4 s timestamp — is verified as
-real, but the same feature gives `hereforyou` 5 verified outliers, so the
-discriminator cannot separate. **If window-based whole-line verification
-cannot tell them apart, line-level extraction is unvalidatable — that is
-itself a finding, as the issue anticipated.**
+On the negative side, `jing_bai` li=35 (+13.95 s) — a line sung at 311–319 s
+against a 297.4 s timestamp — is **not** verified: its claimed window
+[295.4, 326.7) is ≈29 s wide because the next sung line starts 27 s later,
+so the verification window swallows the very instance that makes the line
+wrong (whole-line fraction 0.9 → `verified_outlier: false`). Verification
+therefore fails in *both* directions: it lets matcher flips on good songs
+through (`hereforyou` 5 verified outliers) *and* misses a genuinely
+misplaced line on a bad song. The discriminator cannot separate — window-
+based whole-line verification cannot tell flips from misplaced lines, which
+is itself the finding the issue anticipated.
 
 ## The pre-registered honesty check: the statistical twin
 
