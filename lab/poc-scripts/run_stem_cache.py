@@ -191,6 +191,32 @@ LOCAL_MODEL_PRODUCER = "local_audio_separator_mel_band_ep_3005"
 # model cache instead (Separator also honors the env var, set explicitly).
 DEFAULT_LOCAL_MODEL_DIR = Path.home() / ".cache" / "audio-separator"
 
+# Substrings MVSEP uses for the daily free-tier separation wall (issue #247).
+# Checked against the response body surfaced by the poc MVSEP client; any hit
+# means every remaining song in the pass would fail identically, so the run
+# stops instead of rewriting ~275 FAILED entries.
+QUOTA_EXHAUSTED_MARKERS = (
+    "reached the limit of separations",
+    "limit of separations for today",
+    "daily limit",
+    "daily quota",
+    "quota exceeded",
+)
+
+
+def _is_quota_exhausted_error(exc: BaseException) -> bool:
+    """True when *exc* is the MVSEP daily-quota wall, not a per-song failure."""
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker in text for marker in QUOTA_EXHAUSTED_MARKERS)
+
+
+class QuotaExhausted(StemCacheError):
+    """MVSEP's daily separation wall: the whole pass cannot make progress.
+
+    Raised by process_song after recording the song's FAILED entry, so the
+    run loop can stop instead of attempting every remaining song.
+    """
+
 
 @dataclass
 class RunSummary:
@@ -439,6 +465,9 @@ def process_song(
             status=CacheStatus.FAILED,
             error=f"{type(e).__name__}: {e}",
         )
+        if _is_quota_exhausted_error(e):
+            # Terminal for this pass: every remaining song fails identically.
+            raise QuotaExhausted(f"{song_id}: {type(e).__name__}: {e}") from e
         return song_id, CacheStatus.FAILED, sep_source
     dry = pick_dry_vocals(outputs)
     if dry is None:
@@ -503,23 +532,8 @@ def run(
                     [sid for sid, _ in override_refs],
                     known_prefixes=dict(override_refs),
                 )
-                # Snapshot songs deleted from the catalog since the Phase 0a
-                # snapshot: per-song FAILED record (explicit fallback record,
-                # issue #247) so the serial run continues and is resumable —
-                # never a wholesale abort.
-                for sid in missing:
-                    hp = dict(override_refs)[sid]
-                    summary.failed += 1
-                    print(f"  {sid}: not in DB (deleted since snapshot) - recording failed")
-                    record_result(
-                        manifest,
-                        manifest_path,
-                        SongRef(sid, hp),
-                        status=CacheStatus.FAILED,
-                        error="song not found in DB (deleted since snapshot)",
-                    )
             else:
-                built, _ = build_song_refs(conn, song_ids)
+                built, missing = build_song_refs(conn, song_ids)
         finally:
             provider.close()
 
@@ -541,7 +555,30 @@ def run(
         if dry_run:
             for ref in pending:
                 print(f"  pending: {ref.song_id}")
+            for sid in missing:
+                print(f"  missing (deleted since snapshot): {sid}")
             return summary
+
+        # Snapshot songs deleted from the catalog since the Phase 0a snapshot:
+        # per-song FAILED record (explicit fallback record, issue #247) so the
+        # serial run continues and is resumable — never a wholesale abort.
+        # Recorded after the dry-run return so --dry-run stays write-free, and
+        # guarded so a song that already holds a terminal entry (cached in an
+        # earlier run, then deleted) is not downgraded or able to raise.
+        for sid in missing:
+            hp = dict(override_refs or {})[sid]
+            summary.failed += 1
+            print(f"  {sid}: not in DB (deleted since snapshot) - recording failed")
+            try:
+                record_result(
+                    manifest,
+                    manifest_path,
+                    SongRef(sid, hp),
+                    status=CacheStatus.FAILED,
+                    error="song not found in DB (deleted since snapshot)",
+                )
+            except StemCacheError as guard_err:
+                print(f"  [warn] {sid}: keeping manifest status ({guard_err})")
 
         import os
 
@@ -596,6 +633,16 @@ def run(
                     sep_source=sep_source,
                     sep_producer=sep_producer,
                 )
+            except QuotaExhausted:
+                # process_song already recorded this song's FAILED entry.
+                summary.failed += 1
+                print(f"  {song_id}: failed (quota)")
+                print(
+                    f"  MVSEP daily quota exhausted after "
+                    f"{summary.cached + summary.fallback} song(s) this pass; "
+                    "stopping (remaining songs stay pending for the next window)"
+                )
+                break
             except Exception as e:  # noqa: BLE001 — record and continue serially
                 try:
                     record_result(

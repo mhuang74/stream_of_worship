@@ -33,6 +33,7 @@ from stem_cache import (
     StemCacheError,
     load_or_init_manifest,
     record_result,
+    save_manifest,
 )
 
 # --------------------------------------------------------------------------
@@ -707,6 +708,130 @@ class TestRunnerScaleOutRefs:
         assert persisted["s_gone"]["status"] == "failed"
         assert "deleted since snapshot" in persisted["s_gone"]["error"]
         assert persisted["s1"]["status"] == "cached"
+
+    def test_snapshot_dry_run_writes_nothing_for_deleted_songs(self, tmp_path, monkeypatch):
+        """--dry-run is write-free even when snapshot songs were deleted from
+        the DB: no FAILED record may be persisted for them."""
+        manifest_path = tmp_path / "manifest.json"
+
+        _stub_run_infra(monkeypatch, r2=_ExplodingR2())
+        monkeypatch.setattr(
+            rsc,
+            "build_song_refs",
+            lambda conn, ids, known_prefixes=None: ([], ["s_gone"]),
+        )
+
+        summary = run_stem_cache(
+            song_ids=["s_gone"],
+            cache_root=tmp_path / "cache",
+            manifest_path=manifest_path,
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=True,
+            override_refs=[("s_gone", "deadbeefdead")],
+        )
+        assert summary.failed == 0
+        assert not manifest_path.exists() or "s_gone" not in json.loads(
+            manifest_path.read_text(encoding="utf-8")
+        ).get("songs", {})
+
+    def test_snapshot_deleted_song_already_cached_does_not_abort(self, tmp_path, monkeypatch):
+        """A snapshot song deleted from the DB after being cached in an earlier
+        run must not raise through record_result's terminal guard — the run
+        continues and keeps the cached entry (no wholesale abort)."""
+        manifest_path = tmp_path / "manifest.json"
+        cache_root = tmp_path / "cache"
+        stems = cache_root / "aaaaaaaaaaaa" / "stems"
+        stems.mkdir(parents=True)
+        (stems / "clean_vocals.flac").write_bytes(b"flac")
+
+        r2 = MagicMock()
+        r2.file_exists.return_value = False
+        _stub_run_infra(monkeypatch, r2=r2)
+        monkeypatch.setattr(
+            rsc,
+            "build_song_refs",
+            lambda conn, ids, known_prefixes=None: ([], ["s_cached_gone"]),
+        )
+
+        manifest = load_or_init_manifest(manifest_path)
+        manifest.songs["s_cached_gone"] = {
+            "status": "cached",
+            "hash_prefix": "aaaaaaaaaaaa",
+            "resolved_at": "2026-01-01T00:00:00+00:00",
+            "source": "r2_vocals_dry",
+            "audio": "stems/clean_vocals.flac",
+        }
+        save_manifest(manifest, manifest_path)
+
+        summary = run_stem_cache(
+            song_ids=["s_cached_gone"],
+            cache_root=cache_root,
+            manifest_path=manifest_path,
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=False,
+            override_refs=[("s_cached_gone", "aaaaaaaaaaaa")],
+        )
+        persisted = json.loads(manifest_path.read_text(encoding="utf-8"))["songs"]
+        # terminal entry preserved, not downgraded to failed
+        assert persisted["s_cached_gone"]["status"] == "cached"
+        assert summary.failed == 1  # counted, but the run survived
+
+    def test_quota_exhaustion_stops_pass_instead_of_walking_all_songs(
+        self, tmp_path, monkeypatch
+    ):
+        """When MVSEP reports the daily wall, the pass must stop instead of
+        attempting (and recording FAILED for) every remaining song."""
+        manifest_path = tmp_path / "manifest.json"
+
+        r2 = MagicMock()
+        r2.file_exists.return_value = False
+        r2.download_audio.side_effect = lambda prefix, dest: dest.write_bytes(b"mp3")
+        _stub_run_infra(monkeypatch, r2=r2)
+        monkeypatch.setattr(
+            rsc,
+            "build_song_refs",
+            lambda conn, ids, known_prefixes=None: (
+                [(sid, "aaaaaaaaaaaa") for sid in ids],
+                [],
+            ),
+        )
+
+        calls = []
+
+        def quota_wall(audio_path, output_dir, api_token):
+            calls.append(audio_path.name)
+            raise RuntimeError(
+                'MVSEP submit HTTP 400: {"success":false,"errors":'
+                '["You have reached the limit of separations for today."]}'
+            )
+
+        monkeypatch.setattr(rsc, "_mvsep_separate", quota_wall)
+        monkeypatch.setenv("MVSEP_API_KEY", "test-token")
+
+        song_ids = [f"s{i}" for i in range(5)]
+        summary = run_stem_cache(
+            song_ids=song_ids,
+            cache_root=tmp_path / "cache",
+            manifest_path=manifest_path,
+            lock_path=tmp_path / "serial.lock",
+            config_path=None,
+            dry_run=False,
+        )
+        assert len(calls) == 1, "only the first song may be attempted"
+        assert summary.failed == 1
+        persisted = json.loads(manifest_path.read_text(encoding="utf-8"))["songs"]
+        assert set(persisted) == {"s0"}
+
+    def test_quota_marker_matching_is_specific(self):
+        """Only genuine quota text triggers the stop; other 400s do not."""
+        assert rsc._is_quota_exhausted_error(
+            RuntimeError("You have reached the limit of separations for today")
+        )
+        assert not rsc._is_quota_exhausted_error(
+            RuntimeError("MVSEP submit HTTP 400: invalid api_token")
+        )
 
 
 # --------------------------------------------------------------------------
