@@ -1,0 +1,1706 @@
+{
+  "criterion": "complete separation, non-zero gap: min(neg) > max(pos)",
+  "n_positives": 5,
+  "n_fit_negatives": 6,
+  "fit_floor": 4,
+  "fit_negatives": [
+    "cang_shen_zhi_chu_39437ec0",
+    "jing_bai_ye_su_b08227a2",
+    "na_me_shen_de_ke_mu_ff92abd9",
+    "shu_bu_jin_71fba0ce",
+    "wo_jing_bai_mi__ye_su_e6dd6146",
+    "wo_neng_gei_ni_shen_me_03b2dcb2"
+  ],
+  "n_candidates": 70,
+  "surviving": [],
+  "candidates": [
+    {
+      "family": "abs_s",
+      "key": "T=1.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3333,
+        "hereforyou_62e79ae9": 0.4828,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2264,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1765
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.3438,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.4828,
+      "min_fit_negative": 0.1071,
+      "gap": -0.3756,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_s",
+      "key": "T=2.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0278,
+        "hereforyou_62e79ae9": 0.1897,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
+      },
+      "max_positive": 0.1897,
+      "min_fit_negative": 0.0,
+      "gap": -0.1897,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_s",
+      "key": "T=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0645,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1034,
+      "min_fit_negative": 0.0,
+      "gap": -0.1034,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_s",
+      "key": "T=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0862,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0189,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0323,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.0862,
+      "min_fit_negative": 0.0,
+      "gap": -0.0862,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_s",
+      "key": "T=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.069,
+      "min_fit_negative": 0.0,
+      "gap": -0.069,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_s",
+      "key": "T=7.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0345,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.0345,
+      "min_fit_negative": 0.0,
+      "gap": -0.0345,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_s",
+      "key": "T=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.0,
+      "min_fit_negative": 0.0,
+      "gap": 0.0,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_b",
+      "key": "T=0.5",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.6944,
+        "hereforyou_62e79ae9": 0.8103,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.5849,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.7419,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.4706
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.7931,
+        "jing_bai_ye_su_b08227a2": 0.75,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.4412,
+        "shu_bu_jin_71fba0ce": 0.5,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.5357,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.5714
+      },
+      "max_positive": 0.8103,
+      "min_fit_negative": 0.4412,
+      "gap": -0.3692,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_b",
+      "key": "T=1.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.4167,
+        "hereforyou_62e79ae9": 0.5517,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.283,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.4516,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.2353
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.6207,
+        "jing_bai_ye_su_b08227a2": 0.4375,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1471,
+        "shu_bu_jin_71fba0ce": 0.3667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1786,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.5517,
+      "min_fit_negative": 0.1471,
+      "gap": -0.4047,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_b",
+      "key": "T=2.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0833,
+        "hereforyou_62e79ae9": 0.2931,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.1562,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.1429
+      },
+      "max_positive": 0.2931,
+      "min_fit_negative": 0.0,
+      "gap": -0.2931,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_b",
+      "key": "T=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1724,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1509,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1935,
+      "min_fit_negative": 0.0,
+      "gap": -0.1935,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_b",
+      "key": "T=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1034,
+      "min_fit_negative": 0.0,
+      "gap": -0.1034,
+      "complete_separation": false
+    },
+    {
+      "family": "abs_b",
+      "key": "T=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0517,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0189,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.0517,
+      "min_fit_negative": 0.0,
+      "gap": -0.0517,
+      "complete_separation": false
+    },
+    {
+      "family": "rel",
+      "key": "k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.2414,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1176
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1034,
+        "jing_bai_ye_su_b08227a2": 0.125,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
+      },
+      "max_positive": 0.3019,
+      "min_fit_negative": 0.0,
+      "gap": -0.3019,
+      "complete_separation": false
+    },
+    {
+      "family": "rel",
+      "key": "k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1724,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0588
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0345,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.2075,
+      "min_fit_negative": 0.0,
+      "gap": -0.2075,
+      "complete_separation": false
+    },
+    {
+      "family": "rel",
+      "key": "k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1887,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1887,
+      "min_fit_negative": 0.0,
+      "gap": -0.1887,
+      "complete_separation": false
+    },
+    {
+      "family": "rel",
+      "key": "k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1698,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1698,
+      "min_fit_negative": 0.0,
+      "gap": -0.1698,
+      "complete_separation": false
+    },
+    {
+      "family": "rel",
+      "key": "k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0755,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.0968,
+      "min_fit_negative": 0.0,
+      "gap": -0.0968,
+      "complete_separation": false
+    },
+    {
+      "family": "rel",
+      "key": "k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0645,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.069,
+      "min_fit_negative": 0.0,
+      "gap": -0.069,
+      "complete_separation": false
+    },
+    {
+      "family": "summary",
+      "key": "abs_median_lead_s",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.315,
+        "hereforyou_62e79ae9": 0.685,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.26,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.32,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.035
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.63,
+        "jing_bai_ye_su_b08227a2": 0.27,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.285,
+        "shu_bu_jin_71fba0ce": 0.005,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.35,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.325
+      },
+      "max_positive": 0.685,
+      "min_fit_negative": 0.005,
+      "gap": -0.68,
+      "complete_separation": false
+    },
+    {
+      "family": "summary",
+      "key": "mad_lead_s",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.745,
+        "hereforyou_62e79ae9": 0.465,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.22,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.32,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.34
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.3,
+        "jing_bai_ye_su_b08227a2": 0.615,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.39,
+        "shu_bu_jin_71fba0ce": 0.455,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.41,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.68
+      },
+      "max_positive": 0.745,
+      "min_fit_negative": 0.3,
+      "gap": -0.445,
+      "complete_separation": false
+    },
+    {
+      "family": "summary",
+      "key": "p10_p90_width_s",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 2.899,
+        "hereforyou_62e79ae9": 4.502,
+        "mei_hao_de_chuang_zao_3d42d76e": 2.142,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 3.596,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 1.855
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 1.43,
+        "jing_bai_ye_su_b08227a2": 3.862,
+        "na_me_shen_de_ke_mu_ff92abd9": 1.59,
+        "shu_bu_jin_71fba0ce": 4.358,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 1.523,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 2.771
+      },
+      "max_positive": 4.502,
+      "min_fit_negative": 1.43,
+      "gap": -3.072,
+      "complete_separation": false
+    },
+    {
+      "family": "summary",
+      "key": "late_line_fraction",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3889,
+        "hereforyou_62e79ae9": 0.1552,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.7736,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.8065,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.5
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.7931,
+        "jing_bai_ye_su_b08227a2": 0.5938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.5588,
+        "shu_bu_jin_71fba0ce": 0.5,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.7143,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.2857
+      },
+      "max_positive": 0.8065,
+      "min_fit_negative": 0.2857,
+      "gap": -0.5207,
+      "complete_separation": false
+    },
+    {
+      "family": "drift",
+      "key": "abs_slope",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.002,
+        "hereforyou_62e79ae9": 0.0142,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0044,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0118,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0072
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0056,
+        "jing_bai_ye_su_b08227a2": 0.0581,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0144,
+        "shu_bu_jin_71fba0ce": 0.079,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0085,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0041
+      },
+      "max_positive": 0.0142,
+      "min_fit_negative": 0.0041,
+      "gap": -0.0101,
+      "complete_separation": false
+    },
+    {
+      "family": "drift",
+      "key": "abs_curvature",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0039,
+        "hereforyou_62e79ae9": 0.0003,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0009,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0018,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0012,
+        "jing_bai_ye_su_b08227a2": 0.006,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0001,
+        "shu_bu_jin_71fba0ce": 0.0002,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0008,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0018
+      },
+      "max_positive": 0.0039,
+      "min_fit_negative": 0.0001,
+      "gap": -0.0038,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=1.0,k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3333,
+        "hereforyou_62e79ae9": 0.4828,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1765
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.3438,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.4828,
+      "min_fit_negative": 0.1071,
+      "gap": -0.3756,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=1.0,k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3333,
+        "hereforyou_62e79ae9": 0.4828,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2264,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1765
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.3438,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.4828,
+      "min_fit_negative": 0.1071,
+      "gap": -0.3756,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=1.0,k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3333,
+        "hereforyou_62e79ae9": 0.4828,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2264,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1765
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.3438,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.4828,
+      "min_fit_negative": 0.1071,
+      "gap": -0.3756,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=1.0,k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3333,
+        "hereforyou_62e79ae9": 0.4828,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2264,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1765
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.3438,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.4828,
+      "min_fit_negative": 0.1071,
+      "gap": -0.3756,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=1.0,k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3333,
+        "hereforyou_62e79ae9": 0.4828,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2264,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1765
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.3438,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.4828,
+      "min_fit_negative": 0.1071,
+      "gap": -0.3756,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=1.0,k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.3333,
+        "hereforyou_62e79ae9": 0.4828,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2264,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.2581,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1765
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1724,
+        "jing_bai_ye_su_b08227a2": 0.3438,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
+      },
+      "max_positive": 0.4828,
+      "min_fit_negative": 0.1071,
+      "gap": -0.3756,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=2.0,k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0278,
+        "hereforyou_62e79ae9": 0.2414,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1176
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1034,
+        "jing_bai_ye_su_b08227a2": 0.125,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
+      },
+      "max_positive": 0.3019,
+      "min_fit_negative": 0.0,
+      "gap": -0.3019,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=2.0,k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0278,
+        "hereforyou_62e79ae9": 0.1897,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0588
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0345,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
+      },
+      "max_positive": 0.2075,
+      "min_fit_negative": 0.0,
+      "gap": -0.2075,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=2.0,k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0278,
+        "hereforyou_62e79ae9": 0.1897,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1887,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
+      },
+      "max_positive": 0.1897,
+      "min_fit_negative": 0.0,
+      "gap": -0.1897,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=2.0,k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0278,
+        "hereforyou_62e79ae9": 0.1897,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1698,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
+      },
+      "max_positive": 0.1897,
+      "min_fit_negative": 0.0,
+      "gap": -0.1897,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=2.0,k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0278,
+        "hereforyou_62e79ae9": 0.1897,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0755,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
+      },
+      "max_positive": 0.1897,
+      "min_fit_negative": 0.0,
+      "gap": -0.1897,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=2.0,k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0278,
+        "hereforyou_62e79ae9": 0.1897,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
+      },
+      "max_positive": 0.1897,
+      "min_fit_negative": 0.0,
+      "gap": -0.1897,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=3.0,k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.2414,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1176
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1034,
+        "jing_bai_ye_su_b08227a2": 0.125,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
+      },
+      "max_positive": 0.3019,
+      "min_fit_negative": 0.0,
+      "gap": -0.3019,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=3.0,k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1724,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0588
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0345,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.2075,
+      "min_fit_negative": 0.0,
+      "gap": -0.2075,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=3.0,k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1887,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1887,
+      "min_fit_negative": 0.0,
+      "gap": -0.1887,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=3.0,k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1698,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1698,
+      "min_fit_negative": 0.0,
+      "gap": -0.1698,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=3.0,k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0755,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1034,
+      "min_fit_negative": 0.0,
+      "gap": -0.1034,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=3.0,k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0645,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1034,
+      "min_fit_negative": 0.0,
+      "gap": -0.1034,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=4.0,k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.2414,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1176
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1034,
+        "jing_bai_ye_su_b08227a2": 0.125,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
+      },
+      "max_positive": 0.3019,
+      "min_fit_negative": 0.0,
+      "gap": -0.3019,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=4.0,k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1724,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0588
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0345,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.2075,
+      "min_fit_negative": 0.0,
+      "gap": -0.2075,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=4.0,k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1887,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1887,
+      "min_fit_negative": 0.0,
+      "gap": -0.1887,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=4.0,k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1698,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1698,
+      "min_fit_negative": 0.0,
+      "gap": -0.1698,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=4.0,k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0862,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0755,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.0968,
+      "min_fit_negative": 0.0,
+      "gap": -0.0968,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=4.0,k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0862,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0645,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.0862,
+      "min_fit_negative": 0.0,
+      "gap": -0.0862,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=5.0,k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.2414,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1176
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1034,
+        "jing_bai_ye_su_b08227a2": 0.125,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
+      },
+      "max_positive": 0.3019,
+      "min_fit_negative": 0.0,
+      "gap": -0.3019,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=5.0,k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1724,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0588
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0345,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.2075,
+      "min_fit_negative": 0.0,
+      "gap": -0.2075,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=5.0,k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1887,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1887,
+      "min_fit_negative": 0.0,
+      "gap": -0.1887,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=5.0,k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1698,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1698,
+      "min_fit_negative": 0.0,
+      "gap": -0.1698,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=5.0,k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0755,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.0968,
+      "min_fit_negative": 0.0,
+      "gap": -0.0968,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=5.0,k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0645,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.069,
+      "min_fit_negative": 0.0,
+      "gap": -0.069,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=7.0,k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.2414,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1176
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1034,
+        "jing_bai_ye_su_b08227a2": 0.125,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
+      },
+      "max_positive": 0.3019,
+      "min_fit_negative": 0.0,
+      "gap": -0.3019,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=7.0,k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1724,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0588
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0345,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.2075,
+      "min_fit_negative": 0.0,
+      "gap": -0.2075,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=7.0,k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1887,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1887,
+      "min_fit_negative": 0.0,
+      "gap": -0.1887,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=7.0,k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1698,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1698,
+      "min_fit_negative": 0.0,
+      "gap": -0.1698,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=7.0,k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0755,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.0968,
+      "min_fit_negative": 0.0,
+      "gap": -0.0968,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=7.0,k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0645,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.069,
+      "min_fit_negative": 0.0,
+      "gap": -0.069,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=10.0,k=3.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.2414,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.3019,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.1176
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.1034,
+        "jing_bai_ye_su_b08227a2": 0.125,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
+        "shu_bu_jin_71fba0ce": 0.3333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
+      },
+      "max_positive": 0.3019,
+      "min_fit_negative": 0.0,
+      "gap": -0.3019,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=10.0,k=4.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1724,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.2075,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.1935,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0588
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0345,
+        "jing_bai_ye_su_b08227a2": 0.0938,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.2075,
+      "min_fit_negative": 0.0,
+      "gap": -0.2075,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=10.0,k=5.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1887,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0294
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.2,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1887,
+      "min_fit_negative": 0.0,
+      "gap": -0.1887,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=10.0,k=6.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.1034,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.1698,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
+        "shu_bu_jin_71fba0ce": 0.1333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.1698,
+      "min_fit_negative": 0.0,
+      "gap": -0.1698,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=10.0,k=8.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0755,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0968,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0667,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.0968,
+      "min_fit_negative": 0.0,
+      "gap": -0.0968,
+      "complete_separation": false
+    },
+    {
+      "family": "union",
+      "key": "T=10.0,k=10.0",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.069,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0377,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0645,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0312,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0333,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0
+      },
+      "max_positive": 0.069,
+      "min_fit_negative": 0.0,
+      "gap": -0.069,
+      "complete_separation": false
+    },
+    {
+      "family": "verified",
+      "key": "vt=0.3",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0556,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0357,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0323,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0312,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.0556,
+      "min_fit_negative": 0.0,
+      "gap": -0.0556,
+      "complete_separation": false
+    },
+    {
+      "family": "verified",
+      "key": "vt=0.4",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0556,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0357,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0323,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0312,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.0556,
+      "min_fit_negative": 0.0,
+      "gap": -0.0556,
+      "complete_separation": false
+    },
+    {
+      "family": "verified",
+      "key": "vt=0.5",
+      "direction": "timing_negative_above_positives",
+      "positive_values": {
+        "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
+        "hereforyou_62e79ae9": 0.0556,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0357,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0323,
+        "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
+      },
+      "fit_negative_values": {
+        "cang_shen_zhi_chu_39437ec0": 0.0,
+        "jing_bai_ye_su_b08227a2": 0.0,
+        "na_me_shen_de_ke_mu_ff92abd9": 0.0,
+        "shu_bu_jin_71fba0ce": 0.0312,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
+      },
+      "max_positive": 0.0556,
+      "min_fit_negative": 0.0,
+      "gap": -0.0556,
+      "complete_separation": false
+    }
+  ],
+  "side_songs": [
+    "ai_shi_wo_men_yong_gan_6d1865b8",
+    "bu_ting_zan_mei_mi_e937a9d3",
+    "dan_dan_ai_mi_f6653864"
+  ],
+  "population_note": "Primary fit floor is 4 timing negatives (core); ceiling 6 DB-truth + 1 convenience. Diagnostics (qwen3_asr, manual_upload), the convenience song, and quality-flagged expansion songs are tabulated but never move thresholds.",
+  "null_action": "Signal 1 stays dropped; the Phase 1 fallback (pinyin CER + VAD pre-filter, no auto-PASS) and the recommended v2.1 spec amendment proceed unchanged. No further feature search.",
+  "verdict": "NULL_NO_SEPARATION"
+}

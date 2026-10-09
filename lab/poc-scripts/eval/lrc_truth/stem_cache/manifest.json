@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "created_at": "2026-10-07T14:14:19+00:00",
-  "updated_at": "2026-10-08T23:34:32+00:00",
+  "updated_at": "2026-10-09T00:34:04+00:00",
   "songs": {
     "zhu_a__wo_yao_gen_sui_mi_83163301": {
       "status": "cached",
@@ -487,38 +487,38 @@
     "ping_an__yue_yu__0d44151f": {
       "status": "failed",
       "hash_prefix": "c9637793bf37",
-      "resolved_at": "2026-10-08T20:32:03+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:36:15+00:00",
+      "error": "RuntimeError: MVSEP submit HTTP 400: {\"success\":false,\"errors\":[\"You already have unprocessed file in queue. Please wait before adding new file!\"]}"
     },
     "zhuan_xin_lai_ai_mi_233eff97": {
       "status": "failed",
       "hash_prefix": "c6bf2b7ac42c",
-      "resolved_at": "2026-10-08T14:58:18+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:36:20+00:00",
+      "error": "RuntimeError: MVSEP submit HTTP 400: {\"success\":false,\"errors\":[\"You already have unprocessed file in queue. Please wait before adding new file!\"]}"
     },
     "ibelieve_wo_xiang_xin__05ac401d": {
       "status": "failed",
       "hash_prefix": "13ff976cf127",
-      "resolved_at": "2026-10-08T14:58:23+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:36:26+00:00",
+      "error": "RuntimeError: MVSEP submit HTTP 400: {\"success\":false,\"errors\":[\"You already have unprocessed file in queue. Please wait before adding new file!\"]}"
     },
     "qiu_zhu_chong_man_wo_5fc89031": {
       "status": "failed",
       "hash_prefix": "3ab6d60f7ede",
-      "resolved_at": "2026-10-08T14:58:28+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:36:32+00:00",
+      "error": "RuntimeError: MVSEP submit HTTP 400: {\"success\":false,\"errors\":[\"You already have unprocessed file in queue. Please wait before adding new file!\"]}"
     },
     "quan_xin_de_ni_6617981c": {
       "status": "failed",
       "hash_prefix": "fedafbf5c8de",
-      "resolved_at": "2026-10-08T14:58:33+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:36:38+00:00",
+      "error": "RuntimeError: MVSEP submit HTTP 400: {\"success\":false,\"errors\":[\"You already have unprocessed file in queue. Please wait before adding new file!\"]}"
     },
     "chu_mi_yi_wai_66dbc1d5": {
       "status": "failed",
       "hash_prefix": "2d26395bac29",
-      "resolved_at": "2026-10-08T14:58:39+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:36:44+00:00",
+      "error": "RuntimeError: MVSEP submit HTTP 400: {\"success\":false,\"errors\":[\"You already have unprocessed file in queue. Please wait before adding new file!\"]}"
     },
     "sheng_ming_de_kai_ge_9c5a45c4": {
       "status": "cached",
@@ -539,8 +539,8 @@
     "mai_xiang_xin_de_sheng_ming_22aebb2f": {
       "status": "failed",
       "hash_prefix": "6fd7a9eae190",
-      "resolved_at": "2026-10-08T14:58:45+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:36:49+00:00",
+      "error": "RuntimeError: MVSEP submit HTTP 400: {\"success\":false,\"errors\":[\"You already have unprocessed file in queue. Please wait before adding new file!\"]}"
     },
     "fan_zhuan_di_qiu_52503759": {
       "status": "cached",
@@ -551,94 +551,124 @@
       "producer": "analysis_service_mel_band_roformer_ep_3005"
     },
     "shen_shen_ai_mu_mi_48f295ef": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "7d299ce2f355",
-      "resolved_at": "2026-10-08T14:58:51+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:41:29+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "zhuan_xin_yang_wang_ye_su_588b1316": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "8cbf0a271347",
-      "resolved_at": "2026-10-08T14:58:56+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:44:02+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "mi_en_dian_bu_li_kai_87b58eb3": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "e47c3054a15d",
-      "resolved_at": "2026-10-08T14:59:01+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:46:29+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "bu_yao_fang_qi_8baf1279": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "218b53155bb3",
-      "resolved_at": "2026-10-08T14:59:07+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:49:31+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "shun_fu_f14625a0": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "d82c45ff6c32",
-      "resolved_at": "2026-10-08T14:59:12+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:52:29+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "zhe_li_you_rong_yao_6fd21f02": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "c8b2dc9febb9",
-      "resolved_at": "2026-10-08T14:59:17+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:55:31+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "xie_xie_mi_fba8b601": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "a78002f5e893",
-      "resolved_at": "2026-10-08T14:59:23+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-08T23:59:32+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "ye_he_hua_da_neng_de_jun_dui_b02d5f17": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "580cc19565b3",
-      "resolved_at": "2026-10-08T14:59:28+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:02:36+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "ji_da_de_sheng_yin_789c2e90": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "925f3622ec4f",
-      "resolved_at": "2026-10-08T14:59:33+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:05:41+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "yong_heng_wei_yi_de_pan_wang_bb1aa623": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "5cae05934099",
-      "resolved_at": "2026-10-08T14:59:38+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:08:14+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "geng_duo_chong_man_ce2eb531": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "0afc34c7fcb1",
-      "resolved_at": "2026-10-08T14:59:43+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:12:45+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "wo_men_huan_ying_jun_wang_jiang_lin_7a79edf7": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "fc95420368c1",
-      "resolved_at": "2026-10-08T14:59:48+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:16:52+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "wo_xin_wei_yi_ai_mu_037fb020": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "c60b92a819b8",
-      "resolved_at": "2026-10-08T14:59:54+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:19:52+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "ai_zhong_xiang_yu_e93451bb": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "f80e410a0aee",
-      "resolved_at": "2026-10-08T14:59:59+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:22:54+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "cong_zhe_dai_dao_na_dai_ee88b6be": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "d26bd09bba57",
-      "resolved_at": "2026-10-08T15:00:05+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:26:26+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "da_shou_qian_zhu_xiao_shou_f8374aa8": {
       "status": "cached",
@@ -649,16 +679,20 @@
       "producer": "analysis_service_mel_band_roformer_ep_3005"
     },
     "yi_ma_nei_li_80801d2c": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "5ba6da44112c",
-      "resolved_at": "2026-10-08T15:00:11+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:30:01+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "zan_mei_zhi_quan_2a240c3c": {
-      "status": "failed",
+      "status": "cached",
       "hash_prefix": "b664a6fa900e",
-      "resolved_at": "2026-10-08T15:00:16+00:00",
-      "error": "HTTPError: 400 Client Error: Bad Request for url: https://mvsep.com/api/separation/create"
+      "resolved_at": "2026-10-09T00:34:04+00:00",
+      "source": "mvsep",
+      "audio": "stems/clean_vocals.flac",
+      "producer": "mvsep_sep_type48_opt11+sep_type22_opt0"
     },
     "wan_jun_zhi_ye_he_hua_5404d9df": {
       "status": "failed",
