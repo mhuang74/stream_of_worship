@@ -29,8 +29,8 @@ further feature search.
 | wo_neng_gei_ni_shen_me | timing negative (yt) | stem (cached) | 42/42 |
 | jing_bai_ye_su_b08227a2 | timing negative (yt) | stem (cached) | 32/39 |
 | cang_shen_zhi_chu_39437ec0 | timing negative (yt) | stem (cached) | 29/29 |
-| wo_jing_bai_mi__ye_su | expansion timing negative (yt) | **stem retry SUCCEEDED** (local, 08:xx) | 28/50 |
-| na_me_shen_de_ke_mu | expansion timing negative (yt) | **stem retry SUCCEEDED** (local, 07:34) | 34/37 |
+| wo_jing_bai_mi__ye_su | expansion timing negative (yt) | **stem retry SUCCEEDED** (local run; word stream re-transcribed from clean stem) | 50/50 |
+| na_me_shen_de_ke_mu | expansion timing negative (yt) | **stem retry SUCCEEDED** (local run; word stream re-transcribed from clean stem) | 34/37 |
 | dan_dan_ai_mi_f6653864 | convenience (April known-bad) | stem retry FAILED again (HTTP 400); mixed audio | 0/17 — **unmeasurable** |
 | ai_shi_wo_men_yong_gan | diagnostic (qwen3_asr) | stem (cached) | 44/44 |
 | bu_ting_zan_mei_mi | diagnostic (manual_upload) | stem (cached) | 37/37 |
@@ -59,6 +59,13 @@ re-measured them, so neither needed the quality-flagged mixed-audio fallback.
   pinyin (CJK) / raw latin tokens (English), cutoff < 0.5 ⇒ verified outlier.
 - Criterion: complete separation, non-zero gap — min(neg) > max(pos). The
   verdict cites the whole grid, not a best cell.
+- Word caches are provenance-keyed (`<song_id>.words-<audio_stem>.json`);
+  Phase 1's legacy `<song_id>.words.json` caches are trusted only from the
+  Phase 1 directory (canonical clean-stem streams). A mixed-audio fallback
+  stream can therefore never satisfy a stem-based re-measure — `wo_jing_bai`
+  and `na_me_shen` were each re-transcribed from their clean stems after the
+  separation retry succeeded, and their stale mixed-audio caches are retained
+  under `words-audio.json` names for audit.
 - Zero DB writes; Phase 1 directory read-only; the only writes are Phase 1b
   artifacts + 4 LRC fetches into the truth LRC cache (as the issue allows).
 
@@ -75,7 +82,7 @@ re-measured them, so neither needed the quality-flagged mixed-audio fallback.
 | wo_neng | neg | 0.325 | 0.68 | 2.77 | 0.29 | 0.004 | 0.024 | 0.024 | 0.024 |
 | jing_bai | neg | 0.270 | 0.62 | 3.86 | 0.59 | 0.058 | 0.031 | 0.031 | 0.000 |
 | cang_shen | neg | 0.630 | 0.30 | 1.43 | 0.79 | 0.006 | 0.000 | 0.000 | 0.000 |
-| wo_jing_bai | neg | 0.350 | 0.41 | 1.52 | 0.71 | 0.008 | 0.000 | 0.000 | 0.000 |
+| wo_jing_bai | neg | 0.585 | 0.23 | 1.33 | 0.88 | 0.008 | 0.000 | 0.000 | 0.000 |
 | na_me_shen | neg | 0.285 | 0.39 | 1.59 | 0.56 | 0.014 | 0.000 | 0.029 | 0.000 |
 | ai_shi (diag) | — | 0.045 | 1.67 | 5.58 | 0.52 | 0.030 | 0.182 | 0.023 | 0.091 |
 | bu_ting (diag) | — | 0.470 | 0.21 | 1.51 | 0.89 | 0.019 | 0.000 | 0.054 | 0.000 |
@@ -97,13 +104,14 @@ Why the null is real, cell by cell:
   gap is 0 only because every positive scores 0 and one negative scores
   0.031… which is why the cell shows gap +0.0000: `min(neg)=0.0` because the
   other 5 negatives score 0. **No negative exceeds all positives anywhere.**
-- **Drift (4):** |slope| best gap −0.0101 (positives reach 0.0142 via
+- **Drift (4):** |slope| best gap −0.0106 (positives reach 0.0142 via
   `hereforyou`, a good LRC, while 4 of 6 negatives sit below it);
   |curvature| best gap −0.0038.
 - **Verified outliers (6):** verification *reduced* the negative signal
-  without removing positive outliers: verified-outlier fractions at vt=0.5 —
-  positives up to 0.056 (`hereforyou`), negatives up to 0.031 (`shu_bu_jin`).
-  Best gap −0.0556.
+  without removing positive outliers: verified-outlier fractions sweep —
+  positives up to 0.044 (vt=0.3/0.4, `hereforyou`) / 0.056 (vt=0.5),
+  negatives up to 0.000 (vt=0.3/0.4) / 0.031 (vt=0.5, `shu_bu_jin`). Gaps:
+  vt=0.3 −0.0444, vt=0.4 −0.0444, vt=0.5 −0.0556.
 
 ## The central validity threat: matcher-flip vs bad line
 
@@ -115,10 +123,12 @@ repeated phrases holds on the bigger positive sample. Verification
 suppresses flips only partially: 5 of `hereforyou`'s 6 raw outliers
 survived as verified (e.g. li=33 "We are here for You" @173.7 s — the sung
 instance at 179.9–181.1 s falls inside the narrow [171.7, 181.4) window, so
-the flip is invisible to window-based verification), while 2 of 3 raw
-outliers on positives with clean CJK streams were correctly suppressed
+the flip is invisible to window-based verification), while on positives
+with clean CJK streams half the raw outliers are correctly suppressed
 (`xin_kao` li=19 flipped into the next repetition while the correct words
-sit in-window at 133.2–136.8 → whole-line fraction 1.0 → not verified).
+sit in-window at 133.2–136.8 → whole-line fraction 1.0 → not verified; its
+li=25 at frac 0.31 survives).
+
 On the negative side, `jing_bai` li=35 (+13.95 s) — a genuinely misplaced
 line, words sung at 311–319 s against a 297.4 s timestamp — is verified as
 real, but the same feature gives `hereforyou` 5 verified outliers, so the
@@ -167,8 +177,10 @@ uv run --project lab/poc-scripts --extra lrc_eval python lab/poc-scripts/phase1b
 ```
 
 Second `measure` run performs zero transcriptions (word-cache hits only) and
-reproduces identical feature values (verified by deleting the per-song JSONs
-and diffing against a snapshot; `tests/test_phase1b_lead_outliers.py`, 11 tests).
+reproduces identical record bodies — verified over the **final** 14-song
+population by deleting every per-song JSON and diffing against a snapshot:
+`population: 14 | re-transcriptions: 0 | record diffs: none`
+(`tests/test_phase1b_lead_outliers.py`, 14 tests).
 
 ## Tracker consequences
 

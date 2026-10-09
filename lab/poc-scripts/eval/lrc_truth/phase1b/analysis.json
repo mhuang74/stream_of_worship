@@ -30,12 +30,12 @@
         "jing_bai_ye_su_b08227a2": 0.3438,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.12,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.4828,
-      "min_fit_negative": 0.1071,
-      "gap": -0.3756,
+      "min_fit_negative": 0.1176,
+      "gap": -0.3651,
       "complete_separation": false
     },
     {
@@ -198,7 +198,7 @@
         "jing_bai_ye_su_b08227a2": 0.75,
         "na_me_shen_de_ke_mu_ff92abd9": 0.4412,
         "shu_bu_jin_71fba0ce": 0.5,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.5357,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.58,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.5714
       },
       "max_positive": 0.8103,
@@ -222,12 +222,12 @@
         "jing_bai_ye_su_b08227a2": 0.4375,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1471,
         "shu_bu_jin_71fba0ce": 0.3667,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1786,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.12,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.5517,
-      "min_fit_negative": 0.1471,
-      "gap": -0.4047,
+      "min_fit_negative": 0.12,
+      "gap": -0.4317,
       "complete_separation": false
     },
     {
@@ -342,12 +342,12 @@
         "jing_bai_ye_su_b08227a2": 0.125,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
       },
       "max_positive": 0.3019,
-      "min_fit_negative": 0.0,
-      "gap": -0.3019,
+      "min_fit_negative": 0.0476,
+      "gap": -0.2543,
       "complete_separation": false
     },
     {
@@ -366,12 +366,12 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.08,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.2075,
-      "min_fit_negative": 0.0,
-      "gap": -0.2075,
+      "min_fit_negative": 0.0238,
+      "gap": -0.1837,
       "complete_separation": false
     },
     {
@@ -390,7 +390,7 @@
         "jing_bai_ye_su_b08227a2": 0.0312,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.02,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.1887,
@@ -486,7 +486,7 @@
         "jing_bai_ye_su_b08227a2": 0.27,
         "na_me_shen_de_ke_mu_ff92abd9": 0.285,
         "shu_bu_jin_71fba0ce": 0.005,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.35,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.585,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.325
       },
       "max_positive": 0.685,
@@ -510,12 +510,12 @@
         "jing_bai_ye_su_b08227a2": 0.615,
         "na_me_shen_de_ke_mu_ff92abd9": 0.39,
         "shu_bu_jin_71fba0ce": 0.455,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.41,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.225,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.68
       },
       "max_positive": 0.745,
-      "min_fit_negative": 0.3,
-      "gap": -0.445,
+      "min_fit_negative": 0.225,
+      "gap": -0.52,
       "complete_separation": false
     },
     {
@@ -534,12 +534,12 @@
         "jing_bai_ye_su_b08227a2": 3.862,
         "na_me_shen_de_ke_mu_ff92abd9": 1.59,
         "shu_bu_jin_71fba0ce": 4.358,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 1.523,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 1.325,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 2.771
       },
       "max_positive": 4.502,
-      "min_fit_negative": 1.43,
-      "gap": -3.072,
+      "min_fit_negative": 1.325,
+      "gap": -3.177,
       "complete_separation": false
     },
     {
@@ -558,7 +558,7 @@
         "jing_bai_ye_su_b08227a2": 0.5938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.5588,
         "shu_bu_jin_71fba0ce": 0.5,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.7143,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.88,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.2857
       },
       "max_positive": 0.8065,
@@ -582,12 +582,12 @@
         "jing_bai_ye_su_b08227a2": 0.0581,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0144,
         "shu_bu_jin_71fba0ce": 0.079,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0085,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0036,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0041
       },
       "max_positive": 0.0142,
-      "min_fit_negative": 0.0041,
-      "gap": -0.0101,
+      "min_fit_negative": 0.0036,
+      "gap": -0.0106,
       "complete_separation": false
     },
     {
@@ -606,7 +606,7 @@
         "jing_bai_ye_su_b08227a2": 0.006,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0001,
         "shu_bu_jin_71fba0ce": 0.0002,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0008,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0002,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0018
       },
       "max_positive": 0.0039,
@@ -630,12 +630,12 @@
         "jing_bai_ye_su_b08227a2": 0.3438,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.4828,
-      "min_fit_negative": 0.1071,
-      "gap": -0.3756,
+      "min_fit_negative": 0.1176,
+      "gap": -0.3651,
       "complete_separation": false
     },
     {
@@ -654,12 +654,12 @@
         "jing_bai_ye_su_b08227a2": 0.3438,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.12,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.4828,
-      "min_fit_negative": 0.1071,
-      "gap": -0.3756,
+      "min_fit_negative": 0.1176,
+      "gap": -0.3651,
       "complete_separation": false
     },
     {
@@ -678,12 +678,12 @@
         "jing_bai_ye_su_b08227a2": 0.3438,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.12,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.4828,
-      "min_fit_negative": 0.1071,
-      "gap": -0.3756,
+      "min_fit_negative": 0.1176,
+      "gap": -0.3651,
       "complete_separation": false
     },
     {
@@ -702,12 +702,12 @@
         "jing_bai_ye_su_b08227a2": 0.3438,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.12,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.4828,
-      "min_fit_negative": 0.1071,
-      "gap": -0.3756,
+      "min_fit_negative": 0.1176,
+      "gap": -0.3651,
       "complete_separation": false
     },
     {
@@ -726,12 +726,12 @@
         "jing_bai_ye_su_b08227a2": 0.3438,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.12,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.4828,
-      "min_fit_negative": 0.1071,
-      "gap": -0.3756,
+      "min_fit_negative": 0.1176,
+      "gap": -0.3651,
       "complete_separation": false
     },
     {
@@ -750,12 +750,12 @@
         "jing_bai_ye_su_b08227a2": 0.3438,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.1071,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.12,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.381
       },
       "max_positive": 0.4828,
-      "min_fit_negative": 0.1071,
-      "gap": -0.3756,
+      "min_fit_negative": 0.1176,
+      "gap": -0.3651,
       "complete_separation": false
     },
     {
@@ -774,12 +774,12 @@
         "jing_bai_ye_su_b08227a2": 0.125,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
       },
       "max_positive": 0.3019,
-      "min_fit_negative": 0.0,
-      "gap": -0.3019,
+      "min_fit_negative": 0.0714,
+      "gap": -0.2305,
       "complete_separation": false
     },
     {
@@ -798,12 +798,12 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.08,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
       },
       "max_positive": 0.2075,
-      "min_fit_negative": 0.0,
-      "gap": -0.2075,
+      "min_fit_negative": 0.0345,
+      "gap": -0.1731,
       "complete_separation": false
     },
     {
@@ -822,7 +822,7 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.02,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0714
       },
       "max_positive": 0.1897,
@@ -918,12 +918,12 @@
         "jing_bai_ye_su_b08227a2": 0.125,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
       },
       "max_positive": 0.3019,
-      "min_fit_negative": 0.0,
-      "gap": -0.3019,
+      "min_fit_negative": 0.0476,
+      "gap": -0.2543,
       "complete_separation": false
     },
     {
@@ -942,12 +942,12 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.08,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.2075,
-      "min_fit_negative": 0.0,
-      "gap": -0.2075,
+      "min_fit_negative": 0.0238,
+      "gap": -0.1837,
       "complete_separation": false
     },
     {
@@ -966,7 +966,7 @@
         "jing_bai_ye_su_b08227a2": 0.0312,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.02,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.1887,
@@ -1062,12 +1062,12 @@
         "jing_bai_ye_su_b08227a2": 0.125,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
       },
       "max_positive": 0.3019,
-      "min_fit_negative": 0.0,
-      "gap": -0.3019,
+      "min_fit_negative": 0.0476,
+      "gap": -0.2543,
       "complete_separation": false
     },
     {
@@ -1086,12 +1086,12 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.08,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.2075,
-      "min_fit_negative": 0.0,
-      "gap": -0.2075,
+      "min_fit_negative": 0.0238,
+      "gap": -0.1837,
       "complete_separation": false
     },
     {
@@ -1110,7 +1110,7 @@
         "jing_bai_ye_su_b08227a2": 0.0312,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.02,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.1887,
@@ -1206,12 +1206,12 @@
         "jing_bai_ye_su_b08227a2": 0.125,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
       },
       "max_positive": 0.3019,
-      "min_fit_negative": 0.0,
-      "gap": -0.3019,
+      "min_fit_negative": 0.0476,
+      "gap": -0.2543,
       "complete_separation": false
     },
     {
@@ -1230,12 +1230,12 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.08,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.2075,
-      "min_fit_negative": 0.0,
-      "gap": -0.2075,
+      "min_fit_negative": 0.0238,
+      "gap": -0.1837,
       "complete_separation": false
     },
     {
@@ -1254,7 +1254,7 @@
         "jing_bai_ye_su_b08227a2": 0.0312,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.02,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.1887,
@@ -1350,12 +1350,12 @@
         "jing_bai_ye_su_b08227a2": 0.125,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
       },
       "max_positive": 0.3019,
-      "min_fit_negative": 0.0,
-      "gap": -0.3019,
+      "min_fit_negative": 0.0476,
+      "gap": -0.2543,
       "complete_separation": false
     },
     {
@@ -1374,12 +1374,12 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.08,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.2075,
-      "min_fit_negative": 0.0,
-      "gap": -0.2075,
+      "min_fit_negative": 0.0238,
+      "gap": -0.1837,
       "complete_separation": false
     },
     {
@@ -1398,7 +1398,7 @@
         "jing_bai_ye_su_b08227a2": 0.0312,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.02,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.1887,
@@ -1494,12 +1494,12 @@
         "jing_bai_ye_su_b08227a2": 0.125,
         "na_me_shen_de_ke_mu_ff92abd9": 0.1176,
         "shu_bu_jin_71fba0ce": 0.3333,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.18,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0476
       },
       "max_positive": 0.3019,
-      "min_fit_negative": 0.0,
-      "gap": -0.3019,
+      "min_fit_negative": 0.0476,
+      "gap": -0.2543,
       "complete_separation": false
     },
     {
@@ -1518,12 +1518,12 @@
         "jing_bai_ye_su_b08227a2": 0.0938,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0882,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.08,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.2075,
-      "min_fit_negative": 0.0,
-      "gap": -0.2075,
+      "min_fit_negative": 0.0238,
+      "gap": -0.1837,
       "complete_separation": false
     },
     {
@@ -1542,7 +1542,7 @@
         "jing_bai_ye_su_b08227a2": 0.0312,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0294,
         "shu_bu_jin_71fba0ce": 0.2,
-        "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
+        "wo_jing_bai_mi__ye_su_e6dd6146": 0.02,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
       "max_positive": 0.1887,
@@ -1628,22 +1628,22 @@
       "direction": "timing_negative_above_positives",
       "positive_values": {
         "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
-        "hereforyou_62e79ae9": 0.0556,
-        "mei_hao_de_chuang_zao_3d42d76e": 0.0357,
-        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0323,
+        "hereforyou_62e79ae9": 0.0444,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0179,
+        "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0,
         "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
       },
       "fit_negative_values": {
         "cang_shen_zhi_chu_39437ec0": 0.0,
         "jing_bai_ye_su_b08227a2": 0.0,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0,
-        "shu_bu_jin_71fba0ce": 0.0312,
+        "shu_bu_jin_71fba0ce": 0.0,
         "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
-      "max_positive": 0.0556,
+      "max_positive": 0.0444,
       "min_fit_negative": 0.0,
-      "gap": -0.0556,
+      "gap": -0.0444,
       "complete_separation": false
     },
     {
@@ -1652,8 +1652,8 @@
       "direction": "timing_negative_above_positives",
       "positive_values": {
         "cong_zao_chen_dao_ye_wan_b035044f": 0.0,
-        "hereforyou_62e79ae9": 0.0556,
-        "mei_hao_de_chuang_zao_3d42d76e": 0.0357,
+        "hereforyou_62e79ae9": 0.0444,
+        "mei_hao_de_chuang_zao_3d42d76e": 0.0179,
         "xin_kao_mei_yi_ju_ying_xu_df457941": 0.0323,
         "zhu_a__wo_yao_gen_sui_mi_83163301": 0.0
       },
@@ -1661,13 +1661,13 @@
         "cang_shen_zhi_chu_39437ec0": 0.0,
         "jing_bai_ye_su_b08227a2": 0.0,
         "na_me_shen_de_ke_mu_ff92abd9": 0.0,
-        "shu_bu_jin_71fba0ce": 0.0312,
+        "shu_bu_jin_71fba0ce": 0.0,
         "wo_jing_bai_mi__ye_su_e6dd6146": 0.0,
         "wo_neng_gei_ni_shen_me_03b2dcb2": 0.0238
       },
-      "max_positive": 0.0556,
+      "max_positive": 0.0444,
       "min_fit_negative": 0.0,
-      "gap": -0.0556,
+      "gap": -0.0444,
       "complete_separation": false
     },
     {

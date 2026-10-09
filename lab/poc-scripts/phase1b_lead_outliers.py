@@ -180,12 +180,44 @@ def song_role(song_id: str) -> str:
     return "unknown"
 
 
-def resolve_words_cache(song_id: str) -> Path | None:
-    """Locate a song's word cache: Phase 1 dir first, then Phase 1b."""
+def words_cache_name(song_id: str, audio_path: Path) -> str:
+    """Cache name keyed by audio provenance (issue #252 idempotency contract).
+
+    A song's word stream differs by SOURCE audio (separated stem vs mixed
+    fallback), so the cache key must carry both the song and which audio the
+    transcription came from — otherwise a stem-based re-measure after a
+    successful separation retry silently reuses a stale mixed-audio stream.
+    Format: ``<song_id>.words-<audio_filename_stem>.json``.
+    """
+    return f"{song_id}.words-{audio_path.stem}.json"
+
+
+def resolve_words_cache(song_id: str, audio_path: Path | None = None) -> Path | None:
+    """Locate a song's word cache: provenance-keyed first, then legacy.
+
+    With *audio_path* given, a match must be a cache produced from that same
+    source audio (provenance-keyed ``<song_id>.words-<stem>.json``) — OR the
+    legacy ``<song_id>.words.json`` in PHASE1_DIR only, whose 10 caches are
+    canonical clean-stem transcriptions. Phase 1b legacy caches are NOT
+    trusted this way: a mixed-audio fallback stream (e.g. cached before a
+    separation retry succeeded) must never be reused for a stem-based
+    re-measure.
+    """
+    names = []
+    if audio_path is not None:
+        names.append(words_cache_name(song_id, audio_path))
+    else:
+        names.extend(f"{song_id}.words*.json")
     for d in (PHASE1_DIR, OUT_DIR):
-        p = d / f"{song_id}.words.json"
-        if p.exists():
-            return p
+        for name in names:
+            p = d / name
+            if p.exists():
+                return p
+        # Legacy unkeyed cache: trusted only in the Phase 1 directory.
+        if d is PHASE1_DIR and audio_path is not None:
+            p = d / f"{song_id}.words.json"
+            if p.exists():
+                return p
     return None
 
 
@@ -198,11 +230,13 @@ def resolve_base_json(song_id: str) -> Path | None:
 def load_or_transcribe_words(song_id: str, hash_prefix: str, audio_path: Path) -> list[eval_lrc.PinyinWord]:
     """Word stream for a song; Phase 1 caches first, then Phase 1b cache.
 
-    Cache-idempotency contract: one transcription per song, reused by every
-    feature computation; a second harness run must produce zero new
-    transcriptions.
+    Cache-idempotency contract: one transcription per (song, source audio),
+    reused by every feature computation; a second harness run must produce
+    zero new transcriptions. The cache name carries the audio provenance
+    (``words_cache_name``) so a mixed-audio fallback stream can never be
+    mistaken for a separated-stem stream after a later separation retry.
     """
-    cached = resolve_words_cache(song_id)
+    cached = resolve_words_cache(song_id, audio_path)
     if cached is not None:
         return [
             eval_lrc.PinyinWord(text=w["text"], pinyin=w["pinyin"], time_seconds=w["time_seconds"])
@@ -217,7 +251,7 @@ def load_or_transcribe_words(song_id: str, hash_prefix: str, audio_path: Path) -
         language=None,
         lyrics_text=None,
     )
-    cache = OUT_DIR / f"{song_id}.words.json"
+    cache = OUT_DIR / words_cache_name(song_id, audio_path)
     cache.write_text(
         json.dumps([{"text": w.text, "pinyin": w.pinyin, "time_seconds": w.time_seconds} for w in words])
     )
@@ -265,12 +299,19 @@ def compute_features(
     leads_b: list[float],
     line_indices: list[int],
     n_sung: int,
-    verified_flags: list[bool],
+    outlier_fractions: list[float | None],
 ) -> dict:
     """Compute the frozen feature list (and only it) for one song.
 
     Frozen-protocol guard: raises on any feature family not declared in
     ``FEATURE_FAMILIES`` so post-hoc additions are visible in code review.
+
+    *outlier_fractions* carries one whole-line match fraction per sung,
+    matched line — but only for lines whose |lead| exceeds the frozen
+    ABS_OUTLIER_T_S anchor (None for every other line, and None also when
+    the line is unverifiable). The verified-outlier fraction at cutoff *vt*
+    counts lines whose fraction is not None and < vt, divided by sung lines,
+    so the VT_GRID sweep varies the verification cutoff for real.
     """
     requested = ("abs_s", "abs_b", "rel", "summary", "drift", "union", "verified")
     for fam in requested:
@@ -340,11 +381,16 @@ def compute_features(
             union[key] = round(max(fa, fr), 6)
 
     verified = {
-        f"vt={vt}": round(sum(1 for v in verified_flags if v) / n_sung, 6) if n_sung else 0.0
+        f"vt={vt}": round(
+            sum(1 for f in outlier_fractions if f is not None and f < vt) / n_sung, 6
+        )
+        if n_sung
+        else 0.0
         for vt in VT_GRID
     }
-    # verified_flags are anchored at ABS_OUTLIER_T_S; the per-vt sweep only
-    # varies the verification cutoff, not the anchor (frozen).
+    # outlier_fractions are anchored at ABS_OUTLIER_T_S; the per-vt sweep
+    # varies the verification cutoff (frozen), computed per-vt from the
+    # stored whole-line fractions — never a single pre-counted flag.
 
     return {
         "abs_s": abs_s,
@@ -384,7 +430,7 @@ def build_song_record(
             f"{song_id}: LRC re-parse yields {len(parsed)} lines but cached measurement has {len(lines)}"
         )
 
-    sung_leads, sung_leads_b, sung_idx, verified_flags = [], [], [], []
+    sung_leads, sung_leads_b, sung_idx, outlier_fractions = [], [], [], []
     per_line = []
     for l in lines:
         entry = {
@@ -401,15 +447,17 @@ def build_song_record(
             frac = whole_line_match_fraction(parsed, audio_words, l["line_index"])
             entry["whole_line_fraction"] = None if frac is None else round(frac, 4)
             outlier = abs(l["lead_s"]) > ABS_OUTLIER_T_S
-            verified = bool(
+            entry["abs_outlier"] = outlier
+            # Per-line flag at the frozen default cutoff (display); the
+            # feature sweep computes per-vt from the stored fraction.
+            entry["verified_outlier"] = bool(
                 outlier and frac is not None and frac < VERIFY_CUTOFF
             )
-            entry["abs_outlier"] = outlier
-            entry["verified_outlier"] = verified
-            verified_flags.append(verified)
             sung_leads.append(l["lead_s"])
             sung_leads_b.append(l["lead_beats"])
             sung_idx.append(l["line_index"])
+            if outlier:
+                outlier_fractions.append(frac)
         else:
             entry["whole_line_fraction"] = None
             entry["abs_outlier"] = None
@@ -417,7 +465,7 @@ def build_song_record(
         per_line.append(entry)
 
     features = compute_features(
-        sung_leads, sung_leads_b, sung_idx, base["n_sung"], verified_flags
+        sung_leads, sung_leads_b, sung_idx, base["n_sung"], outlier_fractions
     )
 
     return {
@@ -574,7 +622,7 @@ def load_song_records() -> dict[str, dict]:
     return {
         p.name.removesuffix(".json"): _load_json(p)
         for p in sorted(OUT_DIR.glob("*.json"))
-        if not p.name.startswith("analysis") and not p.name.endswith(".words.json")
+        if not p.name.startswith("analysis") and ".words" not in p.name
     }
 
 

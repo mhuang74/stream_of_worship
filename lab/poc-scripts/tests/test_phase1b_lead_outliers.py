@@ -39,7 +39,7 @@ def test_compute_features_rejects_undeclared_family():
                 leads_b=[0.1, 0.2, 3.0],
                 line_indices=[0, 1, 2],
                 n_sung=3,
-                verified_flags=[False, False, True],
+                outlier_fractions=[None, None, 0.2],
             )
     finally:
         p1b.FEATURE_FAMILIES = original
@@ -66,7 +66,7 @@ def test_feature_keys_match_frozen_grids():
         leads_b=[0.1, 0.2, 3.0, -1.0],
         line_indices=[0, 1, 2, 3],
         n_sung=4,
-        verified_flags=[False, False, True, False],
+        outlier_fractions=[None, None, 0.2, None],
     )
     assert set(feats["abs_s"]) == {f"T={t}" for t in p1b.T_GRID_S}
     assert set(feats["abs_b"]) == {f"T={t}" for t in p1b.T_GRID_B}
@@ -211,3 +211,48 @@ def test_build_song_record_deterministic(tmp_path):
     r1 = p1b.build_song_record(sid, lrc_path.read_text(encoding="utf-8"), words, bpm, base, False)
     r2 = p1b.build_song_record(sid, lrc_path.read_text(encoding="utf-8"), words, bpm, base, False)
     assert r1["features"] == r2["features"]
+
+def test_verified_sweep_varies_by_cutoff():
+    """The vt sweep must vary the verification cutoff for real: a fraction
+    in [0.3, 0.5) counts at vt=0.5 but not at vt=0.3 (frozen VT_GRID cells
+    are distinct, not a single pre-counted flag broadcast)."""
+    feats = p1b.compute_features(
+        leads_s=[0.1, 4.0, 0.2, 0.3],  # one line beyond the 3s anchor
+        leads_b=[0.1, 4.0, 0.2, 0.3],
+        line_indices=[0, 1, 2, 3],
+        n_sung=4,
+        outlier_fractions=[0.4],  # the outlier line's whole-line fraction
+    )
+    assert feats["verified"]["vt=0.3"] == 0.0
+    assert feats["verified"]["vt=0.4"] == 0.0  # strict <
+    assert feats["verified"]["vt=0.5"] == pytest.approx(1 / 4)
+
+
+def test_words_cache_provenance_keying():
+    """A cache from mixed audio must never satisfy a stem-requested lookup,
+    and the legacy unkeyed cache is trusted only in PHASE1_DIR."""
+    sid = "song_x"
+    legacy = p1b.OUT_DIR / f"{sid}.words.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text("[]")
+    try:
+        mixed = p1b.resolve_words_cache(sid, Path("/x/audio.mp3"))
+        assert mixed is None  # OUT_DIR legacy cache not trusted for provenance
+        # legacy in PHASE1_DIR would be trusted; simulate via tmp monkeypatch
+        p1 = p1b.PHASE1_DIR / f"{sid}.words.json"
+        p1.write_text("[]")
+        try:
+            assert p1b.resolve_words_cache(sid, Path("/x/clean_vocals.flac")) == p1
+        finally:
+            p1.unlink()
+    finally:
+        legacy.unlink()
+
+
+def test_load_song_records_skips_provenance_keyed_caches(tmp_path, monkeypatch):
+    """`<id>.words-clean_vocals.json` must not load as a song record."""
+    monkeypatch.setattr(p1b, "OUT_DIR", tmp_path)
+    (tmp_path / "song_x.words-clean_vocals.json").write_text("[]")
+    (tmp_path / "song_x.json").write_text(json.dumps({"role": "positive"}))
+    records = p1b.load_song_records()
+    assert set(records) == {"song_x"}
