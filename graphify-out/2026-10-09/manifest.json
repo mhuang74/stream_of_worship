@@ -3462,9 +3462,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/eval_lrc.py": {
-    "mtime": 1791356559.1082754,
-    "seen": 1791378928.1033654,
-    "ast_hash": "969dc989e7950b7dfb75a068b1b2f9f0",
+    "mtime": 1791438893.77665,
+    "seen": 1791492695.7335246,
+    "ast_hash": "b237615710a9a2d71d534488349524a9",
     "semantic_hash": ""
   },
   "lab/poc-scripts/experiment_lrc_signals.py": {
@@ -5484,9 +5484,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/eval/lrc_truth/stem_cache/manifest.json": {
-    "mtime": 1791384103.656967,
-    "seen": 1791390278.0583165,
-    "ast_hash": "e6babd2844bc448cb92ca3bf6a42fe1f",
+    "mtime": 1791491523.7448041,
+    "seen": 1791492695.7335217,
+    "ast_hash": "41d76238412599fc819bf798faad4b26",
     "semantic_hash": ""
   },
   "lab/poc-scripts/mine_lrc_ground_truth.py": {
@@ -5496,9 +5496,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/run_stem_cache.py": {
-    "mtime": 1791386614.040888,
-    "seen": 1791390278.059704,
-    "ast_hash": "0f018480e9b099373c49eae3433d9efe",
+    "mtime": 1791435629.330703,
+    "seen": 1791492695.734944,
+    "ast_hash": "6846fc809e13e3e005ebc3cbc1a4629b",
     "semantic_hash": ""
   },
   "lab/poc-scripts/stem_cache.py": {
@@ -5526,21 +5526,273 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/phase1_onset_lead.py": {
-    "mtime": 1791410209.3010433,
-    "seen": 1791410285.6129463,
-    "ast_hash": "14ea76c1e7d0858257813cb44bf60fad",
+    "mtime": 1791492617.9922762,
+    "seen": 1791492695.7347019,
+    "ast_hash": "6c836e4fc6cebbba883a39fde583f2b4",
     "semantic_hash": ""
   },
   "lab/poc-scripts/probe_transcript_retrievability.py": {
-    "mtime": 1791410946.989079,
-    "seen": 1791411041.8759909,
-    "ast_hash": "15873fa634d8d50893380cead59b0b49",
+    "mtime": 1791415619.3097103,
+    "seen": 1791492695.7348182,
+    "ast_hash": "167ecd4849feec20961e258cd2746e3c",
     "semantic_hash": ""
   },
   "eval/lrc_truth/ground-truth-pairs-20261007T220931Z.json": {
     "mtime": 1791410971.965069,
     "seen": 1791411041.8715472,
     "ast_hash": "6fec7dbc640f61fb7db29e1de635cabf",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/ai_shi_wo_men_yong_gan_6d1865b8.base.json": {
+    "mtime": 1791456432.0177,
+    "seen": 1791492695.7333584,
+    "ast_hash": "fb8c3aac0c566f7b438fcb13e2603568",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/ai_shi_wo_men_yong_gan_6d1865b8.injectp0.5.json": {
+    "mtime": 1791455975.6506796,
+    "seen": 1791492695.7333617,
+    "ast_hash": "cd7be1066dd3a32d635eb5151866b2ec",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/ai_shi_wo_men_yong_gan_6d1865b8.injectp1.0.json": {
+    "mtime": 1791455975.6836796,
+    "seen": 1791492695.7333646,
+    "ast_hash": "e7e0687ff6a5e08aa5a3dd3387d0d467",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/ai_shi_wo_men_yong_gan_6d1865b8.words.json": {
+    "mtime": 1791455975.6036794,
+    "seen": 1791492695.7333667,
+    "ast_hash": "3bd6fbc7ecaabb6bfbacc89b20f2f998",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/analysis.json": {
+    "mtime": 1791492620.736285,
+    "seen": 1791492695.733369,
+    "ast_hash": "04509a67878becdf0e06417bdda939f6",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/bpm_cache.json": {
+    "mtime": 1791412352.8385499,
+    "seen": 1791492695.733371,
+    "ast_hash": "ec422a33cdf72939bc6779a357a4d712",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/bu_ting_zan_mei_mi_e937a9d3.base.json": {
+    "mtime": 1791456432.0417001,
+    "seen": 1791492695.7333734,
+    "ast_hash": "d559cbace6ad5c37ab054aa64a3bd416",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/bu_ting_zan_mei_mi_e937a9d3.injectp0.5.json": {
+    "mtime": 1791456352.8145268,
+    "seen": 1791492695.7333758,
+    "ast_hash": "e527ebe0e9c5b9dbcf0d8c9a49af7661",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/bu_ting_zan_mei_mi_e937a9d3.injectp1.0.json": {
+    "mtime": 1791456352.8375268,
+    "seen": 1791492695.7333777,
+    "ast_hash": "399ff95494e14008265b36a81a3eed39",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/bu_ting_zan_mei_mi_e937a9d3.words.json": {
+    "mtime": 1791456352.7735267,
+    "seen": 1791492695.7333798,
+    "ast_hash": "fd8221ba6953648f6d8e74d029f827b9",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/cong_zao_chen_dao_ye_wan_b035044f.base.json": {
+    "mtime": 1791456431.9026997,
+    "seen": 1791492695.7333822,
+    "ast_hash": "366925f2c03a7f2084e737b66dfc25f7",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/cong_zao_chen_dao_ye_wan_b035044f.injectp0.5.json": {
+    "mtime": 1791448657.9735348,
+    "seen": 1791492695.7333841,
+    "ast_hash": "58693aed5eb318d6aaa7cfe57506fc22",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/cong_zao_chen_dao_ye_wan_b035044f.injectp1.0.json": {
+    "mtime": 1791448658.0075345,
+    "seen": 1791492695.7333863,
+    "ast_hash": "99fb018e81141267d1e769d18d122750",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/cong_zao_chen_dao_ye_wan_b035044f.words.json": {
+    "mtime": 1791448657.9325352,
+    "seen": 1791492695.7333887,
+    "ast_hash": "136ae604a541533753b595bcacb26ea8",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/hereforyou_62e79ae9.base.json": {
+    "mtime": 1791456431.8606997,
+    "seen": 1791492695.7333903,
+    "ast_hash": "b5baccc52c27229288a3a29741350b33",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/hereforyou_62e79ae9.injectp0.5.json": {
+    "mtime": 1791440093.6057541,
+    "seen": 1791492695.7333925,
+    "ast_hash": "d166fae4ad8b4987f94c1b79b13deb1e",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/hereforyou_62e79ae9.injectp1.0.json": {
+    "mtime": 1791440093.6227543,
+    "seen": 1791492695.7333944,
+    "ast_hash": "3bb7f8b6673d50993108b109a70e4f6d",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/hereforyou_62e79ae9.words.json": {
+    "mtime": 1791440093.568754,
+    "seen": 1791492695.7333963,
+    "ast_hash": "e7931b275f5d2caaa3c140184dadc372",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/jing_bai_ye_su_b08227a2.base.json": {
+    "mtime": 1791456431.9857,
+    "seen": 1791492695.733398,
+    "ast_hash": "0e98bd8af932f23bd624700e865a306b",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/jing_bai_ye_su_b08227a2.injectp0.5.json": {
+    "mtime": 1791454384.7228076,
+    "seen": 1791492695.7333999,
+    "ast_hash": "069ab0633a5c7d2eac83e76306d60abc",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/jing_bai_ye_su_b08227a2.injectp1.0.json": {
+    "mtime": 1791454384.7458076,
+    "seen": 1791492695.7334018,
+    "ast_hash": "617633899c7a5ea043e9dc762ac734a9",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/jing_bai_ye_su_b08227a2.words.json": {
+    "mtime": 1791454384.7008076,
+    "seen": 1791492695.7334037,
+    "ast_hash": "54b402f8204ff5a28e54a320994964cf",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/mei_hao_de_chuang_zao_3d42d76e.base.json": {
+    "mtime": 1791456431.9257,
+    "seen": 1791492695.7334056,
+    "ast_hash": "c7e85734679b336e4341ebc9aeb8ba23",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/mei_hao_de_chuang_zao_3d42d76e.injectp0.5.json": {
+    "mtime": 1791449879.868936,
+    "seen": 1791492695.7334077,
+    "ast_hash": "cafb1a4612079af6bea117987095a0c6",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/mei_hao_de_chuang_zao_3d42d76e.injectp1.0.json": {
+    "mtime": 1791449879.9169364,
+    "seen": 1791492695.7334096,
+    "ast_hash": "31bc50fceb082d000bde02e057c5e232",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/mei_hao_de_chuang_zao_3d42d76e.words.json": {
+    "mtime": 1791449879.819936,
+    "seen": 1791492695.7334116,
+    "ast_hash": "8177270cd9f6965a90d0224a80e68ab1",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/shu_bu_jin_71fba0ce.base.json": {
+    "mtime": 1791456431.9457,
+    "seen": 1791492695.7334132,
+    "ast_hash": "b453933b04d42d619f45264f578d40f4",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/shu_bu_jin_71fba0ce.injectp0.5.json": {
+    "mtime": 1791450669.276553,
+    "seen": 1791492695.7334151,
+    "ast_hash": "e4f719b1e5120fde0384b458770041e1",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/shu_bu_jin_71fba0ce.injectp1.0.json": {
+    "mtime": 1791450669.3145523,
+    "seen": 1791492695.733417,
+    "ast_hash": "7d49c72867b1cc70f6f7bae113b2f746",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/shu_bu_jin_71fba0ce.words.json": {
+    "mtime": 1791450669.223554,
+    "seen": 1791492695.7334185,
+    "ast_hash": "b35a73987cc84b16dea13b0abe75afae",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/wo_neng_gei_ni_shen_me_03b2dcb2.base.json": {
+    "mtime": 1791456431.9666998,
+    "seen": 1791492695.7334204,
+    "ast_hash": "5d7cdc69abfd1c414bf466fff99de941",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/wo_neng_gei_ni_shen_me_03b2dcb2.injectp0.5.json": {
+    "mtime": 1791452863.404724,
+    "seen": 1791492695.7334223,
+    "ast_hash": "8e0684be38719823fc2b1cb1f452aec9",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/wo_neng_gei_ni_shen_me_03b2dcb2.injectp1.0.json": {
+    "mtime": 1791452863.4587238,
+    "seen": 1791492695.7334242,
+    "ast_hash": "9538313ec1818fe6d418772c0ec4f451",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/wo_neng_gei_ni_shen_me_03b2dcb2.words.json": {
+    "mtime": 1791452863.3507237,
+    "seen": 1791492695.7334256,
+    "ast_hash": "e6c149695541c5c50ae5734eb7d88aa6",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/xin_kao_mei_yi_ju_ying_xu_df457941.base.json": {
+    "mtime": 1791456431.8836997,
+    "seen": 1791492695.7334278,
+    "ast_hash": "11d15b4973b175768bf9b7e5e760ed75",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/xin_kao_mei_yi_ju_ying_xu_df457941.injectp0.5.json": {
+    "mtime": 1791447541.990599,
+    "seen": 1791492695.7334294,
+    "ast_hash": "903c917cf0b9cc63ca7e2cd8b47d6a64",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/xin_kao_mei_yi_ju_ying_xu_df457941.injectp1.0.json": {
+    "mtime": 1791447542.0315995,
+    "seen": 1791492695.7334313,
+    "ast_hash": "a344b2ea828ad16c25e7b13496bdd37f",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/xin_kao_mei_yi_ju_ying_xu_df457941.words.json": {
+    "mtime": 1791447541.9305983,
+    "seen": 1791492695.7334328,
+    "ast_hash": "2bdd07e1fb2d678d5311559372147365",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/zhu_a__wo_yao_gen_sui_mi_83163301.base.json": {
+    "mtime": 1791456431.8356996,
+    "seen": 1791492695.7334347,
+    "ast_hash": "2c4593cbddb3045266c1b994a069cb40",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/zhu_a__wo_yao_gen_sui_mi_83163301.injectp0.5.json": {
+    "mtime": 1791428457.4796386,
+    "seen": 1791492695.7334363,
+    "ast_hash": "ffbe8014dd1be396c1370aedc358d2bb",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/zhu_a__wo_yao_gen_sui_mi_83163301.injectp1.0.json": {
+    "mtime": 1791428457.4956384,
+    "seen": 1791492695.7334383,
+    "ast_hash": "47b6d087d51ded8587e3453c911d7bdc",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/eval/lrc_truth/phase1/zhu_a__wo_yao_gen_sui_mi_83163301.words.json": {
+    "mtime": 1791428457.4486392,
+    "seen": 1791492695.73344,
+    "ast_hash": "f9170de17e833e9fad65649856674da1",
     "semantic_hash": ""
   }
 }
