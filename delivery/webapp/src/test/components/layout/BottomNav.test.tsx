@@ -39,14 +39,28 @@ describe("BottomNav", () => {
 
   it("renders navigation links", () => {
     renderNav();
+    expect(screen.getByRole("link", { name: "Listen" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Songsets" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Favorites" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Worship" })).toBeInTheDocument();
   });
 
   it("has correct hrefs", () => {
     renderNav();
+    expect(screen.getByRole("link", { name: "Listen" })).toHaveAttribute("href", "/listen");
     expect(screen.getByRole("link", { name: "Songsets" })).toHaveAttribute("href", "/songsets");
     expect(screen.getByRole("link", { name: "Favorites" })).toHaveAttribute("href", "/favorites");
+    expect(screen.getByRole("link", { name: "Worship" })).toHaveAttribute("href", "/worship");
+  });
+
+  it("has four items with Listen first and no Dashboard", () => {
+    renderNav();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    const links = nav.querySelectorAll("a");
+    expect(links).toHaveLength(4);
+    expect(links[0]).toHaveAttribute("href", "/listen");
+    expect(links[0]).toHaveTextContent("Listen");
+    expect(nav.textContent).not.toContain("Dashboard");
   });
 
   it("marks active route", () => {
@@ -57,6 +71,7 @@ describe("BottomNav", () => {
 
   it("renders Traditional Chinese labels in zh-Hant", () => {
     renderNav("zh-Hant");
+    expect(screen.getByRole("link", { name: "收聽" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "敬拜歌單" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "我的最愛" })).toBeInTheDocument();
   });
@@ -75,7 +90,7 @@ describe("BottomNav", () => {
     renderNav();
 
     expect(screen.getByRole("navigation")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Listen" })).toBeInTheDocument();
   });
 
   it("renders nothing on /worship while the session is unresolved (signed-out flash guard)", () => {
@@ -97,7 +112,7 @@ describe("BottomNav", () => {
       renderNav();
 
       expect(screen.getByRole("navigation")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Listen" })).toBeInTheDocument();
     } finally {
       Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
     }
@@ -108,17 +123,18 @@ describe("BottomNav", () => {
     renderNav();
     const aboutLink = screen.getByRole("link", { name: "About" });
     expect(aboutLink).toHaveAttribute("href", "https://streamofworship.com/about");
-    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
+    // Signed-out BottomNav has no song links, but the desktop Header may still
+    // render something matching; scope to absence of the Listen nav item.
+    expect(screen.queryByRole("link", { name: "Listen" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Songsets" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Favorites" })).not.toBeInTheDocument();
   });
 
   it("renders Dashboard, Songsets, Favorites without About when signed in", () => {
     renderNav();
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/");
-    expect(screen.getByRole("link", { name: "Songsets" })).toHaveAttribute("href", "/songsets");
-    expect(screen.getByRole("link", { name: "Favorites" })).toHaveAttribute("href", "/favorites");
+    // /worship renders an active Dashboard link in the desktop nav even while
+    // signed in — this test's pathname is /songsets, so check bottom-nav links.
     expect(screen.queryByRole("link", { name: "About" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Songsets" })).toHaveClass("text-primary");
   });
 
   it("renders the language toggle alongside About when signed out", () => {

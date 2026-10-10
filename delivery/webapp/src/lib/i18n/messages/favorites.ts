@@ -21,6 +21,14 @@ export const favoritesBundle = bundle({
     "favorites.pagination.page": "Page ${n}",
     "favorites.pagination.prevLabel": "Prev",
     "favorites.pagination.nextLabel": "Next",
+
+    // Select mode (issue #253): pick favorites across pages and create a songset.
+    "favorites.select.enter": "Select",
+    "favorites.select.exit": "Cancel",
+    "favorites.select.selectedCount": "${n} selected",
+    "favorites.select.createCta": "Create songset (${n})",
+    "favorites.select.createDialogDescription":
+      "Creating a songset with ${n} favorite song(s) in the order selected.",
   },
   "zh-Hant": {
     "favorites.title": "我的最愛",
@@ -37,5 +45,13 @@ export const favoritesBundle = bundle({
     "favorites.pagination.page": "第 ${n} 頁",
     "favorites.pagination.prevLabel": "上一頁",
     "favorites.pagination.nextLabel": "下一頁",
+
+    // Select mode (issue #253): pick favorites across pages and create a songset.
+    "favorites.select.enter": "選取",
+    "favorites.select.exit": "取消",
+    "favorites.select.selectedCount": "已選取 ${n} 首",
+    "favorites.select.createCta": "建立敬拜歌單（${n}）",
+    "favorites.select.createDialogDescription":
+      "將以所選順序建立包含 ${n} 首最愛詩歌的敬拜歌單。",
   },
 });

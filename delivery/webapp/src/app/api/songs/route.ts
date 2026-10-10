@@ -47,7 +47,15 @@ export async function GET(request: NextRequest) {
       themes?: SongTheme[];
       favoriteSongIds?: string[];
       favoritesOnly?: boolean;
+      inMySongsets?: boolean;
+      viewerUserId?: number;
     } = {};
+
+    const inMySongsetsParam = searchParams.get("inMySongsets");
+    if (inMySongsetsParam === "1" || inMySongsetsParam === "true") {
+      filters.inMySongsets = true;
+      filters.viewerUserId = userId;
+    }
 
     const { albumFilters, albumNames } = parseAlbumFilterParams(searchParams);
     if (albumFilters) filters.albumFilters = albumFilters;

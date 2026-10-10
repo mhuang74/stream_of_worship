@@ -90,6 +90,7 @@ export async function getRecentFavoriteSongs(userId: number, limit = 4): Promise
     favoriteSongIds,
     favoritesOnly: true,
     visibilityStatus: ["published", "review"],
+    viewerUserId: userId,
   });
   return toSongCardData(rows);
 }

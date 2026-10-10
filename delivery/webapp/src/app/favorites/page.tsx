@@ -27,6 +27,7 @@ export default async function FavoritesPage({
     favoriteSongIds,
     favoritesOnly: true,
     visibilityStatus: ["published", "review"],
+    viewerUserId: userId,
   });
 
   const initialSongs = toSongCardData(songs);

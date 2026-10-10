@@ -11,6 +11,7 @@ export function toSongCardData(songs: SongWithRecordings[]): SongCardData[] {
     lyricist: song.lyricist,
     albumName: song.albumName,
     musicalKey: song.musicalKey,
+    ...(song.memberSongsets ? { memberSongsets: song.memberSongsets } : {}),
     effectiveKey: song.effectiveKey,
     effectiveKeyStartRoot: song.effectiveKeyStartRoot,
     effectiveKeyEndRoot: song.effectiveKeyEndRoot,

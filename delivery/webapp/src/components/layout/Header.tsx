@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/layout/LanguageSwitcher";
-import { LogOut, Settings, User } from "lucide-react";
+import { LogOut, Settings, User, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMarketingUrl } from "@/lib/marketing-url";
 import { cacheWorshipListDocument } from "@/lib/offline/document-cache";
@@ -46,6 +46,17 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
       <div className="flex h-14 items-center gap-4 px-4">
+        {/* Mobile-only Home shortcut: the bottom nav drops Dashboard for
+            Listen (issue #253), so Dashboard stays reachable from here. */}
+        {user && (
+          <Link
+            href="/"
+            aria-label={t("nav.dashboard")}
+            className="lg:hidden text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            <Home className="size-5" />
+          </Link>
+        )}
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <span className="text-primary">{t("brand.name")}</span>
         </Link>
@@ -59,6 +70,18 @@ export function Header() {
                 {t("nav.dashboard")}
               </Link>
               <Link
+                href="/listen"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                {t("nav.listen")}
+              </Link>
+              <Link
+                href="/favorites"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                {t("nav.favorites")}
+              </Link>
+              <Link
                 href="/songsets"
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
@@ -69,12 +92,6 @@ export function Header() {
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
                 {t("nav.worship")}
-              </Link>
-              <Link
-                href="/favorites"
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-              >
-                {t("nav.favorites")}
               </Link>
             </>
           ) : (

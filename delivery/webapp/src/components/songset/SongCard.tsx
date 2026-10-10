@@ -17,6 +17,8 @@ export interface SongCardData {
   lyricist: string | null;
   albumName: string | null;
   musicalKey: string | null;
+  /** Viewer's songsets containing this song; only set on inMySongsets results. */
+  memberSongsets?: { id: string; name: string }[];
   effectiveKey?: string | null;
   effectiveKeyStartRoot?: string | null;
   effectiveKeyEndRoot?: string | null;

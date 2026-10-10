@@ -5,7 +5,18 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SongCard, SongCardData } from "@/components/songset/SongCard";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Heart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Heart, Loader2, ChevronLeft, ChevronRight, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useLocale } from "@/hooks/useLocale";
@@ -38,6 +49,77 @@ export function FavoritesClient({
   const { toggleFavorite } = useFavoriteToggle(
     new Set(initialSongs.map((s) => s.id))
   );
+
+  // --- Select mode: client state; survives pagination; session-only (component
+  // unmount clears it); no cap. Selection order tracks the favorites-list
+  // order it was picked in, which becomes the songset songIds order. ---
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newSongsetName, setNewSongsetName] = useState("");
+  const [newSongsetDescription, setNewSongsetDescription] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const toggleSelected = useCallback((songId: string) => {
+    setSelectedSongIds((prev) =>
+      prev.includes(songId)
+        ? prev.filter((id) => id !== songId)
+        : [...prev, songId]
+    );
+  }, []);
+
+  const isSelected = useCallback(
+    (songId: string) => selectedSongIds.includes(songId),
+    [selectedSongIds]
+  );
+
+  const handleCreateSongset = useCallback(async () => {
+    const name = newSongsetName.trim();
+    if (!name || selectedSongIds.length === 0) return;
+
+    setIsCreating(true);
+    setCreateError(null);
+
+    try {
+      const response = await fetch("/api/songsets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: newSongsetDescription.trim() || undefined,
+          songIds: selectedSongIds,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || t("songsets.error.createFailed"));
+      }
+
+      const songset: { id?: string } = await response.json();
+      setIsCreateDialogOpen(false);
+      setSelectedSongIds([]);
+      setIsSelectMode(false);
+      setNewSongsetName("");
+      setNewSongsetDescription("");
+
+      if (!songset?.id) {
+        toast.error(t("songsets.toast.createdButEditorFailed"));
+        router.push("/songsets");
+        return;
+      }
+      router.push(`/songsets/${songset.id}?new=true`);
+    } catch (err) {
+      // Keep the selection so the user can retry without re-picking.
+      setCreateError(
+        err instanceof Error ? err.message : t("songsets.error.createFailed")
+      );
+      toast.error(t("songsets.error.createFailed"));
+    } finally {
+      setIsCreating(false);
+    }
+  }, [newSongsetName, newSongsetDescription, selectedSongIds, t, router]);
 
   const resolveSong = useCallback(
     (songId: string) => {
@@ -193,11 +275,56 @@ export function FavoritesClient({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
-      <h1 className="text-2xl font-bold">{t("favorites.title")}</h1>
+      <div className="flex items-start justify-between mb-1">
+        <h1 className="text-2xl font-bold">{t("favorites.title")}</h1>
+        <Button
+          variant={isSelectMode ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setIsSelectMode((prev) => !prev);
+            // Leaving select mode discards the session-only selection.
+            setSelectedSongIds([]);
+            setCreateError(null);
+          }}
+          data-testid="select-mode-toggle"
+          aria-pressed={isSelectMode}
+        >
+          <ListChecks className="size-4 mr-1.5" />
+          {isSelectMode
+            ? t("favorites.select.exit")
+            : t("favorites.select.enter")}
+        </Button>
+      </div>
       <p className="text-sm text-muted-foreground mb-4">
         {total}{" "}
         {t(total === 1 ? "favorites.count.singular" : "favorites.count.plural")}
       </p>
+
+      {isSelectMode && (
+        <div className="flex items-center justify-between mb-4" data-testid="select-mode-bar">
+          <p className="text-sm text-muted-foreground" data-testid="selection-count">
+            {t("favorites.select.selectedCount").replace(
+              "${n}",
+              String(selectedSongIds.length)
+            )}
+          </p>
+          <Button
+            onClick={() => {
+              setNewSongsetName("");
+              setNewSongsetDescription("");
+              setCreateError(null);
+              setIsCreateDialogOpen(true);
+            }}
+            disabled={selectedSongIds.length === 0 || isCreating}
+            data-testid="create-songset-from-selection"
+          >
+            {t("favorites.select.createCta").replace(
+              "${n}",
+              String(selectedSongIds.length)
+            )}
+          </Button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-20">
@@ -208,17 +335,36 @@ export function FavoritesClient({
           className="grid grid-cols-1 md:grid-cols-2 gap-2"
           data-testid="favorites-list"
         >
-          {songs.map((song) => (
-            <SongCard
-              key={song.id}
-              song={song}
-              isFavorite
-              onToggleFavorite={handleToggleFavorite}
-              onPlay={handlePlay}
-              isPlaying={playingSongId === song.id}
-              isPreviewLoading={previewLoadingSongId === song.id}
-            />
-          ))}
+          {songs.map((song) =>
+            isSelectMode ? (
+              <label
+                key={song.id}
+                className="flex items-start gap-2 cursor-pointer"
+                data-testid={`song-select-row-${song.id}`}
+              >
+                <Checkbox
+                  checked={isSelected(song.id)}
+                  onCheckedChange={() => toggleSelected(song.id)}
+                  className="mt-2.5"
+                  aria-label={song.title}
+                  data-testid={`song-select-checkbox-${song.id}`}
+                />
+                <div className="flex-1 pointer-events-none">
+                  <SongCard song={song} isFavorite />
+                </div>
+              </label>
+            ) : (
+              <SongCard
+                key={song.id}
+                song={song}
+                isFavorite
+                onToggleFavorite={handleToggleFavorite}
+                onPlay={handlePlay}
+                isPlaying={playingSongId === song.id}
+                isPreviewLoading={previewLoadingSongId === song.id}
+              />
+            )
+          )}
         </div>
       )}
 
@@ -270,6 +416,76 @@ export function FavoritesClient({
           </Button>
         </nav>
       )}
+
+      {/* Create songset from selection (Select mode CTA). */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("songsets.dialog.createTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("favorites.select.createDialogDescription").replace(
+                "${n}",
+                String(selectedSongIds.length)
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="favorites-songset-name">{t("songsets.label.name")}</Label>
+              <Input
+                id="favorites-songset-name"
+                value={newSongsetName}
+                onChange={(e) => setNewSongsetName(e.target.value)}
+                placeholder={t("songsets.placeholder.name")}
+                disabled={isCreating}
+                data-testid="create-songset-name-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="favorites-songset-description">
+                {t("songsets.label.descriptionOptional")}
+              </Label>
+              <Input
+                id="favorites-songset-description"
+                value={newSongsetDescription}
+                onChange={(e) => setNewSongsetDescription(e.target.value)}
+                placeholder={t("songsets.placeholder.description")}
+                disabled={isCreating}
+                data-testid="create-songset-description-input"
+              />
+            </div>
+            {createError && (
+              <p className="text-sm text-destructive" data-testid="create-songset-error">
+                {createError}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsCreateDialogOpen(false)}
+              disabled={isCreating}
+              data-testid="create-songset-cancel"
+            >
+              {t("songsets.action.cancel")}
+            </Button>
+            <Button
+              onClick={handleCreateSongset}
+              disabled={isCreating || !newSongsetName.trim() || selectedSongIds.length === 0}
+              data-testid="create-songset-submit"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  {t("songsets.loading.creating")}
+                </>
+              ) : (
+                t("songsets.action.create")
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   userSettings,
   users,
 } from "@/db/schema";
-import { eq, and, desc, gt, sql, asc, ilike, or } from "drizzle-orm";
+import { eq, and, desc, gt, sql, asc, ilike, or, inArray, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_SONGS } from "@/lib/constants";
 import { sanitizeRenderErrorMessage } from "@/lib/render/error-message";
@@ -996,27 +996,113 @@ export async function getSongset(
   };
 }
 
+export interface CreateSongsetErrorResult {
+  error: string;
+  status: number;
+}
+
 export async function createSongset(
   userId: number,
-  data: { name: string; description?: string }
-): Promise<Omit<SongsetListItem, "themes">> {
+  data: {
+    name: string;
+    description?: string;
+    songIds?: string[];
+  }
+): Promise<Omit<SongsetListItem, "themes"> | CreateSongsetErrorResult> {
   const id = nanoid();
-  const rows = await db
-    .insert(songsets)
-    .values({ id, userId, name: data.name, description: data.description ?? null })
-    .returning();
-  const row = rows[0];
+
+  if (data.songIds && data.songIds.length > 0) {
+    // Verify every song exists before inserting (unknown songId → 400).
+    const songRows = await db
+      .select({ id: songs.id })
+      .from(songs)
+      .where(inArray(songs.id, data.songIds));
+    const knownSongIds = new Set(songRows.map((row) => row.id));
+    const unknownSongIds = data.songIds.filter((songId) => !knownSongIds.has(songId));
+    if (unknownSongIds.length > 0) {
+      return {
+        error: `Unknown song id(s): ${unknownSongIds.join(", ")}`,
+        status: 400,
+      };
+    }
+
+    // All songs must have at least one visible recording (published/review).
+    const visibleRows = await db
+      .selectDistinct({ songId: recordings.songId })
+      .from(recordings)
+      .where(
+        and(
+          inArray(recordings.songId, data.songIds),
+          isNull(recordings.deletedAt),
+          inArray(recordings.visibilityStatus, ["published", "review"])
+        )
+      );
+    const visibleSongIds = new Set(visibleRows.map((row) => row.songId));
+    const noVisibleRecording = data.songIds.filter(
+      (songId) => !visibleSongIds.has(songId)
+    );
+    if (noVisibleRecording.length > 0) {
+      return {
+        error: `No playable recording for song id(s): ${noVisibleRecording.join(", ")}`,
+        status: 400,
+      };
+    }
+
+    // Pick the recording the same way the editor's add-song flow does: the
+    // first recording of that song, from the published/review set.
+    const recordingRows = await db
+      .select({ songId: recordings.songId, hashPrefix: recordings.hashPrefix })
+      .from(recordings)
+      .where(
+        and(
+          inArray(recordings.songId, data.songIds),
+          isNull(recordings.deletedAt),
+          inArray(recordings.visibilityStatus, ["published", "review"])
+        )
+      )
+      .orderBy(asc(recordings.contentHash));
+    const hashBySongId = new Map<string, string>();
+    for (const row of recordingRows) {
+      const { songId, hashPrefix } = row;
+      if (songId === null || hashPrefix === null) continue;
+      if (!hashBySongId.has(songId)) {
+        hashBySongId.set(songId, hashPrefix);
+      }
+    }
+
+    const itemsToInsert = data.songIds.map((songId, position) => ({
+      id: nanoid(),
+      songsetId: id,
+      songId,
+      recordingHashPrefix: hashBySongId.get(songId) ?? null,
+      position,
+      gapBeats: 2.0,
+      crossfadeEnabled: 0,
+      keyShiftSemitones: 0,
+      tempoRatio: 1.0,
+    }));
+
+    await db.batch([
+      db.insert(songsets).values({ id, userId, name: data.name, description: data.description ?? null }),
+      db.insert(songsetItems).values(itemsToInsert),
+    ]);
+  } else {
+    await db
+      .insert(songsets)
+      .values({ id, userId, name: data.name, description: data.description ?? null })
+      .returning();
+  }
 
   return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    latestRenderJobId: row.latestRenderJobId,
-    lastFailedRenderJobId: row.lastFailedRenderJobId,
-    lastCompletedRenderJobId: row.lastCompletedRenderJobId,
-    itemCount: 0,
+    id,
+    name: data.name,
+    description: data.description ?? null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    latestRenderJobId: null,
+    lastFailedRenderJobId: null,
+    lastCompletedRenderJobId: null,
+    itemCount: data.songIds?.length ?? 0,
     renderErrorMessage: null,
     failedAt: null,
     durationSeconds: null,

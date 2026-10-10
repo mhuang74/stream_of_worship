@@ -280,6 +280,156 @@ describe("POST /api/songsets", () => {
     expect(data.error).toBe("Invalid input");
   });
 
+  it("passes songIds through and returns itemCount matching songIds.length", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const mockSongset = {
+      id: "songset-1",
+      name: "Test Songset",
+      description: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      renderState: "unrendered",
+      itemCount: 3,
+      latestRenderJobId: null,
+      lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
+    };
+    vi.mocked(createSongset).mockResolvedValue(mockSongset);
+
+    const request = createMockRequest("http://localhost:3000/api/songsets", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Test Songset",
+        songIds: ["song-1", "song-2", "song-3"],
+      }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    expect(createSongset).toHaveBeenCalledWith(1, {
+      name: "Test Songset",
+      description: undefined,
+      songIds: ["song-1", "song-2", "song-3"],
+    });
+    const data = await response.json();
+    expect(data.itemCount).toBe(3);
+  });
+
+  it("returns 400 when songIds is not an array of strings", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const request = createMockRequest("http://localhost:3000/api/songsets", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test Songset", songIds: [1, 2] }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe("Invalid input");
+  });
+
+  it("returns 400 when songIds exceeds the max", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const request = createMockRequest("http://localhost:3000/api/songsets", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Test Songset",
+        // SONGSET_MAX_SONGS is 50 (src/lib/constants.ts); exceed it to trip zod.
+        songIds: Array.from({ length: 51 }, (_, i) => `song-${i}`),
+      }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe("Invalid input");
+  });
+
+  it("returns 400 when a songIds entry is empty", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const request = createMockRequest("http://localhost:3000/api/songsets", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test Songset", songIds: ["song-1", ""] }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe("Invalid input");
+  });
+
+  it("returns 400 with JSON error when a songId does not exist", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    // createSongset returns a CreateSongsetErrorResult instead of throwing.
+    vi.mocked(createSongset).mockResolvedValue({
+      error: "Unknown song id(s): song-999",
+      status: 400,
+    });
+
+    const request = createMockRequest("http://localhost:3000/api/songsets", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Test Songset",
+        songIds: ["song-999"],
+      }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe("Unknown song id(s): song-999");
+  });
+
+  it("creates songset without songIds (backward compat)", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const mockSongset = {
+      id: "songset-1",
+      name: "Test Songset",
+      description: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      renderState: "unrendered",
+      itemCount: 0,
+      latestRenderJobId: null,
+      lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
+    };
+    vi.mocked(createSongset).mockResolvedValue(mockSongset);
+
+    const request = createMockRequest("http://localhost:3000/api/songsets", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test Songset" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    expect(createSongset).toHaveBeenCalledWith(1, {
+      name: "Test Songset",
+      description: undefined,
+      songIds: undefined,
+    });
+    const data = await response.json();
+    expect(data.itemCount).toBe(0);
+  });
+
   it("returns 500 on error", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

@@ -11,6 +11,7 @@ export const core = bundle({
     // Navigation
     "nav.main.ariaLabel": "Main navigation",
     "nav.dashboard": "Dashboard",
+    "nav.listen": "Listen",
     "nav.songsets": "Songsets",
     "nav.worship": "Worship",
     "nav.favorites": "Favorites",
@@ -242,6 +243,7 @@ export const core = bundle({
     // Navigation
     "nav.main.ariaLabel": "主要導覽",
     "nav.dashboard": "儀表板",
+    "nav.listen": "收聽",
     "nav.songsets": "敬拜歌單",
     "nav.worship": "敬拜",
     "nav.favorites": "我的最愛",
