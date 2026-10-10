@@ -40,19 +40,20 @@ describe("signValidationToken / verifyValidationToken", () => {
     expect(verifyValidationToken(token)).toEqual({ email: "lead@example.com" });
   });
 
+  // Swapping the trailing base64url chars can be a no-op (~1/64: last two chars
+  // identical) — flip the first char instead; that always changes decoded byte 0.
   it("returns null when the payload is tampered with", () => {
     const token = signValidationToken("lead@example.com");
     const [payload, sig] = token.split(".");
-    // Flip a byte of the payload (swap two base64url chars).
-    const tampered = payload.slice(0, -2) + payload.slice(-1) + payload.slice(-2, -1);
-    expect(verifyValidationToken(`${tampered}.${sig}`)).toBeNull();
+    const flipped = (payload[0] === "A" ? "B" : "A") + payload.slice(1);
+    expect(verifyValidationToken(`${flipped}.${sig}`)).toBeNull();
   });
 
   it("returns null when the signature is tampered with", () => {
     const token = signValidationToken("lead@example.com");
     const [payload, sig] = token.split(".");
-    const tampered = sig.slice(0, -2) + sig.slice(-1) + sig.slice(-2, -1);
-    expect(verifyValidationToken(`${payload}.${tampered}`)).toBeNull();
+    const flipped = (sig[0] === "A" ? "B" : "A") + sig.slice(1);
+    expect(verifyValidationToken(`${payload}.${flipped}`)).toBeNull();
   });
 
   it("returns null on garbage inputs (never throws)", () => {
