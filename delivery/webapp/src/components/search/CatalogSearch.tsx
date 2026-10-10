@@ -639,7 +639,7 @@ export function CatalogSearch({
       <div className="flex shrink-0 justify-between items-center px-1 pb-4" data-testid="search-action-row">
         {mode === "browse" && catalogMode === "keyword" && totalCount > 0 ? (
           <p className="text-sm text-muted-foreground">{`${totalCount} ${t("browse.songsUnit")}`}</p>
-        ) : !hasSearchCriteria ? (
+        ) : catalogMode === "keyword" && !hasSearchCriteria ? (
           <p className="text-sm text-muted-foreground" data-testid="search-no-criteria-hint">
             {t("browse.search.noCriteriaHint")}
           </p>
