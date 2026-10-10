@@ -397,7 +397,7 @@ export async function listSongs(
   // favorites above any filtering artifacts (there are none in practice —
   // the favoritesOnly predicate guarantees membership).
   const favoritesOnlyOrder = filters?.favoritesOnly
-    ? sql`(select max(f.created_at) from user_favorite_songs f where f.song_id = ${songs.id}) desc nulls last`
+    ? sql`(select max(f.created_at) from user_favorite_songs f where f.song_id = ${songs.id} and f.user_id = ${filters?.viewerUserId ?? 0}) desc nulls last`
     : undefined;
 
   const result = await db.query.songs.findMany({
