@@ -195,7 +195,7 @@ export function HomePageClient({
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">{t(locale, "home.section.recentFavorites")}</h2>
-          <Link href="/favorites" className="text-sm text-primary hover:underline">
+          <Link href="/listen" className="text-sm text-primary hover:underline">
             {t(locale, "home.action.viewAll")}
           </Link>
         </div>

@@ -71,6 +71,7 @@ import { audioBundle } from "./messages/audio";
 import { controlBundle } from "./messages/control";
 import { themesBundle } from "./messages/themes";
 import { shareBundle } from "./messages/share";
+import { listenBundle } from "./messages/listen";
 
 export const messages = mergeMessages(
   core,
@@ -84,6 +85,7 @@ export const messages = mergeMessages(
   controlBundle,
   themesBundle,
   shareBundle,
+  listenBundle,
 );
 
 export type TranslationKey = keyof typeof messages.en;

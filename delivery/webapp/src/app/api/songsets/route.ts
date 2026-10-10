@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { listSongsetSummaries, createSongset } from "@/lib/db/songsets";
+import { SONGSET_MAX_SONGS } from "@/lib/constants";
 import { z } from "zod";
 
 const createSongsetSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(1000).optional(),
+  songIds: z.array(z.string().min(1)).max(SONGSET_MAX_SONGS).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -58,6 +60,13 @@ export async function POST(request: NextRequest) {
     }
 
     const songset = await createSongset(Number(session.user.id), parsed.data);
+
+    if ("error" in songset) {
+      return NextResponse.json(
+        { error: songset.error },
+        { status: songset.status }
+      );
+    }
 
     return NextResponse.json(songset, { status: 201 });
   } catch (error) {

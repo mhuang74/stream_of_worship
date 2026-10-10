@@ -118,6 +118,39 @@ describe("GET /api/songs", () => {
     expect(listSongs).toHaveBeenCalledWith(10, 5, expect.any(Object));
   });
 
+  it("passes inMySongsets and viewerUserId when inMySongsets=1", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(listSongs).mockResolvedValue({ songs: [], total: 0 });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?inMySongsets=1"
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({
+        inMySongsets: true,
+        viewerUserId: 1,
+      })
+    );
+  });
+
+  it("does not pass inMySongsets when the param is absent", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(listSongs).mockResolvedValue({ songs: [], total: 0 });
+
+    const request = createMockRequest("http://localhost:3000/api/songs");
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.not.objectContaining({ inMySongsets: true })
+    );
+  });
+
   it("caps limit at 100", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

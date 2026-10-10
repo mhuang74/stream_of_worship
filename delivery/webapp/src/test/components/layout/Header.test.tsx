@@ -52,19 +52,41 @@ describe("Header", () => {
     expect(homeLink).toHaveAttribute("href", "/");
   });
 
+  it("renders a mobile-only Home icon link for signed-in users", () => {
+    renderHeader();
+    // Two Dashboard links exist: the mobile Home icon and the desktop nav
+    // (CSS-hidden in jsdom, which doesn't apply stylesheets).
+    const dashboardHomeIcon = screen.getAllByRole("link", { name: "Dashboard" })[0];
+    expect(dashboardHomeIcon).toHaveAttribute("href", "/");
+    expect(dashboardHomeIcon).toHaveClass("lg:hidden");
+  });
+
+  it("does not render the Home icon link when signed out", () => {
+    mockSession.mockReturnValue(null);
+    renderHeader();
+    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
+  });
+
   it("renders desktop navigation links", () => {
     renderHeader();
-    const songsetsLink = screen.getByRole("link", { name: "Songsets" });
-    const favoritesLink = screen.getByRole("link", { name: "Favorites" });
-    expect(songsetsLink).toHaveAttribute("href", "/songsets");
-    expect(favoritesLink).toHaveAttribute("href", "/favorites");
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(nav).toHaveClass("hidden", "lg:flex");
+    const authedLinks = nav.querySelectorAll("a");
+    expect(authedLinks).toHaveLength(5);
+    expect(authedLinks[0]).toHaveAttribute("href", "/");
+    expect(authedLinks[1]).toHaveAttribute("href", "/listen");
+    expect(authedLinks[2]).toHaveAttribute("href", "/favorites");
+    expect(authedLinks[3]).toHaveAttribute("href", "/songsets");
+    expect(authedLinks[4]).toHaveAttribute("href", "/worship");
+    expect(authedLinks[1]).toHaveTextContent("Listen");
+    expect(authedLinks[2]).toHaveTextContent("Favorites");
   });
 
   it("renders Traditional Chinese navigation links in zh-Hant", () => {
     renderHeader("zh-Hant");
-    const songsetsLink = screen.getByRole("link", { name: "敬拜歌單" });
+    const listenLink = screen.getByRole("link", { name: "收聽" });
     const favoritesLink = screen.getByRole("link", { name: "我的最愛" });
-    expect(songsetsLink).toHaveAttribute("href", "/songsets");
+    expect(listenLink).toHaveAttribute("href", "/listen");
     expect(favoritesLink).toHaveAttribute("href", "/favorites");
   });
 

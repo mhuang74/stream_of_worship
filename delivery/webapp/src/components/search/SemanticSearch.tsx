@@ -13,6 +13,7 @@ import type { StructuredSearchCriteria } from "@/components/songset/search/types
 import type { BpmBandKey, SongTheme } from "@/lib/constants";
 import type { AlbumFilter } from "@/lib/search/album-filter";
 import { useLocale } from "@/hooks/useLocale";
+import type { ReactNode } from "react";
 
 interface SemanticSearchResult extends SongCardData {
   similarity?: number;
@@ -21,6 +22,14 @@ interface SemanticSearchResult extends SongCardData {
 }
 
 type ResultMode = "semantic" | "browse";
+
+/** Playback-specific args for rendering one semantic-search result card. */
+export interface SemanticSearchCardArgs {
+  song: SongCardData;
+  isPlaying: boolean;
+  isPreviewLoading: boolean;
+  onPlay: (songId: string) => void;
+}
 
 interface SemanticSearchProps {
   onAddSong: (song: SongCardData) => Promise<void>;
@@ -49,6 +58,8 @@ interface UseSemanticSearchOptions {
   themes?: SongTheme[];
   searchButtonClassName?: string;
   showSearchButton?: boolean;
+  /** Omit to get the built-in add-capable SongCard layout (BrowseSheet). */
+  renderSongCard?: (args: SemanticSearchCardArgs) => ReactNode;
 }
 
 export function useSemanticSearch({
@@ -63,6 +74,7 @@ export function useSemanticSearch({
   themes = [],
   searchButtonClassName,
   showSearchButton = true,
+  renderSongCard,
 }: UseSemanticSearchOptions) {
   const { t } = useLocale();
   const [query, setQuery] = useState("");
@@ -306,17 +318,28 @@ export function useSemanticSearch({
       {!error && !isLoading && results.length > 0 && (
         <div className="space-y-2" data-testid="semantic-search-results" aria-live="polite" aria-atomic="true">
           <p className="text-xs text-muted-foreground" role="status">{results.length} {t("audio.search.songsFoundLabel")}</p>
-          {results.map((song) => (
-            <div key={song.id} className="relative">
-              <SongCard
-                song={song}
-                onAdd={() => onAddSong(song)}
-                onPlay={handlePlaySong}
-                isAdded={isSongAdded(song.id)}
-                isAdding={isSongAdding(song.id)}
-                isPlaying={playingSongId === song.id}
-                isPreviewLoading={previewLoadingSongId === song.id}
-              />
+          {results.map((song) => {
+            const cardArgs: SemanticSearchCardArgs = {
+              song,
+              isPlaying: playingSongId === song.id,
+              isPreviewLoading: previewLoadingSongId === song.id,
+              onPlay: handlePlaySong,
+            };
+            return (
+              <div key={song.id} className="relative">
+                {renderSongCard ? (
+                  renderSongCard(cardArgs)
+                ) : (
+                  <SongCard
+                    song={song}
+                    onAdd={() => onAddSong(song)}
+                    onPlay={handlePlaySong}
+                    isAdded={isSongAdded(song.id)}
+                    isAdding={isSongAdding(song.id)}
+                    isPlaying={playingSongId === song.id}
+                    isPreviewLoading={previewLoadingSongId === song.id}
+                  />
+                )}
               {resultMode === "semantic" && typeof song.similarity === "number" && (
                 <Badge
                   variant="secondary"
@@ -360,7 +383,8 @@ export function useSemanticSearch({
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>

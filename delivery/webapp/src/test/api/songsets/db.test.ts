@@ -38,9 +38,11 @@ vi.mock("@/db", () => ({
       },
     },
     select: vi.fn(),
+    selectDistinct: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    batch: vi.fn(),
   },
 }));
 
@@ -1242,6 +1244,76 @@ describe("createSongset", () => {
 
     expect(result.name).toBe("New Songset");
     expect(result.description).toBeNull();
+  });
+
+  it("rejects unknown songId with a 400 result before inserting", async () => {
+    const promise = Promise.resolve([]);
+    const chain = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue(promise),
+      then: promise.then.bind(promise),
+    });
+    vi.mocked(db.select).mockReturnValue({
+      from: chain,
+    } as never);
+
+    const result = await createSongset(1, {
+      name: "New Songset",
+      songIds: ["song-missing"],
+    });
+
+    expect(result).toEqual({
+      error: "Unknown song id(s): song-missing",
+      status: 400,
+    });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("inserts songset and items atomically in songIds order via db.batch", async () => {
+    // Chain shape: select(...).from(x).where(...) for the existence + visible
+    // checks, and select(...).from(x).where(...).orderBy(...) for the hash pick.
+    const existRows = [{ id: "song-a" }, { id: "song-b" }];
+    const visibleRows = [{ songId: "song-a" }, { songId: "song-b" }];
+    const recordingRows = [
+      { songId: "song-a", hashPrefix: "hash-a" },
+      { songId: "song-b", hashPrefix: "hash-b" },
+    ];
+    let calls = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      calls += 1;
+      const rows =
+        calls === 1 ? existRows : calls === 2 ? visibleRows : recordingRows;
+      const promise = Promise.resolve(rows);
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue(promise),
+            then: promise.then.bind(promise),
+          }),
+          then: promise.then.bind(promise),
+        }),
+      } as never;
+    });
+    vi.mocked(db.selectDistinct).mockImplementation(
+      () =>
+        ({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue(Promise.resolve(visibleRows)),
+          }),
+        }) as never
+    );
+
+    vi.mocked(db.batch).mockResolvedValue([] as never);
+
+    const result = await createSongset(1, {
+      name: "New Songset",
+      songIds: ["song-a", "song-b"],
+    });
+
+    expect(result).toMatchObject({ name: "New Songset", itemCount: 2 });
+    // One batch: songset insert + items insert.
+    expect(db.batch).toHaveBeenCalledTimes(1);
+    const batchOps = vi.mocked(db.batch).mock.calls[0][0] as unknown[];
+    expect(batchOps).toHaveLength(2);
   });
 });
 

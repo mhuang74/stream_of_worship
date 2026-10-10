@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { recordings, songs } from "@/db/schema";
+import { recordings, songs, songsetItems, songsets } from "@/db/schema";
 import { eq, desc, and, or, ilike, sql, isNull, inArray } from "drizzle-orm";
 import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
 import { parseMusicalKey } from "@/lib/music/key";
@@ -33,6 +33,9 @@ export interface SongWithRecordings {
   keyWarning: EffectiveKey["warning"];
   createdAt: Date | null;
   updatedAt: Date | null;
+  /** Viewer's songsets containing this song (id + name); only set when the
+   * inMySongsets filter is active. Optional to spare non-discovery callers. */
+  memberSongsets?: MemberSongset[];
   recordings: RecordingInfo[];
 }
 
@@ -168,6 +171,53 @@ export interface ListSongsFilters {
   favoriteSongIds?: string[];
   /** When true and favoriteSongIds is present, restrict results to favorites. */
   favoritesOnly?: boolean;
+  /**
+   * When true, restrict results to songs that appear in at least one of the
+   * viewer's songsets (requires userId context on the caller).
+   */
+  inMySongsets?: boolean;
+  /** Viewer id required when inMySongsets is true. */
+  viewerUserId?: number;
+}
+
+/** The viewer's songset memberships for a song (id + name only). */
+export interface MemberSongset {
+  id: string;
+  name: string;
+}
+
+/**
+ * Loads the viewer's songsets containing each of the given songs, deduplicated
+ * once per song. Separate aggregate query (no row multiplication). Requires a
+ * prior inMySongsets filter — songs outside `songIds` get no entry.
+ */
+export async function getMemberSongsetsBySongId(
+  userId: number,
+  songIds: string[]
+): Promise<Map<string, MemberSongset[]>> {
+  const bySongId = new Map<string, MemberSongset[]>();
+  if (songIds.length === 0) return bySongId;
+
+  const rows = await db
+    .selectDistinct({
+      songId: songsetItems.songId,
+      id: songsets.id,
+      name: songsets.name,
+    })
+    .from(songsetItems)
+    .innerJoin(songsets, eq(songsetItems.songsetId, songsets.id))
+    .where(
+      and(eq(songsets.userId, userId), inArray(songsetItems.songId, songIds))
+    );
+
+  for (const row of rows) {
+    const list = bySongId.get(row.songId) ?? [];
+    if (!list.some((member) => member.id === row.id)) {
+      list.push({ id: row.id, name: row.name });
+    }
+    bySongId.set(row.songId, list);
+  }
+  return bySongId;
 }
 
 function buildPublishedRecordingExistsClause(
@@ -320,8 +370,17 @@ export async function listSongs(
   const favoritesOnlyClause = filters?.favoritesOnly
     ? favoritesOnlyPredicate(filters?.favoriteSongIds)
     : undefined;
+  const inMySongsetsClause = filters?.inMySongsets
+    ? sql`exists (
+        select 1
+        from songset_items
+        join songsets on songsets.id = songset_items.songset_id
+        where songset_items.song_id = ${songs.id}
+          and songsets.user_id = ${filters.viewerUserId}
+      )`
+    : undefined;
   // drizzle's `and` skips undefined, so this cleanly composes the optional filter.
-  const listWhereClause = and(whereClause, favoritesOnlyClause);
+  const listWhereClause = and(whereClause, favoritesOnlyClause, inMySongsetsClause);
   const recordingWhereConditions = [];
   const visPredicate = recordingVisibilityPredicate(filters?.visibilityStatus);
   if (visPredicate) recordingWhereConditions.push(visPredicate);
@@ -330,9 +389,21 @@ export async function listSongs(
     ? and(...recordingWhereConditions)
     : undefined;
 
+  // Favorites-only results are most-recently-favorited first: the favorite
+  // row's created_at IS the moment the song was favorited. A favorited song
+  // has exactly one favorite row for this viewer, so a correlated MAX over
+  // the join is equivalent to ordering by the joined column (avoids drizzle's
+  // one-sided findMany extras/join limitations). NULLS LAST keeps real
+  // favorites above any filtering artifacts (there are none in practice —
+  // the favoritesOnly predicate guarantees membership).
+  const favoritesOnlyOrder = filters?.favoritesOnly
+    ? sql`(select max(f.created_at) from user_favorite_songs f where f.song_id = ${songs.id}) desc nulls last`
+    : undefined;
+
   const result = await db.query.songs.findMany({
     where: listWhereClause,
     orderBy: [
+      favoritesOnlyOrder,
       favoritesFirstOrder(filters?.favoriteSongIds),
       desc(songs.updatedAt),
     ].filter((o): o is NonNullable<typeof o> => Boolean(o)),
@@ -346,13 +417,27 @@ export async function listSongs(
   });
 
   const countResult = await db
-    .select({ count: sql<number>`count(*)` })
+    .select({ count: sql<number>`count(distinct ${songs.id})` })
     .from(songs)
     .where(listWhereClause ?? sql`true`);
 
   const total = countResult[0]?.count ?? 0;
 
-  const songsWithRecordings = result.map(mapSongWithRecordings);
+  const memberSongsetsBySongId =
+    filters?.inMySongsets && filters.viewerUserId != null
+      ? await getMemberSongsetsBySongId(
+          filters.viewerUserId,
+          result.map((song) => song.id)
+        )
+      : undefined;
+
+  const songsWithRecordings = result.map((row) => {
+    const song = mapSongWithRecordings(row);
+    if (memberSongsetsBySongId) {
+      return { ...song, memberSongsets: memberSongsetsBySongId.get(row.id) ?? [] };
+    }
+    return song;
+  });
 
   return { songs: songsWithRecordings, total };
 }

@@ -12,6 +12,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 vi.mock("@/db", () => ({
   db: {
     execute: vi.fn(),
+    selectDistinct: vi.fn(),
     query: {
       songs: {
         findMany: vi.fn(),
@@ -224,6 +225,141 @@ describe("listSongs", () => {
     const query = dialect.sqlToQuery(findManyArgs.where);
     expect(query.sql).not.toContain("false");
     expect(query.sql).not.toContain("ANY");
+  });
+
+  it("orders favorites-only results by user_favorite_songs.created_at desc", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { favoriteSongIds: ["fav-1"], favoritesOnly: true });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const orderSql = findManyArgs.orderBy
+      .map((item: unknown) => dialect.sqlToQuery(item).sql)
+      .join(" | ");
+    // Recency of favoriting — the favorite row's created_at — leads.
+    expect(orderSql).toContain("user_favorite_songs");
+    expect(orderSql).toContain("max(f.created_at)");
+    // Recency must precede the favorites-first pin and the secondary ordering.
+    expect(orderSql.indexOf("max(f.created_at)")).toBeLessThan(
+      orderSql.indexOf('CASE WHEN')
+    );
+    expect(orderSql.indexOf("max(f.created_at)")).toBeLessThan(
+      orderSql.indexOf('"songs"."updated_at"')
+    );
+  });
+
+  it("does not introduce favorite-recency ordering without favoritesOnly", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { favoriteSongIds: ["fav-1"] });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const orderSql = findManyArgs.orderBy
+      .map((item: unknown) => dialect.sqlToQuery(item).sql)
+      .join(" | ");
+    expect(orderSql).not.toContain("user_favorite_songs");
+  });
+
+  it("adds an inMySongsets exists clause keyed on the viewer's songsets", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { inMySongsets: true, viewerUserId: 7 });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const query = dialect.sqlToQuery(findManyArgs.where);
+    expect(query.sql).toContain("songset_items");
+    expect(query.sql).toContain("songsets");
+    expect(query.sql).toContain("songsets.user_id");
+    expect(query.params).toContain(7);
+  });
+
+  it("does not add songset membership clause without inMySongsets", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { viewerUserId: 7 });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const query = dialect.sqlToQuery(findManyArgs.where);
+    expect(query.sql).not.toContain("songset_items");
+  });
+
+  it("attaches deduplicated memberSongsets per song when inMySongsets is set", async () => {
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([
+      { id: "song-1", title: "A", recordings: [] },
+      { id: "song-2", title: "B", recordings: [] },
+    ] as never);
+
+    const membershipRows = Promise.resolve([
+      { songId: "song-1", id: "ss-1", name: "Sunday Set" },
+      { songId: "song-1", id: "ss-2", name: "Choir Night" },
+      // duplicate row for same songset: select distinct dedupes, but guard anyway
+      { songId: "song-1", id: "ss-1", name: "Sunday Set" },
+    ]);
+    vi.mocked(db.selectDistinct).mockReturnValue(
+      {
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue(membershipRows),
+          }),
+        }),
+      } as unknown as typeof db.selectDistinct
+    );
+    const countChain = vi
+      .fn()
+      .mockReturnValue({ where: vi.fn().mockResolvedValue([{ count: 0 }]) });
+    // The only db.select left in this path is the count aggregate.
+    vi.mocked(db.select).mockReturnValue({
+      from: countChain,
+    } as unknown as ReturnType<typeof db.select>);
+
+    const { songs: out } = await listSongs(50, 0, {
+      inMySongsets: true,
+      viewerUserId: 7,
+    });
+
+    expect(out).toHaveLength(2);
+    const song1 = out.find((song) => song.id === "song-1")!;
+    expect(song1.memberSongsets).toEqual([
+      { id: "ss-1", name: "Sunday Set" },
+      { id: "ss-2", name: "Choir Night" },
+    ]);
+    const song2 = out.find((song) => song.id === "song-2")!;
+    expect(song2.memberSongsets).toEqual([]);
+  });
+
+  it("omits memberSongsets when inMySongsets is not set", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([
+      { id: "song-1", title: "A", recordings: [] },
+    ] as never);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    const { songs: out } = await listSongs(50, 0, {});
+
+    expect(out[0].memberSongsets).toBeUndefined();
   });
 });
 

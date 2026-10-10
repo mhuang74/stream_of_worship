@@ -17,10 +17,10 @@ export function BottomNav() {
   const connectivity = useConnectivity();
 
   const navItems = [
-    { href: "/", key: "nav.dashboard" as const },
+    { href: "/listen", key: "nav.listen" as const },
+    { href: "/favorites", key: "nav.favorites" as const },
     { href: "/songsets", key: "nav.songsets" as const },
     { href: "/worship", key: "nav.worship" as const },
-    { href: "/favorites", key: "nav.favorites" as const },
   ];
 
   if (
@@ -66,8 +66,7 @@ export function BottomNav() {
     >
       <div className="flex h-16">
         {navItems.map((item) => {
-          const isActive =
-            item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href);
+          const isActive = pathname?.startsWith(item.href);
           return (
             <Link
               key={item.href}

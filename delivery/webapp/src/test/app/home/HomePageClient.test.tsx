@@ -279,12 +279,12 @@ describe("HomePageClient", () => {
     expect(screen.queryByText("From the community")).not.toBeInTheDocument();
   });
 
-  it("renders view-all links to /songsets and /favorites", () => {
+  it("renders view-all links to /songsets and /listen", () => {
     render(<HomePageClient {...defaultProps} />);
     const viewAllLinks = screen.getAllByRole("link", { name: "View all" });
     expect(viewAllLinks).toHaveLength(2);
     expect(viewAllLinks[0]).toHaveAttribute("href", "/songsets");
-    expect(viewAllLinks[1]).toHaveAttribute("href", "/favorites");
+    expect(viewAllLinks[1]).toHaveAttribute("href", "/listen");
   });
 
   it("opens ShareDialog when share is clicked", async () => {
