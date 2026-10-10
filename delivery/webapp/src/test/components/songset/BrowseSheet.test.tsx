@@ -256,6 +256,8 @@ describe("BrowseSheet", () => {
     expect(screen.getByTestId("semantic-search-button")).toBeDisabled();
     expect(screen.getByTestId("semantic-no-criteria-hint")).toBeInTheDocument();
     expect(screen.queryByTestId("similarity-badge")).not.toBeInTheDocument();
+    // The keyword-only hint must not leak into describe mode.
+    expect(screen.queryByTestId("search-no-criteria-hint")).not.toBeInTheDocument();
   });
 
   it("Describe Search with text sends semantic POST body with filters", async () => {
