@@ -126,13 +126,22 @@ export function AudioPlayerBar() {
     setShowLyrics(false);
   }, [pathname]);
 
-  // Auto-collapse on modal/sheet open
+  // Auto-collapse on modal/sheet open. React only when a modal element is
+  // actually inserted: re-querying the whole document on every subtree
+  // mutation collapsed the panel on unrelated updates (feedback row clicks,
+  // toasts) whenever any stale/closing [role=dialog] was present, and made
+  // the lyrics-toggle click race die during sheet close animations.
   useEffect(() => {
-    const observer = new MutationObserver(() => {
-      const modalOpen =
-        document.querySelector('[role="dialog"]') ||
-        document.querySelector('[data-slot="sheet"]');
-      if (modalOpen) {
+    const observer = new MutationObserver((muts) => {
+      const modalAdded = muts.some((m) =>
+        [...m.addedNodes].some(
+          (n) =>
+            n.nodeType === 1 &&
+            ((n as Element).matches?.('[role="dialog"]') ||
+              (n as Element).querySelector?.('[role="dialog"]'))
+        )
+      );
+      if (modalAdded) {
         setShowLyrics(false);
       }
     });

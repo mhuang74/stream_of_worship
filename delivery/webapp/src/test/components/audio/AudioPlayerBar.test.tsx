@@ -508,6 +508,88 @@ describe("AudioPlayerBar", () => {
       // Lyrics button should still be visible and expanded
       expect(screen.getByTestId("lyrics-toggle-button")).toHaveAttribute("aria-expanded", "true");
     });
+
+    it("keeps the lyrics panel open when a [role=dialog] element exists but no new dialog is inserted while it persists", async () => {
+      const user = userEvent.setup();
+      const songTrack: AudioTrack = {
+        ...testTrack,
+        recordingContentHash: "hash-observer-1",
+      };
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      const toggle = await screen.findByTestId("lyrics-toggle-button");
+      await user.click(toggle);
+      await waitFor(() =>
+        expect(screen.getByTestId("lyrics-toggle-button")).toHaveAttribute("aria-expanded", "true")
+      );
+
+      // Pre-existing dialog in the DOM (e.g. leftover base-ui sheet during close animation)
+      const dialog = document.createElement("div");
+      dialog.setAttribute("role", "dialog");
+      document.body.appendChild(dialog);
+
+      // Unrelated mutations under it (as produced by feedback-row clicks etc.
+      // in a real browser session) must NOT collapse the panel. The observer
+      // is not patched/replaced here, so it processes these childList records
+      // exactly as it does in production.
+      const span = document.createElement("span");
+      document.body.appendChild(span);
+      document.body.removeChild(span);
+      await waitFor(() =>
+        expect(screen.getByTestId("lyrics-toggle-button")).toHaveAttribute("aria-expanded", "true")
+      );
+
+      // Actually inserting a NEW dialog does collapse
+      const dialog2 = document.createElement("div");
+      dialog2.setAttribute("role", "dialog");
+      document.body.appendChild(dialog2);
+      await waitFor(() =>
+        expect(screen.getByTestId("lyrics-toggle-button")).toHaveAttribute("aria-expanded", "false")
+      );
+
+      document.body.removeChild(dialog);
+      document.body.removeChild(dialog2);
+    });
+
+    it("collapses the lyrics panel when a base-ui portal wrapper containing a dialog is inserted", async () => {
+      const user = userEvent.setup();
+      const songTrack: AudioTrack = {
+        ...testTrack,
+        recordingContentHash: "hash-observer-2",
+      };
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      const toggle = await screen.findByTestId("lyrics-toggle-button");
+      await user.click(toggle);
+      await waitFor(() =>
+        expect(screen.getByTestId("lyrics-toggle-button")).toHaveAttribute("aria-expanded", "true")
+      );
+
+      // base-ui wraps each dialog in a portal wrapper div carrying
+      // [data-base-ui-portal][data-slot=sheet-portal]; the wrapper itself
+      // has no role="dialog", so the descendant querySelector arm must catch it.
+      const portal = document.createElement("div");
+      portal.setAttribute("data-base-ui-portal", "");
+      portal.setAttribute("data-slot", "sheet-portal");
+      const inner = document.createElement("div");
+      inner.setAttribute("role", "dialog");
+      portal.appendChild(inner);
+      document.body.appendChild(portal);
+
+      await waitFor(() =>
+        expect(screen.getByTestId("lyrics-toggle-button")).toHaveAttribute("aria-expanded", "false")
+      );
+
+      document.body.removeChild(portal);
+    });
   });
 
   describe("keyboard shortcut 'L'", () => {
