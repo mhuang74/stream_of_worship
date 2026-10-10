@@ -78,6 +78,7 @@ export const audioBundle = bundle({
     "audio.search.searchButton": "Search",
     "audio.search.searching": "Searching...",
     "audio.search.searchSongsByDescription": "Search songs by description",
+    "audio.search.noCriteriaHint": "Enter a description or select a filter",
 
     // SemanticSearch — loading / empty states
     "audio.search.searchingByMeaning": "Searching by meaning...",
@@ -182,6 +183,7 @@ export const audioBundle = bundle({
     "audio.search.searchButton": "搜尋",
     "audio.search.searching": "搜尋中\u2026",
     "audio.search.searchSongsByDescription": "用描述搜尋詩歌",
+    "audio.search.noCriteriaHint": "請輸入描述或選擇篩選條件",
 
     // SemanticSearch — loading / empty states
     "audio.search.searchingByMeaning": "語意搜尋中\u2026",

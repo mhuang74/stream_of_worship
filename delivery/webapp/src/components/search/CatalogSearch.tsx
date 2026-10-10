@@ -24,6 +24,8 @@ import { useLocale } from "@/hooks/useLocale";
 
 type SearchMode = "keyword" | "describe";
 
+const SEARCH_PAGE_SIZE = 20;
+
 export type CatalogSearchMode = SearchMode;
 
 interface SearchResult {
@@ -121,6 +123,14 @@ export function CatalogSearch({
   const [error, setError] = useState<string | null>(null);
   const [addingSongIds, setAddingSongIds] = useState<Set<string>>(new Set());
   const [addedSongIds, setAddedSongIds] = useState<Set<string>>(new Set());
+
+  const hasSearchCriteria =
+    keywordQuery.trim().length > 0 ||
+    selectedAlbums.length > 0 ||
+    selectedKeys.length > 0 ||
+    selectedBpm.length > 0 ||
+    selectedThemes.length > 0;
+
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavoriteToggle();
   const latestSearchIdRef = useRef(0);
 
@@ -174,10 +184,10 @@ export function CatalogSearch({
     async (
       searchQuery: string,
       albumFilters?: AlbumFilter[],
-      advanced?: StructuredSearchCriteria
+      advanced?: StructuredSearchCriteria,
+      offset: number = 0,
+      append: boolean = false
     ) => {
-      const searchId = latestSearchIdRef.current + 1;
-      latestSearchIdRef.current = searchId;
       const nextFilters: StructuredSearchCriteria = {
         query: searchQuery.trim() || undefined,
         albums: albumFilters && albumFilters.length > 0 ? albumFilters : undefined,
@@ -185,6 +195,16 @@ export function CatalogSearch({
         bpmRange: advanced?.bpmRange,
         themes: advanced?.themes,
       };
+      const hasCriteria =
+        !!nextFilters.query ||
+        (nextFilters.albums?.length ?? 0) > 0 ||
+        (nextFilters.keys?.length ?? 0) > 0 ||
+        (nextFilters.bpmRange?.length ?? 0) > 0 ||
+        (nextFilters.themes?.length ?? 0) > 0;
+      if (!hasCriteria) return;
+
+      const searchId = latestSearchIdRef.current + 1;
+      latestSearchIdRef.current = searchId;
       setKeywordQuery(searchQuery);
       setActiveFilters(nextFilters);
       setHasKeywordSearched(true);
@@ -213,7 +233,8 @@ export function CatalogSearch({
             params.append("themes", theme);
           }
         }
-        params.set("limit", "50");
+        params.set("limit", String(SEARCH_PAGE_SIZE));
+        params.set("offset", String(offset));
 
         const url = searchQuery.trim()
           ? `/api/songs/search?${params.toString()}`
@@ -226,7 +247,12 @@ export function CatalogSearch({
 
         const data: SearchResult = await response.json();
         if (searchId !== latestSearchIdRef.current) return;
-        setResults(data.songs || []);
+        const fetched = data.songs || [];
+        if (append) {
+          setResults((prev) => [...prev, ...fetched.filter((s) => !prev.some((p) => p.id === s.id))]);
+        } else {
+          setResults(fetched);
+        }
         setTotalCount(data.total ?? 0);
       } catch (err) {
         if (searchId !== latestSearchIdRef.current) return;
@@ -241,6 +267,42 @@ export function CatalogSearch({
     },
     [t]
   );
+
+  const buildCriteria = useCallback(
+    (): [string, AlbumFilter[] | undefined, StructuredSearchCriteria | undefined] => {
+      const normalizedAlbums = selectedAlbums.length > 0 ? selectedAlbums : undefined;
+      const hasAdvancedFilters =
+        selectedAlbums.length > 0 ||
+        selectedKeys.length > 0 ||
+        selectedBpm.length > 0 ||
+        selectedThemes.length > 0;
+      return [
+        keywordQuery,
+        normalizedAlbums,
+        hasAdvancedFilters
+          ? {
+              query: keywordQuery.trim() || undefined,
+              keys: selectedKeys.length > 0 ? selectedKeys : undefined,
+              bpmRange: selectedBpm.length > 0 ? selectedBpm : undefined,
+              themes: selectedThemes.length > 0 ? selectedThemes : undefined,
+              albums: normalizedAlbums,
+            }
+          : undefined,
+      ];
+    },
+    [keywordQuery, selectedAlbums, selectedKeys, selectedBpm, selectedThemes]
+  );
+
+  const handleKeywordSubmit = useCallback(() => {
+    const [q, albums, advanced] = buildCriteria();
+    handleSearch(q, albums, advanced);
+  }, [handleSearch, buildCriteria]);
+
+  const handleLoadMore = useCallback(() => {
+    if (isLoading) return;
+    const [q, albums, advanced] = buildCriteria();
+    void handleSearch(q, albums, advanced, results.length, true);
+  }, [handleSearch, buildCriteria, isLoading, results.length]);
 
   const handleAddSong = useCallback(
     async (songOrId: string | SongCardData) => {
@@ -307,34 +369,12 @@ export function CatalogSearch({
     setCatalogMode("keyword");
   }, []);
 
-  const handleKeywordSubmit = useCallback(() => {
-    const normalizedAlbums = selectedAlbums.length > 0 ? selectedAlbums : undefined;
-    const hasAdvancedFilters =
-      selectedAlbums.length > 0 ||
-      selectedKeys.length > 0 ||
-      selectedBpm.length > 0 ||
-      selectedThemes.length > 0;
-
-    handleSearch(
-      keywordQuery,
-      normalizedAlbums,
-      hasAdvancedFilters
-        ? {
-            query: keywordQuery.trim() || undefined,
-            keys: selectedKeys.length > 0 ? selectedKeys : undefined,
-            bpmRange: selectedBpm.length > 0 ? selectedBpm : undefined,
-            themes: selectedThemes.length > 0 ? selectedThemes : undefined,
-            albums: normalizedAlbums,
-          }
-        : undefined
-    );
-  }, [handleSearch, keywordQuery, selectedAlbums, selectedKeys, selectedBpm, selectedThemes]);
-
   const {
     controls: semanticControls,
     resultsContent: semanticResultsContent,
     search: handleSemanticSubmit,
     isLoading: isSemanticLoading,
+    hasCriteria: hasSemanticCriteria,
     reset: resetSemanticSearch,
   } = useSemanticSearch({
     onAddSong: mode === "browse" ? handleAddSong : async () => {},
@@ -452,6 +492,7 @@ export function CatalogSearch({
             size="sm"
             className="mt-4"
             onClick={() => handleSearch(keywordQuery, selectedAlbums, activeFilters)}
+            disabled={!hasSearchCriteria}
           >
             {t("browse.retry")}
           </Button>
@@ -504,6 +545,17 @@ export function CatalogSearch({
           {favoriteResults.length > 0 && renderFavoriteSection(favoriteResults)}
           {otherResults.length > 0 &&
             renderAllSongsSection(otherResults, favoriteResults.length > 0)}
+          {results.length < totalCount && (
+            <div className="flex justify-center pb-4">
+              <Button variant="outline" onClick={handleLoadMore} disabled={isLoading} data-testid="search-load-more">
+                {isLoading ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  t("browse.search.loadMore")
+                )}
+              </Button>
+            </div>
+          )}
         </>
       )}
     </>
@@ -587,6 +639,10 @@ export function CatalogSearch({
       <div className="flex shrink-0 justify-between items-center px-1 pb-4" data-testid="search-action-row">
         {mode === "browse" && catalogMode === "keyword" && totalCount > 0 ? (
           <p className="text-sm text-muted-foreground">{`${totalCount} ${t("browse.songsUnit")}`}</p>
+        ) : !hasSearchCriteria ? (
+          <p className="text-sm text-muted-foreground" data-testid="search-no-criteria-hint">
+            {t("browse.search.noCriteriaHint")}
+          </p>
         ) : (
           <span />
         )}
@@ -594,7 +650,7 @@ export function CatalogSearch({
           <Button
             type="button"
             onClick={handleKeywordSubmit}
-            disabled={isLoading || isLoadingAlbums}
+            disabled={isLoading || isLoadingAlbums || !hasSearchCriteria}
             className={sharedSearchButtonClassName}
             data-testid="search-button"
             aria-label={isLoading ? t("browse.search.searchingSongs") : t("browse.search.runSearch")}
@@ -610,7 +666,7 @@ export function CatalogSearch({
           <Button
             type="button"
             onClick={handleSemanticSubmit}
-            disabled={isSemanticLoading}
+            disabled={isSemanticLoading || !hasSemanticCriteria}
             className={sharedSearchButtonClassName}
             data-testid="semantic-search-button"
             aria-label={isSemanticLoading ? t("browse.search.searching") : t("browse.search.searchByDescription")}

@@ -109,6 +109,28 @@ const mockAlbums = [
   { albumName: "Worship", albumSeries: null, songCount: 8 },
 ];
 
+// 45-song catalog: page 1 = 20, page 2 = 20, page 3 = 5.
+function makePaginatedSongs(total: number): SongCardData[] {
+  return Array.from({ length: total }, (_, i) => ({
+    id: `song-${i + 1}`,
+    title: `Song ${i + 1}`,
+    composer: "Composer",
+    lyricist: null,
+    albumName: "Hymns",
+    musicalKey: "G",
+    recordings: [
+      {
+        contentHash: `hash-${i + 1}`,
+        hashPrefix: `prefix-${i + 1}`,
+        durationSeconds: 180,
+        tempoBpm: 120,
+        musicalKey: "G",
+        visibilityStatus: "published",
+      },
+    ],
+  }));
+}
+
 /**
  * Contract 1 (issue #253): ONE shared search component renders keyword +
  * describe modes with album/key/BPM/theme filters in both consumption
@@ -339,5 +361,182 @@ describe("CatalogSearch (shared search component)", () => {
     const favoriteButtons = screen.getAllByTestId("favorite-button");
     expect(favoriteButtons.length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByTestId("add-song-button")).not.toBeInTheDocument();
+  });
+
+  it("blank search with no filters is blocked: disabled button, hint, no fetch", async () => {
+    render(<ListenClient favoriteSongIds={[]} />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("album-filter").length).toBeGreaterThan(0);
+    });
+
+    const before = mockFetch.mock.calls.filter(([url]) => String(url).includes("/api/songs?")).length;
+    fireEvent.click(screen.getAllByTestId("search-button")[0]);
+
+    expect(screen.getAllByTestId("search-button")[0]).toBeDisabled();
+    expect(screen.getAllByTestId("search-no-criteria-hint").length).toBeGreaterThan(0);
+    expect(
+      mockFetch.mock.calls.filter(([url]) => String(url).includes("/api/songs?")).length
+    ).toBe(before);
+  });
+
+  it("album filter alone enables the button and fetches the catalog", async () => {
+    render(<ListenClient favoriteSongIds={[]} />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("album-filter").length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByTestId("search-button")[0]).toBeDisabled();
+
+    const testId = `album-option-${encodeURIComponent(albumFilterKey({ albumName: "Hymns", albumSeries: "Classic" }))}`;
+    fireEvent.click(screen.getAllByTestId("album-filter")[0]);
+    await waitFor(() => {
+      expect(screen.getAllByTestId(testId).length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getAllByTestId(testId)[0]);
+
+    expect(screen.getAllByTestId("search-button")[0]).not.toBeDisabled();
+    expect(screen.queryByTestId("search-no-criteria-hint")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByTestId("search-button")[0]);
+    await waitFor(() => {
+      expect(
+        mockFetch.mock.calls.some(
+          ([url]) =>
+            String(url).includes("/api/songs?") &&
+            String(url).includes("albumName=Hymns") &&
+            String(url).includes("limit=20")
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("Load more appends pages and disappears when the catalog is exhausted", async () => {
+    const catalog = makePaginatedSongs(45);
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/songs/albums") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ albums: mockAlbums }),
+        });
+      }
+      if (url.startsWith("/api/discovery")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ songs: [], hasMore: false }),
+        });
+      }
+      if (url === "/api/favorites") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ songIds: [] }),
+        });
+      }
+      const match = /offset=(\d+)/.exec(url);
+      const offset = match ? Number(match[1]) : 0;
+      if (url.includes("/api/songs")) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({ songs: catalog.slice(offset, offset + 20), total: catalog.length }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<ListenClient favoriteSongIds={[]} />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("album-filter").length).toBeGreaterThan(0);
+    });
+
+    fireEvent.change(screen.getAllByTestId("search-input")[0], { target: { value: "song" } });
+    fireEvent.click(screen.getAllByTestId("search-button")[0]);
+    await waitFor(() => {
+      expect(screen.getAllByText("Song 1").length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByText("Song 20").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Song 21").length).toBe(0);
+    expect(screen.getByTestId("search-load-more")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("search-load-more"));
+    await waitFor(() => {
+      expect(screen.getAllByText("Song 40").length).toBeGreaterThan(0);
+    });
+    // Load-more request carried offset=20 + limit=20.
+    expect(
+      mockFetch.mock.calls.some(([url]) => String(url).includes("offset=20") && String(url).includes("limit=20"))
+    ).toBe(true);
+    // First-page songs are not duplicated: exactly one search card for song-1.
+    // (The Listen shell itself renders other song-card instances; scope to the
+    // search results region's titles.)
+    const searchRegion = screen.getAllByTestId("search-results-region")[0];
+    expect(
+      Array.from(searchRegion.querySelectorAll('[data-testid="song-title"]')).filter(
+        (el) => el.textContent === "Song 1"
+      ).length
+    ).toBe(1);
+
+    fireEvent.click(screen.getByTestId("search-load-more"));
+    await waitFor(() => {
+      expect(screen.getAllByText("Song 45").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByTestId("search-load-more")).not.toBeInTheDocument();
+  });
+
+  it("Load more keeps viewer-favorited songs in the favorites section", async () => {
+    const catalog = makePaginatedSongs(45);
+    catalog[25] = makeFavoriteSong("fav-viewer");
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/songs/albums") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ albums: mockAlbums }),
+        });
+      }
+      if (url.startsWith("/api/discovery")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ songs: [], hasMore: false }),
+        });
+      }
+      if (url === "/api/favorites") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ songIds: ["fav-viewer"] }),
+        });
+      }
+      const match = /offset=(\d+)/.exec(url);
+      const offset = match ? Number(match[1]) : 0;
+      if (url.includes("/api/songs")) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({ songs: catalog.slice(offset, offset + 20), total: catalog.length }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<ListenClient favoriteSongIds={[]} />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("album-filter").length).toBeGreaterThan(0);
+    });
+
+    fireEvent.change(screen.getAllByTestId("search-input")[0], { target: { value: "song" } });
+    fireEvent.click(screen.getAllByTestId("search-button")[0]);
+    await waitFor(() => {
+      expect(screen.getByTestId("search-load-more")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("search-load-more"));
+    await waitFor(() => {
+      expect(screen.getByText("Favorite fav-viewer")).toBeInTheDocument();
+    });
+
+    // The favorited appended song lands only in the favorites section, not All Songs.
+    const favoritesSections = screen.getAllByTestId("favorites-section");
+    expect(favoritesSections.length).toBe(1);
+    const allSongsSections = screen.getAllByTestId("all-songs-section");
+    expect(allSongsSections.length).toBe(1);
+    expect(favoritesSections[0].textContent).toContain("Favorite fav-viewer");
+    expect(allSongsSections[0].textContent).not.toContain("Favorite fav-viewer");
   });
 });
