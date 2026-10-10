@@ -883,7 +883,7 @@ async function scenarioOfflineListEntry(tab, songsetId) {
   }
 }
 
-async function scenarioAutoCacheOff(tab, __songsetId) {
+async function scenarioAutoCacheOff(tab) {
   // (d) With offlineAutoCache off, a completed render must not auto-download.
   // The setting is read from /api/settings; the render page is out of e2e
   // reach without submitting a render (slow), so assert the setting's effect
