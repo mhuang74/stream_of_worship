@@ -137,6 +137,25 @@ describe("GET /api/songs", () => {
     );
   });
 
+  it("passes viewerUserId when favoritesOnly=1 (recency ordering scoping)", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
+    vi.mocked(listSongs).mockResolvedValue({ songs: [], total: 0 });
+
+    const request = createMockRequest(
+      "http://localhost:3000/api/songs?favoritesOnly=1"
+    );
+    await GET(request);
+
+    expect(listSongs).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({
+        favoritesOnly: true,
+        viewerUserId: 1,
+      })
+    );
+  });
+
   it("does not pass inMySongsets when the param is absent", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 1 } } as any);
     vi.mocked(listSongs).mockResolvedValue({ songs: [], total: 0 });

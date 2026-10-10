@@ -54,8 +54,10 @@ export async function GET(request: NextRequest) {
     const inMySongsetsParam = searchParams.get("inMySongsets");
     if (inMySongsetsParam === "1" || inMySongsetsParam === "true") {
       filters.inMySongsets = true;
-      filters.viewerUserId = userId;
     }
+    // Per-viewer scoping: favorites recency ordering and inMySongsets both
+    // need the authenticated user; the route is auth-gated so userId exists.
+    filters.viewerUserId = userId;
 
     const { albumFilters, albumNames } = parseAlbumFilterParams(searchParams);
     if (albumFilters) filters.albumFilters = albumFilters;

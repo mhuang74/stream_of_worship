@@ -235,7 +235,11 @@ describe("listSongs", () => {
       from,
     } as unknown as ReturnType<typeof db.select>);
 
-    await listSongs(50, 0, { favoriteSongIds: ["fav-1"], favoritesOnly: true });
+    await listSongs(50, 0, {
+      favoriteSongIds: ["fav-1"],
+      favoritesOnly: true,
+      viewerUserId: 42,
+    });
 
     const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
     const orderSql = findManyArgs.orderBy
@@ -244,6 +248,14 @@ describe("listSongs", () => {
     // Recency of favoriting — the favorite row's created_at — leads.
     expect(orderSql).toContain("user_favorite_songs");
     expect(orderSql).toContain("max(f.created_at)");
+    // Recency is scoped to the viewer's own favorite rows.
+    expect(orderSql).toContain("f.user_id");
+    const params = dialect.sqlToQuery(
+      findManyArgs.orderBy.find((item: unknown) =>
+        dialect.sqlToQuery(item).sql.includes("max(f.created_at)")
+      )
+    ).params;
+    expect(params).toContain(42);
     // Recency must precede the favorites-first pin and the secondary ordering.
     expect(orderSql.indexOf("max(f.created_at)")).toBeLessThan(
       orderSql.indexOf('CASE WHEN')

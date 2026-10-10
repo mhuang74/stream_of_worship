@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import type { BpmBandKey, SongTheme } from "@/lib/constants";
@@ -124,8 +123,6 @@ export function CatalogSearch({
   const [addedSongIds, setAddedSongIds] = useState<Set<string>>(new Set());
   const { favoriteIds, setFavoriteIds, toggleFavorite } = useFavoriteToggle();
   const latestSearchIdRef = useRef(0);
-  const { currentTrack } = useAudioPlayerContext();
-  const padForPlayer = currentTrack ? "pb-28 sm:pb-20" : "pb-8";
 
   const resolveSong = useCallback(
     (songId: string) => {
@@ -513,7 +510,7 @@ export function CatalogSearch({
   );
 
   return (
-    <div className={cn("flex flex-col h-full min-h-0", padForPlayer, className)}>
+    <div className={cn("flex flex-col h-full min-h-0", className)}>
       {/* Mode tabs */}
       <div
         className="mb-4 flex w-fit gap-1 rounded-lg border bg-muted/50 p-1"
