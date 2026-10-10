@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { renderJobs, songsetItems, recordings } from "@/db/schema";
-import { eq, and, asc, isNotNull } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 
 /**
  * GET /api/offline/cache?renderJobId=<id>
