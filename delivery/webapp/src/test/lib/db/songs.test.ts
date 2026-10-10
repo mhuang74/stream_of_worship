@@ -282,6 +282,25 @@ describe("listSongs", () => {
     expect(orderSql).not.toContain("user_favorite_songs");
   });
 
+  it("omits favorite-recency ordering when favoritesOnly lacks viewerUserId", async () => {
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.query.songs.findMany).mockResolvedValue([]);
+    vi.mocked(db.select).mockReturnValue({
+      from,
+    } as unknown as ReturnType<typeof db.select>);
+
+    await listSongs(50, 0, { favoriteSongIds: ["fav-1"], favoritesOnly: true });
+
+    const findManyArgs = vi.mocked(db.query.songs.findMany).mock.calls[0][0];
+    const orderSql = findManyArgs.orderBy
+      .map((item: unknown) => dialect.sqlToQuery(item).sql)
+      .join(" | ");
+    // No viewer → no scoping possible; omitting the order beats a `?? 0`
+    // sentinel that would make max() NULL for every row.
+    expect(orderSql).not.toContain("max(f.created_at)");
+  });
+
   it("adds an inMySongsets exists clause keyed on the viewer's songsets", async () => {
     const where = vi.fn().mockResolvedValue([{ count: 0 }]);
     const from = vi.fn().mockReturnValue({ where });
