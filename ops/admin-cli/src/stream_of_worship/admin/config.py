@@ -221,6 +221,8 @@ def get_cache_dir() -> Path:
     Returns:
         Path to the cache directory for sow-admin.
     """
+    if "SOW_CACHE_DIR" in os.environ:
+        return Path(os.environ["SOW_CACHE_DIR"])
     if sys.platform == "darwin" or sys.platform == "linux":
         xdg_cache = os.environ.get("XDG_CACHE_HOME")
         if xdg_cache:

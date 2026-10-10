@@ -32,6 +32,7 @@ from rich.rule import Rule
 from rich.table import Table
 
 from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, get_db_client
+from stream_of_worship.admin.commands.lyrics import RATING_FILTER, REASON_ORDER
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song, SongComponent
@@ -4438,22 +4439,106 @@ def _force_sync_all_pending(
         console.print(f"[dim]URL set: {force_url}[/dim]")
 
 
+def _cache_recording_assets(
+    cache: "AssetCache",
+    hash_prefix: str,
+    *,
+    audio: bool,
+    stems: bool,
+    lrc: bool,
+    force: bool,
+) -> tuple[int, int, list[str]]:
+    """Download assets for one recording. Returns (downloaded, skipped, failed_labels)."""
+    downloaded = 0
+    skipped = 0
+    failed: list[str] = []
+
+    if audio:
+        audio_path = cache.get_audio_path(hash_prefix)
+        if audio_path.exists() and not force:
+            skipped += 1
+        else:
+            console.print("[cyan]Downloading audio...[/cyan]")
+            path = cache.download_audio(hash_prefix, force=force)
+            if path:
+                size_mb = path.stat().st_size / (1024 * 1024)
+                console.print(f"[green]  ✓ {path.name} ({size_mb:.2f} MB)[/green]")
+                downloaded += 1
+            else:
+                failed.append("Audio")
+                console.print("[red]  ✗ Failed to download audio[/red]")
+
+    if stems:
+        stem_path, source = cache.download_clean_vocals(hash_prefix, force=force)
+        if stem_path:
+            size_mb = stem_path.stat().st_size / (1024 * 1024)
+            console.print(
+                f"[green]  ✓ {stem_path.name} ({size_mb:.2f} MB, source: {source})[/green]"
+            )
+            downloaded += 1
+        else:
+            console.print("[dim]  - clean_vocals.flac (not available)[/dim]")
+
+    if lrc:
+        lrc_path = cache.get_lrc_path(hash_prefix)
+        if lrc_path.exists() and not force:
+            skipped += 1
+        else:
+            console.print("[cyan]Downloading LRC...[/cyan]")
+            path = cache.download_lrc(hash_prefix, force=force)
+            if path:
+                console.print(f"[green]  ✓ {path.name}[/green]")
+                downloaded += 1
+            else:
+                console.print(
+                    "[yellow]  ! No LRC available (run 'sow-admin lyrics generate' first)[/yellow]"
+                )
+
+    return downloaded, skipped, failed
+
+
 @app.command("cache")
 def cache_assets(
-    song_id: str = typer.Argument(..., help="Song ID to cache assets for"),
+    song_id: Optional[str] = typer.Argument(
+        None, help="Song ID to cache assets for (omit when using --stdin or filters)"
+    ),
     audio: bool = typer.Option(True, "--audio/--no-audio", help="Download main audio file"),
     stems: bool = typer.Option(
-        True, "--stems/--no-stems", help="Download stem files (vocals, drums, bass, other)"
+        True,
+        "--stems/--no-stems",
+        help="Download best vocal stem into the canonical clean_vocals.flac slot",
     ),
     lrc: bool = typer.Option(True, "--lrc/--no-lrc", help="Download LRC lyrics file"),
     force: bool = typer.Option(False, "--force", "-f", help="Re-download even if files exist"),
+    visibility: Optional[str] = typer.Option(
+        None, "--visibility", help="Batch filter: visibility status (published|review|hold|none)"
+    ),
+    rating: Optional[str] = typer.Option(
+        None, "--rating", help="Batch filter: lyrics feedback rating (good|poor)"
+    ),
+    reason: Optional[str] = typer.Option(
+        None,
+        "--reason",
+        help="Batch filter: lyrics feedback reason (missing|timing|wrong_text|other)",
+    ),
+    limit: Optional[int] = typer.Option(None, "--limit", min=1, help="Max batch recordings"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="List matched recordings and exit (no downloads)"
+    ),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Download song assets from R2 to local cache.
 
-    Downloads audio, stems, and LRC files from R2 to the local cache directory
-    for offline use. This is useful for tools like the Whisper test driver
-    that need local access to audio files.
+    Downloads audio, vocal stems (resolved into the canonical clean_vocals.flac
+    slot), and LRC files from R2 to the local cache directory for offline use.
+
+    Batch modes: pass --visibility/--rating/--reason filters, or pipe song IDs
+    via --stdin:
+
+        sow-admin audio cache --visibility review --rating poor --dry-run
+        sow-admin lyrics feedback list --rating poor --format ids | \\
+            sow-admin audio cache --stdin --no-lrc
     """
     try:
         config = AdminConfig.load(config_path)
@@ -4461,18 +4546,96 @@ def cache_assets(
         console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
         raise typer.Exit(1)
 
-    db_client = get_db_client(config)
+    filters = [f for f in (visibility, rating, reason) if f is not None]
 
-    # Look up recording by song_id
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(f"[red]No recording found for song: {song_id}[/red]")
+    if song_id and (stdin or filters):
+        console.print(
+            "[red]Error: Provide a song_id, --stdin, or filters (--visibility/--rating); "
+            "they cannot be combined[/red]"
+        )
+        raise typer.Exit(1)
+    if stdin and filters:
+        console.print(
+            "[red]Error: Provide a song_id, --stdin, or filters (--visibility/--rating); "
+            "they cannot be combined[/red]"
+        )
+        raise typer.Exit(1)
+    if not song_id and not stdin and not filters:
+        console.print(
+            "[red]Error: Provide a song_id, --stdin, or --visibility/--rating filters[/red]"
+        )
         raise typer.Exit(1)
 
-    # Get song info for display
-    song = db_client.get_song(song_id)
-    song_title = song.title if song else "Unknown"
-    hash_prefix = recording.hash_prefix
+    if visibility and visibility not in {"published", "review", "hold", "none"}:
+        console.print(
+            f"[red]Invalid visibility: {visibility}. Must be one of: published, review, hold, none[/red]"
+        )
+        raise typer.Exit(1)
+    if rating and rating not in ("good", "poor"):
+        console.print("[red]--rating must be good or poor[/red]")
+        raise typer.Exit(1)
+    if reason and reason not in REASON_ORDER:
+        console.print(f"[red]--reason must be one of: {', '.join(REASON_ORDER)}[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    # Resolve batch targets
+    targets: list[tuple[str, Optional[str], Optional[str]]] = []
+    if filters:
+        targets = db_client.list_cache_target_recordings(
+            visibility=visibility,
+            rating_stored=RATING_FILTER[rating] if rating else None,
+            reason=reason,
+            limit=limit,
+        )
+        if dry_run:
+            if not targets:
+                console.print("[yellow]No recordings matched filters.[/yellow]")
+                raise typer.Exit(0)
+            table = Table(title="Recordings to cache")
+            table.add_column("Song ID", style="green")
+            table.add_column("Title", style="cyan")
+            table.add_column("Hash Prefix", style="yellow")
+            for hp, sid, title in targets:
+                table.add_row(sid or "—", title or "—", hp)
+            console.print(table)
+            raise typer.Exit(0)
+        if not targets:
+            console.print("[yellow]No recordings matched filters.[/yellow]")
+            raise typer.Exit(0)
+    elif stdin:
+        raw_ids = read_song_ids_from_stdin()
+        if not raw_ids:
+            console.print("[yellow]No song IDs provided via stdin[/yellow]")
+            raise typer.Exit(0)
+        for sid in raw_ids:
+            recording = db_client.get_recording_by_song_id(sid)
+            if not recording:
+                console.print(f"[red]No recording found for song: {sid}[/red]")
+                targets.append((sid, sid, None))
+                continue
+            song = db_client.get_song(sid)
+            targets.append((recording.hash_prefix, sid, song.title if song else None))
+        if dry_run:
+            table = Table(title="Recordings to cache")
+            table.add_column("Song ID", style="green")
+            table.add_column("Title", style="cyan")
+            table.add_column("Hash Prefix", style="yellow")
+            for hp, sid, title in targets:
+                table.add_row(sid or "—", title or "—", hp)
+            console.print(table)
+            raise typer.Exit(0)
+
+    # Single-song path
+    if song_id:
+        recording = db_client.get_recording_by_song_id(song_id)
+        if not recording:
+            console.print(f"[red]No recording found for song: {song_id}[/red]")
+            raise typer.Exit(1)
+        song = db_client.get_song(song_id)
+        song_title = song.title if song else "Unknown"
+        targets = [(recording.hash_prefix, song_id, song_title)]
 
     # Initialize R2 client
     try:
@@ -4492,81 +4655,35 @@ def cache_assets(
     cache_dir = get_cache_dir()
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
 
-    console.print(f"[cyan]Caching assets for: {song_title}[/cyan]")
-    console.print(f"[dim]Hash prefix: {hash_prefix}[/dim]")
-    console.print()
+    total_downloaded = 0
+    total_skipped = 0
+    total_failed = 0
 
-    downloaded = []
-    skipped = []
-    failed = []
-
-    # Download audio
-    if audio:
-        audio_path = cache.get_audio_path(hash_prefix)
-        if audio_path.exists() and not force:
-            skipped.append(f"Audio: {audio_path}")
+    for hash_prefix, sid, title in targets:
+        if len(targets) > 1 or not song_id:
+            console.print()
+            console.print(f"[cyan]{title or sid or hash_prefix} ({hash_prefix})[/cyan]")
         else:
-            console.print("[cyan]Downloading audio...[/cyan]")
-            path = cache.download_audio(hash_prefix, force=force)
-            if path:
-                size_mb = path.stat().st_size / (1024 * 1024)
-                downloaded.append(f"Audio: {path.name} ({size_mb:.2f} MB)")
-                console.print(f"[green]  ✓ {path.name} ({size_mb:.2f} MB)[/green]")
-            else:
-                failed.append("Audio")
-                console.print("[red]  ✗ Failed to download audio[/red]")
+            console.print(f"[cyan]Caching assets for: {title or sid or hash_prefix}[/cyan]")
+            console.print(f"[dim]Hash prefix: {hash_prefix}[/dim]")
+            console.print()
 
-    # Download stems
-    if stems:
-        console.print("[cyan]Downloading stems...[/cyan]")
-        stem_names = ["vocals", "drums", "bass", "other"]
-        for stem_name in stem_names:
-            stem_path = cache.get_stem_path(hash_prefix, stem_name)
-            if stem_path.exists() and not force:
-                skipped.append(f"Stem '{stem_name}': {stem_path}")
-            else:
-                path = cache.download_stem(hash_prefix, stem_name, force=force)
-                if path:
-                    size_mb = path.stat().st_size / (1024 * 1024)
-                    downloaded.append(f"Stem '{stem_name}': {path.name} ({size_mb:.2f} MB)")
-                    console.print(f"[green]  ✓ {stem_name}.wav ({size_mb:.2f} MB)[/green]")
-                else:
-                    # Stems might not exist for all recordings
-                    console.print(f"[dim]  - {stem_name}.wav (not available)[/dim]")
-
-    # Download LRC
-    if lrc:
-        lrc_path = cache.get_lrc_path(hash_prefix)
-        if lrc_path.exists() and not force:
-            skipped.append(f"LRC: {lrc_path}")
-        else:
-            console.print("[cyan]Downloading LRC...[/cyan]")
-            # Always attempt download - download_lrc checks R2 existence internally
-            path = cache.download_lrc(hash_prefix, force=force)
-            if path:
-                downloaded.append(f"LRC: {path.name}")
-                console.print(f"[green]  ✓ {path.name}[/green]")
-            else:
-                console.print(
-                    "[yellow]  ! No LRC available (run 'sow-admin lyrics generate' first)[/yellow]"
-                )
+        downloaded, skipped, failed = _cache_recording_assets(
+            cache, hash_prefix, audio=audio, stems=stems, lrc=lrc, force=force
+        )
+        total_downloaded += downloaded
+        total_skipped += skipped
+        total_failed += len(failed)
 
     # Summary
     console.print()
     console.print("[bold]Cache Summary:[/bold]")
-    if downloaded:
-        console.print(f"[green]Downloaded: {len(downloaded)} file(s)[/green]")
-        for item in downloaded:
-            console.print(f"  [green]✓[/green] {item}")
-    if skipped:
-        console.print(f"[dim]Skipped (already cached): {len(skipped)} file(s)[/dim]")
-    if failed:
-        console.print(f"[red]Failed: {len(failed)} file(s)[/red]")
-        for item in failed:
-            console.print(f"  [red]✗[/red] {item}")
+    console.print(f"[green]Downloaded: {total_downloaded} file(s)[/green]")
+    console.print(f"[dim]Skipped (already cached): {total_skipped} file(s)[/dim]")
+    if total_failed:
+        console.print(f"[red]Failed: {total_failed} file(s)[/red]")
 
     # Show cache location
-    cache_dir = cache.cache_dir / hash_prefix
     console.print()
     console.print(f"[dim]Cache location: {cache_dir}[/dim]")
 
@@ -8593,7 +8710,7 @@ def probe(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
-    cache_dir = get_cache_dir(config)
+    cache_dir = get_cache_dir()
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
 
     console.print("[cyan]Downloading audio from R2...[/cyan]")
@@ -8710,7 +8827,7 @@ def probe_batch(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
-    cache_dir = get_cache_dir(config)
+    cache_dir = get_cache_dir()
     cache = AssetCache(cache_dir=cache_dir, r2_client=r2_client)
 
     probed = 0

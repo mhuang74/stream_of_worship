@@ -7,9 +7,20 @@ repeated downloads. Tracks cache state and provides cache cleanup.
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from shutil import copyfile
 from typing import Optional
 
 from stream_of_worship.admin.services.r2 import R2Client
+
+
+STEM_FILES: dict[str, str] = {
+    "vocals_dry": "vocals_dry.flac",
+    "vocals_clean": "vocals_clean.flac",  # legacy name, same content as vocals_dry
+    "vocals": "vocals.flac",
+    "vocals_wav": "vocals.wav",  # wet legacy fallback
+}
+CLEAN_VOCALS_ALIAS = "clean_vocals.flac"
+DRY_STEM_SOURCES = ("vocals_dry", "vocals_clean")
 
 
 @dataclass
@@ -99,12 +110,14 @@ class AssetCache:
 
         Args:
             hash_prefix: Recording hash prefix
-            stem_name: Stem name (e.g., 'vocals', 'drums', 'bass', 'other')
+            stem_name: Stem name (e.g., 'vocals_dry', 'vocals')
 
         Returns:
             Local cache path
         """
-        return self._get_cache_path(hash_prefix, "stems", f"{stem_name}.wav")
+        return self._get_cache_path(
+            hash_prefix, "stems", STEM_FILES.get(stem_name, f"{stem_name}.flac")
+        )
 
     def get_lrc_path(self, hash_prefix: str) -> Path:
         """Get the local cache path for an LRC file.
@@ -167,7 +180,7 @@ class AssetCache:
 
         Args:
             hash_prefix: Recording hash prefix
-            stem_name: Stem name (e.g., 'vocals', 'drums')
+            stem_name: Stem name (e.g., 'vocals_dry', 'vocals')
             force: Re-download even if cached
 
         Returns:
@@ -178,7 +191,9 @@ class AssetCache:
         if not force and cache_path.exists():
             return cache_path
 
-        s3_key = self._get_s3_key(hash_prefix, "stems", f"{stem_name}.wav")
+        s3_key = self._get_s3_key(
+            hash_prefix, "stems", STEM_FILES.get(stem_name, f"{stem_name}.flac")
+        )
 
         try:
             if not self.r2_client.file_exists(s3_key):
@@ -226,20 +241,45 @@ class AssetCache:
 
         Args:
             hash_prefix: Recording hash prefix
-            stem_names: List of stem names to download (default: all 4 stems)
+            stem_names: List of stem names to download (default: vocal stems)
             force: Re-download even if cached
 
         Returns:
             Dictionary mapping stem names to cached paths (None if failed)
         """
         if stem_names is None:
-            stem_names = ["vocals", "drums", "bass", "other"]
+            stem_names = ["vocals_dry", "vocals_clean", "vocals", "vocals_wav"]
 
         result = {}
         for stem_name in stem_names:
             result[stem_name] = self.download_stem(hash_prefix, stem_name, force)
 
         return result
+
+    def download_clean_vocals(
+        self, hash_prefix: str, force: bool = False
+    ) -> tuple[Optional[Path], Optional[str]]:
+        """Resolve the best R2 vocal stem into the canonical clean-vocal slot.
+
+        Returns (path, source_name): source is the stem name that satisfied the
+        request; local short-circuit returns (alias_path, "clean_vocals"); wet
+        sources return the wet stem path WITHOUT aliasing it (wet vocals must
+        not masquerade as clean); nothing found → (None, None).
+        """
+        alias_path = self._get_cache_path(hash_prefix, "stems", CLEAN_VOCALS_ALIAS)
+        if not force and alias_path.exists():
+            return alias_path, "clean_vocals"
+
+        for stem_name in DRY_STEM_SOURCES + ("vocals", "vocals_wav"):
+            path = self.download_stem(hash_prefix, stem_name, force=force)
+            if path is None:
+                continue
+            if stem_name in DRY_STEM_SOURCES:
+                copyfile(path, alias_path)
+                return alias_path, stem_name
+            return path, stem_name
+
+        return None, None
 
     def get_cache_size(self, hash_prefix: Optional[str] = None) -> int:
         """Get the total size of cached files in bytes.
@@ -273,7 +313,9 @@ class AssetCache:
         """
         return self.get_cache_size(hash_prefix) / (1024 * 1024)
 
-    def clear_cache(self, hash_prefix: Optional[str] = None, older_than_days: Optional[int] = None) -> int:
+    def clear_cache(
+        self, hash_prefix: Optional[str] = None, older_than_days: Optional[int] = None
+    ) -> int:
         """Clear cached files.
 
         Args:
@@ -321,6 +363,5 @@ class AssetCache:
             return []
 
         return [
-            d.name for d in self.cache_dir.iterdir()
-            if d.is_dir() and not d.name.startswith(".")
+            d.name for d in self.cache_dir.iterdir() if d.is_dir() and not d.name.startswith(".")
         ]

@@ -228,6 +228,13 @@ class TestAdminCacheDir:
         assert isinstance(cache_dir, Path)
         assert "stream-of-worship-admin" in str(cache_dir)
 
+    def test_get_cache_dir_honors_sow_cache_dir_env(self, tmp_path, monkeypatch):
+        """SOW_CACHE_DIR env override wins over the platform default."""
+        monkeypatch.setenv("SOW_CACHE_DIR", str(tmp_path))
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+
+        assert get_cache_dir() == tmp_path
+
     def test_toml_paths_section_ignored(self, tmp_path, monkeypatch):
         """Old [paths] section is silently ignored."""
         config_file = tmp_path / "config.toml"

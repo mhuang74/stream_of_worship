@@ -927,6 +927,64 @@ class DatabaseClient:
             results.append((recording, song_title, album_name, album_series_val))
         return results
 
+    def list_cache_target_recordings(
+        self,
+        visibility: Optional[str] = None,
+        rating_stored: Optional[str] = None,
+        reason: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> list[tuple[str, Optional[str], Optional[str]]]:
+        """Recordings matching cache-batch filters.
+
+        Args:
+            visibility: Filter by visibility status ("published"|"review"|"hold";
+                "none" matches NULL visibility_status).
+            rating_stored: Lyric feedback rating ("happy"|"sad") stored value.
+            reason: Lyric feedback reason ("missing"|"timing"|"wrong_text"|"other").
+            limit: Maximum number of results.
+
+        Returns:
+            Rows of (hash_prefix, song_id, song_title), non-deleted matches,
+            ordered by album name then title for stable output.
+        """
+        cursor = self.connection.cursor()
+
+        query = """
+            SELECT r.hash_prefix, s.id, s.title
+            FROM recordings r
+            LEFT JOIN songs s ON s.id = r.song_id AND s.deleted_at ISNULL
+            WHERE r.deleted_at IS NULL
+        """
+        params: list = []
+
+        if visibility:
+            if visibility == "none":
+                query += " AND r.visibility_status IS NULL"
+            else:
+                query += " AND r.visibility_status = %s"
+                params.append(visibility)
+
+        if rating_stored:
+            query += (
+                " AND EXISTS ("
+                " SELECT 1 FROM lyrics_feedback f"
+                " WHERE f.recording_content_hash = r.content_hash"
+                " AND f.resolved_at IS NULL AND f.rating = %s"
+            )
+            params.append(rating_stored)
+            if reason:
+                query += " AND f.reason = %s"
+                params.append(reason)
+            query += " )"
+
+        query += " ORDER BY s.album_name ASC NULLS LAST, s.title ASC NULLS LAST"
+
+        if limit:
+            query += f" LIMIT {int(limit)}"
+
+        cursor.execute(query, params)
+        return [(row[0], row[1], row[2]) for row in cursor.fetchall()]
+
     def update_recording_status(
         self,
         hash_prefix: str,
