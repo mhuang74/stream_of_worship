@@ -125,9 +125,10 @@ describe("SemanticSearch", () => {
       expect(screen.getByTestId("semantic-search-button")).toBeInTheDocument();
     });
 
-    it("search button is enabled when query is empty", () => {
+    it("search button is disabled when query is empty", () => {
       renderComponent();
-      expect(screen.getByTestId("semantic-search-button")).not.toBeDisabled();
+      expect(screen.getByTestId("semantic-search-button")).toBeDisabled();
+      expect(screen.getByTestId("semantic-no-criteria-hint")).toBeInTheDocument();
     });
 
     it("search button is enabled when query has text", () => {
@@ -135,6 +136,7 @@ describe("SemanticSearch", () => {
       const input = screen.getByTestId("semantic-search-input");
       fireEvent.change(input, { target: { value: "songs about grace" } });
       expect(screen.getByTestId("semantic-search-button")).not.toBeDisabled();
+      expect(screen.queryByTestId("semantic-no-criteria-hint")).not.toBeInTheDocument();
     });
 
     it("does not show results before search", () => {
@@ -182,17 +184,32 @@ describe("SemanticSearch", () => {
       });
     });
 
-    it("browses songs when Search is pressed with a blank description", async () => {
+    it("does not fetch when Search is pressed with a blank description and no filters", async () => {
+      renderComponent();
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      // Let microtasks settle; nothing should ever hit the API.
+      await waitFor(() => {
+        expect(mockFetch.mock.calls.filter((c) => String(c[0]).includes("/api/songs")).length).toBe(0);
+      });
+      expect(screen.queryByTestId("similarity-badge")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("semantic-search-results")).not.toBeInTheDocument();
+    });
+
+    it("still browses when Query is blank but an album filter is selected", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ songs: mockSongs, total: 2 }),
       });
 
-      renderComponent();
+      renderComponent({ albums: [hymnsFilter] });
       fireEvent.click(screen.getByTestId("semantic-search-button"));
 
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
+        expect(mockFetch).toHaveBeenCalledWith("/api/songs?albumName=Hymns&albumSeries=Classic&limit=50");
+      });
+      await waitFor(() => {
+        expect(screen.getByText("Amazing Grace")).toBeInTheDocument();
       });
       expect(screen.queryByTestId("similarity-badge")).not.toBeInTheDocument();
     });

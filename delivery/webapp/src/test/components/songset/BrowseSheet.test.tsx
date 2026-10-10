@@ -193,16 +193,15 @@ describe("BrowseSheet", () => {
     });
   });
 
-  it("blank Keyword Search fetches the default catalog", async () => {
+  it("blank Keyword Search with no filters is blocked", async () => {
     renderSheet();
     await waitForAlbums();
 
     fireEvent.click(screen.getByTestId("search-button"));
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
-    });
-    expect(await screen.findByText("Amazing Grace")).toBeInTheDocument();
+    expect(songFetchCalls()).toHaveLength(0);
+    expect(screen.getByTestId("search-button")).toBeDisabled();
+    expect(screen.getByTestId("search-no-criteria-hint")).toBeInTheDocument();
   });
 
   it("Keyword Search with filters sends album, key, and BPM params", async () => {
@@ -218,7 +217,7 @@ describe("BrowseSheet", () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringMatching(
           new RegExp(
-            `^/api/songs\\?.*albumName=Hymns.*keys=D.*bpmRange=slow.*themes=${encodeURIComponent("感恩")}.*limit=50`
+            `^/api/songs\\?.*albumName=Hymns.*keys=D.*bpmRange=slow.*themes=${encodeURIComponent("感恩")}.*limit=20`
           )
         )
       );
@@ -246,17 +245,16 @@ describe("BrowseSheet", () => {
     });
   });
 
-  it("blank Describe Search fetches the default catalog without similarity badges", async () => {
+  it("blank Describe Search with no filters is blocked", async () => {
     renderSheet();
     await waitForAlbums();
 
     fireEvent.click(screen.getByTestId("describe-mode-tab"));
     fireEvent.click(screen.getByTestId("semantic-search-button"));
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
-    });
-    expect(await screen.findByText("Amazing Grace")).toBeInTheDocument();
+    expect(songFetchCalls()).toHaveLength(0);
+    expect(screen.getByTestId("semantic-search-button")).toBeDisabled();
+    expect(screen.getByTestId("semantic-no-criteria-hint")).toBeInTheDocument();
     expect(screen.queryByTestId("similarity-badge")).not.toBeInTheDocument();
   });
 
@@ -366,6 +364,13 @@ describe("BrowseSheet", () => {
     renderSheet();
     await waitForAlbums();
 
+    // Guards block blank+filterless searches; select a filter so both modes fetch.
+    fireEvent.click(screen.getByTestId("album-filter"));
+    await waitFor(() => {
+      expect(screen.getByTestId(`album-option-${encodeURIComponent(albumFilterKey(hymnsFilter))}`)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId(`album-option-${encodeURIComponent(albumFilterKey(hymnsFilter))}`));
+
     fireEvent.click(screen.getByTestId("search-button"));
     const keywordResult = await screen.findByText("Amazing Grace");
     expectBefore(screen.getByTestId("album-filter"), keywordResult);
@@ -373,7 +378,9 @@ describe("BrowseSheet", () => {
     fireEvent.click(screen.getByTestId("describe-mode-tab"));
     fireEvent.click(screen.getByTestId("semantic-search-button"));
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/songs?limit=50");
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("albumName=Hymns&albumSeries=Classic")
+      );
     });
     const describeResult = await screen.findByTestId("semantic-search-results");
 

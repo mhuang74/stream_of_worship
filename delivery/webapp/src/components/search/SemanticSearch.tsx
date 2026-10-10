@@ -86,6 +86,13 @@ export function useSemanticSearch({
   const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
   const latestSearchIdRef = useRef(0);
 
+  const hasCriteria =
+    query.trim().length > 0 ||
+    albums.length > 0 ||
+    keys.length > 0 ||
+    (bpmRange?.length ?? 0) > 0 ||
+    themes.length > 0;
+
   const resolveSong = useCallback(
     (songId: string) => {
       const song = results.find((r) => r.id === songId);
@@ -131,6 +138,7 @@ export function useSemanticSearch({
   }, [resetPlayback]);
 
   const handleSearch = useCallback(async () => {
+    if (!hasCriteria) return;
     const trimmed = query.trim();
 
     const searchId = latestSearchIdRef.current + 1;
@@ -217,7 +225,7 @@ export function useSemanticSearch({
         setIsLoading(false);
       }
     }
-  }, [query, albums, keys, bpmRange, themes, onSwitchToSearchTab, t]);
+  }, [hasCriteria, query, albums, keys, bpmRange, themes, onSwitchToSearchTab, t]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -260,10 +268,15 @@ export function useSemanticSearch({
           <p className="text-xs text-muted-foreground" aria-hidden="true" data-testid="describe-help-text">
             {t("audio.search.helpTip")}
           </p>
+          {!hasCriteria && (
+            <p className="text-xs text-muted-foreground" data-testid="semantic-no-criteria-hint">
+              {t("audio.search.noCriteriaHint")}
+            </p>
+          )}
           {showSearchButton && (
             <Button
               onClick={handleSearch}
-              disabled={isLoading}
+              disabled={!hasCriteria || isLoading}
               className={cn("gap-1.5", searchButtonClassName)}
               data-testid="semantic-search-button"
               aria-label={isLoading ? t("audio.search.searching") : t("audio.search.searchSongsByDescription")}
@@ -395,6 +408,7 @@ export function useSemanticSearch({
     resultsContent,
     search: handleSearch,
     isLoading,
+    hasCriteria,
     reset,
   };
 }

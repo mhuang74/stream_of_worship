@@ -66,6 +66,8 @@ export const browseBundle = bundle({
     "browse.search.hint":
       "Tip: search by title, pinyin, or composer — e.g. \u2018歡喜\u2019, \u2018huan xi\u2019, \u2018曾祥怡\u2019 · Press Enter to search",
     "browse.search.failed": "Failed to search songs",
+    "browse.search.noCriteriaHint": "Enter a search term or select a filter",
+    "browse.search.loadMore": "Load more",
 
     // SongList
     "browse.dragReorder": "Drag to reorder song ",
@@ -178,6 +180,8 @@ export const browseBundle = bundle({
     "browse.search.hint":
       "小技巧：可以搜歌名、拼音或作曲者，例如「歡喜」「huan xi」「曾祥怡」 · 按 Enter 開始搜尋",
     "browse.search.failed": "搜尋失敗，請再試一次",
+    "browse.search.noCriteriaHint": "請輸入搜尋字詞或選擇篩選條件",
+    "browse.search.loadMore": "載入更多",
 
     // SongList
     "browse.dragReorder": "拖曳調整順序 ",
