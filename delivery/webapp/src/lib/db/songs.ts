@@ -395,10 +395,14 @@ export async function listSongs(
   // the join is equivalent to ordering by the joined column (avoids drizzle's
   // one-sided findMany extras/join limitations). NULLS LAST keeps real
   // favorites above any filtering artifacts (there are none in practice —
-  // the favoritesOnly predicate guarantees membership).
-  const favoritesOnlyOrder = filters?.favoritesOnly
-    ? sql`(select max(f.created_at) from user_favorite_songs f where f.song_id = ${songs.id} and f.user_id = ${filters?.viewerUserId ?? 0}) desc nulls last`
-    : undefined;
+  // the favoritesOnly predicate guarantees membership). Scoped to the
+  // viewer's own favorite rows; requires viewerUserId — without it the order
+  // is omitted rather than silently degraded (a `?? 0` sentinel would make
+  // max() NULL for every row and drop recency ordering entirely).
+  const favoritesOnlyOrder =
+    filters?.favoritesOnly && filters.viewerUserId != null
+      ? sql`(select max(f.created_at) from user_favorite_songs f where f.song_id = ${songs.id} and f.user_id = ${filters.viewerUserId}) desc nulls last`
+      : undefined;
 
   const result = await db.query.songs.findMany({
     where: listWhereClause,
