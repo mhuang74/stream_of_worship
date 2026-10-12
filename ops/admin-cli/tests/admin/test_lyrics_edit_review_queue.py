@@ -440,7 +440,9 @@ class TestReviewNextSongCommand:
 
         result = self._invoke(config_path, "\n")
         assert result.exit_code == 0, result.output
-        # EOF declines every prompt; the loop stops after one song.
+        # The single "\n" feeds the pause gate; EOF then declines every
+        # subsequent prompt (offers, continue) and the loop stops after
+        # one song.
         assert result.output.count("Next review song:") == 1
 
     def test_skip_declined_song_re_picked(
