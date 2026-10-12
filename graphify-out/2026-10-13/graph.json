@@ -329,19 +329,6 @@
       "source_location": "L22"
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline",
-      "label": "OnnxAsrPipeline",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": "onnxasrpipeline",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L65"
-    },
-    {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_screens_history_historyscreen",
       "label": "HistoryScreen",
       "_callable": true,
@@ -4801,6 +4788,32 @@
       "source_location": "L197"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig",
+      "label": "RunConfig",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "runconfig",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L18"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_missingreferenceerror",
+      "label": "MissingReferenceError",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "missingreferenceerror",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/songset_client.py",
+      "source_location": "L23"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_app_sowapp",
       "label": "SowApp",
       "_callable": true,
@@ -4838,6 +4851,19 @@
       "norm_label": "settingsscreen",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/settings.py",
       "source_location": "L16"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline",
+      "label": "OnnxAsrPipeline",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": "onnxasrpipeline",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L65"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_step_timer_stepheartbeat",
@@ -5210,7 +5236,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "draftitem",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -5223,7 +5249,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "judgeitem",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -5236,7 +5262,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "judgeranking",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -5249,7 +5275,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "proposalitem",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -5262,7 +5288,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "scorebreakdown",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -5275,24 +5301,11 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "songcandidate",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
       "source_location": "L8"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_models_songsetproposal",
-      "label": "SongsetProposal",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "songsetproposal",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
-      "source_location": "L132"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_models_transitioncandidate",
@@ -5301,7 +5314,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "transitioncandidate",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -9078,30 +9091,17 @@
       "source_location": "L22"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig",
-      "label": "RunConfig",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_models_songsetproposal",
+      "label": "SongsetProposal",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": "runconfig",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L18"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_missingreferenceerror",
-      "label": "MissingReferenceError",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "missingreferenceerror",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/songset_client.py",
-      "source_location": "L23"
+      "norm_label": "songsetproposal",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
+      "source_location": "L132"
     },
     {
       "id": "lab_poc_scripts_transition_builder_v2_app_screens_history_historyscreen",
@@ -9881,7 +9881,7 @@
       "file_type": "code",
       "norm_label": "editorsessionoutcome",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2026"
+      "source_location": "L2035"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_r2_backupfailederror",
@@ -12278,90 +12278,6 @@
       "norm_label": "_normalize_text()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
       "source_location": "L470"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_create_segments_from_text",
-      "label": "._create_segments_from_text()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": "._create_segments_from_text()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L273"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_encode_audio",
-      "label": "._encode_audio()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": "._encode_audio()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L124"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_generate_tokens",
-      "label": "._generate_tokens()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": "._generate_tokens()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L181"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_init",
-      "label": ".__init__()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": ".__init__()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L71"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_load_audio",
-      "label": "._load_audio()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": "._load_audio()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L109"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_prepare_encoder_inputs",
-      "label": "._prepare_encoder_inputs()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": "._prepare_encoder_inputs()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L142"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_transcribe",
-      "label": ".transcribe()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": ".transcribe()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L236"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_results_to_lrc",
@@ -23992,6 +23908,18 @@
       "source_location": "L24"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_format_phase_counts",
+      "label": "_format_phase_counts()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 163,
+      "community_name": "enrichment_report.py",
+      "file_type": "code",
+      "norm_label": "_format_phase_counts()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
+      "source_location": "L585"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_embeddings_load_theme_anchors",
       "label": "load_theme_anchors()",
       "_callable": true,
@@ -32253,7 +32181,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "_build_report()",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -32265,7 +32193,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "_format_duration()",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -32277,7 +32205,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -32289,7 +32217,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "_pool_overview()",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -32301,7 +32229,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "_proposal_section()",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -32313,11 +32241,239 @@
       "_callable": true,
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "_run_summary()",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
       "source_location": "L139"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_bottleneck_lines",
+      "label": "_bottleneck_lines()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "_bottleneck_lines()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
+      "source_location": "L252"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_diversity_metrics",
+      "label": "_diversity_metrics()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "_diversity_metrics()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
+      "source_location": "L192"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_diversity_summary",
+      "label": "_diversity_summary()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "_diversity_summary()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
+      "source_location": "L286"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_song_frequency_table",
+      "label": "_song_frequency_table()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "_song_frequency_table()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
+      "source_location": "L228"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_song_overlap_matrix",
+      "label": "_song_overlap_matrix()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "_song_overlap_matrix()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
+      "source_location": "L215"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_theme_coverage_lines",
+      "label": "_theme_coverage_lines()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "_theme_coverage_lines()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
+      "source_location": "L245"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_closing_limit",
+      "label": ".closing_limit()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".closing_limit()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L83"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_h4_limit",
+      "label": ".h4_limit()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".h4_limit()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L95"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_h4_no_crossfade_limit",
+      "label": ".h4_no_crossfade_limit()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".h4_no_crossfade_limit()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L103"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_h5_limit",
+      "label": ".h5_limit()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".h5_limit()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L107"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_opening_floor",
+      "label": ".opening_floor()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".opening_floor()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L89"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_post_init",
+      "label": ".__post_init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".__post_init__()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L50"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_to_dict",
+      "label": ".to_dict()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".to_dict()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L132"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_validate_environment",
+      "label": ".validate_environment()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": ".validate_environment()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L112"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose_assemble_report_sections",
+      "label": "assemble_report_sections()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "assemble_report_sections()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
+      "source_location": "L19"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose_latest_trace_data",
+      "label": "_latest_trace_data()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "_latest_trace_data()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
+      "source_location": "L109"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_persist_persist_proposals",
+      "label": "persist_proposals()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "persist_proposals()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/persist.py",
+      "source_location": "L13"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer_write_report",
+      "label": "write_report()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "write_report()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/report_writer.py",
+      "source_location": "L12"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_diagnostics_diagnostic_lines",
+      "label": "diagnostic_lines()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "diagnostic_lines()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
+      "source_location": "L148"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_pytorch_cache_file_name",
@@ -32774,6 +32930,90 @@
       "norm_label": ".on_button_pressed()",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/settings.py",
       "source_location": "L69"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_create_segments_from_text",
+      "label": "._create_segments_from_text()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": "._create_segments_from_text()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L273"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_encode_audio",
+      "label": "._encode_audio()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": "._encode_audio()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L124"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_generate_tokens",
+      "label": "._generate_tokens()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": "._generate_tokens()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L181"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L71"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_load_audio",
+      "label": "._load_audio()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": "._load_audio()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L109"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_prepare_encoder_inputs",
+      "label": "._prepare_encoder_inputs()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": "._prepare_encoder_inputs()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L142"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_transcribe",
+      "label": ".transcribe()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": ".transcribe()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L236"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_generate_all_variants",
@@ -34377,7 +34617,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/skills/songset-constructor/scripts/score_songset.py",
@@ -34389,7 +34629,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_candidate_sort_key()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34401,7 +34641,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "compute_fan_out()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34413,7 +34653,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "exhaustive_fallback()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34425,7 +34665,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_phase_matches()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34437,7 +34677,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_phase_score()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34449,7 +34689,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_proposal_for_sequence()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34461,7 +34701,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "search()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34473,7 +34713,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_sequences()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34485,7 +34725,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_sort_key_hash_reversed()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34497,7 +34737,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_sort_key_phase_tempo()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34509,7 +34749,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_sort_key_tempo_dynamic()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34521,7 +34761,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_sort_key_theme_diverse()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34533,7 +34773,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_template()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -34545,7 +34785,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "beam_diagnostics()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
@@ -34557,7 +34797,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "enrichment_drop_diagnostics()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
@@ -34569,7 +34809,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "hard_rule_rejection_counts()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
@@ -34581,7 +34821,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "_proposal_for_diagnostics()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
@@ -34593,131 +34833,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "role_eligibility_counts()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
       "source_location": "L41"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_clamp",
-      "label": "_clamp()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "_clamp()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L26"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_diversity",
-      "label": "f_diversity()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "f_diversity()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L64"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_energy",
-      "label": "f_energy()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "f_energy()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L72"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_harmony",
-      "label": "f_harmony()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "f_harmony()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L51"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_posture",
-      "label": "f_posture()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "f_posture()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L98"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_tempo",
-      "label": "f_tempo()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "f_tempo()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L41"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_theme",
-      "label": "f_theme()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "f_theme()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L30"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_middle_song_ids",
-      "label": "middle_song_ids()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "middle_song_ids()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L110"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_score",
-      "label": "score()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "score()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L119"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_score_with_diversity_penalty",
-      "label": "score_with_diversity_penalty()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "score_with_diversity_penalty()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L154"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_hard_constraints_validate",
@@ -34725,7 +34845,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "validate()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/hard_constraints.py",
@@ -34737,7 +34857,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "top_themes()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/phases.py",
@@ -34749,7 +34869,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "composer_diversity()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -34761,7 +34881,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "draft_from_candidates()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -34773,7 +34893,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "item_from_candidate()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -34785,7 +34905,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "proposal_from_draft()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -34797,7 +34917,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "proposal_hash_sequence()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -34809,7 +34929,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "rank_proposals()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -34821,7 +34941,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "stamp_boundary_sources()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -42856,6 +42976,18 @@
       "source_location": "L60"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_services_songset_io_songsetioservice_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "sow_lab_app/main.py",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "lab/sow-app/src/sow_lab_app/services/songset_io.py",
+      "source_location": "L46"
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_services_songset_io_songsetioservice_restore_songset",
       "label": ".restore_songset()",
       "_callable": true,
@@ -46442,18 +46574,6 @@
       "norm_label": "._update_state()",
       "source_file": "lab/sow-app/src/sow_lab_app/services/export.py",
       "source_location": "L183"
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_services_songset_io_songsetioservice_init",
-      "label": ".__init__()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 437,
-      "community_name": "SongsetClient",
-      "file_type": "code",
-      "norm_label": ".__init__()",
-      "source_file": "lab/sow-app/src/sow_lab_app/services/songset_io.py",
-      "source_location": "L46"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_models_songset_from_row",
@@ -53224,24 +53344,12 @@
       "source_location": "L101"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_bottleneck_lines",
-      "label": "_bottleneck_lines()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "_bottleneck_lines()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
-      "source_location": "L252"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_brief_summaries_prompt",
       "label": "_brief_summaries_prompt()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_brief_summaries_prompt()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53253,7 +53361,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "brief_summary_block()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53265,7 +53373,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "build_review_report()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53277,7 +53385,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "cache_narratives()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53289,7 +53397,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_candidate_pool_summary()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53301,7 +53409,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_config_flags()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53313,35 +53421,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_deterministic_arc_narrative()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
       "source_location": "L72"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_diversity_metrics",
-      "label": "_diversity_metrics()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "_diversity_metrics()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
-      "source_location": "L192"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_diversity_summary",
-      "label": "_diversity_summary()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "_diversity_summary()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
-      "source_location": "L286"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_fallback_review_report",
@@ -53349,7 +53433,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_fallback_review_report()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53361,7 +53445,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_fallback_title_and_findings()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53373,7 +53457,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_filters_summary()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53385,23 +53469,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_format_flags()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
       "source_location": "L530"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_format_phase_counts",
-      "label": "_format_phase_counts()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "_format_phase_counts()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
-      "source_location": "L585"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_generate_brief_summaries",
@@ -53409,7 +53481,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "generate_brief_summaries()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53421,7 +53493,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "get_cached_narratives()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53433,7 +53505,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_json_default()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53445,7 +53517,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_key_tempo_journey_line()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53457,7 +53529,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_latest_trace_data()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53469,7 +53541,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_md_cell()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53481,7 +53553,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_parse_llm_summaries()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53493,7 +53565,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_proposal_origin()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53505,7 +53577,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_proposal_section()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53517,7 +53589,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_proposal_structured_data()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53529,7 +53601,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_proposal_warnings()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53541,7 +53613,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_review_payload()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53553,7 +53625,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_review_prompt()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53565,35 +53637,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_score_warnings_line()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
       "source_location": "L59"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_song_frequency_table",
-      "label": "_song_frequency_table()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "_song_frequency_table()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
-      "source_location": "L228"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_song_overlap_matrix",
-      "label": "_song_overlap_matrix()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "_song_overlap_matrix()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
-      "source_location": "L215"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_song_sequence_line",
@@ -53601,7 +53649,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_song_sequence_line()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53613,23 +53661,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_strip_markdown_fence()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
       "source_location": "L591"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_theme_coverage_lines",
-      "label": "_theme_coverage_lines()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "_theme_coverage_lines()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
-      "source_location": "L245"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_trace_stage_summaries",
@@ -53637,7 +53673,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_trace_stage_summaries()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53649,7 +53685,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_truncate_sentences()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53661,7 +53697,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "_validation_events()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53673,7 +53709,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "write_artifacts()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53685,7 +53721,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "write_pool_csv()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53697,7 +53733,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "write_proposals()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -53709,167 +53745,131 @@
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "write_report()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
       "source_location": "L363"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_closing_limit",
-      "label": ".closing_limit()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_clamp",
+      "label": "_clamp()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".closing_limit()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L83"
+      "norm_label": "_clamp()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L26"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_h4_limit",
-      "label": ".h4_limit()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_diversity",
+      "label": "f_diversity()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".h4_limit()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L95"
+      "norm_label": "f_diversity()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L64"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_h4_no_crossfade_limit",
-      "label": ".h4_no_crossfade_limit()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_energy",
+      "label": "f_energy()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".h4_no_crossfade_limit()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L103"
+      "norm_label": "f_energy()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L72"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_h5_limit",
-      "label": ".h5_limit()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_harmony",
+      "label": "f_harmony()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".h5_limit()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L107"
+      "norm_label": "f_harmony()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L51"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_opening_floor",
-      "label": ".opening_floor()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_posture",
+      "label": "f_posture()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".opening_floor()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L89"
+      "norm_label": "f_posture()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L98"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_post_init",
-      "label": ".__post_init__()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_tempo",
+      "label": "f_tempo()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".__post_init__()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L50"
+      "norm_label": "f_tempo()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L41"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_to_dict",
-      "label": ".to_dict()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_f_theme",
+      "label": "f_theme()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".to_dict()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L132"
+      "norm_label": "f_theme()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L30"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_runconfig_validate_environment",
-      "label": ".validate_environment()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_middle_song_ids",
+      "label": "middle_song_ids()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": ".validate_environment()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
-      "source_location": "L112"
+      "norm_label": "middle_song_ids()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L110"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose_assemble_report_sections",
-      "label": "assemble_report_sections()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_score",
+      "label": "score()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": "assemble_report_sections()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
-      "source_location": "L19"
+      "norm_label": "score()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L119"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose_latest_trace_data",
-      "label": "_latest_trace_data()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_score_with_diversity_penalty",
+      "label": "score_with_diversity_penalty()",
       "_callable": true,
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": "_latest_trace_data()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
-      "source_location": "L109"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_persist_persist_proposals",
-      "label": "persist_proposals()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "persist_proposals()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/persist.py",
-      "source_location": "L13"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer_write_report",
-      "label": "write_report()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "write_report()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/report_writer.py",
-      "source_location": "L12"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_diagnostics_diagnostic_lines",
-      "label": "diagnostic_lines()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "diagnostic_lines()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
-      "source_location": "L148"
+      "norm_label": "score_with_diversity_penalty()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L154"
     },
     {
       "id": "lab_poc_scripts_transition_builder_v2_app_main_transitionbuilderapp_create_screen",
@@ -57601,7 +57601,7 @@
       "file_type": "code",
       "norm_label": "_build_fresh_editor_state()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2309"
+      "source_location": "L2318"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_current_visibility",
@@ -57613,7 +57613,7 @@
       "file_type": "code",
       "norm_label": "_current_visibility()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2273"
+      "source_location": "L2282"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_feedback_list",
@@ -57805,7 +57805,7 @@
       "file_type": "code",
       "norm_label": "_open_sad_count()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1959"
+      "source_location": "L1961"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_plan_post_upload_offers",
@@ -57853,7 +57853,7 @@
       "file_type": "code",
       "norm_label": "_print_feedback_banner()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2014"
+      "source_location": "L2023"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_print_feedback_banner_from_summary",
@@ -57865,7 +57865,7 @@
       "file_type": "code",
       "norm_label": "_print_feedback_banner_from_summary()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1993"
+      "source_location": "L2002"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_print_review_pick_reason",
@@ -57877,7 +57877,7 @@
       "file_type": "code",
       "norm_label": "_print_review_pick_reason()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1964"
+      "source_location": "L1966"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_print_run_report",
@@ -57949,7 +57949,7 @@
       "file_type": "code",
       "norm_label": "_run_editor_session()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2041"
+      "source_location": "L2050"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_post_upload_prompts",
@@ -57961,7 +57961,7 @@
       "file_type": "code",
       "norm_label": "_run_post_upload_prompts()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2221"
+      "source_location": "L2230"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_review_session",
@@ -57985,7 +57985,7 @@
       "file_type": "code",
       "norm_label": "_run_single_mode_offers()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2285"
+      "source_location": "L2294"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_stdin_batch",
@@ -61263,17 +61263,6 @@
       "source_location": ""
     },
     {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_py_ndarray",
-      "label": "ndarray",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "code",
-      "norm_label": "ndarray",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_py_path",
       "label": "Path",
       "_origin": "ast",
@@ -61283,72 +61272,6 @@
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_110",
-      "label": "Load and preprocess audio file. Args: audio_path: Path to audio file Returns:\u2026",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "load and preprocess audio file. args: audio_path: path to audio file returns:...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L110"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_125",
-      "label": "Run encoder on audio. Args: audio: Audio waveform Returns: Encoder hidden states",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "run encoder on audio. args: audio: audio waveform returns: encoder hidden states",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L125"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_143",
-      "label": "Prepare inputs for encoder. Args: audio: Audio waveform Returns: Dictionary of\u2026",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "prepare inputs for encoder. args: audio: audio waveform returns: dictionary of...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L143"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_184",
-      "label": "Generate tokens using decoder. Args: encoder_hidden_states: Encoder outputs\u2026",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "generate tokens using decoder. args: encoder_hidden_states: encoder outputs...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L184"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_241",
-      "label": "Transcribe audio file. Args: audio_path: Path to audio file language: Target\u2026",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "transcribe audio file. args: audio_path: path to audio file language: target...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L241"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_276",
-      "label": "Create rough segments by splitting text on punctuation. Since ONNX model\u2026",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "create rough segments by splitting text on punctuation. since onnx model...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L276"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_346",
@@ -61492,28 +61415,6 @@
       "norm_label": "snap asr segments to canonical lyrics using fuzzy matching. args: segments:...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
       "source_location": "L542"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_66",
-      "label": "ONNX ASR pipeline for Qwen3-ASR. Adapted from Daumee's onnx_inference.py for\u2026",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "onnx asr pipeline for qwen3-asr. adapted from daumee's onnx_inference.py for...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L66"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_72",
-      "label": "Initialize ONNX ASR pipeline. Args: model_dir: Directory containing\u2026",
-      "_origin": "ast",
-      "community": 103,
-      "community_name": "gen_lrc_qwen3_asr_onnx.py",
-      "file_type": "rationale",
-      "norm_label": "initialize onnx asr pipeline. args: model_dir: directory containing...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L72"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_783",
@@ -74732,6 +74633,17 @@
       "norm_label": "mockuselyricsfeedback",
       "source_file": "delivery/webapp/src/test/components/play/ControllerPlayer.test.tsx",
       "source_location": "L8"
+    },
+    {
+      "id": "counter",
+      "label": "Counter",
+      "_origin": "ast",
+      "community": 163,
+      "community_name": "enrichment_report.py",
+      "file_type": "code",
+      "norm_label": "counter",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "lab_poc_scripts_diagnose_closers",
@@ -88256,7 +88168,7 @@
       "label": "write_report.py",
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "write_report.py",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -88267,18 +88179,73 @@
       "label": "admin/constants.py",
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "code",
       "norm_label": "admin/constants.py",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/constants.py",
       "source_location": "L1"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config",
+      "label": "songset_constructor/config.py",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "songset_constructor/config.py",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose",
+      "label": "diagnose.py",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "diagnose.py",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_persist",
+      "label": "persist.py",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "persist.py",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/persist.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer",
+      "label": "report_writer.py",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "report_writer.py",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/report_writer.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer_py_path",
+      "label": "Path",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "code",
+      "norm_label": "path",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "lab_skills_songset_constructor_scripts_write_report_rationale_110",
       "label": "Build the full proposal_report.md content.",
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "rationale",
       "norm_label": "build the full proposal_report.md content.",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -88289,7 +88256,7 @@
       "label": "Generate the run summary section.",
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "rationale",
       "norm_label": "generate the run summary section.",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -88300,7 +88267,7 @@
       "label": "Generate the pool overview section.",
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "rationale",
       "norm_label": "generate the pool overview section.",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -88311,7 +88278,7 @@
       "label": "Generate a per-proposal section.",
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "rationale",
       "norm_label": "generate a per-proposal section.",
       "source_file": "lab/skills/songset-constructor/scripts/write_report.py",
@@ -88322,11 +88289,66 @@
       "label": "Shared constants mirroring the webapp's constants.ts. NOTE: these duplicate\u2026",
       "_origin": "ast",
       "community": 228,
-      "community_name": "write_report.py",
+      "community_name": "RunConfig",
       "file_type": "rationale",
       "norm_label": "shared constants mirroring the webapp's constants.ts. note: these duplicate...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/constants.py",
       "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_rationale_1",
+      "label": "Runtime configuration for the songset constructor.",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "rationale",
+      "norm_label": "runtime configuration for the songset constructor.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose_rationale_1",
+      "label": "Diagnostic lines for the songset constructor result.",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "rationale",
+      "norm_label": "diagnostic lines for the songset constructor result.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_persist_rationale_1",
+      "label": "Atomic persistence of constructed songsets.",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "rationale",
+      "norm_label": "atomic persistence of constructed songsets.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/persist.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer_rationale_1",
+      "label": "Write diagnose_report.md if --report flag is set.",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "rationale",
+      "norm_label": "write diagnose_report.md if --report flag is set.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/report_writer.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_rationale_24",
+      "label": "Error when a referenced song or recording is not found.",
+      "_origin": "ast",
+      "community": 228,
+      "community_name": "RunConfig",
+      "file_type": "rationale",
+      "norm_label": "error when a referenced song or recording is not found.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/songset_client.py",
+      "source_location": "L24"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_pytorch",
@@ -88855,6 +88877,105 @@
       "norm_label": "handle button presses.",
       "source_file": "lab/sow-app/src/sow_lab_app/screens/settings.py",
       "source_location": "L70"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_py_ndarray",
+      "label": "ndarray",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "code",
+      "norm_label": "ndarray",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_110",
+      "label": "Load and preprocess audio file. Args: audio_path: Path to audio file Returns:\u2026",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "load and preprocess audio file. args: audio_path: path to audio file returns:...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L110"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_125",
+      "label": "Run encoder on audio. Args: audio: Audio waveform Returns: Encoder hidden states",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "run encoder on audio. args: audio: audio waveform returns: encoder hidden states",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L125"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_143",
+      "label": "Prepare inputs for encoder. Args: audio: Audio waveform Returns: Dictionary of\u2026",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "prepare inputs for encoder. args: audio: audio waveform returns: dictionary of...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L143"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_184",
+      "label": "Generate tokens using decoder. Args: encoder_hidden_states: Encoder outputs\u2026",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "generate tokens using decoder. args: encoder_hidden_states: encoder outputs...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L184"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_241",
+      "label": "Transcribe audio file. Args: audio_path: Path to audio file language: Target\u2026",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "transcribe audio file. args: audio_path: path to audio file language: target...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L241"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_276",
+      "label": "Create rough segments by splitting text on punctuation. Since ONNX model\u2026",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "create rough segments by splitting text on punctuation. since onnx model...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L276"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_66",
+      "label": "ONNX ASR pipeline for Qwen3-ASR. Adapted from Daumee's onnx_inference.py for\u2026",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "onnx asr pipeline for qwen3-asr. adapted from daumee's onnx_inference.py for...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L66"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_72",
+      "label": "Initialize ONNX ASR pipeline. Args: model_dir: Directory containing\u2026",
+      "_origin": "ast",
+      "community": 230,
+      "community_name": "OnnxAsrPipeline",
+      "file_type": "rationale",
+      "norm_label": "initialize onnx asr pipeline. args: model_dir: directory containing...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L72"
     },
     {
       "id": "ops_admin_cli_analyze_job",
@@ -91757,7 +91878,7 @@
       "label": "songset_constructor/models.py",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "songset_constructor/models.py",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -91768,7 +91889,7 @@
       "label": "BaseModel",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "basemodel",
       "source_file": "",
@@ -91779,7 +91900,7 @@
       "label": "beam.py",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "beam.py",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -91790,21 +91911,10 @@
       "label": "diagnostics.py",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "diagnostics.py",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness",
-      "label": "fitness.py",
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "code",
-      "norm_label": "fitness.py",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
       "source_location": "L1"
     },
     {
@@ -91812,7 +91922,7 @@
       "label": "hard_constraints.py",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "hard_constraints.py",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/hard_constraints.py",
@@ -91823,7 +91933,7 @@
       "label": "proposals.py",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "code",
       "norm_label": "proposals.py",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -91834,7 +91944,7 @@
       "label": "Pydantic schemas used by the songset constructor.",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "rationale",
       "norm_label": "pydantic schemas used by the songset constructor.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/models.py",
@@ -91845,7 +91955,7 @@
       "label": "Deterministic beam search for songset candidates.",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "rationale",
       "norm_label": "deterministic beam search for songset candidates.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/beam.py",
@@ -91856,51 +91966,18 @@
       "label": "Read-only diagnostics for failed songset construction.",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "rationale",
       "norm_label": "read-only diagnostics for failed songset construction.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/diagnostics.py",
       "source_location": "L1"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_rationale_1",
-      "label": "Fitness scoring for candidate songsets.",
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "rationale",
-      "norm_label": "fitness scoring for candidate songsets.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_rationale_73",
-      "label": "Ordinal energy score on pool-percentile ranks; None \u2192 neutral redistribution.\u2026",
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "rationale",
-      "norm_label": "ordinal energy score on pool-percentile ranks; none \u2192 neutral redistribution....",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L73"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_rationale_99",
-      "label": "Chorus-preference posture fit against the phase template; None when no item has\u2026",
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "SongsetProposal",
-      "file_type": "rationale",
-      "norm_label": "chorus-preference posture fit against the phase template; none when no item has...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
-      "source_location": "L99"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_hard_constraints_rationale_1",
       "label": "Hard constraint validation H1-H9.",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "rationale",
       "norm_label": "hard constraint validation h1-h9.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/hard_constraints.py",
@@ -91911,7 +91988,7 @@
       "label": "Helpers for converting drafts and candidates into scored proposals.",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "rationale",
       "norm_label": "helpers for converting drafts and candidates into scored proposals.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -91922,7 +91999,7 @@
       "label": "Stamp each item's incoming transition ``boundary_source`` (opener: None).",
       "_origin": "ast",
       "community": 26,
-      "community_name": "SongsetProposal",
+      "community_name": "SongCandidate",
       "file_type": "rationale",
       "norm_label": "stamp each item's incoming transition ``boundary_source`` (opener: none).",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/proposals.py",
@@ -93629,17 +93706,6 @@
       "norm_label": "songsetsscreenstest.kt",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/songsets/SongsetsScreensTest.kt",
       "source_location": "L1"
-    },
-    {
-      "id": "songsrepository",
-      "label": "SongsRepository",
-      "_origin": "ast",
-      "community": 273,
-      "community_name": "SongsetDetailViewModel",
-      "file_type": "code",
-      "norm_label": "songsrepository",
-      "source_file": "",
-      "source_location": ""
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_auth_authvalidation",
@@ -103708,6 +103774,17 @@
       "source_location": "L1"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_services_songset_io_py_any",
+      "label": "Any",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "sow_lab_app/main.py",
+      "file_type": "code",
+      "norm_label": "any",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_services_songset_io_py_path",
       "label": "Path",
       "_origin": "ast",
@@ -104135,6 +104212,17 @@
       "norm_label": "service for backing up and restoring songsets. provides json serialization with...",
       "source_file": "lab/sow-app/src/sow_lab_app/services/songset_io.py",
       "source_location": "L41"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_services_songset_io_rationale_51",
+      "label": "Initialize the songset IO service. Args: songset_client: SongsetClient for\u2026",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "sow_lab_app/main.py",
+      "file_type": "rationale",
+      "norm_label": "initialize the songset io service. args: songset_client: songsetclient for...",
+      "source_file": "lab/sow-app/src/sow_lab_app/services/songset_io.py",
+      "source_location": "L51"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_songset_io_rationale_61",
@@ -108026,17 +108114,6 @@
       "source_location": "L439"
     },
     {
-      "id": "lab_sow_app_src_sow_lab_app_services_songset_io_py_any",
-      "label": "Any",
-      "_origin": "ast",
-      "community": 437,
-      "community_name": "SongsetClient",
-      "file_type": "code",
-      "norm_label": "any",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_models_py_any",
       "label": "Any",
       "_origin": "ast",
@@ -108112,17 +108189,6 @@
       "norm_label": "t",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_services_songset_io_rationale_51",
-      "label": "Initialize the songset IO service. Args: songset_client: SongsetClient for\u2026",
-      "_origin": "ast",
-      "community": 437,
-      "community_name": "SongsetClient",
-      "file_type": "rationale",
-      "norm_label": "initialize the songset io service. args: songset_client: songsetclient for...",
-      "source_file": "lab/sow-app/src/sow_lab_app/services/songset_io.py",
-      "source_location": "L51"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_db_app_models_rationale_135",
@@ -111024,6 +111090,17 @@
       "community_name": "FakeSongsetsRepository",
       "file_type": "code",
       "norm_label": "transitionsettings",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "songsrepository",
+      "label": "SongsRepository",
+      "_origin": "ast",
+      "community": 53,
+      "community_name": "FakeSongsetsRepository",
+      "file_type": "code",
+      "norm_label": "songsrepository",
       "source_file": "",
       "source_location": ""
     },
@@ -116577,22 +116654,11 @@
       "source_location": "L72"
     },
     {
-      "id": "counter",
-      "label": "Counter",
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "counter",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer",
       "label": "writer.py",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "writer.py",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
@@ -116603,7 +116669,7 @@
       "label": "Any",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "any",
       "source_file": "",
@@ -116614,132 +116680,66 @@
       "label": "Path",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config",
-      "label": "songset_constructor/config.py",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness",
+      "label": "fitness.py",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "code",
-      "norm_label": "songset_constructor/config.py",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "norm_label": "fitness.py",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
       "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose",
-      "label": "diagnose.py",
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "diagnose.py",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_persist",
-      "label": "persist.py",
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "persist.py",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/persist.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer",
-      "label": "report_writer.py",
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "report_writer.py",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/report_writer.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer_py_path",
-      "label": "Path",
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "code",
-      "norm_label": "path",
-      "source_file": "",
-      "source_location": ""
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_artifacts_writer_rationale_1",
       "label": "Write songset constructor artifacts.",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "rationale",
       "norm_label": "write songset constructor artifacts.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/artifacts/writer.py",
       "source_location": "L1"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_config_rationale_1",
-      "label": "Runtime configuration for the songset constructor.",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_rationale_1",
+      "label": "Fitness scoring for candidate songsets.",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "rationale",
-      "norm_label": "runtime configuration for the songset constructor.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/config.py",
+      "norm_label": "fitness scoring for candidate songsets.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
       "source_location": "L1"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_diagnose_rationale_1",
-      "label": "Diagnostic lines for the songset constructor result.",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_rationale_73",
+      "label": "Ordinal energy score on pool-percentile ranks; None \u2192 neutral redistribution.\u2026",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "rationale",
-      "norm_label": "diagnostic lines for the songset constructor result.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/diagnose.py",
-      "source_location": "L1"
+      "norm_label": "ordinal energy score on pool-percentile ranks; none \u2192 neutral redistribution....",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L73"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_persist_rationale_1",
-      "label": "Atomic persistence of constructed songsets.",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_rules_fitness_rationale_99",
+      "label": "Chorus-preference posture fit against the phase template; None when no item has\u2026",
       "_origin": "ast",
       "community": 7,
-      "community_name": "RunConfig",
+      "community_name": "SongsetProposal",
       "file_type": "rationale",
-      "norm_label": "atomic persistence of constructed songsets.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/persist.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_songset_constructor_report_writer_rationale_1",
-      "label": "Write diagnose_report.md if --report flag is set.",
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "rationale",
-      "norm_label": "write diagnose_report.md if --report flag is set.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/report_writer.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_db_app_songset_client_rationale_24",
-      "label": "Error when a referenced song or recording is not found.",
-      "_origin": "ast",
-      "community": 7,
-      "community_name": "RunConfig",
-      "file_type": "rationale",
-      "norm_label": "error when a referenced song or recording is not found.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/db/app/songset_client.py",
-      "source_location": "L24"
+      "norm_label": "chorus-preference posture fit against the phase template; none when no item has...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/songset_constructor/rules/fitness.py",
+      "source_location": "L99"
     },
     {
       "id": "highlighted",
@@ -121626,7 +121626,7 @@
       "source_location": "L1880"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1960",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1962",
       "label": "Count open sad feedback rows for a recording.",
       "_origin": "ast",
       "community": 9,
@@ -121634,21 +121634,21 @@
       "file_type": "rationale",
       "norm_label": "count open sad feedback rows for a recording.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1960"
+      "source_location": "L1962"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1965",
-      "label": "Print why this song was picked, then optionally pause for space/enter.",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1967",
+      "label": "Print why this song was picked, then optionally pause for space/enter. Returns\u2026",
       "_origin": "ast",
       "community": 9,
       "community_name": "lyrics.py",
       "file_type": "rationale",
-      "norm_label": "print why this song was picked, then optionally pause for space/enter.",
+      "norm_label": "print why this song was picked, then optionally pause for space/enter. returns...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1965"
+      "source_location": "L1967"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1999",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2008",
       "label": "Print the open poor-feedback banner from precomputed summary data. No output\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121656,10 +121656,10 @@
       "file_type": "rationale",
       "norm_label": "print the open poor-feedback banner from precomputed summary data. no output...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1999"
+      "source_location": "L2008"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2015",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2024",
       "label": "Print the open poor-feedback banner queried live from the DB.",
       "_origin": "ast",
       "community": 9,
@@ -121667,10 +121667,10 @@
       "file_type": "rationale",
       "norm_label": "print the open poor-feedback banner queried live from the db.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2015"
+      "source_location": "L2024"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2027",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2036",
       "label": "Result of one editor session (issue #260). ``no_audio``: audio unavailable in\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121678,10 +121678,10 @@
       "file_type": "rationale",
       "norm_label": "result of one editor session (issue #260). ``no_audio``: audio unavailable in...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2027"
+      "source_location": "L2036"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2042",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2051",
       "label": "Prepare caches + editor state and run one editor session. Returns an\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121689,10 +121689,10 @@
       "file_type": "rationale",
       "norm_label": "prepare caches + editor state and run one editor session. returns an...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2042"
+      "source_location": "L2051"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2228",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2237",
       "label": "Execute the ordered post-upload offer plan interactively. Returns True to\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121700,10 +121700,10 @@
       "file_type": "rationale",
       "norm_label": "execute the ordered post-upload offer plan interactively. returns true to...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2228"
+      "source_location": "L2237"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2274",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2283",
       "label": "Re-read the recording's visibility status from the DB. ``update_recording_lrc``\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121711,10 +121711,10 @@
       "file_type": "rationale",
       "norm_label": "re-read the recording's visibility status from the db. ``update_recording_lrc``...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2274"
+      "source_location": "L2283"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2286",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2295",
       "label": "Post-upload offers for single-song (targeted edit) sessions. Sequential\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121722,10 +121722,10 @@
       "file_type": "rationale",
       "norm_label": "post-upload offers for single-song (targeted edit) sessions. sequential...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2286"
+      "source_location": "L2295"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2318",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2327",
       "label": "Build a fresh EditorState from transcribed content or catalog lyrics.",
       "_origin": "ast",
       "community": 9,
@@ -121733,7 +121733,7 @@
       "file_type": "rationale",
       "norm_label": "build a fresh editorstate from transcribed content or catalog lyrics.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2318"
+      "source_location": "L2327"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_244",
@@ -160003,7 +160003,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2321",
+      "source_location": "L2330",
       "weight": 1.0
     },
     {
@@ -160015,7 +160015,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2324",
+      "source_location": "L2333",
       "weight": 1.0
     },
     {
@@ -160027,7 +160027,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2330",
+      "source_location": "L2339",
       "weight": 1.0
     },
     {
@@ -160039,7 +160039,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2337",
+      "source_location": "L2346",
       "weight": 1.0
     },
     {
@@ -160735,7 +160735,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2017",
+      "source_location": "L2026",
       "weight": 1.0
     },
     {
@@ -160747,7 +160747,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2005",
+      "source_location": "L2014",
       "weight": 1.0
     },
     {
@@ -160759,7 +160759,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1968",
+      "source_location": "L1974",
       "weight": 1.0
     },
     {
@@ -160831,7 +160831,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2064",
+      "source_location": "L2073",
       "weight": 1.0
     },
     {
@@ -160843,7 +160843,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2107",
+      "source_location": "L2116",
       "weight": 1.0
     },
     {
@@ -160855,7 +160855,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2110",
+      "source_location": "L2119",
       "weight": 1.0
     },
     {
@@ -160867,7 +160867,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2112",
+      "source_location": "L2121",
       "weight": 1.0
     },
     {
@@ -160879,7 +160879,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2114",
+      "source_location": "L2123",
       "weight": 1.0
     },
     {
@@ -160891,7 +160891,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2140",
+      "source_location": "L2149",
       "weight": 1.0
     },
     {
@@ -160903,7 +160903,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2152",
+      "source_location": "L2161",
       "weight": 1.0
     },
     {
@@ -160915,7 +160915,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2167",
+      "source_location": "L2176",
       "weight": 1.0
     },
     {
@@ -160927,7 +160927,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2170",
+      "source_location": "L2179",
       "weight": 1.0
     },
     {
@@ -160939,7 +160939,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2201",
+      "source_location": "L2210",
       "weight": 1.0
     },
     {
@@ -160951,7 +160951,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2202",
+      "source_location": "L2211",
       "weight": 1.0
     },
     {
@@ -160963,7 +160963,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2238",
+      "source_location": "L2247",
       "weight": 1.0
     },
     {
@@ -160987,7 +160987,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1909",
+      "source_location": "L1911",
       "weight": 1.0
     },
     {
@@ -160999,7 +160999,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1916",
+      "source_location": "L1918",
       "weight": 1.0
     },
     {
@@ -161011,24 +161011,12 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1935",
+      "source_location": "L1937",
       "weight": 1.0
     },
     {
       "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_review_session",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_plan_post_upload_offers",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1939",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_review_session",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_open_sad_count",
       "relation": "calls",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -161040,6 +161028,18 @@
     },
     {
       "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_review_session",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_open_sad_count",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
+      "source_location": "L1943",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_review_session",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_current_visibility",
       "relation": "calls",
       "_origin": "ast",
@@ -161047,7 +161047,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1945",
+      "source_location": "L1947",
       "weight": 1.0
     },
     {
@@ -161059,7 +161059,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1948",
+      "source_location": "L1950",
       "weight": 1.0
     },
     {
@@ -161071,7 +161071,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2294",
+      "source_location": "L2303",
       "weight": 1.0
     },
     {
@@ -161083,7 +161083,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2296",
+      "source_location": "L2305",
       "weight": 1.0
     },
     {
@@ -161095,7 +161095,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2297",
+      "source_location": "L2306",
       "weight": 1.0
     },
     {
@@ -161107,7 +161107,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2300",
+      "source_location": "L2309",
       "weight": 1.0
     },
     {
@@ -186547,7 +186547,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2309",
+      "source_location": "L2318",
       "weight": 1.0
     },
     {
@@ -221019,7 +221019,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2102",
+      "source_location": "L2111",
       "weight": 1.0
     },
     {
@@ -221031,7 +221031,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2102",
+      "source_location": "L2111",
       "weight": 1.0
     },
     {
@@ -221043,7 +221043,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2150",
+      "source_location": "L2159",
       "weight": 1.0
     },
     {
@@ -221055,7 +221055,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2163",
+      "source_location": "L2172",
       "weight": 1.0
     },
     {
@@ -221067,7 +221067,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2198",
+      "source_location": "L2207",
       "weight": 1.0
     },
     {
@@ -221079,7 +221079,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2199",
+      "source_location": "L2208",
       "weight": 1.0
     },
     {
@@ -254151,7 +254151,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2309",
+      "source_location": "L2318",
       "weight": 1.0
     },
     {
@@ -254163,7 +254163,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2309",
+      "source_location": "L2318",
       "weight": 1.0
     },
     {
@@ -302643,7 +302643,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1959",
+      "source_location": "L1961",
       "weight": 1.0
     },
     {
@@ -302654,7 +302654,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1964",
+      "source_location": "L1966",
       "weight": 1.0
     },
     {
@@ -302665,7 +302665,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1993",
+      "source_location": "L2002",
       "weight": 1.0
     },
     {
@@ -302676,7 +302676,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2014",
+      "source_location": "L2023",
       "weight": 1.0
     },
     {
@@ -302687,7 +302687,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2026",
+      "source_location": "L2035",
       "weight": 1.0
     },
     {
@@ -302698,7 +302698,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2041",
+      "source_location": "L2050",
       "weight": 1.0
     },
     {
@@ -302709,7 +302709,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2221",
+      "source_location": "L2230",
       "weight": 1.0
     },
     {
@@ -302720,7 +302720,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2273",
+      "source_location": "L2282",
       "weight": 1.0
     },
     {
@@ -302731,7 +302731,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2285",
+      "source_location": "L2294",
       "weight": 1.0
     },
     {
@@ -302742,7 +302742,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2309",
+      "source_location": "L2318",
       "weight": 1.0
     },
     {
@@ -351336,113 +351336,113 @@
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1960",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1962",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_open_sad_count",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1960",
+      "source_location": "L1962",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1965",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1967",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_print_review_pick_reason",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1965",
+      "source_location": "L1967",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_1999",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2008",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_print_feedback_banner_from_summary",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L1999",
+      "source_location": "L2008",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2015",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2024",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_print_feedback_banner",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2015",
+      "source_location": "L2024",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2027",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2036",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_editorsessionoutcome",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2027",
+      "source_location": "L2036",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2042",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2051",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_editor_session",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2042",
+      "source_location": "L2051",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2228",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2237",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_post_upload_prompts",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2228",
+      "source_location": "L2237",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2274",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2283",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_current_visibility",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2274",
+      "source_location": "L2283",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2286",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2295",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_run_single_mode_offers",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2286",
+      "source_location": "L2295",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2318",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_rationale_2327",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_lyrics_build_fresh_editor_state",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2318",
+      "source_location": "L2327",
       "weight": 1.0
     },
     {
@@ -369425,7 +369425,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2315",
+      "source_location": "L2324",
       "weight": 0.8
     },
     {
@@ -372583,7 +372583,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2311",
+      "source_location": "L2320",
       "weight": 0.8
     },
     {
@@ -372594,7 +372594,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2312",
+      "source_location": "L2321",
       "weight": 0.8
     },
     {
@@ -372605,7 +372605,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2038",
+      "source_location": "L2047",
       "weight": 0.8
     },
     {
@@ -372715,7 +372715,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py",
-      "source_location": "L2201",
+      "source_location": "L2210",
       "weight": 0.8
     },
     {
@@ -373974,5 +373974,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "ab4908396879515f8023bdd352abc0fad3431b49"
+  "built_at_commit": "9a1ce656d4926ee6b2d894f7348994bc3ce82c75"
 }
