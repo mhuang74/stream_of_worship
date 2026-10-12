@@ -72,6 +72,20 @@ CREATE TABLE IF NOT EXISTS lyrics_feedback (
 );
 """
 
+# Per-user favorite songs. Owned by the webapp Drizzle schema
+# (delivery/webapp/drizzle/0020_typical_nicolaos.sql); mirrored here so the
+# admin schema bootstrap brings up the same table — the LRC review queue
+# ranking (issue #260) reads favorite counts from it. CREATE TABLE IF NOT
+# EXISTS keeps this a no-op on databases the webapp already migrated.
+CREATE_USER_FAVORITES_TABLE = """
+CREATE TABLE IF NOT EXISTS user_favorite_songs (
+    user_id    BIGINT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+    song_id    TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_user_favorite_songs_user_song UNIQUE (user_id, song_id)
+);
+"""
+
 CREATE_LYRICS_FEEDBACK_UPDATE_TRIGGER = """
 DROP TRIGGER IF EXISTS trg_lyrics_feedback_updated_at ON lyrics_feedback;
 CREATE TRIGGER trg_lyrics_feedback_updated_at
@@ -89,6 +103,7 @@ CREATE_USER_DATA_INDEXES = [
     "ON lyric_mark(recording_content_hash);",
     "CREATE INDEX IF NOT EXISTS idx_lyrics_feedback_recording_resolved "
     "ON lyrics_feedback(recording_content_hash, resolved_at);",
+    "CREATE INDEX IF NOT EXISTS idx_user_favorite_songs_song ON user_favorite_songs(song_id);",
     "CREATE INDEX IF NOT EXISTS idx_songset_share_songset ON songset_share(songset_id);",
     "CREATE INDEX IF NOT EXISTS idx_songset_share_creator "
     "ON songset_share(created_by_user_id);",
@@ -115,6 +130,7 @@ ALL_USER_DATA_SCHEMA_STATEMENTS = [
     CREATE_USER_LRC_OVERRIDE_TABLE,
     CREATE_LYRIC_MARK_TABLE,
     CREATE_LYRICS_FEEDBACK_TABLE,
+    CREATE_USER_FAVORITES_TABLE,
     CREATE_SONGSET_SHARE_TABLE,
     *CREATE_USER_DATA_INDEXES,
     CREATE_USER_SETTINGS_UPDATE_TRIGGER,

@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 from stream_of_worship.db.helpers import to_str
 
-
 _to_str = to_str  # Alias for backward compatibility with existing code
 
 
@@ -515,6 +514,50 @@ class Recording:
         minutes = int(self.duration_seconds // 60)
         seconds = int(self.duration_seconds % 60)
         return f"{minutes}:{seconds:02d}"
+
+
+@dataclass
+class FeedbackSummary:
+    """Aggregated open poor (sad) lyrics feedback for one recording.
+
+    Used by the ``lyrics edit`` poor-feedback banner (issue #260).
+
+    Attributes:
+        open_sad_count: Number of open (``resolved_at IS NULL``) sad rows.
+        reason_counts: Open sad counts keyed by reason
+            (``missing``/``timing``/``wrong_text``/``other``).
+        latest_open_sad_at: ``updated_at`` of the most recent open sad row.
+        sample_reason: Reason string of the most recent open sad row.
+    """
+
+    open_sad_count: int
+    reason_counts: dict[str, int] = field(default_factory=dict)
+    latest_open_sad_at: Optional[str] = None
+    sample_reason: Optional[str] = None
+
+
+@dataclass
+class ReviewQueueCandidate:
+    """One ranked candidate from the LRC review queue (issue #260).
+
+    One row per song (the review recording with the most recent open poor
+    feedback wins; tie: newest recording), ranked by the issue #260
+    cascade: latest open sad feedback, songset appearances, favorites,
+    newest album, song id.
+    """
+
+    song_id: str
+    song_title: str
+    content_hash: str
+    hash_prefix: str
+    visibility_status: Optional[str] = None
+    latest_open_sad_at: Optional[str] = None
+    open_sad_count: int = 0
+    reason_counts: dict[str, int] = field(default_factory=dict)
+    sample_reason: Optional[str] = None
+    songset_appearances: int = 0
+    favorite_count: int = 0
+    album_created_at: Optional[str] = None
 
 
 @dataclass
