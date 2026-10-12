@@ -1905,7 +1905,9 @@ def _run_review_session(db_client, cache_dir, r2_client) -> None:
             skipped_song_ids.add(candidate.song_id)
             continue
 
-        _print_review_pick_reason(candidate, pause=True)
+        if not _print_review_pick_reason(candidate, pause=True):
+            console.print("[dim]Aborted; editor not opened.[/dim]")
+            return
         _print_feedback_banner_from_summary(
             candidate.open_sad_count,
             candidate.reason_counts,
@@ -1961,8 +1963,12 @@ def _open_sad_count(db_client, content_hash: str) -> int:
     return db_client.get_recording_feedback_summary(content_hash).open_sad_count
 
 
-def _print_review_pick_reason(candidate, pause: bool) -> None:
-    """Print why this song was picked, then optionally pause for space/enter."""
+def _print_review_pick_reason(candidate, pause: bool) -> bool:
+    """Print why this song was picked, then optionally pause for space/enter.
+
+    Returns True when the caller should proceed to the editor; False when the
+    admin aborted at the pause (non-empty reply, EOF, or Ctrl+C).
+    """
     parts: list[str] = []
     if candidate.latest_open_sad_at:
         breakdown = _reason_breakdown(candidate.reason_counts)
@@ -1983,11 +1989,14 @@ def _print_review_pick_reason(candidate, pause: bool) -> None:
     )
     console.print(f"[cyan]Why picked:[/cyan] {'; '.join(parts)}")
 
-    if pause:
-        try:
-            input("Press Enter to open the editor... [enter]: ")
-        except (EOFError, KeyboardInterrupt):
-            pass
+    if not pause:
+        return True
+    try:
+        reply = input("Press Enter to open the editor, or type anything + Enter to abort: ")
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return False
+    return reply.strip() == ""
 
 
 def _print_feedback_banner_from_summary(

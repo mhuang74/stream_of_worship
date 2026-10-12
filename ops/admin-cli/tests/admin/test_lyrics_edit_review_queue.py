@@ -11,7 +11,9 @@ Covers:
   patched out (the editor TUI itself is a separate seam).
 """
 
+import builtins
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -424,7 +426,7 @@ class TestReviewNextSongCommand:
         assert "Why picked:" in result.output
         assert "1 open poor rating(s) since" in result.output
         assert "timing" in result.output
-        assert "Press Enter to open the editor..." in result.output
+        assert "Press Enter to open the editor, or type anything + Enter to abort" in result.output
         # Pre-launch banner from candidate summary
         assert "Open poor feedback: 1 rating(s)" in result.output
 
@@ -452,8 +454,9 @@ class TestReviewNextSongCommand:
         # Declining the skip offer leaves the song eligible (story 20):
         # with nothing changed (no clear, no publish), the loop re-picks
         # song_c. Session 2 has no scripted audio, so the no-audio skip
-        # path then walks the remaining queue to exhaustion.
-        result = self._invoke(config_path, "\nn\nn\nn\ny\n")
+        # path then walks the remaining queue to exhaustion. The trailing
+        # Enters feed the pauses of the no-audio walk.
+        result = self._invoke(config_path, "\nn\nn\nn\ny\n\n\n\n")
         assert result.exit_code == 0, result.output
         assert result.output.count("Next review song: Song C") == 2
         assert "will be skipped" not in result.output  # skip declined
@@ -482,8 +485,8 @@ class TestReviewNextSongCommand:
         client = DatabaseClient(make_test_provider())
         patched_editor.append(_upload_outcome())
 
-        # accept clear, accept publish, accept continue
-        result = self._invoke(config_path, "\ny\ny\ny\n")
+        # accept clear, accept publish, accept continue, Enter at next pause
+        result = self._invoke(config_path, "\ny\ny\ny\n\n")
         assert result.exit_code == 0, result.output
         assert "Resolved 1 poor rating(s)" in result.output
         assert "set to published" in result.output
@@ -505,8 +508,8 @@ class TestReviewNextSongCommand:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor.append(_upload_outcome())
 
-        # decline clear, accept publish, accept continue
-        result = self._invoke(config_path, "\nn\ny\ny\n")
+        # decline clear, accept publish, accept continue, Enter at next pause
+        result = self._invoke(config_path, "\nn\ny\ny\n\n")
         assert result.exit_code == 0, result.output
         assert "Visibility left unchanged" not in result.output
         assert result.output.count("Next review song:") >= 2
@@ -533,7 +536,7 @@ class TestReviewNextSongCommand:
         config_path = _write_config(tmp_path, postgres_url)
 
         # skip all three songs via no-audio path, then queue exhausts
-        result = self._invoke(config_path, "")
+        result = self._invoke(config_path, "\n\n\n")
         assert result.exit_code == 0, result.output
         assert result.output.count("Skipping") == 3
         assert "No review-visibility songs available (3 skipped this session)" in result.output
@@ -567,6 +570,41 @@ class TestReviewNextSongCommand:
         )
         assert result.exit_code == 1
         assert "provide a song_id argument or use --review-next-song" in result.output
+
+    def test_abort_at_pause_skips_editor(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_upload_outcome())
+
+        # Non-empty reply at the pause aborts: no editor, song stays queued.
+        result = self._invoke(config_path, "q\n")
+        assert result.exit_code == 0, result.output
+        assert "Aborted; editor not opened." in result.output
+        assert result.output.count("Next review song: Song C") == 1
+        assert patched_editor == [_upload_outcome()]
+
+    def test_ctrl_c_at_pause_aborts(self, monkeypatch):
+        candidate = SimpleNamespace(
+            latest_open_sad_at=None,
+            reason_counts={},
+            songset_appearances=0,
+            favorite_count=0,
+            song_title="Song X",
+            song_id="song_x",
+            hash_prefix="hx",
+            open_sad_count=0,
+            sample_reason=None,
+        )
+
+        def _raise_keyboard_interrupt(prompt):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(builtins, "input", _raise_keyboard_interrupt)
+        proceed = lyrics_commands._print_review_pick_reason(candidate, pause=True)
+        assert proceed is False
 
 
 @pytest.mark.integration
