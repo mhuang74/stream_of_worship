@@ -27,6 +27,7 @@ EXPECTED_TABLES = {
     "lyric_mark",
     "songset_share",
     "lyrics_feedback",
+    "user_favorite_songs",
 }
 
 
@@ -57,6 +58,7 @@ class TestFullSchemaInit:
             cur.execute(
                 """
                 DROP TABLE IF EXISTS songset_share, lyric_mark, lyrics_feedback,
+                    user_favorite_songs,
                     user_lrc_override, user_settings,
                     songset_items, songsets,
                     theme_anchors, song_line_embedding, song_embedding,
@@ -107,6 +109,8 @@ class TestFullSchemaInit:
             ("lyrics_feedback", "recording_content_hash", "recordings", "content_hash"),
             ("songset_share", "songset_id", "songsets", "id"),
             ("songset_share", "created_by_user_id", "user", "id"),
+            ("user_favorite_songs", "user_id", "user", "id"),
+            ("user_favorite_songs", "song_id", "songs", "id"),
         ]
 
         for fk in required:
@@ -117,6 +121,7 @@ class TestFullSchemaInit:
             cur.execute(
                 """
                 DROP TABLE IF EXISTS songset_share, lyric_mark, lyrics_feedback,
+                    user_favorite_songs,
                     user_lrc_override, user_settings,
                     songset_items, songsets,
                     theme_anchors, song_line_embedding, song_embedding,

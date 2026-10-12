@@ -56,4 +56,8 @@ class LRCEditorApp(App[None]):
         ))
 
     def _on_upload_result(self, result: UploadResult) -> None:
-        self.last_upload_result = result
+        # Keep the first success: a later blocked/partial re-upload in the
+        # same session must not suppress the post-upload offers that a
+        # successful R2 upload earned (issue #260).
+        if self.last_upload_result is None or not self.last_upload_result.success:
+            self.last_upload_result = result

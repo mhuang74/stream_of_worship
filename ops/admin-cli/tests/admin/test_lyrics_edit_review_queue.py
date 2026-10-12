@@ -81,6 +81,9 @@ def patched_editor(monkeypatch):
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=True, upload_attempted=False, upload_result=None
             )
+        if isinstance(scripted, lyrics_commands.EditorSessionOutcome):
+            # Prebuilt outcome (quit / draft helpers): pass through.
+            return scripted
         scripted.hash_prefix = recording.hash_prefix
         return lyrics_commands.EditorSessionOutcome(
             no_audio=False, upload_attempted=True, upload_result=scripted
@@ -95,6 +98,21 @@ def _upload_outcome(success=True):
 
     result = UploadResult(success=success, r2_url="https://r2/x.lrc" if success else None)
     return result
+
+
+def _draft_outcome():
+    """Scripted session that ended in a local-draft save (story 17):
+    upload attempted, no upload result."""
+    return lyrics_commands.EditorSessionOutcome(
+        no_audio=False, upload_attempted=True, upload_result=None
+    )
+
+
+def _quit_outcome():
+    """Scripted session that ended via quit-without-save: no dialog opened."""
+    return lyrics_commands.EditorSessionOutcome(
+        no_audio=False, upload_attempted=False, upload_result=None
+    )
 
 
 def _drop_all_tables(make_test_provider):
@@ -647,3 +665,78 @@ class TestPlainEditStillWorks:
         assert result.exit_code == 1
         assert "No audio found for song_001" in result.output
         assert "Audio is required for timestamp alignment" in result.output
+
+
+@pytest.mark.integration
+class TestLoopExitAndDraftBehavior:
+    """Quit-without-upload must offer a way out of the loop, and a local
+    draft save must not clear ratings or trigger offers (stories 17, 21)."""
+
+    def test_quit_without_upload_prompts_continue_and_exits(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_quit_outcome())  # session 1: quit, no dialog
+
+        # Session 2+ unscripted -> no_audio skips; the point here is the
+        # continue prompt after the quit, answered "n" -> loop exits.
+        result = self._invoke_quit(config_path, "\nn\n")
+        assert result.exit_code == 0, result.output
+        assert "No upload for song_c (Song C); it stays in the queue." in result.output
+        assert "Continue to next review song?" in result.output
+        # Answered "n" -> loop exits instead of relaunching the editor.
+        assert result.output.count("Next review song: Song C") == 1
+        # Song was not skip-marked: it stays eligible (no skip message).
+        assert "will be skipped" not in result.output
+
+    def test_draft_save_no_offers_and_no_clear(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_draft_outcome())
+
+        result = self._invoke_quit(config_path, "\n")
+        assert result.exit_code == 0, result.output
+        # No offers after a draft save (story 17).
+        assert "Clear poor ratings?" not in result.output
+        assert "Set visibility to published?" not in result.output
+        # Feedback rows stay open.
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_feedback_summary("hd" * 16).open_sad_count == 1
+        assert client.get_recording_by_hash("hash-dd").visibility_status == "review"
+
+    def test_visibility_reread_after_upload_in_loop(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        """Upload COALESCEs NULL visibility to 'review'; the publish offer
+        must appear even though the pre-session Recording object had NULL."""
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        # Set the picked recording's visibility to NULL (fresh-recording case).
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET visibility_status = NULL WHERE hash_prefix = 'hash-dd'"
+            )
+        conn.commit()
+
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_upload_outcome())
+
+        result = self._invoke_quit(config_path, "\nn\ny\nn\n")
+        assert result.exit_code == 0, result.output
+        # Publish offer fired despite stale in-memory None visibility.
+        assert "Set visibility to published?" in result.output
+
+    @staticmethod
+    def _invoke_quit(config_path, input_text):
+        return runner.invoke(
+            lyrics_app,
+            ["edit", "--review-next-song", "--config", str(config_path)],
+            input=input_text,
+            env={"COLUMNS": "200"},
+        )

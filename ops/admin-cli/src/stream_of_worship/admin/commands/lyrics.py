@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import typer
 from botocore.exceptions import ClientError
@@ -30,6 +30,7 @@ from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.editor.state import EditorState
+from stream_of_worship.admin.editor.upload import UploadResult
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
     AnalysisServiceError,
@@ -59,9 +60,6 @@ from stream_of_worship.admin.services.structured_lyrics import (
     parse_structured_lyrics,
 )
 from stream_of_worship.db.connection import ConnectionProvider
-
-if TYPE_CHECKING:
-    from stream_of_worship.admin.editor.upload import UploadResult
 
 console = Console()
 app = typer.Typer(help="Lyrics operations")
@@ -1926,19 +1924,25 @@ def _run_review_session(db_client, cache_dir, r2_client) -> None:
             continue
 
         if not outcome.upload_attempted:
-            # Quit without saving/uploading: no offers, stay eligible so
-            # the loop re-offers the song (resolved feedback would have
-            # dropped it out of tier 1 naturally).
+            # Quit without saving/uploading (the editor advertises Ctrl+C
+            # to quit): no offers, song stays eligible, but give the admin
+            # an explicit way out instead of silently re-launching the
+            # same editor.
             console.print(
                 f"[dim]No upload for {candidate.song_id} "
                 f"({candidate.song_title}); it stays in the queue.[/dim]"
             )
+            if not prompt_confirmation("Continue to next review song?"):
+                return
         else:
             upload_result = outcome.upload_result
             plan = plan_post_upload_offers(
                 upload_ok=upload_result is not None and upload_result.success,
                 open_sad_count=_open_sad_count(db_client, recording.content_hash),
-                is_review_visibility=recording.visibility_status == "review",
+                # Re-read visibility: update_recording_lrc COALESCEs a NULL
+                # visibility to 'review' on upload, so the in-memory object
+                # from before the session may be stale.
+                is_review_visibility=_current_visibility(db_client, recording) == "review",
                 loop_mode=True,
             )
             accepted = _run_post_upload_prompts(
@@ -2031,7 +2035,7 @@ class EditorSessionOutcome:
 
     no_audio: bool
     upload_attempted: bool
-    upload_result: Optional["UploadResult"]
+    upload_result: Optional[UploadResult]
 
 
 def _run_editor_session(db_client, cache_dir, r2_client, song, recording):
@@ -2266,6 +2270,18 @@ def _run_post_upload_prompts(
     return False
 
 
+def _current_visibility(db_client, recording) -> str:
+    """Re-read the recording's visibility status from the DB.
+
+    ``update_recording_lrc`` COALESCEs a NULL ``visibility_status`` to
+    ``'review'`` on upload, so the in-memory object held before the
+    editor session may be stale by the time the offers run.
+    """
+    fresh = db_client.get_recording_by_hash(recording.hash_prefix)
+    visibility = fresh.visibility_status if fresh else recording.visibility_status
+    return visibility or ""
+
+
 def _run_single_mode_offers(db_client, upload_result, recording) -> None:
     """Post-upload offers for single-song (targeted edit) sessions.
 
@@ -2278,7 +2294,7 @@ def _run_single_mode_offers(db_client, upload_result, recording) -> None:
     plan = plan_post_upload_offers(
         upload_ok=True,
         open_sad_count=_open_sad_count(db_client, recording.content_hash),
-        is_review_visibility=recording.visibility_status == "review",
+        is_review_visibility=_current_visibility(db_client, recording) == "review",
         loop_mode=False,
     )
     _run_post_upload_prompts(
