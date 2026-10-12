@@ -1,16 +1,16 @@
-# Graph Report - stream_of_worship  (2026-10-12)
+# Graph Report - stream_of_worship  (2026-10-13)
 
 ## Corpus Check
-- 918 files · ~785,939 words
+- 918 files · ~785,987 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 10613 nodes · 21579 edges · 461 communities (369 shown, 92 thin omitted)
+- 10613 nodes · 21579 edges · 462 communities (370 shown, 92 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 913 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ab490839`
+- Built from commit: `9a1ce656`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -22,7 +22,7 @@
 - songs.ts
 - bpm_agreement_report.py
 - score_lrc_quality.py
-- RunConfig
+- SongsetProposal
 - AnalysisClient
 - lyrics.py
 - gen_lrc_qwen3_asr_local.py
@@ -41,7 +41,7 @@
 - SowApp
 - AuthRepository
 - PlayerLyricsPanel.tsx
-- SongsetProposal
+- SongCandidate
 - Playlist
 - RenderViewModel
 - BrowseSheet.tsx
@@ -243,8 +243,9 @@
 - SettingsScreenTest.kt
 - PlayerScreen.kt
 - main
-- write_report.py
+- RunConfig
 - convert
+- OnnxAsrPipeline
 - Analyze Job Guide
 - marketing/package.json
 - generate_all_variants
@@ -485,7 +486,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (461 total, 92 thin omitted)
+## Communities (462 total, 92 thin omitted)
 
 ### Community 0 - "useConnectivity.ts"
 Cohesion: 0.09
@@ -515,9 +516,9 @@ Nodes (57): Figure, bpm_bucket_kmeans(), bpm_bucket_nominal(), build_crosstab_te
 Cohesion: 0.05
 Nodes (59): check_mlx_audio(), check_qwen_tts_support(), cosine_similarity(), download_from_r2(), dtw_distance(), find_peak_offset(), format_timestamp(), get_cache_path() (+51 more)
 
-### Community 7 - "RunConfig"
-Cohesion: 0.07
-Nodes (57): Counter, _bottleneck_lines(), _brief_summaries_prompt(), brief_summary_block(), build_review_report(), cache_narratives(), _candidate_pool_summary(), _config_flags() (+49 more)
+### Community 7 - "SongsetProposal"
+Cohesion: 0.11
+Nodes (50): _brief_summaries_prompt(), brief_summary_block(), build_review_report(), cache_narratives(), _candidate_pool_summary(), _config_flags(), _deterministic_arc_narrative(), _fallback_review_report() (+42 more)
 
 ### Community 8 - "AnalysisClient"
 Cohesion: 0.05
@@ -591,9 +592,9 @@ Nodes (8): AuthRepository, Authenticated, AuthSessionManager, InMemorySessionCoo
 Cohesion: 0.06
 Nodes (41): chipsForSituation(), LyricsFeedbackRow(), LyricsFeedbackRowProps, LyricsSituationKind, PlayerLyricsPanel(), PlayerLyricsPanelProps, buildLrc(), lrcTimestampToSeconds() (+33 more)
 
-### Community 26 - "SongsetProposal"
-Cohesion: 0.12
-Nodes (56): main(), DraftItem, JudgeItem, JudgeRanking, ProposalItem, BaseModel, Pydantic schemas used by the songset constructor., ScoreBreakdown (+48 more)
+### Community 26 - "SongCandidate"
+Cohesion: 0.14
+Nodes (42): main(), DraftItem, JudgeItem, JudgeRanking, ProposalItem, BaseModel, Pydantic schemas used by the songset constructor., ScoreBreakdown (+34 more)
 
 ### Community 27 - "Playlist"
 Cohesion: 0.04
@@ -640,8 +641,8 @@ Cohesion: 0.04
 Nodes (34): BrowseScreen, Changed, ComposeResult, PlaybackPosition, PlaybackState, Pressed, RowSelected, Screen (+26 more)
 
 ### Community 38 - "sow_lab_app/main.py"
-Cohesion: 0.04
-Nodes (69): AppConfig, ensure_app_config_exists(), get_app_config_dir(), get_app_config_path(), get_cache_dir(), Path, Configuration management for sow-app TUI. Manages app-specific settings for…, Cache directory - always at standard platform location. (+61 more)
+Cohesion: 0.03
+Nodes (71): AppConfig, ensure_app_config_exists(), get_app_config_dir(), get_app_config_path(), get_cache_dir(), Path, Configuration management for sow-app TUI. Manages app-specific settings for…, Cache directory - always at standard platform location. (+63 more)
 
 ### Community 39 - "usePlaybackCore.ts"
 Cohesion: 0.08
@@ -700,8 +701,8 @@ Cohesion: 0.12
 Nodes (20): dynamic, AboutPage(), DocsPage(), FEATURES, LandingPage(), STEPS, SiteFooter(), SiteHeader() (+12 more)
 
 ### Community 53 - "FakeSongsetsRepository"
-Cohesion: 0.11
-Nodes (16): Recording, Song, SongsPage, ClobberingSongsetsRepository, detail(), FakeSongsetsRepository, item(), ReorderItemRequest (+8 more)
+Cohesion: 0.10
+Nodes (17): Recording, Song, SongsPage, ClobberingSongsetsRepository, detail(), FakeSongsetsRepository, item(), ReorderItemRequest (+9 more)
 
 ### Community 54 - "youtube.py"
 Cohesion: 0.07
@@ -900,8 +901,8 @@ Cohesion: 0.07
 Nodes (11): Navigator, Presentation, PresentationAvailability, PresentationCommand, PresentationConnection, PresentationConnectionAvailableEvent, PresentationConnectionList, PresentationMediaStatus (+3 more)
 
 ### Community 103 - "gen_lrc_qwen3_asr_onnx.py"
-Cohesion: 0.07
-Nodes (44): cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), download_onnx_model(), _is_filler(), load_cached_transcription() (+36 more)
+Cohesion: 0.10
+Nodes (34): cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), download_onnx_model(), _is_filler(), load_cached_transcription() (+26 more)
 
 ### Community 104 - "analyze_sections.py"
 Cohesion: 0.11
@@ -1133,7 +1134,7 @@ Nodes (121): RenderForm, RenderJobData, RenderPageClient(), RenderScreenState, R
 
 ### Community 163 - "enrichment_report.py"
 Cohesion: 0.11
-Nodes (29): main(), test_beam_search(), main(), _shannon_entropy(), _bar(), build_enrichment_report(), _dominant_theme(), _phase_label() (+21 more)
+Nodes (31): Counter, main(), test_beam_search(), main(), _shannon_entropy(), _bar(), build_enrichment_report(), _dominant_theme() (+23 more)
 
 ### Community 164 - "aws-up.sh"
 Cohesion: 0.34
@@ -1383,13 +1384,17 @@ Nodes (10): Activity, findActivity(), FullscreenPlaybackOverlays(), Modifier, Of
 Cohesion: 0.19
 Nodes (13): EvaluationResult, format_diff_report(), format_json_report(), format_line_diff_report(), format_timestamp(), main(), command, Format seconds as mm:ss.xx timestamp. (+5 more)
 
-### Community 228 - "write_report.py"
-Cohesion: 0.23
-Nodes (11): _build_report(), _format_duration(), main(), _pool_overview(), _proposal_section(), Build the full proposal_report.md content., Generate the run summary section., Generate the pool overview section. (+3 more)
+### Community 228 - "RunConfig"
+Cohesion: 0.08
+Nodes (30): _build_report(), _format_duration(), main(), _pool_overview(), _proposal_section(), Build the full proposal_report.md content., Generate the run summary section., Generate the pool overview section. (+22 more)
 
 ### Community 229 - "convert"
 Cohesion: 0.09
 Nodes (36): cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), extract_segments(), _get_field(), _is_filler() (+28 more)
+
+### Community 230 - "OnnxAsrPipeline"
+Cohesion: 0.18
+Nodes (10): OnnxAsrPipeline, ndarray, Load and preprocess audio file. Args: audio_path: Path to audio file Returns:…, Run encoder on audio. Args: audio: Audio waveform Returns: Encoder hidden states, Prepare inputs for encoder. Args: audio: Audio waveform Returns: Dictionary of…, Generate tokens using decoder. Args: encoder_hidden_states: Encoder outputs…, Transcribe audio file. Args: audio_path: Path to audio file language: Target…, Create rough segments by splitting text on punctuation. Since ONNX model… (+2 more)
 
 ### Community 231 - "Analyze Job Guide"
 Cohesion: 0.15
@@ -1528,8 +1533,8 @@ Cohesion: 0.43
 Nodes (3): Adapt the Hybrid Search, Hybrid Search, RRF Example
 
 ### Community 273 - "SongsetDetailViewModel"
-Cohesion: 0.08
-Nodes (17): Song, SongBrowsePanel(), SongSearchResult(), SongsetDetailScreen(), CoroutineScope, Song, StateFlow, TransitionSettings (+9 more)
+Cohesion: 0.09
+Nodes (16): Song, SongBrowsePanel(), SongSearchResult(), SongsetDetailScreen(), CoroutineScope, Song, StateFlow, TransitionSettings (+8 more)
 
 ### Community 274 - "AuthValidation"
 Cohesion: 0.46
@@ -1796,8 +1801,8 @@ Cohesion: 0.13
 Nodes (40): backfill_key_normalization(), diagnose_render_failures(), _json_default(), list_r2_waste(), list_soft_deletes(), _load_clients(), _load_r2(), _normalize_song_key_rows() (+32 more)
 
 ### Community 437 - "SongsetClient"
-Cohesion: 0.03
-Nodes (48): Any, Initialize the songset IO service. Args: songset_client: SongsetClient for…, Any, Create a SongsetItem from a database row tuple. Args: row: Database row tuple…, Convert SongsetItem to dictionary. Args: include_joined: Whether to include…, Generate a new unique item ID. Returns: Unique ID string., Get duration formatted as MM:SS. Returns: Formatted duration string., Get the key to display (song key or recording key). Returns: Key string. (+40 more)
+Cohesion: 0.04
+Nodes (46): Any, Create a SongsetItem from a database row tuple. Args: row: Database row tuple…, Convert SongsetItem to dictionary. Args: include_joined: Whether to include…, Generate a new unique item ID. Returns: Unique ID string., Get duration formatted as MM:SS. Returns: Formatted duration string., Get the key to display (song key or recording key). Returns: Key string., Create a Songset from a database row tuple. Args: row: Database row tuple with…, Convert Songset to dictionary. Returns: Dictionary representation of the… (+38 more)
 
 ### Community 445 - "VideoExoPlayerFactoryTest.kt"
 Cohesion: 0.28
