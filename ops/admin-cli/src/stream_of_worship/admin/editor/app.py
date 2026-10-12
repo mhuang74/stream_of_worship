@@ -42,6 +42,9 @@ class LRCEditorApp(App[None]):
         # layer distinguish "session ended via quit-without-save" (no
         # offers, review loop re-picks) from a genuine attempt (issue #260).
         self.upload_attempted = False
+        # True when the session ended via the quit dialog with no unsaved
+        # changes; read by the command layer to offer publish.
+        self.quit_clean = False
 
     def on_mount(self) -> None:
         self.push_screen(LRCEditorScreen(

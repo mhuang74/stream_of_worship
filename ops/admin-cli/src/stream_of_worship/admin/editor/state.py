@@ -120,17 +120,20 @@ class EditorState:
         self.dirty = True
         return True
 
-    def set_timestamp(self, index: int, time_seconds: float) -> None:
+    def set_timestamp(self, index: int, time_seconds: float) -> bool:
+        """Set the timestamp for a lyric line. Returns True if content changed."""
         if 0 <= index < len(self.timed_lines):
             raw_time = max(0.0, time_seconds - self.padding_offset_seconds)
+            adjusted_time = max(0.0, raw_time + self.padding_offset_seconds)
+            if adjusted_time == self.timed_lines[index].time_seconds:
+                return False
+
             if index < len(self.original_timestamps):
                 self.original_timestamps[index] = raw_time
             else:
                 while len(self.original_timestamps) <= index:
                     self.original_timestamps.append(0.0)
                 self.original_timestamps[index] = raw_time
-
-            adjusted_time = max(0.0, raw_time + self.padding_offset_seconds)
 
             old_time = self.timed_lines[index].time_seconds
             self._push_undo(UndoEntry(
@@ -139,10 +142,14 @@ class EditorState:
             ))
             self.timed_lines[index].time_seconds = adjusted_time
             self.dirty = True
+            return True
+        return False
 
-    def set_text(self, index: int, text: str) -> None:
-        """Set the text for a lyric line."""
+    def set_text(self, index: int, text: str) -> bool:
+        """Set the text for a lyric line. Returns True if content changed."""
         if 0 <= index < len(self.timed_lines):
+            if self.timed_lines[index].text == text:
+                return False
             old_text = self.timed_lines[index].text
             self._push_undo(UndoEntry(
                 action="set_text", index=index,
@@ -150,6 +157,8 @@ class EditorState:
             ))
             self.timed_lines[index].text = text
             self.dirty = True
+            return True
+        return False
 
     def insert_after(self, index: int, text: str = "", time_seconds: float = 0.0) -> None:
         new_line = LRCLine(time_seconds=time_seconds, text=text, raw_timestamp="[00:00.00]")

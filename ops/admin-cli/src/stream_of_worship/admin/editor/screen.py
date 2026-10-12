@@ -1172,12 +1172,18 @@ class LRCEditorScreen(Screen[None]):
             self._do_autosave()
             self.notify("Redo", timeout=2)
 
+    def _has_unsaved_changes(self) -> bool:
+        return self.state.dirty or self.state.serialize() != self.state.original_serialized
+
     def action_save_upload(self) -> None:
         if self._guard_active_edit():
             return
         if self._guard_preview():
             return
         revised = self.state.serialize()
+        if not self._has_unsaved_changes():
+            self.notify("No changes to save", timeout=3)
+            return
         result = validate_lrc(
             timed_lines=self.state.timed_lines,
             preserved_lines=self.state.preserved_lines,
@@ -1425,6 +1431,7 @@ class LRCEditorScreen(Screen[None]):
 
         def _handle_quit_confirm(should_quit: bool) -> None:
             if should_quit:
+                self.app.quit_clean = not self._has_unsaved_changes()
                 self.app.exit()
 
         if self.state.dirty:
