@@ -117,6 +117,13 @@ def _quit_outcome():
     )
 
 
+def _clean_quit_outcome():
+    """Scripted session that ended via quit dialog with no unsaved changes."""
+    return lyrics_commands.EditorSessionOutcome(
+        no_audio=False, upload_attempted=False, upload_result=None, quit_clean=True
+    )
+
+
 def _drop_all_tables(make_test_provider):
     """Drop all tables for cleanup."""
     try:
@@ -771,6 +778,65 @@ class TestLoopExitAndDraftBehavior:
         assert result.exit_code == 0, result.output
         # Publish offer fired despite stale in-memory None visibility.
         assert "Set visibility to published?" in result.output
+
+    def test_clean_quit_offers_publish_and_continues(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor, monkeypatch
+    ):
+        """Clean quit in loop mode offers publish when eligible, then the
+        loop still continues to the next song."""
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        # Eligibility: completed LRC on the picked recording (hash-dd).
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET lrc_status = 'completed' WHERE hash_prefix = 'hash-dd'"
+            )
+        conn.commit()
+
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_clean_quit_outcome())
+
+        result = self._invoke_quit(config_path, "\ny\nn\n")
+        assert result.exit_code == 0, result.output
+        assert "Set visibility to published?" in result.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-dd").visibility_status == "published"
+        # The loop continues after the publish offer.
+        assert "Continue to next review song?" in result.output
+
+    def test_clean_quit_decline_leaves_visibility(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET lrc_status = 'completed' WHERE hash_prefix = 'hash-dd'"
+            )
+        conn.commit()
+
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_clean_quit_outcome())
+
+        result = self._invoke_quit(config_path, "\nn\nn\n")
+        assert result.exit_code == 0, result.output
+        assert "Visibility left unchanged." in result.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-dd").visibility_status == "review"
+
+    def test_clean_quit_not_offered_when_lrc_pending(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_clean_quit_outcome())
+
+        result = self._invoke_quit(config_path, "\n")
+        assert result.exit_code == 0, result.output
+        assert "Set visibility to published?" not in result.output
 
     @staticmethod
     def _invoke_quit(config_path, input_text):

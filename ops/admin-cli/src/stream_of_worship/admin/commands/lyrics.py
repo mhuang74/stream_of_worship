@@ -1832,6 +1832,9 @@ def lyrics_edit(
         )
         raise typer.Exit(1)
 
+    if outcome.quit_clean:
+        _offer_publish_on_clean_quit(db_client, recording)
+
     if outcome.upload_attempted and outcome.upload_result is not None:
         _run_single_mode_offers(db_client, outcome.upload_result, recording)
 
@@ -1930,6 +1933,8 @@ def _run_review_session(db_client, cache_dir, r2_client) -> None:
             # to quit): no offers, song stays eligible, but give the admin
             # an explicit way out instead of silently re-launching the
             # same editor.
+            if outcome.quit_clean:
+                _offer_publish_on_clean_quit(db_client, recording)
             console.print(
                 f"[dim]No upload for {candidate.song_id} "
                 f"({candidate.song_title}); it stays in the queue.[/dim]"
@@ -2040,11 +2045,14 @@ class EditorSessionOutcome:
     once (True even when the user cancelled it or saved only a draft).
     ``upload_result``: outcome of the last upload attempt (None when no
     upload was attempted or the user quit before saving).
+    ``quit_clean``: session ended via quit dialog with no unsaved changes
+    (no upload attempted).
     """
 
     no_audio: bool
     upload_attempted: bool
     upload_result: Optional[UploadResult]
+    quit_clean: bool = False
 
 
 def _run_editor_session(db_client, cache_dir, r2_client, song, recording):
@@ -2224,6 +2232,7 @@ def _run_editor_session(db_client, cache_dir, r2_client, song, recording):
         no_audio=False,
         upload_attempted=app.upload_attempted,
         upload_result=app.last_upload_result,
+        quit_clean=app.quit_clean,
     )
 
 
@@ -2277,6 +2286,21 @@ def _run_post_upload_prompts(
             return prompt_confirmation("Continue to next review song?")
 
     return False
+
+
+def _offer_publish_on_clean_quit(db_client, recording) -> None:
+    """Offer to publish when a no-edit session ends and the recording is
+    publish-eligible (completed LRC, review/NULL visibility)."""
+    fresh = db_client.get_recording_by_hash(recording.hash_prefix)
+    if fresh is None or fresh.lrc_status != "completed":
+        return
+    if (fresh.visibility_status or "") not in ("review", ""):
+        return
+    if not prompt_confirmation("Set visibility to published?"):
+        console.print("[dim]Visibility left unchanged.[/dim]")
+        return
+    db_client.update_recording_visibility(recording.hash_prefix, "published")
+    console.print(f"[green]Recording {recording.hash_prefix} set to published.[/green]")
 
 
 def _current_visibility(db_client, recording) -> str:

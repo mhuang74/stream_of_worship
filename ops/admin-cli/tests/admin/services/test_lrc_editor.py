@@ -291,6 +291,30 @@ class TestEditorState:
         assert state.timed_lines[0].text == "New"
         assert state.dirty is True
 
+    def test_set_text_same_value_not_dirty(self):
+        state = EditorState(
+            timed_lines=_make_lines([(0.0, "Same")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+        )
+        assert state.set_text(0, "Same") is False
+        assert state.dirty is False
+        assert len(state._undo_stack) == 0
+
+    def test_set_timestamp_same_value_not_dirty(self):
+        state = EditorState(
+            timed_lines=_make_lines([(10.5, "A")]),
+            preserved_lines=[],
+            original_serialized="",
+            original_preserved_lines=[],
+            transcribed_identity=R2ObjectIdentity(exists=False),
+        )
+        assert state.set_timestamp(0, 10.5) is False
+        assert state.dirty is False
+        assert len(state._undo_stack) == 0
+
     def test_insert_after(self):
         state = EditorState(
             timed_lines=_make_lines([(0.0, "A"), (0.0, "C")]),

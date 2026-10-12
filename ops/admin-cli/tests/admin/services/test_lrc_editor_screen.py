@@ -518,3 +518,73 @@ async def test_single_preview_shows_blank_before_first_line():
 
         assert lyric_display._current_text == "Line 1"
         assert lyric_display._next_text == "Line 2"
+
+
+@pytest.mark.asyncio
+async def test_save_with_no_changes_shows_toast_not_dialog():
+    from textual.screen import ModalScreen
+
+    # Simulate an R2-source session: serialize() equals the original so a
+    # clean session counts as unchanged (catalog-source sessions with
+    # original_serialized="" always count as changed).
+    app, state = _make_app(line_count=3)
+    state.original_serialized = state.serialize()
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        await pilot.press("s")
+        await pilot.pause()
+
+        assert app.upload_attempted is False
+        assert not isinstance(app.screen, ModalScreen)
+
+
+@pytest.mark.asyncio
+async def test_save_after_real_edit_opens_dialog():
+    from textual.screen import ModalScreen
+
+    app, state = _make_app(line_count=3)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        state.set_text(0, "Changed")
+        await pilot.press("s")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ModalScreen)
+        assert app.upload_attempted is True
+
+
+@pytest.mark.asyncio
+async def test_quit_clean_sets_quit_clean_flag():
+    # Clean R2-source session (see test_save_with_no_changes...).
+    app, state = _make_app(line_count=3)
+    state.original_serialized = state.serialize()
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+
+        assert app.quit_clean is True
+
+
+@pytest.mark.asyncio
+async def test_quit_dirty_sets_quit_clean_false():
+    app, state = _make_app(line_count=3)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        state.set_text(0, "X")
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+
+        assert app.quit_clean is False
