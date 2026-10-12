@@ -10,6 +10,7 @@ textual.constants.DISABLE_KITTY_KEY = True
 from textual.app import App
 
 from stream_of_worship.admin.editor.screen import LRCEditorScreen
+from stream_of_worship.admin.editor.upload import UploadResult
 
 
 class LRCEditorApp(App[None]):
@@ -32,6 +33,15 @@ class LRCEditorApp(App[None]):
         self.db_client = db_client
         self.hash_prefix = hash_prefix
         self.original_transcribed_content = original_transcribed_content
+        # Outcome of the last save/upload dialog attempt; None until the
+        # user attempts a save/upload. Read by the command layer after
+        # app.run() to drive the post-upload offers (issue #260).
+        self.last_upload_result: UploadResult | None = None
+        # True once the save/upload dialog ran at least once, even if the
+        # user cancelled it or saved only a local draft. Lets the command
+        # layer distinguish "session ended via quit-without-save" (no
+        # offers, review loop re-picks) from a genuine attempt (issue #260).
+        self.upload_attempted = False
 
     def on_mount(self) -> None:
         self.push_screen(LRCEditorScreen(
@@ -42,4 +52,8 @@ class LRCEditorApp(App[None]):
             db_client=self.db_client,
             hash_prefix=self.hash_prefix,
             original_transcribed_content=self.original_transcribed_content,
+            upload_result_out=self._on_upload_result,
         ))
+
+    def _on_upload_result(self, result: UploadResult) -> None:
+        self.last_upload_result = result

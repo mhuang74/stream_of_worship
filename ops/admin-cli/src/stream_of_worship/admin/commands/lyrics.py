@@ -12,9 +12,10 @@ Per ADR 0007, feedback is advisory: feedback commands only write
 
 import json
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
 from botocore.exceptions import ClientError
@@ -34,13 +35,12 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisServiceError,
     JobInfo,
 )
+from stream_of_worship.admin.services.hasher import get_hash_prefix
 from stream_of_worship.admin.services.lrc_jobs import (
     display_lrc,
-    resolve_lyrics_text,
     submit_lrc_batch,
     submit_lrc_single,
 )
-from stream_of_worship.admin.services.hasher import get_hash_prefix
 from stream_of_worship.admin.services.lrc_parser import (
     build_draft_from_catalog,
     format_duration,
@@ -59,6 +59,9 @@ from stream_of_worship.admin.services.structured_lyrics import (
     parse_structured_lyrics,
 )
 from stream_of_worship.db.connection import ConnectionProvider
+
+if TYPE_CHECKING:
+    from stream_of_worship.admin.editor.upload import UploadResult
 
 console = Console()
 app = typer.Typer(help="Lyrics operations")
@@ -656,15 +659,19 @@ def _poll_lrc_batch(
 
     Returns the manifest entries list.
     """
-    entries = existing_entries if existing_entries is not None else [
-        {
-            "song_id": song_id,
-            "content_hash": content_hash,
-            "job_id": job_id,
-            "outcome": "pending",
-        }
-        for song_id, content_hash, job_id in submissions
-    ]
+    entries = (
+        existing_entries
+        if existing_entries is not None
+        else [
+            {
+                "song_id": song_id,
+                "content_hash": content_hash,
+                "job_id": job_id,
+                "outcome": "pending",
+            }
+            for song_id, content_hash, job_id in submissions
+        ]
+    )
     by_job = {entry["job_id"]: entry for entry in entries if entry.get("outcome") == "pending"}
     if not by_job:
         return entries
@@ -705,7 +712,9 @@ def _poll_lrc_batch(
                             )
                             entry["outcome"] = "completed"
                             entry["lrc_url"] = lrc_url
-                            console.print(f"  [green]✓[/green] {song_id}: LRC found on R2 (job lost)")
+                            console.print(
+                                f"  [green]✓[/green] {song_id}: LRC found on R2 (job lost)"
+                            )
                         else:
                             db_client.update_recording_status(
                                 hash_prefix=hash_prefix, lrc_status="failed"
@@ -718,9 +727,7 @@ def _poll_lrc_batch(
                         del by_job[job_id]
                         _flush()
                     else:
-                        console.print(
-                            f"  [yellow]→ Error polling {song_id}: {e}[/yellow]"
-                        )
+                        console.print(f"  [yellow]→ Error polling {song_id}: {e}[/yellow]")
                     continue
                 except Exception as e:
                     console.print(f"  [yellow]→ Error polling {song_id}: {e}[/yellow]")
@@ -740,9 +747,7 @@ def _poll_lrc_batch(
                         )
                         entry["outcome"] = "completed"
                         entry["lrc_url"] = lrc_url
-                        entry["lrc_source"] = (
-                            job.result.lrc_source if job.result else None
-                        )
+                        entry["lrc_source"] = job.result.lrc_source if job.result else None
                         console.print(f"  [green]✓[/green] {song_id}: LRC completed")
                     else:
                         # Completed but object not visible yet; retry next cycle.
@@ -752,17 +757,12 @@ def _poll_lrc_batch(
                         )
                         continue
                 elif job.status in ("failed", "cancelled"):
-                    db_client.update_recording_status(
-                        hash_prefix=hash_prefix, lrc_status="failed"
-                    )
+                    db_client.update_recording_status(hash_prefix=hash_prefix, lrc_status="failed")
                     entry["outcome"] = "failed"
-                    entry["error"] = (
-                        job.error_message
-                        or ("Job cancelled" if job.status == "cancelled" else "Unknown error")
+                    entry["error"] = job.error_message or (
+                        "Job cancelled" if job.status == "cancelled" else "Unknown error"
                     )
-                    console.print(
-                        f"  [red]✗[/red] {song_id}: LRC failed: {entry['error']}"
-                    )
+                    console.print(f"  [red]✗[/red] {song_id}: LRC failed: {entry['error']}")
                 else:
                     # queued/processing
                     continue
@@ -1002,9 +1002,7 @@ def _resume_batch(
         console.print(f"[yellow]R2 not configured ({e}); skipping R2 fallback checks.[/yellow]")
         r2_client = None  # type: ignore[assignment]
 
-    submissions = [
-        (entry["song_id"], entry["content_hash"], entry["job_id"]) for entry in pending
-    ]
+    submissions = [(entry["song_id"], entry["content_hash"], entry["job_id"]) for entry in pending]
     updated = _poll_lrc_batch(
         submissions,
         db_client,
@@ -1538,7 +1536,7 @@ def lyrics_upload(
     # Upload to R2 with backup + ETag protection
     console.print("[cyan]Uploading LRC to R2...[/cyan]")
     try:
-        from stream_of_worship.admin.services.r2 import StaleObjectError, BackupFailedError
+        from stream_of_worship.admin.services.r2 import BackupFailedError, StaleObjectError
 
         r2_url = r2_client.upload_official_lrc(
             recording.hash_prefix, lrc_file, expected_etag=expected_etag
@@ -1759,7 +1757,13 @@ def lyrics_view_structured(
 
 @app.command("edit")
 def lyrics_edit(
-    song_id: str = typer.Argument(..., help="Song ID to edit LRC for"),
+    song_id: Optional[str] = typer.Argument(None, help="Song ID to edit LRC for"),
+    review_next_song: bool = typer.Option(
+        False,
+        "--review-next-song",
+        help="Pick the next review-visibility song from the ranked queue "
+        "(most recent open poor feedback first) and loop after upload",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Interactively edit LRC timestamps for a song recording.
@@ -1767,7 +1771,21 @@ def lyrics_edit(
     Downloads/caches the song recording and transcribed LRC, then launches
     a Textual TUI editor for live timestamp alignment, text editing, and
     upload to R2.
+
+    With --review-next-song, picks the next review-visibility song from an
+    automatically ranked queue (most recent open poor lyrics feedback first,
+    then songset appearances, favorites, newest album), shows why it was
+    picked, and after a successful upload offers to resolve the open poor
+    ratings, promote the recording to published, and continue to the next
+    review song in one sitting.
     """
+    if not song_id and not review_next_song:
+        console.print("[red]Error: provide a song_id argument or use --review-next-song[/red]")
+        raise typer.Exit(1)
+    if song_id and review_next_song:
+        console.print("[red]Error: cannot combine song_id argument with --review-next-song[/red]")
+        raise typer.Exit(1)
+
     try:
         config = AdminConfig.load(config_path)
     except FileNotFoundError:
@@ -1776,17 +1794,6 @@ def lyrics_edit(
 
     db_client = get_db_client(config)
     cache_dir = get_cache_dir()
-
-    recording = db_client.get_recording_by_song_id(song_id)
-    if not recording:
-        console.print(
-            f"[red]No recording found for song: {song_id}. "
-            f"Run 'sow-admin audio download {song_id}' first.[/red]"
-        )
-        raise typer.Exit(1)
-
-    song = db_client.get_song(song_id)
-    song_title = song.title if song else "Unknown"
 
     try:
         r2_client = R2Client(
@@ -1798,27 +1805,277 @@ def lyrics_edit(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
+    if review_next_song:
+        _run_review_session(db_client, cache_dir, r2_client)
+        return
+
+    # Single-song mode: resolve the recording the legacy way and run one
+    # plain session (banner without pause, same post-upload offers).
+    recording = db_client.get_recording_by_song_id(song_id)
+    if not recording:
+        console.print(
+            f"[red]No recording found for song: {song_id}. "
+            f"Run 'sow-admin audio download {song_id}' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    song = db_client.get_song(song_id)
+
+    # Story 9: open poor feedback is shown before every lyrics editing
+    # session, so the admin sees what users complained about while editing.
+    _print_feedback_banner(db_client, recording.content_hash)
+
+    outcome = _run_editor_session(db_client, cache_dir, r2_client, song, recording)
+    if outcome.no_audio:
+        # Audio unavailable — clear error (spec story 12).
+        console.print(
+            f"[red]No audio found for {song_id} in object storage. "
+            f"Audio is required for timestamp alignment. Cannot open editor.[/red]"
+        )
+        raise typer.Exit(1)
+
+    if outcome.upload_attempted and outcome.upload_result is not None:
+        _run_single_mode_offers(db_client, outcome.upload_result, recording)
+
+
+def plan_post_upload_offers(
+    upload_ok: bool,
+    open_sad_count: int,
+    is_review_visibility: bool,
+    loop_mode: bool,
+) -> list[str]:
+    """Compute the ordered post-upload offer plan (pure; issue #260).
+
+    Inputs are the upload outcome, the open-feedback state, the recording's
+    current visibility, and whether we are in a review loop session.
+    Output is the ordered list of prompts to present:
+
+    - ``clear``: "Clear poor ratings?" — resolve open sad rows (ADR 0007).
+    - ``publish``: "Set visibility to published?" — per-recording; only
+      offered when the recording is currently ``review``.
+    - ``skip``: "Skip this song in the next pick?" — loop mode only,
+      offered when the publish offer is declined.
+    - ``continue``: "Continue to next review song?" — loop mode only.
+
+    Local-draft saves (upload_ok=False) produce no offers at all.
+    """
+    if not upload_ok:
+        return []
+    plan: list[str] = []
+    has_open_sad = open_sad_count > 0
+    if has_open_sad:
+        plan.append("clear")
+    if is_review_visibility:
+        plan.append("publish")
+    if loop_mode:
+        if "publish" in plan:
+            plan.append("skip-if-publish-declined")
+        plan.append("continue")
+    elif "publish" in plan:
+        # Single-song sessions have no next pick; the skip offer is
+        # meaningless there.
+        pass
+    return plan
+
+
+def _run_review_session(db_client, cache_dir, r2_client) -> None:
+    """Run the --review-next-song loop: pick, edit, post-upload offers, repeat.
+
+    The skip set lives in process memory only — a fresh invocation starts
+    clean (issue #260 user story 22).
+    """
+    skipped_song_ids: set[str] = set()
+
+    while True:
+        queue = db_client.get_review_queue()
+        candidates = [c for c in queue if c.song_id not in skipped_song_ids]
+        if not candidates:
+            console.print(
+                f"[yellow]No review-visibility songs available "
+                f"({len(skipped_song_ids)} skipped this session)[/yellow]"
+            )
+            return
+
+        candidate = candidates[0]
+        recording = db_client.get_recording_by_hash(candidate.hash_prefix)
+        song = db_client.get_song(candidate.song_id)
+        if recording is None or song is None:
+            console.print(
+                f"[red]Recording or song disappeared for {candidate.song_id} "
+                f"({candidate.hash_prefix}); skipping.[/red]"
+            )
+            skipped_song_ids.add(candidate.song_id)
+            continue
+
+        _print_review_pick_reason(candidate, pause=True)
+        _print_feedback_banner_from_summary(
+            candidate.open_sad_count,
+            candidate.reason_counts,
+            candidate.latest_open_sad_at,
+            candidate.sample_reason,
+        )
+
+        outcome = _run_editor_session(db_client, cache_dir, r2_client, song, recording)
+        if outcome.no_audio:
+            # No audio in object storage: skip message + move on.
+            console.print(
+                f"[yellow]Skipping {candidate.song_id} ({candidate.song_title}): "
+                f"no audio available in object storage.[/yellow]"
+            )
+            skipped_song_ids.add(candidate.song_id)
+            continue
+
+        if not outcome.upload_attempted:
+            # Quit without saving/uploading: no offers, stay eligible so
+            # the loop re-offers the song (resolved feedback would have
+            # dropped it out of tier 1 naturally).
+            console.print(
+                f"[dim]No upload for {candidate.song_id} "
+                f"({candidate.song_title}); it stays in the queue.[/dim]"
+            )
+        else:
+            upload_result = outcome.upload_result
+            plan = plan_post_upload_offers(
+                upload_ok=upload_result is not None and upload_result.success,
+                open_sad_count=_open_sad_count(db_client, recording.content_hash),
+                is_review_visibility=recording.visibility_status == "review",
+                loop_mode=True,
+            )
+            accepted = _run_post_upload_prompts(
+                db_client,
+                plan,
+                candidate,
+                recording,
+                skipped_song_ids,
+            )
+            if not accepted:
+                return
+
+
+def _open_sad_count(db_client, content_hash: str) -> int:
+    """Count open sad feedback rows for a recording."""
+    return db_client.get_recording_feedback_summary(content_hash).open_sad_count
+
+
+def _print_review_pick_reason(candidate, pause: bool) -> None:
+    """Print why this song was picked, then optionally pause for space/enter."""
+    parts: list[str] = []
+    if candidate.latest_open_sad_at:
+        breakdown = _reason_breakdown(candidate.reason_counts)
+        sample = f', e.g. "{candidate.sample_reason}"' if candidate.sample_reason else ""
+        parts.append(
+            f"{candidate.open_sad_count} open poor rating(s) since "
+            f"{candidate.latest_open_sad_at} ({breakdown}{sample})"
+        )
+    else:
+        parts.append("no open poor ratings")
+    parts.append(f"{candidate.songset_appearances} songset appearance(s)")
+    parts.append(f"{candidate.favorite_count} favorite(s)")
+
+    console.print()
+    console.print(
+        f"[bold]Next review song:[/bold] {candidate.song_title} "
+        f"[dim]({candidate.song_id}, recording {candidate.hash_prefix})[/dim]"
+    )
+    console.print(f"[cyan]Why picked:[/cyan] {'; '.join(parts)}")
+
+    if pause:
+        try:
+            input("Press Enter to open the editor... [enter]: ")
+        except (EOFError, KeyboardInterrupt):
+            pass
+
+
+def _print_feedback_banner_from_summary(
+    open_sad_count: int,
+    reason_counts: dict[str, int],
+    latest_open_sad_at: Optional[str],
+    sample_reason: Optional[str],
+) -> None:
+    """Print the open poor-feedback banner from precomputed summary data.
+
+    No output when there is no open poor feedback.
+    """
+    if open_sad_count == 0:
+        return
+    breakdown = _reason_breakdown(reason_counts)
+    latest = latest_open_sad_at or ""
+    sample = f' — e.g. "{sample_reason}"' if sample_reason else ""
+    console.print(
+        f"[yellow]⚠ Open poor feedback: {open_sad_count} rating(s) "
+        f"({breakdown}), latest {latest}{sample}[/yellow]"
+    )
+
+
+def _print_feedback_banner(db_client, content_hash: str) -> None:
+    """Print the open poor-feedback banner queried live from the DB."""
+    summary = db_client.get_recording_feedback_summary(content_hash)
+    _print_feedback_banner_from_summary(
+        summary.open_sad_count,
+        summary.reason_counts,
+        summary.latest_open_sad_at,
+        summary.sample_reason,
+    )
+
+
+@dataclass
+class EditorSessionOutcome:
+    """Result of one editor session (issue #260).
+
+    ``no_audio``: audio unavailable in object storage — the editor never
+    opened. ``upload_attempted``: the save/upload dialog opened at least
+    once (True even when the user cancelled it or saved only a draft).
+    ``upload_result``: outcome of the last upload attempt (None when no
+    upload was attempted or the user quit before saving).
+    """
+
+    no_audio: bool
+    upload_attempted: bool
+    upload_result: Optional["UploadResult"]
+
+
+def _run_editor_session(db_client, cache_dir, r2_client, song, recording):
+    """Prepare caches + editor state and run one editor session.
+
+    Returns an ``EditorSessionOutcome``: ``no_audio=True`` when audio is
+    unavailable in object storage (single-song mode: clear error; review
+    loop: skip the candidate); otherwise the app is marked
+    ``upload_attempted`` when the save/upload dialog opened at least once
+    and carries the resulting ``UploadResult`` (``None`` when the user
+    quit without attempting a save — no post-upload offers in that case).
+    """
+    song_title = song.title if song else "Unknown"
+
     console.print(f"[cyan]Downloading audio for: {song_title}[/cyan]")
     audio_cache_dir = cache_dir / recording.hash_prefix / "audio"
     audio_cache_dir.mkdir(parents=True, exist_ok=True)
     audio_path = audio_cache_dir / "audio.mp3"
 
-    if not audio_path.exists():
-        try:
-            r2_client.download_audio(recording.hash_prefix, audio_path)
-        except Exception as e:
-            console.print(f"[red]Failed to download audio: {e}[/red]")
-            console.print(
-                "[red]Audio is required for timestamp alignment. Cannot open editor.[/red]"
-            )
-            raise typer.Exit(1)
-    else:
-        try:
-            r2_client.audio_exists(recording.hash_prefix)
-        except ClientError:
-            console.print(
-                f"[yellow]Warning: Could not verify audio in R2. Using cached file.[/yellow]"
-            )
+    try:
+        if not audio_path.exists():
+            try:
+                r2_client.download_audio(recording.hash_prefix, audio_path)
+            except ClientError as e:
+                if e.response.get("Error", {}).get("Code", "") in ("404", "NoSuchKey"):
+                    return EditorSessionOutcome(no_audio=True, upload_attempted=False, upload_result=None)
+                raise
+            except Exception:
+                # Non-ClientError failures may still be missing-object cases
+                # surfaced differently by R2 clients; verify explicitly.
+                if not r2_client.audio_exists(recording.hash_prefix):
+                    return EditorSessionOutcome(no_audio=True, upload_attempted=False, upload_result=None)
+                raise
+        else:
+            try:
+                r2_client.audio_exists(recording.hash_prefix)
+            except ClientError:
+                console.print(
+                    "[yellow]Warning: Could not verify audio in R2. Using cached file.[/yellow]"
+                )
+    except Exception as e:
+        console.print(f"[red]Failed to download audio: {e}[/red]")
+        console.print("[red]Audio is required for timestamp alignment. Cannot open editor.[/red]")
+        raise typer.Exit(1)
 
     transcribed_content: Optional[str] = None
     transcribed_identity = r2_client.get_lrc_identity(recording.hash_prefix)
@@ -1841,9 +2098,7 @@ def lyrics_edit(
     from stream_of_worship.admin.editor.autosave import (
         autosave_exists,
         load_autosave,
-        AutosaveState,
     )
-    from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
 
     if autosave_exists(cache_dir, recording.hash_prefix):
         console.print("[yellow]Autosave recovery file found![/yellow]")
@@ -1952,6 +2207,87 @@ def lyrics_edit(
     app.run()
 
     playback.stop()
+    return EditorSessionOutcome(
+        no_audio=False,
+        upload_attempted=app.upload_attempted,
+        upload_result=app.last_upload_result,
+    )
+
+
+def _run_post_upload_prompts(
+    db_client,
+    plan: list[str],
+    candidate,
+    recording,
+    skipped_song_ids: set[str],
+) -> bool:
+    """Execute the ordered post-upload offer plan interactively.
+
+    Returns True to continue the review loop, False to stop. Single-song
+    mode (loop plan without ``continue``) always returns False.
+    """
+    publish_declined = False
+    cleared_ratings = False
+
+    for step in plan:
+        if step == "clear":
+            if prompt_confirmation("Clear poor ratings?"):
+                affected = db_client.resolve_recording_sad_feedback(recording.content_hash)
+                cleared_ratings = True
+                console.print(
+                    f"[green]Resolved {affected} poor rating(s) for "
+                    f"{recording.hash_prefix} (reversible via "
+                    f"'lyrics feedback unresolve').[/green]"
+                )
+            else:
+                console.print("[dim]Ratings left open.[/dim]")
+        elif step == "publish":
+            if prompt_confirmation("Set visibility to published?"):
+                db_client.update_recording_visibility(recording.hash_prefix, "published")
+                console.print(f"[green]Recording {recording.hash_prefix} set to published.[/green]")
+            else:
+                publish_declined = True
+                console.print("[dim]Visibility left unchanged.[/dim]")
+        elif step == "skip-if-publish-declined":
+            if (
+                candidate is not None
+                and publish_declined
+                and not cleared_ratings
+                and prompt_confirmation("Skip this song in the next pick?")
+            ):
+                skipped_song_ids.add(candidate.song_id)
+                console.print(
+                    f"[dim]{candidate.song_id} will be skipped for the rest of "
+                    f"this session.[/dim]"
+                )
+        elif step == "continue":
+            return prompt_confirmation("Continue to next review song?")
+
+    return False
+
+
+def _run_single_mode_offers(db_client, upload_result, recording) -> None:
+    """Post-upload offers for single-song (targeted edit) sessions.
+
+    Sequential prompts, only after a successful R2 upload — never after a
+    local-draft save. Reuses the same pure plan as loop mode minus the
+    loop-only steps.
+    """
+    if upload_result is None or not upload_result.success:
+        return
+    plan = plan_post_upload_offers(
+        upload_ok=True,
+        open_sad_count=_open_sad_count(db_client, recording.content_hash),
+        is_review_visibility=recording.visibility_status == "review",
+        loop_mode=False,
+    )
+    _run_post_upload_prompts(
+        db_client,
+        plan,
+        candidate=None,
+        recording=recording,
+        skipped_song_ids=set(),
+    )
 
 
 def _build_fresh_editor_state(
@@ -1964,7 +2300,6 @@ def _build_fresh_editor_state(
     source_mode: str,
 ) -> "EditorState":
     """Build a fresh EditorState from transcribed content or catalog lyrics."""
-    from stream_of_worship.admin.services.lrc_parser import LRCPreservedLine
 
     if transcribed_content:
         parsed = parse_lrc_full(transcribed_content)

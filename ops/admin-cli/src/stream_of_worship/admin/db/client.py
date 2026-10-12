@@ -13,16 +13,22 @@ from typing import Any, Generator, Optional
 import psycopg
 import psycopg.errors
 
-from stream_of_worship.admin.db.models import DatabaseStats, Recording, Song, SongComponent
+from stream_of_worship.admin.db.models import (
+    DatabaseStats,
+    FeedbackSummary,
+    Recording,
+    ReviewQueueCandidate,
+    Song,
+    SongComponent,
+)
 from stream_of_worship.admin.db.schema import (
     ACTIVE_ROW_COUNT_QUERY,
+    RECORDING_COLUMN_COUNT,
     RECORDING_COLUMNS_FOR_JOIN,
     RECORDING_COLUMNS_SELECT,
-    RECORDING_COLUMN_COUNT,
-    ROW_COUNT_QUERY,
+    SONG_COLUMN_COUNT,
     SONG_COLUMNS_FOR_JOIN,
     SONG_COLUMNS_SELECT,
-    SONG_COLUMN_COUNT,
     SONG_COMPONENT_COLUMNS_SELECT,
     SONG_COMPONENT_THEMES,
     SONG_COMPONENT_VOCAL_POSTURES,
@@ -700,6 +706,230 @@ class DatabaseClient:
         if row:
             return Recording.from_row(tuple(row))
         return None
+
+    def get_review_queue(self) -> list[ReviewQueueCandidate]:
+        """Get the ranked LRC review queue (issue #260).
+
+        Pool: recordings with ``visibility_status = 'review'``, not
+        soft-deleted, belonging to a not-soft-deleted song. Deduplicated
+        to song level: per song the recording with the most recent open
+        poor (sad, unresolved) feedback is the edit target (tie: newest
+        recording). Songs without open poor feedback remain eligible.
+
+        Ranking is a strict priority cascade, ties broken by song id
+        ascending:
+
+        1. Latest open sad feedback ``MAX(lyrics_feedback.updated_at)``,
+           DESC NULLS LAST.
+        2. Songset appearances (``songset_items`` rows per song), DESC.
+        3. Favorite count (``user_favorite_songs`` rows per song), DESC.
+        4. Newest album ``MAX(songs.created_at)`` grouped by
+           ``(album_name, album_series)`` — a documented proxy; no albums
+           table or release-date data exists.
+        5. Song id ascending (deterministic final tie-break).
+
+        Returns:
+            Ranked ``ReviewQueueCandidate`` list.
+        """
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                WITH review_pool AS (
+                    SELECT
+                        r.content_hash,
+                        r.hash_prefix,
+                        r.visibility_status,
+                        r.created_at AS recording_created_at,
+                        r.song_id,
+                        fb.latest_sad_at,
+                        fb.open_sad_count,
+                        fb.reason_counts,
+                        fb.sample_reason,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY r.song_id
+                            ORDER BY fb.latest_sad_at DESC NULLS LAST,
+                                     r.created_at DESC NULLS LAST
+                        ) AS rec_rank
+                    FROM recordings r
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            MAX(f.updated_at) AS latest_sad_at,
+                            COUNT(*) AS open_sad_count,
+                            COALESCE(
+                                jsonb_object_agg(f.reason, f.reason_count) FILTER (WHERE f.reason IS NOT NULL),
+                                '{{}}'::jsonb
+                            ) AS reason_counts,
+                            (ARRAY_AGG(f.reason ORDER BY f.updated_at DESC))[1] AS sample_reason
+                        FROM (
+                            SELECT
+                                reason,
+                                updated_at,
+                                COUNT(*) OVER (PARTITION BY reason) AS reason_count
+                            FROM lyrics_feedback
+                            WHERE recording_content_hash = r.content_hash
+                              AND rating = 'sad'
+                              AND resolved_at IS NULL
+                        ) f
+                    ) fb ON TRUE
+                    JOIN songs s ON s.id = r.song_id AND s.deleted_at IS NULL
+                    WHERE r.deleted_at IS NULL
+                      AND r.visibility_status = 'review'
+                ),
+                pool AS (
+                    SELECT * FROM review_pool WHERE rec_rank = 1
+                )
+                SELECT
+                    p.song_id,
+                    s.title,
+                    p.content_hash,
+                    p.hash_prefix,
+                    p.visibility_status,
+                    p.latest_sad_at,
+                    p.open_sad_count,
+                    p.reason_counts,
+                    p.sample_reason,
+                    COALESCE(si.appearances, 0) AS songset_appearances,
+                    COALESCE(fav.favorites, 0) AS favorite_count,
+                    al.album_created_at
+                FROM pool p
+                JOIN songs s ON s.id = p.song_id
+                LEFT JOIN (
+                    SELECT song_id, COUNT(*) AS appearances
+                    FROM songset_items
+                    GROUP BY song_id
+                ) si ON si.song_id = p.song_id
+                LEFT JOIN (
+                    SELECT song_id, COUNT(*) AS favorites
+                    FROM user_favorite_songs
+                    GROUP BY song_id
+                ) fav ON fav.song_id = p.song_id
+                LEFT JOIN (
+                    SELECT album_name, album_series, MAX(created_at) AS album_created_at
+                    FROM songs
+                    GROUP BY album_name, album_series
+                ) al ON al.album_name IS NOT DISTINCT FROM s.album_name
+                    AND al.album_series IS NOT DISTINCT FROM s.album_series
+                ORDER BY
+                    p.latest_sad_at DESC NULLS LAST,
+                    COALESCE(si.appearances, 0) DESC,
+                    COALESCE(fav.favorites, 0) DESC,
+                    al.album_created_at DESC NULLS LAST,
+                    p.song_id ASC
+                """,
+            )
+            rows = cursor.fetchall()
+
+            candidates = []
+            for row in rows:
+                (
+                    song_id,
+                    title,
+                    content_hash,
+                    hash_prefix,
+                    visibility_status,
+                    latest_sad_at,
+                    open_sad_count,
+                    reason_counts,
+                    sample_reason,
+                    appearances,
+                    favorites,
+                    album_created_at,
+                ) = row
+                candidates.append(
+                    ReviewQueueCandidate(
+                        song_id=song_id,
+                        song_title=title,
+                        content_hash=content_hash,
+                        hash_prefix=hash_prefix,
+                        visibility_status=visibility_status,
+                        latest_open_sad_at=to_str(latest_sad_at),
+                        open_sad_count=open_sad_count,
+                        reason_counts=reason_counts or {},
+                        sample_reason=sample_reason,
+                        songset_appearances=appearances,
+                        favorite_count=favorites,
+                        album_created_at=to_str(album_created_at),
+                    )
+                )
+            return candidates
+
+        return self._execute_with_retry(_query)
+
+    def get_recording_feedback_summary(self, content_hash: str) -> FeedbackSummary:
+        """Get the open poor (sad) feedback summary for one recording.
+
+        Args:
+            content_hash: Full recording content hash.
+
+        Returns:
+            ``FeedbackSummary`` with zero counts when no open sad rows exist.
+        """
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) AS open_sad_count,
+                    COALESCE(
+                        jsonb_object_agg(reason, cnt) FILTER (WHERE reason IS NOT NULL),
+                        '{}'::jsonb
+                    ) AS reason_counts,
+                    MAX(updated_at) AS latest_open_sad_at,
+                    (ARRAY_AGG(reason ORDER BY updated_at DESC))[1] AS sample_reason
+                FROM (
+                    SELECT
+                        reason,
+                        updated_at,
+                        COUNT(*) OVER (PARTITION BY reason) AS cnt
+                    FROM lyrics_feedback
+                    WHERE recording_content_hash = %s
+                      AND rating = 'sad'
+                      AND resolved_at IS NULL
+                ) open_rows
+                """,
+                (content_hash,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return FeedbackSummary(open_sad_count=0)
+            open_sad_count, reason_counts, latest_open_sad_at, sample_reason = row
+            return FeedbackSummary(
+                open_sad_count=open_sad_count,
+                reason_counts=reason_counts or {},
+                latest_open_sad_at=to_str(latest_open_sad_at),
+                sample_reason=sample_reason,
+            )
+
+        return self._execute_with_retry(_query)
+
+    def resolve_recording_sad_feedback(self, content_hash: str) -> int:
+        """Resolve all open sad feedback rows for one recording.
+
+        Advisory only (ADR 0007): sets ``resolved_at = NOW()`` on open
+        sad rows; never touches ``lrc_status`` or other pipeline state.
+        Reversible via ``lyrics feedback unresolve``.
+
+        Args:
+            content_hash: Full recording content hash.
+
+        Returns:
+            Number of feedback rows resolved.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE lyrics_feedback
+                SET resolved_at = NOW()
+                WHERE recording_content_hash = %s
+                  AND rating = 'sad'
+                  AND resolved_at IS NULL
+                """,
+                (content_hash,),
+            )
+            return cursor.rowcount
 
     def list_recordings_by_song_id(
         self,

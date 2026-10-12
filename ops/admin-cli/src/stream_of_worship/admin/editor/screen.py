@@ -8,13 +8,14 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual import events
 from textual.containers import Vertical
 from textual.coordinate import Coordinate
+from textual.css.query import NoMatches
 from textual.geometry import Offset
 from textual.screen import Screen
 from textual.widgets import (
@@ -24,13 +25,13 @@ from textual.widgets import (
     Label,
     Static,
 )
-from textual.css.query import NoMatches
 
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.autosave import AutosaveState, save_autosave
 from stream_of_worship.admin.editor.footer import GroupedFooter, format_key_display
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.editor.upload import (
+    UploadResult,
     check_transcribed_changed,
     save_local_draft,
     upload_revised_lrc,
@@ -290,6 +291,7 @@ class LRCEditorScreen(Screen[None]):
         db_client: DatabaseClient,
         hash_prefix: str,
         original_transcribed_content: Optional[str],
+        upload_result_out: Optional[Callable[[UploadResult], None]] = None,
     ):
         super().__init__()
         self.state = editor_state
@@ -299,6 +301,7 @@ class LRCEditorScreen(Screen[None]):
         self.db_client = db_client
         self.hash_prefix = hash_prefix
         self.original_transcribed_content = original_transcribed_content
+        self.upload_result_out = upload_result_out
         self._autosave_ok = False
         self._edit_mode: Literal["text", "timestamp"] | None = None
         self._edit_target_row: int | None = None
@@ -1293,6 +1296,11 @@ class LRCEditorScreen(Screen[None]):
                     hash_prefix=self.hash_prefix,
                     force=force,
                 )
+                if self.upload_result_out is not None:
+                    try:
+                        self.upload_result_out(upload_result)
+                    except Exception as e:  # never break the editor on observer errors
+                        logger.warning(f"upload_result_out callback failed: {e}")
 
                 if upload_result.success:
                     from stream_of_worship.admin.editor.autosave import clear_autosave
@@ -1334,6 +1342,7 @@ class LRCEditorScreen(Screen[None]):
             SaveUploadDialog(validation, revised, self, etag_changed, etag_reason),
             _handle_dialog_result,
         )
+        self.app.upload_attempted = True
 
     def action_show_keymap(self) -> None:
         if self._is_edit_active():
