@@ -713,6 +713,40 @@ class TestPlainEditStillWorks:
         assert "No audio found for song_001" in result.output
         assert "Audio is required for timestamp alignment" in result.output
 
+    def test_clean_quit_offers_publish_single_song(
+        self, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """Clean quit in single-song mode offers publish when eligible."""
+        provider = _init_schema(make_test_provider)
+        self._seed_single_song(provider)
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET lrc_status = 'completed' WHERE hash_prefix = 'hash-aa'"
+            )
+        conn.commit()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        def _fake_session(db_client, cache_dir, r2_client, song, recording):
+            assert recording.hash_prefix == "hash-aa"
+            return lyrics_commands.EditorSessionOutcome(
+                no_audio=False, upload_attempted=False, upload_result=None, quit_clean=True
+            )
+
+        monkeypatch.setattr(lyrics_commands, "_run_editor_session", _fake_session)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["edit", "song_001", "--config", str(config_path)],
+            input="y\n",
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "Set visibility to published?" in result.output
+        assert "set to published" in result.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-aa").visibility_status == "published"
+
 
 @pytest.mark.integration
 class TestLoopExitAndDraftBehavior:
