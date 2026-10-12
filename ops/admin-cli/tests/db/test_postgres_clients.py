@@ -47,6 +47,7 @@ def db_clients(make_test_provider, seed_user):
             cur.execute("""
                 DROP TABLE IF EXISTS songset_share CASCADE;
                 DROP TABLE IF EXISTS lyrics_feedback CASCADE;
+                DROP TABLE IF EXISTS user_favorite_songs CASCADE;
                 DROP TABLE IF EXISTS lyric_mark CASCADE;
                 DROP TABLE IF EXISTS user_lrc_override CASCADE;
                 DROP TABLE IF EXISTS user_settings CASCADE;
