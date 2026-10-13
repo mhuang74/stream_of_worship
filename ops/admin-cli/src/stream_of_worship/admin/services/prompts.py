@@ -41,6 +41,34 @@ def prompt_confirmation(message: str) -> bool:
         return False
 
 
+def prompt_typed_yes(message: str) -> bool:
+    """Prompt requiring the full word 'yes' to confirm.
+
+    Unlike :func:`prompt_confirmation`, a bare Enter, "y", or any other
+    input declines — intended for hard-to-reverse actions such as
+    publishing a recording. Case-insensitive; EOF/Ctrl+C declines.
+    """
+    try:
+        response = input(f"{message} [type 'yes' to confirm]: ").strip().lower()
+        return response == "yes"
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def prompt_enter_or_no(message: str) -> bool:
+    """Prompt where a bare Enter proceeds and 'n'/'no' (or any other input) stops.
+
+    Inverse of :func:`prompt_typed_yes`: for flow-control questions such as
+    "continue to the next song", ENTER is the safe, expected advance key.
+    EOF/Ctrl+C stops.
+    """
+    try:
+        response = input(f"{message} [Enter=yes, n=no]: ").strip().lower()
+        return response == ""
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
 def prompt_choice(prompt: str, choices: list[str]) -> int:
     """Prompt the user to choose from a list of options.
 

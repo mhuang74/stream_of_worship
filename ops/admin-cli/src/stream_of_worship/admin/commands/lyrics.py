@@ -51,7 +51,8 @@ from stream_of_worship.admin.services.lrc_parser import (
 )
 from stream_of_worship.admin.services.prompts import (
     prompt_choice,
-    prompt_confirmation,
+    prompt_enter_or_no,
+    prompt_typed_yes,
     read_song_ids_from_stdin,
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
@@ -1505,7 +1506,7 @@ def lyrics_upload(
     console.print(Panel.fit("\n".join(info_lines), title="LRC Upload Preview", border_style="cyan"))
 
     # Confirm upload
-    if not prompt_confirmation("Upload this LRC file?"):
+    if not prompt_typed_yes("Upload this LRC file?"):
         console.print("[yellow]Upload cancelled.[/yellow]")
         raise typer.Exit(0)
 
@@ -1657,7 +1658,7 @@ def lyrics_upload_structured(
         )
     )
 
-    if not prompt_confirmation("Store these structured lyrics?"):
+    if not prompt_typed_yes("Store these structured lyrics?"):
         console.print("[yellow]Upload cancelled.[/yellow]")
         raise typer.Exit(0)
 
@@ -1939,7 +1940,7 @@ def _run_review_session(db_client, cache_dir, r2_client) -> None:
                 f"[dim]No upload for {candidate.song_id} "
                 f"({candidate.song_title}); it stays in the queue.[/dim]"
             )
-            if not prompt_confirmation("Continue to next review song?"):
+            if not prompt_enter_or_no("Continue to next review song?"):
                 return
         else:
             upload_result = outcome.upload_result
@@ -2254,7 +2255,7 @@ def _run_post_upload_prompts(
 
     for step in plan:
         if step == "clear":
-            if prompt_confirmation("Clear poor ratings?"):
+            if prompt_typed_yes("Clear poor ratings?"):
                 affected = db_client.resolve_recording_sad_feedback(recording.content_hash)
                 cleared_ratings = True
                 console.print(
@@ -2265,7 +2266,7 @@ def _run_post_upload_prompts(
             else:
                 console.print("[dim]Ratings left open.[/dim]")
         elif step == "publish":
-            if prompt_confirmation("Set visibility to published?"):
+            if prompt_typed_yes("Set visibility to published?"):
                 db_client.update_recording_visibility(recording.hash_prefix, "published")
                 console.print(f"[green]Recording {recording.hash_prefix} set to published.[/green]")
             else:
@@ -2276,7 +2277,7 @@ def _run_post_upload_prompts(
                 candidate is not None
                 and publish_declined
                 and not cleared_ratings
-                and prompt_confirmation("Skip this song in the next pick?")
+                and prompt_typed_yes("Skip this song in the next pick?")
             ):
                 skipped_song_ids.add(candidate.song_id)
                 console.print(
@@ -2284,7 +2285,7 @@ def _run_post_upload_prompts(
                     f"this session.[/dim]"
                 )
         elif step == "continue":
-            return prompt_confirmation("Continue to next review song?")
+            return prompt_enter_or_no("Continue to next review song?")
 
     return False
 
@@ -2297,7 +2298,7 @@ def _offer_publish_on_clean_quit(db_client, recording) -> None:
         return
     if (fresh.visibility_status or "") not in ("review", ""):
         return
-    if not prompt_confirmation("Set visibility to published?"):
+    if not prompt_typed_yes("Set visibility to published?"):
         console.print("[dim]Visibility left unchanged.[/dim]")
         return
     db_client.update_recording_visibility(recording.hash_prefix, "published")
