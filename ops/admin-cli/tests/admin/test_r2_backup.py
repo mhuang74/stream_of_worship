@@ -437,8 +437,8 @@ class TestWriteBackup:
         assert result.object_count == 1
         assert output.exists()
 
-    def test_backup_changed_object_exceeds_retries_fails(self, tmp_path):
-        """Object that keeps changing fails after retry budget."""
+    def test_backup_changed_object_accepted_with_warning(self, tmp_path):
+        """Object that keeps changing is accepted with the actual downloaded etag."""
         data = b"hello world"
         etag = hashlib.md5(data).hexdigest()
         objects = [{"key": "a/file", "size": 11, "etag": etag, "data": data}]
@@ -457,10 +457,22 @@ class TestWriteBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(BackupError, match="ETag changed"):
-            write_backup(r2, output, inventory)
+        result = write_backup(r2, output, inventory)
 
-        assert not output.exists()
+        assert result.complete is True
+        assert result.warnings
+        assert any("object-changed" in w for w in result.warnings)
+        assert output.exists()
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        obj = manifest["objects"][0]
+        assert obj["etag"] == "always_different"
+        assert obj["snapshot_drift"] is True
+        assert obj["size"] == 11
+        assert obj["sha256"] == hashlib.sha256(data).hexdigest()
+
+        verify_result = verify_archive(output)
+        assert verify_result.ok is True
 
     def test_backup_deleted_object_during_backup_fails(self, tmp_path):
         """Object that disappears during backup fails and cleans up."""
@@ -519,7 +531,7 @@ class TestWriteBackup:
         assert obj["metadata"] == {"custom": "value"}
 
     def test_backup_cleanup_on_interrupt(self, tmp_path):
-        """Failure during backup removes only owned partial directory."""
+        """Hard failure with objects already saved finalizes a partial backup."""
         r2 = MagicMock()
         r2.bucket = "test-bucket"
         r2.endpoint_url = "https://test.r2.cloudflarestorage.com"
@@ -532,12 +544,66 @@ class TestWriteBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
+        # Zero objects written → hard failure, no output
         with pytest.raises(BackupError, match="Failed to backup"):
             write_backup(r2, output, inventory)
 
         assert not output.exists()
         partial = output.with_suffix(output.suffix + ".part")
         assert not partial.exists()
+
+    def test_backup_interrupt_after_objects_saved_finalizes_partial(self, tmp_path):
+        """Failure after ≥1 object is in a tar finalizes a verifiable partial backup."""
+        data1 = b"hello"
+        data2 = b"world"
+        etag1 = hashlib.md5(data1).hexdigest()
+        etag2 = hashlib.md5(data2).hexdigest()
+        objects = [
+            {"key": "a/file", "size": 5, "etag": etag1, "data": data1},
+            {"key": "b/file", "size": 5, "etag": etag2, "data": data2},
+        ]
+        r2 = _make_r2_mock(objects)
+
+        # First object succeeds; second fails hard (ClientError, not changed-object)
+        from botocore.exceptions import ClientError
+
+        original_get = r2.get_object_stream.side_effect
+
+        def _get(key):
+            if key == "b/file":
+                raise ClientError(
+                    {"Error": {"Code": "InternalError", "Message": "boom"}},
+                    "GetObject",
+                )
+            return original_get(key)
+
+        r2.get_object_stream.side_effect = _get
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        result = write_backup(r2, output, inventory)
+
+        assert result.complete is False
+        assert result.object_count == 1
+        assert result.total_bytes == 5
+        assert any("backup-interrupted" in w for w in result.warnings)
+        assert output.exists()
+        partial = output.with_suffix(output.suffix + ".part")
+        assert not partial.exists()
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        assert manifest["complete"] is False
+        assert "incomplete_reason" in manifest
+        assert manifest["object_count"] == 1
+        assert len(manifest["objects"]) == 1
+        assert manifest["objects"][0]["key"] == "a/file"
+
+        verify_result = verify_archive(output)
+        assert verify_result.ok is True
+
+        # No temp files remain
+        assert not (output / "tmp").exists()
 
 
 class TestWriteBackupProgress:
@@ -760,7 +826,7 @@ class TestConcurrentBackup:
         assert not (output / "tmp").exists()
 
     def test_concurrent_backup_cleans_up_temp_files_on_failure(self, tmp_path):
-        """Temp files are cleaned up when backup fails mid-way."""
+        """Temp files are cleaned up when backup fails mid-way with objects saved."""
         data1 = b"hello"
         data2 = b"world"
         etag1 = hashlib.md5(data1).hexdigest()
@@ -771,14 +837,17 @@ class TestConcurrentBackup:
         ]
         r2 = _make_r2_mock(objects)
 
-        # Make the second object fail with a different etag
+        # Make the second object fail hard (ClientError, not a changed object)
+        from botocore.exceptions import ClientError
+
         original_get = r2.get_object_stream.side_effect
 
         def _flaky_get(key):
             if key == "b/file":
-                resp = original_get(key)
-                resp["etag"] = "wrong"
-                return resp
+                raise ClientError(
+                    {"Error": {"Code": "InternalError", "Message": "boom"}},
+                    "GetObject",
+                )
             return original_get(key)
 
         r2.get_object_stream.side_effect = _flaky_get
@@ -786,12 +855,19 @@ class TestConcurrentBackup:
         inventory = build_inventory(r2)
         output = tmp_path / "backup"
 
-        with pytest.raises(BackupError):
-            write_backup(r2, output, inventory)
+        result = write_backup(r2, output, inventory)
 
-        assert not output.exists()
+        # Partial backup finalized with the first object
+        assert result.complete is False
+        assert result.object_count == 1
+        assert output.exists()
         partial = output.with_suffix(output.suffix + ".part")
         assert not partial.exists()
+        # No temp files remain
+        assert not (output / "tmp").exists()
+        remaining = list(output.rglob("*.tmp")) + list(output.rglob("tmp*"))
+        assert remaining == []
+        assert verify_archive(output).ok is True
 
     def test_concurrent_backup_failure_cancels_remaining(self, tmp_path):
         """On failure, remaining futures are cancelled and partial dir cleaned up."""
@@ -963,6 +1039,21 @@ class TestVerifyArchive:
         assert result.ok is True
         assert result.object_count == 0
         assert result.chunk_count == 0
+
+    def test_verify_accepts_incomplete_manifest(self, tmp_path):
+        """verify_archive validates archive integrity, not bucket completeness."""
+        backup_dir = _create_valid_backup(tmp_path, [
+            {"key": "a/file", "size": 5, "etag": "etag1", "data": b"hello"}
+        ])
+        manifest = json.loads((backup_dir / "manifest.json").read_text())
+        manifest["complete"] = False
+        manifest["incomplete_reason"] = "backup-interrupted: test"
+        (backup_dir / "manifest.json").write_text(json.dumps(manifest))
+
+        result = verify_archive(backup_dir)
+
+        assert result.ok is True
+        assert result.object_count == 1
 
     def test_verify_missing_manifest(self, tmp_path):
         backup_dir = tmp_path / "backup"

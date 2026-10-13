@@ -714,11 +714,16 @@ def _print_json_to_stdout(data: object) -> None:
     print(json.dumps(data, default=str, ensure_ascii=False, indent=2))
 
 
-def _print_backup_summary_table(result, output_dir: Path) -> None:
+def _print_backup_summary_table(
+    result, output_dir: Path, inventory_object_count: int
+) -> None:
     table = Table(title="R2 Backup Complete")
     table.add_column("Field")
     table.add_column("Value")
+    table.add_row("Status", "complete" if result.complete else "incomplete")
     table.add_row("Output directory", str(output_dir))
+    table.add_row("Inventory count", str(inventory_object_count))
+    table.add_row("Saved count", str(result.object_count))
     table.add_row("Object count", str(result.object_count))
     table.add_row("Total MB", str(_bytes_to_mb(result.total_bytes)))
     table.add_row("Chunk count", str(result.chunk_count))
@@ -883,6 +888,15 @@ def backup_r2(
         console.print(f"[red]Backup failed: {e}[/red]")
         raise typer.Exit(1)
 
+    for warning in result.warnings:
+        progress_console.print(f"[yellow]{warning}[/yellow]")
+    if not result.complete:
+        progress_console.print(
+            f"[yellow]Backup INCOMPLETE: saved {result.object_count} of "
+            f"{inventory.object_count} inventory objects. "
+            f'See manifest.json "incomplete_reason".[/yellow]'
+        )
+
     if format_ == "json":
         _print_json_to_stdout(
             {
@@ -890,10 +904,14 @@ def backup_r2(
                 "object_count": result.object_count,
                 "total_mb": _bytes_to_mb(result.total_bytes),
                 "chunk_count": result.chunk_count,
+                "complete": result.complete,
+                "inventory_object_count": inventory.object_count,
+                "inventory_total_mb": _bytes_to_mb(inventory.total_bytes),
+                "warnings": result.warnings,
             }
         )
     else:
-        _print_backup_summary_table(result, output)
+        _print_backup_summary_table(result, output, inventory.object_count)
 
 
 @app.command("verify-r2-backup")
