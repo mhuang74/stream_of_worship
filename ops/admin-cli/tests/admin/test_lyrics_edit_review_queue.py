@@ -465,7 +465,7 @@ class TestReviewNextSongCommand:
         # song_c. Session 2 has no scripted audio, so the no-audio skip
         # path then walks the remaining queue to exhaustion. The trailing
         # Enters feed the pauses of the no-audio walk.
-        result = self._invoke(config_path, "\nn\nn\nn\ny\n\n\n\n")
+        result = self._invoke(config_path, "\nn\nn\nn\n\n\n\n\n")
         assert result.exit_code == 0, result.output
         assert result.output.count("Next review song: Song C") == 2
         assert "will be skipped" not in result.output  # skip declined
@@ -480,7 +480,7 @@ class TestReviewNextSongCommand:
         patched_editor.append(_upload_outcome())
 
         # decline clear, decline publish, accept skip, accept continue
-        result = self._invoke(config_path, "\nn\nn\ny\ny\n")
+        result = self._invoke(config_path, "\nn\nn\nyes\n\n")
         assert result.exit_code == 0, result.output
         assert "will be skipped for the rest of this session" in result.output
         assert "Next review song: Song A" in result.output
@@ -495,7 +495,7 @@ class TestReviewNextSongCommand:
         patched_editor.append(_upload_outcome())
 
         # accept clear, accept publish, accept continue, Enter at next pause
-        result = self._invoke(config_path, "\ny\ny\ny\n\n")
+        result = self._invoke(config_path, "\nyes\nyes\n\n\n")
         assert result.exit_code == 0, result.output
         assert "Resolved 1 poor rating(s)" in result.output
         assert "set to published" in result.output
@@ -518,7 +518,7 @@ class TestReviewNextSongCommand:
         patched_editor.append(_upload_outcome())
 
         # decline clear, accept publish, accept continue, Enter at next pause
-        result = self._invoke(config_path, "\nn\ny\ny\n\n")
+        result = self._invoke(config_path, "\nn\nyes\n\n\n")
         assert result.exit_code == 0, result.output
         assert "Visibility left unchanged" not in result.output
         assert result.output.count("Next review song:") >= 2
@@ -676,7 +676,7 @@ class TestPlainEditStillWorks:
         result = runner.invoke(
             lyrics_app,
             ["edit", "song_001", "--config", str(config_path)],
-            input="y\ny\n",  # accept clear, accept publish
+            input="yes\nyes\n",  # accept clear, accept publish
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
@@ -738,7 +738,7 @@ class TestPlainEditStillWorks:
         result = runner.invoke(
             lyrics_app,
             ["edit", "song_001", "--config", str(config_path)],
-            input="y\n",
+            input="yes\n",
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
@@ -808,7 +808,7 @@ class TestLoopExitAndDraftBehavior:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor.append(_upload_outcome())
 
-        result = self._invoke_quit(config_path, "\nn\ny\nn\n")
+        result = self._invoke_quit(config_path, "\nn\nyes\nn\n")
         assert result.exit_code == 0, result.output
         # Publish offer fired despite stale in-memory None visibility.
         assert "Set visibility to published?" in result.output
@@ -831,7 +831,7 @@ class TestLoopExitAndDraftBehavior:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor.append(_clean_quit_outcome())
 
-        result = self._invoke_quit(config_path, "\ny\nn\n")
+        result = self._invoke_quit(config_path, "\nyes\n\n")
         assert result.exit_code == 0, result.output
         assert "Set visibility to published?" in result.output
         client = DatabaseClient(make_test_provider())
@@ -856,6 +856,52 @@ class TestLoopExitAndDraftBehavior:
 
         result = self._invoke_quit(config_path, "\nn\nn\n")
         assert result.exit_code == 0, result.output
+        assert "Visibility left unchanged." in result.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-dd").visibility_status == "review"
+
+    def test_clean_quit_bare_enter_does_not_publish(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        """A bare Enter at the publish prompt must NOT publish (typed 'yes' required)."""
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET lrc_status = 'completed' WHERE hash_prefix = 'hash-dd'"
+            )
+        conn.commit()
+
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_clean_quit_outcome())
+
+        result = self._invoke_quit(config_path, "\n\n")
+        assert result.exit_code == 0, result.output
+        assert "Set visibility to published?" in result.output
+        assert "Visibility left unchanged." in result.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-dd").visibility_status == "review"
+
+    def test_clean_quit_single_y_does_not_publish(
+        self, make_test_provider, postgres_url, tmp_path, patched_editor
+    ):
+        """Typing bare 'y' at the publish prompt must NOT publish (typed 'yes' required)."""
+        provider = _init_schema(make_test_provider)
+        _seed_review_pool(provider)
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET lrc_status = 'completed' WHERE hash_prefix = 'hash-dd'"
+            )
+        conn.commit()
+
+        config_path = _write_config(tmp_path, postgres_url)
+        patched_editor.append(_clean_quit_outcome())
+
+        result = self._invoke_quit(config_path, "\ny\n")
+        assert result.exit_code == 0, result.output
+        assert "Set visibility to published?" in result.output
         assert "Visibility left unchanged." in result.output
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_by_hash("hash-dd").visibility_status == "review"

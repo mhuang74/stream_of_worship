@@ -44,7 +44,7 @@ def _make_song(title="Test Song") -> Song:
     )
 
 
-def _invoke_upload(tmp_path, recording, args=(), confirm="y", text: str = SECTION_TAGGED_TEXT):
+def _invoke_upload(tmp_path, recording, args=(), confirm="yes", text: str = SECTION_TAGGED_TEXT):
     """Invoke upload-structured with config/DB/prompt mocked.
 
     Returns (result, db_mock).
@@ -59,7 +59,7 @@ def _invoke_upload(tmp_path, recording, args=(), confirm="y", text: str = SECTIO
     with (
         patch.object(lyrics_commands, "AdminConfig", MagicMock()),
         patch.object(lyrics_commands, "get_db_client", return_value=db_mock),
-        patch.object(lyrics_commands, "prompt_confirmation", return_value=confirm == "y"),
+        patch.object(lyrics_commands, "prompt_typed_yes", return_value=confirm == "yes"),
     ):
         result = runner.invoke(
             lyrics_app, ["upload-structured", "song_0001", str(lyrics_file), *args]
@@ -123,7 +123,7 @@ def test_upload_structured_no_section_tags(tmp_path):
     with (
         patch.object(lyrics_commands, "AdminConfig", MagicMock()),
         patch.object(lyrics_commands, "get_db_client", return_value=db_mock),
-        patch.object(lyrics_commands, "prompt_confirmation", return_value=True),
+        patch.object(lyrics_commands, "prompt_typed_yes", return_value=True),
     ):
         result = runner.invoke(lyrics_app, ["upload-structured", "song_0001", str(lyrics_file)])
 
@@ -152,7 +152,7 @@ def test_upload_structured_force_overwrites(tmp_path):
 
 def test_upload_structured_declined_confirmation(tmp_path):
     recording = _make_recording()
-    result, db_mock = _invoke_upload(tmp_path, recording, confirm="n")
+    result, db_mock = _invoke_upload(tmp_path, recording, confirm="no")
 
     assert result.exit_code == 0, result.output
     assert "cancelled" in result.output
@@ -184,7 +184,7 @@ def test_upload_structured_components_hint_fires_when_empty(tmp_path):
     with (
         patch.object(lyrics_commands, "AdminConfig", MagicMock()),
         patch.object(lyrics_commands, "get_db_client", return_value=db_mock),
-        patch.object(lyrics_commands, "prompt_confirmation", return_value=True),
+        patch.object(lyrics_commands, "prompt_typed_yes", return_value=True),
     ):
         lyrics_file = tmp_path / "lyrics.txt"
         lyrics_file.write_text(SECTION_TAGGED_TEXT, encoding="utf-8")
