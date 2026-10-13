@@ -4014,9 +4014,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py": {
-    "mtime": 1791850693.4475126,
-    "seen": 1791850775.8352692,
-    "ast_hash": "af3a52f557a656f5d4d92fc646797f60",
+    "mtime": 1791858605.0223038,
+    "seen": 1791858699.9043245,
+    "ast_hash": "aaf117e6b52d0c995ceb51e41d89a847",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/catalog.py": {
@@ -4194,9 +4194,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/editor/upload.py": {
-    "mtime": 1790045958.539367,
-    "seen": 1790178131.078255,
-    "ast_hash": "e85e9809ced3fcf5c66b8cf569135308",
+    "mtime": 1791855371.6023211,
+    "seen": 1791858699.9071007,
+    "ast_hash": "f5f31c9ae00765a4cca4f0d071f7333d",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/editor/validation.py": {
@@ -5469,6 +5469,12 @@
     "mtime": 1791607402.4020908,
     "seen": 1791812596.8755379,
     "ast_hash": "ab1fe39974618fc85e73c228cf97acb5",
+    "semantic_hash": ""
+  },
+  "ops/admin-cli/scripts/backfill_lrc_source_youtube.py": {
+    "mtime": 1791856810.521724,
+    "seen": 1791858699.9037278,
+    "ast_hash": "3b40508406f91055a736591149b22009",
     "semantic_hash": ""
   }
 }
