@@ -5567,7 +5567,7 @@ def _print_dry_run_v4(
     if with_recording:
         console.print(f"[cyan]With recording ({len(with_recording)}):[/cyan]")
         for song, recording in with_recording:
-            console.print(f"  [cyan]•[/cyan] {song.title} ({recording.hash_prefix})")
+            console.print(f"  [cyan]•[/cyan] {song.title} ({song.id}, {recording.hash_prefix})")
             console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
             console.print(f"    [dim]Download:[/dim] {recording.download_status}")
             console.print(f"    [dim]LRC:[/dim] {recording.lrc_status}")
@@ -5592,7 +5592,7 @@ def _print_dry_run_v4(
     if missing:
         console.print(f"[yellow]Missing recording — will download ({len(missing)}):[/yellow]")
         for (song,) in missing:
-            console.print(f"  [yellow]•[/yellow] {song.title}")
+            console.print(f"  [yellow]•[/yellow] {song.title} ({song.id})")
             console.print(f"    [dim]Album:[/dim] {song.album_name or '-'}")
         console.print()
 
@@ -7947,7 +7947,9 @@ def _reconcile_on_interrupt(
 
                 song = db_client.get_song(song_id)
                 song_name = song.title if song else song_id
-                console.print(f"  [green]✓[/green] {song_name}: LRC found on R2 (completed)")
+                console.print(
+                    f"  [green]✓[/green] {song_name} [{song_id}]: LRC found on R2 (completed)"
+                )
             else:
                 db_client.update_recording_status(
                     hash_prefix=hash_prefix,
@@ -7958,7 +7960,9 @@ def _reconcile_on_interrupt(
 
                 song = db_client.get_song(song_id)
                 song_name = song.title if song else song_id
-                console.print(f"  [red]✗[/red] {song_name}: LRC not on R2 (marked failed)")
+                console.print(
+                    f"  [red]✗[/red] {song_name} [{song_id}]: LRC not on R2 (marked failed)"
+                )
 
         elif step == "components":
             # No DB status field for components. If the finished job's result
