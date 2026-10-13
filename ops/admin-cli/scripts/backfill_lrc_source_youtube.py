@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -54,6 +55,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--apply", action="store_true", help="Write updates (default: dry-run)")
     parser.add_argument("--limit", type=int, default=None, help="Cap number of recordings probed")
     parser.add_argument("--delay", type=float, default=1.5, help="Seconds between probes")
+    parser.add_argument(
+        "--from-list",
+        type=Path,
+        default=None,
+        help="File of hash_prefixes to update directly (skips YouTube probing); use a prior "
+        "dry-run's available list to apply without re-probing",
+    )
     return parser.parse_args()
 
 
@@ -81,9 +89,26 @@ def probe_video(api: YouTubeTranscriptApi, video_id: str) -> tuple[str, str]:
 
 
 def apply_updates(db_client: "DbClient", hash_prefixes: list[str]) -> int:
-    """Update lrc_source for the given recordings; returns rowcount."""
+    """Update lrc_source for the given recordings; returns rowcount.
+
+    ``hash_prefixes`` may be truncated prefixes (e.g. 8 chars from logs);
+    they are resolved to full hash_prefix values before the update.
+    """
     conn = db_client.connection
     with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT hash_prefix FROM recordings
+            WHERE hash_prefix LIKE ANY(%s)
+              AND lrc_source IS NULL
+              AND lrc_status = 'completed'
+              AND deleted_at IS NULL
+            """,
+            ([p + "%" for p in hash_prefixes],),
+        )
+        full_prefixes = [row[0] for row in cur.fetchall()]
+        if not full_prefixes:
+            return 0
         cur.execute(
             """
             UPDATE recordings
@@ -93,7 +118,7 @@ def apply_updates(db_client: "DbClient", hash_prefixes: list[str]) -> int:
               AND lrc_status = 'completed'
               AND deleted_at IS NULL
             """,
-            (hash_prefixes,),
+            (full_prefixes,),
         )
         rowcount = cur.rowcount
     conn.commit()
@@ -113,6 +138,19 @@ def main() -> int:
     from stream_of_worship.admin.commands.catalog import get_db_client
 
     db_client = get_db_client(AdminConfig())
+
+    if args.from_list:
+        prefixes = [
+            line.strip()
+            for line in args.from_list.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if not prefixes:
+            print("ERROR: --from-list file is empty", file=sys.stderr)
+            return 2
+        updated = apply_updates(db_client, prefixes)
+        print(f"updated {updated} rows (from-list: {len(prefixes)} prefixes, no probing)")
+        return 0
 
     # lrc_source="none" maps to AND lrc_source IS NULL (excludes soft-deleted).
     candidates = [r for r in db_client.list_recordings(lrc_source="none") if r.lrc_status == "completed"]
@@ -158,6 +196,21 @@ def main() -> int:
         f"error {counts[ERROR]}, skip {counts[SKIP]}"
     )
     return 0
+
+
+def extract_available_prefixes(log_path: str) -> list[str]:
+    """Extract available 8-char prefixes from a prior run log (dry-run handoff).
+
+    Only bracketed per-recording lines are matched so summary lines
+    ("probed 434: available 367, ...") cannot leak into the list.
+    """
+    prefixes = []
+    for line in Path(log_path).read_text(encoding="utf-8").splitlines():
+        if line.startswith("[") and " available " in line:
+            parts = line.split()
+            if len(parts) >= 2:
+                prefixes.append(parts[1])
+    return prefixes
 
 
 if __name__ == "__main__":
