@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # A value <= 0 means auto-detect (cgroup-aware on Linux, 1 elsewhere), capped at 4.
     SOW_COMPONENT_MAX_CONCURRENT: int = 0
 
+    # Caps concurrently *executing* LRC (generate-lyrics) jobs at the task level,
+    # independent of the YouTube-request rate limiter inside each job. Without
+    # this, a restart that requeues many LRC jobs fans them all out at once and
+    # each probes YouTube independently (cooldown-expiry herd). Must be >= 1.
+    SOW_LRC_MAX_CONCURRENT: int = 2
+
     @field_validator("SOW_LOG_LEVEL")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:
@@ -94,6 +100,14 @@ class Settings(BaseSettings):
         """Ensure concurrent jobs is at least 1 to prevent deadlock."""
         if v < 1:
             raise ValueError("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS must be at least 1")
+        return v
+
+    @field_validator("SOW_LRC_MAX_CONCURRENT")
+    @classmethod
+    def _validate_lrc_max_concurrent(cls, v: int) -> int:
+        """Ensure LRC concurrency is at least 1 to prevent deadlock."""
+        if v < 1:
+            raise ValueError("SOW_LRC_MAX_CONCURRENT must be at least 1")
         return v
 
     @field_validator("BPM_ALGORITHM_VERSION")
@@ -327,7 +341,11 @@ class Settings(BaseSettings):
     SOW_YOUTUBE_PROXY: str = (
         ""  # HTTP/HTTPS/SOCKS proxy URL for YouTube transcript requests (e.g., "http://proxy:8080", "socks5://proxy:1080")
     )
-    SOW_YOUTUBE_PROXY_RETRIES: int = 3  # Number of retries on HTTP 429 when using rotating proxies
+    # Number of retries on HTTP 429 when using rotating proxies. Matches the
+    # youtube-transcript-api library default rotations per blocked request; each
+    # retry exits through a different residential IP. Flows through
+    # RotatingProxyConfig.retries_when_blocked → library Retry(total=N).
+    SOW_YOUTUBE_PROXY_RETRIES: int = 10
 
     # YouTube Transcript Rate Limiting
     SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT: int = 1

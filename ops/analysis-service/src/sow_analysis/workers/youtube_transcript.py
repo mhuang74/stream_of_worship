@@ -70,7 +70,13 @@ class YouTubeRateLimitedError(YouTubeTranscriptError):
 def _is_rate_limited_error(e: Exception) -> bool:
     """Check if an exception is caused by YouTube rate limiting (HTTP 429).
 
-    Tries three detection strategies in order:
+    Strategy 0: Class-name match on youtube-transcript-api block errors. The
+    library raises IpBlocked(video_id) on HTTP 429 with no status_code/code
+    attribute and no "429" in the message, so the numeric checks below never
+    match it. Class-name matching (not isinstance) because we avoid importing
+    the library at module level.
+
+    Then tries three detection strategies in order:
     1. Check for HTTP 429 status_code on urllib3/requests exceptions.
     2. Check the exception string and its __cause__ chain for "429".
     3. Fall back to False (non-429 error — do not retry).
@@ -78,8 +84,19 @@ def _is_rate_limited_error(e: Exception) -> bool:
     The youtube-transcript-api library (via urllib3) raises errors like:
         ResponseError('too many 429 error responses')
 
-    Strategy 1 is more robust; strategy 2 is a pragmatic fallback.
+    Strategy 0 is most robust; strategy 1 is more robust than the
+    string-based fallback in strategy 2.
     """
+    # Strategy 0: youtube-transcript-api block errors (IpBlocked / RequestBlocked)
+    blocked_type_names = {"IpBlocked", "RequestBlocked"}
+    visited: set[int] = set()
+    exc: Exception = e
+    while exc is not None and id(exc) not in visited:
+        visited.add(id(exc))
+        if any(t.__name__ in blocked_type_names for t in type(exc).__mro__):
+            return True
+        exc = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+
     # Strategy 1: Check for status_code attribute (urllib3 / requests)
     visited = set()
     exc = e

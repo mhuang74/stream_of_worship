@@ -212,6 +212,10 @@ class JobQueue:
         # Separate semaphore for component analysis (librosa feature extraction, CPU/memory heavy).
         # Distinct from _fast_analyze_semaphore so backfill does not starve live fast_analyze traffic.
         self._component_semaphore = asyncio.Semaphore(settings.SOW_COMPONENT_MAX_CONCURRENT)
+        # Caps concurrently *executing* LRC jobs (task-level), independent of the
+        # YouTube-request rate limiter inside each job. Bounds restart-recovery
+        # fan-out when many queued LRC jobs are requeued at once.
+        self._lrc_semaphore = asyncio.Semaphore(settings.SOW_LRC_MAX_CONCURRENT)
         self._running = False
         self._logging_task: Optional[asyncio.Task] = None
         self._log_interval_seconds: float = 60.0
@@ -488,8 +492,10 @@ class JobQueue:
                 await self._process_analysis_job(job)
         elif job.type == JobType.LRC:
             # LRC tries YouTube (cloud) first; semaphore acquired inside generate_lrc()
-            # only for Whisper/Qwen3 (local models)
-            await self._process_lrc_job(job)
+            # only for Whisper/Qwen3 (local models). This outer semaphore caps
+            # concurrently *executing* LRC tasks (restart-recovery fan-out herd).
+            async with self._lrc_semaphore:
+                await self._process_lrc_job(job)
         elif job.type == JobType.STEM_SEPARATION:
             # Stem separation tries MVSEP (cloud) first; semaphore acquired inside
             # process_stem_separation() only for local fallback

@@ -191,6 +191,11 @@ async def lifespan(app: FastAPI):
             "max_concurrent_local_model",
             str(settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS),
         ),
+        (
+            "Processing",
+            "lrc_max_concurrent",
+            str(settings.SOW_LRC_MAX_CONCURRENT),
+        ),
         ("Processing", "cache_dir", str(settings.CACHE_DIR)),
         ("Processing", "queue_start_delay", f"{settings.SOW_QUEUE_START_DELAY_SECONDS}s"),
         ("BPM (Fast Analysis)", "algorithm", settings.BPM_ALGORITHM_VERSION),

@@ -510,8 +510,7 @@ class TestMetadataHelpers:
 class TestTranscriptDrafts:
     def test_fetch_transcript_lines_cleans_cues_and_whitespace(self, monkeypatch):
         class FakeApi:
-            @staticmethod
-            def get_transcript(video_id, languages):
+            def fetch(self, video_id, languages):
                 return [
                     {"text": "[Music]"},
                     {"text": "  Here   I  bow "},
@@ -545,12 +544,10 @@ class TestTranscriptDrafts:
         )
 
         class FakeApi:
-            @staticmethod
-            def get_transcript(video_id, languages):
+            def fetch(self, video_id, languages):
                 raise RuntimeError("preferred transcript unavailable")
 
-            @staticmethod
-            def list_transcripts(video_id):
+            def list(self, video_id):
                 return [fallback_transcript]
 
         fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)

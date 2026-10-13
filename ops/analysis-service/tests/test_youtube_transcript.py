@@ -1121,6 +1121,66 @@ class TestYouTubeRateLimiter:
         """Non-429 exception is not detected as rate-limited."""
         assert _is_rate_limited_error(Exception("Subtitles are disabled")) is False
 
+    def test_ip_blocked_detected(self):
+        """youtube-transcript-api 1.x IpBlocked (no status_code, no '429') → rate-limited."""
+        # Simulates youtube_transcript_api._errors.IpBlocked: raised on HTTP 429
+        # with only the video id in the message — invisible to status-code and
+        # string strategies, hence the class-name check.
+        IpBlocked = type("IpBlocked", (Exception,), {})
+        assert _is_rate_limited_error(IpBlocked("testVideoId")) is True
+
+    def test_request_blocked_detected(self):
+        """RequestBlocked-shaped exception is detected as rate-limited."""
+        RequestBlocked = type("RequestBlocked", (Exception,), {})
+        assert _is_rate_limited_error(RequestBlocked("blocked")) is True
+
+    def test_ip_blocked_as_cause_detected(self):
+        """IpBlocked wrapped as __cause__ of a generic exception is detected."""
+        IpBlocked = type("IpBlocked", (Exception,), {})
+        wrapper = RuntimeError("wrapper")
+        wrapper.__cause__ = IpBlocked("testVideoId")
+        assert _is_rate_limited_error(wrapper) is True
+
+    def test_ip_blocked_not_permanently_unavailable(self):
+        """IpBlocked must NOT be classified as permanently unavailable — it is
+        transient at the IP level; misclassification would drop the video."""
+        IpBlocked = type("IpBlocked", (Exception,), {})
+        assert _is_permanently_unavailable_error(IpBlocked("testVideoId")) is False
+
+    @pytest.mark.asyncio
+    async def test_ip_blocked_retried_and_opens_breaker(self):
+        """fn raises IpBlocked → retried with backoff, then YouTubeRateLimitedError
+        and the circuit breaker opens — the exact case that was missed before."""
+        from unittest.mock import patch
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        IpBlocked = type("IpBlocked", (Exception,), {})
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            raise IpBlocked("testVideoId")
+
+        with patch(
+            "sow_analysis.workers.youtube_transcript.settings"
+        ) as mock_settings:
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 1
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 2
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            with pytest.raises(YouTubeRateLimitedError):
+                await rl.call(fn, description="ip blocked test")
+
+        assert call_count == 2  # 1 initial attempt + 1 retry
+        assert rl._consecutive_429_count >= 1
+        assert rl._circuit_open_until > 0
+
 
 class TestLLMCorrectRateLimitRetry:
     """Tests for _llm_correct() 429 and 5xx retry behavior."""
