@@ -260,9 +260,7 @@ def upload_revised_lrc(
             pass
 
     try:
-        db_client.update_recording_lrc(
-            hash_prefix=hash_prefix, r2_lrc_url=r2_url, lrc_source="manual_upload"
-        )
+        db_client.update_recording_lrc(hash_prefix=hash_prefix, r2_lrc_url=r2_url)
     except Exception as e:
         return UploadResult(
             success=False,
