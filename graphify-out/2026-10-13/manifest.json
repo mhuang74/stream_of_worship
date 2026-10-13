@@ -4032,9 +4032,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/lyrics.py": {
-    "mtime": 1791846835.4503658,
-    "seen": 1791847286.9714115,
-    "ast_hash": "bf572aed12aad05f43720d2d1c396517",
+    "mtime": 1791849983.0707006,
+    "seen": 1791850032.6741579,
+    "ast_hash": "6b7965feb10720d29625e92feb58d9e3",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/maintenance.py": {
@@ -4182,15 +4182,15 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py": {
-    "mtime": 1791846818.3022676,
-    "seen": 1791847286.9732168,
-    "ast_hash": "661c926ecc4fb9382dcf34d8e5100606",
+    "mtime": 1791849983.0717008,
+    "seen": 1791850032.6760201,
+    "ast_hash": "5ba6251b5c742187b816c3ecf4a6e515",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/editor/state.py": {
-    "mtime": 1791846813.4662392,
-    "seen": 1791847286.9732194,
-    "ast_hash": "264b9f17b3b559054f7d4b03c90f6729",
+    "mtime": 1791849983.0717008,
+    "seen": 1791850032.6760225,
+    "ast_hash": "be290e944f0b776dd8fe281988fafaa1",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/editor/upload.py": {
