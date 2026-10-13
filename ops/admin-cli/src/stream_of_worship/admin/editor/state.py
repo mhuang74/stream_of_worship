@@ -47,6 +47,7 @@ class EditorState:
         source_mode: How the editor was initialized ("r2" or "catalog")
         selected_index: Currently selected lyric line index
         song_title: Song title for display
+        song_id: Song ID for display
         hash_prefix: Recording hash prefix
         audio_path: Path to cached audio file
         audio_duration: Audio duration in seconds
@@ -61,6 +62,7 @@ class EditorState:
     source_mode: str = "catalog"
     selected_index: int = 0
     song_title: str = ""
+    song_id: str = ""
     hash_prefix: str = ""
     audio_path: Optional[str] = None
     audio_duration: Optional[float] = None

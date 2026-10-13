@@ -294,6 +294,11 @@ class LRCEditorScreen(Screen[None]):
         upload_result_out: Optional[Callable[[UploadResult], None]] = None,
     ):
         super().__init__()
+        self.title = (
+            f"LRC Editor — {editor_state.song_title} ({editor_state.song_id})"
+            if editor_state.song_id
+            else f"LRC Editor — {editor_state.song_title}"
+        )
         self.state = editor_state
         self.playback = playback_service
         self.cache_dir = cache_dir
