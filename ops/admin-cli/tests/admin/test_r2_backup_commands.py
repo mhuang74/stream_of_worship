@@ -235,6 +235,96 @@ class TestBackupR2Command:
         mock_write.assert_called_once()
         assert mock_write.call_args.kwargs["concurrency"] == 4
 
+    def test_backup_incomplete_table_output(self, tmp_path):
+        """Incomplete backup prints warnings and exits 0 (table mode)."""
+        from stream_of_worship.admin.services.r2_backup import BackupResult
+
+        r2 = _make_r2_mock([])
+        config = AdminConfig(database_url="postgresql://example", r2_endpoint_url="https://r2.example.com")
+        output = tmp_path / "backup"
+
+        fake_result = BackupResult(
+            output_dir=output,
+            object_count=1,
+            total_bytes=5,
+            chunk_count=1,
+            manifest={"complete": False},
+            complete=False,
+            warnings=["backup-interrupted: KeyboardInterrupt"],
+        )
+
+        with (
+            patch("stream_of_worship.admin.commands.maintenance.AdminConfig.load", return_value=config),
+            patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=MagicMock()),
+            patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+            patch(
+                "stream_of_worship.admin.commands.maintenance.build_inventory",
+            ) as mock_inventory,
+            patch(
+                "stream_of_worship.admin.commands.maintenance.write_backup",
+                return_value=fake_result,
+            ),
+        ):
+            inv = MagicMock()
+            inv.object_count = 2
+            inv.total_bytes = 10
+            mock_inventory.return_value = inv
+            result = runner.invoke(
+                app,
+                ["maintenance", "backup-r2", "--output", str(output)],
+            )
+
+        assert result.exit_code == 0
+        assert "backup-interrupted: KeyboardInterrupt" in result.output
+        assert "Backup INCOMPLETE" in result.output
+        assert "incomplete" in result.output
+
+    def test_backup_incomplete_json_output(self, tmp_path):
+        """Incomplete backup outputs parseable JSON with complete=false."""
+        from stream_of_worship.admin.services.r2_backup import BackupResult
+
+        r2 = _make_r2_mock([])
+        config = AdminConfig(database_url="postgresql://example", r2_endpoint_url="https://r2.example.com")
+        output = tmp_path / "backup"
+
+        fake_result = BackupResult(
+            output_dir=output,
+            object_count=1,
+            total_bytes=5,
+            chunk_count=1,
+            manifest={"complete": False},
+            complete=False,
+            warnings=["backup-interrupted: KeyboardInterrupt"],
+        )
+
+        with (
+            patch("stream_of_worship.admin.commands.maintenance.AdminConfig.load", return_value=config),
+            patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=MagicMock()),
+            patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+            patch(
+                "stream_of_worship.admin.commands.maintenance.build_inventory",
+            ) as mock_inventory,
+            patch(
+                "stream_of_worship.admin.commands.maintenance.write_backup",
+                return_value=fake_result,
+            ),
+        ):
+            inv = MagicMock()
+            inv.object_count = 2
+            inv.total_bytes = 10
+            mock_inventory.return_value = inv
+            result = runner.invoke(
+                app,
+                ["maintenance", "backup-r2", "--output", str(output), "--format", "json"],
+            )
+
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)
+        assert data["complete"] is False
+        assert data["inventory_object_count"] == 2
+        assert data["inventory_total_mb"] == 0
+        assert data["warnings"] == ["backup-interrupted: KeyboardInterrupt"]
+
 
 class TestVerifyR2BackupCommand:
     def test_verify_succeeds_on_valid_backup(self, tmp_path):

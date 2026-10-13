@@ -62,6 +62,10 @@ class BackupError(Exception):
     """Raised when a backup operation fails."""
 
 
+class ObjectChangedError(BackupError):
+    """Raised when an object changed on R2 since the inventory was built."""
+
+
 class VerifyError(Exception):
     """Raised when archive verification fails."""
 
@@ -237,6 +241,8 @@ class DownloadResult:
     sha256: str
     bytes_read: int
     metadata: dict
+    changed: bool = False
+    resp_etag: str = ""
 
 
 class BackupTracer:
@@ -684,6 +690,15 @@ def _download_object_to_tempfile(
             content_length = resp["content_length"]
             get_etag = resp["etag"]
 
+            metadata = {
+                "content_type": resp.get("content_type"),
+                "cache_control": resp.get("cache_control"),
+                "content_disposition": resp.get("content_disposition"),
+                "content_encoding": resp.get("content_encoding"),
+                "metadata": resp.get("metadata") or {},
+                "last_modified": resp.get("last_modified"),
+            }
+
             try:
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 with tempfile.NamedTemporaryFile(dir=temp_dir, delete=False) as temp_file:
@@ -702,13 +717,13 @@ def _download_object_to_tempfile(
                     )
 
                 if hashing_reader.bytes_read != inv_obj.size:
-                    raise BackupError(
+                    raise ObjectChangedError(
                         f"Size mismatch for {inv_obj.key}: inventory says {inv_obj.size}, "
                         f"downloaded {hashing_reader.bytes_read}"
                     )
 
                 if get_etag != inv_obj.etag:
-                    raise BackupError(
+                    raise ObjectChangedError(
                         f"Object {inv_obj.key} ETag changed: inventory {inv_obj.etag}, "
                         f"download {get_etag}"
                     )
@@ -722,15 +737,6 @@ def _download_object_to_tempfile(
                         )
 
                 sha256 = hashing_reader.sha256_hex
-
-                metadata = {
-                    "content_type": resp.get("content_type"),
-                    "cache_control": resp.get("cache_control"),
-                    "content_disposition": resp.get("content_disposition"),
-                    "content_encoding": resp.get("content_encoding"),
-                    "metadata": resp.get("metadata") or {},
-                    "last_modified": resp.get("last_modified"),
-                }
 
                 if tracer is not None:
                     tracer.object_download_trace(
@@ -782,6 +788,19 @@ def _download_object_to_tempfile(
                     stream_ms=stream_ms,
                     bytes_read=0,
                     retries=retries_taken,
+                )
+            if isinstance(e, ObjectChangedError) and temp_path is not None:
+                logger.warning(
+                    f"Object {inv_obj.key} changed during backup; "
+                    f"accepting latest downloaded version ({last_error})"
+                )
+                return DownloadResult(
+                    temp_path=temp_path,
+                    sha256=hashing_reader.sha256_hex,
+                    bytes_read=hashing_reader.bytes_read,
+                    metadata=metadata,
+                    changed=True,
+                    resp_etag=get_etag,
                 )
             raise BackupError(
                 f"Failed to backup {inv_obj.key} after retries: {last_error}"
@@ -876,6 +895,62 @@ def range_get_throughput_diag(
     }
 
 
+def _build_manifest(
+    r2_client: R2Client,
+    inventory: Inventory,
+    chunk_size_bytes: int,
+    manifest_objects: list[dict],
+    final_chunk_count: int,
+    complete: bool,
+    incomplete_reason: Optional[str],
+) -> dict:
+    """Build the backup manifest dict.
+
+    When `complete` is False the manifest describes a partial backup saved
+    after a hard interruption, and `incomplete_reason` explains why.
+    """
+    manifest: dict = {
+        "version": MANIFEST_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "inventory_started_at": inventory.started_at,
+        "inventory_completed_at": inventory.completed_at,
+        "bucket": r2_client.bucket,
+        "endpoint_url": r2_client.endpoint_url,
+        "region": r2_client.region,
+        "chunk_size_bytes": chunk_size_bytes,
+        "object_count": len(manifest_objects),
+        "total_bytes": sum(o["size"] for o in manifest_objects),
+        "chunk_count": final_chunk_count,
+        "complete": complete,
+        "consistency": {
+            "mode": "initial-inventory-with-get-etag-check",
+            "max_changed_object_retries": 2,
+            "md5_body_check": True,
+            "spot_check_head_ratio": SPOT_CHECK_HEAD_RATIO,
+            "on_change": "accept-latest-with-warning",
+        },
+        "objects": manifest_objects,
+    }
+    if not complete:
+        manifest["incomplete_reason"] = incomplete_reason
+    return manifest
+
+
+def _finalize_partial_backup(
+    partial_dir: Path,
+    output_dir: Path,
+    manifest: dict,
+) -> None:
+    """Write the manifest for a partial backup and promote `.part` to the
+    final output directory. Raises on failure; caller decides recovery."""
+    manifest_path = partial_dir / "manifest.json"
+    tmp_manifest = partial_dir / "manifest.json.tmp"
+    with open(tmp_manifest, "w") as f:
+        json.dump(manifest, f, indent=2)
+    tmp_manifest.rename(manifest_path)
+    partial_dir.rename(output_dir)
+
+
 @dataclass
 class BackupResult:
     """Result of a backup operation."""
@@ -885,6 +960,8 @@ class BackupResult:
     total_bytes: int
     chunk_count: int
     manifest: dict
+    complete: bool = True
+    warnings: list[str] = field(default_factory=list)
 
 
 def write_backup(
@@ -976,6 +1053,7 @@ def write_backup(
         import random
 
         manifest_objects: list[dict] = []
+        warnings: list[str] = []
         chunk_index = 0
         current_chunk_bytes = 0
 
@@ -1038,7 +1116,7 @@ def write_backup(
                     # Rotate chunk if needed (based on completion-order size, not submission order)
                     if (
                         current_chunk_bytes > 0
-                        and current_chunk_bytes + inv_obj.size > chunk_size_bytes
+                        and current_chunk_bytes + download_result.bytes_read > chunk_size_bytes
                     ):
                         _rotate_chunk()
 
@@ -1065,8 +1143,27 @@ def write_backup(
                         tar_info.type = tarfile.REGTYPE
 
                         t_tar_start = time.monotonic() if tracer is not None else 0.0
-                        with open(download_result.temp_path, "rb") as f_in:
-                            current_tar.addfile(tar_info, f_in)
+                        tar_offset_before = current_tar.offset
+                        try:
+                            with open(download_result.temp_path, "rb") as f_in:
+                                current_tar.addfile(tar_info, f_in)
+                        except BaseException:
+                            # Truncate the partial member so the tar contains
+                            # exactly the manifest's members; verify_archive
+                            # then passes on a promoted partial backup.
+                            try:
+                                current_tar.close()
+                            except Exception:
+                                pass
+                            current_tar = None
+                            try:
+                                with open(
+                                    _chunk_path(partial_dir, chunk_index), "r+b"
+                                ) as f_chunk:
+                                    f_chunk.truncate(tar_offset_before)
+                            except OSError:
+                                pass
+                            raise
                         tar_write_ms = (time.monotonic() - t_tar_start) * 1000.0 if tracer is not None else 0.0
 
                         if tracer is not None:
@@ -1075,18 +1172,30 @@ def write_backup(
                                 key=inv_obj.key,
                                 wait_ms=wait_ms,
                                 tar_write_ms=tar_write_ms,
-                                bytes_written=inv_obj.size,
+                                bytes_written=download_result.bytes_read,
                             )
 
                         obj_entry = _build_manifest_object(
                             inv_obj, member_name, download_result.sha256, chunk_index,
                             download_result.metadata,
                         )
+                        if download_result.changed:
+                            obj_entry["size"] = download_result.bytes_read
+                            obj_entry["etag"] = download_result.resp_etag
+                            obj_entry["last_modified"] = download_result.metadata.get(
+                                "last_modified"
+                            )
+                            obj_entry["snapshot_drift"] = True
+                            warnings.append(
+                                f"object-changed: {inv_obj.key} accepted latest version "
+                                f"(etag {download_result.resp_etag}, "
+                                f"{download_result.bytes_read} bytes)"
+                            )
                         manifest_objects.append(obj_entry)
-                        current_chunk_bytes += inv_obj.size
+                        current_chunk_bytes += download_result.bytes_read
 
                         if progress is not None:
-                            progress.object_written(inv_obj.size)
+                            progress.object_written(download_result.bytes_read)
                     finally:
                         _untrack_temp(download_result.temp_path)
                         try:
@@ -1117,6 +1226,39 @@ def write_backup(
             if tracer is not None:
                 tracer.phase_end("tar_close")
 
+        final_chunk_count = chunk_index + 1 if manifest_objects else 0
+
+        manifest = _build_manifest(
+            r2_client,
+            inventory,
+            chunk_size_bytes,
+            manifest_objects,
+            final_chunk_count,
+            complete=True,
+            incomplete_reason=None,
+        )
+
+        if tracer is not None:
+            tracer.phase_start("manifest_write")
+        manifest_path = partial_dir / "manifest.json"
+        tmp_manifest = partial_dir / "manifest.json.tmp"
+        with open(tmp_manifest, "w") as f:
+            json.dump(manifest, f, indent=2)
+        tmp_manifest.rename(manifest_path)
+        if tracer is not None:
+            tracer.phase_end("manifest_write")
+
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            pass
+
+        if tracer is not None:
+            tracer.phase_start("rename")
+        partial_dir.rename(output_dir)
+        if tracer is not None:
+            tracer.phase_end("rename")
+
         if manifest_objects and SPOT_CHECK_HEAD_RATIO > 0:
             if tracer is not None:
                 tracer.phase_start("spot_check")
@@ -1143,50 +1285,6 @@ def write_backup(
             if tracer is not None:
                 tracer.phase_end("spot_check", samples=sample_size)
 
-        final_chunk_count = chunk_index + 1 if manifest_objects else 0
-
-        manifest = {
-            "version": MANIFEST_VERSION,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "inventory_started_at": inventory.started_at,
-            "inventory_completed_at": inventory.completed_at,
-            "bucket": r2_client.bucket,
-            "endpoint_url": r2_client.endpoint_url,
-            "region": r2_client.region,
-            "chunk_size_bytes": chunk_size_bytes,
-            "object_count": len(manifest_objects),
-            "total_bytes": sum(o["size"] for o in manifest_objects),
-            "chunk_count": final_chunk_count,
-            "consistency": {
-                "mode": "initial-inventory-with-get-etag-check",
-                "max_changed_object_retries": 2,
-                "md5_body_check": True,
-                "spot_check_head_ratio": SPOT_CHECK_HEAD_RATIO,
-            },
-            "objects": manifest_objects,
-        }
-
-        if tracer is not None:
-            tracer.phase_start("manifest_write")
-        manifest_path = partial_dir / "manifest.json"
-        tmp_manifest = partial_dir / "manifest.json.tmp"
-        with open(tmp_manifest, "w") as f:
-            json.dump(manifest, f, indent=2)
-        tmp_manifest.rename(manifest_path)
-        if tracer is not None:
-            tracer.phase_end("manifest_write")
-
-        try:
-            temp_dir.rmdir()
-        except OSError:
-            pass
-
-        if tracer is not None:
-            tracer.phase_start("rename")
-        partial_dir.rename(output_dir)
-        if tracer is not None:
-            tracer.phase_end("rename")
-
         if tracer is not None:
             tracer.phase_end("total")
 
@@ -1196,17 +1294,55 @@ def write_backup(
             total_bytes=manifest["total_bytes"],
             chunk_count=final_chunk_count,
             manifest=manifest,
+            complete=True,
+            warnings=warnings,
         )
 
-    except BaseException:
+    except BaseException as exc:
         if current_tar is not None:
             try:
                 current_tar.close()
             except Exception:
                 pass
         _cleanup_all_temps()
-        _cleanup_owned_partial(partial_dir)
-        raise
+        if manifest_objects:
+            try:
+                # All futures have completed (executor __exit__ waits); remove
+                # the temp dir including any untracked in-flight temp files.
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                final_chunk_count = chunk_index + 1
+                manifest = _build_manifest(
+                    r2_client,
+                    inventory,
+                    chunk_size_bytes,
+                    manifest_objects,
+                    final_chunk_count,
+                    complete=False,
+                    incomplete_reason=str(exc),
+                )
+                _finalize_partial_backup(partial_dir, output_dir, manifest)
+                logger.warning(
+                    "Backup interrupted after %d object(s); partial backup saved to %s",
+                    len(manifest_objects),
+                    output_dir,
+                )
+                return BackupResult(
+                    output_dir=output_dir,
+                    object_count=len(manifest_objects),
+                    total_bytes=sum(o["size"] for o in manifest_objects),
+                    chunk_count=final_chunk_count,
+                    manifest=manifest,
+                    complete=False,
+                    warnings=warnings + [f"backup-interrupted: {exc}"],
+                )
+            except BaseException:
+                logger.exception(
+                    "Failed to finalize partial backup after interruption"
+                )
+                raise
+        else:
+            _cleanup_owned_partial(partial_dir)
+            raise
 
 
 SUPPORTED_MANIFEST_VERSIONS = {3, 4}
