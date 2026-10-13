@@ -474,6 +474,85 @@ class TestWriteBackup:
         verify_result = verify_archive(output)
         assert verify_result.ok is True
 
+    def test_backup_interrupt_tail_guard_leaves_no_empty_chunk(self, tmp_path):
+        """Tail-guard truncation of a fresh chunk drops the empty chunk tar.
+
+        addfile failing on the first member of a rotated chunk truncates that
+        chunk to 0 bytes; the promoted partial must not count it in
+        chunk_count (verify_archive rejects 0-byte tars).
+        """
+        objects = [
+            {"key": "a/file", "size": 5, "etag": "e1", "data": b"aaaaa"},
+            {"key": "b/file", "size": 5, "etag": "e2", "data": b"bbbbb"},
+            {"key": "c/file", "size": 5, "etag": "e3", "data": b"ccccc"},
+        ]
+        r2 = _make_r2_mock(objects)
+
+        original_addfile = tarfile.TarFile.addfile
+
+        def _failing_addfile(self, tarinfo, fileobj=None):
+            if tarinfo.name == "objects/000000000001.bin":
+                raise OSError("disk full")
+            return original_addfile(self, tarinfo, fileobj)
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        # chunk_size=1 forces rotation before the second object
+        with patch.object(tarfile.TarFile, "addfile", _failing_addfile):
+            result = write_backup(r2, output, inventory, chunk_size_bytes=1)
+
+        assert result.complete is False
+        assert result.object_count == 1
+        assert result.chunk_count == 1
+        assert not (output / "chunk-000001.tar").exists()
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        assert manifest["chunk_count"] == 1
+        assert [o["chunk_index"] for o in manifest["objects"]] == [0]
+
+        assert verify_archive(output).ok is True
+
+    def test_backup_interrupt_multi_chunk_partial_verifies(self, tmp_path):
+        """Interruption after chunk rotation produces a verifiable partial."""
+        objects = [
+            {"key": "a/file", "size": 5, "etag": "e1", "data": b"aaaaa"},
+            {"key": "b/file", "size": 5, "etag": "e2", "data": b"bbbbb"},
+            {"key": "c/file", "size": 5, "etag": "e3", "data": b"ccccc"},
+        ]
+        r2 = _make_r2_mock(objects)
+
+        from botocore.exceptions import ClientError
+
+        original_get = r2.get_object_stream.side_effect
+
+        def _get(key):
+            if key == "c/file":
+                raise ClientError(
+                    {"Error": {"Code": "InternalError", "Message": "boom"}},
+                    "GetObject",
+                )
+            return original_get(key)
+
+        r2.get_object_stream.side_effect = _get
+
+        inventory = build_inventory(r2)
+        output = tmp_path / "backup"
+
+        # chunk_size=1: a in chunk 0, b rotates to chunk 1, c fails hard
+        result = write_backup(r2, output, inventory, chunk_size_bytes=1)
+
+        assert result.complete is False
+        assert result.object_count == 2
+        assert result.chunk_count == 2
+        assert (output / "chunk-000000.tar").exists()
+        assert (output / "chunk-000001.tar").exists()
+        assert not (output / "chunk-000002.tar").exists()
+
+        manifest = json.loads((output / "manifest.json").read_text())
+        assert manifest["chunk_count"] == 2
+        assert verify_archive(output).ok is True
+
     def test_backup_deleted_object_during_backup_fails(self, tmp_path):
         """Object that disappears during backup fails and cleans up."""
         data = b"hello world"

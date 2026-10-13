@@ -1113,15 +1113,6 @@ def write_backup(
                     inv_obj = inventory.objects[idx]
                     member_name = _member_name_for_index(idx)
 
-                    # Rotate chunk if needed (based on completion-order size, not submission order)
-                    if (
-                        current_chunk_bytes > 0
-                        and current_chunk_bytes + download_result.bytes_read > chunk_size_bytes
-                    ):
-                        _rotate_chunk()
-
-                    _ensure_tar()
-
                     t_wait_start = time.monotonic() if tracer is not None else 0.0
                     try:
                         download_result = future.result()
@@ -1130,6 +1121,16 @@ def write_backup(
                             f.cancel()
                         raise
                     wait_ms = (time.monotonic() - t_wait_start) * 1000.0 if tracer is not None else 0.0
+
+                    # Rotate chunk if needed (based on actual downloaded size,
+                    # not submission order)
+                    if (
+                        current_chunk_bytes > 0
+                        and current_chunk_bytes + download_result.bytes_read > chunk_size_bytes
+                    ):
+                        _rotate_chunk()
+
+                    _ensure_tar()
 
                     if progress is not None:
                         progress.mark_object_downloaded()
@@ -1310,6 +1311,17 @@ def write_backup(
                 # All futures have completed (executor __exit__ waits); remove
                 # the temp dir including any untracked in-flight temp files.
                 shutil.rmtree(temp_dir, ignore_errors=True)
+                # The addfile tail-guard can leave a truncated (0-byte) trailing
+                # chunk tar, which verify_archive cannot read ("empty file").
+                # Only the trailing chunk can be empty (rotation requires the
+                # current chunk to be non-empty), so drop it and decrement.
+                while chunk_index >= 0:
+                    chunk_file = _chunk_path(partial_dir, chunk_index)
+                    if chunk_file.exists() and chunk_file.stat().st_size > 0:
+                        break
+                    if chunk_file.exists():
+                        chunk_file.unlink()
+                    chunk_index -= 1
                 final_chunk_count = chunk_index + 1
                 manifest = _build_manifest(
                     r2_client,
