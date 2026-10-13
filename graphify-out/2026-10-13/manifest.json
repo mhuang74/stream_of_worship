@@ -4038,9 +4038,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/maintenance.py": {
-    "mtime": 1783999248.2224154,
-    "seen": 1790178131.078205,
-    "ast_hash": "99ccf054a40ed892bb3bfaaffc435013",
+    "mtime": 1791891576.2855327,
+    "seen": 1791891831.931607,
+    "ast_hash": "64ee902e66405971fcf59eea7f8ea12f",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/recover_visibility.py": {
@@ -4278,9 +4278,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/r2_backup.py": {
-    "mtime": 1783999248.2244155,
-    "seen": 1790178131.078278,
-    "ast_hash": "b4f94bdfdb04e88c5f0a37a2764429b0",
+    "mtime": 1791892001.5286412,
+    "seen": 1791892257.3024101,
+    "ast_hash": "08c7719de3ce4484850417f259d4eb9c",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/scraper.py": {
@@ -4302,9 +4302,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/youtube.py": {
-    "mtime": 1788693288.337602,
-    "seen": 1790178131.078285,
-    "ast_hash": "66a7544b16d7e52fb306374c4eab3a8f",
+    "mtime": 1791888347.4600935,
+    "seen": 1791889168.5955908,
+    "ast_hash": "a7dfef9d3395857b561c9e86af16685b",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/zanmei.py": {
@@ -4602,9 +4602,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/config.py": {
-    "mtime": 1789452185.2788363,
-    "seen": 1790178131.0783727,
-    "ast_hash": "06a25f5d8aca3cc6559b5dc65623008d",
+    "mtime": 1791894273.9839454,
+    "seen": 1791894695.3658624,
+    "ast_hash": "bf8f7166a3b1042c9ff70c9e4a2c2e38",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/logging_config.py": {
@@ -4614,9 +4614,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/main.py": {
-    "mtime": 1783999248.2304156,
-    "seen": 1790178131.078376,
-    "ast_hash": "8c37d774deb9344c8941632f1407d6a7",
+    "mtime": 1791888328.471533,
+    "seen": 1791889168.600286,
+    "ast_hash": "2d11a80eeeea97837d8c383c4143c545",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/models.py": {
@@ -4752,15 +4752,15 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/llm_rate_limit.py": {
-    "mtime": 1783999248.2314155,
-    "seen": 1790178131.0784533,
-    "ast_hash": "8fb7dfe7c0ffe96168a96c3a7a277242",
+    "mtime": 1791894273.9979453,
+    "seen": 1791894695.3676019,
+    "ast_hash": "e3a5e7d8eb74a54b83e1c5b65dfec80c",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/lrc.py": {
-    "mtime": 1789452185.2788363,
-    "seen": 1790178131.078455,
-    "ast_hash": "7c0533554d4fe2cf6350803dfc50575a",
+    "mtime": 1791894280.3519177,
+    "seen": 1791894695.367605,
+    "ast_hash": "4e5bbf556a98a37e751c80cada87f612",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/lrc_parser.py": {
@@ -4770,9 +4770,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/queue.py": {
-    "mtime": 1789452185.2788363,
-    "seen": 1790178131.0784583,
-    "ast_hash": "6c2063d77ac444a66e699ccfc532e78f",
+    "mtime": 1791888325.3936052,
+    "seen": 1791889168.602063,
+    "ast_hash": "13f1f7bab50617e1b96c3f7508aa6b66",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/quota_waiter.py": {
@@ -4854,9 +4854,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py": {
-    "mtime": 1789452185.2798362,
-    "seen": 1790178131.0784824,
-    "ast_hash": "6436aefabe01c86235ad9ec941562f62",
+    "mtime": 1791894280.3049178,
+    "seen": 1791894695.3689294,
+    "ast_hash": "4a07013cc524bdaca4ca232e03fc6660",
     "semantic_hash": ""
   },
   "ops/analysis-service/start-dev.sh": {
@@ -5190,9 +5190,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/docker-compose.yml": {
-    "mtime": 1787032917.85812,
-    "seen": 1790178131.0785766,
-    "ast_hash": "238abf983f9b30822659078f026afc82",
+    "mtime": 1791889539.157431,
+    "seen": 1791891831.950144,
+    "ast_hash": "471dd4a5e1bf64b334b52a6c273e43d5",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/segmentation_prompts/V0_default.txt": {
