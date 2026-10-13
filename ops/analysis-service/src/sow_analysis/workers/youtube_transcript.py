@@ -26,9 +26,15 @@ _TIMESTAMP_MATCH_TOLERANCE = 0.011  # LRC timestamps are 2-decimal truncated
 
 
 class RotatingProxyConfig:
-    """Proxy config with rotating-proxy features for IP ban avoidance.
+    """Proxy config backed by a pool of proxy URLs with rotation.
 
-    Wraps youtube-transcript-api's GenericProxyConfig to add:
+    Accepts a list of proxy URLs (e.g. one per port of a port-range
+    residential proxy). Each call to :meth:`to_requests_dict` picks a random
+    URL from the pool, so every constructed YouTubeTranscriptApi instance /
+    app-level retry may use a different proxy port — useful when individual
+    ports of the pool have different success rates.
+
+    Also sets:
     - prevent_keeping_connections_alive=True (triggers IP rotation per request)
     - retries_when_blocked=N (retries on HTTP 429, also triggers rotation)
 
@@ -36,14 +42,15 @@ class RotatingProxyConfig:
     gets a new IP from the pool.
     """
 
-    def __init__(self, http_url: str, https_url: str, retries_when_blocked: int = 3):
-        from youtube_transcript_api.proxies import GenericProxyConfig
-
-        self._generic_config = GenericProxyConfig(http_url=http_url, https_url=https_url)
+    def __init__(self, urls: list[str], retries_when_blocked: int = 3):
+        if not urls:
+            raise ValueError("RotatingProxyConfig requires at least one proxy URL")
+        self._urls = list(urls)
         self._retries_when_blocked = retries_when_blocked
 
     def to_requests_dict(self) -> dict:
-        return self._generic_config.to_requests_dict()
+        url = random.choice(self._urls)
+        return {"http": url, "https": url}
 
     @property
     def prevent_keeping_connections_alive(self) -> bool:
@@ -54,6 +61,60 @@ class RotatingProxyConfig:
         return self._retries_when_blocked
 
 
+_PROXY_PORT_RANGE_RE = re.compile(r"^(\d+)-(\d+)$")
+_MAX_PROXY_POOL_SIZE = 64
+
+
+def _parse_proxy_pool(proxy_url: str) -> list[str]:
+    """Expand a proxy URL with a port range into a list of proxy URLs.
+
+    Supports ``http://user:pass@host:10001-10010`` — expands to one URL per
+    port (10001..10010 inclusive). A URL without a port range is returned as
+    a single-element pool unchanged.
+
+    Parsing deliberately avoids :mod:`urllib.parse` URL splitting: proxy
+    passwords commonly contain characters (e.g. ``:``) that would break
+    generic URL parsing. Instead only the trailing ``host:port`` segment is
+    inspected.
+
+    Raises:
+        ValueError: if the range is inverted (low > high) or the resulting
+            pool exceeds 64 URLs. The redacted URL is included in the message.
+    """
+    redacted = _redact_proxy_url(proxy_url)
+    rest, sep, hostport = proxy_url.rpartition("@")
+    prefix = rest + sep  # "" when no "@": the whole string is hostport
+    host, _, port_segment = hostport.rpartition(":")
+    match = _PROXY_PORT_RANGE_RE.match(port_segment)
+    if not match:
+        return [proxy_url]
+    low, high = int(match.group(1)), int(match.group(2))
+    if low > high:
+        raise ValueError(f"Invalid proxy port range (low > high): {redacted}")
+    urls = [f"{prefix}{host}:{port}" for port in range(low, high + 1)]
+    if len(urls) > _MAX_PROXY_POOL_SIZE:
+        raise ValueError(
+            f"Proxy port range too large ({len(urls)} ports, max {_MAX_PROXY_POOL_SIZE}): {redacted}"
+        )
+    return urls
+
+
+def _redact_proxy_url(proxy_url: str) -> str | None:
+    """Redact userinfo credentials from a proxy URL for logging.
+
+    Keeps scheme + host:port, replaces the userinfo part with ``***``.
+    Returns None when the URL shape is unexpected (no ``@`` separator) so
+    callers can render "(not set)"-style fallbacks.
+    """
+    rest, sep, hostport = proxy_url.rpartition("@")
+    if not sep or ":" not in hostport:
+        return "***"
+    scheme, _, _rest = rest.partition("://")
+    if not _rest:  # no "://" — unexpected shape; redact everything
+        return "***"
+    return f"{scheme}://***@{hostport}"
+
+
 class YouTubeTranscriptError(LRCWorkerError):
     """Raised when YouTube transcript fetch or processing fails."""
 
@@ -61,8 +122,9 @@ class YouTubeTranscriptError(LRCWorkerError):
 
 
 class YouTubeRateLimitedError(YouTubeTranscriptError):
-    """Raised when YouTube transcript fetch fails due to rate limiting (429)
-    or an open circuit breaker. Retryable — caller may wait and retry."""
+    """Raised when YouTube transcript fetch fails due to rate limiting (429),
+    an open circuit breaker, or transient proxy/connection errors exhausting
+    their retries. Retryable — caller may wait and retry."""
 
     pass
 
@@ -141,7 +203,10 @@ def _is_transient_connection_error(e: Exception) -> bool:
     Detects:
     - SSLError from urllib3/requests (via type name and message)
     - ConnectionError variants
+    - ProxyError from requests (proxy tunnel failures, e.g. dead proxy port)
     - "Max retries exceeded" caused by SSL/connection failures
+    - Proxy tunnel/connection failure messages ("Tunnel connection failed",
+      "Unable to connect to proxy", "Proxy error", "Bad Gateway")
     """
     visited: set[int] = set()
     exc: Optional[Exception] = e
@@ -151,6 +216,10 @@ def _is_transient_connection_error(e: Exception) -> bool:
         "wrong_version_number",
         "record layer failure",
         "tls",
+        "tunnel connection failed",
+        "unable to connect to proxy",
+        "proxy error",
+        "bad gateway",
     )
     conn_markers = (
         "connection reset",
@@ -161,7 +230,7 @@ def _is_transient_connection_error(e: Exception) -> bool:
     while exc is not None and id(exc) not in visited:
         visited.add(id(exc))
         type_name = type(exc).__name__.lower()
-        if "ssl" in type_name or "connectionerror" in type_name:
+        if "ssl" in type_name or "connectionerror" in type_name or "proxyerror" in type_name:
             return True
         error_str = str(exc).lower()
         if any(m in error_str for m in ssl_markers):
@@ -414,10 +483,18 @@ class _YouTubeRateLimiter:
                         f"attempts for {description}: {e}"
                     ) from e
 
-                if _is_transient_connection_error(e) and attempt < max_retries:
-                    # SSL/connection errors from rotating proxy — retry with
-                    # backoff. These are proxy-level, not YouTube rate limiting,
-                    # so the circuit breaker is NOT tripped.
+                if _is_transient_connection_error(e):
+                    # SSL/connection/proxy errors from rotating proxy — retry
+                    # with backoff. These are proxy-level, not YouTube rate
+                    # limiting, so the circuit breaker is NOT tripped.
+                    if attempt >= max_retries:
+                        # Retries exhausted — surface as retryable so queue.py's
+                        # free-only-mode loop can wait and retry YouTube instead
+                        # of falling back to ASR while the proxy is down.
+                        raise YouTubeRateLimitedError(
+                            f"YouTube API transient connection/proxy errors after "
+                            f"{max_retries + 1} attempts for {description}: {e}"
+                        ) from e
                     delay = min(base_delay * (2**attempt), 30.0)
                     delay += random.uniform(0, delay * 0.25)
                     logger.info(
@@ -860,9 +937,9 @@ def _build_proxy_config() -> Optional[RotatingProxyConfig]:
     """
     if not settings.SOW_YOUTUBE_PROXY:
         return None
+    urls = _parse_proxy_pool(settings.SOW_YOUTUBE_PROXY)
     return RotatingProxyConfig(
-        http_url=settings.SOW_YOUTUBE_PROXY,
-        https_url=settings.SOW_YOUTUBE_PROXY,
+        urls=urls,
         retries_when_blocked=settings.SOW_YOUTUBE_PROXY_RETRIES,
     )
 
@@ -933,7 +1010,12 @@ async def fetch_youtube_transcript(
 
     proxy_config = _build_proxy_config()
     if proxy_config:
-        logger.info(f"Fetching YouTube transcript via proxy: {settings.SOW_YOUTUBE_PROXY}")
+        redacted = _redact_proxy_url(settings.SOW_YOUTUBE_PROXY) or "(unparseable)"
+        logger.info(
+            "Fetching YouTube transcript via proxy %s (%d port(s))",
+            redacted,
+            len(_parse_proxy_pool(settings.SOW_YOUTUBE_PROXY)),
+        )
     else:
         logger.info("Fetching YouTube transcript (direct, no proxy)")
 
@@ -965,6 +1047,11 @@ async def fetch_youtube_transcript(
         if transcript:
             logger.info(f"Fetched {len(transcript)} transcript segments from YouTube")
             return transcript
+    except YouTubeRateLimitedError:
+        # Phase 1 already exhausted all transient/429 retries — the list
+        # fallback would repeat the full backoff cycle against the same
+        # (currently dead) proxy. Surface immediately.
+        raise
     except Exception as e:
         if _is_permanently_unavailable_error(e):
             logger.warning(

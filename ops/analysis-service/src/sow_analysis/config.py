@@ -343,7 +343,7 @@ class Settings(BaseSettings):
     # YouTube Proxy Configuration
     SOW_YOUTUBE_PROXY: str = (
         ""  # HTTP/HTTPS/SOCKS proxy URL for YouTube transcript requests (e.g., "http://proxy:8080", "socks5://proxy:1080")
-    )
+    )  # Port-range syntax rotates ports per request: "http://user:pass@host:10001-10010"
     # Number of retries on HTTP 429 when using rotating proxies. Matches the
     # youtube-transcript-api library default rotations per blocked request; each
     # retry exits through a different residential IP. Flows through
