@@ -861,6 +861,7 @@ async def try_youtube_transcript_lrc(
     Logs scraped lyrics and result regardless of outcome.
     """
     from .youtube_transcript import (
+        LLMCorrectionError,
         YouTubeRateLimitedError,
         youtube_transcript_to_lrc,
     )
@@ -902,6 +903,10 @@ async def try_youtube_transcript_lrc(
         return output_path, line_count, []
     except YouTubeRateLimitedError:
         raise  # let queue.py decide: wait-and-retry (free) or fall back (non-free)
+    except (LLMCorrectionError, LLMConfigError):
+        # LLM API itself is failing/unconfigured — ASR fallback also needs LLM
+        # correction, so it cannot succeed. Propagate: the job must fail.
+        raise
     except Exception as e:  # incl. YouTubeTranscriptError("no transcript found")
         logger.warning("=" * 80)
         logger.warning("LRC GENERATION: YouTube transcript path FAILED")

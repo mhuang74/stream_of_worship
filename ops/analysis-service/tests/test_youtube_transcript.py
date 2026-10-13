@@ -267,6 +267,48 @@ class TestGenerateLrcFallback:
             assert count == 2
             assert phrases == []
 
+    @pytest.mark.asyncio
+    async def test_llm_correction_failure_propagates_no_whisper_fallback(self, tmp_path):
+        """When LLM correction fails (e.g. 524 retries exhausted), the exception
+        propagates — Whisper ASR fallback must NOT run, because the ASR path
+        also requires LLM correction."""
+        from unittest.mock import AsyncMock, patch
+
+        from sow_analysis.models import LrcOptions
+        from sow_analysis.workers.lrc import generate_lrc
+        from sow_analysis.workers.youtube_transcript import LLMCorrectionError
+
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake audio data")
+
+        with (
+            patch(
+                "sow_analysis.workers.youtube_transcript.youtube_transcript_to_lrc",
+                new_callable=AsyncMock,
+                side_effect=LLMCorrectionError(
+                    "LLM correction failed after transient-error retries: "
+                    "Error code: 524"
+                ),
+            ),
+            patch(
+                "sow_analysis.workers.lrc._run_whisper_transcription",
+                new_callable=AsyncMock,
+            ) as mock_whisper,
+            patch(
+                "sow_analysis.workers.lrc._llm_align",
+                new_callable=AsyncMock,
+            ),
+        ):
+            with pytest.raises(LLMCorrectionError, match="transient-error retries"):
+                await generate_lrc(
+                    audio_path,
+                    "測試",
+                    LrcOptions(),
+                    youtube_url="https://www.youtube.com/watch?v=test123",
+                )
+
+            mock_whisper.assert_not_called()
+
 
 class TestDefaultLanguages:
     """Tests for the expanded default language code list."""
@@ -1486,6 +1528,32 @@ class TestLLMCorrectRateLimitRetry:
         assert len(sleep_calls) == 1
         # Delay should be >= retry_after (5.0)
         assert sleep_calls[0] >= 5.0
+
+
+    @pytest.mark.asyncio
+    async def test_llm_correct_raises_llm_correction_error(self):
+        """_llm_correct raises LLMCorrectionError when call_llm_with_retry raises."""
+        from unittest.mock import AsyncMock, patch
+
+        from sow_analysis.workers.youtube_transcript import (
+            LLMCorrectionError,
+            _llm_correct,
+        )
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch(
+                "sow_analysis.workers.llm_rate_limit.call_llm_with_retry",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("Error code: 524"),
+            ),
+        ):
+            mock_settings.SOW_LLM_API_KEY = "test-key"
+            mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
+            mock_settings.SOW_LLM_MODEL = "test-model"
+
+            with pytest.raises(LLMCorrectionError, match="LLM correction failed"):
+                await _llm_correct("test prompt", "test-model")
 
 
 class TestBreakerRecoveryOnCooldownExpiry:

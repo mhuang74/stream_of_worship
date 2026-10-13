@@ -1013,3 +1013,189 @@ class TestConcurrencySemaphore:
         mod._llm_semaphore = None
         mod._llm_interval_lock = None
         mod._llm_last_request_time = 0.0
+
+
+class TestProviderGuidedBackoffEscalation:
+    """Tests for 524 retry_after escalation and budget-giveup behavior."""
+
+    @pytest.mark.asyncio
+    async def test_524_retry_after_escalates_x2_capped_4x(self):
+        """Consecutive provider-guided retries escalate x2, capped at 4x retry_after.
+
+        Cloudflare 524 with retry_after=120: sleeps should be within
+        [120, 150], [240, 300], [480, 600], then flat [480, 600]
+        (value + up to 25% jitter), never exceeding 600. Uses a 5000s budget
+        so the full escalation curve is observable before budget exhaustion
+        (120s calls + escalating sleeps exceed 1200s by attempt 5).
+        """
+        body = '{"retry_after": 120, "retryable": true}'
+        response = _make_524_response(body)
+        call_count = 0
+
+        def sync_fn():
+            nonlocal call_count
+            call_count += 1
+            raise Fake5xxError(status_code=524, response=response)
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+        fake_time = [0.0]
+
+        def fake_monotonic():
+            return fake_time[0]
+
+        def sync_fn_with_time():
+            nonlocal call_count
+            call_count += 1
+            fake_time[0] += 120.0  # each LLM call takes 120s (524 origin timeout)
+            raise Fake5xxError(status_code=524, response=response)
+
+        async def mock_sleep_with_time(duration):
+            sleep_calls.append(duration)
+            fake_time[0] += duration
+            await original_sleep(0)
+
+        with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 6
+            mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 90.0
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 5000
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+
+            with (
+                patch(
+                    "sow_analysis.workers.llm_rate_limit.time.monotonic",
+                    side_effect=fake_monotonic,
+                ),
+                patch(
+                    "sow_analysis.workers.llm_rate_limit.asyncio.sleep",
+                    side_effect=mock_sleep_with_time,
+                ),
+            ):
+                with pytest.raises(Fake5xxError):
+                    await call_llm_with_retry(sync_fn_with_time, description="test")
+
+        # 6 attempts, no sleep after the last -> 5 sleeps
+        assert call_count == 6
+        assert len(sleep_calls) == 5
+        # attempt 0: 120 * 1 = 120, +0-25% jitter -> [120, 150]
+        assert 120 <= sleep_calls[0] <= 150
+        # attempt 1: 120 * 2 = 240, +jitter -> [240, 300]
+        assert 240 <= sleep_calls[1] <= 300
+        # attempts 2+: capped at 120 * 4 = 480, +jitter -> [480, 600]
+        assert 480 <= sleep_calls[2] <= 600
+        assert 480 <= sleep_calls[3] <= 600
+        assert 480 <= sleep_calls[4] <= 600
+
+    @pytest.mark.asyncio
+    async def test_retry_after_exceeding_budget_gives_up_without_probe(self):
+        """When retry_after doesn't fit the remaining budget, give up without probing.
+
+        Budget 100s, each call takes 30s -> after the first attempt only 70s
+        remain, less than retry_after=120 -> no sleep, single call, raises.
+        """
+        body = '{"retry_after": 120, "retryable": true}'
+        response = _make_524_response(body)
+        call_count = 0
+
+        fake_time = [0.0]
+
+        def fake_monotonic():
+            return fake_time[0]
+
+        def sync_fn():
+            nonlocal call_count
+            call_count += 1
+            fake_time[0] += 30.0
+            raise Fake5xxError(status_code=524, response=response)
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            fake_time[0] += duration
+            await original_sleep(0)
+
+        with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 5
+            mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 90.0
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 100
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+
+            with (
+                patch(
+                    "sow_analysis.workers.llm_rate_limit.time.monotonic",
+                    side_effect=fake_monotonic,
+                ),
+                patch(
+                    "sow_analysis.workers.llm_rate_limit.asyncio.sleep",
+                    side_effect=mock_sleep,
+                ),
+            ):
+                with pytest.raises(Fake5xxError):
+                    await call_llm_with_retry(sync_fn, description="test")
+
+        assert call_count == 1
+        assert sleep_calls == []
+
+    @pytest.mark.asyncio
+    async def test_final_attempt_honors_retry_after_within_budget(self):
+        """When delay exceeds remaining budget but retry_after fits, sleep retry_after.
+
+        Budget 150s, each call takes 30s, retry_after=120. After the first
+        failure, remaining = 120; delay = 120 + jitter (> 120 unless jitter
+        is exactly 0), so the sleep is clamped down to exactly retry_after
+        (120s). The call then succeeds on the second attempt.
+        """
+        body = '{"retry_after": 120, "retryable": true}'
+        response = _make_524_response(body)
+        call_count = 0
+
+        def sync_fn():
+            nonlocal call_count
+            call_count += 1
+            fake_time[0] += 30.0
+            if call_count < 2:
+                raise Fake5xxError(status_code=524, response=response)
+            return "ok"
+
+        fake_time = [0.0]
+
+        def fake_monotonic():
+            return fake_time[0]
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            fake_time[0] += duration
+            await original_sleep(0)
+
+        with patch("sow_analysis.workers.llm_rate_limit.settings") as mock_settings:
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 4
+            mock_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 2.0
+            mock_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 90.0
+            mock_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 150
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+
+            with (
+                patch(
+                    "sow_analysis.workers.llm_rate_limit.time.monotonic",
+                    side_effect=fake_monotonic,
+                ),
+                patch(
+                    "sow_analysis.workers.llm_rate_limit.asyncio.sleep",
+                    side_effect=mock_sleep,
+                ),
+            ):
+                result = await call_llm_with_retry(sync_fn, description="test")
+
+        assert result == "ok"
+        assert len(sleep_calls) == 1
+        assert sleep_calls[0] == 120.0

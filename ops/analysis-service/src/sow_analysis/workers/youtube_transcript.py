@@ -67,6 +67,15 @@ class YouTubeRateLimitedError(YouTubeTranscriptError):
     pass
 
 
+class LLMCorrectionError(YouTubeTranscriptError):
+    """Raised when the LLM correction call fails (retries exhausted or a
+    non-retryable LLM API error). Callers must NOT fall back to ASR: the ASR
+    path also requires LLM correction, so fallback cannot succeed while the
+    LLM API is failing. The job should fail instead."""
+
+    pass
+
+
 def _is_rate_limited_error(e: Exception) -> bool:
     """Check if an exception is caused by YouTube rate limiting (HTTP 429).
 
@@ -1011,8 +1020,9 @@ async def _llm_correct(
 
     Raises:
         LLMConfigError: If LLM is not configured
-        YouTubeTranscriptError: If LLM call fails after all retries,
-            or on non-rate-limit errors
+        LLMCorrectionError: If LLM call fails after all retries, or on
+            non-retryable errors. Callers must NOT fall back to ASR — the ASR
+            path also requires LLM correction, so the job must fail instead.
     """
     from .llm_rate_limit import (
         _is_llm_rate_limited_error,
@@ -1069,14 +1079,14 @@ async def _llm_correct(
         )
     except Exception as e:
         if _is_llm_rate_limited_error(e):
-            raise YouTubeTranscriptError(
+            raise LLMCorrectionError(
                 f"LLM correction failed after rate-limit retries: {e}"
             ) from e
         if _is_llm_retryable_error(e):
-            raise YouTubeTranscriptError(
+            raise LLMCorrectionError(
                 f"LLM correction failed after transient-error retries: {e}"
             ) from e
-        raise YouTubeTranscriptError(f"LLM correction failed: {e}") from e
+        raise LLMCorrectionError(f"LLM correction failed: {e}") from e
 
 
 async def youtube_transcript_to_lrc(
