@@ -6605,7 +6605,9 @@ def _handle_components_completion(
         )
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
-        console.print(f"  [green]✓[/green] {song_name} — components completed ({len(components)})")
+        console.print(
+            f"  [green]✓[/green] {song_name} [{song_id}] — components completed ({len(components)})"
+        )
         return (True, None)
 
     elif job.status in ("failed", "cancelled"):
@@ -6624,7 +6626,8 @@ def _handle_components_completion(
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
         console.print(
-            f"  [red]✗[/red] {song_name} — components failed: {results[song_id]['components_error']}"
+            f"  [red]✗[/red] {song_name} [{song_id}] — components failed: "
+            f"{results[song_id]['components_error']}"
         )
         return (True, None)
 
@@ -6832,7 +6835,7 @@ def _handle_lrc_completion(
 
             song = db_client.get_song(song_id)
             song_name = song.title if song else song_id
-            console.print(f"  [green]✓[/green] {song_name} — LRC completed")
+            console.print(f"  [green]✓[/green] {song_name} [{song_id}] — LRC completed")
             return (True, None)
         else:
             console.print(
@@ -6865,7 +6868,7 @@ def _handle_lrc_completion(
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
         console.print(
-            f"  [red]✗[/red] {song_name} — LRC failed: " f"{job.error_message or 'Unknown error'}"
+            f"  [red]✗[/red] {song_name} [{song_id}] — LRC failed: " f"{job.error_message or 'Unknown error'}"
         )
         return (True, None)
 
@@ -6937,7 +6940,7 @@ def _handle_lrc_404(
 
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
-        console.print(f"  [green]✓[/green] {song_name} — LRC found on R2 (job was lost)")
+        console.print(f"  [green]✓[/green] {song_name} [{song_id}] — LRC found on R2 (job was lost)")
         return (True, None)
 
     resubmit_count = resubmit_counts.get(song_id, 0)
@@ -7144,7 +7147,9 @@ def _handle_analysis_completion(
 
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
-        console.print(f"  [green]✓[/green] {song_name} — analysis completed ({effective_tier})")
+        console.print(
+            f"  [green]✓[/green] {song_name} [{song_id}] — analysis completed ({effective_tier})"
+        )
         return (True, None)
 
     elif job.status == "failed":
@@ -7171,7 +7176,7 @@ def _handle_analysis_completion(
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
         console.print(
-            f"  [red]✗[/red] {song_name} — analysis failed: "
+            f"  [red]✗[/red] {song_name} [{song_id}] — analysis failed: "
             f"{job.error_message or 'Unknown error'}"
         )
         return (True, None)
@@ -7240,9 +7245,13 @@ def _handle_embedding_completion(
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
         if write_ok:
-            console.print(f"  [green]✓[/green] {song_name} — embedding completed")
+            console.print(
+                f"  [green]✓[/green] {song_name} [{song_id}] — embedding completed"
+            )
         else:
-            console.print(f"  [red]✗[/red] {song_name} — embedding DB write failed")
+            console.print(
+                f"  [red]✗[/red] {song_name} [{song_id}] — embedding DB write failed"
+            )
         return (True, None)
 
     elif job.status == "failed":
@@ -7264,7 +7273,7 @@ def _handle_embedding_completion(
         song = db_client.get_song(song_id)
         song_name = song.title if song else song_id
         console.print(
-            f"  [red]✗[/red] {song_name} — embedding failed: "
+            f"  [red]✗[/red] {song_name} [{song_id}] — embedding failed: "
             f"{job.error_message or 'Unknown error'}"
         )
         return (True, None)
