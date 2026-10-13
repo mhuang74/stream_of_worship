@@ -562,7 +562,12 @@ async def call_llm_with_retry(
             # Compute backoff delay
             exp_delay = min(effective_base * (2 ** attempt), effective_max)
             if retry_after is not None:
-                delay = max(retry_after, exp_delay)
+                # Escalate consecutive provider-guided retries x2, capped at 4x the
+                # provider minimum (Cloudflare 524 retry_after=120 -> 120/240/480/480...).
+                # Small retry_after values (OpenRouter 429 ~1s) stay dominated by
+                # exp_delay, preserving existing 429 pacing.
+                escalated = min(retry_after * (2 ** attempt), retry_after * 4)
+                delay = max(escalated, exp_delay)
             else:
                 delay = exp_delay
 
@@ -570,9 +575,21 @@ async def call_llm_with_retry(
             jitter = random.uniform(0, delay * 0.25)
             delay += jitter
 
-            # Don't exceed remaining budget
+            # Don't exceed remaining budget — but never sleep LESS than the provider
+            # minimum (retry_after). If even the minimum doesn't fit the budget, give
+            # up now instead of probing an origin that told us to wait longer.
             if delay > remaining_budget:
-                delay = remaining_budget
+                if retry_after is not None and retry_after <= remaining_budget:
+                    delay = retry_after
+                else:
+                    logger.warning(
+                        "Provider retry_after (%.1fs) exceeds remaining retry budget "
+                        "(%.1fs) for %s — giving up without another probe",
+                        retry_after if retry_after is not None else 0.0,
+                        remaining_budget,
+                        description,
+                    )
+                    break
 
             status_code = _extract_status_code(e) or 0
             if is_rate_limit:

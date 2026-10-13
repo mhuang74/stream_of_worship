@@ -144,11 +144,12 @@ class Settings(BaseSettings):
     # Matches the provider's concurrency budget (3 slots). Prevents self-inflicted
     # 429s from multiple overlapping jobs. Set to 0 to disable.
 
-    SOW_LLM_RATE_LIMIT_MAX_RETRIES: int = 16
+    SOW_LLM_RATE_LIMIT_MAX_RETRIES: int = 32
     # Max retry attempts on 429 / retryable errors. Applies globally to both the
     # YouTube-transcript LLM correction step (_llm_correct) and the ASR-fallback
     # LLM alignment step (_llm_align). The wall-clock SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS
-    # is the primary ceiling; this count is a secondary guard.
+    # is the primary ceiling; this count is a secondary guard. Set via the
+    # SOW_LLM_RATE_LIMIT_MAX_RETRIES environment variable (or .env) to override.
 
     SOW_LLM_RATE_LIMIT_BASE_DELAY: float = 2.0
     # Base delay in seconds for exponential backoff on 429 retries.
@@ -157,7 +158,9 @@ class Settings(BaseSettings):
     # Cap on single backoff delay. Provider-reported retry_strategy.max_delay_s
     # from the OpenRouter error body overrides this dynamically (e.g. provider says
     # 30s), but our local cap is now 90s so we can wait longer when the provider's
-    # guidance permits or is absent.
+    # guidance permits or is absent. Note: consecutive provider-guided retries
+    # (e.g. Cloudflare 524 retry_after=120) escalate x2, capped at 4x the provider
+    # retry_after, so they may exceed this 90s local cap by design.
 
     SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS: int = 1200
     # Total wall-clock budget for the retry sequence (20 minutes). Raised from 5 min
