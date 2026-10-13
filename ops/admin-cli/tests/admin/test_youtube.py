@@ -540,7 +540,8 @@ class TestTranscriptDrafts:
             "en",
             "English",
             True,
-            [{"text": " Grace upon grace "}],
+            # 1.x fetch() yields FetchedTranscriptSnippet dataclasses, not dicts
+            [types.SimpleNamespace(text=" Grace upon grace ")],
         )
 
         class FakeApi:
