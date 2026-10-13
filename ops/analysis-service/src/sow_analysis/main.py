@@ -224,7 +224,13 @@ async def lifespan(app: FastAPI):
         ("MVSEP", "max_concurrent", str(settings.SOW_MVSEP_MAX_CONCURRENT)),
         ("Free-Only Mode", "enabled", str(settings.SOW_FREE_ONLY_MODE)),
         ("Free-Only Mode", "poll_interval_seconds", str(settings.SOW_QUOTA_POLL_INTERVAL_SECONDS)),
-        ("YouTube", "proxy", _redact_proxy_url(settings.SOW_YOUTUBE_PROXY) or "(unparseable)"),
+        (
+            "YouTube",
+            "proxy",
+            (_redact_proxy_url(settings.SOW_YOUTUBE_PROXY) or "(unparseable)")
+            if settings.SOW_YOUTUBE_PROXY
+            else "(not set)",
+        ),
         ("YouTube", "proxy_retries", str(settings.SOW_YOUTUBE_PROXY_RETRIES)),
         ("R2", "bucket", settings.SOW_R2_BUCKET),
         ("R2", "endpoint", settings.SOW_R2_ENDPOINT_URL or "(not set)"),
