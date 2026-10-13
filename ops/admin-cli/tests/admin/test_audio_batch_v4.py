@@ -1011,6 +1011,13 @@ class TestDryRunGroupedOutput:
         assert "讓我尋見祢" in output
         assert orphan_id in output
 
+        # Bullets include song ID + hash prefix (with-recording) or song ID (missing)
+        assert "恩典之路 (song_001, hash001)" in output
+        assert "讚美詩 (song_002, hash002)" in output
+        assert "哈利路亞 (song_003, hash003)" in output
+        assert "蒙恩 (song_004)" in output
+        assert "讓我尋見祢 (song_005)" in output
+
     def test_dry_run_count_line(self):
         from stream_of_worship.admin.commands.audio import _print_dry_run_v4
 
