@@ -14,7 +14,9 @@ from sow_analysis.workers.youtube_transcript import (
     _is_rate_limited_error,
     _is_transient_connection_error,
     _is_permanently_unavailable_error,
+    _parse_proxy_pool,
     _rate_limiter,
+    _redact_proxy_url,
     _YouTubeRateLimiter,
     build_correction_prompt,
     extract_video_id,
@@ -706,43 +708,44 @@ class TestRotatingProxyConfig:
 
     def test_prevent_keeping_connections_alive_is_true(self):
         """RotatingProxyConfig always returns True for prevent_keeping_connections_alive."""
-        config = RotatingProxyConfig(
-            http_url="http://proxy:8080",
-            https_url="http://proxy:8080",
-            retries_when_blocked=3,
-        )
+        config = RotatingProxyConfig(urls=["http://proxy:8080"], retries_when_blocked=3)
         assert config.prevent_keeping_connections_alive is True
 
     def test_retries_when_blocked_returns_configured_value(self):
         """RotatingProxyConfig returns the configured retries_when_blocked value."""
-        config = RotatingProxyConfig(
-            http_url="http://proxy:8080",
-            https_url="http://proxy:8080",
-            retries_when_blocked=5,
-        )
+        config = RotatingProxyConfig(urls=["http://proxy:8080"], retries_when_blocked=5)
         assert config.retries_when_blocked == 5
 
     def test_to_requests_dict_returns_proxy_urls(self):
-        """RotatingProxyConfig.to_requests_dict() returns the proxy URLs."""
+        """RotatingProxyConfig.to_requests_dict() returns URLs from the pool."""
         config = RotatingProxyConfig(
-            http_url="http://proxy:8080",
-            https_url="https://proxy:8443",
+            urls=["http://proxy:8080", "https://proxy:8443"],
             retries_when_blocked=3,
         )
         result = config.to_requests_dict()
-        assert result["http"] == "http://proxy:8080"
-        assert result["https"] == "https://proxy:8443"
+        assert result["http"] in ("http://proxy:8080", "https://proxy:8443")
+        assert result["http"] == result["https"]
 
-    def test_uses_https_url_for_http_when_only_https_provided(self):
-        """When only https_url is provided, it's used for both http and https."""
-        config = RotatingProxyConfig(
-            http_url=None,
-            https_url="https://proxy:8443",
-            retries_when_blocked=3,
-        )
-        result = config.to_requests_dict()
-        assert result["http"] == "https://proxy:8443"
-        assert result["https"] == "https://proxy:8443"
+    def test_empty_urls_raises(self):
+        """RotatingProxyConfig requires at least one URL."""
+        with pytest.raises(ValueError):
+            RotatingProxyConfig(urls=[])
+
+    def test_rotation_across_pool(self):
+        """to_requests_dict() only returns pool members and samples the pool."""
+        import random as random_module
+
+        urls = [f"http://user:pass@host:{port}" for port in range(10001, 10011)]
+        config = RotatingProxyConfig(urls=urls, retries_when_blocked=3)
+        random_module.seed(42)
+        seen = set()
+        for _ in range(50):
+            result = config.to_requests_dict()
+            assert result["http"] == result["https"]
+            assert result["http"] in urls
+            seen.add(result["http"])
+        # With 50 draws from a 10-URL pool, essentially all ports should appear
+        assert len(seen) == len(urls)
 
 
 class TestBuildProxyConfig:
@@ -788,6 +791,59 @@ class TestBuildProxyConfig:
             result = _build_proxy_config()
 
             assert result.retries_when_blocked == 3
+
+
+class TestParseProxyPool:
+    """Tests for _parse_proxy_pool()."""
+
+    def test_single_url_passthrough(self):
+        """A URL without a port range is returned unchanged as a 1-element pool."""
+        assert _parse_proxy_pool("http://proxy:8080") == ["http://proxy:8080"]
+
+    def test_single_url_with_credentials_passthrough(self):
+        """Password containing ':' must not break single-URL parsing."""
+        url = "http://spp5as5pv5:$V48OPGU28NDG:M$@nl.decodo.com:10001"
+        assert _parse_proxy_pool(url) == [url]
+
+    def test_range_expansion_with_credentials(self):
+        """Port range expands low..high inclusive, preserving userinfo verbatim."""
+        urls = _parse_proxy_pool("http://user:pa:ss@nl.decodo.com:10001-10010")
+        assert len(urls) == 10
+        assert urls[0] == "http://user:pa:ss@nl.decodo.com:10001"
+        assert urls[-1] == "http://user:pa:ss@nl.decodo.com:10010"
+
+    def test_range_expansion_without_userinfo(self):
+        """Port range works without credentials."""
+        urls = _parse_proxy_pool("http://proxy.example.com:20000-20002")
+        assert urls == [
+            "http://proxy.example.com:20000",
+            "http://proxy.example.com:20001",
+            "http://proxy.example.com:20002",
+        ]
+
+    def test_inverted_range_raises(self):
+        """Inverted port range raises ValueError with redacted URL."""
+        with pytest.raises(ValueError, match="http://\\*\\*\\*@h:10010-10001"):
+            _parse_proxy_pool("http://secret-user:secret-pass@h:10010-10001")
+
+    def test_oversized_range_raises(self):
+        """Ranges producing >64 URLs raise ValueError."""
+        with pytest.raises(ValueError, match="too large"):
+            _parse_proxy_pool("http://user:pass@h:1-100")
+
+
+class TestRedactProxyUrl:
+    """Tests for _redact_proxy_url()."""
+
+    def test_redacts_userinfo(self):
+        assert _redact_proxy_url("http://user:pass@host:10001-10010") == "http://***@host:10001-10010"
+
+    def test_redacts_password_with_colons(self):
+        assert _redact_proxy_url("http://u:p:a@host:8080") == "http://***@host:8080"
+
+    def test_url_without_userinfo_fully_redacted(self):
+        """Unexpected shape (no '@') is fully redacted to avoid leaks."""
+        assert _redact_proxy_url("http://proxy:8080") == "***"
 
 
 class TestFetchYoutubeTranscriptWithProxy:
@@ -2175,6 +2231,22 @@ class TestIsTransientConnectionError:
             Exception("too many 429 error responses")
         ) is False
 
+    def test_requests_proxy_error_type_detected(self):
+        """requests.exceptions.ProxyError is detected via type name."""
+        import requests
+
+        err = requests.exceptions.ProxyError(
+            "Unable to connect to proxy",
+            OSError("Tunnel connection failed: 502 Bad Gateway or Proxy Error"),
+        )
+        assert _is_transient_connection_error(err) is True
+
+    def test_bare_oserror_tunnel_message_detected(self):
+        """Bare OSError with tunnel-failure message is detected via markers."""
+        assert _is_transient_connection_error(
+            OSError("Tunnel connection failed: 502 Bad Gateway or Proxy Error")
+        ) is True
+
     def test_none_exception_returns_false(self):
         """None exception returns False (no crash)."""
         assert _is_transient_connection_error(None) is False
@@ -2404,6 +2476,103 @@ class TestSSLRetryBehavior:
                 await rl.call(fn, description="non-transient test")
 
         assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_proxy_error_exhausts_retries_raises_rate_limited(self):
+        """ProxyError on every attempt → YouTubeRateLimitedError (retryable), not raw error."""
+        from unittest.mock import patch
+
+        import requests
+
+        rl = self._fresh_rate_limiter()
+        rl._ensure_initialized()
+
+        call_count = 0
+
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            raise requests.exceptions.ProxyError(
+                "Unable to connect to proxy",
+                OSError("Tunnel connection failed: 502 Bad Gateway or Proxy Error"),
+            )
+
+        sleep_calls = []
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            sleep_calls.append(duration)
+            await original_sleep(0)
+
+        with (
+            patch(
+                "sow_analysis.workers.youtube_transcript.settings"
+            ) as mock_settings,
+            patch(
+                "sow_analysis.workers.youtube_transcript.asyncio.sleep",
+                side_effect=mock_sleep,
+            ),
+        ):
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 99
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 60
+
+            with pytest.raises(YouTubeRateLimitedError, match="transient connection/proxy errors"):
+                await rl.call(fn, description="proxy exhausted test")
+
+        # max_retries + 1 attempts with backoff between them
+        assert call_count == 3
+        assert len(sleep_calls) == 2
+        # Circuit breaker NOT tripped by transient proxy errors
+        assert rl._consecutive_429_count == 0
+        assert not await rl._is_circuit_open()
+
+
+class TestPhase1SkipsListFallbackOnRateLimited:
+    """Tests for Phase 1 YouTubeRateLimitedError propagation in fetch_youtube_transcript()."""
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_skips_list_fallback(self):
+        """Phase 1 YouTubeRateLimitedError propagates immediately; list fallback never runs."""
+        from unittest.mock import patch
+
+        _rate_limiter._last_request_time = 0.0
+        _rate_limiter._consecutive_429_count = 0
+        _rate_limiter._circuit_open_until = 0.0
+
+        list_call_count = 0
+
+        async def fake_call(fn, *, description=""):
+            nonlocal list_call_count
+            if "list fallback" in description:
+                list_call_count += 1
+                return
+            raise YouTubeRateLimitedError("proxy exhausted")
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch(
+                "sow_analysis.workers.youtube_transcript._rate_limiter.call",
+                side_effect=fake_call,
+            ),
+            patch(
+                "sow_analysis.workers.youtube_transcript.asyncio.sleep",
+                side_effect=AssertionError("fallback delay must not run"),
+            ),
+        ):
+            mock_settings.SOW_FREE_ONLY_MODE = False
+            mock_settings.SOW_YOUTUBE_PROXY = "http://proxy:8080"
+            mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
+
+            with pytest.raises(YouTubeRateLimitedError, match="proxy exhausted"):
+                await fetch_youtube_transcript("testVideoId")
+
+        # Phase 2 never invoked: list-fallback path was not reached
+        assert list_call_count == 0
 
 
 class TestListFallbackDelay:
