@@ -1147,9 +1147,11 @@ class TestProviderGuidedBackoffEscalation:
         """When delay exceeds remaining budget but retry_after fits, sleep retry_after.
 
         Budget 150s, each call takes 30s, retry_after=120. After the first
-        failure, remaining = 120; delay = 120 + jitter (> 120 unless jitter
-        is exactly 0), so the sleep is clamped down to exactly retry_after
-        (120s). The call then succeeds on the second attempt.
+        failure, remaining = 120; delay = 120 + jitter (pinned to 30s by the
+        random.uniform patch) = 150 > 120, so the sleep is clamped down to
+        exactly retry_after (120s). The call then succeeds on the second
+        attempt. Patching the jitter makes the clamp branch deterministic —
+        without it, jitter == 0 would leave delay == remaining and no clamp.
         """
         body = '{"retry_after": 120, "retryable": true}'
         response = _make_524_response(body)
@@ -1192,6 +1194,10 @@ class TestProviderGuidedBackoffEscalation:
                 patch(
                     "sow_analysis.workers.llm_rate_limit.asyncio.sleep",
                     side_effect=mock_sleep,
+                ),
+                patch(
+                    "sow_analysis.workers.llm_rate_limit.random.uniform",
+                    return_value=30.0,  # 25% jitter cap on the 120s delay
                 ),
             ):
                 result = await call_llm_with_retry(sync_fn, description="test")

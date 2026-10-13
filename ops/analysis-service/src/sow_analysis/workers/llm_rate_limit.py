@@ -578,14 +578,26 @@ async def call_llm_with_retry(
             # Don't exceed remaining budget — but never sleep LESS than the provider
             # minimum (retry_after). If even the minimum doesn't fit the budget, give
             # up now instead of probing an origin that told us to wait longer.
+            # Note: unlike the old clamped-probe behavior (delay = remaining_budget),
+            # this also skips a final short probe for non-provider-guided retryable
+            # errors whose escalated delay no longer fits the budget.
             if delay > remaining_budget:
                 if retry_after is not None and retry_after <= remaining_budget:
                     delay = retry_after
-                else:
+                elif retry_after is not None:
                     logger.warning(
                         "Provider retry_after (%.1fs) exceeds remaining retry budget "
                         "(%.1fs) for %s — giving up without another probe",
-                        retry_after if retry_after is not None else 0.0,
+                        retry_after,
+                        remaining_budget,
+                        description,
+                    )
+                    break
+                else:
+                    logger.warning(
+                        "Backoff delay (%.1fs) exceeds remaining retry budget "
+                        "(%.1fs) for %s — giving up without another probe",
+                        delay,
                         remaining_budget,
                         description,
                     )
