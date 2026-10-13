@@ -459,6 +459,19 @@
       "source_location": "L22"
     },
     {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline",
+      "label": "OnnxAsrPipeline",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": "onnxasrpipeline",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L65"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_r2_backup_backuperror",
       "label": "BackupError",
       "_callable": true,
@@ -977,19 +990,6 @@
       "norm_label": "mvseptimeouterror",
       "source_file": "ops/analysis-service/src/sow_analysis/services/mvsep_client.py",
       "source_location": "L66"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline",
-      "label": "OnnxAsrPipeline",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": "onnxasrpipeline",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L65"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_state_editorstate",
@@ -12724,6 +12724,90 @@
       "source_location": "L470"
     },
     {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_create_segments_from_text",
+      "label": "._create_segments_from_text()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": "._create_segments_from_text()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L273"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_encode_audio",
+      "label": "._encode_audio()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": "._encode_audio()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L124"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_generate_tokens",
+      "label": "._generate_tokens()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": "._generate_tokens()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L181"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L71"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_load_audio",
+      "label": "._load_audio()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": "._load_audio()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L109"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_prepare_encoder_inputs",
+      "label": "._prepare_encoder_inputs()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": "._prepare_encoder_inputs()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L142"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_transcribe",
+      "label": ".transcribe()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": ".transcribe()",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L236"
+    },
+    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_results_to_lrc",
       "label": "results_to_lrc()",
       "_callable": true,
@@ -15158,90 +15242,6 @@
       "norm_label": "write_diagnostic()",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep.py",
       "source_location": "L369"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_create_segments_from_text",
-      "label": "._create_segments_from_text()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": "._create_segments_from_text()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L273"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_encode_audio",
-      "label": "._encode_audio()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": "._encode_audio()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L124"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_generate_tokens",
-      "label": "._generate_tokens()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": "._generate_tokens()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L181"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_init",
-      "label": ".__init__()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": ".__init__()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L71"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_load_audio",
-      "label": "._load_audio()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": "._load_audio()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L109"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_prepare_encoder_inputs",
-      "label": "._prepare_encoder_inputs()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": "._prepare_encoder_inputs()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L142"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_onnxasrpipeline_transcribe",
-      "label": ".transcribe()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": ".transcribe()",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L236"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_state_editorstate_adjust_padding",
@@ -22516,18 +22516,6 @@
       "source_location": "L76"
     },
     {
-      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_playlistmetadata_from_dict",
-      "label": ".from_dict()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 155,
-      "community_name": "PlaylistMetadata",
-      "file_type": "code",
-      "norm_label": ".from_dict()",
-      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/playlist.py",
-      "source_location": "L103"
-    },
-    {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_playlistmetadata_song_count_display",
       "label": ".song_count_display()",
       "_callable": true,
@@ -25429,7 +25417,7 @@
       "file_type": "code",
       "norm_label": "_advance_song()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6714"
+      "source_location": "L6717"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_aggregate_recording_theme",
@@ -25453,7 +25441,7 @@
       "file_type": "code",
       "norm_label": "_apply_manifest_writeback()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8231"
+      "source_location": "L8240"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_backfill_lyrics_batch",
@@ -25573,7 +25561,7 @@
       "file_type": "code",
       "norm_label": "_confirm_r2_lrc()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7880"
+      "source_location": "L7889"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_db_components_have_llm_fields",
@@ -25705,7 +25693,7 @@
       "file_type": "code",
       "norm_label": "_download_worker()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7303"
+      "source_location": "L7312"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_embed_songs",
@@ -25789,7 +25777,7 @@
       "file_type": "code",
       "norm_label": "_handle_analysis_completion()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7048"
+      "source_location": "L7051"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_handle_components_completion",
@@ -25813,7 +25801,7 @@
       "file_type": "code",
       "norm_label": "_handle_embedding_completion()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7205"
+      "source_location": "L7210"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_handle_lrc_404",
@@ -25825,7 +25813,7 @@
       "file_type": "code",
       "norm_label": "_handle_lrc_404()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6898"
+      "source_location": "L6901"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_handle_lrc_completion",
@@ -25837,7 +25825,7 @@
       "file_type": "code",
       "norm_label": "_handle_lrc_completion()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6788"
+      "source_location": "L6791"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_import_youtube_audio_for_song",
@@ -25861,7 +25849,7 @@
       "file_type": "code",
       "norm_label": "_init_download_worker()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7293"
+      "source_location": "L7302"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_is_retryable_poll_error",
@@ -25873,7 +25861,7 @@
       "file_type": "code",
       "norm_label": "_is_retryable_poll_error()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8019"
+      "source_location": "L8028"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_load_manifest",
@@ -25921,7 +25909,7 @@
       "file_type": "code",
       "norm_label": "_poll_one_cycle()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427"
+      "source_location": "L7436"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_prepare_component_job_inputs",
@@ -25957,7 +25945,7 @@
       "file_type": "code",
       "norm_label": "_print_stats()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8336"
+      "source_location": "L8345"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_print_unified_progress",
@@ -25969,7 +25957,7 @@
       "file_type": "code",
       "norm_label": "_print_unified_progress()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7394"
+      "source_location": "L7403"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_process_batch",
@@ -25981,7 +25969,7 @@
       "file_type": "code",
       "norm_label": "_process_batch()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7644"
+      "source_location": "L7653"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_prompt_manual_url",
@@ -26017,7 +26005,7 @@
       "file_type": "code",
       "norm_label": "_reconcile_on_interrupt()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7908"
+      "source_location": "L7917"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_resolve_song_ids",
@@ -26041,7 +26029,7 @@
       "file_type": "code",
       "norm_label": "_resume_from_manifest()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8039"
+      "source_location": "L8048"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_soft_delete_recording_only",
@@ -26149,7 +26137,7 @@
       "file_type": "code",
       "norm_label": "_submit_step()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6635"
+      "source_location": "L6638"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_sync_components_from_r2",
@@ -35798,6 +35786,18 @@
       "norm_label": ".to_dict()",
       "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/playlist.py",
       "source_location": "L37"
+    },
+    {
+      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_playlistmetadata_from_dict",
+      "label": ".from_dict()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 27,
+      "community_name": "Playlist",
+      "file_type": "code",
+      "norm_label": ".from_dict()",
+      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/playlist.py",
+      "source_location": "L103"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition_transitionparams_from_dict",
@@ -46528,18 +46528,6 @@
       "source_location": "L318"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_resize",
-      "label": ".on_resize()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 468,
-      "community_name": ".on_resize",
-      "file_type": "code",
-      "norm_label": ".on_resize()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L797"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_action_copy_line",
       "label": ".action_copy_line()",
       "_callable": true,
@@ -47006,6 +46994,18 @@
       "norm_label": "._on_playback_position()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L586"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_resize",
+      "label": ".on_resize()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 469,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": ".on_resize()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L797"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_unmount",
@@ -57397,7 +57397,7 @@
       "file_type": "code",
       "norm_label": "_accept_key()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8920"
+      "source_location": "L8929"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_analyze_recording",
@@ -57517,7 +57517,7 @@
       "file_type": "code",
       "norm_label": "key_review_accept_catalog()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8959"
+      "source_location": "L8968"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_key_review_accept_detected",
@@ -57529,7 +57529,7 @@
       "file_type": "code",
       "norm_label": "key_review_accept_detected()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8968"
+      "source_location": "L8977"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_key_review_list",
@@ -57541,7 +57541,7 @@
       "file_type": "code",
       "norm_label": "key_review_list()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8857"
+      "source_location": "L8866"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_key_review_show",
@@ -57553,7 +57553,7 @@
       "file_type": "code",
       "norm_label": "key_review_show()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8888"
+      "source_location": "L8897"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_list_column_caps",
@@ -57589,7 +57589,7 @@
       "file_type": "code",
       "norm_label": "_load_key_review_rows()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8767"
+      "source_location": "L8776"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_playback_audio",
@@ -57613,7 +57613,7 @@
       "file_type": "code",
       "norm_label": "_print_key_review_caveat()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8852"
+      "source_location": "L8861"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe",
@@ -57625,7 +57625,7 @@
       "file_type": "code",
       "norm_label": "probe()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8562"
+      "source_location": "L8571"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe_batch",
@@ -57637,7 +57637,7 @@
       "file_type": "code",
       "norm_label": "probe_batch()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8637"
+      "source_location": "L8646"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_read_key_nonblocking",
@@ -61656,6 +61656,17 @@
       "source_location": ""
     },
     {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_py_ndarray",
+      "label": "ndarray",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "code",
+      "norm_label": "ndarray",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_py_path",
       "label": "Path",
       "_origin": "ast",
@@ -61665,6 +61676,72 @@
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_110",
+      "label": "Load and preprocess audio file. Args: audio_path: Path to audio file Returns:\u2026",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "load and preprocess audio file. args: audio_path: path to audio file returns:...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L110"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_125",
+      "label": "Run encoder on audio. Args: audio: Audio waveform Returns: Encoder hidden states",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "run encoder on audio. args: audio: audio waveform returns: encoder hidden states",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L125"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_143",
+      "label": "Prepare inputs for encoder. Args: audio: Audio waveform Returns: Dictionary of\u2026",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "prepare inputs for encoder. args: audio: audio waveform returns: dictionary of...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L143"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_184",
+      "label": "Generate tokens using decoder. Args: encoder_hidden_states: Encoder outputs\u2026",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "generate tokens using decoder. args: encoder_hidden_states: encoder outputs...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L184"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_241",
+      "label": "Transcribe audio file. Args: audio_path: Path to audio file language: Target\u2026",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "transcribe audio file. args: audio_path: path to audio file language: target...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L241"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_276",
+      "label": "Create rough segments by splitting text on punctuation. Since ONNX model\u2026",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "create rough segments by splitting text on punctuation. since onnx model...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L276"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_346",
@@ -61808,6 +61885,28 @@
       "norm_label": "snap asr segments to canonical lyrics using fuzzy matching. args: segments:...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
       "source_location": "L542"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_66",
+      "label": "ONNX ASR pipeline for Qwen3-ASR. Adapted from Daumee's onnx_inference.py for\u2026",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "onnx asr pipeline for qwen3-asr. adapted from daumee's onnx_inference.py for...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L66"
+    },
+    {
+      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_72",
+      "label": "Initialize ONNX ASR pipeline. Args: model_dir: Directory containing\u2026",
+      "_origin": "ast",
+      "community": 103,
+      "community_name": "gen_lrc_qwen3_asr_onnx.py",
+      "file_type": "rationale",
+      "norm_label": "initialize onnx asr pipeline. args: model_dir: directory containing...",
+      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
+      "source_location": "L72"
     },
     {
       "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_783",
@@ -63922,17 +64021,6 @@
       "source_location": "L60"
     },
     {
-      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition",
-      "label": "tui/models/transition.py",
-      "_origin": "ast",
-      "community": 110,
-      "community_name": "TransitionBuilderApp",
-      "file_type": "code",
-      "norm_label": "tui/models/transition.py",
-      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/transition.py",
-      "source_location": "L1"
-    },
-    {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_state",
       "label": "tui/state.py",
       "_origin": "ast",
@@ -63964,17 +64052,6 @@
       "norm_label": "app",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition_rationale_1",
-      "label": "Transition data models.",
-      "_origin": "ast",
-      "community": 110,
-      "community_name": "TransitionBuilderApp",
-      "file_type": "rationale",
-      "norm_label": "transition data models.",
-      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/transition.py",
-      "source_location": "L1"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition_rationale_101",
@@ -64921,105 +64998,6 @@
       "norm_label": "run qwen3-asr-flash transcription on a song with mvsep vocal extraction. by...",
       "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_mvsep.py",
       "source_location": "L706"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_py_ndarray",
-      "label": "ndarray",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "code",
-      "norm_label": "ndarray",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_110",
-      "label": "Load and preprocess audio file. Args: audio_path: Path to audio file Returns:\u2026",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "load and preprocess audio file. args: audio_path: path to audio file returns:...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L110"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_125",
-      "label": "Run encoder on audio. Args: audio: Audio waveform Returns: Encoder hidden states",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "run encoder on audio. args: audio: audio waveform returns: encoder hidden states",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L125"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_143",
-      "label": "Prepare inputs for encoder. Args: audio: Audio waveform Returns: Dictionary of\u2026",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "prepare inputs for encoder. args: audio: audio waveform returns: dictionary of...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L143"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_184",
-      "label": "Generate tokens using decoder. Args: encoder_hidden_states: Encoder outputs\u2026",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "generate tokens using decoder. args: encoder_hidden_states: encoder outputs...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L184"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_241",
-      "label": "Transcribe audio file. Args: audio_path: Path to audio file language: Target\u2026",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "transcribe audio file. args: audio_path: path to audio file language: target...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L241"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_276",
-      "label": "Create rough segments by splitting text on punctuation. Since ONNX model\u2026",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "create rough segments by splitting text on punctuation. since onnx model...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L276"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_66",
-      "label": "ONNX ASR pipeline for Qwen3-ASR. Adapted from Daumee's onnx_inference.py for\u2026",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "onnx asr pipeline for qwen3-asr. adapted from daumee's onnx_inference.py for...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L66"
-    },
-    {
-      "id": "lab_poc_scripts_gen_lrc_qwen3_asr_onnx_rationale_72",
-      "label": "Initialize ONNX ASR pipeline. Args: model_dir: Directory containing\u2026",
-      "_origin": "ast",
-      "community": 115,
-      "community_name": "OnnxAsrPipeline",
-      "file_type": "rationale",
-      "norm_label": "initialize onnx asr pipeline. args: model_dir: directory containing...",
-      "source_file": "lab/poc-scripts/gen_lrc_qwen3_asr_onnx.py",
-      "source_location": "L72"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_state_py_lrcline",
@@ -73741,17 +73719,6 @@
       "source_location": "L799"
     },
     {
-      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_rationale_104",
-      "label": "Create from dictionary.",
-      "_origin": "ast",
-      "community": 155,
-      "community_name": "PlaylistMetadata",
-      "file_type": "rationale",
-      "norm_label": "create from dictionary.",
-      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/playlist.py",
-      "source_location": "L104"
-    },
-    {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_rationale_131",
       "label": "Initialize default values.",
       "_origin": "ast",
@@ -78134,7 +78101,7 @@
       "source_location": "L6534"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6651",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6654",
       "label": "Dispatch to the appropriate submit helper for *step*. Returns ``(job_id,\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78142,10 +78109,10 @@
       "file_type": "rationale",
       "norm_label": "dispatch to the appropriate submit helper for *step*. returns ``(job_id,...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6651"
+      "source_location": "L6654"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6732",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6735",
       "label": "Walk the step chain forward from *completed_step* and submit the next ready\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78153,10 +78120,10 @@
       "file_type": "rationale",
       "norm_label": "walk the step chain forward from *completed_step* and submit the next ready...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6732"
+      "source_location": "L6735"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6802",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6805",
       "label": "Process a completed/failed LRC job. Returns ``(is_terminal, new_job_id)``.\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78164,10 +78131,10 @@
       "file_type": "rationale",
       "norm_label": "process a completed/failed lrc job. returns ``(is_terminal, new_job_id)``....",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6802"
+      "source_location": "L6805"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6910",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6913",
       "label": "Handle a 404 (lost job) for an LRC job. Checks R2 for an existing LRC; if\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78175,10 +78142,10 @@
       "file_type": "rationale",
       "norm_label": "handle a 404 (lost job) for an lrc job. checks r2 for an existing lrc; if...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6910"
+      "source_location": "L6913"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7059",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7062",
       "label": "Process a completed/failed analysis job. Returns ``(is_terminal, new_job_id)``.",
       "_origin": "ast",
       "community": 178,
@@ -78186,10 +78153,10 @@
       "file_type": "rationale",
       "norm_label": "process a completed/failed analysis job. returns ``(is_terminal, new_job_id)``.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7059"
+      "source_location": "L7062"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7215",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7220",
       "label": "Process a completed/failed embedding job. Returns ``(is_terminal, new_job_id)``.",
       "_origin": "ast",
       "community": 178,
@@ -78197,10 +78164,10 @@
       "file_type": "rationale",
       "norm_label": "process a completed/failed embedding job. returns ``(is_terminal, new_job_id)``.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7215"
+      "source_location": "L7220"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7294",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7303",
       "label": "Per-thread initializer: create a ConnectionProvider + DatabaseClient. Called\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78208,10 +78175,10 @@
       "file_type": "rationale",
       "norm_label": "per-thread initializer: create a connectionprovider + databaseclient. called...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7294"
+      "source_location": "L7303"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7319",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7328",
       "label": "Download a single song in a worker thread. Wraps\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78219,10 +78186,10 @@
       "file_type": "rationale",
       "norm_label": "download a single song in a worker thread. wraps...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7319"
+      "source_location": "L7328"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7401",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7410",
       "label": "Print a one-line progress summary for the unified loop.",
       "_origin": "ast",
       "community": 178,
@@ -78230,10 +78197,10 @@
       "file_type": "rationale",
       "norm_label": "print a one-line progress summary for the unified loop.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7401"
+      "source_location": "L7410"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7448",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7457",
       "label": "Run one iteration of the interleaved loop. Returns ``(pending_futures,\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78241,10 +78208,10 @@
       "file_type": "rationale",
       "norm_label": "run one iteration of the interleaved loop. returns ``(pending_futures,...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7448"
+      "source_location": "L7457"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7661",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7670",
       "label": "Process all songs in batch with an interleaved unified poll loop. A single main\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78252,10 +78219,10 @@
       "file_type": "rationale",
       "norm_label": "process all songs in batch with an interleaved unified poll loop. a single main...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7661"
+      "source_location": "L7670"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7887",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7896",
       "label": "Confirm LRC file exists on R2 after service reports completion. Args:\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78263,10 +78230,10 @@
       "file_type": "rationale",
       "norm_label": "confirm lrc file exists on r2 after service reports completion. args:...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7887"
+      "source_location": "L7896"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7916",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7925",
       "label": "Reconcile status for in-progress jobs on Ctrl+C. Args: active_jobs: Dict of\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78274,10 +78241,10 @@
       "file_type": "rationale",
       "norm_label": "reconcile status for in-progress jobs on ctrl+c. args: active_jobs: dict of...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7916"
+      "source_location": "L7925"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8020",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8029",
       "label": "Whether a polling failure should be retried once (transient).",
       "_origin": "ast",
       "community": 178,
@@ -78285,10 +78252,10 @@
       "file_type": "rationale",
       "norm_label": "whether a polling failure should be retried once (transient).",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8020"
+      "source_location": "L8029"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8051",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8060",
       "label": "Resume a batch from a manifest file using the unified interleaved loop.\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78296,10 +78263,10 @@
       "file_type": "rationale",
       "norm_label": "resume a batch from a manifest file using the unified interleaved loop....",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8051"
+      "source_location": "L8060"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8241",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8250",
       "label": "Apply idempotent DB writeback for a completed manifest entry on resume. Checks\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78307,10 +78274,10 @@
       "file_type": "rationale",
       "norm_label": "apply idempotent db writeback for a completed manifest entry on resume. checks...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8241"
+      "source_location": "L8250"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8343",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8352",
       "label": "Print final batch statistics. Args: results: Results dict from batch processing\u2026",
       "_origin": "ast",
       "community": 178,
@@ -78318,7 +78285,7 @@
       "file_type": "rationale",
       "norm_label": "print final batch statistics. args: results: results dict from batch processing...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8343"
+      "source_location": "L8352"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_899",
@@ -93354,6 +93321,17 @@
       "source_location": ""
     },
     {
+      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition",
+      "label": "tui/models/transition.py",
+      "_origin": "ast",
+      "community": 27,
+      "community_name": "Playlist",
+      "file_type": "code",
+      "norm_label": "tui/models/transition.py",
+      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/transition.py",
+      "source_location": "L1"
+    },
+    {
       "id": "setter",
       "label": "setter",
       "_origin": "ast",
@@ -93374,6 +93352,17 @@
       "norm_label": "playlist data models for multi-song support.",
       "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/playlist.py",
       "source_location": "L1"
+    },
+    {
+      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_rationale_104",
+      "label": "Create from dictionary.",
+      "_origin": "ast",
+      "community": 27,
+      "community_name": "Playlist",
+      "file_type": "rationale",
+      "norm_label": "create from dictionary.",
+      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/playlist.py",
+      "source_location": "L104"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_playlist_rationale_116",
@@ -93583,6 +93572,17 @@
       "norm_label": "create from dictionary.",
       "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/playlist.py",
       "source_location": "L51"
+    },
+    {
+      "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition_rationale_1",
+      "label": "Transition data models.",
+      "_origin": "ast",
+      "community": 27,
+      "community_name": "Playlist",
+      "file_type": "rationale",
+      "norm_label": "transition data models.",
+      "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/models/transition.py",
+      "source_location": "L1"
     },
     {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition_rationale_10",
@@ -108396,17 +108396,6 @@
       "source_file": "sonner"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_resize",
-      "label": "Resize",
-      "_origin": "ast",
-      "community": 468,
-      "community_name": ".on_resize",
-      "file_type": "code",
-      "norm_label": "resize",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_path",
       "label": "Path",
       "_origin": "ast",
@@ -108414,6 +108403,17 @@
       "community_name": "LRCEditorScreen",
       "file_type": "code",
       "norm_label": "path",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_resize",
+      "label": "Resize",
+      "_origin": "ast",
+      "community": 469,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "resize",
       "source_file": "",
       "source_location": ""
     },
@@ -121645,7 +121645,7 @@
       "source_location": "L5868"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8569",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8578",
       "label": "Probe audio duration via ffprobe and update the recording in the database.\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121653,10 +121653,10 @@
       "file_type": "rationale",
       "norm_label": "probe audio duration via ffprobe and update the recording in the database....",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8569"
+      "source_location": "L8578"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8656",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8665",
       "label": "Batch probe audio durations for recordings missing duration_seconds. Downloads\u2026",
       "_origin": "ast",
       "community": 9,
@@ -121664,10 +121664,10 @@
       "file_type": "rationale",
       "norm_label": "batch probe audio durations for recordings missing duration_seconds. downloads...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8656"
+      "source_location": "L8665"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8861",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8870",
       "label": "List catalog/audio key disagreements for new detector rows.",
       "_origin": "ast",
       "community": 9,
@@ -121675,10 +121675,10 @@
       "file_type": "rationale",
       "norm_label": "list catalog/audio key disagreements for new detector rows.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8861"
+      "source_location": "L8870"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8892",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8901",
       "label": "Show a single catalog/audio key disagreement.",
       "_origin": "ast",
       "community": 9,
@@ -121686,10 +121686,10 @@
       "file_type": "rationale",
       "norm_label": "show a single catalog/audio key disagreement.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8892"
+      "source_location": "L8901"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8963",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8972",
       "label": "Accept the catalog key by mutating the recording row.",
       "_origin": "ast",
       "community": 9,
@@ -121697,10 +121697,10 @@
       "file_type": "rationale",
       "norm_label": "accept the catalog key by mutating the recording row.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8963"
+      "source_location": "L8972"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8972",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8981",
       "label": "Accept the detected key by marking confidence as admin-accepted.",
       "_origin": "ast",
       "community": 9,
@@ -121708,7 +121708,7 @@
       "file_type": "rationale",
       "norm_label": "accept the detected key by marking confidence as admin-accepted.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8972"
+      "source_location": "L8981"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_commands_catalog_rationale_65",
@@ -156574,7 +156574,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8921",
+      "source_location": "L8930",
       "weight": 1.0
     },
     {
@@ -156586,7 +156586,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8922",
+      "source_location": "L8931",
       "weight": 1.0
     },
     {
@@ -156598,7 +156598,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8923",
+      "source_location": "L8932",
       "weight": 1.0
     },
     {
@@ -156610,7 +156610,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8939",
+      "source_location": "L8948",
       "weight": 1.0
     },
     {
@@ -156622,7 +156622,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6750",
+      "source_location": "L6753",
       "weight": 1.0
     },
     {
@@ -156694,7 +156694,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8265",
+      "source_location": "L8274",
       "weight": 1.0
     },
     {
@@ -156706,7 +156706,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8268",
+      "source_location": "L8277",
       "weight": 1.0
     },
     {
@@ -156718,7 +156718,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8325",
+      "source_location": "L8334",
       "weight": 1.0
     },
     {
@@ -156730,7 +156730,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8329",
+      "source_location": "L8338",
       "weight": 1.0
     },
     {
@@ -157690,7 +157690,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7328",
+      "source_location": "L7337",
       "weight": 1.0
     },
     {
@@ -157702,7 +157702,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7335",
+      "source_location": "L7344",
       "weight": 1.0
     },
     {
@@ -157714,7 +157714,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7347",
+      "source_location": "L7356",
       "weight": 1.0
     },
     {
@@ -157726,7 +157726,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7362",
+      "source_location": "L7371",
       "weight": 1.0
     },
     {
@@ -157858,7 +157858,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7222",
+      "source_location": "L7227",
       "weight": 1.0
     },
     {
@@ -157870,7 +157870,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6810",
+      "source_location": "L6813",
       "weight": 1.0
     },
     {
@@ -158110,7 +158110,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7298",
+      "source_location": "L7307",
       "weight": 1.0
     },
     {
@@ -158122,7 +158122,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7299",
+      "source_location": "L7308",
       "weight": 1.0
     },
     {
@@ -158134,7 +158134,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8964",
+      "source_location": "L8973",
       "weight": 1.0
     },
     {
@@ -158146,7 +158146,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8973",
+      "source_location": "L8982",
       "weight": 1.0
     },
     {
@@ -158158,7 +158158,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8862",
+      "source_location": "L8871",
       "weight": 1.0
     },
     {
@@ -158170,7 +158170,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8863",
+      "source_location": "L8872",
       "weight": 1.0
     },
     {
@@ -158182,7 +158182,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8864",
+      "source_location": "L8873",
       "weight": 1.0
     },
     {
@@ -158194,7 +158194,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8865",
+      "source_location": "L8874",
       "weight": 1.0
     },
     {
@@ -158206,7 +158206,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8893",
+      "source_location": "L8902",
       "weight": 1.0
     },
     {
@@ -158218,7 +158218,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8894",
+      "source_location": "L8903",
       "weight": 1.0
     },
     {
@@ -158230,7 +158230,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8895",
+      "source_location": "L8904",
       "weight": 1.0
     },
     {
@@ -158242,7 +158242,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8896",
+      "source_location": "L8905",
       "weight": 1.0
     },
     {
@@ -158326,7 +158326,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8822",
+      "source_location": "L8831",
       "weight": 1.0
     },
     {
@@ -158458,7 +158458,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7453",
+      "source_location": "L7462",
       "weight": 1.0
     },
     {
@@ -158470,7 +158470,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7464",
+      "source_location": "L7473",
       "weight": 1.0
     },
     {
@@ -158482,7 +158482,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7497",
+      "source_location": "L7506",
       "weight": 1.0
     },
     {
@@ -158494,7 +158494,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7512",
+      "source_location": "L7521",
       "weight": 1.0
     },
     {
@@ -158506,7 +158506,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7524",
+      "source_location": "L7533",
       "weight": 1.0
     },
     {
@@ -158518,7 +158518,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7535",
+      "source_location": "L7544",
       "weight": 1.0
     },
     {
@@ -158530,7 +158530,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7573",
+      "source_location": "L7582",
       "weight": 1.0
     },
     {
@@ -158542,7 +158542,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7639",
+      "source_location": "L7648",
       "weight": 1.0
     },
     {
@@ -158614,7 +158614,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8578",
+      "source_location": "L8587",
       "weight": 1.0
     },
     {
@@ -158626,7 +158626,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8584",
+      "source_location": "L8593",
       "weight": 1.0
     },
     {
@@ -158638,24 +158638,12 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8589",
+      "source_location": "L8598",
       "weight": 1.0
     },
     {
       "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_py_r2client",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8608",
-      "weight": 1.0
-    },
-    {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe",
-      "target": "ops_admin_cli_src_stream_of_worship_admin_config_get_cache_dir",
       "relation": "calls",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -158667,6 +158655,18 @@
     },
     {
       "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe",
+      "target": "ops_admin_cli_src_stream_of_worship_admin_config_get_cache_dir",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
+      "source_location": "L8626",
+      "weight": 1.0
+    },
+    {
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe",
       "target": "ops_admin_cli_src_stream_of_worship_admin_services_asset_cache_assetcache",
       "relation": "calls",
       "_origin": "ast",
@@ -158674,7 +158674,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8618",
+      "source_location": "L8627",
       "weight": 1.0
     },
     {
@@ -158686,7 +158686,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8627",
+      "source_location": "L8636",
       "weight": 1.0
     },
     {
@@ -158698,7 +158698,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8663",
+      "source_location": "L8672",
       "weight": 1.0
     },
     {
@@ -158710,7 +158710,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8669",
+      "source_location": "L8678",
       "weight": 1.0
     },
     {
@@ -158722,7 +158722,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8674",
+      "source_location": "L8683",
       "weight": 1.0
     },
     {
@@ -158734,7 +158734,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8725",
+      "source_location": "L8734",
       "weight": 1.0
     },
     {
@@ -158746,7 +158746,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8734",
+      "source_location": "L8743",
       "weight": 1.0
     },
     {
@@ -158758,7 +158758,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8735",
+      "source_location": "L8744",
       "weight": 1.0
     },
     {
@@ -158770,7 +158770,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8754",
+      "source_location": "L8763",
       "weight": 1.0
     },
     {
@@ -158782,7 +158782,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7706",
+      "source_location": "L7715",
       "weight": 1.0
     },
     {
@@ -158794,7 +158794,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7810",
+      "source_location": "L7819",
       "weight": 1.0
     },
     {
@@ -158806,7 +158806,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7831",
+      "source_location": "L7840",
       "weight": 1.0
     },
     {
@@ -158818,7 +158818,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7865",
+      "source_location": "L7874",
       "weight": 1.0
     },
     {
@@ -158830,7 +158830,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7971",
+      "source_location": "L7980",
       "weight": 1.0
     },
     {
@@ -158842,7 +158842,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7982",
+      "source_location": "L7991",
       "weight": 1.0
     },
     {
@@ -158854,7 +158854,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7994",
+      "source_location": "L8003",
       "weight": 1.0
     },
     {
@@ -158878,7 +158878,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8143",
+      "source_location": "L8152",
       "weight": 1.0
     },
     {
@@ -158890,7 +158890,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8193",
+      "source_location": "L8202",
       "weight": 1.0
     },
     {
@@ -158902,7 +158902,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8216",
+      "source_location": "L8225",
       "weight": 1.0
     },
     {
@@ -159334,7 +159334,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6659",
+      "source_location": "L6662",
       "weight": 1.0
     },
     {
@@ -159346,7 +159346,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6674",
+      "source_location": "L6677",
       "weight": 1.0
     },
     {
@@ -159358,7 +159358,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6687",
+      "source_location": "L6690",
       "weight": 1.0
     },
     {
@@ -159370,7 +159370,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6700",
+      "source_location": "L6703",
       "weight": 1.0
     },
     {
@@ -181306,7 +181306,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8958",
+      "source_location": "L8967",
       "weight": 1.0
     },
     {
@@ -181318,7 +181318,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8967",
+      "source_location": "L8976",
       "weight": 1.0
     },
     {
@@ -181330,7 +181330,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8856",
+      "source_location": "L8865",
       "weight": 1.0
     },
     {
@@ -181342,7 +181342,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8887",
+      "source_location": "L8896",
       "weight": 1.0
     },
     {
@@ -181378,7 +181378,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8561",
+      "source_location": "L8570",
       "weight": 1.0
     },
     {
@@ -181390,7 +181390,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8636",
+      "source_location": "L8645",
       "weight": 1.0
     },
     {
@@ -186538,7 +186538,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8920",
+      "source_location": "L8929",
       "weight": 1.0
     },
     {
@@ -186670,7 +186670,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8959",
+      "source_location": "L8968",
       "weight": 1.0
     },
     {
@@ -186682,7 +186682,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8968",
+      "source_location": "L8977",
       "weight": 1.0
     },
     {
@@ -186694,7 +186694,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8857",
+      "source_location": "L8866",
       "weight": 1.0
     },
     {
@@ -186706,7 +186706,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8888",
+      "source_location": "L8897",
       "weight": 1.0
     },
     {
@@ -186742,7 +186742,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427",
+      "source_location": "L7436",
       "weight": 1.0
     },
     {
@@ -186754,7 +186754,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7394",
+      "source_location": "L7403",
       "weight": 1.0
     },
     {
@@ -186766,7 +186766,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8562",
+      "source_location": "L8571",
       "weight": 1.0
     },
     {
@@ -186778,7 +186778,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8637",
+      "source_location": "L8646",
       "weight": 1.0
     },
     {
@@ -253086,7 +253086,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6714",
+      "source_location": "L6717",
       "weight": 1.0
     },
     {
@@ -253098,7 +253098,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6714",
+      "source_location": "L6717",
       "weight": 1.0
     },
     {
@@ -253110,7 +253110,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6714",
+      "source_location": "L6717",
       "weight": 1.0
     },
     {
@@ -253122,7 +253122,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6714",
+      "source_location": "L6717",
       "weight": 1.0
     },
     {
@@ -253134,7 +253134,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8231",
+      "source_location": "L8240",
       "weight": 1.0
     },
     {
@@ -253194,7 +253194,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7880",
+      "source_location": "L7889",
       "weight": 1.0
     },
     {
@@ -253206,7 +253206,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7880",
+      "source_location": "L7889",
       "weight": 1.0
     },
     {
@@ -253410,7 +253410,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7303",
+      "source_location": "L7312",
       "weight": 1.0
     },
     {
@@ -253422,7 +253422,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7303",
+      "source_location": "L7312",
       "weight": 1.0
     },
     {
@@ -253434,7 +253434,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7303",
+      "source_location": "L7312",
       "weight": 1.0
     },
     {
@@ -253446,7 +253446,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7303",
+      "source_location": "L7312",
       "weight": 1.0
     },
     {
@@ -253482,7 +253482,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7048",
+      "source_location": "L7051",
       "weight": 1.0
     },
     {
@@ -253494,7 +253494,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7048",
+      "source_location": "L7051",
       "weight": 1.0
     },
     {
@@ -253530,7 +253530,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7205",
+      "source_location": "L7210",
       "weight": 1.0
     },
     {
@@ -253542,7 +253542,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7205",
+      "source_location": "L7210",
       "weight": 1.0
     },
     {
@@ -253554,7 +253554,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6898",
+      "source_location": "L6901",
       "weight": 1.0
     },
     {
@@ -253566,7 +253566,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6898",
+      "source_location": "L6901",
       "weight": 1.0
     },
     {
@@ -253578,7 +253578,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6898",
+      "source_location": "L6901",
       "weight": 1.0
     },
     {
@@ -253590,7 +253590,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6788",
+      "source_location": "L6791",
       "weight": 1.0
     },
     {
@@ -253602,7 +253602,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6788",
+      "source_location": "L6791",
       "weight": 1.0
     },
     {
@@ -253614,7 +253614,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6788",
+      "source_location": "L6791",
       "weight": 1.0
     },
     {
@@ -253650,7 +253650,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8019",
+      "source_location": "L8028",
       "weight": 1.0
     },
     {
@@ -253686,7 +253686,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427",
+      "source_location": "L7436",
       "weight": 1.0
     },
     {
@@ -253698,7 +253698,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427",
+      "source_location": "L7436",
       "weight": 1.0
     },
     {
@@ -253710,7 +253710,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427",
+      "source_location": "L7436",
       "weight": 1.0
     },
     {
@@ -253722,7 +253722,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427",
+      "source_location": "L7436",
       "weight": 1.0
     },
     {
@@ -253734,7 +253734,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427",
+      "source_location": "L7436",
       "weight": 1.0
     },
     {
@@ -253782,7 +253782,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8336",
+      "source_location": "L8345",
       "weight": 1.0
     },
     {
@@ -253794,7 +253794,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7394",
+      "source_location": "L7403",
       "weight": 1.0
     },
     {
@@ -253806,7 +253806,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7644",
+      "source_location": "L7653",
       "weight": 1.0
     },
     {
@@ -253818,7 +253818,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7644",
+      "source_location": "L7653",
       "weight": 1.0
     },
     {
@@ -253830,7 +253830,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7644",
+      "source_location": "L7653",
       "weight": 1.0
     },
     {
@@ -253854,7 +253854,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7908",
+      "source_location": "L7917",
       "weight": 1.0
     },
     {
@@ -253866,7 +253866,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7908",
+      "source_location": "L7917",
       "weight": 1.0
     },
     {
@@ -253878,7 +253878,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7908",
+      "source_location": "L7917",
       "weight": 1.0
     },
     {
@@ -253902,7 +253902,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8039",
+      "source_location": "L8048",
       "weight": 1.0
     },
     {
@@ -253914,7 +253914,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8039",
+      "source_location": "L8048",
       "weight": 1.0
     },
     {
@@ -253926,7 +253926,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8039",
+      "source_location": "L8048",
       "weight": 1.0
     },
     {
@@ -253938,7 +253938,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8039",
+      "source_location": "L8048",
       "weight": 1.0
     },
     {
@@ -254178,7 +254178,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6635",
+      "source_location": "L6638",
       "weight": 1.0
     },
     {
@@ -254190,7 +254190,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6635",
+      "source_location": "L6638",
       "weight": 1.0
     },
     {
@@ -254202,7 +254202,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6635",
+      "source_location": "L6638",
       "weight": 1.0
     },
     {
@@ -254214,7 +254214,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6635",
+      "source_location": "L6638",
       "weight": 1.0
     },
     {
@@ -302346,7 +302346,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6635",
+      "source_location": "L6638",
       "weight": 1.0
     },
     {
@@ -302357,7 +302357,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6714",
+      "source_location": "L6717",
       "weight": 1.0
     },
     {
@@ -302368,7 +302368,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6788",
+      "source_location": "L6791",
       "weight": 1.0
     },
     {
@@ -302379,7 +302379,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6898",
+      "source_location": "L6901",
       "weight": 1.0
     },
     {
@@ -302390,7 +302390,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7048",
+      "source_location": "L7051",
       "weight": 1.0
     },
     {
@@ -302401,7 +302401,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7205",
+      "source_location": "L7210",
       "weight": 1.0
     },
     {
@@ -302412,7 +302412,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7293",
+      "source_location": "L7302",
       "weight": 1.0
     },
     {
@@ -302423,7 +302423,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7303",
+      "source_location": "L7312",
       "weight": 1.0
     },
     {
@@ -302434,7 +302434,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7394",
+      "source_location": "L7403",
       "weight": 1.0
     },
     {
@@ -302445,7 +302445,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7427",
+      "source_location": "L7436",
       "weight": 1.0
     },
     {
@@ -302456,7 +302456,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7644",
+      "source_location": "L7653",
       "weight": 1.0
     },
     {
@@ -302467,7 +302467,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7880",
+      "source_location": "L7889",
       "weight": 1.0
     },
     {
@@ -302478,7 +302478,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7908",
+      "source_location": "L7917",
       "weight": 1.0
     },
     {
@@ -302489,7 +302489,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8019",
+      "source_location": "L8028",
       "weight": 1.0
     },
     {
@@ -302500,7 +302500,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8039",
+      "source_location": "L8048",
       "weight": 1.0
     },
     {
@@ -302511,7 +302511,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8231",
+      "source_location": "L8240",
       "weight": 1.0
     },
     {
@@ -302522,7 +302522,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8336",
+      "source_location": "L8345",
       "weight": 1.0
     },
     {
@@ -302533,7 +302533,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8562",
+      "source_location": "L8571",
       "weight": 1.0
     },
     {
@@ -302544,7 +302544,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8637",
+      "source_location": "L8646",
       "weight": 1.0
     },
     {
@@ -302555,7 +302555,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8767",
+      "source_location": "L8776",
       "weight": 1.0
     },
     {
@@ -302566,7 +302566,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8852",
+      "source_location": "L8861",
       "weight": 1.0
     },
     {
@@ -302577,7 +302577,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8857",
+      "source_location": "L8866",
       "weight": 1.0
     },
     {
@@ -302588,7 +302588,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8888",
+      "source_location": "L8897",
       "weight": 1.0
     },
     {
@@ -302610,7 +302610,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8920",
+      "source_location": "L8929",
       "weight": 1.0
     },
     {
@@ -302621,7 +302621,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8959",
+      "source_location": "L8968",
       "weight": 1.0
     },
     {
@@ -302632,7 +302632,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8968",
+      "source_location": "L8977",
       "weight": 1.0
     },
     {
@@ -351160,256 +351160,256 @@
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6651",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6654",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_submit_step",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6651",
+      "source_location": "L6654",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6732",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6735",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_advance_song",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6732",
+      "source_location": "L6735",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6802",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6805",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_handle_lrc_completion",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6802",
+      "source_location": "L6805",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6910",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_6913",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_handle_lrc_404",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6910",
+      "source_location": "L6913",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7059",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7062",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_handle_analysis_completion",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7059",
+      "source_location": "L7062",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7215",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7220",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_handle_embedding_completion",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7215",
+      "source_location": "L7220",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7294",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7303",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_init_download_worker",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7294",
+      "source_location": "L7303",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7319",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7328",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_download_worker",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7319",
+      "source_location": "L7328",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7401",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7410",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_print_unified_progress",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7401",
+      "source_location": "L7410",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7448",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7457",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_poll_one_cycle",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7448",
+      "source_location": "L7457",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7661",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7670",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_process_batch",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7661",
+      "source_location": "L7670",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7887",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7896",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_confirm_r2_lrc",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7887",
+      "source_location": "L7896",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7916",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_7925",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_reconcile_on_interrupt",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7916",
+      "source_location": "L7925",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8020",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8029",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_is_retryable_poll_error",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8020",
+      "source_location": "L8029",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8051",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8060",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_resume_from_manifest",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8051",
+      "source_location": "L8060",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8241",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8250",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_apply_manifest_writeback",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8241",
+      "source_location": "L8250",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8343",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8352",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_print_stats",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8343",
+      "source_location": "L8352",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8569",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8578",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8569",
+      "source_location": "L8578",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8656",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8665",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_probe_batch",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8656",
+      "source_location": "L8665",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8861",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8870",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_key_review_list",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8861",
+      "source_location": "L8870",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8892",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8901",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_key_review_show",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8892",
+      "source_location": "L8901",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8963",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8972",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_key_review_accept_catalog",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8963",
+      "source_location": "L8972",
       "weight": 1.0
     },
     {
-      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8972",
+      "source": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_rationale_8981",
       "target": "ops_admin_cli_src_stream_of_worship_admin_commands_audio_key_review_accept_detected",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8972",
+      "source_location": "L8981",
       "weight": 1.0
     },
     {
@@ -364434,7 +364434,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7775",
+      "source_location": "L7784",
       "weight": 1.0
     },
     {
@@ -364446,7 +364446,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7787",
+      "source_location": "L7796",
       "weight": 1.0
     },
     {
@@ -368322,7 +368322,7 @@
       "confidence_score": 0.85,
       "context": "call",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7455",
+      "source_location": "L7464",
       "weight": 1.0
     },
     {
@@ -369234,7 +369234,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6718",
+      "source_location": "L6721",
       "weight": 0.8
     },
     {
@@ -369246,7 +369246,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6719",
+      "source_location": "L6722",
       "weight": 0.8
     },
     {
@@ -369258,7 +369258,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8237",
+      "source_location": "L8246",
       "weight": 0.8
     },
     {
@@ -369270,7 +369270,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8238",
+      "source_location": "L8247",
       "weight": 0.8
     },
     {
@@ -369402,7 +369402,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7310",
+      "source_location": "L7319",
       "weight": 0.8
     },
     {
@@ -369438,7 +369438,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7051",
+      "source_location": "L7054",
       "weight": 0.8
     },
     {
@@ -369450,7 +369450,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7052",
+      "source_location": "L7055",
       "weight": 0.8
     },
     {
@@ -369462,7 +369462,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7053",
+      "source_location": "L7056",
       "weight": 0.8
     },
     {
@@ -369498,7 +369498,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7208",
+      "source_location": "L7213",
       "weight": 0.8
     },
     {
@@ -369510,7 +369510,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7209",
+      "source_location": "L7214",
       "weight": 0.8
     },
     {
@@ -369522,7 +369522,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7210",
+      "source_location": "L7215",
       "weight": 0.8
     },
     {
@@ -369534,7 +369534,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6901",
+      "source_location": "L6904",
       "weight": 0.8
     },
     {
@@ -369546,7 +369546,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6902",
+      "source_location": "L6905",
       "weight": 0.8
     },
     {
@@ -369558,7 +369558,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6791",
+      "source_location": "L6794",
       "weight": 0.8
     },
     {
@@ -369570,7 +369570,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6792",
+      "source_location": "L6795",
       "weight": 0.8
     },
     {
@@ -369582,7 +369582,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6793",
+      "source_location": "L6796",
       "weight": 0.8
     },
     {
@@ -369606,7 +369606,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8768",
+      "source_location": "L8777",
       "weight": 0.8
     },
     {
@@ -369630,7 +369630,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7431",
+      "source_location": "L7440",
       "weight": 0.8
     },
     {
@@ -369642,7 +369642,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7432",
+      "source_location": "L7441",
       "weight": 0.8
     },
     {
@@ -369678,7 +369678,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8338",
+      "source_location": "L8347",
       "weight": 0.8
     },
     {
@@ -369690,7 +369690,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7645",
+      "source_location": "L7654",
       "weight": 0.8
     },
     {
@@ -369702,7 +369702,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7647",
+      "source_location": "L7656",
       "weight": 0.8
     },
     {
@@ -369714,7 +369714,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7911",
+      "source_location": "L7920",
       "weight": 0.8
     },
     {
@@ -369738,7 +369738,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8042",
+      "source_location": "L8051",
       "weight": 0.8
     },
     {
@@ -369750,7 +369750,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8044",
+      "source_location": "L8053",
       "weight": 0.8
     },
     {
@@ -369894,7 +369894,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6638",
+      "source_location": "L6641",
       "weight": 0.8
     },
     {
@@ -369906,7 +369906,7 @@
       "confidence_score": 0.95,
       "context": "parameter_type",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6639",
+      "source_location": "L6642",
       "weight": 0.8
     },
     {
@@ -372410,7 +372410,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6720",
+      "source_location": "L6723",
       "weight": 0.8
     },
     {
@@ -372520,7 +372520,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7881",
+      "source_location": "L7890",
       "weight": 0.8
     },
     {
@@ -372641,7 +372641,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7305",
+      "source_location": "L7314",
       "weight": 0.8
     },
     {
@@ -372652,7 +372652,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7306",
+      "source_location": "L7315",
       "weight": 0.8
     },
     {
@@ -372663,7 +372663,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7329",
+      "source_location": "L7338",
       "weight": 0.8
     },
     {
@@ -372707,7 +372707,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6903",
+      "source_location": "L6906",
       "weight": 0.8
     },
     {
@@ -372718,7 +372718,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7027",
+      "source_location": "L7030",
       "weight": 0.8
     },
     {
@@ -372729,7 +372729,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6794",
+      "source_location": "L6797",
       "weight": 0.8
     },
     {
@@ -372740,7 +372740,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8023",
+      "source_location": "L8032",
       "weight": 0.8
     },
     {
@@ -372795,7 +372795,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7433",
+      "source_location": "L7442",
       "weight": 0.8
     },
     {
@@ -372806,7 +372806,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7570",
+      "source_location": "L7579",
       "weight": 0.8
     },
     {
@@ -372828,7 +372828,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8608",
+      "source_location": "L8617",
       "weight": 0.8
     },
     {
@@ -372839,7 +372839,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8618",
+      "source_location": "L8627",
       "weight": 0.8
     },
     {
@@ -372850,7 +372850,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8725",
+      "source_location": "L8734",
       "weight": 0.8
     },
     {
@@ -372861,7 +372861,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8735",
+      "source_location": "L8744",
       "weight": 0.8
     },
     {
@@ -372872,7 +372872,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7646",
+      "source_location": "L7655",
       "weight": 0.8
     },
     {
@@ -372883,7 +372883,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L7912",
+      "source_location": "L7921",
       "weight": 0.8
     },
     {
@@ -372894,7 +372894,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L8043",
+      "source_location": "L8052",
       "weight": 0.8
     },
     {
@@ -373048,7 +373048,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py",
-      "source_location": "L6640",
+      "source_location": "L6643",
       "weight": 0.8
     },
     {
@@ -374527,5 +374527,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "41bb692dd82b5427f287bba36a2e1af8df3d765f"
+  "built_at_commit": "e6321fba08e24b2295a97df5c8902453fca7be91"
 }

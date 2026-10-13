@@ -1,16 +1,16 @@
 # Graph Report - stream_of_worship  (2026-10-13)
 
 ## Corpus Check
-- 919 files · ~786,997 words
+- 919 files · ~787,016 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 10630 nodes · 21610 edges · 480 communities (382 shown, 98 thin omitted)
+- 10630 nodes · 21610 edges · 478 communities (381 shown, 97 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 916 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `41bb692d`
+- Built from commit: `e6321fba`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -130,7 +130,6 @@
 - useConnectivity.ts
 - MvsepClient
 - gen_lrc_qwen3_asr_mvsep.py
-- OnnxAsrPipeline
 - EditorState
 - Analysis Service - Developer Guide
 - CatalogIndex
@@ -464,7 +463,6 @@
   updateUser,
   sendVerificationEmail: requestVerificationEmail,
 }
-- .on_resize
 - LRCEditorScreen
 - ComponentEditorState
 - sow_render_worker/audio_engine.py
@@ -503,7 +501,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (480 total, 98 thin omitted)
+## Communities (478 total, 97 thin omitted)
 
 ### Community 0 - "SongsetEditor.tsx"
 Cohesion: 0.08
@@ -615,7 +613,7 @@ Nodes (58): main(), LangGraph state schema., DraftItem, JudgeItem, JudgeRanking,
 
 ### Community 27 - "Playlist"
 Cohesion: 0.04
-Nodes (33): Playlist, PlaylistItem, Path, Playlist data models for multi-song support., A complete playlist containing multiple songs and transitions., A single item in a playlist (song + transition to next)., Get total playlist duration in seconds., Get number of songs in playlist. (+25 more)
+Nodes (35): Playlist, PlaylistItem, Path, Playlist data models for multi-song support., Create from dictionary., A complete playlist containing multiple songs and transitions., A single item in a playlist (song + transition to next)., Get total playlist duration in seconds. (+27 more)
 
 ### Community 28 - "RenderViewModel"
 Cohesion: 0.18
@@ -918,8 +916,8 @@ Cohesion: 0.07
 Nodes (11): Navigator, Presentation, PresentationAvailability, PresentationCommand, PresentationConnection, PresentationConnectionAvailableEvent, PresentationConnectionList, PresentationMediaStatus (+3 more)
 
 ### Community 103 - "gen_lrc_qwen3_asr_onnx.py"
-Cohesion: 0.10
-Nodes (34): cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), download_onnx_model(), _is_filler(), load_cached_transcription() (+26 more)
+Cohesion: 0.07
+Nodes (44): cache_file_name(), canonical_line_snap(), _combined_score(), compute_params_hash(), detect_chinese_script(), download_onnx_model(), _is_filler(), load_cached_transcription() (+36 more)
 
 ### Community 104 - "analyze_sections.py"
 Cohesion: 0.11
@@ -946,8 +944,8 @@ Cohesion: 0.03
 Nodes (107): delete_song(), _delete_song_single(), _delete_songs_batch(), edit_song(), _extract_series_sort_key(), insert_song(), list_songs(), _print_duplicate_guidance() (+99 more)
 
 ### Community 110 - "TransitionBuilderApp"
-Cohesion: 0.09
-Nodes (18): Transition data models., Format generated time as HH:MM:SS., Return status indicator., Represents a generated transition with metadata and parameters., Format for display in history list., TransitionRecord, ActiveScreen, GenerationMode (+10 more)
+Cohesion: 0.10
+Nodes (17): Format generated time as HH:MM:SS., Return status indicator., Represents a generated transition with metadata and parameters., Format for display in history list., TransitionRecord, ActiveScreen, GenerationMode, PlaybackState (+9 more)
 
 ### Community 111 - "workers/components.py"
 Cohesion: 0.07
@@ -964,10 +962,6 @@ Nodes (29): Analysis service external integrations., _is_quota_exhausted(), Mvse
 ### Community 114 - "gen_lrc_qwen3_asr_mvsep.py"
 Cohesion: 0.13
 Nodes (26): call_qwen3_asr(), _call_qwen3_asr_filetrans(), canonical_line_snap(), detect_chinese_script(), extract_segments(), _extract_segments_filetrans(), _find_local_dry_vocals(), main() (+18 more)
-
-### Community 115 - "OnnxAsrPipeline"
-Cohesion: 0.18
-Nodes (10): OnnxAsrPipeline, ndarray, Load and preprocess audio file. Args: audio_path: Path to audio file Returns:…, Run encoder on audio. Args: audio: Audio waveform Returns: Encoder hidden states, Prepare inputs for encoder. Args: audio: Audio waveform Returns: Dictionary of…, Generate tokens using decoder. Args: encoder_hidden_states: Encoder outputs…, Transcribe audio file. Args: audio_path: Path to audio file language: Target…, Create rough segments by splitting text on punctuation. Since ONNX model… (+2 more)
 
 ### Community 116 - "EditorState"
 Cohesion: 0.12
@@ -1126,8 +1120,8 @@ Cohesion: 0.25
 Nodes (9): backup_r2(), _configure_r2_backup_debug_logging(), Console, Attach a DEBUG-level stderr handler to the r2_backup module logger. Idempotent:…, Backup entire R2 bucket to a local directory with chunked tar archives., parse_size(), range_get_throughput_diag(), Parse a human-readable size string into bytes. Supports binary suffixes (KiB,… (+1 more)
 
 ### Community 155 - "PlaylistMetadata"
-Cohesion: 0.17
-Nodes (7): PlaylistMetadata, Create from dictionary., Initialize default values., Metadata about a playlist., Format duration as MM:SS or HH:MM:SS., Format song count display., Convert to dictionary.
+Cohesion: 0.20
+Nodes (6): PlaylistMetadata, Initialize default values., Metadata about a playlist., Format duration as MM:SS or HH:MM:SS., Format song count display., Convert to dictionary.
 
 ### Community 156 - "sow_analysis/logging_config.py"
 Cohesion: 0.21
@@ -1874,8 +1868,8 @@ Cohesion: 0.06
 Nodes (33): AndroidArtifactDownloadScheduler, ArtifactDownloadScheduler, ArtifactDownloadCoordinator, OfflineArtifactMetadata, ArtifactDownloadRequest, ArtifactDownloadScheduler, canonicalTitle(), OfflineArtifactKind (+25 more)
 
 ### Community 469 - "LRCEditorScreen"
-Cohesion: 0.10
-Nodes (9): LRCEditorScreen, LyricLineTable, Path, RowHighlighted, Lyrics table with preview-aware row navigation., Main interactive LRC editor screen. Provides: - Main lyrics preview area…, Update the lyric banner for preview, where -1 means blank before line 1., Find the lyric line index for the current playback position. (+1 more)
+Cohesion: 0.09
+Nodes (10): LRCEditorScreen, LyricLineTable, Path, Resize, RowHighlighted, Lyrics table with preview-aware row navigation., Main interactive LRC editor screen. Provides: - Main lyrics preview area…, Update the lyric banner for preview, where -1 means blank before line 1. (+2 more)
 
 ### Community 489 - "ComponentEditorState"
 Cohesion: 0.06
@@ -1916,7 +1910,7 @@ Nodes (6): download_files(), extract_vocals_two_stage_mvsep(), main(), poll_job(
 ## Knowledge Gaps
 - **1533 isolated node(s):** `Debug`, `Staging`, `Release`, `Unknown`, `Unrendered` (+1528 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **98 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **97 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
