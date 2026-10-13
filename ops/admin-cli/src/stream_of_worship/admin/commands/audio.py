@@ -338,6 +338,22 @@ def _colorize_visibility(visibility: Optional[str]) -> str:
         return "[dim]·[/dim]"
 
 
+def _format_lrc_source(lrc_source: Optional[str]) -> str:
+    """Map recordings.lrc_source provenance to a human-friendly label."""
+    mapping = {
+        "youtube_transcript": "YouTube transcript",
+        "qwen3_asr": "Qwen3 ASR",
+        "whisper_asr": "Whisper ASR",
+        "forced_alignment": "Forced alignment",
+        "manual_upload": "Manual upload",
+        "llm_edit": "LLM edit",
+        "r2_preexisting": "R2 pre-existing",
+    }
+    if lrc_source is None:
+        return "- unknown (legacy) -"
+    return mapping.get(lrc_source, lrc_source)
+
+
 def _read_albums_from_file(path: Path) -> list[str]:
     """Read album name filters from a file, one per line.
 
@@ -1809,6 +1825,7 @@ def show_recording(
     info_lines.append(f"[cyan]LRC Status:[/cyan] {recording.lrc_status}")
     if recording.lrc_job_id:
         info_lines.append(f"[cyan]LRC Job:[/cyan] {recording.lrc_job_id}")
+    info_lines.append(f"[cyan]LRC Source:[/cyan] {_format_lrc_source(recording.lrc_source)}")
     info_lines.append(
         f"[cyan]Visibility:[/cyan] {_colorize_visibility(recording.visibility_status)}"
     )
