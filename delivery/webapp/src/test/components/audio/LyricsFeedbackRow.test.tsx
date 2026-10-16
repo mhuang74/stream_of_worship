@@ -280,4 +280,105 @@ describe("LyricsFeedbackRow", () => {
     expect(screen.getByText(/歌詞缺失/)).toBeInTheDocument();
     expect(screen.queryByText(/時間軸不對/)).not.toBeInTheDocument();
   });
+
+  // -- note editor ------------------------------------------------------------
+
+  it("(n) sad active shows add-details toggle; happy active does not", () => {
+    mockUseLyricsFeedback.mockReturnValue({
+      feedback: { rating: "sad", reason: "timing", note: null },
+      loading: false,
+      submit: vi.fn(),
+      retract: vi.fn(),
+    });
+
+    const { unmount } = render(
+      <LyricsFeedbackRow recordingContentHash={recordingHash} situation="synced" />
+    );
+    expect(screen.getByTestId("lyrics-feedback-add-note")).toBeInTheDocument();
+    unmount();
+
+    mockUseLyricsFeedback.mockReturnValue({
+      feedback: { rating: "happy", reason: null, note: null },
+      loading: false,
+      submit: vi.fn(),
+      retract: vi.fn(),
+    });
+    render(<LyricsFeedbackRow recordingContentHash={recordingHash} situation="synced" />);
+    expect(screen.queryByTestId("lyrics-feedback-add-note")).not.toBeInTheDocument();
+  });
+
+  it("(o) opening editor and saving PUTs the note with the existing reason", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    mockUseLyricsFeedback.mockReturnValue({
+      feedback: { rating: "sad", reason: "timing", note: null },
+      loading: false,
+      submit,
+      retract: vi.fn(),
+    });
+
+    render(<LyricsFeedbackRow recordingContentHash={recordingHash} situation="synced" />);
+    fireEvent.click(screen.getByTestId("lyrics-feedback-add-note"));
+
+    const textarea = screen.getByTestId("lyrics-feedback-note-textarea");
+    fireEvent.change(textarea, { target: { value: "line 3 is off by a beat" } });
+    fireEvent.click(screen.getByTestId("lyrics-feedback-note-save"));
+
+    await waitFor(() =>
+      expect(submit).toHaveBeenCalledWith("sad", "timing", "line 3 is off by a beat")
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("lyrics-feedback-note-editor")).not.toBeInTheDocument()
+    );
+  });
+
+  it("(o2) existing note renders as a truncated preview button that opens the editor prefilled", () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    mockUseLyricsFeedback.mockReturnValue({
+      feedback: { rating: "sad", reason: "timing", note: "line 3 is off by a beat" },
+      loading: false,
+      submit,
+      retract: vi.fn(),
+    });
+
+    render(<LyricsFeedbackRow recordingContentHash={recordingHash} situation="synced" />);
+    expect(screen.queryByTestId("lyrics-feedback-add-note")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("lyrics-feedback-note-preview"));
+    expect(
+      (screen.getByTestId("lyrics-feedback-note-textarea") as HTMLTextAreaElement).value
+    ).toBe("line 3 is off by a beat");
+  });
+
+  it("(o3) saving an empty note submits empty string so the route clears it", async () => {
+    const submit = vi.fn().mockResolvedValue(true);
+    mockUseLyricsFeedback.mockReturnValue({
+      feedback: { rating: "sad", reason: "timing", note: null },
+      loading: false,
+      submit,
+      retract: vi.fn(),
+    });
+
+    render(<LyricsFeedbackRow recordingContentHash={recordingHash} situation="synced" />);
+    fireEvent.click(screen.getByTestId("lyrics-feedback-add-note"));
+    fireEvent.click(screen.getByTestId("lyrics-feedback-note-save"));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith("sad", "timing", ""));
+  });
+
+  it("(o4) retracting sad closes the note editor", () => {
+    const retract = vi.fn().mockResolvedValue(true);
+    mockUseLyricsFeedback.mockReturnValue({
+      feedback: { rating: "sad", reason: "timing", note: null },
+      loading: false,
+      submit: vi.fn(),
+      retract,
+    });
+
+    render(<LyricsFeedbackRow recordingContentHash={recordingHash} situation="synced" />);
+    fireEvent.click(screen.getByTestId("lyrics-feedback-add-note"));
+    expect(screen.getByTestId("lyrics-feedback-note-editor")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /report a problem/i }));
+    expect(screen.queryByTestId("lyrics-feedback-note-editor")).not.toBeInTheDocument();
+  });
 });

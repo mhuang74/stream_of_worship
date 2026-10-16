@@ -33,6 +33,25 @@ EXPECTED_TABLES = {
 
 @pytest.mark.integration
 class TestFullSchemaInit:
+    def test_lyrics_feedback_note_column_created(self, postgres_url):
+        """The note ALTER ships in ALL_SCHEMA_STATEMENTS (issue #194 note)."""
+        provider = ConnectionProvider(postgres_url, sslmode="disable")
+        conn = provider.get_connection()
+
+        with conn.cursor() as cur:
+            for stmt in ALL_SCHEMA_STATEMENTS:
+                cur.execute(stmt)
+
+            cur.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'lyrics_feedback' AND column_name = 'note'
+                """
+            )
+            assert cur.fetchone(), "lyrics_feedback.note column missing after bootstrap"
+
+        conn.rollback()
+
     def test_all_tables_created(self, postgres_url):
         """Running ALL_SCHEMA_STATEMENTS creates every expected table."""
         provider = ConnectionProvider(postgres_url, sslmode="disable")

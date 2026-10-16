@@ -432,7 +432,8 @@ export const lyricMarks = pgTable(
 // lyrics_feedback: per-user Lyrics Feedback on a Recording (issue #194).
 // Advisory signal for admins curating canonical Lyrics (ADR 0007): nothing
 // but an admin action writes resolved_at. One row per user per Recording;
-// re-submitting the same rating retracts, switching overwrites.
+// re-submitting the same rating retracts, switching overwrites. `note` is
+// optional free-text detail, only meaningful for sad rows.
 export const lyricsFeedback = pgTable(
   "lyrics_feedback",
   {
@@ -445,6 +446,7 @@ export const lyricsFeedback = pgTable(
       .references(() => recordings.contentHash, { onDelete: "cascade" }),
     rating: text("rating").notNull(),
     reason: text("reason"),
+    note: text("note"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -150,83 +150,118 @@ describe("validateFeedbackSubmission", () => {
   const none = { kind: "none" } as const;
 
   it("happy accepted when synced lyrics exist", () => {
-    const result = validateFeedbackSubmission("happy", undefined, synced);
+    const result = validateFeedbackSubmission("happy", undefined, undefined, synced);
     expect(result.valid).toBe(true);
   });
 
   it("happy accepted when unsynced lyrics exist", () => {
-    const result = validateFeedbackSubmission("happy", undefined, unsynced);
+    const result = validateFeedbackSubmission("happy", undefined, undefined, unsynced);
     expect(result.valid).toBe(true);
   });
 
   it("happy rejected when no lyrics", () => {
-    const result = validateFeedbackSubmission("happy", undefined, none);
+    const result = validateFeedbackSubmission("happy", undefined, undefined, none);
     expect(result.valid).toBe(false);
   });
 
   it("sad+missing rejected when synced lyrics exist", () => {
-    const result = validateFeedbackSubmission("sad", "missing", synced);
+    const result = validateFeedbackSubmission("sad", "missing", undefined, synced);
     expect(result.valid).toBe(false);
   });
 
   it("sad+missing accepted when unsynced-only", () => {
-    const result = validateFeedbackSubmission("sad", "missing", unsynced);
+    const result = validateFeedbackSubmission("sad", "missing", undefined, unsynced);
     expect(result.valid).toBe(true);
   });
 
   it("sad+missing accepted when no lyrics", () => {
-    const result = validateFeedbackSubmission("sad", "missing", none);
+    const result = validateFeedbackSubmission("sad", "missing", undefined, none);
     expect(result.valid).toBe(true);
   });
 
   it("sad+timing accepted when synced lyrics exist", () => {
-    const result = validateFeedbackSubmission("sad", "timing", synced);
+    const result = validateFeedbackSubmission("sad", "timing", undefined, synced);
     expect(result.valid).toBe(true);
   });
 
   it("sad+timing rejected when unsynced-only", () => {
-    const result = validateFeedbackSubmission("sad", "timing", unsynced);
+    const result = validateFeedbackSubmission("sad", "timing", undefined, unsynced);
     expect(result.valid).toBe(false);
   });
 
   it("sad+timing rejected when no lyrics", () => {
-    const result = validateFeedbackSubmission("sad", "timing", none);
+    const result = validateFeedbackSubmission("sad", "timing", undefined, none);
     expect(result.valid).toBe(false);
   });
 
   it("sad+wrong_text accepted in synced state", () => {
-    expect(validateFeedbackSubmission("sad", "wrong_text", synced).valid).toBe(true);
+    expect(validateFeedbackSubmission("sad", "wrong_text", undefined, synced).valid).toBe(true);
   });
 
   it("sad+wrong_text accepted in unsynced state", () => {
-    expect(validateFeedbackSubmission("sad", "wrong_text", unsynced).valid).toBe(true);
+    expect(validateFeedbackSubmission("sad", "wrong_text", undefined, unsynced).valid).toBe(true);
   });
 
   it("sad+wrong_text accepted in none state", () => {
-    expect(validateFeedbackSubmission("sad", "wrong_text", none).valid).toBe(true);
+    expect(validateFeedbackSubmission("sad", "wrong_text", undefined, none).valid).toBe(true);
   });
 
   it("sad+other accepted in synced state", () => {
-    expect(validateFeedbackSubmission("sad", "other", synced).valid).toBe(true);
+    expect(validateFeedbackSubmission("sad", "other", undefined, synced).valid).toBe(true);
   });
 
   it("sad+other accepted in none state", () => {
-    expect(validateFeedbackSubmission("sad", "other", none).valid).toBe(true);
+    expect(validateFeedbackSubmission("sad", "other", undefined, none).valid).toBe(true);
   });
 
   it("happy with a reason is invalid (reason must be null for happy)", () => {
-    expect(validateFeedbackSubmission("happy", "timing", synced).valid).toBe(false);
+    expect(validateFeedbackSubmission("happy", "timing", undefined, synced).valid).toBe(false);
   });
 
   it("sad without a reason is invalid (reason must be non-null for sad)", () => {
-    expect(validateFeedbackSubmission("sad", undefined, synced).valid).toBe(false);
+    expect(validateFeedbackSubmission("sad", undefined, undefined, synced).valid).toBe(false);
   });
 
   it("unknown rating is invalid", () => {
-    expect(validateFeedbackSubmission("meh", undefined, synced).valid).toBe(false);
+    expect(validateFeedbackSubmission("meh", undefined, undefined, synced).valid).toBe(false);
   });
 
   it("unknown reason is invalid", () => {
-    expect(validateFeedbackSubmission("sad", "shouting", synced).valid).toBe(false);
+    expect(validateFeedbackSubmission("sad", "shouting", undefined, synced).valid).toBe(false);
+  });
+
+  it("sad with a non-empty note is valid", () => {
+    expect(validateFeedbackSubmission("sad", "timing", "line 3 off", synced).valid).toBe(true);
+  });
+
+  it("sad with empty note is valid (normalized to null by the route)", () => {
+    expect(validateFeedbackSubmission("sad", "timing", "   ", synced).valid).toBe(true);
+  });
+
+  it("sad with undefined or null note is valid", () => {
+    expect(validateFeedbackSubmission("sad", "timing", undefined, synced).valid).toBe(true);
+    expect(validateFeedbackSubmission("sad", "timing", null, synced).valid).toBe(true);
+  });
+
+  it("non-string note is invalid", () => {
+    expect(validateFeedbackSubmission("sad", "timing", 123, synced).valid).toBe(false);
+  });
+
+  it("note over 2000 chars after trim is invalid", () => {
+    expect(
+      validateFeedbackSubmission("sad", "timing", "x".repeat(2001), synced).valid
+    ).toBe(false);
+    // exactly 2000 after trimming surrounding whitespace is fine
+    expect(
+      validateFeedbackSubmission("sad", "timing", `  ${"x".repeat(2000)}  `, synced).valid
+    ).toBe(true);
+  });
+
+  it("happy with a non-empty note is invalid", () => {
+    expect(validateFeedbackSubmission("happy", undefined, "oops", synced).valid).toBe(false);
+  });
+
+  it("happy with an empty note is valid", () => {
+    expect(validateFeedbackSubmission("happy", undefined, "  ", synced).valid).toBe(true);
   });
 });

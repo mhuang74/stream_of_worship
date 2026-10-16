@@ -13,7 +13,7 @@ import {
 } from "@/lib/lyrics/situation";
 
 export interface LyricsFeedbackResponse {
-  feedback: { rating: string; reason: string | null } | null;
+  feedback: { rating: string; reason: string | null; note: string | null } | null;
 }
 
 export async function GET(
@@ -36,7 +36,7 @@ export async function GET(
     });
 
     return NextResponse.json<LyricsFeedbackResponse>({
-      feedback: row ? { rating: row.rating, reason: row.reason } : null,
+      feedback: row ? { rating: row.rating, reason: row.reason, note: row.note } : null,
     });
   } catch (error) {
     console.error("Error fetching lyrics feedback:", error);
@@ -66,13 +66,14 @@ export async function PUT(
       return NextResponse.json({ error: "Request body must be valid JSON" }, { status: 400 });
     }
 
-    const { rating, reason } = (body ?? {}) as {
+    const { rating, reason, note } = (body ?? {}) as {
       rating?: unknown;
       reason?: unknown;
+      note?: unknown;
     };
 
     const situation = await resolveLyricsSituation(recordingContentHash);
-    const validation = validateFeedbackSubmission(rating, reason ?? null, situation);
+    const validation = validateFeedbackSubmission(rating, reason ?? null, note, situation);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
@@ -80,6 +81,10 @@ export async function PUT(
     const resolvedRating = rating as FeedbackRating;
     const resolvedReason =
       resolvedRating === "sad" ? (reason as FeedbackReason) : null;
+    const resolvedNote =
+      resolvedRating === "sad" && typeof note === "string" && note.trim() !== ""
+        ? note.trim()
+        : null;
 
     await db
       .insert(lyricsFeedback)
@@ -89,18 +94,20 @@ export async function PUT(
         recordingContentHash,
         rating: resolvedRating,
         reason: resolvedReason,
+        note: resolvedNote,
       })
       .onConflictDoUpdate({
         target: [lyricsFeedback.userId, lyricsFeedback.recordingContentHash],
         set: {
           rating: resolvedRating,
           reason: resolvedReason,
+          note: resolvedNote,
           updatedAt: new Date(),
         },
       });
 
     return NextResponse.json<LyricsFeedbackResponse>({
-      feedback: { rating: resolvedRating, reason: resolvedReason },
+      feedback: { rating: resolvedRating, reason: resolvedReason, note: resolvedNote },
     });
   } catch (error) {
     console.error("Error saving lyrics feedback:", error);
