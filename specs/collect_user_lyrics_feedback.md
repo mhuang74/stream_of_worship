@@ -84,7 +84,7 @@ The Lyrics pull-up gains a lightweight one-tap feedback affordance: a happy face
 - Android app feedback UI (the JSON API shape is client-agnostic so Android can adopt later).
 - Aggregate displays ("N users reported this") anywhere in the UI.
 - Any coupling between feedback and the pipeline: status flips, auto-resolve on regeneration (ADR 0007).
-- Free-text comments or notes on feedback.
+- Free-text comments or notes on feedback (superseded later: an optional `note` column on `lyrics_feedback` — sad rows only, shown in `lyrics feedback list`/`show` — was added after this spec was written).
 - Capturing playback position with a report.
 - Renaming the legacy `user_lrc_override` table to match the glossary.
 

@@ -50,6 +50,8 @@ export function LyricsFeedbackRow({
   const { t } = useLocale();
   const { feedback, submit, retract } = useLyricsFeedback(recordingContentHash);
   const [sadExpanded, setSadExpanded] = useState(false);
+  const [noteEditorOpen, setNoteEditorOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
 
   const happyActive = feedback?.rating === "happy";
   const sadActive = feedback?.rating === "sad";
@@ -59,11 +61,26 @@ export function LyricsFeedbackRow({
       if (!ok) toast.error(t("audio.feedback.saveFailed"));
     });
 
+  const openNoteEditor = () => {
+    setNoteDraft(feedback?.note ?? "");
+    setNoteEditorOpen(true);
+  };
+
+  const handleSaveNote = () => {
+    runFeedback(
+      submit("sad", feedback?.reason ?? undefined, noteDraft).then((ok) => {
+        if (ok) setNoteEditorOpen(false);
+        return ok;
+      })
+    );
+  };
+
   const handleHappy = () => {
     if (happyActive) {
       runFeedback(retract());
     } else {
       setSadExpanded(false);
+      setNoteEditorOpen(false);
       runFeedback(submit("happy"));
     }
   };
@@ -72,6 +89,7 @@ export function LyricsFeedbackRow({
     if (sadActive) {
       runFeedback(retract());
       setSadExpanded(false);
+      setNoteEditorOpen(false);
     } else {
       setSadExpanded((open) => !open);
     }
@@ -118,6 +136,61 @@ export function LyricsFeedbackRow({
       >
         <Frown className={cn("size-4", sadActive && "fill-current/35")} aria-hidden="true" />
       </button>
+      {sadActive && !noteEditorOpen && (
+        feedback?.note ? (
+          <button
+            type="button"
+            onClick={openNoteEditor}
+            data-testid="lyrics-feedback-note-preview"
+            className="max-w-48 truncate rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            title={feedback.note}
+          >
+            {feedback.note}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={openNoteEditor}
+            data-testid="lyrics-feedback-add-note"
+            className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            {t("audio.feedback.addNote")}
+          </button>
+        )
+      )}
+      {sadActive && noteEditorOpen && (
+        <div
+          className="flex flex-col gap-1.5"
+          data-testid="lyrics-feedback-note-editor"
+        >
+          <textarea
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            rows={2}
+            maxLength={2000}
+            placeholder={t("audio.feedback.notePlaceholder")}
+            data-testid="lyrics-feedback-note-textarea"
+            className="w-64 rounded-md border border-border bg-transparent px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setNoteEditorOpen(false)}
+              className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            >
+              {t("control.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveNote}
+              data-testid="lyrics-feedback-note-save"
+              className="rounded-full border border-border bg-primary/10 px-2.5 py-0.5 text-xs text-primary hover:bg-accent hover:text-accent-foreground transition-colors"
+            >
+              {t("audio.feedback.saveNote")}
+            </button>
+          </div>
+        </div>
+      )}
       {sadExpanded && (
         <div className="flex items-center gap-1.5">
           {chips.map((chip) => (

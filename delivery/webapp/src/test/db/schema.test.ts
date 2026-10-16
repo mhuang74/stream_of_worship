@@ -195,6 +195,7 @@ describe("schema: per-user data tables", () => {
         "recording_content_hash",
         "rating",
         "reason",
+        "note",
         "resolved_at",
         "created_at",
         "updated_at",

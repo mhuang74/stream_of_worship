@@ -8,6 +8,7 @@ export type FeedbackReason = "missing" | "timing" | "wrong_text" | "other";
 export interface LyricsFeedbackState {
   rating: FeedbackRating;
   reason: FeedbackReason | null;
+  note: string | null;
 }
 
 export interface LyricsFeedbackResult {
@@ -15,7 +16,11 @@ export interface LyricsFeedbackResult {
   feedback: LyricsFeedbackState | null;
   loading: boolean;
   /** Upsert feedback; on success reflects the server's response. */
-  submit: (rating: FeedbackRating, reason?: FeedbackReason) => Promise<boolean>;
+  submit: (
+    rating: FeedbackRating,
+    reason?: FeedbackReason,
+    note?: string
+  ) => Promise<boolean>;
   /** Delete the caller's feedback row. */
   retract: () => Promise<boolean>;
 }
@@ -90,20 +95,25 @@ export function useLyricsFeedback(recordingContentHash: string | undefined): Lyr
   }, [recordingContentHash]);
 
   const submit = useCallback(
-    async (rating: FeedbackRating, reason?: FeedbackReason): Promise<boolean> => {
+    async (rating: FeedbackRating, reason?: FeedbackReason, note?: string): Promise<boolean> => {
       if (!recordingContentHash) return false;
       const hash = recordingContentHash;
       const previous = feedbackRef.current;
       const optimistic: LyricsFeedbackState = {
         rating,
         reason: rating === "sad" ? (reason ?? null) : null,
+        note: rating === "sad" ? (note ?? null) : null,
       };
       setLoad({ hash, feedback: optimistic });
       try {
         const res = await fetch(`/api/lyrics/feedback/${hash}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rating, reason: optimistic.reason ?? undefined }),
+          body: JSON.stringify({
+            rating,
+            reason: optimistic.reason ?? undefined,
+            note: optimistic.note ?? "",
+          }),
         });
         if (!res.ok) throw new Error(`PUT feedback failed: ${res.status}`);
         const data = (await res.json()) as { feedback: LyricsFeedbackState | null };

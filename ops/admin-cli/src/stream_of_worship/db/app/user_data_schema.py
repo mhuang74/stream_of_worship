@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS lyrics_feedback (
 );
 """
 
+# ``CREATE TABLE IF NOT EXISTS`` is a no-op on databases the webapp already
+# migrated, so column additions ship as separate ALTER statements.
+CREATE_LYRICS_FEEDBACK_NOTE_COLUMN = (
+    "ALTER TABLE lyrics_feedback ADD COLUMN IF NOT EXISTS note TEXT;"
+)
+
 # Per-user favorite songs. Owned by the webapp Drizzle schema
 # (delivery/webapp/drizzle/0020_typical_nicolaos.sql); mirrored here so the
 # admin schema bootstrap brings up the same table — the LRC review queue
@@ -130,6 +136,7 @@ ALL_USER_DATA_SCHEMA_STATEMENTS = [
     CREATE_USER_LRC_OVERRIDE_TABLE,
     CREATE_LYRIC_MARK_TABLE,
     CREATE_LYRICS_FEEDBACK_TABLE,
+    CREATE_LYRICS_FEEDBACK_NOTE_COLUMN,
     CREATE_USER_FAVORITES_TABLE,
     CREATE_SONGSET_SHARE_TABLE,
     *CREATE_USER_DATA_INDEXES,

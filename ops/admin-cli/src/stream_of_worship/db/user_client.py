@@ -183,7 +183,7 @@ class UserClient:
             ),
             "lyrics_feedback": (
                 """
-                SELECT id, rating, reason, created_at
+                SELECT id, rating, reason, note, created_at
                 FROM lyrics_feedback WHERE user_id = %s ORDER BY created_at
                 """,
                 (user_id,),

@@ -734,3 +734,118 @@ def _seed_data_provider(make_test_provider):
     provider = make_test_provider()
     _seed_data(provider)
     return provider
+
+
+def _seed_note(provider, feedback_id: str, note: str | None) -> None:
+    conn = provider.get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE lyrics_feedback SET note = %s WHERE id = %s", (note, feedback_id)
+        )
+    conn.commit()
+
+
+@pytest.mark.integration
+class TestLyricsFeedbackNotesColumn:
+    """Tests for the open_notes column and `feedback show` (note feature)."""
+
+    def test_list_shows_notes_count_for_row_with_note(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        _seed_note(provider, "fb-1", "line 3 is off by a beat")
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "📝1" in result.output
+        _drop_all_tables(make_test_provider)
+
+    def test_list_blank_notes_without_note_rows(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "📝" not in result.output
+        _drop_all_tables(make_test_provider)
+
+    def test_show_lists_open_rows_with_full_note(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        _seed_note(
+            provider, "fb-2", "a note long enough that it would be truncated: " + "x" * 120
+        )
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "show", "hash-aaaaaaaaaaaaaaaa", "--config", str(config_path)],
+            env={"COLUMNS": "300"},
+        )
+        assert result.exit_code == 0, result.output
+        # Only open rows for the recording: fb-1, fb-2, fb-3 (fb-4 resolved).
+        assert "u1@example.com" in result.output
+        assert "u2@example.com" in result.output
+        assert "u3@example.com" in result.output
+        assert "u4@example.com" not in result.output
+        # Full note text, no truncation.
+        assert "x" * 120 in result.output
+        assert "👎" in result.output
+        _drop_all_tables(make_test_provider)
+
+    def test_show_all_includes_resolved(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "show", "hash-aaaaaaaaaaaaaaaa", "--all", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "u4@example.com" in result.output
+        _drop_all_tables(make_test_provider)
+
+    def test_show_unknown_target_errors(self, make_test_provider, postgres_url, tmp_path):
+        _init_schema(make_test_provider)
+        _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "show", "does-not-exist", "--config", str(config_path)],
+        )
+        assert result.exit_code != 0
+        _drop_all_tables(make_test_provider)
+
+    def test_show_no_rows_prints_friendly_message(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "show", "hash-bbbbbbbbbbbbbbbb", "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+        _drop_all_tables(make_test_provider)
