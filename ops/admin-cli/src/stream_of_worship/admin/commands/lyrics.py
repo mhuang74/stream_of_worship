@@ -307,45 +307,107 @@ def _set_resolved(
     return affected
 
 
+def _run_bulk_set_resolved(
+    provider: ConnectionProvider,
+    targets: list[str],
+    resolved: bool,
+) -> int:
+    """Resolve/unresolve open feedback for each target; per-target report; count failures.
+
+    The caller owns the provider and must close it (also on the error path);
+    this helper intentionally leaves it open so subsequent targets proceed.
+    """
+    failures = 0
+    verb = "Resolved" if resolved else "Unresolved"
+    for target in targets:
+        try:
+            affected = _set_resolved(provider, target, resolved=resolved)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            failures += 1
+            continue
+        console.print(f"[green]{verb} {affected} feedback row(s) for {target}.[/green]")
+    return failures
+
+
 @feedback_app.command("resolve")
 def feedback_resolve(
-    target: str = typer.Argument(
-        ..., help="Recording content hash OR song id to resolve feedback for"
+    target: Optional[str] = typer.Argument(
+        None, help="Recording content hash OR song id to resolve feedback for"
+    ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read targets (song ids or content hashes) from stdin, one per line"
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
     """Mark all open feedback for a Recording (or Song) as resolved.
 
     Advisory only (ADR 0007): does not touch pipeline lrc_status.
+
+    For batch processing, pipe targets via stdin:
+        sow-admin lyrics feedback list --format ids | sow-admin lyrics feedback resolve --stdin
     """
+    if not target and not stdin:
+        console.print("[red]Error: Either provide a target argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+    if target and stdin:
+        console.print("[red]Error: Cannot use both target argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
     config = _load_connection_provider(config_path)
     provider = ConnectionProvider(config.get_connection_url())
     try:
-        affected = _set_resolved(provider, target, resolved=True)
-    except ValueError as e:
-        console.print(f"[red]{e}[/red]")
+        if stdin:
+            targets = read_song_ids_from_stdin()
+            if not targets:
+                console.print("[yellow]No targets provided via stdin[/yellow]")
+                raise typer.Exit(0)
+        else:
+            targets = [target]
+        failures = _run_bulk_set_resolved(provider, targets, resolved=True)
+    finally:
+        provider.close()
+    if failures:
         raise typer.Exit(1)
-    provider.close()
-    console.print(f"[green]Resolved {affected} feedback row(s) for {target}.[/green]")
 
 
 @feedback_app.command("unresolve")
 def feedback_unresolve(
-    target: str = typer.Argument(
-        ..., help="Recording content hash OR song id to unresolve feedback for"
+    target: Optional[str] = typer.Argument(
+        None, help="Recording content hash OR song id to unresolve feedback for"
+    ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read targets (song ids or content hashes) from stdin, one per line"
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
-    """Reopen (clear resolved_at on) feedback for a Recording (or Song)."""
+    """Reopen (clear resolved_at on) feedback for a Recording (or Song).
+
+    For batch processing, pipe targets via stdin:
+        sow-admin lyrics feedback list --format ids | sow-admin lyrics feedback unresolve --stdin
+    """
+    if not target and not stdin:
+        console.print("[red]Error: Either provide a target argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+    if target and stdin:
+        console.print("[red]Error: Cannot use both target argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
     config = _load_connection_provider(config_path)
     provider = ConnectionProvider(config.get_connection_url())
     try:
-        affected = _set_resolved(provider, target, resolved=False)
-    except ValueError as e:
-        console.print(f"[red]{e}[/red]")
+        if stdin:
+            targets = read_song_ids_from_stdin()
+            if not targets:
+                console.print("[yellow]No targets provided via stdin[/yellow]")
+                raise typer.Exit(0)
+        else:
+            targets = [target]
+        failures = _run_bulk_set_resolved(provider, targets, resolved=False)
+    finally:
+        provider.close()
+    if failures:
         raise typer.Exit(1)
-    provider.close()
-    console.print(f"[green]Unresolved {affected} feedback row(s) for {target}.[/green]")
 
 
 @app.command("generate")
