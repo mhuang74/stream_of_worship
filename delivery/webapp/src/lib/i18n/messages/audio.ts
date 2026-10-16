@@ -42,6 +42,10 @@ export const audioBundle = bundle({
     "audio.feedback.reasonWrongText": "Wrong text",
     "audio.feedback.reasonOther": "Other",
     "audio.feedback.saveFailed": "Couldn't save your feedback. Please try again.",
+    "audio.feedback.addNote": "Add details",
+    "audio.feedback.saveNote": "Save",
+    "audio.feedback.notePlaceholder":
+      "What's wrong? e.g. line 3 is off by a beat",
 
     // OfflineStatus — toasts
     "audio.offline.cachingNotAvailable": "Offline caching not available",
@@ -147,6 +151,9 @@ export const audioBundle = bundle({
     "audio.feedback.reasonWrongText": "文字有誤",
     "audio.feedback.reasonOther": "其他",
     "audio.feedback.saveFailed": "回應沒有送出，請再試一次",
+    "audio.feedback.addNote": "補充說明",
+    "audio.feedback.saveNote": "儲存",
+    "audio.feedback.notePlaceholder": "請描述問題，例如：第三句的時間點慢了半拍",
 
     // OfflineStatus — toasts
     "audio.offline.cachingNotAvailable": "這個瀏覽器不支援離線快取",

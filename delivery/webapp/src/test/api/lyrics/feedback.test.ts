@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, PUT, DELETE } from "@/app/api/lyrics/feedback/[recordingContentHash]/route";
-import { auth } from "@/lib/auth";
+import { auth, type Session } from "@/lib/auth";
 import { NextRequest } from "next/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -42,6 +42,8 @@ function mockResolveLyricsSituation(...args: unknown[]): unknown {
   return (globalThis as Record<string, unknown>).__mockResolveLyricsSituation?.(...args);
 }
 const sessionUser = { user: { id: 42 } };
+// The mock only needs the fields the route reads, not the full Session shape.
+const mockSession = sessionUser as unknown as Session;
 
 function makeRequest(
   contentHash: string,
@@ -114,7 +116,7 @@ describe("GET /api/lyrics/feedback/[recordingContentHash]", () => {
   });
 
   it("returns null feedback when none exists", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     mockFindFirst.mockResolvedValue(undefined);
 
     const res = await GET(makeRequest("hash123"), mockParams("hash123"));
@@ -124,7 +126,7 @@ describe("GET /api/lyrics/feedback/[recordingContentHash]", () => {
   });
 
   it("returns the caller's current feedback with rating and reason", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     mockFindFirst.mockResolvedValue({ rating: "sad", reason: "timing" });
 
     const res = await GET(makeRequest("hash123"), mockParams("hash123"));
@@ -134,7 +136,7 @@ describe("GET /api/lyrics/feedback/[recordingContentHash]", () => {
   });
 
   it("returns 500 on database error", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     mockFindFirst.mockRejectedValue(new Error("DB error"));
 
     const res = await GET(makeRequest("hash123"), mockParams("hash123"));
@@ -154,7 +156,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("happy accepted when synced lyrics exist → upserts row with null reason", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
     const { values, onConflictDoUpdate } = insertChain();
 
@@ -164,7 +166,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
     );
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.feedback).toEqual({ rating: "happy", reason: null });
+    expect(data.feedback).toEqual({ rating: "happy", reason: null, note: null });
     expect(values).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 42,
@@ -177,7 +179,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("happy rejected with 400 when no lyrics exist", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "none" });
 
     const res = await PUT(
@@ -190,7 +192,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("happy accepted when unsynced lyrics exist → upserts row with null reason", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "unsynced" });
     insertChain();
 
@@ -200,11 +202,11 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
     );
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.feedback).toEqual({ rating: "happy", reason: null });
+    expect(data.feedback).toEqual({ rating: "happy", reason: null, note: null });
   });
 
   it("sad+missing accepted when lyrics are unsynced-only", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "unsynced" });
     insertChain();
 
@@ -216,7 +218,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("sad+missing rejected with 400 when synced lyrics exist", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
 
     const res = await PUT(
@@ -229,7 +231,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("sad+timing rejected with 400 when no synced lyrics", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "none" });
 
     const res = await PUT(
@@ -240,7 +242,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("sad+timing accepted when synced lyrics exist", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
     insertChain();
 
@@ -252,7 +254,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("switch-overwrite: PUT sad+timing then PUT happy → latest opinion wins (upsert set carries updatedAt)", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
     const { onConflictDoUpdate } = insertChain();
 
@@ -268,7 +270,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
     );
     expect(second.status).toBe(200);
     const data = await second.json();
-    expect(data.feedback).toEqual({ rating: "happy", reason: null });
+    expect(data.feedback).toEqual({ rating: "happy", reason: null, note: null });
 
     // Second call still upserts (overwrite, not a new row), and the deploy
     // path has no updated_at trigger — the route must set it explicitly.
@@ -278,6 +280,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
         set: {
           rating: "happy",
           reason: null,
+          note: null,
           updatedAt: expect.any(Date),
         },
       })
@@ -285,7 +288,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("sad+wrong_text accepted in any state", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "none" });
     insertChain();
 
@@ -297,7 +300,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("sad+other accepted in any state", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "unsynced" });
     insertChain();
 
@@ -309,7 +312,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("invalid rating returns 400", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
 
     const res = await PUT(
@@ -320,7 +323,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("invalid reason value returns 400", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
 
     const res = await PUT(
@@ -331,7 +334,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("sad without reason returns 400", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
 
     const res = await PUT(
@@ -342,7 +345,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("happy with reason returns 400", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
 
     const res = await PUT(
@@ -352,8 +355,107 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
     expect(res.status).toBe(400);
   });
 
+  it("sad with note stores trimmed note and returns it", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
+    const { values, onConflictDoUpdate } = insertChain();
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "sad", reason: "timing", note: "  line 3 off by a beat  " }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.feedback).toEqual({ rating: "sad", reason: "timing", note: "line 3 off by a beat" });
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ note: "line 3 off by a beat" })
+    );
+    expect(onConflictDoUpdate).toHaveBeenCalled();
+  });
+
+  it("sad without note stores null note", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
+    const { values } = insertChain();
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "sad", reason: "other" }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.feedback).toEqual({ rating: "sad", reason: "other", note: null });
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ note: null }));
+  });
+
+  it("sad with whitespace-only note stores null", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
+    const { values } = insertChain();
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "sad", reason: "other", note: "   " }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.feedback).toEqual({ rating: "sad", reason: "other", note: null });
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ note: null }));
+  });
+
+  it("happy with note returns 400", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "happy", note: "should not be allowed" }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("non-string note returns 400", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "sad", reason: "other", note: 123 }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("note over 2000 chars returns 400", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
+
+    const res = await PUT(
+      makeRequest("hash123", "PUT", { rating: "sad", reason: "other", note: "x".repeat(2001) }),
+      mockParams("hash123")
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("GET returns the saved note", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    mockFindFirst.mockResolvedValue({
+      rating: "sad",
+      reason: "timing",
+      note: "line 3 off by a beat",
+    });
+
+    const res = await GET(makeRequest("hash123"), mockParams("hash123"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.feedback).toEqual({
+      rating: "sad",
+      reason: "timing",
+      note: "line 3 off by a beat",
+    });
+  });
+
   it("malformed JSON body returns 400", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     const url = "http://localhost/api/lyrics/feedback/hash123";
     const request = new Request(url, {
       method: "PUT",
@@ -368,7 +470,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("existing recording with no lyrics (situation none) allows sad+missing", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "none" });
     insertChain();
 
@@ -380,7 +482,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("unknown recording hash returns 400 recording not found", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockRecordingExists = vi.fn().mockResolvedValue(false);
 
     const res = await PUT(
@@ -393,7 +495,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
   });
 
   it("500 on database error", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     (globalThis as Record<string, unknown>).__mockResolveLyricsSituation = vi.fn().mockResolvedValue({ kind: "synced" });
     mockInsert.mockImplementation(() => {
       throw new Error("DB error");
@@ -418,7 +520,7 @@ describe("DELETE /api/lyrics/feedback/[recordingContentHash]", () => {
   });
 
   it("deletes the caller's row and returns success", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     const where = vi.fn().mockResolvedValue(undefined);
     mockDelete.mockReturnValue({ where });
 
@@ -430,7 +532,7 @@ describe("DELETE /api/lyrics/feedback/[recordingContentHash]", () => {
   });
 
   it("500 on database error", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
     mockDelete.mockImplementation(() => {
       throw new Error("DB error");
     });

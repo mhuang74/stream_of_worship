@@ -129,15 +129,30 @@ export async function recordingExists(recordingContentHash: string): Promise<boo
  * - missing accepted only when no parseable synced Lyrics;
  * - timing accepted only when parseable synced Lyrics exist;
  * - wrong_text / other accepted in any state;
- * - reason must be null for happy and non-null for sad.
+ * - reason must be null for happy and non-null for sad;
+ * - note is optional free text: string up to 2000 chars (trimmed), empty
+ *   string treated as null, rejected for happy ratings.
  */
 export function validateFeedbackSubmission(
   rating: unknown,
   reason: unknown,
+  note: unknown,
   situation: LyricsSituation
 ): ValidationResult {
   if (typeof rating !== "string" || !FEEDBACK_RATINGS.includes(rating)) {
     return { valid: false, error: `rating must be one of: ${FEEDBACK_RATINGS.join(", ")}` };
+  }
+
+  if (note !== undefined && note !== null) {
+    if (typeof note !== "string") {
+      return { valid: false, error: "note must be a string" };
+    }
+    if (note.trim().length > 2000) {
+      return { valid: false, error: "note must be at most 2000 characters" };
+    }
+    if (rating === "happy" && note.trim() !== "") {
+      return { valid: false, error: "note must be null when rating is happy" };
+    }
   }
 
   if (rating === "happy") {
