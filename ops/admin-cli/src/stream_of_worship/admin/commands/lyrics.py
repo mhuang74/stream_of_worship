@@ -101,7 +101,9 @@ def _reason_breakdown(open_counts: dict[str, int]) -> str:
 
 @feedback_app.command("list")
 def feedback_list(
-    rating: Optional[str] = typer.Option(None, "--rating", help="Filter: good | poor"),
+    rating: Optional[str] = typer.Option(
+        None, "--rating", help="Filter: good | poor | all (all = no rating filter)"
+    ),
     reason: Optional[str] = typer.Option(
         None, "--reason", help="Filter: missing | timing | wrong_text | other"
     ),
@@ -116,12 +118,20 @@ def feedback_list(
     Default shows only recordings with OPEN (unresolved) feedback;
     --all includes fully resolved ones.
 
+    --rating all is an alias for no rating filter: it lists recordings that have
+    both good and poor feedback (unresolved-only by default). --rating all --all
+    includes fully-resolved recordings, same as plain --all.
+
     Use --format ids to print one song ID per line (pipeable):
         sow-admin lyrics feedback list --rating poor --format ids | sow-admin lyrics generate --force --stdin
         sow-admin lyrics feedback list --rating good --format ids | sow-admin audio set-visibility --status published --stdin
+
+    Footgun: --rating all --format ids includes 👍-only recordings. Pipe
+    --rating poor into lyrics generate --force to avoid needlessly
+    regenerating well-liked recordings.
     """
-    if rating is not None and rating not in ("good", "poor"):
-        console.print("[red]--rating must be good or poor[/red]")
+    if rating is not None and rating not in ("good", "poor", "all"):
+        console.print("[red]--rating must be good, poor, or all[/red]")
         raise typer.Exit(1)
     if reason is not None and reason not in REASON_ORDER:
         console.print(f"[red]--reason must be one of: {', '.join(REASON_ORDER)}[/red]")
@@ -135,7 +145,7 @@ def feedback_list(
     conn = provider.get_connection()
     clauses: list[str] = []
     params: dict = {}
-    if rating is not None:
+    if rating is not None and rating != "all":
         # Open-only: with --rating poor, the group must be built from open sad
         # rows, so recordings whose sad rows are all resolved (but which have an
         # open happy row) drop out instead of being regenerated needlessly.
