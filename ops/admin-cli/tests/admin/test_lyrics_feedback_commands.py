@@ -443,11 +443,73 @@ class TestLyricsFeedbackListCommand:
         assert lines == ["song_001"]
         _drop_all_tables(make_test_provider)
 
+    def test_rating_all_matches_unfiltered_list(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """--rating all is an alias for no rating filter: same default
+        unresolved-only view, with the 👎 dominance unchanged for R1 (open
+        happy + open sad)."""
+        _init_schema(make_test_provider)
+        _seed_data(make_test_provider())
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--rating", "all", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.stdout
+        assert result.stdout.count("song_001") == 3
+        assert "hash-dd" in result.stdout
+        assert "👎" in result.stdout
+        _drop_all_tables(make_test_provider)
+
+    def test_rating_all_with_all_flag_includes_fully_resolved(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """With everything resolved, the default list is empty; --rating all
+        --all reappears every recording, including the fully-resolved ones."""
+        _init_schema(make_test_provider)
+        _seed_and_resolve_all(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        plain = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert plain.exit_code == 0, plain.stdout
+        assert "No" in plain.output or "0" in plain.output
+
+        result_all = runner.invoke(
+            lyrics_app,
+            [
+                "feedback",
+                "list",
+                "--rating",
+                "all",
+                "--all",
+                "--config",
+                str(config_path),
+            ],
+            env={"COLUMNS": "200"},
+        )
+        assert result_all.exit_code == 0, result_all.stdout
+        assert result_all.stdout.count("song_001") == 3
+        assert "hash-dd" in result_all.stdout
+        _drop_all_tables(make_test_provider)
+
 
 def test_feedback_list_rejects_unknown_format():
     result = runner.invoke(lyrics_app, ["feedback", "list", "--format", "json"])
     assert result.exit_code == 1
     assert "Invalid format" in result.output
+
+
+def test_feedback_list_rejects_unknown_rating():
+    result = runner.invoke(lyrics_app, ["feedback", "list", "--rating", "bogus"])
+    assert result.exit_code == 1
+    assert "must be good, poor, or all" in result.output
 
 
 def _seed_and_resolve_all(make_test_provider):
