@@ -161,7 +161,6 @@ def feedback_list(
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL AND f.rating = 'sad' AND f.reason = 'timing') AS open_timing,
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL AND f.rating = 'sad' AND f.reason = 'wrong_text') AS open_wrong_text,
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL AND f.rating = 'sad' AND f.reason = 'other') AS open_other,
-                COUNT(*) FILTER (WHERE f.resolved_at IS NULL AND f.note IS NOT NULL) AS open_notes,
                 MAX(f.created_at) FILTER (WHERE f.resolved_at IS NULL) AS latest_report
             FROM lyrics_feedback f
             LEFT JOIN recordings r ON r.content_hash = f.recording_content_hash
@@ -209,7 +208,6 @@ def feedback_list(
     table.add_column("Like", justify="center")
     table.add_column("Open", justify="right")
     table.add_column("Reasons (neg)")
-    table.add_column("Notes", justify="right")
     table.add_column("Latest")
 
     for row in rows:
@@ -224,7 +222,6 @@ def feedback_list(
             open_timing,
             open_wrong_text,
             open_other,
-            open_notes,
             latest_report,
         ) = row
         open_counts = {
@@ -239,7 +236,6 @@ def feedback_list(
             "👍" if open_happy == open_count else "👎",
             str(open_count),
             _reason_breakdown(open_counts),
-            f"📝{open_notes}" if open_notes else "",
             latest_report.strftime("%Y-%m-%d") if latest_report else "",
         )
     console.print(table)
@@ -311,109 +307,107 @@ def _set_resolved(
     return affected
 
 
-@feedback_app.command("show")
-def feedback_show(
-    target: str = typer.Argument(
-        ..., help="Recording content hash OR song id to show feedback for"
-    ),
-    all: bool = typer.Option(False, "--all", help="Include resolved feedback"),
-    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
-) -> None:
-    """Show lyrics feedback rows for a Recording (or Song), with notes.
+def _run_bulk_set_resolved(
+    provider: ConnectionProvider,
+    targets: list[str],
+    resolved: bool,
+) -> int:
+    """Resolve/unresolve open feedback for each target; per-target report; count failures.
 
-    Default shows only OPEN (unresolved) feedback; --all includes resolved.
+    The caller owns the provider and must close it (also on the error path);
+    this helper intentionally leaves it open so subsequent targets proceed.
     """
-    config = _load_connection_provider(config_path)
-    provider = ConnectionProvider(config.get_connection_url())
-    conn = provider.get_connection()
-    clause = _resolve_target(conn, target)
-    if clause is None:
-        provider.close()
-        console.print(f"[red]No recording or song matches {target!r}[/red]")
-        raise typer.Exit(1)
-    resolved_clause = "" if all else "f.resolved_at IS NULL AND "
-    with conn.cursor() as cur:
-        cur.execute(
-            f"""
-            SELECT
-                u.email,
-                f.rating,
-                f.reason,
-                f.note,
-                f.created_at,
-                f.resolved_at
-            FROM lyrics_feedback f
-            JOIN "user" u ON u.id = f.user_id
-            WHERE {resolved_clause}{clause}
-            ORDER BY f.created_at DESC
-            """,
-            {"target": target},
-        )
-        rows = cur.fetchall()
-    provider.close()
-
-    if not rows:
-        console.print("[yellow]No lyrics feedback found.[/yellow]")
-        return
-
-    table = Table(title=f"Lyrics Feedback — {target}")
-    table.add_column("User", style="cyan")
-    table.add_column("Rating", justify="center")
-    table.add_column("Reason")
-    table.add_column("Note")
-    table.add_column("Reported")
-    table.add_column("Resolved")
-    for email, rating, reason, note, created_at, resolved_at in rows:
-        table.add_row(
-            email,
-            "👍" if rating == "happy" else "👎",
-            reason or "",
-            note or "",
-            created_at.strftime("%Y-%m-%d") if created_at else "",
-            resolved_at.strftime("%Y-%m-%d") if resolved_at else "",
-        )
-    console.print(table)
+    failures = 0
+    verb = "Resolved" if resolved else "Unresolved"
+    for target in targets:
+        try:
+            affected = _set_resolved(provider, target, resolved=resolved)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            failures += 1
+            continue
+        console.print(f"[green]{verb} {affected} feedback row(s) for {target}.[/green]")
+    return failures
 
 
 @feedback_app.command("resolve")
 def feedback_resolve(
-    target: str = typer.Argument(
-        ..., help="Recording content hash OR song id to resolve feedback for"
+    target: Optional[str] = typer.Argument(
+        None, help="Recording content hash OR song id to resolve feedback for"
+    ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read targets (song ids or content hashes) from stdin, one per line"
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
     """Mark all open feedback for a Recording (or Song) as resolved.
 
     Advisory only (ADR 0007): does not touch pipeline lrc_status.
+
+    For batch processing, pipe targets via stdin:
+        sow-admin lyrics feedback list --format ids | sow-admin lyrics feedback resolve --stdin
     """
+    if not target and not stdin:
+        console.print("[red]Error: Either provide a target argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+    if target and stdin:
+        console.print("[red]Error: Cannot use both target argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
     config = _load_connection_provider(config_path)
     provider = ConnectionProvider(config.get_connection_url())
     try:
-        affected = _set_resolved(provider, target, resolved=True)
-    except ValueError as e:
-        console.print(f"[red]{e}[/red]")
+        if stdin:
+            targets = read_song_ids_from_stdin()
+            if not targets:
+                console.print("[yellow]No targets provided via stdin[/yellow]")
+                raise typer.Exit(0)
+        else:
+            targets = [target]
+        failures = _run_bulk_set_resolved(provider, targets, resolved=True)
+    finally:
+        provider.close()
+    if failures:
         raise typer.Exit(1)
-    provider.close()
-    console.print(f"[green]Resolved {affected} feedback row(s) for {target}.[/green]")
 
 
 @feedback_app.command("unresolve")
 def feedback_unresolve(
-    target: str = typer.Argument(
-        ..., help="Recording content hash OR song id to unresolve feedback for"
+    target: Optional[str] = typer.Argument(
+        None, help="Recording content hash OR song id to unresolve feedback for"
+    ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read targets (song ids or content hashes) from stdin, one per line"
     ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
-    """Reopen (clear resolved_at on) feedback for a Recording (or Song)."""
+    """Reopen (clear resolved_at on) feedback for a Recording (or Song).
+
+    For batch processing, pipe targets via stdin:
+        sow-admin lyrics feedback list --format ids | sow-admin lyrics feedback unresolve --stdin
+    """
+    if not target and not stdin:
+        console.print("[red]Error: Either provide a target argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+    if target and stdin:
+        console.print("[red]Error: Cannot use both target argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
     config = _load_connection_provider(config_path)
     provider = ConnectionProvider(config.get_connection_url())
     try:
-        affected = _set_resolved(provider, target, resolved=False)
-    except ValueError as e:
-        console.print(f"[red]{e}[/red]")
+        if stdin:
+            targets = read_song_ids_from_stdin()
+            if not targets:
+                console.print("[yellow]No targets provided via stdin[/yellow]")
+                raise typer.Exit(0)
+        else:
+            targets = [target]
+        failures = _run_bulk_set_resolved(provider, targets, resolved=False)
+    finally:
+        provider.close()
+    if failures:
         raise typer.Exit(1)
-    provider.close()
-    console.print(f"[green]Unresolved {affected} feedback row(s) for {target}.[/green]")
 
 
 @app.command("generate")

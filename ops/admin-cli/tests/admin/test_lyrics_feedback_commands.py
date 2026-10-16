@@ -552,6 +552,121 @@ class TestLyricsFeedbackResolveCommand:
         assert result.exit_code != 0
         _drop_all_tables(make_test_provider)
 
+    def test_resolve_stdin_batch(self, make_test_provider, postgres_url, tmp_path):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "resolve", "--stdin", "--config", str(config_path)],
+            input="song_001\nhash-aaaaaaaaaaaaaaaa\n",
+        )
+        assert result.exit_code == 0, result.output
+        assert "Resolved" in result.output
+        assert "song_001" in result.output
+        assert "hash-aaaaaaaaaaaaaaaa" in result.output
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM lyrics_feedback "
+                "WHERE recording_content_hash IN ('hash-aaaaaaaaaaaaaaaa', "
+                "'hash-bbbbbbbbbbbbbbbb') AND resolved_at IS NULL"
+            )
+            assert cur.fetchone()[0] == 0
+            # unrelated songless recording untouched
+            cur.execute(
+                "SELECT COUNT(*) FROM lyrics_feedback "
+                "WHERE recording_content_hash = 'hash-dddddddddddddddd' "
+                "AND resolved_at IS NULL"
+            )
+            assert cur.fetchone()[0] == 1
+        _drop_all_tables(make_test_provider)
+
+    def test_resolve_stdin_continues_on_unknown_target(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "resolve", "--stdin", "--config", str(config_path)],
+            input="song_001\ndoes-not-exist\n",
+        )
+        assert result.exit_code == 1
+        assert "No recording or song matches" in result.output
+        assert "does-not-exist" in result.output
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM lyrics_feedback "
+                "JOIN recordings ON recordings.content_hash = "
+                "lyrics_feedback.recording_content_hash "
+                "WHERE recordings.song_id = 'song_001' AND resolved_at IS NULL"
+            )
+            assert cur.fetchone()[0] == 0
+        _drop_all_tables(make_test_provider)
+
+    def test_resolve_stdin_conflicts_with_argument(self, make_test_provider, postgres_url, tmp_path):
+        _init_schema(make_test_provider)
+        _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "resolve", "song_001", "--stdin", "--config", str(config_path)],
+        )
+        assert result.exit_code != 0
+        assert "Cannot use both" in result.output
+        _drop_all_tables(make_test_provider)
+
+    def test_resolve_stdin_empty(self, make_test_provider, postgres_url, tmp_path):
+        _init_schema(make_test_provider)
+        _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "resolve", "--stdin", "--config", str(config_path)],
+            input="",
+        )
+        assert result.exit_code == 0
+        assert "No targets provided via stdin" in result.output
+        _drop_all_tables(make_test_provider)
+
+    def test_unresolve_stdin_batch(self, make_test_provider, postgres_url, tmp_path):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        # resolve everything first
+        runner.invoke(
+            lyrics_app,
+            ["feedback", "resolve", "--stdin", "--config", str(config_path)],
+            input="song_001\n",
+        )
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "unresolve", "--stdin", "--config", str(config_path)],
+            input="hash-aaaaaaaaaaaaaaaa\nsong_001\n",
+        )
+        assert result.exit_code == 0, result.output
+        assert "Unresolved" in result.output
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM lyrics_feedback "
+                "WHERE recording_content_hash = 'hash-aaaaaaaaaaaaaaaa' "
+                "AND resolved_at IS NULL"
+            )
+            assert cur.fetchone()[0] == 4  # all hash-aa rows: 3 open + 1 pre-resolved (fb-4)
+            cur.execute(
+                "SELECT COUNT(*) FROM lyrics_feedback "
+                "WHERE recording_content_hash = 'hash-bbbbbbbbbbbbbbbb' "
+                "AND resolved_at IS NULL"
+            )
+            assert cur.fetchone()[0] == 1
+        _drop_all_tables(make_test_provider)
+
 
 def _seed_data_provider(make_test_provider):
     provider = make_test_provider()
