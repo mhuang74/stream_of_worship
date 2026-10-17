@@ -110,7 +110,7 @@ def feedback_list(
     include_all: bool = typer.Option(
         False, "--all", help="Include recordings whose feedback is fully resolved"
     ),
-    format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids)"),
+    format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids|json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
 ) -> None:
     """List recordings with lyrics feedback, grouped by Recording.
@@ -126,6 +126,10 @@ def feedback_list(
         sow-admin lyrics feedback list --rating poor --format ids | sow-admin lyrics generate --force --stdin
         sow-admin lyrics feedback list --rating good --format ids | sow-admin audio set-visibility --status published --stdin
 
+    Use --format json to print a machine-readable summary wrapper with the
+    full text of every open note (all ratings, each tagged):
+        sow-admin lyrics feedback list --rating poor --format json
+
     Footgun: --rating all --format ids includes 👍-only recordings. Pipe
     --rating poor into lyrics generate --force to avoid needlessly
     regenerating well-liked recordings.
@@ -136,8 +140,8 @@ def feedback_list(
     if reason is not None and reason not in REASON_ORDER:
         console.print(f"[red]--reason must be one of: {', '.join(REASON_ORDER)}[/red]")
         raise typer.Exit(1)
-    if format not in ("table", "ids"):
-        console.print(f"[red]Invalid format: {format}. Must be one of: table, ids[/red]")
+    if format not in ("table", "ids", "json"):
+        console.print(f"[red]Invalid format: {format}. Must be one of: table, ids, json[/red]")
         raise typer.Exit(1)
 
     config = _load_connection_provider(config_path)
@@ -180,12 +184,91 @@ def feedback_list(
             GROUP BY r.content_hash, r.hash_prefix, s.id, s.title
             {having}
             ORDER BY MAX(f.created_at) FILTER (WHERE f.resolved_at IS NULL) DESC NULLS LAST,
-                     r.hash_prefix
+                      r.hash_prefix
             """,
             params,
         )
         rows = cur.fetchall()
+    note_rows: list = []
+    if rows:
+        hashes = [row[0] for row in rows]
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT f.recording_content_hash, u.email, f.rating, f.reason, f.note,
+                       f.created_at
+                FROM lyrics_feedback f
+                JOIN "user" u ON u.id = f.user_id
+                WHERE f.resolved_at IS NULL
+                  AND f.note IS NOT NULL
+                  AND f.recording_content_hash = ANY(%(hashes)s)
+                ORDER BY f.created_at ASC
+                """,
+                {"hashes": hashes},
+            )
+            note_rows = cur.fetchall()
     provider.close()
+
+    if format == "json":
+        notes_by_hash: dict[str, list] = {}
+        for content_hash, email, note_rating, note_reason, note, created_at in note_rows:
+            notes_by_hash.setdefault(content_hash, []).append(
+                {
+                    "user": email,
+                    "rating": note_rating,
+                    "reason": note_reason,
+                    "note": note,
+                    "created_at": created_at.isoformat(),
+                }
+            )
+        recordings = []
+        for row in rows:
+            (
+                content_hash,
+                hash_prefix,
+                song_id,
+                title,
+                open_count,
+                open_happy,
+                open_missing,
+                open_timing,
+                open_wrong_text,
+                open_other,
+                open_notes,
+                latest_report,
+            ) = row
+            recordings.append(
+                {
+                    "content_hash": content_hash,
+                    "hash_prefix": hash_prefix,
+                    "song_id": song_id,
+                    "title": title,
+                    "open_count": open_count,
+                    "open_happy": open_happy,
+                    "reasons": {
+                        "missing": open_missing,
+                        "timing": open_timing,
+                        "wrong_text": open_wrong_text,
+                        "other": open_other,
+                    },
+                    "open_notes": open_notes,
+                    "latest_report": (latest_report.isoformat() if latest_report else None),
+                    "notes": notes_by_hash.get(content_hash, []),
+                }
+            )
+        total_open = sum(r["open_count"] for r in recordings)
+        print(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "total_open": total_open,
+                    "recordings": recordings,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
 
     if format == "ids":
         stderr_console = Console(stderr=True)
