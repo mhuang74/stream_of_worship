@@ -663,12 +663,22 @@ class TestLyricsFeedbackNotesColumn:
         self, make_test_provider, postgres_url, tmp_path
     ):
         _init_schema(make_test_provider)
-        _seed_data_provider(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
         config_path = _write_config(tmp_path, postgres_url)
+
+        # Resolve the recording's only open row (fb-5) so show has nothing to print.
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE lyrics_feedback SET resolved_at = NOW() "
+                "WHERE recording_content_hash = 'hash-bbbbbbbbbbbbbbbb'"
+            )
+        conn.commit()
 
         result = runner.invoke(
             lyrics_app,
             ["feedback", "show", "hash-bbbbbbbbbbbbbbbb", "--config", str(config_path)],
         )
         assert result.exit_code == 0, result.output
+        assert "No lyrics feedback found." in result.output
         _drop_all_tables(make_test_provider)
