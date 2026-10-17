@@ -321,27 +321,6 @@ def _set_resolved(
     return affected
 
 
-def _run_bulk_set_resolved(
-    provider: ConnectionProvider,
-    targets: list[str],
-    resolved: bool,
-) -> int:
-    """Resolve/unresolve open feedback for each target; per-target report; count failures.
-
-    The caller owns the provider and must close it (also on the error path);
-    this helper intentionally leaves it open so subsequent targets proceed.
-    """
-    failures = 0
-    verb = "Resolved" if resolved else "Unresolved"
-    for target in targets:
-        try:
-            affected = _set_resolved(provider, target, resolved=resolved)
-        except ValueError as e:
-            console.print(f"[red]{e}[/red]")
-            failures += 1
-            continue
-        console.print(f"[green]{verb} {affected} feedback row(s) for {target}.[/green]")
-    return failures
 @feedback_app.command("show")
 def feedback_show(
     target: str = typer.Argument(
@@ -404,6 +383,8 @@ def feedback_show(
             resolved_at.strftime("%Y-%m-%d") if resolved_at else "",
         )
     console.print(table)
+
+
 def _run_bulk_set_resolved(
     provider: ConnectionProvider,
     targets: list[str],
