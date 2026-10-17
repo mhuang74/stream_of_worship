@@ -635,7 +635,7 @@ class TestLyricsFeedbackNotesColumn:
         self, make_test_provider, postgres_url, tmp_path
     ):
         _init_schema(make_test_provider)
-        provider = _seed_data_provider(make_test_provider)
+        _seed_data_provider(make_test_provider)
         config_path = _write_config(tmp_path, postgres_url)
 
         result = runner.invoke(
