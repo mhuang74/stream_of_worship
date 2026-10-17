@@ -1,5 +1,6 @@
 """Tests for `sow-admin lyrics feedback` commands (issue #194)."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -501,7 +502,7 @@ class TestLyricsFeedbackListCommand:
 
 
 def test_feedback_list_rejects_unknown_format():
-    result = runner.invoke(lyrics_app, ["feedback", "list", "--format", "json"])
+    result = runner.invoke(lyrics_app, ["feedback", "list", "--format", "bogus"])
     assert result.exit_code == 1
     assert "Invalid format" in result.output
 
@@ -858,4 +859,87 @@ class TestLyricsFeedbackNotesColumn:
         )
         assert result.exit_code == 0, result.output
         assert "No lyrics feedback found." in result.output
+        _drop_all_tables(make_test_provider)
+
+
+@pytest.mark.integration
+class TestLyricsFeedbackListJsonFormat:
+    """Tests for 'lyrics feedback list --format json'."""
+
+    def test_json_includes_full_note_with_rating(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        _seed_note(provider, "fb-1", "line 3 is off by a beat")
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--format", "json", "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+        doc = json.loads(result.stdout)
+        assert "generated_at" in doc
+        assert doc["total_open"] == 7
+        by_hash = {r["content_hash"]: r for r in doc["recordings"]}
+        r1 = by_hash["hash-aaaaaaaaaaaaaaaa"]
+        assert r1["hash_prefix"] == "hash-aa"
+        assert r1["song_id"] == "song_001"
+        assert r1["title"] == "測試歌曲"
+        assert r1["open_count"] == 3
+        assert r1["open_happy"] == 1
+        assert r1["reasons"] == {
+            "missing": 1,
+            "timing": 1,
+            "wrong_text": 0,
+            "other": 0,
+        }
+        assert r1["open_notes"] == 1
+        assert r1["latest_report"] is not None
+        assert r1["notes"] == [
+            {
+                "user": "u1@example.com",
+                "rating": "sad",
+                "reason": "missing",
+                "note": "line 3 is off by a beat",
+                "created_at": r1["notes"][0]["created_at"],
+            }
+        ]
+        # Songless recording: song_id/title are null.
+        assert by_hash["hash-dddddddddddddddd"]["song_id"] is None
+        assert by_hash["hash-dddddddddddddddd"]["title"] is None
+        _drop_all_tables(make_test_provider)
+
+    def test_json_empty_db(self, make_test_provider, postgres_url, tmp_path):
+        _init_schema(make_test_provider)
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--format", "json", "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+        doc = json.loads(result.stdout)
+        assert doc["total_open"] == 0
+        assert doc["recordings"] == []
+        _drop_all_tables(make_test_provider)
+
+    def test_json_excludes_resolved_notes(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        # fb-4 is already resolved; give it a note and prove open-only filtering.
+        _seed_note(provider, "fb-4", "resolved note must not appear")
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--format", "json", "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+        doc = json.loads(result.stdout)
+        all_notes = [n for r in doc["recordings"] for n in r["notes"]]
+        assert "resolved note must not appear" not in [n["note"] for n in all_notes]
         _drop_all_tables(make_test_provider)
