@@ -2146,7 +2146,10 @@ def _resolve_feedback_user_id(config: AdminConfig) -> Optional[int]:
             "'sow-admin config set admin.feedback_email <email>'[/yellow]"
         )
         return None
-    user = UserClient(ConnectionProvider(config.get_connection_url())).get_user_by_email(email)
+    # with-block: close the transient connection instead of leaking it into
+    # the long-lived editor session (matches the provider's __exit__ contract).
+    with UserClient(ConnectionProvider(config.get_connection_url())) as user_client:
+        user = user_client.get_user_by_email(email)
     if user is None:
         console.print(f"[yellow]Feedback disabled: unknown user: {email}[/yellow]")
         return None
@@ -2221,7 +2224,11 @@ def _run_review_session(db_client, cache_dir, r2_client, feedback_user_id: Optio
             upload_result = outcome.upload_result
             plan = plan_post_upload_offers(
                 upload_ok=upload_result is not None and upload_result.success,
-                open_sad_count=_open_sad_count(db_client, recording.content_hash),
+                # Fresh-mode invariant: the picked recording had no feedback
+                # when picked. Pass 0 — never a live count — so a sad row the
+                # admin just wrote via the in-editor `f` hotkey can't trigger
+                # the clear-ratings offer and resolve their own fresh entry.
+                open_sad_count=0,
                 # Re-read visibility: update_recording_lrc COALESCEs a NULL
                 # visibility to 'review' on upload, so the in-memory object
                 # from before the session may be stale.
