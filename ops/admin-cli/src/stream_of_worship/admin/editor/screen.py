@@ -313,7 +313,9 @@ class SadFeedbackDialog(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog-container"):
             yield Label("Sad Feedback", classes="dialog-title")
-            yield Label("[bold]1[/bold] missing  [bold]2[/bold] timing  [bold]3[/bold] wrong_text  [bold]4[/bold] other")
+            yield Label(
+                "[bold]1[/bold] missing  [bold]2[/bold] timing  [bold]3[/bold] wrong_text  [bold]4[/bold] other"
+            )
             yield Input(
                 id="sad-note-input",
                 placeholder="Optional note (Enter to submit, empty = no note)",
