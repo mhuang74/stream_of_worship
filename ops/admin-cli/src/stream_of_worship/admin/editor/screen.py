@@ -17,7 +17,7 @@ from textual.containers import Vertical
 from textual.coordinate import Coordinate
 from textual.css.query import NoMatches
 from textual.geometry import Offset
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     DataTable,
     Header,
@@ -148,6 +148,207 @@ class StatusIndicator(Static):
         self.update("".join(parts))
 
 
+class FeedbackBar(Static):
+    """One-line lyrics feedback summary for the current recording.
+
+    Shows the rating counts, open count, and the latest note; refreshed
+    from ``LRCEditorScreen`` on mount and after each feedback submission.
+    """
+
+    def __init__(self):
+        super().__init__("")
+        self._screen = None
+
+    def refresh_rows(self) -> None:
+        """Re-query feedback rows and re-render the one-line summary."""
+        screen = self._screen
+        if (
+            screen is None
+            or not getattr(screen, "recording_content_hash", None)
+            or screen.db_client is None
+        ):
+            self.update("[dim] Feedback: unavailable[/dim]")
+            return
+        try:
+            rows = screen.db_client.get_recording_feedback_rows(screen.recording_content_hash)
+        except Exception as e:  # never crash the editor on feedback errors
+            logger.warning(f"Feedback bar refresh failed: {e}")
+            self.update("[dim] Feedback: unavailable[/dim]")
+            return
+        if not rows:
+            self.update("[dim] Feedback: none yet (f to add yours)[/dim]")
+            return
+        happy = sum(1 for r in rows if r.rating == "happy")
+        sad = len(rows) - happy
+        open_count = sum(1 for r in rows if r.resolved_at is None)
+        parts = [f" Feedback: 👍{happy} 👎{sad} · open {open_count}"]
+        latest = rows[0]
+        if latest.note:
+            snippet = latest.note[:40] + ("…" if len(latest.note) > 40 else "")
+            parts.append(f' · "{snippet}"')
+        if latest.created_at:
+            parts.append(f" ({latest.email}, {latest.created_at[:10]})")
+        else:
+            parts.append(f" ({latest.email})")
+        self.update("".join(parts))
+
+
+_SAD_REASONS: dict[str, str] = {
+    "1": "missing",
+    "2": "timing",
+    "3": "wrong_text",
+    "4": "other",
+}
+
+
+def _format_feedback_row(row) -> str:
+    """Format one feedback row for display in the bar/dialog."""
+    icon = "👍" if row.rating == "happy" else "👎"
+    reason = f" · {row.reason}" if row.reason else ""
+    status = " (resolved)" if row.resolved_at else ""
+    note = ""
+    if row.note:
+        snippet = row.note[:40] + ("…" if len(row.note) > 40 else "")
+        note = f' — "{snippet}"'
+    date = (row.created_at or "")[:10]
+    return f"{icon} {row.email}{reason}{note}{status} · {date}"
+
+
+class FeedbackDialog(ModalScreen):
+    """Lyrics feedback dialog: view rows, add Happy/Sad, retract, resolve.
+
+    Result protocol (delivered to ``push_screen`` callback):
+    - ``("happy", None, None)`` / ``("sad", reason, note)``: upsert.
+    - ``"retract"``: delete the reviewer's own row.
+    - ``"resolve_all"``: resolve all open rows on the recording.
+    - ``None``: cancelled.
+    """
+
+    BINDINGS = [
+        Binding("h", "happy", "Happy"),
+        Binding("s", "sad", "Sad"),
+        Binding("r", "retract", "Remove mine"),
+        Binding("x", "resolve_all", "Resolve all open"),
+        Binding("c", "cancel", "Cancel"),
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, rows, feedback_user_id: Optional[int]):
+        super().__init__()
+        self._rows = rows
+        self._feedback_user_id = feedback_user_id
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog-container"):
+            yield Label("Lyrics Feedback", classes="dialog-title")
+            if self._rows:
+                for row in self._rows:
+                    yield Label(_format_feedback_row(row))
+            else:
+                yield Label("[dim]No feedback on this recording yet.[/dim]")
+            help_parts = ["[h] Happy", "[s] Sad"]
+            if self._feedback_user_id is not None:
+                help_parts.append("[r] Remove mine")
+            if any(row.resolved_at is None for row in self._rows):
+                help_parts.append("[x] Resolve all open")
+            help_parts.append("[c] Cancel")
+            yield Label("[d]" + " · ".join(help_parts) + "[/]")
+
+    def action_happy(self) -> None:
+        self.dismiss(("happy", None, None))
+
+    def action_sad(self) -> None:
+        def _sad_done(sad_result) -> None:
+            if sad_result is not None:
+                self.dismiss(sad_result)
+
+        self.app.push_screen(SadFeedbackDialog(), _sad_done)
+
+    def action_retract(self) -> None:
+        if self._feedback_user_id is None:
+            self.notify(
+                "Feedback disabled: set admin.feedback_email "
+                "(sow-admin config set admin.feedback_email <email>)",
+                timeout=5,
+            )
+            return
+        self.dismiss("retract")
+
+    def action_resolve_all(self) -> None:
+        if not any(row.resolved_at is None for row in self._rows):
+            return
+        self.dismiss("resolve_all")
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class SadFeedbackDialog(ModalScreen):
+    """Sad feedback step: pick a reason, then an optional note.
+
+    Result: ``("sad", reason, note_or_None)`` or ``None`` (cancelled).
+    """
+
+    AUTO_FOCUS = ""  # reason keys (1-4) must fire before the note focuses
+
+    BINDINGS = [
+        Binding("1", "reason_1", "missing"),
+        Binding("2", "reason_2", "timing"),
+        Binding("3", "reason_3", "wrong_text"),
+        Binding("4", "reason_4", "other"),
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    def __init__(self):
+        super().__init__()
+        self._reason: Optional[str] = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog-container"):
+            yield Label("Sad Feedback", classes="dialog-title")
+            yield Label("[1] missing  [2] timing  [3] wrong_text  [4] other")
+            yield Input(
+                id="sad-note-input",
+                placeholder="Optional note (Enter to submit, empty = no note)",
+            )
+            yield Label("[d]Pick a reason, then Enter submits · Esc cancels[/]")
+
+    def _choose_reason(self, reason: str) -> None:
+        self._reason = reason
+        self.query_one("#sad-note-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "sad-note-input":
+            return
+        event.stop()
+        if self._reason is None:
+            self.notify("Pick a reason first (1-4)", severity="warning", timeout=3)
+            return
+        self._submit(self._reason)
+
+    def _submit(self, reason: str) -> None:
+        note = self.query_one("#sad-note-input", Input).value.strip()
+        if len(note) > 2000:
+            self.notify("Note must be at most 2000 characters", severity="warning", timeout=3)
+            return
+        self.dismiss(("sad", reason, note or None))
+
+    def action_reason_1(self) -> None:
+        self._choose_reason(_SAD_REASONS["1"])
+
+    def action_reason_2(self) -> None:
+        self._choose_reason(_SAD_REASONS["2"])
+
+    def action_reason_3(self) -> None:
+        self._choose_reason(_SAD_REASONS["3"])
+
+    def action_reason_4(self) -> None:
+        self._choose_reason(_SAD_REASONS["4"])
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class LyricLineTable(DataTable):
     """Lyrics table with preview-aware row navigation."""
 
@@ -215,6 +416,11 @@ class LRCEditorScreen(Screen[None]):
         height: 1;
         layer: overlay;
     }
+
+    FeedbackBar {
+        dock: bottom;
+        height: 1;
+    }
     """
 
     BINDINGS = [
@@ -240,6 +446,7 @@ class LRCEditorScreen(Screen[None]):
         # General
         Binding("p", "preview_single", "Preview Line"),
         Binding("P", "preview_continuous", "Preview All"),
+        Binding("f", "feedback", "Feedback"),
         Binding("s", "save_upload", "Save/Upload"),
         Binding("ctrl+z", "undo", "Undo"),
         Binding("ctrl+y", "redo", "Redo"),
@@ -274,6 +481,7 @@ class LRCEditorScreen(Screen[None]):
         "General": [
             "preview_single",
             "preview_continuous",
+            "feedback",
             "save_upload",
             "undo",
             "redo",
@@ -292,6 +500,8 @@ class LRCEditorScreen(Screen[None]):
         hash_prefix: str,
         original_transcribed_content: Optional[str],
         upload_result_out: Optional[Callable[[UploadResult], None]] = None,
+        feedback_user_id: Optional[int] = None,
+        recording_content_hash: Optional[str] = None,
     ):
         super().__init__()
         self.title = (
@@ -307,6 +517,10 @@ class LRCEditorScreen(Screen[None]):
         self.hash_prefix = hash_prefix
         self.original_transcribed_content = original_transcribed_content
         self.upload_result_out = upload_result_out
+        # Reviewer identity + full recording hash for the feedback hotkey;
+        # None disables submitting (the bar/dialog still display rows).
+        self.feedback_user_id = feedback_user_id
+        self.recording_content_hash = recording_content_hash
         self._autosave_ok = False
         self._edit_mode: Literal["text", "timestamp"] | None = None
         self._edit_target_row: int | None = None
@@ -338,6 +552,9 @@ class LRCEditorScreen(Screen[None]):
                 compact=True,
             )
             yield StatusIndicator()
+        # Docked bottom at screen level: keeps the table's 1fr geometry
+        # (the overlay row-edit input must stay inside the table region).
+        yield FeedbackBar()
         yield GroupedFooter()
 
     def on_mount(self) -> None:
@@ -345,6 +562,8 @@ class LRCEditorScreen(Screen[None]):
         self._rebuild_table()
         self.query_one("#line-table", DataTable).focus()
         self._update_displays()
+        self.query_one(FeedbackBar)._screen = self
+        self.query_one(FeedbackBar).refresh_rows()
         self._start_position_updates()
 
         self.playback.set_callbacks(
@@ -1204,6 +1423,69 @@ class LRCEditorScreen(Screen[None]):
         )
 
         self._show_save_upload_prompt(result, revised, etag_changed, etag_reason)
+
+    def action_feedback(self) -> None:
+        """Open the lyrics feedback dialog (hotkey f)."""
+        if self._guard_active_edit():
+            return
+        if self._guard_preview():
+            return
+        if self.feedback_user_id is None:
+            self.notify(
+                "Feedback disabled: set admin.feedback_email "
+                "(sow-admin config set admin.feedback_email <email>)",
+                timeout=5,
+            )
+            return
+        if self.recording_content_hash is None:
+            self.notify("Feedback unavailable: no recording hash", severity="warning", timeout=5)
+            return
+
+        try:
+            rows = self.db_client.get_recording_feedback_rows(self.recording_content_hash)
+        except Exception as e:
+            self.query_one(StatusIndicator).update(f" [red]Feedback load failed: {e}[/red]")
+            return
+        self.app.push_screen(
+            FeedbackDialog(rows, self.feedback_user_id),
+            self._handle_feedback_submission,
+        )
+
+    def _handle_feedback_submission(self, result) -> None:
+        """Apply a FeedbackDialog result; never crash the editor on errors."""
+        if result is None:
+            return
+        bar = self.query_one(FeedbackBar)
+
+        if result == "retract":
+            try:
+                self.db_client.delete_recording_feedback(
+                    self.recording_content_hash, self.feedback_user_id
+                )
+                bar.refresh_rows()
+                self.notify("Your feedback removed", timeout=3)
+            except Exception as e:
+                self.query_one(StatusIndicator).update(f" [red]Feedback delete failed: {e}[/red]")
+            return
+
+        if result == "resolve_all":
+            try:
+                resolved = self.db_client.resolve_recording_feedback(self.recording_content_hash)
+                bar.refresh_rows()
+                self.notify(f"Resolved {resolved} open row(s)", timeout=3)
+            except Exception as e:
+                self.query_one(StatusIndicator).update(f" [red]Feedback resolve failed: {e}[/red]")
+            return
+
+        rating, reason, note = result
+        try:
+            self.db_client.upsert_recording_feedback(
+                self.recording_content_hash, self.feedback_user_id, rating, reason, note
+            )
+            bar.refresh_rows()
+            self.notify("Feedback saved", timeout=3)
+        except Exception as e:
+            self.query_one(StatusIndicator).update(f" [red]Feedback save failed: {e}[/red]")
 
     def _show_save_upload_prompt(
         self,

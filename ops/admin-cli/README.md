@@ -77,6 +77,9 @@ sow-admin config set r2_bucket my-audio-bucket
 
 # Set R2 endpoint
 sow-admin config set r2_endpoint_url https://xxx.r2.cloudflarestorage.com
+
+# Set the feedback reviewer identity (in-editor lyrics feedback attribution)
+sow-admin config set admin.feedback_email you@example.com
 ```
 
 ### Configuration File Location
@@ -98,6 +101,9 @@ region = "auto"
 
 [database]
 url = "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow"
+
+[admin]
+feedback_email = "you@example.com"
 ```
 
 Note: Cache directory is always at `~/.cache/stream-of-worship-admin/` and is not configurable.
@@ -537,6 +543,52 @@ uv run --project ops/admin-cli --extra admin --extra constructor sow-admin songs
 ```bash
 sow-admin db sync [--dry-run]
 sow-admin catalog sync [--dry-run]
+```
+
+## Lyrics Review Workflows
+
+### Review Queue (open poor feedback first)
+
+```bash
+sow-admin lyrics edit --review-next-song
+```
+
+Picks the next review-visibility song ranked by most recent open poor
+(sad) lyrics feedback, then songset appearances, favorites, and newest
+album. After each upload it offers to clear the poor ratings, publish
+the recording, and continue to the next song.
+
+### Fresh Sweep (never-reviewed songs)
+
+```bash
+sow-admin lyrics edit --review-fresh
+```
+
+Sweeps songs **nobody has ever reviewed** — the picked recording has no
+`lyrics_feedback` row of any rating (happy or sad, open or resolved).
+Same review-visibility pool as the review queue; ranked by songset
+appearances, favorites, and newest album (no feedback tier). A song
+whose recordings all carry feedback drops out of the sweep entirely.
+
+### Feedback in the Editor (both modes)
+
+The editor TUI shows a one-line feedback bar (rating counts, open
+count, latest note) and the `f` hotkey opens the feedback dialog:
+
+- **Happy** (`h`) — records a 👍 row.
+- **Sad** (`s`) — pick a reason (`1` missing / `2` timing /
+  `3` wrong_text / `4` other), then an optional note (Enter submits,
+  empty = no note).
+- **Remove mine** (`r`) — deletes your own row for the recording; the
+  recording returns to the fresh sweep.
+- **Resolve all open** (`x`) — sets `resolved_at` on every open row for
+  the recording (advisory only; never touches pipeline state).
+
+Feedback rows are attributed to the `admin.feedback_email` user; set it
+first or the hotkey stays disabled:
+
+```bash
+sow-admin config set admin.feedback_email you@example.com
 ```
 
 ## License

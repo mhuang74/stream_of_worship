@@ -41,6 +41,9 @@ class AdminConfig:
     # Postgres database (password via SOW_DATABASE_PASSWORD env var)
     database_url: str = ""
 
+    # Feedback reviewer identity (resolved to a Better Auth user id at command start)
+    admin_feedback_email: str = ""
+
     # R2 maintenance guardrails
     r2_waste_blacklist: list[str] = field(
         default_factory=lambda: ["renders/", "thumbnails/", "temp/"]
@@ -113,6 +116,10 @@ class AdminConfig:
             if "url" in db:
                 config.database_url = db["url"]
 
+        # Load feedback reviewer identity ([admin] section)
+        if "admin" in data:
+            config.admin_feedback_email = data["admin"].get("feedback_email", config.admin_feedback_email)
+
         # Backward compatibility: silently ignore old [paths] section
         # (cache_dir is now always at standard platform location)
 
@@ -140,6 +147,7 @@ class AdminConfig:
                 "waste_blacklist": self.r2_waste_blacklist,
             },
             "database": {"url": self.database_url},
+            "admin": {"feedback_email": self.admin_feedback_email},
         }
 
         with open(path, "wb") as f:
