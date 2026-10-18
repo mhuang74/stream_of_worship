@@ -61,6 +61,7 @@ from stream_of_worship.admin.services.structured_lyrics import (
     parse_structured_lyrics,
 )
 from stream_of_worship.db.connection import ConnectionProvider
+from stream_of_worship.db.user_client import UserClient
 
 console = Console()
 app = typer.Typer(help="Lyrics operations")
@@ -1986,6 +1987,12 @@ def lyrics_edit(
         help="Pick the next review-visibility song from the ranked queue "
         "(most recent open poor feedback first) and loop after upload",
     ),
+    review_fresh: bool = typer.Option(
+        False,
+        "--review-fresh",
+        help="Sweep never-reviewed (no feedback of any rating) review-visibility "
+        "songs, ranked by songset/favorites/album",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Interactively edit LRC timestamps for a song recording.
@@ -2000,12 +2007,26 @@ def lyrics_edit(
     picked, and after a successful upload offers to resolve the open poor
     ratings, promote the recording to published, and continue to the next
     review song in one sitting.
+
+    With --review-fresh, sweeps songs nobody has ever reviewed (no
+    lyrics_feedback row of any rating on the picked recording), ranked by
+    songset appearances, favorites, and newest album. The admin's own
+    Happy/Sad feedback can be recorded in the editor via the `f` hotkey
+    (rows attributed to admin.feedback_email).
     """
-    if not song_id and not review_next_song:
-        console.print("[red]Error: provide a song_id argument or use --review-next-song[/red]")
+    if not song_id and not review_next_song and not review_fresh:
+        console.print(
+            "[red]Error: provide a song_id argument or use --review-next-song/--review-fresh[/red]"
+        )
         raise typer.Exit(1)
     if song_id and review_next_song:
         console.print("[red]Error: cannot combine song_id argument with --review-next-song[/red]")
+        raise typer.Exit(1)
+    if song_id and review_fresh:
+        console.print("[red]Error: cannot combine song_id argument with --review-fresh[/red]")
+        raise typer.Exit(1)
+    if review_next_song and review_fresh:
+        console.print("[red]Error: cannot combine --review-next-song with --review-fresh[/red]")
         raise typer.Exit(1)
 
     try:
@@ -2027,8 +2048,16 @@ def lyrics_edit(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
+    # Reviewer identity for the in-editor feedback hotkey (resolved once,
+    # before any session starts; None disables the hotkey with a warning).
+    feedback_user_id = _resolve_feedback_user_id(config)
+
     if review_next_song:
-        _run_review_session(db_client, cache_dir, r2_client)
+        _run_review_session(db_client, cache_dir, r2_client, feedback_user_id)
+        return
+
+    if review_fresh:
+        _run_fresh_review_session(db_client, cache_dir, r2_client, feedback_user_id)
         return
 
     # Single-song mode: resolve the recording the legacy way and run one
@@ -2103,7 +2132,28 @@ def plan_post_upload_offers(
     return plan
 
 
-def _run_review_session(db_client, cache_dir, r2_client) -> None:
+def _resolve_feedback_user_id(config: AdminConfig) -> Optional[int]:
+    """Resolve admin.feedback_email to a user id for feedback attribution.
+
+    Returns None (with a warning) when the key is unset or the email has
+    no Better Auth user row; the editor's feedback hotkey stays disabled
+    in that case (existing users' feedback still displays).
+    """
+    email = config.admin_feedback_email
+    if not email:
+        console.print(
+            "[yellow]Feedback disabled: set "
+            "'sow-admin config set admin.feedback_email <email>'[/yellow]"
+        )
+        return None
+    user = UserClient(ConnectionProvider(config.get_connection_url())).get_user_by_email(email)
+    if user is None:
+        console.print(f"[yellow]Feedback disabled: unknown user: {email}[/yellow]")
+        return None
+    return user.id
+
+
+def _run_review_session(db_client, cache_dir, r2_client, feedback_user_id: Optional[int]) -> None:
     """Run the --review-next-song loop: pick, edit, post-upload offers, repeat.
 
     The skip set lives in process memory only — a fresh invocation starts
@@ -2142,7 +2192,9 @@ def _run_review_session(db_client, cache_dir, r2_client) -> None:
             candidate.sample_reason,
         )
 
-        outcome = _run_editor_session(db_client, cache_dir, r2_client, song, recording)
+        outcome = _run_editor_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id
+        )
         if outcome.no_audio:
             # No audio in object storage: skip message + move on.
             console.print(
@@ -2192,6 +2244,104 @@ def _open_sad_count(db_client, content_hash: str) -> int:
     return db_client.get_recording_feedback_summary(content_hash).open_sad_count
 
 
+def _run_fresh_review_session(
+    db_client, cache_dir, r2_client, feedback_user_id: Optional[int]
+) -> None:
+    """Run the --review-fresh sweep: pick never-reviewed songs, edit, repeat.
+
+    Structural copy of ``_run_review_session`` over the fresh queue:
+    songs with any lyrics_feedback row (any rating, open or resolved) on
+    the picked recording are excluded by the SQL itself, so there is no
+    poor-feedback banner and the clear-ratings offer never fires.
+    """
+    skipped_song_ids: set[str] = set()
+
+    while True:
+        queue = db_client.get_fresh_review_queue()
+        candidates = [c for c in queue if c.song_id not in skipped_song_ids]
+        if not candidates:
+            console.print(
+                f"[yellow]No never-reviewed songs available "
+                f"({len(skipped_song_ids)} skipped this session)[/yellow]"
+            )
+            return
+
+        candidate = candidates[0]
+        recording = db_client.get_recording_by_hash(candidate.hash_prefix)
+        song = db_client.get_song(candidate.song_id)
+        if recording is None or song is None:
+            console.print(
+                f"[red]Recording or song disappeared for {candidate.song_id} "
+                f"({candidate.hash_prefix}); skipping.[/red]"
+            )
+            skipped_song_ids.add(candidate.song_id)
+            continue
+
+        if not _print_fresh_pick_reason(candidate, pause=True):
+            console.print("[dim]Aborted; editor not opened.[/dim]")
+            return
+
+        outcome = _run_editor_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id
+        )
+        if outcome.no_audio:
+            # No audio in object storage: skip message + move on.
+            console.print(
+                f"[yellow]Skipping {candidate.song_id} ({candidate.song_title}): "
+                f"no audio available in object storage.[/yellow]"
+            )
+            skipped_song_ids.add(candidate.song_id)
+            continue
+
+        if not outcome.upload_attempted:
+            # Quit without saving/uploading (the editor advertises Ctrl+C
+            # to quit): no offers, song stays eligible, but give the admin
+            # an explicit way out instead of silently re-launching the
+            # same editor.
+            if outcome.quit_clean:
+                _offer_publish_on_clean_quit(db_client, recording)
+            console.print(
+                f"[dim]No upload for {candidate.song_id} "
+                f"({candidate.song_title}); it stays in the queue.[/dim]"
+            )
+            if not prompt_enter_or_no("Continue to next review song?"):
+                return
+        else:
+            upload_result = outcome.upload_result
+            plan = plan_post_upload_offers(
+                upload_ok=upload_result is not None and upload_result.success,
+                open_sad_count=_open_sad_count(db_client, recording.content_hash),
+                # Re-read visibility: update_recording_lrc COALESCEs a NULL
+                # visibility to 'review' on upload, so the in-memory object
+                # from before the session may be stale.
+                is_review_visibility=_current_visibility(db_client, recording) == "review",
+                loop_mode=True,
+            )
+            accepted = _run_post_upload_prompts(
+                db_client,
+                plan,
+                candidate,
+                recording,
+                skipped_song_ids,
+            )
+            if not accepted:
+                return
+
+
+def _confirm_open_editor() -> bool:
+    """Pause gate before launching the editor.
+
+    Returns True when the caller should proceed; False when the admin
+    aborted at the pause (non-empty reply, EOF, or Ctrl+C).
+    """
+    try:
+        reply = input("Press Enter to open the editor, or type anything + Enter to abort: ")
+    except (EOFError, KeyboardInterrupt):
+        console.print()
+        return False
+    return reply.strip() == ""
+
+
 def _print_review_pick_reason(candidate, pause: bool) -> bool:
     """Print why this song was picked, then optionally pause for space/enter.
 
@@ -2220,12 +2370,31 @@ def _print_review_pick_reason(candidate, pause: bool) -> bool:
 
     if not pause:
         return True
-    try:
-        reply = input("Press Enter to open the editor, or type anything + Enter to abort: ")
-    except (EOFError, KeyboardInterrupt):
-        console.print()
-        return False
-    return reply.strip() == ""
+    return _confirm_open_editor()
+
+
+def _print_fresh_pick_reason(candidate, pause: bool) -> bool:
+    """Print why this never-reviewed song was picked, then optionally pause.
+
+    Returns True when the caller should proceed to the editor; False when the
+    admin aborted at the pause (non-empty reply, EOF, or Ctrl+C).
+    """
+    parts: list[str] = [
+        "never reviewed (no feedback on this recording)",
+        f"{candidate.songset_appearances} songset appearance(s)",
+        f"{candidate.favorite_count} favorite(s)",
+    ]
+
+    console.print()
+    console.print(
+        f"[bold]Next review song:[/bold] {candidate.song_title} "
+        f"[dim]({candidate.song_id}, recording {candidate.hash_prefix})[/dim]"
+    )
+    console.print(f"[cyan]Why picked:[/cyan] {'; '.join(parts)}")
+
+    if not pause:
+        return True
+    return _confirm_open_editor()
 
 
 def _print_feedback_banner_from_summary(
@@ -2279,7 +2448,9 @@ class EditorSessionOutcome:
     quit_clean: bool = False
 
 
-def _run_editor_session(db_client, cache_dir, r2_client, song, recording):
+def _run_editor_session(
+    db_client, cache_dir, r2_client, song, recording, feedback_user_id: Optional[int] = None
+):
     """Prepare caches + editor state and run one editor session.
 
     Returns an ``EditorSessionOutcome``: ``no_audio=True`` when audio is
@@ -2449,6 +2620,8 @@ def _run_editor_session(db_client, cache_dir, r2_client, song, recording):
         db_client=db_client,
         hash_prefix=recording.hash_prefix,
         original_transcribed_content=transcribed_content,
+        feedback_user_id=feedback_user_id,
+        recording_content_hash=recording.content_hash,
     )
     app.run()
 

@@ -76,7 +76,7 @@ def patched_editor(monkeypatch):
     calls: list[str] = []
     outcomes: list[object] = []
 
-    def _fake_session(db_client, cache_dir, r2_client, song, recording):
+    def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
         calls.append(recording.hash_prefix)
         scripted = outcomes.pop(0) if outcomes else None
         if scripted is None:

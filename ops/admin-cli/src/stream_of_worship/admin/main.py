@@ -126,7 +126,8 @@ def config(
             f"[cyan]R2 Endpoint:[/cyan] {cfg.r2_endpoint_url or '[not set]'}\n"
             f"[cyan]R2 Region:[/cyan] {cfg.r2_region}\n"
             f"[dim]──────────────────────[/dim]\n"
-            f"[cyan]Analysis URL:[/cyan] {cfg.analysis_url}",
+            f"[cyan]Analysis URL:[/cyan] {cfg.analysis_url}\n"
+            f"[cyan]Feedback email:[/cyan] {cfg.admin_feedback_email or '[not set]'}",
             title="Configuration",
             border_style="green",
         )

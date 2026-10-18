@@ -24,7 +24,18 @@ class LRCEditorApp(App[None]):
     }
     """
 
-    def __init__(self, editor_state, playback_service, cache_dir, r2_client, db_client, hash_prefix, original_transcribed_content):
+    def __init__(
+        self,
+        editor_state,
+        playback_service,
+        cache_dir,
+        r2_client,
+        db_client,
+        hash_prefix,
+        original_transcribed_content,
+        feedback_user_id=None,
+        recording_content_hash=None,
+    ):
         super().__init__()
         self.editor_state = editor_state
         self.playback_service = playback_service
@@ -33,6 +44,10 @@ class LRCEditorApp(App[None]):
         self.db_client = db_client
         self.hash_prefix = hash_prefix
         self.original_transcribed_content = original_transcribed_content
+        # Reviewer identity + full recording hash for the in-editor
+        # feedback hotkey; None disables submitting (display still works).
+        self.feedback_user_id = feedback_user_id
+        self.recording_content_hash = recording_content_hash
         # Outcome of the last save/upload dialog attempt; None until the
         # user attempts a save/upload. Read by the command layer after
         # app.run() to drive the post-upload offers (issue #260).
@@ -56,6 +71,8 @@ class LRCEditorApp(App[None]):
             hash_prefix=self.hash_prefix,
             original_transcribed_content=self.original_transcribed_content,
             upload_result_out=self._on_upload_result,
+            feedback_user_id=self.feedback_user_id,
+            recording_content_hash=self.recording_content_hash,
         ))
 
     def _on_upload_result(self, result: UploadResult) -> None:

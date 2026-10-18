@@ -537,6 +537,27 @@ class FeedbackSummary:
 
 
 @dataclass
+class FeedbackRow:
+    """One lyrics_feedback row for a recording (admin display / TUI bar).
+
+    Attributes:
+        email: Reviewer email (joined from the ``user`` table).
+        rating: ``happy`` or ``sad``.
+        reason: Sad reason (``missing``/``timing``/``wrong_text``/``other``).
+        note: Optional free-text note.
+        created_at: Row creation timestamp.
+        resolved_at: Resolution timestamp (NULL while open).
+    """
+
+    email: str
+    rating: str
+    reason: Optional[str]
+    note: Optional[str]
+    created_at: Optional[str]
+    resolved_at: Optional[str]
+
+
+@dataclass
 class ReviewQueueCandidate:
     """One ranked candidate from the LRC review queue (issue #260).
 

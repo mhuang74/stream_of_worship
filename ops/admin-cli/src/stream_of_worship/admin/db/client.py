@@ -7,7 +7,7 @@ metadata via ``psycopg``.
 import logging
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Generator, Optional
 
 import psycopg
@@ -15,6 +15,7 @@ import psycopg.errors
 
 from stream_of_worship.admin.db.models import (
     DatabaseStats,
+    FeedbackRow,
     FeedbackSummary,
     Recording,
     ReviewQueueCandidate,
@@ -930,6 +931,257 @@ class DatabaseClient:
                 (content_hash,),
             )
             return cursor.rowcount
+
+    def resolve_recording_feedback(self, content_hash: str) -> int:
+        """Resolve all open feedback rows (any rating) for one recording.
+
+        Advisory only (ADR 0007): sets ``resolved_at = NOW()`` on open
+        rows; never touches ``lrc_status`` or other pipeline state.
+
+        Args:
+            content_hash: Full recording content hash.
+
+        Returns:
+            Number of feedback rows resolved.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE lyrics_feedback
+                SET resolved_at = NOW()
+                WHERE recording_content_hash = %s
+                  AND resolved_at IS NULL
+                """,
+                (content_hash,),
+            )
+            return cursor.rowcount
+
+    def get_recording_feedback_rows(self, content_hash: str) -> list[FeedbackRow]:
+        """Get all lyrics_feedback rows for one recording, any rating.
+
+        Resolved rows are included; newest first.
+
+        Args:
+            content_hash: Full recording content hash.
+
+        Returns:
+            ``FeedbackRow`` list with reviewer email joined.
+        """
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    u.email,
+                    f.rating,
+                    f.reason,
+                    f.note,
+                    f.created_at,
+                    f.resolved_at
+                FROM lyrics_feedback f
+                JOIN "user" u ON u.id = f.user_id
+                WHERE f.recording_content_hash = %s
+                ORDER BY f.created_at DESC
+                """,
+                (content_hash,),
+            )
+            rows = cursor.fetchall()
+            return [
+                FeedbackRow(
+                    email=email,
+                    rating=rating,
+                    reason=reason,
+                    note=note,
+                    created_at=to_str(created_at),
+                    resolved_at=to_str(resolved_at),
+                )
+                for email, rating, reason, note, created_at, resolved_at in rows
+            ]
+
+        return self._execute_with_retry(_query)
+
+    def upsert_recording_feedback(
+        self,
+        content_hash: str,
+        user_id: int,
+        rating: str,
+        reason: Optional[str],
+        note: Optional[str],
+    ) -> None:
+        """Insert or update the reviewer's feedback row for a recording.
+
+        One row per (user, recording): a second call with different
+        rating/reason/note updates the existing row. Never writes
+        ``resolved_at`` (ADR 0007 advisory: admin-authored feedback does
+        not touch resolution or pipeline state).
+
+        Args:
+            content_hash: Full recording content hash.
+            user_id: Reviewer user id (from ``admin.feedback_email``).
+            rating: ``happy`` or ``sad``.
+            reason: Sad reason; ``None`` for happy.
+            note: Optional note; ``None`` for happy or empty note.
+        """
+        feedback_id = f"fb_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO lyrics_feedback
+                    (id, user_id, recording_content_hash, rating, reason, note)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, recording_content_hash) DO UPDATE SET
+                    rating = EXCLUDED.rating,
+                    reason = EXCLUDED.reason,
+                    note = EXCLUDED.note,
+                    updated_at = NOW()
+                """,
+                (feedback_id, user_id, content_hash, rating, reason, note),
+            )
+
+    def delete_recording_feedback(self, content_hash: str, user_id: int) -> bool:
+        """Delete the reviewer's own feedback row for a recording.
+
+        Removing (vs resolving) erases the row so the recording returns
+        to the fresh (never-reviewed) sweep.
+
+        Args:
+            content_hash: Full recording content hash.
+            user_id: Reviewer user id.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` otherwise.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM lyrics_feedback
+                WHERE recording_content_hash = %s
+                  AND user_id = %s
+                """,
+                (content_hash, user_id),
+            )
+            return cursor.rowcount > 0
+
+    def get_fresh_review_queue(self) -> list[ReviewQueueCandidate]:
+        """Get the ranked never-reviewed LRC sweep queue.
+
+        Pool: review-visibility recordings with NO ``lyrics_feedback``
+        row of any rating (open or resolved) on the recording. Per song
+        the newest un-reviewed recording is the edit target; songs whose
+        recordings all carry feedback drop out entirely.
+
+        Ranking is the issue #260 cascade minus the feedback tier, ties
+        broken by song id ascending:
+
+        1. Songset appearances (``songset_items`` rows per song), DESC.
+        2. Favorite count (``user_favorite_songs`` rows per song), DESC.
+        3. Newest album ``MAX(songs.created_at)`` grouped by
+           ``(album_name, album_series)`` — a documented proxy; no albums
+           table or release-date data exists.
+        4. Song id ascending (deterministic final tie-break).
+
+        Returns:
+            Ranked ``ReviewQueueCandidate`` list.
+        """
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                WITH review_pool AS (
+                    SELECT
+                        r.content_hash,
+                        r.hash_prefix,
+                        r.visibility_status,
+                        r.song_id,
+                        r.created_at AS recording_created_at
+                    FROM recordings r
+                    JOIN songs s ON s.id = r.song_id AND s.deleted_at IS NULL
+                    WHERE r.deleted_at IS NULL
+                      AND r.visibility_status = 'review'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM lyrics_feedback f
+                          WHERE f.recording_content_hash = r.content_hash
+                      )
+                ),
+                pool AS (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY song_id
+                            ORDER BY recording_created_at DESC NULLS LAST
+                        ) AS rec_rank
+                    FROM review_pool
+                )
+                SELECT
+                    p.song_id,
+                    s.title,
+                    p.content_hash,
+                    p.hash_prefix,
+                    p.visibility_status,
+                    COALESCE(si.appearances, 0) AS songset_appearances,
+                    COALESCE(fav.favorites, 0) AS favorite_count,
+                    al.album_created_at
+                FROM pool p
+                JOIN songs s ON s.id = p.song_id
+                LEFT JOIN (
+                    SELECT song_id, COUNT(*) AS appearances
+                    FROM songset_items
+                    GROUP BY song_id
+                ) si ON si.song_id = p.song_id
+                LEFT JOIN (
+                    SELECT song_id, COUNT(*) AS favorites
+                    FROM user_favorite_songs
+                    GROUP BY song_id
+                ) fav ON fav.song_id = p.song_id
+                LEFT JOIN (
+                    SELECT album_name, album_series, MAX(created_at) AS album_created_at
+                    FROM songs
+                    GROUP BY album_name, album_series
+                ) al ON al.album_name IS NOT DISTINCT FROM s.album_name
+                    AND al.album_series IS NOT DISTINCT FROM s.album_series
+                WHERE p.rec_rank = 1
+                ORDER BY
+                    COALESCE(si.appearances, 0) DESC,
+                    COALESCE(fav.favorites, 0) DESC,
+                    al.album_created_at DESC NULLS LAST,
+                    p.song_id ASC
+                """,
+            )
+            rows = cursor.fetchall()
+
+            candidates = []
+            for row in rows:
+                (
+                    song_id,
+                    title,
+                    content_hash,
+                    hash_prefix,
+                    visibility_status,
+                    appearances,
+                    favorites,
+                    album_created_at,
+                ) = row
+                candidates.append(
+                    ReviewQueueCandidate(
+                        song_id=song_id,
+                        song_title=title,
+                        content_hash=content_hash,
+                        hash_prefix=hash_prefix,
+                        visibility_status=visibility_status,
+                        songset_appearances=appearances,
+                        favorite_count=favorites,
+                        album_created_at=to_str(album_created_at),
+                    )
+                )
+            return candidates
+
+        return self._execute_with_retry(_query)
 
     def list_recordings_by_song_id(
         self,
