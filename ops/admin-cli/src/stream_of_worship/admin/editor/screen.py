@@ -253,12 +253,12 @@ class FeedbackDialog(ModalScreen):
                     yield Label(_format_feedback_row(row))
             else:
                 yield Label("[dim]No feedback on this recording yet.[/dim]")
-            help_parts = ["[h] Happy", "[s] Sad"]
+            help_parts = ["[bold]h[/bold] Happy", "[bold]s[/bold] Sad"]
             if self._feedback_user_id is not None:
-                help_parts.append("[r] Remove mine")
+                help_parts.append("[bold]r[/bold] Remove mine")
             if any(row.resolved_at is None for row in self._rows):
-                help_parts.append("[x] Resolve all open")
-            help_parts.append("[c] Cancel")
+                help_parts.append("[bold]x[/bold] Resolve all open")
+            help_parts.append("[bold]c[/bold] Cancel")
             yield Label("[d]" + " · ".join(help_parts) + "[/]")
 
     def action_happy(self) -> None:
@@ -313,7 +313,7 @@ class SadFeedbackDialog(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog-container"):
             yield Label("Sad Feedback", classes="dialog-title")
-            yield Label("[1] missing  [2] timing  [3] wrong_text  [4] other")
+            yield Label("[bold]1[/bold] missing  [bold]2[/bold] timing  [bold]3[/bold] wrong_text  [bold]4[/bold] other")
             yield Input(
                 id="sad-note-input",
                 placeholder="Optional note (Enter to submit, empty = no note)",

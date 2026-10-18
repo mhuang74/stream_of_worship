@@ -283,3 +283,26 @@ def test_format_feedback_row_rendering():
     assert "👎" in line and "timing" in line and '"off beat"' in line
     resolved = _format_feedback_row(_feedback_row(resolved_at="2026-01-02"))
     assert "(resolved)" in resolved
+
+
+@pytest.mark.asyncio
+async def test_feedback_dialog_hint_line_not_markup_mangled():
+    """Bare [h]/[s]/[r]/[x]/[c] parse as Rich/Textual styles; keys must render as text."""
+    db = StubDB([_feedback_row(rating="sad", reason="timing")])
+    app = _make_app(db)
+    async with app.run_test() as pilot:
+        await pilot.press("f")
+        await pilot.pause()
+        from textual.widgets import Label
+
+        from stream_of_worship.admin.editor.screen import FeedbackDialog
+
+        assert isinstance(app.screen, FeedbackDialog)
+        labels = list(app.screen.query(Label))
+        help_label = labels[-1]  # last Label yielded by compose = hint line
+        text = str(help_label.visual)
+        # Every action name must be present; no markup-tag residue in rendered text.
+        for action in ("Happy", "Sad", "Remove mine", "Resolve all open", "Cancel"):
+            assert action in text, text
+        # The key letters themselves survive markup parsing (bare [s] etc. would not).
+        assert "s Sad" in text and "r Remove mine" in text, text
