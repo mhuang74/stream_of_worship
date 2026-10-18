@@ -115,13 +115,22 @@ class PreviewBanner(Static):
 
 
 class StatusIndicator(Static):
-    """Recovery/draft/upload status indicator."""
+    """Recovery/draft/upload status indicator plus the feedback summary."""
 
     def __init__(self):
         super().__init__("")
         self._dirty = False
         self._autosave_ok = False
         self._source = ""
+        self._feedback_summary = ""
+        self._preview_active = False
+        self._padding_offset = 0.0
+        self._padding_quarters = 0
+
+    def set_feedback_summary(self, text: str) -> None:
+        """Set the trailing feedback segment ("" = omitted) and re-render."""
+        self._feedback_summary = text
+        self._render_status()
 
     def update_status(
         self,
@@ -135,49 +144,47 @@ class StatusIndicator(Static):
         self._dirty = dirty
         self._autosave_ok = autosave_ok
         self._source = source
+        self._preview_active = preview_active
+        self._padding_offset = padding_offset
+        self._padding_quarters = padding_quarters
+        self._render_status()
 
-        dirty_mark = "[red]*[/red]" if dirty else "[green]✓[/green]"
-        autosave_mark = "[green]saved[/green]" if autosave_ok else "[dim]—[/dim]"
-        source_label = {"r2": "R2", "catalog": "Catalog"}.get(source, source)
+    def _render_status(self) -> None:
+        dirty_mark = "[red]*[/red]" if self._dirty else "[green]✓[/green]"
+        autosave_mark = "[green]saved[/green]" if self._autosave_ok else "[dim]—[/dim]"
+        source_label = {"r2": "R2", "catalog": "Catalog"}.get(self._source, self._source)
 
         parts = [f" {dirty_mark} Dirty | Autosave: {autosave_mark} | Source: {source_label}"]
-        if preview_active:
+        if self._preview_active:
             parts.append(" | PREVIEW")
-        if padding_quarters != 0:
-            parts.append(f" | Pad: {padding_offset:+.2f}s ({padding_quarters:+d}q)")
+        if self._padding_quarters != 0:
+            parts.append(f" | Pad: {self._padding_offset:+.2f}s ({self._padding_quarters:+d}q)")
+        if self._feedback_summary:
+            parts.append(f" ·{self._feedback_summary}")
         self.update("".join(parts))
 
 
-class FeedbackBar(Static):
-    """One-line lyrics feedback summary for the current recording.
+class _FeedbackSummary:
+    """Builds the one-line feedback summary rendered in ``StatusIndicator``.
 
-    Shows the rating counts, open count, and the latest note; refreshed
-    from ``LRCEditorScreen`` on mount and after each feedback submission.
+    Reads rows via ``screen.db_client``; never raises — callers feed the
+    returned text to ``StatusIndicator.set_feedback_summary``.
     """
 
-    def __init__(self):
-        super().__init__("")
-        self._screen = None
-
-    def refresh_rows(self) -> None:
-        """Re-query feedback rows and re-render the one-line summary."""
-        screen = self._screen
+    @staticmethod
+    def summary_for(screen) -> str:
         if (
-            screen is None
-            or not getattr(screen, "recording_content_hash", None)
+            not getattr(screen, "recording_content_hash", None)
             or screen.db_client is None
         ):
-            self.update("[dim] Feedback: unavailable[/dim]")
-            return
+            return " Feedback: unavailable"
         try:
             rows = screen.db_client.get_recording_feedback_rows(screen.recording_content_hash)
         except Exception as e:  # never crash the editor on feedback errors
             logger.warning(f"Feedback bar refresh failed: {e}")
-            self.update("[dim] Feedback: unavailable[/dim]")
-            return
+            return " Feedback: unavailable"
         if not rows:
-            self.update("[dim] Feedback: none yet (f to add yours)[/dim]")
-            return
+            return " Feedback: none yet (f to add yours)"
         happy = sum(1 for r in rows if r.rating == "happy")
         sad = len(rows) - happy
         open_count = sum(1 for r in rows if r.resolved_at is None)
@@ -190,7 +197,7 @@ class FeedbackBar(Static):
             parts.append(f" ({latest.email}, {latest.created_at[:10]})")
         else:
             parts.append(f" ({latest.email})")
-        self.update("".join(parts))
+        return "".join(parts)
 
 
 _SAD_REASONS: dict[str, str] = {
@@ -416,11 +423,6 @@ class LRCEditorScreen(Screen[None]):
         height: 1;
         layer: overlay;
     }
-
-    FeedbackBar {
-        dock: bottom;
-        height: 1;
-    }
     """
 
     BINDINGS = [
@@ -552,9 +554,6 @@ class LRCEditorScreen(Screen[None]):
                 compact=True,
             )
             yield StatusIndicator()
-        # Docked bottom at screen level: keeps the table's 1fr geometry
-        # (the overlay row-edit input must stay inside the table region).
-        yield FeedbackBar()
         yield GroupedFooter()
 
     def on_mount(self) -> None:
@@ -562,8 +561,9 @@ class LRCEditorScreen(Screen[None]):
         self._rebuild_table()
         self.query_one("#line-table", DataTable).focus()
         self._update_displays()
-        self.query_one(FeedbackBar)._screen = self
-        self.query_one(FeedbackBar).refresh_rows()
+        self.query_one(StatusIndicator).set_feedback_summary(
+            _FeedbackSummary.summary_for(self)
+        )
         self._start_position_updates()
 
         self.playback.set_callbacks(
@@ -1455,26 +1455,26 @@ class LRCEditorScreen(Screen[None]):
         """Apply a FeedbackDialog result; never crash the editor on errors."""
         if result is None:
             return
-        bar = self.query_one(FeedbackBar)
+        status = self.query_one(StatusIndicator)
 
         if result == "retract":
             try:
                 self.db_client.delete_recording_feedback(
                     self.recording_content_hash, self.feedback_user_id
                 )
-                bar.refresh_rows()
+                status.set_feedback_summary(_FeedbackSummary.summary_for(self))
                 self.notify("Your feedback removed", timeout=3)
             except Exception as e:
-                self.query_one(StatusIndicator).update(f" [red]Feedback delete failed: {e}[/red]")
+                status.update(f" [red]Feedback delete failed: {e}[/red]")
             return
 
         if result == "resolve_all":
             try:
                 resolved = self.db_client.resolve_recording_feedback(self.recording_content_hash)
-                bar.refresh_rows()
+                status.set_feedback_summary(_FeedbackSummary.summary_for(self))
                 self.notify(f"Resolved {resolved} open row(s)", timeout=3)
             except Exception as e:
-                self.query_one(StatusIndicator).update(f" [red]Feedback resolve failed: {e}[/red]")
+                status.update(f" [red]Feedback resolve failed: {e}[/red]")
             return
 
         rating, reason, note = result
@@ -1482,10 +1482,10 @@ class LRCEditorScreen(Screen[None]):
             self.db_client.upsert_recording_feedback(
                 self.recording_content_hash, self.feedback_user_id, rating, reason, note
             )
-            bar.refresh_rows()
+            status.set_feedback_summary(_FeedbackSummary.summary_for(self))
             self.notify("Feedback saved", timeout=3)
         except Exception as e:
-            self.query_one(StatusIndicator).update(f" [red]Feedback save failed: {e}[/red]")
+            status.update(f" [red]Feedback save failed: {e}[/red]")
 
     def _show_save_upload_prompt(
         self,

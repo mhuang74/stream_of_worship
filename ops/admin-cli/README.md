@@ -572,8 +572,8 @@ whose recordings all carry feedback drops out of the sweep entirely.
 
 ### Feedback in the Editor (both modes)
 
-The editor TUI shows a one-line feedback bar (rating counts, open
-count, latest note) and the `f` hotkey opens the feedback dialog:
+The editor status row shows a one-line feedback summary (rating counts,
+open count, latest note) and the `f` hotkey opens the feedback dialog:
 
 - **Happy** (`h`) — records a 👍 row.
 - **Sad** (`s`) — pick a reason (`1` missing / `2` timing /
