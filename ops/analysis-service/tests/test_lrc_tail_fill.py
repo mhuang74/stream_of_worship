@@ -368,15 +368,16 @@ class TestRealCacheRoundTrip:
         assert count == 2
 
         # Rebuild the key exactly as fill_uncovered_tail does
-        # (clip_start = 257.76 − 15.0 = 242.76 → tail-v2-ns0.60+242.8).
+        # (clip_start = 257.76 − 15.0 = 242.76; tail prompt = last lyric line →
+        # tail-v3-ns0.60+242.8).
         key = build_whisper_transcription_cache_key(
             content_hash="abc123",
-            lyrics_text="前一句\n我願跟隨一生活出祢旨意",
+            lyrics_text="我願跟隨一生活出祢旨意",
             stem_kind="full_mix",
             model="large-v3",
             language="zh",
             range_suffix=(
-                f"tail-v2-ns{settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB:.2f}+242.8"
+                f"tail-v3-ns{settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB:.2f}+242.8"
             ),
         )
         loaded = cache_manager.get_whisper_transcription(key)
