@@ -128,6 +128,7 @@ class LrcOptions(BaseModel):
     qwen3_asr_snap_threshold: float = 0.60
     qwen3_asr_min_usable_segments: int = 3
     tempo_bpm: Optional[float] = None  # Recording tempo for gap placeholder insertion
+    duration_seconds: Optional[float] = None  # Recording duration for tail-coverage fill
 
     @model_validator(mode="before")
     @classmethod
@@ -296,8 +297,10 @@ class JobResult(BaseModel):
     lrc_url: Optional[str] = None
     line_count: Optional[int] = None
     lrc_source: Optional[str] = (
-        None  # youtube_transcript, qwen3_asr, whisper_asr, or forced_alignment
+        None  # youtube_transcript, youtube_transcript_asr_tail, qwen3_asr, whisper_asr, or forced_alignment
     )
+    # Number of LRC lines recovered by the tail-coverage fill (YouTube transcript path)
+    asr_tail_line_count: int = 0
 
     # Stem separation results
     vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)

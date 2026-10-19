@@ -138,6 +138,21 @@ class Settings(BaseSettings):
     # Offset (beats) after the previous line's end where the placeholder timestamp
     # lands. Mirrors the render worker's blank-line preview window.
 
+    # Tail-coverage fill (YouTube transcript path): worship-MV caption tracks often stop
+    # before the audio ends, leaving the final chorus repeats untimed. When the corrected
+    # LRC ends more than the threshold below before the recording duration, the uncovered
+    # tail is transcribed and merged. Runs when gap > min(absolute, fraction × duration).
+    SOW_LRC_TAIL_FILL_ENABLED: bool = True
+    SOW_LRC_TAIL_GAP_SECONDS: float = 30.0
+    SOW_LRC_TAIL_GAP_FRACTION: float = 0.15
+    # Seconds of already-covered audio prepended to the tail clip so the ASR has acoustic
+    # context (a clip starting exactly at the last lyric line returned no usable
+    # transcription in testing).
+    SOW_LRC_TAIL_LEAD_IN_SECONDS: float = 15.0
+    # A recovered line is dropped when a line with identical text exists within this many
+    # seconds (ASR echo of the covered seam, or a duplicate emission of one repeat).
+    SOW_LRC_TAIL_DUP_WINDOW_SECONDS: float = 3.0
+
     # LLM Rate-Limit Retry Configuration
     SOW_LLM_MAX_CONCURRENT: int = 3
     # Module-level semaphore limiting concurrent LLM calls across all LRC jobs.

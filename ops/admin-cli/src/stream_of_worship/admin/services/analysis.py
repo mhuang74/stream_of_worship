@@ -409,6 +409,7 @@ class AnalysisClient:
         use_qwen3_asr: bool = True,
         force_qwen3_asr: bool = False,
         tempo_bpm: Optional[float] = None,
+        duration_seconds: Optional[float] = None,
     ) -> JobInfo:
         """Submit an audio file for LRC generation.
 
@@ -427,6 +428,8 @@ class AnalysisClient:
             force_qwen3_asr: Bypass only the Qwen3 ASR cache
             tempo_bpm: Recording tempo for LRC gap placeholder insertion
             (None disables placeholder insertion)
+            duration_seconds: Recording duration for tail-coverage fill
+            (None disables tail fill)
 
         Returns:
             JobInfo for the submitted job
@@ -450,6 +453,7 @@ class AnalysisClient:
                 "use_qwen3_asr": use_qwen3_asr,
                 "force_qwen3_asr": force_qwen3_asr,
                 "tempo_bpm": tempo_bpm,
+                "duration_seconds": duration_seconds,
             },
         }
 

@@ -166,6 +166,7 @@ async def _run_whisper_transcription(
     language: ResolvedLrcLanguage,
     device: str,
     lyrics_text: Optional[str] = None,
+    vad_filter: bool = True,
 ) -> List[WhisperPhrase]:
     """Run Whisper transcription with phrase-level timestamps.
 
@@ -174,6 +175,10 @@ async def _run_whisper_transcription(
         model_name: Whisper model name (e.g., "large-v3")
         language: Language hint (e.g., "zh")
         device: Device to run on ("cpu" or "cuda")
+        lyrics_text: Official lyrics for the initial prompt
+        vad_filter: Pass through to faster-whisper. Sung material (e.g. a tail clip
+            of repeated chorus) must be transcribed with vad_filter=False because
+            VAD drops sung material.
 
     Returns:
         List of WhisperPhrase with timing information
@@ -239,7 +244,7 @@ async def _run_whisper_transcription(
             str(audio_path),
             language=language,
             beam_size=5,
-            vad_filter=True,
+            vad_filter=vad_filter,
             condition_on_previous_text=True,
             initial_prompt=initial_prompt,
         )
@@ -724,8 +729,10 @@ def build_qwen3_asr_cache_key(
     language: str,
     context_max_chars: int,
     context: str,
+    range_suffix: str = "",
 ) -> str:
-    """Build rich Qwen3 ASR cache key."""
+    """Build rich Qwen3 ASR cache key. ``range_suffix`` scopes the key to an audio
+    slice (e.g. a transcript-tail clip); omit it for whole-audio keys."""
     parts = {
         "content_hash": content_hash,
         "lyrics_hash": hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest(),
@@ -737,6 +744,8 @@ def build_qwen3_asr_cache_key(
         "context_hash": hashlib.sha256(context.encode("utf-8")).hexdigest(),
         "cache_version": settings.SOW_DASHSCOPE_ASR_CACHE_VERSION,
     }
+    if range_suffix:
+        parts["range_suffix"] = range_suffix
     return hashlib.sha256(json.dumps(parts, sort_keys=True).encode("utf-8")).hexdigest()
 
 
@@ -746,8 +755,10 @@ def build_whisper_transcription_cache_key(
     stem_kind: str,
     model: str,
     language: ResolvedLrcLanguage,
+    range_suffix: str = "",
 ) -> str:
-    """Build language-aware Whisper transcription cache key."""
+    """Build language-aware Whisper transcription cache key. ``range_suffix`` scopes
+    the key to an audio slice; omit it for whole-audio keys."""
     parts = {
         "content_hash": content_hash,
         "lyrics_hash": hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest(),
@@ -756,6 +767,8 @@ def build_whisper_transcription_cache_key(
         "language": language,
         "prompt_version": WHISPER_INITIAL_PROMPT_VERSION,
     }
+    if range_suffix:
+        parts["range_suffix"] = range_suffix
     return hashlib.sha256(json.dumps(parts, sort_keys=True).encode("utf-8")).hexdigest()
 
 
@@ -780,6 +793,239 @@ def _build_qwen3_context(
         lines.append(candidate)
         total += len(candidate) + 1
     return header + "\n" + "\n".join(lines)
+
+
+def last_lyric_timestamp(lines: List[LRCLine]) -> Optional[float]:
+    """Timestamp of the last LRC line with non-empty text (gap placeholders ignored)."""
+    for line in reversed(sorted(lines, key=lambda ln: ln.time_seconds)):
+        if line.text.strip():
+            return line.time_seconds
+    return None
+
+
+def tail_fill_threshold_seconds(duration_seconds: float) -> float:
+    """min(SOW_LRC_TAIL_GAP_SECONDS, SOW_LRC_TAIL_GAP_FRACTION * duration_seconds)."""
+    return min(
+        settings.SOW_LRC_TAIL_GAP_SECONDS,
+        settings.SOW_LRC_TAIL_GAP_FRACTION * duration_seconds,
+    )
+
+
+def should_fill_tail(lines: List[LRCLine], duration_seconds: Optional[float]) -> Optional[float]:
+    """Gap in seconds when the tail fill should run, else None.
+
+    None when SOW_LRC_TAIL_FILL_ENABLED is false, duration_seconds is missing/<=0,
+    no non-empty line exists, or gap <= tail_fill_threshold_seconds(duration_seconds).
+    """
+    if not settings.SOW_LRC_TAIL_FILL_ENABLED:
+        return None
+    if duration_seconds is None or duration_seconds <= 0:
+        return None
+    last_ts = last_lyric_timestamp(lines)
+    if last_ts is None:
+        return None
+    gap = duration_seconds - last_ts
+    if gap <= tail_fill_threshold_seconds(duration_seconds):
+        return None
+    return gap
+
+
+def merge_tail_lines(
+    existing_lines: List[LRCLine],
+    recovered_lines: List[LRCLine],
+    last_lyric_ts: float,
+    dup_window: float,
+) -> tuple[List[LRCLine], int]:
+    """Append recovered lines after last_lyric_ts; returns (merged lines, appended count)."""
+    known: List[tuple[float, str]] = [
+        (ln.time_seconds, ln.text.strip()) for ln in existing_lines if ln.text.strip()
+    ]
+    kept: List[LRCLine] = []
+    for line in sorted(recovered_lines, key=lambda ln: ln.time_seconds):
+        if not line.text.strip():
+            continue
+        if line.time_seconds <= last_lyric_ts:
+            continue
+        is_dup = any(
+            ts_text == line.text.strip() and abs(line.time_seconds - ts) < dup_window
+            for ts, ts_text in known + [(k.time_seconds, k.text.strip()) for k in kept]
+        )
+        if is_dup:
+            continue
+        kept.append(LRCLine(time_seconds=line.time_seconds, text=line.text))
+        known.append((line.time_seconds, line.text.strip()))
+    return list(existing_lines) + kept, len(kept)
+
+
+async def _slice_audio_tail(audio_path: Path, start_seconds: float, out_path: Path) -> float:
+    """Write [start_seconds, EOF) as 16 kHz mono PCM-16 WAV; returns the clip duration."""
+    import librosa
+    import soundfile as sf
+
+    y, _ = librosa.load(str(audio_path), sr=16000, mono=True, offset=start_seconds)
+    sf.write(str(out_path), y, 16000, subtype="PCM_16")
+    return len(y) / 16000.0
+
+
+async def fill_uncovered_tail(
+    audio_path: Path,
+    lyrics_text: str,
+    options: LrcOptions,
+    existing_lines: List[LRCLine],
+    duration_seconds: float,
+    content_hash: str,
+    temp_dir: Path,
+    cache_manager: CacheManager,
+    dashscope_semaphore: asyncio.Semaphore,
+    local_model_semaphore: Optional[asyncio.Semaphore] = None,
+    stem_kind: str = "full_mix",
+    resolved_language: ResolvedLrcLanguage = "zh",
+    qwen3_client: Optional[Qwen3AsrClient] = None,
+) -> tuple[List[LRCLine], int]:
+    """Transcribe the uncovered tail, align it to the official lyrics, merge into the LRC."""
+    from .queue import optional_semaphore
+
+    last_lyric_ts = last_lyric_timestamp(existing_lines)
+    if last_lyric_ts is None:
+        raise LRCWorkerError("Tail fill requested but the existing LRC has no lyric lines")
+
+    clip_start = max(0.0, last_lyric_ts - settings.SOW_LRC_TAIL_LEAD_IN_SECONDS)
+    clip_path = temp_dir / "lrc_tail.wav"
+    clip_duration = await _slice_audio_tail(audio_path, clip_start, clip_path)
+    logger.info(
+        "Tail fill: sliced audio from %.2fs (clip %.2fs) to %s",
+        clip_start,
+        clip_duration,
+        clip_path,
+    )
+
+    qwen3_phrases: Optional[List[WhisperPhrase]] = None
+    range_suffix = f"tail+{clip_start:.1f}"
+    if options.use_qwen3_asr and settings.SOW_DASHSCOPE_API_KEY:
+        context_limit = min(
+            options.qwen3_asr_context_max_chars,
+            settings.SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS,
+        )
+        context = _build_qwen3_context(lyrics_text, context_limit, resolved_language)
+        qwen3_key = build_qwen3_asr_cache_key(
+            content_hash=content_hash,
+            lyrics_text=lyrics_text,
+            stem_kind=stem_kind,
+            model=settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
+            region=settings.SOW_DASHSCOPE_ASR_REGION,
+            language=resolved_language,
+            context_max_chars=min(
+                options.qwen3_asr_context_max_chars,
+                settings.SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS,
+            ),
+            context=context,
+            range_suffix=range_suffix,
+        )
+        cached_payload = cache_manager.get_qwen3_asr_transcription(qwen3_key)
+        try:
+            if cached_payload:
+                logger.info("Tail fill: Qwen3 ASR cache hit")
+                asr_result = Qwen3AsrResult.from_cache_payload(cached_payload)
+            else:
+                logger.info("Tail fill: Qwen3 ASR cache miss; calling DashScope")
+                client = (
+                    qwen3_client
+                    if qwen3_client is not None
+                    else Qwen3AsrClient(
+                        api_key=settings.SOW_DASHSCOPE_API_KEY,
+                        region=settings.SOW_DASHSCOPE_ASR_REGION,
+                        flash_model=settings.SOW_DASHSCOPE_ASR_FLASH_MODEL,
+                        filetrans_model=settings.SOW_DASHSCOPE_ASR_FILETRANS_MODEL,
+                    )
+                )
+                async with dashscope_semaphore:
+                    asr_result = await client.transcribe(clip_path, context=context)
+                cache_manager.save_qwen3_asr_transcription(qwen3_key, asr_result.to_cache_payload())
+            snapped = snap_qwen3_asr_to_canonical(
+                asr_result,
+                lyrics_text,
+                threshold=options.qwen3_asr_snap_threshold,
+            )
+            qwen3_phrases = [
+                WhisperPhrase(p.text, p.start, p.end) for p in snapped if p.text.strip()
+            ]
+        except Qwen3AsrError as e:
+            # DashScope quota/errors must not fail the job; fall through to Whisper.
+            qwen3_phrases = None
+            logger.warning("Tail fill: Qwen3 ASR unavailable (%s); falling back to Whisper", e)
+
+    # Too few usable Qwen3 phrases (junk direct-flash result on a sung tail) must also
+    # fall through to Whisper — mirrors Stage 2's ASR-fallback behavior.
+    if qwen3_phrases is not None and len(qwen3_phrases) < options.qwen3_asr_min_usable_segments:
+        logger.info(
+            "Tail fill: Qwen3 ASR returned only %d usable phrase(s); falling back to Whisper",
+            len(qwen3_phrases),
+        )
+        qwen3_phrases = None
+
+    if qwen3_phrases is not None:
+        phrases = qwen3_phrases
+    else:
+        whisper_key = build_whisper_transcription_cache_key(
+            content_hash=content_hash,
+            lyrics_text=lyrics_text,
+            stem_kind=stem_kind,
+            model=options.whisper_model,
+            language=resolved_language,
+            range_suffix=range_suffix,
+        )
+        cached_whisper = cache_manager.get_whisper_transcription(whisper_key)
+        if cached_whisper is not None:
+            logger.info("Tail fill: Whisper cache hit")
+            phrases = [WhisperPhrase(p["text"], p["start"], p["end"]) for p in cached_whisper]
+        else:
+            logger.info("Tail fill: running Whisper on the tail clip")
+            async with optional_semaphore(local_model_semaphore):
+                phrases = await _run_whisper_transcription(
+                    clip_path,
+                    model_name=options.whisper_model,
+                    language=resolved_language,
+                    device=settings.SOW_WHISPER_DEVICE,
+                    lyrics_text=lyrics_text,
+                    vad_filter=False,
+                )
+            cache_manager.save_whisper_transcription(
+                whisper_key,
+                [{"text": p.text, "start": p.start, "end": p.end} for p in phrases],
+            )
+
+    if len(phrases) < options.qwen3_asr_min_usable_segments:
+        logger.info(
+            "Tail fill: only %d usable phrase(s) in the tail clip; skipping merge",
+            len(phrases),
+        )
+        return list(existing_lines), 0
+
+    recovered = await _llm_align(
+        lyrics_text,
+        phrases,
+        llm_model=options.llm_model,
+        prompt_builder=(
+            _build_qwen3_asr_alignment_prompt
+            if qwen3_phrases is not None
+            else _build_alignment_prompt
+        ),
+        language=resolved_language,
+    )
+    recovered = [
+        LRCLine(time_seconds=line.time_seconds + clip_start, text=line.text) for line in recovered
+    ]
+    merged, appended = merge_tail_lines(
+        existing_lines,
+        recovered,
+        last_lyric_ts,
+        settings.SOW_LRC_TAIL_DUP_WINDOW_SECONDS,
+    )
+    if appended:
+        logger.info("Tail fill: recovered %d line(s) after %.2fs", appended, last_lyric_ts)
+    else:
+        logger.info("Tail fill: alignment produced no new lines past %.2fs", last_lyric_ts)
+    return merged, appended
 
 
 async def generate_lrc_from_qwen3_asr(

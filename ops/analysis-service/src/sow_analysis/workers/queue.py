@@ -114,12 +114,18 @@ except ImportError:
 # Optional LRC imports - require whisper and openai
 try:
     from .lrc import (
+        LRCLine,
         LRCWorkerError,
+        _write_lrc,
         build_whisper_transcription_cache_key,
         build_qwen3_asr_cache_key,
+        fill_uncovered_tail,
         generate_lrc,
         generate_lrc_from_qwen3_asr,
+        last_lyric_timestamp,
         resolve_lrc_language,
+        should_fill_tail,
+        tail_fill_threshold_seconds,
         warn_if_lrc_language_script_mismatch,
     )
     from ..services.qwen3_asr_client import Qwen3AsrError, Qwen3AsrQuotaExhaustedError
@@ -137,11 +143,17 @@ except ImportError:
     LRCWorkerError = _DummyLRCWorkerError
     Qwen3AsrError = _DummyQwen3AsrError
     Qwen3AsrQuotaExhaustedError = _DummyQwen3AsrQuotaExhaustedError
+    LRCLine = None
+    _write_lrc = None
     build_qwen3_asr_cache_key = None
     build_whisper_transcription_cache_key = None
+    fill_uncovered_tail = None
     generate_lrc = None
     generate_lrc_from_qwen3_asr = None
+    last_lyric_timestamp = None
     resolve_lrc_language = None
+    should_fill_tail = None
+    tail_fill_threshold_seconds = None
     warn_if_lrc_language_script_mismatch = None
 
 # Optional embedding imports - require openai
@@ -1437,6 +1449,7 @@ class JobQueue:
                             lrc_path.write_text(cached_text, encoding="utf-8")
                             line_count = cached.get("line_count", 0)
                             lrc_source = cached.get("lrc_source")
+                            asr_tail_line_count = cached.get("asr_tail_line_count", 0)
 
                             if self.r2_client:
                                 try:
@@ -1467,6 +1480,7 @@ class JobQueue:
                                 lrc_url=lrc_url,
                                 line_count=line_count,
                                 lrc_source=lrc_source,
+                                asr_tail_line_count=asr_tail_line_count,
                             )
                             job.status = JobStatus.COMPLETED
                             job.progress = 1.0
@@ -1498,6 +1512,7 @@ class JobQueue:
                 whisper_phrases = []
                 line_count = 0
                 lrc_source: Optional[str] = None
+                tail_line_count = 0
 
                 # Stage 1: Try YouTube transcript first — no audio download or stem needed
                 youtube_lrc_result = None
@@ -1571,6 +1586,56 @@ class JobQueue:
                         logger.info(
                             "YouTube transcript succeeded — skipping audio download and stem separation"
                         )
+
+                # Stage 1b: fill a tail the caption track never covered
+                if lrc_source == "youtube_transcript" and fill_uncovered_tail is not None:
+                    from .lrc_parser import parse_lrc
+
+                    existing_lines = [
+                        LRCLine(time_seconds=ln.time_seconds, text=ln.text)
+                        for ln in parse_lrc(lrc_path.read_text(encoding="utf-8")).lines
+                    ]
+                    gap = should_fill_tail(existing_lines, request.options.duration_seconds)
+                    if gap is not None:
+                        await self._update_stage(job, "filling_uncovered_tail", 0.3)
+                        logger.info(
+                            "Tail fill: LRC ends %.1fs before the recording ends (threshold %.1fs) "
+                            "— transcribing the uncovered tail for job %s",
+                            gap,
+                            tail_fill_threshold_seconds(request.options.duration_seconds),
+                            job.id,
+                        )
+                        tail_audio_path = temp_path / "audio_tail_fill.mp3"
+                        try:
+                            if self.r2_client:
+                                await self.r2_client.download_audio(request.audio_url, tail_audio_path)
+                            existing_lines, tail_line_count = await fill_uncovered_tail(
+                                audio_path=tail_audio_path,
+                                lyrics_text=request.lyrics_text,
+                                options=request.options,
+                                existing_lines=existing_lines,
+                                duration_seconds=request.options.duration_seconds,
+                                content_hash=request.content_hash,
+                                temp_dir=temp_path,
+                                cache_manager=self.cache_manager,
+                                dashscope_semaphore=self._dashscope_asr_semaphore,
+                                local_model_semaphore=self._local_model_semaphore,
+                                resolved_language=resolved_language,
+                                qwen3_client=self._qwen3_client,
+                            )
+                        except Exception as e:
+                            logger.warning("Tail fill failed for job %s: %s", job.id, e)
+                        else:
+                            if tail_line_count:
+                                line_count = _write_lrc(existing_lines, lrc_path)
+                                lrc_source = "youtube_transcript_asr_tail"
+                                logger.info(
+                                    "Tail fill appended %d line(s) for job %s", tail_line_count, job.id
+                                )
+                            else:
+                                logger.info("Tail fill recovered no lyric lines for job %s", job.id)
+                            if job.status == JobStatus.CANCELLED:
+                                return
 
                 # Stage 2: Qwen ASR then Whisper fallback — only when YouTube failed
                 if youtube_lrc_result is None:
@@ -1801,13 +1866,17 @@ class JobQueue:
                     "line_count": line_count,
                     "lrc_source": lrc_source,
                     "lrc_text": lrc_text,
+                    "asr_tail_line_count": tail_line_count,
                 }
                 self.cache_manager.save_lrc_result(lrc_cache_key, cache_result)
                 logger.info(f"LRC result cached with key: {lrc_cache_key}")
 
                 # Set job result
                 job.result = JobResult(
-                    lrc_url=lrc_url, line_count=line_count, lrc_source=lrc_source
+                    lrc_url=lrc_url,
+                    line_count=line_count,
+                    lrc_source=lrc_source,
+                    asr_tail_line_count=tail_line_count,
                 )
                 job.status = JobStatus.COMPLETED
                 job.progress = 1.0
