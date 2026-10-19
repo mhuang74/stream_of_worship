@@ -1596,6 +1596,22 @@ class JobQueue:
                         for ln in parse_lrc(lrc_path.read_text(encoding="utf-8")).lines
                     ]
                     gap = should_fill_tail(existing_lines, request.options.duration_seconds)
+                    if gap is None:
+                        if request.options.duration_seconds is None:
+                            logger.warning(
+                                "Tail fill skipped for job %s: request carries no "
+                                "duration_seconds — the submit path did not forward the "
+                                "recording duration, so uncovered tail repeats cannot be recovered",
+                                job.id,
+                            )
+                        else:
+                            logger.debug(
+                                "Tail fill not needed for job %s: tail gap is within threshold "
+                                "(duration=%.2fs, last lyric=%.2fs)",
+                                job.id,
+                                request.options.duration_seconds,
+                                last_lyric_timestamp(existing_lines) or 0.0,
+                            )
                     if gap is not None:
                         await self._update_stage(job, "filling_uncovered_tail", 0.3)
                         logger.info(
