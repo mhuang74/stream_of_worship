@@ -206,6 +206,9 @@ class TestFillUncoveredTail:
     async def test_too_few_phrases_skips_merge(self, monkeypatch, tmp_path):
         existing = [_line(10.0, "one")]
         options = LrcOptions(use_qwen3_asr=False, qwen3_asr_min_usable_segments=3)
+        # Tail fill uses its own minimum (default 1) so a single recovered repeat
+        # still merges; raise it here to exercise the skip path.
+        monkeypatch.setattr(settings, "SOW_LRC_TAIL_MIN_USABLE_PHRASES", 2)
 
         async def fake_slice(audio_path, start_seconds, out_path):
             return 60.0
@@ -365,14 +368,16 @@ class TestRealCacheRoundTrip:
         assert count == 2
 
         # Rebuild the key exactly as fill_uncovered_tail does
-        # (clip_start = 257.76 − 15.0 = 242.76 → "tail+242.8").
+        # (clip_start = 257.76 − 15.0 = 242.76 → tail-v2-ns0.60+242.8).
         key = build_whisper_transcription_cache_key(
             content_hash="abc123",
             lyrics_text="前一句\n我願跟隨一生活出祢旨意",
             stem_kind="full_mix",
             model="large-v3",
             language="zh",
-            range_suffix="tail+242.8",
+            range_suffix=(
+                f"tail-v2-ns{settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB:.2f}+242.8"
+            ),
         )
         loaded = cache_manager.get_whisper_transcription(key)
         assert loaded is not None and len(loaded) == 3
