@@ -158,9 +158,10 @@ def _drop_all_tables(make_test_provider):
         pass
 
 
-def _write_config(tmp_path, postgres_url):
+def _write_config(tmp_path, postgres_url, feedback_email=None):
     config_path = Path(tmp_path) / "config.toml"
-    config_path.write_text(f'[database]\nurl = "{postgres_url}"\n')
+    admin_section = f'\n[admin]\nfeedback_email = "{feedback_email}"\n' if feedback_email else ""
+    config_path.write_text(f'[database]\nurl = "{postgres_url}"\n' + admin_section)
     return config_path
 
 
@@ -663,7 +664,7 @@ class TestPlainEditStillWorks:
         self._seed_single_song(provider)
         config_path = _write_config(tmp_path, postgres_url)
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording):
+        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
             assert recording.hash_prefix == "hash-aa"
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=False,
@@ -696,7 +697,7 @@ class TestPlainEditStillWorks:
         self._seed_single_song(provider)
         config_path = _write_config(tmp_path, postgres_url)
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording):
+        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=True, upload_attempted=False, upload_result=None
             )
@@ -727,7 +728,7 @@ class TestPlainEditStillWorks:
         conn.commit()
         config_path = _write_config(tmp_path, postgres_url)
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording):
+        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
             assert recording.hash_prefix == "hash-aa"
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=False, upload_attempted=False, upload_result=None, quit_clean=True
@@ -746,6 +747,32 @@ class TestPlainEditStillWorks:
         assert "set to published" in result.output
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_by_hash("hash-aa").visibility_status == "published"
+
+    def test_feedback_user_id_passed_in_single_song_mode(
+        self, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        provider = _init_schema(make_test_provider)
+        self._seed_single_song(provider)  # seeds user id 1, email u1@x.com
+        config_path = _write_config(tmp_path, postgres_url, feedback_email="u1@x.com")
+        seen: list = []
+
+        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id):
+            seen.append(feedback_user_id)
+            return lyrics_commands.EditorSessionOutcome(
+                no_audio=False, upload_attempted=False, upload_result=None
+            )
+
+        monkeypatch.setattr(lyrics_commands, "_run_editor_session", _fake_session)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["edit", "song_001", "--config", str(config_path)],
+            input="",
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert seen == [1]
+        assert "Feedback disabled" not in result.output
 
 
 @pytest.mark.integration

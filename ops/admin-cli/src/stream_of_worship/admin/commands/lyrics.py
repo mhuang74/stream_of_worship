@@ -2076,7 +2076,9 @@ def lyrics_edit(
     # session, so the admin sees what users complained about while editing.
     _print_feedback_banner(db_client, recording.content_hash)
 
-    outcome = _run_editor_session(db_client, cache_dir, r2_client, song, recording)
+    outcome = _run_editor_session(
+        db_client, cache_dir, r2_client, song, recording, feedback_user_id
+    )
     if outcome.no_audio:
         # Audio unavailable — clear error (spec story 12).
         console.print(
@@ -2456,7 +2458,7 @@ class EditorSessionOutcome:
 
 
 def _run_editor_session(
-    db_client, cache_dir, r2_client, song, recording, feedback_user_id: Optional[int] = None
+    db_client, cache_dir, r2_client, song, recording, feedback_user_id: Optional[int]
 ):
     """Prepare caches + editor state and run one editor session.
 
