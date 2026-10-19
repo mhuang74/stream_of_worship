@@ -6023,6 +6023,7 @@ def _submit_lrc_for_song(
             use_qwen3_asr=True,
             force_qwen3_asr=False,
             tempo_bpm=recording.tempo_bpm,
+            duration_seconds=recording.duration_seconds,
         )
 
         db_client.update_recording_status(
@@ -7011,6 +7012,7 @@ def _handle_lrc_404(
             use_qwen3_asr=True,
             force_qwen3_asr=False,
             tempo_bpm=recording.tempo_bpm,
+            duration_seconds=recording.duration_seconds,
         )
         db_client.update_recording_status(
             hash_prefix=recording.hash_prefix,
@@ -8392,6 +8394,11 @@ def _print_stats(
     generate_lyrics_youtube = sum(
         1 for r in results.values() if r.get("generate_lyrics_source") == "youtube_transcript"
     )
+    generate_lyrics_youtube_tail = sum(
+        1
+        for r in results.values()
+        if r.get("generate_lyrics_source") == "youtube_transcript_asr_tail"
+    )
     generate_lyrics_qwen_asr = sum(
         1 for r in results.values() if r.get("generate_lyrics_source") == "qwen3_asr"
     )
@@ -8402,6 +8409,7 @@ def _print_stats(
         generate_lyrics_completed
         - generate_lyrics_skipped_existing
         - generate_lyrics_youtube
+        - generate_lyrics_youtube_tail
         - generate_lyrics_qwen_asr
         - generate_lyrics_whisper_asr
     )
@@ -8490,6 +8498,7 @@ def _print_stats(
                 f"│ {'LRC source:':<30} {'':>18} │",
                 f"│ {'  R2 pre-existing:':<30} {generate_lyrics_skipped_existing:>18} │",
                 f"│ {'  YouTube Transcription:':<30} {generate_lyrics_youtube:>18} │",
+                f"│ {'  YouTube + ASR tail:':<30} {generate_lyrics_youtube_tail:>18} │",
                 f"│ {'  ASR (Qwen3):':<30} {generate_lyrics_qwen_asr:>18} │",
                 f"│ {'  ASR (Whisper):':<30} {generate_lyrics_whisper_asr:>18} │",
             ]
