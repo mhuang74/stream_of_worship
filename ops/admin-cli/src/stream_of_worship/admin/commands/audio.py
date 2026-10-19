@@ -342,6 +342,7 @@ def _format_lrc_source(lrc_source: Optional[str]) -> str:
     """Map recordings.lrc_source provenance to a human-friendly label."""
     mapping = {
         "youtube_transcript": "YouTube transcript",
+        "youtube_transcript_asr_tail": "YouTube transcript + ASR tail",
         "qwen3_asr": "Qwen3 ASR",
         "whisper_asr": "Whisper ASR",
         "forced_alignment": "Forced alignment",
@@ -1590,6 +1591,7 @@ def list_recordings(
     if lrc_source:
         valid_lrc_sources = {
             "youtube_transcript",
+            "youtube_transcript_asr_tail",
             "qwen3_asr",
             "whisper_asr",
             "forced_alignment",

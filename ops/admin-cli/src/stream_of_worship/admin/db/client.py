@@ -1709,9 +1709,10 @@ class DatabaseClient:
             r2_lrc_url: R2 URL for the generated LRC file.
             visibility_status: Optional visibility status to force on the recording.
             lrc_source: Optional LRC generation provenance
-                (youtube_transcript | qwen3_asr | whisper_asr | forced_alignment |
-                manual_upload | llm_edit | r2_preexisting). Only overwrites the
-                stored value when a non-NULL source is given.
+                (youtube_transcript | youtube_transcript_asr_tail | qwen3_asr |
+                whisper_asr | forced_alignment | manual_upload | llm_edit |
+                r2_preexisting). Only overwrites the stored value when a non-NULL
+                source is given.
 
         Raises:
             ValueError: If ``visibility_status`` is not valid.

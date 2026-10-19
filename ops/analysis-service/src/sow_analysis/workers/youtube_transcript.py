@@ -621,7 +621,11 @@ STRICT_REQUIREMENTS_BLOCK = """\
    lyric lines, those complete lines joined with a single space (repeated phrases
    allowed).
 4. Lines in the Official Lyrics consisting entirely of a [bracketed] label are
-   section tags (metadata), not sung phrases — never emit them as lyric lines."""
+   section tags (metadata), not sung phrases — never emit them as lyric lines.
+5. Repetition is not duplication: when several cues carry the same lyric line, emit that line
+   once per cue at the cue's own timestamp — the final chorus of a worship song is usually
+   repeated. Never drop a cue merely because its text appeared earlier; drop a cue only when
+   its text matches no line of the Official Lyrics."""
 WORKED_EXAMPLE_ZH = """\
 ## Worked Example
 
@@ -666,7 +670,30 @@ no lyric line, so they produce NO output lines. The 00:15.91 cue holds two
 transcribed lines that share one timestamp and together cover TWO official lyric
 lines, so they merge into ONE output line at 00:15.91, both texts joined with a
 single space. The 00:23.25 cue covers one official line and keeps its own
-timestamp."""
+timestamp.
+
+Repeated ending (same example song, later excerpt):
+
+Transcribed subtitle:
+```
+00:58.10
+I will live to bring praise to Your name
+
+01:04.20
+I will live to bring praise to Your name
+```
+
+The Official Lyrics list that line once.
+
+Correct output:
+
+```
+[00:58.10] 我活著要稱頌祢
+[01:04.20] 我活著要稱頌祢
+```
+
+Why: the 01:04.20 cue repeats the 00:58.10 text. It is a second sung repeat, not a duplicate to
+remove — it keeps its own output line and its own timestamp."""
 
 
 def build_correction_prompt(
@@ -702,6 +729,8 @@ Compare the subtitle transcription against the official English lyrics. Correct 
 3. Preserve the number of matching sung lyric lines and their timecodes. Only correct text content.
 4. Preserve casing, punctuation, contractions, and line text from the official lyrics.
 5. If a transcribed line clearly does not match sung lyrics (instrumental, audience noise, speech), remove that line entirely.
+6. Never collapse or delete a cue because its text repeats an earlier line — a repeated chorus is
+   sung again and must appear again with its own timestamp.
 
 ## Transcribed Subtitle
 ```
@@ -731,6 +760,8 @@ Compare the auto-generated subtitle transcription (which may be in the wrong lan
 2. Songs often repeat sections (verse, chorus). The transcription reflects what was actually sung — keep all repeated phrases with their timecodes.
 3. Preserve the number of lines and their timecodes exactly. Only correct the text content.
 4. If a transcribed line doesn't match any published lyrics (e.g. instrumental, audience noise), remove that line entirely.
+5. Never collapse or delete a cue because its text repeats an earlier line — a repeated chorus is
+   sung again and must appear again with its own timestamp.
 
 ## Transcribed Subtitle (auto-generated)
 ```

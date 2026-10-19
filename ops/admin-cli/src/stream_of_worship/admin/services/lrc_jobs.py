@@ -126,6 +126,7 @@ def submit_lrc_single(
                 use_qwen3_asr=not no_qwen3_asr,
                 force_qwen3_asr=force_qwen3_asr,
                 tempo_bpm=recording.tempo_bpm,
+                duration_seconds=recording.duration_seconds,
             )
         except AnalysisServiceError as e:
             console.print(f"[red]Failed to submit LRC job: {e}[/red]")
@@ -275,6 +276,7 @@ def submit_lrc_batch(
                 use_qwen3_asr=not no_qwen3_asr,
                 force_qwen3_asr=force_qwen3_asr,
                 tempo_bpm=recording.tempo_bpm,
+                duration_seconds=recording.duration_seconds,
             )
 
             # Update DB
@@ -366,6 +368,7 @@ def submit_lrc_job(
             use_qwen3_asr=use_qwen3_asr,
             force_qwen3_asr=force_qwen3_asr,
             tempo_bpm=recording.tempo_bpm,
+            duration_seconds=recording.duration_seconds,
         )
 
         # Update DB

@@ -284,9 +284,10 @@ def _compute_verdict(sig: CandidateSignals) -> tuple[str, str, dict[str, Any]]:
             "stems_url present"
         )
 
-    # transcript_source_bias: manual_edit_after_autogen == "yes" AND lrc_source == "youtube_transcript"
+    # transcript_source_bias: manual_edit_after_autogen == "yes" AND lrc_source is a
+    # YouTube-transcript provenance (plain or with ASR tail fill)
     if (manual_edit_after_autogen == "yes"
-            and sig.lrc_source == "youtube_transcript"):
+            and sig.lrc_source in {"youtube_transcript", "youtube_transcript_asr_tail"}):
         debug_notes["transcript_source_bias"] = True
         debug_notes["transcript_source_bias_details"] = (
             "manual_edit=yes, source=youtube_transcript"

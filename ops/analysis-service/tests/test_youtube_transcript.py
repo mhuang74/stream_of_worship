@@ -121,6 +121,30 @@ class TestBuildCorrectionPrompt:
         assert "Never emit a partial phrase" in prompt
         assert "joined with a single space" in prompt
 
+    def test_repetition_not_duplication_in_strict_requirements(self):
+        prompt = build_correction_prompt("00:00.00\ntest\n", ["測試"])
+        assert "Repetition is not duplication" in prompt
+        assert "Never drop a cue merely because its text appeared earlier" in prompt
+        assert "Repetition is not duplication" in build_correction_prompt(
+            "00:00.00\ntest\n", ["Test"], language="en"
+        )
+
+    def test_never_collapse_rule_in_language_prompts(self):
+        zh = build_correction_prompt("00:00.00\ntest\n", ["測試"])
+        en = build_correction_prompt("00:00.00\ntest\n", ["Test"], language="en")
+        assert "Never collapse or delete a cue because its text repeats an earlier line" in zh
+        assert "Never collapse or delete a cue because its text repeats an earlier line" in en
+
+    def test_worked_example_repeated_ending_zh(self):
+        prompt = build_correction_prompt("00:00.00\ntest\n", ["測試"])
+        assert "Repeated ending" in prompt
+        assert "It is a second sung repeat, not a duplicate to" in prompt
+        assert (
+            prompt.index("## Additional Requirements")
+            < prompt.index("## Worked Example")
+            < prompt.index("## Output Format")
+        )
+
 
 class TestParseLrcResponse:
     """Tests for parse_lrc_response()."""
