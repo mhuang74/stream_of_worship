@@ -137,6 +137,7 @@ class WhisperPhrase:
     text: str  # Full phrase text
     start: float  # seconds
     end: float  # seconds
+    no_speech_prob: float = 0.0  # decoder's probability that the segment is not speech
 
 
 @dataclass
@@ -167,6 +168,8 @@ async def _run_whisper_transcription(
     device: str,
     lyrics_text: Optional[str] = None,
     vad_filter: bool = True,
+    condition_on_previous_text: bool = True,
+    max_no_speech_prob: Optional[float] = None,
 ) -> List[WhisperPhrase]:
     """Run Whisper transcription with phrase-level timestamps.
 
@@ -179,6 +182,13 @@ async def _run_whisper_transcription(
         vad_filter: Pass through to faster-whisper. Sung material (e.g. a tail clip
             of repeated chorus) must be transcribed with vad_filter=False because
             VAD drops sung material.
+        condition_on_previous_text: Pass through to faster-whisper. Tail clips set
+            this False so the lyrics prompt cannot make the decoder loop the same
+            line into near-silent reverb.
+        max_no_speech_prob: When set, drop segments whose decoder-reported
+            no_speech probability is at or above this value. A tail clip contains
+            instrumental decay; without this guard Whisper can emit prompt text
+            over silence.
 
     Returns:
         List of WhisperPhrase with timing information
@@ -245,7 +255,7 @@ async def _run_whisper_transcription(
             language=language,
             beam_size=5,
             vad_filter=vad_filter,
-            condition_on_previous_text=True,
+            condition_on_previous_text=condition_on_previous_text,
             initial_prompt=initial_prompt,
         )
 
@@ -254,14 +264,26 @@ async def _run_whisper_transcription(
         phrases = []
         for segment in segments:
             text = segment.text.strip()
-            if text:
-                phrases.append(
-                    WhisperPhrase(
-                        text=text,
-                        start=segment.start,
-                        end=segment.end,
-                    )
+            if not text:
+                continue
+            if max_no_speech_prob is not None and segment.no_speech_prob >= max_no_speech_prob:
+                logger.info(
+                    "Dropping Whisper segment %.2f-%.2fs (no_speech_prob %.2f >= %.2f): %s",
+                    segment.start,
+                    segment.end,
+                    segment.no_speech_prob,
+                    max_no_speech_prob,
+                    text,
                 )
+                continue
+            phrases.append(
+                WhisperPhrase(
+                    text=text,
+                    start=segment.start,
+                    end=segment.end,
+                    no_speech_prob=segment.no_speech_prob,
+                )
+            )
 
         transcribe_elapsed = time.time() - transcribe_start
         logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
@@ -908,7 +930,11 @@ async def fill_uncovered_tail(
     )
 
     qwen3_phrases: Optional[List[WhisperPhrase]] = None
-    range_suffix = f"tail+{clip_start:.1f}"
+    # v2: tail ASR now decodes with condition_on_previous_text=False and drops
+    # no_speech-hallucinated segments, so old tail caches must not be reused.
+    range_suffix = (
+        f"tail-v2-ns{settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB:.2f}+{clip_start:.1f}"
+    )
     if options.use_qwen3_asr and settings.SOW_DASHSCOPE_API_KEY:
         context_limit = min(
             options.qwen3_asr_context_max_chars,
@@ -996,13 +1022,15 @@ async def fill_uncovered_tail(
                     device=settings.SOW_WHISPER_DEVICE,
                     lyrics_text=lyrics_text,
                     vad_filter=False,
+                    condition_on_previous_text=False,
+                    max_no_speech_prob=settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB,
                 )
             cache_manager.save_whisper_transcription(
                 whisper_key,
                 [{"text": p.text, "start": p.start, "end": p.end} for p in phrases],
             )
 
-    if len(phrases) < options.qwen3_asr_min_usable_segments:
+    if len(phrases) < settings.SOW_LRC_TAIL_MIN_USABLE_PHRASES:
         logger.info(
             "Tail fill: only %d usable phrase(s) in the tail clip; skipping merge",
             len(phrases),

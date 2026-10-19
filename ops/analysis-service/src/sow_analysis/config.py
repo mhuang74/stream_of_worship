@@ -152,6 +152,13 @@ class Settings(BaseSettings):
     # A recovered line is dropped when a line with identical text exists within this many
     # seconds (ASR echo of the covered seam, or a duplicate emission of one repeat).
     SOW_LRC_TAIL_DUP_WINDOW_SECONDS: float = 3.0
+    # Whisper on a tail clip can loop on the lyrics prompt and emit repeats into
+    # near-silent reverb. The decoder marks those segments with a high no_speech
+    # probability, so drop them before alignment.
+    SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB: float = 0.6
+    # A tail may contain only one repeated line; the Stage 2 minimum (3) would
+    # discard a valid single-repeat recovery.
+    SOW_LRC_TAIL_MIN_USABLE_PHRASES: int = 1
 
     # LLM Rate-Limit Retry Configuration
     SOW_LLM_MAX_CONCURRENT: int = 3
