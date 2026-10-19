@@ -2226,11 +2226,7 @@ def _run_review_session(db_client, cache_dir, r2_client, feedback_user_id: Optio
             upload_result = outcome.upload_result
             plan = plan_post_upload_offers(
                 upload_ok=upload_result is not None and upload_result.success,
-                # Fresh-mode invariant: the picked recording had no feedback
-                # when picked. Pass 0 — never a live count — so a sad row the
-                # admin just wrote via the in-editor `f` hotkey can't trigger
-                # the clear-ratings offer and resolve their own fresh entry.
-                open_sad_count=0,
+                open_sad_count=candidate.open_sad_count,
                 # Re-read visibility: update_recording_lrc COALESCEs a NULL
                 # visibility to 'review' on upload, so the in-memory object
                 # from before the session may be stale.
@@ -2319,7 +2315,11 @@ def _run_fresh_review_session(
             upload_result = outcome.upload_result
             plan = plan_post_upload_offers(
                 upload_ok=upload_result is not None and upload_result.success,
-                open_sad_count=_open_sad_count(db_client, recording.content_hash),
+                # Fresh-mode invariant: the picked recording had no feedback
+                # when picked. Pass 0 — never a live count — so a sad row the
+                # admin just wrote via the in-editor `f` hotkey can't trigger
+                # the clear-ratings offer and resolve their own fresh entry.
+                open_sad_count=0,
                 # Re-read visibility: update_recording_lrc COALESCEs a NULL
                 # visibility to 'review' on upload, so the in-memory object
                 # from before the session may be stale.
