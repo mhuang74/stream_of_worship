@@ -930,11 +930,18 @@ async def fill_uncovered_tail(
     )
 
     qwen3_phrases: Optional[List[WhisperPhrase]] = None
-    # v2: tail ASR now decodes with condition_on_previous_text=False and drops
-    # no_speech-hallucinated segments, so old tail caches must not be reused.
+    # v3: the ASR prompt is the last lyric line, not the full lyrics. A full-lyrics
+    # prompt makes Whisper collapse a repeated final chorus into one phrase; the
+    # single-line prompt keeps each repeat as its own segment.
     range_suffix = (
-        f"tail-v2-ns{settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB:.2f}+{clip_start:.1f}"
+        f"tail-v3-ns{settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB:.2f}+{clip_start:.1f}"
     )
+    last_line = max(
+        (ln for ln in existing_lines if ln.text.strip()),
+        key=lambda ln: ln.time_seconds,
+        default=None,
+    )
+    tail_asr_prompt = last_line.text.strip() if last_line else ""
     if options.use_qwen3_asr and settings.SOW_DASHSCOPE_API_KEY:
         context_limit = min(
             options.qwen3_asr_context_max_chars,
@@ -1002,7 +1009,7 @@ async def fill_uncovered_tail(
     else:
         whisper_key = build_whisper_transcription_cache_key(
             content_hash=content_hash,
-            lyrics_text=lyrics_text,
+            lyrics_text=tail_asr_prompt,
             stem_kind=stem_kind,
             model=options.whisper_model,
             language=resolved_language,
@@ -1020,7 +1027,7 @@ async def fill_uncovered_tail(
                     model_name=options.whisper_model,
                     language=resolved_language,
                     device=settings.SOW_WHISPER_DEVICE,
-                    lyrics_text=lyrics_text,
+                    lyrics_text=tail_asr_prompt or None,
                     vad_filter=False,
                     condition_on_previous_text=False,
                     max_no_speech_prob=settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB,
