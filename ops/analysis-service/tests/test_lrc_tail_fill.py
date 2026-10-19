@@ -313,29 +313,69 @@ class TestFillUncoveredTail:
 
 
 class TestRealCacheRoundTrip:
-    """WhisperPhrase-serialization bug regression: the tail fill must save
-    dicts into the real CacheManager (json.dumps chokes on dataclasses)."""
+    """WhisperPhrase-serialization bug regression: fill_uncovered_tail must save
+    dicts into the real CacheManager (json.dumps chokes on dataclasses). Driving
+    the real function keeps the conversion under test — handing pre-built dicts
+    to CacheManager here would pass even if the bug reverted."""
 
-    async def test_whisper_cache_round_trip(self, tmp_path):
+    async def test_whisper_cache_round_trip(self, monkeypatch, tmp_path):
         from sow_analysis.storage.cache import CacheManager
         from sow_analysis.workers.lrc import build_whisper_transcription_cache_key
 
+        async def fake_slice(audio_path, start_seconds, out_path):
+            return 60.0
+
+        async def fake_align(lyrics_text, phrases, llm_model, **kwargs):
+            # Clip-relative; +242.76 → 266.28 / 278.12 / 281.08 absolute.
+            return [
+                LRCLine(time_seconds=23.52, text="我願跟隨一生活出祢旨意"),
+                LRCLine(time_seconds=35.36, text="我願跟隨一生活出祢旨意"),
+                LRCLine(time_seconds=38.32, text="我願跟隨一生活出祢旨意"),
+            ]
+
+        monkeypatch.setattr("sow_analysis.workers.lrc._slice_audio_tail", fake_slice)
+        monkeypatch.setattr("sow_analysis.workers.lrc._llm_align", fake_align)
+        monkeypatch.setattr(
+            "sow_analysis.workers.lrc._run_whisper_transcription",
+            AsyncMock(
+                return_value=[
+                    WhisperPhrase(text="我願跟隨一生活出祢旨意", start=23.52, end=28.0),
+                    WhisperPhrase(text="我願跟隨一生活出祢旨意", start=35.36, end=40.0),
+                    WhisperPhrase(text="我願跟隨一生活出祢旨意", start=38.32, end=42.0),
+                ]
+            ),
+        )
+
+        options = LrcOptions(use_qwen3_asr=False, whisper_model="large-v3")
         cache_manager = CacheManager(cache_dir=str(tmp_path / "cache"))
+        existing = [_line(250.0, "前一句"), _line(257.76, "我願跟隨一生活出祢旨意")]
+
+        merged, count = await fill_uncovered_tail(
+            audio_path=tmp_path / "audio.mp3",
+            lyrics_text="前一句\n我願跟隨一生活出祢旨意",
+            options=options,
+            existing_lines=existing,
+            duration_seconds=327.12,
+            content_hash="abc123",
+            temp_dir=tmp_path,
+            cache_manager=cache_manager,
+            dashscope_semaphore=_FakeSemaphore(),
+            resolved_language="zh",
+        )
+        assert count == 2
+
+        # Rebuild the key exactly as fill_uncovered_tail does
+        # (clip_start = 257.76 − 15.0 = 242.76 → "tail+242.8").
         key = build_whisper_transcription_cache_key(
             content_hash="abc123",
-            lyrics_text="我願跟隨一生活出祢旨意",
+            lyrics_text="前一句\n我願跟隨一生活出祢旨意",
             stem_kind="full_mix",
             model="large-v3",
             language="zh",
             range_suffix="tail+242.8",
         )
-        phrases = [
-            {"text": "我願跟隨一生活出祢旨意", "start": 23.52, "end": 28.0},
-            {"text": "我願跟隨一生活出祢旨意", "start": 35.36, "end": 40.0},
-        ]
-        cache_manager.save_whisper_transcription(key, phrases)
         loaded = cache_manager.get_whisper_transcription(key)
-        assert loaded is not None and len(loaded) == 2
+        assert loaded is not None and len(loaded) == 3
         assert loaded[0]["text"] == "我願跟隨一生活出祢旨意"
         assert loaded[0]["start"] == pytest.approx(23.52)
 
