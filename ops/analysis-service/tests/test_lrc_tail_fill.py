@@ -312,6 +312,34 @@ class TestFillUncoveredTail:
         assert whisper_calls["prompt_builder"] is lrc_mod._build_alignment_prompt
 
 
+class TestRealCacheRoundTrip:
+    """WhisperPhrase-serialization bug regression: the tail fill must save
+    dicts into the real CacheManager (json.dumps chokes on dataclasses)."""
+
+    async def test_whisper_cache_round_trip(self, tmp_path):
+        from sow_analysis.storage.cache import CacheManager
+        from sow_analysis.workers.lrc import build_whisper_transcription_cache_key
+
+        cache_manager = CacheManager(cache_dir=str(tmp_path / "cache"))
+        key = build_whisper_transcription_cache_key(
+            content_hash="abc123",
+            lyrics_text="我願跟隨一生活出祢旨意",
+            stem_kind="full_mix",
+            model="large-v3",
+            language="zh",
+            range_suffix="tail+242.8",
+        )
+        phrases = [
+            {"text": "我願跟隨一生活出祢旨意", "start": 23.52, "end": 28.0},
+            {"text": "我願跟隨一生活出祢旨意", "start": 35.36, "end": 40.0},
+        ]
+        cache_manager.save_whisper_transcription(key, phrases)
+        loaded = cache_manager.get_whisper_transcription(key)
+        assert loaded is not None and len(loaded) == 2
+        assert loaded[0]["text"] == "我願跟隨一生活出祢旨意"
+        assert loaded[0]["start"] == pytest.approx(23.52)
+
+
 class _FakeCacheManager:
     """Minimal CacheManager stand-in covering the whisper tail path."""
 

@@ -862,9 +862,17 @@ async def _slice_audio_tail(audio_path: Path, start_seconds: float, out_path: Pa
     import librosa
     import soundfile as sf
 
-    y, _ = librosa.load(str(audio_path), sr=16000, mono=True, offset=start_seconds)
-    sf.write(str(out_path), y, 16000, subtype="PCM_16")
-    return len(y) / 16000.0
+    loop = asyncio.get_running_loop()
+
+    def _slice() -> int:
+        # librosa still decodes from 0 when offset= is given, so keep this off the
+        # event loop (same pattern as _run_whisper_transcription).
+        y, _ = librosa.load(str(audio_path), sr=16000, mono=True, offset=start_seconds)
+        sf.write(str(out_path), y, 16000, subtype="PCM_16")
+        return len(y)
+
+    sample_count = await loop.run_in_executor(None, _slice)
+    return sample_count / 16000.0
 
 
 async def fill_uncovered_tail(
@@ -1024,7 +1032,15 @@ async def fill_uncovered_tail(
     if appended:
         logger.info("Tail fill: recovered %d line(s) after %.2fs", appended, last_lyric_ts)
     else:
-        logger.info("Tail fill: alignment produced no new lines past %.2fs", last_lyric_ts)
+        # An append of 0 means the tail stayed uncovered — make it observable in
+        # production logs rather than silently swallowed.
+        logger.warning(
+            "Tail fill: 0 lines appended (clip start %.2fs, %.2fs long) — tail remains "
+            "uncovered after %.2fs",
+            clip_start,
+            clip_duration,
+            last_lyric_ts,
+        )
     return merged, appended
 
 
