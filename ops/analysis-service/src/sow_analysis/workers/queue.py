@@ -195,7 +195,7 @@ class JobQueue:
 
         Args:
             max_concurrent_local_model: Maximum concurrent local model executions
-                (Whisper, Qwen3, audio-separator, allin1, demucs). Default 1 due to
+                (audio-separator, allin1, demucs). Default 1 due to
                 memory constraints - only one local model can run at a time.
             cache_dir: Directory for caching results
             db_path: Path to job database (default: cache_dir / "jobs.db")
@@ -211,7 +211,8 @@ class JobQueue:
         self._qwen3_quota_waiter: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
-        # Global semaphore for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
+        # Global semaphore for local model execution (audio-separator, allin1, demucs).
+        # Whisper runs on Modal and Qwen3 ASR is cloud-only; neither acquires this.
         # Cloud operations (YouTube transcript, MVSEP, LLM alignment) don't acquire this.
         self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
         self._dashscope_asr_semaphore = asyncio.Semaphore(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)
@@ -503,9 +504,11 @@ class JobQueue:
             async with self._local_model_semaphore:
                 await self._process_analysis_job(job)
         elif job.type == JobType.LRC:
-            # LRC tries YouTube (cloud) first; semaphore acquired inside generate_lrc()
-            # only for Whisper/Qwen3 (local models). This outer semaphore caps
-            # concurrently *executing* LRC tasks (restart-recovery fan-out herd).
+            # LRC tries YouTube (cloud) first; the local-model semaphore is acquired
+            # inside process_stem_separation()/forced alignment only. This outer
+            # semaphore caps concurrently *executing* LRC tasks (restart-recovery
+            # fan-out herd). Whisper transcription is a remote Modal call and does
+            # not acquire the local-model semaphore.
             async with self._lrc_semaphore:
                 await self._process_lrc_job(job)
         elif job.type == JobType.STEM_SEPARATION:

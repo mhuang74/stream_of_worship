@@ -349,7 +349,7 @@ The LRC worker's transcription pipeline:
 
 1. **Qwen3 ASR** — Direct transcription via `qwen3-asr-flash` model (for audio < ~10MB or short duration)
 2. **Qwen3 Filetrans** — File upload transcription via `qwen3-asr-flash-filetrans` model (for larger audio)
-3. **Whisper** — Local fallback if both Qwen3 methods fail
+3. **Whisper on Modal** — Fallback if both Qwen3 methods fail (runs in the `sow-whisper` Modal app, not locally)
 
 Results are cached locally to avoid redundant API calls. Cache version (`SOW_DASHSCOPE_ASR_CACHE_VERSION`) can be bumped to invalidate old cache entries.
 
@@ -386,6 +386,10 @@ docker compose build
 Whisper transcription runs on [Modal](https://modal.com), not in this container — the
 container stays CPU-only and no longer loads a Whisper model (the old in-container
 path could reach ~12 GiB RAM and trigger earlyoom).
+
+The deployed app is **required at runtime**: every LRC job that falls back to Whisper
+fails with a configuration error until `sow-whisper` is deployed and the Modal tokens
+are set. There is no local Whisper fallback by design.
 
 One-time setup:
 
