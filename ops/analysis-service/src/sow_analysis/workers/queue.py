@@ -111,7 +111,7 @@ except ImportError:
     _detect_downbeats_madmom = None
     get_or_detect_beat_grid = None
 
-# Optional LRC imports - require whisper and openai
+# Optional LRC imports - require openai
 try:
     from .lrc import (
         LRCLine,
@@ -1352,7 +1352,7 @@ class JobQueue:
         # Check if LRC dependencies are available
         if generate_lrc is None:
             job.status = JobStatus.FAILED
-            job.error_message = "LRC dependencies not available (whisper, openai)"
+            job.error_message = "LRC dependencies not available (openai)"
             job.stage = "missing_dependencies"
             job.updated_at = datetime.now(timezone.utc)
             try:
@@ -1360,7 +1360,7 @@ class JobQueue:
                     job.id,
                     status="failed",
                     stage="missing_dependencies",
-                    error_message="LRC dependencies not available (whisper, openai)",
+                    error_message="LRC dependencies not available (openai)",
                 )
             except Exception as e:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
@@ -1635,7 +1635,6 @@ class JobQueue:
                                 temp_dir=temp_path,
                                 cache_manager=self.cache_manager,
                                 dashscope_semaphore=self._dashscope_asr_semaphore,
-                                local_model_semaphore=self._local_model_semaphore,
                                 resolved_language=resolved_language,
                                 qwen3_client=self._qwen3_client,
                             )
@@ -1813,7 +1812,6 @@ class JobQueue:
                             youtube_url=None,
                             content_hash=request.content_hash,
                             vocals_stem_url=resolved_audio.r2_url,
-                            local_model_semaphore=self._local_model_semaphore,
                             resolved_language=resolved_language,
                         )
                         lrc_source = "whisper_asr"

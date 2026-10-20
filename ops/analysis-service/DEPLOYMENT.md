@@ -273,11 +273,13 @@ BPM_ALGORITHM_VERSION=v4_octave_guard
 
 # Device selection (cpu or cuda - requires GPU setup)
 SOW_DEMUCS_DEVICE=cpu
-SOW_WHISPER_DEVICE=cpu
 SOW_FORCED_ALIGNER_DEVICE=auto
 
-# Whisper configuration
-SOW_WHISPER_MODEL=large-v3
+# Whisper runs on Modal (modal_apps/whisper_app.py); fill these in on the server
+MODAL_TOKEN_ID=""
+MODAL_TOKEN_SECRET=""
+SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
+SOW_WHISPER_CACHE_VERSION=2
 
 # =============================================================================
 # OPTIONAL: MVSEP CLOUD API (for cloud-based stem separation)
@@ -395,9 +397,11 @@ services:
       SOW_FORCED_ALIGNER_MODEL_PATH: ${SOW_FORCED_ALIGNER_MODEL_PATH}
       SOW_FORCED_ALIGNER_DEVICE: ${SOW_FORCED_ALIGNER_DEVICE:-auto}
       
-      # Whisper Configuration
-      SOW_WHISPER_DEVICE: ${SOW_WHISPER_DEVICE:-cpu}
-      SOW_WHISPER_MODEL: ${SOW_WHISPER_MODEL:-large-v3}
+      # Whisper runs on Modal (modal_apps/whisper_app.py); tokens come from /opt/sow/.env
+      MODAL_TOKEN_ID: ${MODAL_TOKEN_ID}
+      MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET}
+      SOW_MODAL_WHISPER_ALLOWED_MODELS: ${SOW_MODAL_WHISPER_ALLOWED_MODELS:-tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3}
+      SOW_WHISPER_CACHE_VERSION: ${SOW_WHISPER_CACHE_VERSION:-2}
       
       # Processing Configuration
       SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: ${SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS:-1}

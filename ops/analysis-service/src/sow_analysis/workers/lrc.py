@@ -19,6 +19,7 @@ from typing import Callable, List, Literal, Optional
 from ..config import settings
 from ..models import LrcOptions
 from ..services.canonical_snap import snap_qwen3_asr_to_canonical
+from ..services.modal_whisper_client import get_modal_whisper_client
 from ..services.qwen3_asr_client import Qwen3AsrClient, Qwen3AsrError, Qwen3AsrResult
 from ..storage.cache import CacheManager
 from .exceptions import LLMConfigError, WorkerError
@@ -165,19 +166,17 @@ async def _run_whisper_transcription(
     audio_path: Path,
     model_name: str,
     language: ResolvedLrcLanguage,
-    device: str,
     lyrics_text: Optional[str] = None,
     vad_filter: bool = True,
     condition_on_previous_text: bool = True,
     max_no_speech_prob: Optional[float] = None,
 ) -> List[WhisperPhrase]:
-    """Run Whisper transcription with phrase-level timestamps.
+    """Run Whisper transcription with phrase-level timestamps (on Modal).
 
     Args:
         audio_path: Path to audio file
         model_name: Whisper model name (e.g., "large-v3")
         language: Language hint (e.g., "zh")
-        device: Device to run on ("cpu" or "cuda")
         lyrics_text: Official lyrics for the initial prompt
         vad_filter: Pass through to faster-whisper. Sung material (e.g. a tail clip
             of repeated chorus) must be transcribed with vad_filter=False because
@@ -196,107 +195,83 @@ async def _run_whisper_transcription(
     Raises:
         WhisperTranscriptionError: If transcription fails or returns no phrases
     """
-    loop = asyncio.get_running_loop()
-
-    def _transcribe():
-        from faster_whisper import WhisperModel
-
-        # Ensure cache directory exists
-        cache_dir = settings.SOW_WHISPER_CACHE_DIR
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        # Determine device
-        device_type = device if device else "cuda"
-        compute_type = "int8"  # Use int8 quantization for speed
-
-        # Load model
-        logger.info(f"Loading Whisper model: {model_name} on {device_type} with {compute_type}")
-        model_load_start = time.time()
-        model = WhisperModel(
-            model_name,
-            device=device_type,
-            compute_type=compute_type,
-            download_root=str(cache_dir),
-        )
-        model_load_elapsed = time.time() - model_load_start
-        logger.info(f"Whisper model loaded in {model_load_elapsed:.2f}s")
-
-        # Transcribe with language-specific worship song context.
-        logger.info(f"Running Whisper transcription: {audio_path}")
-        transcribe_start = time.time()
-
-        # Build dynamic initial prompt with lyrics if available
-        if lyrics_text:
-            # Take first 50 lines and truncate to 2000 characters max
-            lyrics_truncated = "\n".join(lyrics_text.split("\n")[:50])
-            if len(lyrics_truncated) > 2000:
-                lyrics_truncated = lyrics_truncated[:2000]
-            if language == "en":
-                initial_prompt = (
-                    "This is an English worship song. Preserve the English words, "
-                    "phrasing, contractions, casing, and punctuation from these official lyrics:\n"
-                    f"{lyrics_truncated}"
-                )
-            else:
-                initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_truncated}"
-            logger.info(f"Using lyrics-enhanced initial prompt ({len(lyrics_truncated)} chars)")
+    # Build dynamic initial prompt with lyrics if available
+    if lyrics_text:
+        # Take first 50 lines and truncate to 2000 characters max
+        lyrics_truncated = "\n".join(lyrics_text.split("\n")[:50])
+        if len(lyrics_truncated) > 2000:
+            lyrics_truncated = lyrics_truncated[:2000]
+        if language == "en":
+            initial_prompt = (
+                "This is an English worship song. Preserve the English words, "
+                "phrasing, contractions, casing, and punctuation from these official lyrics:\n"
+                f"{lyrics_truncated}"
+            )
         else:
-            if language == "en":
-                initial_prompt = (
-                    "This is an English worship song. Preserve English worship lyrics, "
-                    "phrasing, contractions, casing, and punctuation."
-                )
-            else:
-                initial_prompt = "这是一首中文敬拜歌的歌詞"
-            logger.info("Using default initial prompt (no lyrics provided)")
+            initial_prompt = f"这是一首中文敬拜诗歌。歌词如下：\n{lyrics_truncated}"
+        logger.info(f"Using lyrics-enhanced initial prompt ({len(lyrics_truncated)} chars)")
+    else:
+        if language == "en":
+            initial_prompt = (
+                "This is an English worship song. Preserve English worship lyrics, "
+                "phrasing, contractions, casing, and punctuation."
+            )
+        else:
+            initial_prompt = "这是一首中文敬拜歌的歌詞"
+        logger.info("Using default initial prompt (no lyrics provided)")
 
-        segments, info = model.transcribe(
-            str(audio_path),
+    logger.info("Running Modal Whisper transcription: %s", audio_path)
+    transcribe_start = time.time()
+    try:
+        result = await get_modal_whisper_client().transcribe(
+            audio_path,
+            model_name=model_name,
             language=language,
-            beam_size=5,
+            initial_prompt=initial_prompt,
             vad_filter=vad_filter,
             condition_on_previous_text=condition_on_previous_text,
-            initial_prompt=initial_prompt,
         )
-
-        # Note: segments is a generator - transcription happens during iteration
-        # Extract phrases from segments (convert generator to list)
-        phrases = []
-        for segment in segments:
-            text = segment.text.strip()
-            if not text:
-                continue
-            if max_no_speech_prob is not None and segment.no_speech_prob >= max_no_speech_prob:
-                logger.info(
-                    "Dropping Whisper segment %.2f-%.2fs (no_speech_prob %.2f >= %.2f): %s",
-                    segment.start,
-                    segment.end,
-                    segment.no_speech_prob,
-                    max_no_speech_prob,
-                    text,
-                )
-                continue
-            phrases.append(
-                WhisperPhrase(
-                    text=text,
-                    start=segment.start,
-                    end=segment.end,
-                    no_speech_prob=segment.no_speech_prob,
-                )
-            )
-
-        transcribe_elapsed = time.time() - transcribe_start
-        logger.info(f"Whisper transcription completed in {transcribe_elapsed:.2f}s")
-        logger.info(
-            f"Detected language: {info.language}, probability: {info.language_probability:.2f}"
-        )
-
-        return phrases
-
-    try:
-        phrases = await loop.run_in_executor(None, _transcribe)
     except Exception as e:
         raise WhisperTranscriptionError(f"Whisper transcription failed: {e}") from e
+
+    phrases: List[WhisperPhrase] = []
+    for segment in result.get("phrases", []):
+        text = (segment.get("text") or "").strip()
+        if not text:
+            continue
+        no_speech_prob = float(segment.get("no_speech_prob", 0.0))
+        if max_no_speech_prob is not None and no_speech_prob >= max_no_speech_prob:
+            logger.info(
+                "Dropping Whisper segment %.2f-%.2fs (no_speech_prob %.2f >= %.2f): %s",
+                segment["start"],
+                segment["end"],
+                no_speech_prob,
+                max_no_speech_prob,
+                text,
+            )
+            continue
+        phrases.append(
+            WhisperPhrase(
+                text=text,
+                start=float(segment["start"]),
+                end=float(segment["end"]),
+                no_speech_prob=no_speech_prob,
+            )
+        )
+
+    logger.info(
+        "Modal Whisper transcription completed in %.2fs (%d phrases, %d raw)",
+        time.time() - transcribe_start,
+        len(phrases),
+        len(result.get("phrases", [])),
+    )
+    # language is always passed explicitly, so faster-whisper reports probability 1.0;
+    # log it for continuity with the old local path but do not present it as a detection.
+    logger.info(
+        "Whisper language: %s (requested %s)",
+        result.get("language"),
+        language,
+    )
 
     if not phrases:
         raise WhisperTranscriptionError("Whisper returned no phrases")
@@ -780,7 +755,8 @@ def build_whisper_transcription_cache_key(
     range_suffix: str = "",
 ) -> str:
     """Build language-aware Whisper transcription cache key. ``range_suffix`` scopes
-    the key to an audio slice; omit it for whole-audio keys."""
+    the key to an audio slice; omit it for whole-audio keys. ``cache_version`` separates
+    Whisper backends (local int8 vs Modal float16 produce different outputs)."""
     parts = {
         "content_hash": content_hash,
         "lyrics_hash": hashlib.sha256(lyrics_text.encode("utf-8")).hexdigest(),
@@ -788,6 +764,7 @@ def build_whisper_transcription_cache_key(
         "model": model,
         "language": language,
         "prompt_version": WHISPER_INITIAL_PROMPT_VERSION,
+        "cache_version": f"wv{settings.SOW_WHISPER_CACHE_VERSION}",
     }
     if range_suffix:
         parts["range_suffix"] = range_suffix
@@ -907,13 +884,11 @@ async def fill_uncovered_tail(
     temp_dir: Path,
     cache_manager: CacheManager,
     dashscope_semaphore: asyncio.Semaphore,
-    local_model_semaphore: Optional[asyncio.Semaphore] = None,
     stem_kind: str = "full_mix",
     resolved_language: ResolvedLrcLanguage = "zh",
     qwen3_client: Optional[Qwen3AsrClient] = None,
 ) -> tuple[List[LRCLine], int]:
     """Transcribe the uncovered tail, align it to the official lyrics, merge into the LRC."""
-    from .queue import optional_semaphore
 
     last_lyric_ts = last_lyric_timestamp(existing_lines)
     if last_lyric_ts is None:
@@ -1021,17 +996,15 @@ async def fill_uncovered_tail(
             phrases = [WhisperPhrase(p["text"], p["start"], p["end"]) for p in cached_whisper]
         else:
             logger.info("Tail fill: running Whisper on the tail clip")
-            async with optional_semaphore(local_model_semaphore):
-                phrases = await _run_whisper_transcription(
-                    clip_path,
-                    model_name=options.whisper_model,
-                    language=resolved_language,
-                    device=settings.SOW_WHISPER_DEVICE,
-                    lyrics_text=tail_asr_prompt or None,
-                    vad_filter=False,
-                    condition_on_previous_text=False,
-                    max_no_speech_prob=settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB,
-                )
+            phrases = await _run_whisper_transcription(
+                clip_path,
+                model_name=options.whisper_model,
+                language=resolved_language,
+                lyrics_text=tail_asr_prompt or None,
+                vad_filter=False,
+                condition_on_previous_text=False,
+                max_no_speech_prob=settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB,
+            )
             cache_manager.save_whisper_transcription(
                 whisper_key,
                 [{"text": p.text, "start": p.start, "end": p.end} for p in phrases],
@@ -1222,7 +1195,6 @@ async def generate_lrc(
     youtube_url: Optional[str] = None,
     content_hash: Optional[str] = None,
     vocals_stem_url: Optional[str] = None,
-    local_model_semaphore: Optional[asyncio.Semaphore] = None,
     resolved_language: ResolvedLrcLanguage = "zh",
 ) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
@@ -1239,8 +1211,6 @@ async def generate_lrc(
         youtube_url: Optional YouTube URL for transcript-based LRC (primary path)
         content_hash: Deprecated, retained for caller compatibility.
         vocals_stem_url: Deprecated, retained for caller compatibility.
-        local_model_semaphore: Optional semaphore to limit concurrent local model execution.
-            Acquired around Whisper transcription. LLM alignment does not acquire this semaphore.
 
     Returns:
         Tuple of (path to LRC file, number of lines, transcription phrases)
@@ -1250,8 +1220,6 @@ async def generate_lrc(
         WhisperTranscriptionError: If Whisper transcription fails
         LLMAlignmentError: If LLM alignment fails after retries
     """
-    from .queue import optional_semaphore
-
     if output_path is None:
         output_path = audio_path.with_suffix(".lrc")
 
@@ -1285,14 +1253,12 @@ async def generate_lrc(
         whisper_phrases = cached_phrases
     else:
         logger.info("No cached transcription found, running Whisper...")
-        async with optional_semaphore(local_model_semaphore):
-            whisper_phrases = await _run_whisper_transcription(
-                audio_path,
-                model_name=options.whisper_model,
-                language=resolved_language,
-                device=settings.SOW_WHISPER_DEVICE,
-                lyrics_text=lyrics_text,
-            )
+        whisper_phrases = await _run_whisper_transcription(
+            audio_path,
+            model_name=options.whisper_model,
+            language=resolved_language,
+            lyrics_text=lyrics_text,
+        )
 
     # Step 2: LLM alignment
     lrc_lines = await _llm_align(

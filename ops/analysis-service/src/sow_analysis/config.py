@@ -258,9 +258,14 @@ class Settings(BaseSettings):
     SOW_EMBEDDING_BASE_URL: str = ""
     SOW_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
-    # Whisper Configuration
-    SOW_WHISPER_DEVICE: str = "cpu"  # "cuda" or "cpu"
-    SOW_WHISPER_CACHE_DIR: Path = Path("/cache/whisper")
+    # Whisper runs on Modal (modal_apps/whisper_app.py), not in this container.
+    SOW_MODAL_WHISPER_APP_NAME: str = "sow-whisper"
+    SOW_MODAL_WHISPER_CLASS_NAME: str = "WhisperTranscriber"
+    SOW_MODAL_WHISPER_MAX_ATTEMPTS: int = 2
+    SOW_MODAL_WHISPER_RETRY_DELAY_SECONDS: float = 5.0
+    SOW_MODAL_WHISPER_MAX_AUDIO_BYTES: int = 90_000_000
+    SOW_MODAL_WHISPER_ALLOWED_MODELS: str = "tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
+    SOW_WHISPER_CACHE_VERSION: int = 2  # bump: local int8 -> Modal float16 changes outputs
 
     # DashScope Qwen3 ASR Configuration
     SOW_DASHSCOPE_API_KEY: str = ""

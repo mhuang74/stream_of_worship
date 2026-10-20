@@ -11,12 +11,6 @@ import pytest
 # Mock openai before importing lrc module
 sys.modules["openai"] = MagicMock()
 
-# Setup faster_whisper mock with proper structure
-mock_faster_whisper = MagicMock()
-mock_whisper_model_class = MagicMock()
-mock_faster_whisper.WhisperModel = mock_whisper_model_class
-sys.modules["faster_whisper"] = mock_faster_whisper
-
 from sow_analysis.models import JobStatus, JobType, LrcJobRequest, LrcOptions
 from sow_analysis.workers.lrc import (
     LLMAlignmentError,
@@ -270,63 +264,77 @@ class TestWriteLRC:
 
 
 class TestRunWhisperTranscription:
-    """Test Whisper transcription function."""
+    """Test Whisper transcription function (Modal-backed)."""
+
+    class _StubModalWhisperClient:
+        """Duck-typed ModalWhisperClient returning a canned result dict."""
+
+        def __init__(self, result):
+            self._result = result
+            self.calls = []
+
+        async def transcribe(self, audio_path, **kwargs):
+            self.calls.append({"audio_path": audio_path, **kwargs})
+            return self._result
 
     @pytest.mark.asyncio
-    async def test_transcription_returns_phrases(self):
+    async def test_transcription_returns_phrases(self, monkeypatch):
         """Test that transcription returns WhisperPhrase list."""
-        # Create mock segment objects (faster-whisper uses attribute access)
-        mock_segment1 = MagicMock()
-        mock_segment1.text = "hello"
-        mock_segment1.start = 0.0
-        mock_segment1.end = 0.5
-
-        mock_segment2 = MagicMock()
-        mock_segment2.text = "world"
-        mock_segment2.start = 0.6
-        mock_segment2.end = 1.0
-
-        mock_segments = [mock_segment1, mock_segment2]
-
-        # Create mock info object
-        mock_info = MagicMock()
-        mock_info.language = "zh"
-        mock_info.language_probability = 0.98
-
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = (mock_segments, mock_info)
-
-        # Configure the mock WhisperModel class to return our mock model
-        mock_whisper_model_class.return_value = mock_model
-
-        with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-            mock_settings.SOW_WHISPER_CACHE_DIR = Path("/tmp/whisper")
-            with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
-                phrases = await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh", "cpu")
+        stub = self._StubModalWhisperClient(
+            {
+                "phrases": [
+                    {"text": "hello", "start": 0.0, "end": 0.5, "no_speech_prob": 0.01},
+                    {"text": "world", "start": 0.6, "end": 1.0, "no_speech_prob": 0.01},
+                ],
+                "language": "zh",
+                "language_probability": 1.0,
+            }
+        )
+        monkeypatch.setattr(
+            "sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub
+        )
+        with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
+            phrases = await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh")
 
         assert len(phrases) == 2
         assert phrases[0].text == "hello"
         assert phrases[1].text == "world"
+        assert stub.calls[0]["model_name"] == "large-v3"
 
     @pytest.mark.asyncio
-    async def test_transcription_no_phrases_raises(self):
+    async def test_transcription_drops_no_speech_segments(self, monkeypatch):
+        """Segments at/above max_no_speech_prob are dropped."""
+        stub = self._StubModalWhisperClient(
+            {
+                "phrases": [
+                    {"text": "keep", "start": 0.0, "end": 0.5, "no_speech_prob": 0.01},
+                    {"text": "drop", "start": 0.6, "end": 1.0, "no_speech_prob": 0.9},
+                ],
+                "language": "zh",
+                "language_probability": 1.0,
+            }
+        )
+        monkeypatch.setattr(
+            "sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub
+        )
+        with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
+            phrases = await _run_whisper_transcription(
+                Path(tmp.name), "large-v3", "zh", max_no_speech_prob=0.6
+            )
+
+        assert len(phrases) == 1
+        assert phrases[0].text == "keep"
+
+    @pytest.mark.asyncio
+    async def test_transcription_no_phrases_raises(self, monkeypatch):
         """Test that no phrases raises WhisperTranscriptionError."""
-        mock_segments = []  # Empty segments
-        mock_info = MagicMock()
-        mock_info.language = "zh"
-        mock_info.language_probability = 0.98
-
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = (mock_segments, mock_info)
-
-        # Configure the mock WhisperModel class to return our mock model
-        mock_whisper_model_class.return_value = mock_model
-
-        with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-            mock_settings.SOW_WHISPER_CACHE_DIR = Path("/tmp/whisper")
-            with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
-                with pytest.raises(WhisperTranscriptionError):
-                    await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh", "cpu")
+        stub = self._StubModalWhisperClient({"phrases": [], "language": "zh"})
+        monkeypatch.setattr(
+            "sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub
+        )
+        with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
+            with pytest.raises(WhisperTranscriptionError):
+                await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh")
 
 
 class TestLLMAlign:
@@ -585,27 +593,8 @@ class TestGenerateLRC:
     """Test full LRC generation pipeline."""
 
     @pytest.mark.asyncio
-    async def test_generate_lrc_success(self):
+    async def test_generate_lrc_success(self, monkeypatch):
         """Test successful LRC generation."""
-        # Create mock segment objects for faster-whisper
-        mock_segment1 = MagicMock()
-        mock_segment1.text = "測試"
-        mock_segment1.start = 0.0
-        mock_segment1.end = 0.5
-
-        mock_segment2 = MagicMock()
-        mock_segment2.text = "歌詞"
-        mock_segment2.start = 0.6
-        mock_segment2.end = 1.0
-
-        mock_segments = [mock_segment1, mock_segment2]
-        mock_info = MagicMock()
-        mock_info.language = "zh"
-        mock_info.language_probability = 0.98
-
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = (mock_segments, mock_info)
-
         llm_response = '[{"time_seconds": 0.0, "text": "測試歌詞"}]'
         mock_llm_response = MagicMock()
         mock_llm_response.choices = [MagicMock()]
@@ -622,13 +611,18 @@ class TestGenerateLRC:
             output_path = Path(tmp) / "output.lrc"
 
             with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-                mock_settings.SOW_WHISPER_CACHE_DIR = Path(tmp) / "whisper"
-                mock_settings.SOW_WHISPER_DEVICE = "cpu"
                 mock_settings.SOW_LLM_API_KEY = "test-key"
                 mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
 
-                # Configure the mock WhisperModel class to return our mock model
-                mock_whisper_model_class.return_value = mock_model
+                monkeypatch.setattr(
+                    "sow_analysis.workers.lrc._run_whisper_transcription",
+                    AsyncMock(
+                        return_value=[
+                            WhisperPhrase(text="測試", start=0.0, end=0.5),
+                            WhisperPhrase(text="歌詞", start=0.6, end=1.0),
+                        ]
+                    ),
+                )
 
                 with patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}):
                     options = LrcOptions()
@@ -761,7 +755,7 @@ class TestLRCJobQueueProcessing:
         assert "Invalid request type" in job.error_message
 
     @pytest.mark.asyncio
-    async def test_lrc_job_missing_llm_key_fails(self, queue):
+    async def test_lrc_job_missing_llm_key_fails(self, queue, monkeypatch):
         """Test LRC job fails gracefully when LLM key missing."""
         request = LrcJobRequest(
             audio_url="s3://bucket/hash/audio.mp3",
@@ -776,19 +770,6 @@ class TestLRCJobQueueProcessing:
         mock_r2.check_exists = AsyncMock(return_value=False)
         queue.r2_client = mock_r2
 
-        # Mock Whisper (faster-whisper API)
-        mock_segment = MagicMock()
-        mock_segment.text = "test"
-        mock_segment.start = 0.0
-        mock_segment.end = 0.5
-        mock_segments = [mock_segment]
-        mock_info = MagicMock()
-        mock_info.language = "zh"
-        mock_info.language_probability = 0.98
-
-        mock_model = MagicMock()
-        mock_model.transcribe.return_value = (mock_segments, mock_info)
-
         job = Job(
             id="job_test123",
             type=JobType.LRC,
@@ -798,13 +779,15 @@ class TestLRCJobQueueProcessing:
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch("sow_analysis.workers.lrc.settings") as mock_settings:
-                mock_settings.SOW_WHISPER_CACHE_DIR = Path(tmp)
-                mock_settings.SOW_WHISPER_DEVICE = "cpu"
                 mock_settings.SOW_LLM_API_KEY = ""  # Missing key
                 mock_settings.SOW_R2_BUCKET = "test-bucket"
 
-                # Configure the mock WhisperModel class to return our mock model
-                mock_whisper_model_class.return_value = mock_model
+                monkeypatch.setattr(
+                    "sow_analysis.workers.lrc._run_whisper_transcription",
+                    AsyncMock(
+                        return_value=[WhisperPhrase(text="test", start=0.0, end=0.5)]
+                    ),
+                )
 
                 await queue._process_lrc_job(job)
 

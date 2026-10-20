@@ -186,7 +186,6 @@ class TestFillUncoveredTail:
             temp_dir=tmp_path,
             cache_manager=cache_manager,
             dashscope_semaphore=_FakeSemaphore(),
-            local_model_semaphore=None,
             resolved_language="zh",
         )
 
