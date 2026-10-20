@@ -75,35 +75,12 @@ no code/DB/R2 changes.
 
 **Zero-line jobs (13 finished + 1 in flight):** 9 whisper-path (rows 6, 7, 12, 21, 23, 24, 26, 27, 31) + 4 Qwen3-ok (rows 4, 8, 25, 30); row 36 (祢使我雙腳跳舞) was killed mid-Qwen3-attempt. The 9 whisper-path zero cases wasted ≈ 625.6s (load + transcribe wall) total.
 
-## Appendix: exact recovered lines per song (22 songs, 43 lines)
+## Appendix: exact recovered lines per song
 
-Lines are the final LRC text's timestamped lines strictly after each job's recovery anchor
-(`Tail fill: recovered N line(s) after Ts`); counts match each job's `asr_tail_line_count` exactly.
-
-| Title | Job id | Recovered lines |
-|---|---|---|
-| 禱告的大軍 | `ac611ee8` | 04:24.77 站在祢的應許中   宣告祢國度降臨 · 04:33.19 宣告祢國度降臨 |
-| 禱告的力量 | `dc8999c1` | 04:18.53 因祢信實 祢必垂聽每個呼求 |
-| 得勝的歌 | `f63ffe03` | 04:45.35 祢就是我一切盼望的確據 · 04:48.35 哈利路亞 不再畏懼 |
-| 復興聖潔 | `27f04561` | 05:50.63 主  求祢復興我  心中的聖潔 |
-| 黑暗中的光芒 | `006da2a8` | 07:43.87 認識祢不再迷失方向 |
-| 厚恩待我 | `ec077cea` | 04:51.34 祢仰臉賜恩給我 · 04:57.04 恩惠慈愛隨著我 · 05:04.54 祢仰臉賜恩給我 · 05:10.74 恩惠慈愛隨著我 |
-| 回家 | `8e6bea7f` | 03:56.34 我一生屬於祂 |
-| 簡單的歌 | `f9239d82` | 03:15.31 喜樂就在我心裡面 |
-| 將天敞開 | `1e065d7e` | 03:44.80 哈利路亞 · 03:49.40 哈利路亞 |
-| 降下祢大能 | `0597db48` | 19:26.04 降下祢大能 降下祢恩膏 · 19:29.38 降下祢醫治在這地 |
-| 近前來 | `ca089bfc` | 05:46.32 祢必使我得着安息 得着安息 · 05:52.00 祢必使我得着安息 得着安息 |
-| 盡情地微笑 | `a061bf0c` | 05:44.45 神必陪伴你 走每一步路 |
-| 進入豐盛 | `02a4a797` | 03:12.37 全地當彰顯祢榮耀無比的權能 · 03:26.83 我要宣告  進入豐盛  宣告耶和華的禧年 · 03:31.03 我要宣告  進入豐盛  宣告耶和華的禧年 · 03:35.23 我要宣告  進入豐盛  宣告耶和華的禧年 |
-| 進入祢的同在 | `07700c9a` | 05:40.17 我要單單敬拜祢  耶穌 · 05:49.17 我要敬拜  敬拜  敬拜我的主 |
-| 敬拜祢 | `824060ac` | 04:19.03 榮耀 榮耀 配得榮耀 · 04:33.53 聖潔 聖潔 祢是聖潔 · 04:49.53 聖潔 聖潔 祢是聖潔 |
-| 看見復興 | `9a756740` | 03:46.87 直到我們  看見復興 · 03:56.47 呼喊吧  神的百姓呼喊吧 · 04:02.97 直到我們  看見復興 |
-| 祢的恩典夠我用 | `8bf090a5` | 03:58.77 永不離棄 一生常相伴 |
-| 祢的器皿 | `b9cf32b0` | 03:55.64 我是祢的器皿　為祢作光作鹽 · 03:55.64 使人得著祢愛的擁抱 |
-| 祢是配得讚美 | `6fbda766` | 05:49.12 祢是配得讚美 · 05:56.96 祢是配得讚美 · 06:07.31 祢是配得讚美 |
-| 祢是聖潔 | `648ad811` | 05:15.35 聖潔真神 · 05:18.85 祢榮耀充滿在全地 |
-| 祢是我的一切 | `82cdf596` | 04:06.23 耶穌  主耶穌 · 04:20.23 我的良人  我愛祢 |
-| 祢使我生命美麗 | `dffdeebd` | 04:03.73 我愛祢耶穌 我愛祢耶穌 |
+Per-song (name, real song id from Neon DB, job id, exact recovered lines) lives in the companion
+results file: **[`tail-lyrics-recovered-songs.md`](tail-lyrics-recovered-songs.md)**
+(22 songs / 43 lines; counts match each job's `asr_tail_line_count` exactly). HTML render:
+[`tail-lyrics-recovered-songs.html`](tail-lyrics-recovered-songs.html).
 
 ## Method notes and caveats
 

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-Hant" xml:lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Stream of Worship — Tail-Lyrics Recovery</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Stream of Worship — Tail-Lyrics Recovery</h1>
+</header>
+<h1 id="tail-lyrics-recovery-recovered-songs-results">Tail-lyrics
+recovery: recovered songs (results)</h1>
+<p>Companion to <code>tail-lyrics-recovery-report.md</code>. <strong>22
+songs / 43 lines</strong> recovered by the tail-fill ASR
+(Whisper-fallback path + Qwen3 direct) during the container window
+2026-10-19 23:29Z → 2026-10-20 01:25:48Z.</p>
+<ul>
+<li>Song ids are the Neon DB <code>songs.id</code> slugs (joined via R2
+12-char hash prefix).</li>
+<li>Lines are the final LRC text's timestamped lines strictly after each
+job's recovery anchor.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Title</th>
+<th>Song id</th>
+<th>Job</th>
+<th>Recovered lines</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>禱告的大軍</td>
+<td><code>dao_gao_de_da_jun_8e329f27</code></td>
+<td><code>ac611ee8</code></td>
+<td>04:24.77 站在祢的應許中 宣告祢國度降臨 · 04:33.19
+宣告祢國度降臨</td>
+</tr>
+<tr>
+<td>2</td>
+<td>禱告的力量</td>
+<td><code>dao_gao_de_li_liang_2bbaa828</code></td>
+<td><code>dc8999c1</code></td>
+<td>04:18.53 因祢信實 祢必垂聽每個呼求</td>
+</tr>
+<tr>
+<td>3</td>
+<td>得勝的歌</td>
+<td><code>de_sheng_de_ge_b1b44a55</code></td>
+<td><code>f63ffe03</code></td>
+<td>04:45.35 祢就是我一切盼望的確據 · 04:48.35 哈利路亞 不再畏懼</td>
+</tr>
+<tr>
+<td>4</td>
+<td>復興聖潔</td>
+<td><code>fu_xing_sheng_jie_53a90875</code></td>
+<td><code>27f04561</code></td>
+<td>05:50.63 主 求祢復興我 心中的聖潔</td>
+</tr>
+<tr>
+<td>5</td>
+<td>黑暗中的光芒</td>
+<td><code>hei_an_zhong_de_guang_mang_63ed2fec</code></td>
+<td><code>006da2a8</code></td>
+<td>07:43.87 認識祢不再迷失方向</td>
+</tr>
+<tr>
+<td>6</td>
+<td>厚恩待我</td>
+<td><code>hou_en_dai_wo_4216a8de</code></td>
+<td><code>ec077cea</code></td>
+<td>04:51.34 祢仰臉賜恩給我 · 04:57.04 恩惠慈愛隨著我 · 05:04.54
+祢仰臉賜恩給我 · 05:10.74 恩惠慈愛隨著我</td>
+</tr>
+<tr>
+<td>7</td>
+<td>回家</td>
+<td><code>hui_jia_f08c87a8</code></td>
+<td><code>8e6bea7f</code></td>
+<td>03:56.34 我一生屬於祂</td>
+</tr>
+<tr>
+<td>8</td>
+<td>簡單的歌</td>
+<td><code>jian_dan_de_ge_4e441202</code></td>
+<td><code>f9239d82</code></td>
+<td>03:15.31 喜樂就在我心裡面</td>
+</tr>
+<tr>
+<td>9</td>
+<td>將天敞開</td>
+<td><code>jiang_tian_chang_kai_461be3c9</code></td>
+<td><code>1e065d7e</code></td>
+<td>03:44.80 哈利路亞 · 03:49.40 哈利路亞</td>
+</tr>
+<tr>
+<td>10</td>
+<td>降下祢大能</td>
+<td><code>jiang_xia_mi_da_neng_8bba477e</code></td>
+<td><code>0597db48</code></td>
+<td>19:26.04 降下祢大能 降下祢恩膏 · 19:29.38 降下祢醫治在這地</td>
+</tr>
+<tr>
+<td>11</td>
+<td>近前來</td>
+<td><code>jin_qian_lai_a59240ef</code></td>
+<td><code>ca089bfc</code></td>
+<td>05:46.32 祢必使我得着安息 得着安息 · 05:52.00 祢必使我得着安息
+得着安息</td>
+</tr>
+<tr>
+<td>12</td>
+<td>盡情地微笑</td>
+<td><code>jin_qing_di_wei_xiao_2970d09a</code></td>
+<td><code>a061bf0c</code></td>
+<td>05:44.45 神必陪伴你 走每一步路</td>
+</tr>
+<tr>
+<td>13</td>
+<td>進入豐盛</td>
+<td><code>jin_ru_feng_sheng_06944b2d</code></td>
+<td><code>02a4a797</code></td>
+<td>03:12.37 全地當彰顯祢榮耀無比的權能 · 03:26.83 我要宣告 進入豐盛
+宣告耶和華的禧年 · 03:31.03 我要宣告 進入豐盛 宣告耶和華的禧年 ·
+03:35.23 我要宣告 進入豐盛 宣告耶和華的禧年</td>
+</tr>
+<tr>
+<td>14</td>
+<td>進入祢的同在</td>
+<td><code>jin_ru_mi_de_tong_zai_156a479d</code></td>
+<td><code>07700c9a</code></td>
+<td>05:40.17 我要單單敬拜祢 耶穌 · 05:49.17 我要敬拜 敬拜
+敬拜我的主</td>
+</tr>
+<tr>
+<td>15</td>
+<td>敬拜祢</td>
+<td><code>jing_bai_mi_c2ec357a</code></td>
+<td><code>824060ac</code></td>
+<td>04:19.03 榮耀 榮耀 配得榮耀 · 04:33.53 聖潔 聖潔 祢是聖潔 · 04:49.53
+聖潔 聖潔 祢是聖潔</td>
+</tr>
+<tr>
+<td>16</td>
+<td>看見復興</td>
+<td><code>kan_jian_fu_xing_4b6f8d75</code></td>
+<td><code>9a756740</code></td>
+<td>03:46.87 直到我們 看見復興 · 03:56.47 呼喊吧 神的百姓呼喊吧 ·
+04:02.97 直到我們 看見復興</td>
+</tr>
+<tr>
+<td>17</td>
+<td>祢的恩典夠我用</td>
+<td><code>mi_de_en_dian_gou_wo_yong_e5c26145</code></td>
+<td><code>8bf090a5</code></td>
+<td>03:58.77 永不離棄 一生常相伴</td>
+</tr>
+<tr>
+<td>18</td>
+<td>祢的器皿</td>
+<td><code>mi_de_qi_min_4fa4c59e</code></td>
+<td><code>b9cf32b0</code></td>
+<td>03:55.64 我是祢的器皿　為祢作光作鹽 · 03:55.64
+使人得著祢愛的擁抱</td>
+</tr>
+<tr>
+<td>19</td>
+<td>祢是配得讚美</td>
+<td><code>mi_shi_pei_de_zan_mei_b3bd9b3e</code></td>
+<td><code>6fbda766</code></td>
+<td>05:49.12 祢是配得讚美 · 05:56.96 祢是配得讚美 · 06:07.31
+祢是配得讚美</td>
+</tr>
+<tr>
+<td>20</td>
+<td>祢是聖潔</td>
+<td><code>mi_shi_sheng_jie_9f9ce375</code></td>
+<td><code>648ad811</code></td>
+<td>05:15.35 聖潔真神 · 05:18.85 祢榮耀充滿在全地</td>
+</tr>
+<tr>
+<td>21</td>
+<td>祢是我的一切</td>
+<td><code>mi_shi_wo_de_yi_qie_b011f3ba</code></td>
+<td><code>82cdf596</code></td>
+<td>04:06.23 耶穌 主耶穌 · 04:20.23 我的良人 我愛祢</td>
+</tr>
+<tr>
+<td>22</td>
+<td>祢使我生命美麗</td>
+<td><code>mi_shi_wo_sheng_ming_mei_li_c40b9bd4</code></td>
+<td><code>dffdeebd</code></td>
+<td>04:03.73 我愛祢耶穌 我愛祢耶穌</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
