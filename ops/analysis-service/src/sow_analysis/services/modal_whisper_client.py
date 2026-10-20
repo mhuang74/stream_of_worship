@@ -140,7 +140,9 @@ class ModalWhisperClient:
             import soundfile as sf
 
             y, _ = librosa.load(str(audio_path), sr=16000, mono=True)
-            tmp_path = Path(tempfile.mkstemp(suffix=".wav")[1])
+            fd, name = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            tmp_path = Path(name)
             try:
                 sf.write(str(tmp_path), y, 16000, subtype="PCM_16")
                 return tmp_path.read_bytes()
