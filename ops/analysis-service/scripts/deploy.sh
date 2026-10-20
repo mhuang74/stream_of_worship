@@ -248,8 +248,12 @@ SOW_AUDIO_SEPARATOR_MODEL_ROOT="$AUDIO_SEPARATOR_ROOT"
 # =============================================================================
 SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
 SOW_DEMUCS_DEVICE=cpu
-SOW_WHISPER_DEVICE=cpu
-SOW_WHISPER_MODEL=large-v3
+
+# Whisper runs on Modal (modal_apps/whisper_app.py); fill these in on the server
+MODAL_TOKEN_ID=""
+MODAL_TOKEN_SECRET=""
+SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
+SOW_WHISPER_CACHE_VERSION=2
 
 # =============================================================================
 # OPTIONAL: MVSEP CLOUD API

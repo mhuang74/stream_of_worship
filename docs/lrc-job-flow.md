@@ -19,7 +19,7 @@ The LRC (Lyric) job generates timestamped lyric files (`.lrc`) for songs in the 
 
 2. **DashScope Qwen3 ASR** (second) — When the YouTube path fails/skips and `use_qwen3_asr=true` (default), the system downloads audio, calls the DashScope Qwen3 ASR cloud API (context-biased with official lyrics), snaps segments to canonical lyric lines, then runs LLM alignment. Sets `lrc_source="qwen3_asr"`. Quota exhaustion waits in free-only mode; any other error falls back to Whisper.
 
-3. **Whisper ASR** (fallback) — Runs local Whisper (`faster_whisper`) to produce phrase-level transcriptions with timestamps, then uses an LLM to align the official lyrics with Whisper's output. Sets `lrc_source="whisper_asr"`.
+3. **Whisper ASR** (fallback) — Runs Whisper on Modal (`faster-whisper` inside the `sow-whisper` Modal app) to produce phrase-level transcriptions with timestamps, then uses an LLM to align the official lyrics with Whisper's output. Sets `lrc_source="whisper_asr"`.
 
 4. **Forced alignment** (separate job type) — `sow-admin lyrics align` uses the local Qwen3ForcedAligner to align known lyrics to audio timestamps. Sets `lrc_source="forced_alignment"`. It is a distinct job type, not a post-processing step of LRC jobs.
 
@@ -27,7 +27,7 @@ The LRC (Lyric) job generates timestamped lyric files (`.lrc`) for songs in the 
 
 - **Two independent caches**: LRC results are cached by `(audio_hash, lyrics_hash)`; Whisper transcriptions are cached by `audio_hash` alone (so the same audio can get different LRCs if lyrics change).
 - **Auto stem separation**: If `use_vocals_stem=true` and clean vocals aren't available, the LRC job auto-submits a child `STEM_SEPARATION` job and blocks (up to 2 hours) while waiting for it.
-- **Cloud vs local models**: YouTube transcript fetching and LLM alignment use cloud APIs (OpenRouter, etc.). Whisper transcription and Qwen3 forced alignment use local models (GPU/CPU). A global semaphore limits concurrent local model execution to 1.
+- **Cloud vs local models**: YouTube transcript fetching and LLM alignment use cloud APIs (OpenRouter, etc.). Qwen3 ASR/forced alignment use cloud/local models; Whisper transcription runs on Modal (`sow-whisper` app, GPU) and does not consume the local-model semaphore. A global semaphore limits concurrent local model execution (allin1, demucs, forced aligner) to 1.
 - **Persistence**: Job state is stored in local SQLite (`jobs.db`), results are uploaded to Cloudflare R2, and both LRC results and Whisper transcriptions are cached on disk.
 
 ## Mermaid Diagram
@@ -68,7 +68,7 @@ flowchart TD
         T -->|No/Failed| P
         Q --> U{"Whisper cache hit?<br/>(audio_hash only)"}
         U -->|Yes| V["Use cached phrases"]
-        U -->|No| W["Run Whisper transcription<br/>faster_whisper large-v3<br/>beam_size=5, vad_filter=true"]
+        U -->|No| W["Run Whisper transcription<br/>on Modal (sow-whisper, large-v3)<br/>beam_size=5, vad_filter=true"]
         W --> X["Cache Whisper phrases"]
         X --> V2["Use phrases"]
         V2 --> Y["LLM align lyrics<br/>with Whisper timestamps"]
@@ -178,13 +178,15 @@ If `use_vocals_stem=true`:
 
 #### 4c. Whisper Transcription
 
-1. Check Whisper cache (keyed on `content_hash` only)
-2. If cache miss (or `force_whisper=true`): run `faster_whisper` with:
-   - Model: configurable (default `large-v3`)
-   - Device: from `SOW_WHISPER_DEVICE` (default: `cpu`)
+1. Check Whisper cache (keyed on `content_hash` + model/language/prompt/backend version)
+2. If cache miss (or `force_whisper=true`): transcribe on Modal (the `sow-whisper` app;
+   `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` required) with:
+   - Model: configurable (default `large-v3`, gated by `SOW_MODAL_WHISPER_ALLOWED_MODELS`)
    - Beam size: 5, VAD filter: true
    - Initial prompt: includes truncated lyrics for Chinese worship context
-3. Semaphore-controlled: acquires `_local_model_semaphore` to limit concurrent local model execution
+3. **Not semaphore-controlled**: Whisper no longer counts as a local model; the
+   `_local_model_semaphore` covers allin1/demucs/forced aligner only. Modal-side
+   concurrency is capped by the app's `max_containers=2` (matches `SOW_LRC_MAX_CONCURRENT`).
 4. Cache the transcription phrases for future use
 
 #### 4d. LLM Alignment

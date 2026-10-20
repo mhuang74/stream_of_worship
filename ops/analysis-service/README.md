@@ -17,7 +17,7 @@ This service is designed to run as a long-lived container with async job process
 - **API Layer**: FastAPI endpoints for job submission and status checking
 - **Job Queue**: In-memory queue with separate concurrency controls
   - Analysis jobs: Serialized (1 at a time) due to high memory/CPU usage with allin1
-  - LRC jobs: Configurable concurrency (default: 2) with faster-whisper
+  - LRC jobs: Configurable concurrency (default: 2); Whisper transcription runs on Modal
 - **Workers**: Background tasks for analysis, stem separation, and LRC generation
 - **Cache**: Local filesystem cache for expensive operations
 
@@ -70,7 +70,12 @@ SOW_EMBEDDING_MODEL="text-embedding-3-small"
 # Processing Configuration
 SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1  # Max concurrent local model executions (default: 1)
 SOW_DEMUCS_DEVICE=cpu               # "cpu" or "cuda" (default: cpu)
-SOW_WHISPER_DEVICE=cpu              # "cpu" or "cuda" (default: cpu)
+
+# Whisper runs on Modal (see "Whisper on Modal" below); fill these in on the server
+MODAL_TOKEN_ID=""
+MODAL_TOKEN_SECRET=""
+SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
+SOW_WHISPER_CACHE_VERSION=2
 
 # BPM Algorithm (used by Fast Analysis jobs)
 BPM_ALGORITHM_VERSION="v4_octave_guard"  # v4_octave_guard (default) or v5_cps_prior
@@ -376,9 +381,61 @@ export TARGETPLATFORM=linux/arm64
 docker compose build
 ```
 
+## Whisper on Modal
+
+Whisper transcription runs on [Modal](https://modal.com), not in this container — the
+container stays CPU-only and no longer loads a Whisper model (the old in-container
+path could reach ~12 GiB RAM and trigger earlyoom).
+
+One-time setup:
+
+1. Deploy the app (from `ops/analysis-service/`, with your Modal token exported):
+
+   ```bash
+   uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/whisper_app.py
+   ```
+
+2. Put the token in `/opt/sow/.env`:
+
+   ```bash
+   MODAL_TOKEN_ID="ak-..."
+   MODAL_TOKEN_SECRET="as-..."
+   ```
+
+Tunable knobs (all optional, defaults shown):
+
+```bash
+SOW_MODAL_WHISPER_APP_NAME="sow-whisper"
+SOW_MODAL_WHISPER_CLASS_NAME="WhisperTranscriber"
+SOW_MODAL_WHISPER_MAX_ATTEMPTS=2
+SOW_MODAL_WHISPER_RETRY_DELAY_SECONDS=5.0
+SOW_MODAL_WHISPER_MAX_AUDIO_BYTES=90000000
+SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
+SOW_WHISPER_CACHE_VERSION=2
+```
+
+- `SOW_MODAL_WHISPER_ALLOWED_MODELS` gates `options.whisper_model` per request; a model
+  outside the list fails the job before any Modal call. Adjust it to the models you are
+  willing to pay GPU time for (they are downloaded from Hugging Face on first use and
+  cached in the `sow-whisper-models` Modal volume).
+- `SOW_WHISPER_CACHE_VERSION` invalidates cached Whisper transcriptions; bump it if you
+  change the Whisper backend in a way that changes outputs.
+
+Troubleshooting: container-side errors (cold-start/model-load failures, CUDA OOM,
+cuDNN problems) are only visible in Modal's logs — client logs cannot distinguish
+model-load failure from transient infra:
+
+```bash
+uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-whisper
+```
+
+For a failed transcription, the analysis-service log's error message contains a
+`request_id` — grep `modal app logs` for that id to find the matching container-side
+traceback.
+
 ## GPU Support
 
-To enable GPU acceleration for Demucs and Whisper:
+To enable GPU acceleration for Demucs:
 
 1. Install NVIDIA Container Toolkit:
    ```bash
@@ -390,7 +447,6 @@ To enable GPU acceleration for Demucs and Whisper:
 2. Set environment variables:
    ```bash
    export SOW_DEMUCS_DEVICE=cuda
-   export SOW_WHISPER_DEVICE=cuda
    ```
 
 3. Uncomment the GPU section in `docker-compose.yml`:

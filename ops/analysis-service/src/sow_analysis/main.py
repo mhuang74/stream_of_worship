@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -211,8 +212,24 @@ async def lifespan(app: FastAPI):
         ("DashScope Qwen3 ASR", "max_concurrent", str(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)),
         ("Qwen3 ForcedAligner", "model_path", settings.SOW_FORCED_ALIGNER_MODEL_PATH),
         ("Qwen3 ForcedAligner", "device", settings.SOW_FORCED_ALIGNER_DEVICE),
-        ("Whisper", "device", settings.SOW_WHISPER_DEVICE),
-        ("Whisper", "cache_dir", str(settings.SOW_WHISPER_CACHE_DIR)),
+        ("Whisper", "backend", "modal"),
+        (
+            "Whisper",
+            "app",
+            f"{settings.SOW_MODAL_WHISPER_APP_NAME}/{settings.SOW_MODAL_WHISPER_CLASS_NAME}",
+        ),
+        (
+            "Whisper",
+            "configured",
+            str(
+                bool(
+                    os.environ.get("MODAL_TOKEN_ID")
+                    and os.environ.get("MODAL_TOKEN_SECRET")
+                )
+            ),
+        ),
+        ("Whisper", "allowed_models", settings.SOW_MODAL_WHISPER_ALLOWED_MODELS),
+        ("Whisper", "max_attempts", str(settings.SOW_MODAL_WHISPER_MAX_ATTEMPTS)),
         ("Demucs", "model", settings.SOW_DEMUCS_MODEL),
         ("Demucs", "device", settings.SOW_DEMUCS_DEVICE),
         ("Audio Separator", "model_dir", str(settings.SOW_AUDIO_SEPARATOR_MODEL_DIR)),
