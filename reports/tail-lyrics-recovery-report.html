@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-Hant" xml:lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Stream of Worship — Tail-Lyrics Recovery</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Stream of Worship — Tail-Lyrics Recovery</h1>
+</header>
+<h1 id="tail-lyrics-recovery-is-local-whisper-worth-its-cpu">Tail-lyrics
+recovery: is local Whisper worth its CPU?</h1>
+<p><strong>Data cut:</strong> 2026-10-20 01:25:48Z (container death,
+SIGKILL exit 137, OOM not indicated) · <strong>Scope:</strong> full run
+of container instance <code>analysis-service-analysis-dev-1</code> on
+remote host <code>unoccluded.tailscale</code> (driver
+<code>sow_dev</code> / <code>sow_dev_2</code>) ·
+<strong>Source:</strong> <code>docker logs</code> grep + parse; no
+code/DB/R2 changes.</p>
+<h2 id="headline">Headline</h2>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LRC jobs completed in run (<code>LRC result cached</code>)</td>
+<td>62</td>
+</tr>
+<tr>
+<td>Tail-fill triggered</td>
+<td>36</td>
+</tr>
+<tr>
+<td>Recovered ≥1 lyric line</td>
+<td>22 / 36 (61%)</td>
+</tr>
+<tr>
+<td>Total lines appended</td>
+<td>43</td>
+</tr>
+<tr>
+<td>Whisper-path (Qwen3 unusable)</td>
+<td>26 jobs → 35 lines</td>
+</tr>
+<tr>
+<td>Qwen3-succeeded (completed jobs)</td>
+<td>9 jobs → 8 lines</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Whisper (faster-whisper large-v3, cpu/int8):</strong></p>
+<ul>
+<li>26 fresh loads, 245.6s total (5 cold ≈ 19.6–30.7s; warm ≈
+5.0–6.2s)</li>
+<li>Transcription wall (segment-emission → LLM alignment) = 1491.6s on
+the 17 runs that recovered lines, 554.0s wasted on the 9 zero-line runs
+→ 42.6s transcribe wall per recovered line on successful-only runs
+(58.4s if the zero-run waste is spread over all 43 lines)</li>
+<li>Total Whisper CPU (model load 245.6s + transcribe wall 2045.6s) ≈
+<strong>0.64 CPU-h over 26 runs</strong></li>
+</ul>
+<p><strong>Qwen3 (DashScope remote ASR):</strong></p>
+<ul>
+<li>Succeeds only 9/36 (25%) tail attempts among completed jobs; 26
+attempts unusable → Whisper fallback (1 more Qwen3 attempt was in flight
+at kill: 祢使我雙腳跳舞)</li>
+<li>Fallback reasons (26): 16 × "returned too-few usable phrases" (1–2
+phrases on sung tails), 9 × <code>SUCCESS_WITH_NO_VALID_FRAGMENT</code>
+after retries, 1 × filetrans polling timeout</li>
+<li>Wall per attempt: 22.6–31.8s when it succeeds; too-few detection is
+cheap (one 0.1s cache hit, 15 misses 16.5–40.2s); the 9
+failed-after-retries paths await 36.3–57.8s each and 1 polling-timeout
+path awaited 1814.4s (給夢想一雙翅膀) — the 10 hard failures cost
+~2229.7s combined wall drag, <strong>zero CPU, but serious pipeline
+latency</strong></li>
+</ul>
+<h2 id="verdict">Verdict</h2>
+<ul>
+<li><strong>Local Whisper IS earning its CPU.</strong> 17 of 26 fallback
+runs recovered lines (65%); ~48.4s whisper wall per recovered line,
+~42.6s transcribe wall per line — modest on a dev box. Without it, 35 of
+the 43 recovered lines would be missing.</li>
+<li><strong>The Qwen3 tail path is the weak link, not Whisper.</strong>
+72% of attempts (26/36) return junk. A tail is inherently a
+repeat-heavy, phrase-sparse segment — this is structural, not a
+transient outage.</li>
+<li>Keep both. No code change in this task.</li>
+</ul>
+<h2 id="per-song-detail-36-trigger-jobs-chronological">Per-song detail
+(36 trigger jobs, chronological)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Title</th>
+<th>Job id</th>
+<th>Gap s</th>
+<th>Clip start / len s</th>
+<th>Qwen3 attempt</th>
+<th>Appended</th>
+<th>Transcribe s</th>
+<th>Whisper wall s</th>
+<th>Qwen3 wall s</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>禱告的大軍</td>
+<td>ac611ee8</td>
+<td>67.1</td>
+<td>237.97 / 82.09</td>
+<td>too-few (2), cache hit</td>
+<td>2</td>
+<td>87.7</td>
+<td>144.4</td>
+<td>0.1</td>
+</tr>
+<tr>
+<td>2</td>
+<td>禱告的力量</td>
+<td>dc8999c1</td>
+<td>40.5</td>
+<td>233.93 / 55.54</td>
+<td>no-valid-fragment</td>
+<td>1</td>
+<td>75.1</td>
+<td>106.1</td>
+<td>43.2</td>
+</tr>
+<tr>
+<td>3</td>
+<td>得勝的歌</td>
+<td>f63ffe03</td>
+<td>34.1</td>
+<td>269.35 / 49.14</td>
+<td>no-valid-fragment</td>
+<td>2</td>
+<td>69.5</td>
+<td>89.3</td>
+<td>51.0</td>
+</tr>
+<tr>
+<td>4</td>
+<td>恩典之路</td>
+<td>0baeb226</td>
+<td>32.3</td>
+<td>218.67 / 47.30</td>
+<td>ok</td>
+<td>0</td>
+<td>—</td>
+<td>—</td>
+<td>23.3</td>
+</tr>
+<tr>
+<td>5</td>
+<td>復興聖潔</td>
+<td>27f04561</td>
+<td>33.8</td>
+<td>321.63 / 48.78</td>
+<td>too-few (2)</td>
+<td>1</td>
+<td>56.1</td>
+<td>61.7</td>
+<td>16.5</td>
+</tr>
+<tr>
+<td>6</td>
+<td>給夢想一雙翅膀</td>
+<td>c8a27fe5</td>
+<td>33.6</td>
+<td>238.04 / 48.59</td>
+<td>filetrans timeout</td>
+<td>0</td>
+<td>51.3</td>
+<td>57.1</td>
+<td>1814.4</td>
+</tr>
+<tr>
+<td>7</td>
+<td>更深渴慕祢</td>
+<td>e73caf6d</td>
+<td>38.5</td>
+<td>247.53 / 53.48</td>
+<td>no-valid-fragment</td>
+<td>0</td>
+<td>53.1</td>
+<td>58.3</td>
+<td>39.3</td>
+</tr>
+<tr>
+<td>8</td>
+<td>和散那，歡迎君王</td>
+<td>eb3c8019</td>
+<td>56.4</td>
+<td>249.90 / 71.37</td>
+<td>ok</td>
+<td>0</td>
+<td>—</td>
+<td>—</td>
+<td>22.6</td>
+</tr>
+<tr>
+<td>9</td>
+<td>黑暗中的光芒</td>
+<td>006da2a8</td>
+<td>30.7</td>
+<td>433.87 / 45.75</td>
+<td>no-valid-fragment</td>
+<td>1</td>
+<td>55.5</td>
+<td>61.4</td>
+<td>36.3</td>
+</tr>
+<tr>
+<td>10</td>
+<td>厚恩待我</td>
+<td>ec077cea</td>
+<td>65.8</td>
+<td>262.34 / 80.80</td>
+<td>no-valid-fragment</td>
+<td>4</td>
+<td>88.8</td>
+<td>94.5</td>
+<td>44.8</td>
+</tr>
+<tr>
+<td>11</td>
+<td>回家</td>
+<td>8e6bea7f</td>
+<td>42.7</td>
+<td>217.30 / 57.73</td>
+<td>ok</td>
+<td>1</td>
+<td>—</td>
+<td>—</td>
+<td>23.1</td>
+</tr>
+<tr>
+<td>12</td>
+<td>I Believe［我相信］</td>
+<td>74bd4d0c</td>
+<td>37.6</td>
+<td>240.97 / 52.58</td>
+<td>no-valid-fragment</td>
+<td>0</td>
+<td>56.7</td>
+<td>62.9</td>
+<td>48.3</td>
+</tr>
+<tr>
+<td>13</td>
+<td>簡單的歌</td>
+<td>f9239d82</td>
+<td>35.3</td>
+<td>169.07 / 50.34</td>
+<td>ok</td>
+<td>1</td>
+<td>—</td>
+<td>—</td>
+<td>26.1</td>
+</tr>
+<tr>
+<td>14</td>
+<td>將天敞開</td>
+<td>1e065d7e</td>
+<td>32.5</td>
+<td>204.80 / 47.46</td>
+<td>too-few (2)</td>
+<td>2</td>
+<td>58.7</td>
+<td>64.5</td>
+<td>21.1</td>
+</tr>
+<tr>
+<td>15</td>
+<td>降下祢大能</td>
+<td>0597db48</td>
+<td>37.3</td>
+<td>1150.50 / 52.29</td>
+<td>too-few (1)</td>
+<td>2</td>
+<td>80.9</td>
+<td>86.9</td>
+<td>40.2</td>
+</tr>
+<tr>
+<td>16</td>
+<td>近前來</td>
+<td>ca089bfc</td>
+<td>55.7</td>
+<td>325.84 / 70.72</td>
+<td>ok</td>
+<td>2</td>
+<td>—</td>
+<td>—</td>
+<td>29.8</td>
+</tr>
+<tr>
+<td>17</td>
+<td>盡情地微笑</td>
+<td>a061bf0c</td>
+<td>34.7</td>
+<td>324.34 / 49.68</td>
+<td>ok</td>
+<td>1</td>
+<td>—</td>
+<td>—</td>
+<td>23.6</td>
+</tr>
+<tr>
+<td>18</td>
+<td>進入豐盛</td>
+<td>02a4a797</td>
+<td>34.5</td>
+<td>176.83 / 49.46</td>
+<td>too-few (1)</td>
+<td>4</td>
+<td>72.5</td>
+<td>78.4</td>
+<td>24.8</td>
+</tr>
+<tr>
+<td>19</td>
+<td>進入祢的同在</td>
+<td>07700c9a</td>
+<td>37.0</td>
+<td>324.27 / 52.01</td>
+<td>too-few (1)</td>
+<td>2</td>
+<td>55.3</td>
+<td>61.3</td>
+<td>27.1</td>
+</tr>
+<tr>
+<td>20</td>
+<td>敬拜祢</td>
+<td>824060ac</td>
+<td>64.4</td>
+<td>228.53 / 79.40</td>
+<td>too-few (1)</td>
+<td>3</td>
+<td>99.6</td>
+<td>105.3</td>
+<td>24.6</td>
+</tr>
+<tr>
+<td>21</td>
+<td>救贖的恩典</td>
+<td>81bf9f76</td>
+<td>36.9</td>
+<td>232.20 / 51.88</td>
+<td>too-few (2)</td>
+<td>0</td>
+<td>59.4</td>
+<td>65.4</td>
+<td>26.4</td>
+</tr>
+<tr>
+<td>22</td>
+<td>看見復興</td>
+<td>9a756740</td>
+<td>47.1</td>
+<td>196.87 / 62.14</td>
+<td>too-few (2)</td>
+<td>3</td>
+<td>92.2</td>
+<td>98.5</td>
+<td>25.0</td>
+</tr>
+<tr>
+<td>23</td>
+<td>滿有能力</td>
+<td>543779a1</td>
+<td>31.9</td>
+<td>187.33 / 46.89</td>
+<td>no-valid-fragment</td>
+<td>0</td>
+<td>59.1</td>
+<td>65.6</td>
+<td>39.8</td>
+</tr>
+<tr>
+<td>24</td>
+<td>祢必成就美好事</td>
+<td>ff0a0186</td>
+<td>55.2</td>
+<td>220.10 / 70.20</td>
+<td>too-few (2)</td>
+<td>0</td>
+<td>82.6</td>
+<td>88.6</td>
+<td>37.9</td>
+</tr>
+<tr>
+<td>25</td>
+<td>祢的愛</td>
+<td>2dde3593</td>
+<td>30.4</td>
+<td>235.90 / 45.42</td>
+<td>ok</td>
+<td>0</td>
+<td>—</td>
+<td>—</td>
+<td>31.8</td>
+</tr>
+<tr>
+<td>26</td>
+<td>祢的愛長闊高深</td>
+<td>d5e68030</td>
+<td>40.5</td>
+<td>170.43 / 55.53</td>
+<td>too-few (1)</td>
+<td>0</td>
+<td>88.2</td>
+<td>94.1</td>
+<td>26.6</td>
+</tr>
+<tr>
+<td>27</td>
+<td>祢的慈愛</td>
+<td>214e918d</td>
+<td>32.3</td>
+<td>184.40 / 47.30</td>
+<td>too-few (2)</td>
+<td>0</td>
+<td>53.8</td>
+<td>59.6</td>
+<td>31.8</td>
+</tr>
+<tr>
+<td>28</td>
+<td>祢的恩典夠我用</td>
+<td>8bf090a5</td>
+<td>43.7</td>
+<td>215.77 / 58.75</td>
+<td>too-few (1)</td>
+<td>1</td>
+<td>85.1</td>
+<td>90.7</td>
+<td>30.5</td>
+</tr>
+<tr>
+<td>29</td>
+<td>祢的器皿</td>
+<td>b9cf32b0</td>
+<td>30.1</td>
+<td>220.56 / 45.15</td>
+<td>no-valid-fragment</td>
+<td>2</td>
+<td>152.9</td>
+<td>159.0</td>
+<td>57.8</td>
+</tr>
+<tr>
+<td>30</td>
+<td>祢的最愛</td>
+<td>7b10ebca</td>
+<td>34.0</td>
+<td>234.17 / 48.99</td>
+<td>ok</td>
+<td>0</td>
+<td>—</td>
+<td>—</td>
+<td>31.5</td>
+</tr>
+<tr>
+<td>31</td>
+<td>祢是何等榮美</td>
+<td>1a8a0c6c</td>
+<td>39.8</td>
+<td>227.73 / 54.82</td>
+<td>no-valid-fragment</td>
+<td>0</td>
+<td>49.8</td>
+<td>76.1</td>
+<td>54.8</td>
+</tr>
+<tr>
+<td>32</td>
+<td>祢是配得讚美</td>
+<td>6fbda766</td>
+<td>33.5</td>
+<td>328.63 / 48.52</td>
+<td>ok</td>
+<td>3</td>
+<td>—</td>
+<td>—</td>
+<td>25.9</td>
+</tr>
+<tr>
+<td>33</td>
+<td>祢是聖潔</td>
+<td>648ad811</td>
+<td>46.1</td>
+<td>299.07 / 61.14</td>
+<td>too-few (1)</td>
+<td>2</td>
+<td>135.6</td>
+<td>140.9</td>
+<td>28.1</td>
+</tr>
+<tr>
+<td>34</td>
+<td>祢是我的一切</td>
+<td>82cdf596</td>
+<td>61.7</td>
+<td>228.23 / 76.71</td>
+<td>too-few (1)</td>
+<td>2</td>
+<td>99.8</td>
+<td>119.7</td>
+<td>31.0</td>
+</tr>
+<tr>
+<td>35</td>
+<td>祢使我生命美麗</td>
+<td>dffdeebd</td>
+<td>50.7</td>
+<td>213.73 / 65.72</td>
+<td>too-few (1)</td>
+<td>1</td>
+<td>126.3</td>
+<td>132.4</td>
+<td>32.6</td>
+</tr>
+<tr>
+<td>36</td>
+<td>祢使我雙腳跳舞</td>
+<td>f237842c</td>
+<td>37.4</td>
+<td>202.57 / 52.36</td>
+<td>in flight at kill</td>
+<td>?</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Zero-line jobs (13 finished + 1 in flight):</strong> 9
+whisper-path (rows 6, 7, 12, 21, 23, 24, 26, 27, 31) + 4 Qwen3-ok (rows
+4, 8, 25, 30); row 36 (祢使我雙腳跳舞) was killed mid-Qwen3-attempt. The
+9 whisper-path zero cases wasted ≈ 625.6s (load + transcribe wall)
+total.</p>
+<h2 id="appendix-exact-recovered-lines-per-song">Appendix: exact
+recovered lines per song</h2>
+<p>Per-song (name, real song id from Neon DB, job id, exact recovered
+lines) lives in the companion results file: <strong><a
+href="tail-lyrics-recovered-songs.md"><code>tail-lyrics-recovered-songs.md</code></a></strong>
+(22 songs / 43 lines; counts match each job's
+<code>asr_tail_line_count</code> exactly). HTML render: <a
+href="tail-lyrics-recovered-songs.html"><code>tail-lyrics-recovered-songs.html</code></a>.</p>
+<h2 id="method-notes-and-caveats">Method notes and caveats</h2>
+<ul>
+<li>Numbers are <strong>log-derived only</strong> (INFO-level
+<code>docker logs</code>, 2026-10-19 23:29Z → 01:25:48Z). No DB or R2
+cross-checks.</li>
+<li>The driver was <strong>killed at the data cut</strong> (2026-10-20
+01:25:48Z, exit 137; <code>OOMKilled=false</code>, so an external
+SIGKILL) with one tail-fill job mid-Qwen3-attempt (row 36) and ~194 LRC
+jobs still queued — treat 62 completed LRC jobs as the final tally for
+this container instance, not the whole library run.</li>
+<li>The "1 job in-flight" note from the 01:15Z snapshot (滿有能力
+<code>job_2f4e543779a1</code>) actually finished with <strong>0
+lines</strong> — included here as a whisper-path zero case.</li>
+<li>26 of 62 completed jobs never triggered tail fill: their tails were
+already covered by transcript LRC, or gap ≤ min(30s, 15%·duration) per
+<code>tail_fill_threshold_seconds()</code> in
+<code>ops/analysis-service/src/sow_analysis/workers/lrc.py:828</code>;
+the not-needed path logs at DEBUG level, which is invisible in INFO
+logs.</li>
+<li>Config constants confirmed from <code>config.py</code> (lines
+144–161): tail fill on by default; lead-in 15s (acoustic context; avoids
+the no-usable-transcription failure of clips starting exactly at the
+last lyric), dup-window 3s (ASR seam-echo / repeat echo), no_speech drop
+0.6, Qwen3 min usable phrases 3, tail min 1.</li>
+<li>"Transcribe s" = segment-emission → LLM-alignment wall
+(<code>Processing audio…</code> → <code>LLM call completed…</code>), not
+model transcribe() alone; whisper wall includes slicing, loading and
+alignment overhead.</li>
+<li>Earlier container instances (~26 further songs of the ~72-song
+library known before this window) are gone — logs from them were
+unavailable for this analysis.</li>
+</ul>
+</body>
+</html>
