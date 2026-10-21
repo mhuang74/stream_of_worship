@@ -171,7 +171,8 @@ async def validate_llm_model_request(llm_model: str) -> tuple[str, Optional[str]
         raise LLMModelValidationError(f"LLM model validation failed for '{llm_model}': {e}") from e
     if model_id not in model_ids:
         raise LLMModelValidationError(
-            f"LLM model '{model_id}' is not in the provider's model list (base_url={settings.SOW_LLM_BASE_URL})"
+            f"LLM model '{model_id}' is not in the provider's model list "
+            f"(base_url={settings.SOW_LLM_BASE_URL})"
         )
     if effort is not None:
         meta = reasoning_meta.get(model_id)
