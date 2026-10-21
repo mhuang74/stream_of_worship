@@ -11,6 +11,7 @@ Per ADR 0007, feedback is advisory: feedback commands only write
 """
 
 import json
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -603,6 +604,11 @@ def lyrics_generate(
         "--resume",
         help="Resume an interrupted batch run from its manifest (re-polls without resubmitting)",
     ),
+    dump_llm_trace: bool = typer.Option(
+        False,
+        "--dump-llm-trace",
+        help="Dump per-step LLM/ASR debug trace (JSON+HTML) on the analysis service host",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Submit a recording for lyrics alignment (LRC generation).
@@ -611,6 +617,9 @@ def lyrics_generate(
     then falls back to DashScope Qwen3 ASR and finally Whisper transcription.
     Use --no-youtube to skip the YouTube path and use Whisper directly.
     Use --no-qwen3-asr to skip Qwen3 ASR and use Whisper.
+
+    Use --dump-llm-trace to dump per-step LLM/ASR traces to SOW_DEBUG_DUMP_DIR
+    on the analysis service (auto-bypasses the LRC result cache).
 
     For batch processing, pipe song IDs via stdin (always batch mode, with
     feedback guard, manifest, and optional --wait polling):
@@ -686,6 +695,7 @@ def lyrics_generate(
             force_qwen3_asr=force_qwen3_asr,
             wait=wait,
             dry_run=dry_run,
+            dump_llm_trace=dump_llm_trace,
         )
         return
 
@@ -704,6 +714,7 @@ def lyrics_generate(
         force_qwen3_asr=force_qwen3_asr,
         wait=wait,
         console=console,
+        dump_llm_trace=dump_llm_trace,
     )
 
 
@@ -1103,6 +1114,22 @@ def _print_run_report(
     console.print()
 
 
+def _confirm_llm_trace_dump(count: int, console: Console) -> bool:
+    """Confirm the trace dump on an interactive terminal; auto-accept on a pipe.
+
+    read_song_ids_from_stdin() drains the pipe, so typer.confirm would hit EOF
+    and abort the whole batch in the documented piped flow — only ask when
+    stdin is a TTY.
+    """
+    if not sys.stdin.isatty():
+        console.print(
+            f"[cyan]--dump-llm-trace: dumping LLM trace for all {count} song(s) "
+            f"(stdin is piped; skipping confirmation).[/cyan]"
+        )
+        return True
+    return typer.confirm(f"Dump LLM trace for all {count} song(s)?", default=False)
+
+
 def _run_stdin_batch(
     song_ids: list[str],
     db_client: DatabaseClient,
@@ -1118,6 +1145,7 @@ def _run_stdin_batch(
     force_qwen3_asr: bool,
     wait: bool,
     dry_run: bool,
+    dump_llm_trace: bool = False,
 ) -> None:
     """Batch flow for all stdin input: guard → submit → (poll) → report."""
     # Pre-flight feedback guard (DB-lookup, not pipe-format).
@@ -1140,6 +1168,9 @@ def _run_stdin_batch(
             console.print(f"  Skipped (guard): {len(skipped_guard)}")
         return
 
+    if dump_llm_trace and not _confirm_llm_trace_dump(len(accepted), console=console):
+        dump_llm_trace = False
+
     submissions = submit_lrc_batch(
         song_ids=accepted,
         db_client=db_client,
@@ -1153,6 +1184,7 @@ def _run_stdin_batch(
         no_qwen3_asr=no_qwen3_asr,
         force_qwen3_asr=force_qwen3_asr,
         console=console,
+        dump_llm_trace=dump_llm_trace,
     )
 
     if not wait:

@@ -116,6 +116,7 @@ services:
       <<: *common-env
     volumes:
       - analysis-cache:/cache
+      - ${SOW_DEBUG_DUMP_DIR:-./debug-dumps}:/cache/debug-dumps
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
       - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
@@ -140,6 +141,7 @@ services:
     volumes:
       - analysis-cache:/cache
       - ./src:/workspace/src:ro
+      - ${SOW_DEBUG_DUMP_DIR:-./debug-dumps}:/cache/debug-dumps
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
       - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU

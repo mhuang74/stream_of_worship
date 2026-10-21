@@ -400,3 +400,112 @@ def _fake_lookup(provider, descending: bool = False):
         return rec
 
     return _lookup
+
+class TestDumpLlmTraceFlag:
+    """--dump-llm-trace forwarding and batch confirmation gate."""
+
+    def test_single_mode_forwards_flag(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "submit_lrc_single") as single_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "song_001", "--dump-llm-trace"],
+            )
+        assert result.exit_code == 0, result.output
+        single_mock.assert_called_once()
+        assert single_mock.call_args.kwargs["dump_llm_trace"] is True
+
+    def test_single_mode_default_is_false(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "submit_lrc_single") as single_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(lyrics_app, ["generate", "song_001"])
+        assert result.exit_code == 0, result.output
+        single_mock.assert_called_once()
+        assert single_mock.call_args.kwargs["dump_llm_trace"] is False
+
+    def test_batch_piped_stdin_auto_accepts_flag(self):
+        # read_song_ids_from_stdin() consumes ALL of stdin, so a piped run
+        # cannot receive the confirm answer — the flag must auto-apply and
+        # never abort the batch.
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "ConnectionProvider", MagicMock()),
+            patch.object(
+                lyrics_commands, "submit_lrc_batch", return_value=[]
+            ) as batch_mock,
+            patch.object(lyrics_commands.typer, "confirm") as confirm_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "--stdin", "--force", "--dump-llm-trace"],
+                input="song_001\nsong_002\n",
+            )
+        assert result.exit_code == 0, result.output
+        confirm_mock.assert_not_called()
+        batch_mock.assert_called_once()
+        assert batch_mock.call_args.kwargs["dump_llm_trace"] is True
+
+    def test_batch_interactive_confirm_yes_forwards_flag(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "ConnectionProvider", MagicMock()),
+            patch.object(
+                lyrics_commands, "submit_lrc_batch", return_value=[]
+            ) as batch_mock,
+            patch.object(
+                lyrics_commands, "_confirm_llm_trace_dump", return_value=True
+            ) as confirm_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "--stdin", "--force", "--dump-llm-trace"],
+                input="song_001\nsong_002\n",
+            )
+        assert result.exit_code == 0, result.output
+        confirm_mock.assert_called_once_with(2, console=lyrics_commands.console)
+        batch_mock.assert_called_once()
+        assert batch_mock.call_args.kwargs["dump_llm_trace"] is True
+
+    def test_batch_interactive_confirm_no_clears_flag(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "ConnectionProvider", MagicMock()),
+            patch.object(
+                lyrics_commands, "submit_lrc_batch", return_value=[]
+            ) as batch_mock,
+            patch.object(
+                lyrics_commands, "_confirm_llm_trace_dump", return_value=False
+            ),
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "--stdin", "--force", "--dump-llm-trace"],
+                input="song_001\nsong_002\n",
+            )
+        assert result.exit_code == 0, result.output
+        batch_mock.assert_called_once()
+        assert batch_mock.call_args.kwargs["dump_llm_trace"] is False

@@ -1409,6 +1409,28 @@ class JobQueue:
         )
         warn_if_lrc_language_script_mismatch(resolved_language, request.lyrics_text)
 
+        trace = None
+        if request.options.dump_llm_trace:
+            from .llm_trace import LLMTrace
+
+            trace = LLMTrace(
+                base_dir=Path(settings.SOW_DEBUG_DUMP_DIR),
+                job_id=job.id,
+                context={
+                    "song_id": request.song_id,
+                    "job_id": job.id,
+                    "content_hash": request.content_hash,
+                    "song_title": request.song_title,
+                    "youtube_url": request.youtube_url,
+                    "audio_url": request.audio_url,
+                    "job_created_at": str(job.created_at) if job.created_at else None,
+                    "resolved_language": resolved_language,
+                    "language_reason": language_resolution.reason,
+                    "options": request.options.model_dump(),
+                },
+            )
+            trace.append("job_started", {"lyrics_text": request.lyrics_text})
+
         # Compute composite cache key based on audio hash + lyrics hash
         lrc_cache_key = _compute_lrc_cache_key(
             request.content_hash, request.lyrics_text, resolved_language
@@ -1435,7 +1457,9 @@ class JobQueue:
                     official_lrc_etag = None
 
             # Check LRC result cache first (unless force=True - allows prompt improvements)
-            if not request.options.force:
+            # dump_llm_trace implies a fresh run: a cache hit would skip the LLM steps
+            # and produce an empty trace.
+            if not request.options.force and not request.options.dump_llm_trace:
                 cached = self.cache_manager.get_lrc_result(lrc_cache_key)
                 if cached:
                     # Legacy metadata-only cache entries have no cached text; ignore and regenerate
@@ -1536,6 +1560,7 @@ class JobQueue:
                                 request.options,
                                 lrc_path,
                                 resolved_language,
+                                trace=trace,
                             )
                             break  # success or permanent failure (None) → exit loop
                         except YouTubeRateLimitedError as e:
@@ -1640,6 +1665,7 @@ class JobQueue:
                                 dashscope_semaphore=self._dashscope_asr_semaphore,
                                 resolved_language=resolved_language,
                                 qwen3_client=self._qwen3_client,
+                                trace=trace,
                             )
                         except Exception as e:
                             logger.warning("Tail fill failed for job %s: %s", job.id, e)
@@ -1725,6 +1751,7 @@ class JobQueue:
                                         dashscope_semaphore=self._dashscope_asr_semaphore,
                                         resolved_language=resolved_language,
                                         qwen3_client=self._qwen3_client,
+                                        trace=trace,
                                     )
                                 )
                                 lrc_source = "qwen3_asr"
@@ -1816,6 +1843,7 @@ class JobQueue:
                             content_hash=request.content_hash,
                             vocals_stem_url=resolved_audio.r2_url,
                             resolved_language=resolved_language,
+                            trace=trace,
                         )
                         lrc_source = "whisper_asr"
 
@@ -1878,6 +1906,8 @@ class JobQueue:
                 # Save to cache using composite key (audio hash + lyrics hash)
                 # Include LRC text for cache-hit rewrite path
                 lrc_text = lrc_path.read_text(encoding="utf-8") if lrc_path.exists() else ""
+                if trace is not None:
+                    trace.set("final_lrc", lrc_text)
                 cache_result = {
                     "lrc_url": lrc_url,
                     "line_count": line_count,
@@ -1895,6 +1925,16 @@ class JobQueue:
                     lrc_source=lrc_source,
                     asr_tail_line_count=tail_line_count,
                 )
+                if trace is not None:
+                    trace.set(
+                        "r2",
+                        {
+                            "lrc_url": lrc_url,
+                            "lrc_source": lrc_source,
+                            "line_count": line_count,
+                            "asr_tail_line_count": tail_line_count,
+                        },
+                    )
                 job.status = JobStatus.COMPLETED
                 job.progress = 1.0
                 job.stage = "complete"
@@ -1919,6 +1959,8 @@ class JobQueue:
             job.error_message = str(e)
             job.stage = "lrc_error"
             logger.error(f"LRC job failed: {e}")
+            if trace is not None:
+                trace.finish(error=str(e))
 
             # Persist failure to database
             try:
@@ -1932,6 +1974,8 @@ class JobQueue:
             job.error_message = f"Unexpected error: {e}"
             job.stage = "error"
             logger.error(f"LRC job failed with unexpected error: {e}")
+            if trace is not None:
+                trace.finish(error=f"Unexpected error: {e}")
 
             # Persist failure to database
             try:
@@ -1943,6 +1987,9 @@ class JobQueue:
                 )
             except Exception as db_err:
                 logger.error(f"Failed to update job {job.id} in database: {db_err}")
+        finally:
+            if trace is not None:
+                trace.finish()
 
         job.updated_at = datetime.now(timezone.utc)
 

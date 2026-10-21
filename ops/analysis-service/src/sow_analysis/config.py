@@ -30,6 +30,9 @@ class Settings(BaseSettings):
 
     # Cache and Processing
     CACHE_DIR: Path = Path("/cache")
+    # Directory for --dump-llm-trace debug dumps (JSON + HTML traces of LRC jobs).
+    # Bind-mounted by docker-compose so dumps are viewable on the host.
+    SOW_DEBUG_DUMP_DIR: Path = Path("/cache/debug-dumps")
     KEY_ALGORITHM_VERSION: str = "ks_segment_vote_v1"
     # Tempo detection algorithm version.
     #   "v4_octave_guard" -> start_bpm=80 + double/half-time guard (current default)

@@ -743,3 +743,53 @@ class TestSubmitComponentAnalysis:
 
         assert job.result is not None
         assert job.result.segmentation_mode_resolved is None
+
+
+class TestSubmitLrcTracePayload:
+    """AnalysisClient.submit_lrc must forward song_id and dump_llm_trace."""
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_song_id_top_level_and_trace_in_options(self, mock_post, api_key_env):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-lrc-1",
+            "status": "queued",
+            "job_type": "lrc",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_lrc(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+            lyrics_text="lyrics",
+            song_id="song_001",
+            dump_llm_trace=True,
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["song_id"] == "song_001"
+        assert payload["options"]["dump_llm_trace"] is True
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_defaults_empty_song_id_and_false_trace(self, mock_post, api_key_env):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-lrc-2",
+            "status": "queued",
+            "job_type": "lrc",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_lrc(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+            lyrics_text="lyrics",
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["song_id"] == ""
+        assert payload["options"]["dump_llm_trace"] is False

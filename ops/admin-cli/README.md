@@ -306,7 +306,7 @@ sow-admin audio download SONG_ID
 sow-admin audio list [--status pending|completed|failed]
 sow-admin audio show HASH_PREFIX
 sow-admin audio analyze HASH_PREFIX [--force] [--no-stems]
-sow-admin lyrics generate SONG_ID [--force]
+sow-admin lyrics generate SONG_ID [--force] [--dump-llm-trace]
 sow-admin audio components SONG_ID [v5 options]
 sow-admin audio status [JOB_ID]
 ```
@@ -337,6 +337,23 @@ sow-admin audio list --analysis completed --format ids \
 
 # View persisted results
 sow-admin audio show song_0001
+```
+
+#### Lyrics Generate LLM Trace Dump
+
+`--dump-llm-trace` makes the analysis service write a per-step debug trace
+(JSON for tooling + collapsible HTML for reading) of every LLM/ASR step of the
+LRC job — YouTube transcript fetch, LLM correction prompts/responses, Qwen3 ASR,
+Whisper fallback, gap placeholders, final LRC, and R2 location — into
+`SOW_DEBUG_DUMP_DIR` (default `ops/analysis-service/debug-dumps/`, mounted from
+`/cache/debug-dumps` in Docker). Files appear immediately and are rewritten per
+step, so a failed or still-running job already has most of its trace. The flag
+auto-bypasses the LRC result cache (ASR caches stay warm) and is safe to leave
+on for debugging sessions.
+
+```bash
+# Single song with trace dump
+sow-admin lyrics generate song_0001 --dump-llm-trace --wait
 ```
 
 Common flags:

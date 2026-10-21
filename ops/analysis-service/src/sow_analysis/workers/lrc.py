@@ -23,6 +23,7 @@ from ..services.modal_whisper_client import get_modal_whisper_client
 from ..services.qwen3_asr_client import Qwen3AsrClient, Qwen3AsrError, Qwen3AsrResult
 from ..storage.cache import CacheManager
 from .exceptions import LLMConfigError, WorkerError
+from .llm_trace import LLMTrace
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,8 @@ async def _run_whisper_transcription(
     vad_filter: bool = True,
     condition_on_previous_text: bool = True,
     max_no_speech_prob: Optional[float] = None,
+    *,
+    trace: Optional["LLMTrace"] = None,
 ) -> List[WhisperPhrase]:
     """Run Whisper transcription with phrase-level timestamps (on Modal).
 
@@ -235,12 +238,21 @@ async def _run_whisper_transcription(
         raise WhisperTranscriptionError(f"Whisper transcription failed: {e}") from e
 
     phrases: List[WhisperPhrase] = []
+    dropped = []
     for segment in result.get("phrases", []):
         text = (segment.get("text") or "").strip()
         if not text:
             continue
         no_speech_prob = float(segment.get("no_speech_prob", 0.0))
         if max_no_speech_prob is not None and no_speech_prob >= max_no_speech_prob:
+            dropped.append(
+                {
+                    "text": text,
+                    "start": float(segment["start"]),
+                    "end": float(segment["end"]),
+                    "no_speech_prob": no_speech_prob,
+                }
+            )
             logger.info(
                 "Dropping Whisper segment %.2f-%.2fs (no_speech_prob %.2f >= %.2f): %s",
                 segment["start"],
@@ -272,6 +284,24 @@ async def _run_whisper_transcription(
         result.get("language"),
         language,
     )
+
+    if trace is not None:
+        trace.append(
+            "whisper_transcription",
+            {
+                "model": model_name,
+                "language": language,
+                "initial_prompt": initial_prompt,
+                "vad_filter": vad_filter,
+                "condition_on_previous_text": condition_on_previous_text,
+                "max_no_speech_prob": max_no_speech_prob,
+                "phrases": [
+                    {"text": p.text, "start": p.start, "end": p.end, "no_speech_prob": p.no_speech_prob}
+                    for p in phrases
+                ],
+                "dropped_segments": dropped,
+            },
+        )
 
     if not phrases:
         raise WhisperTranscriptionError("Whisper returned no phrases")
@@ -510,7 +540,7 @@ def _validate_alignment_coverage(
     lrc_lines: List[LRCLine],
     whisper_phrases: List[WhisperPhrase],
     duration_threshold_seconds: float = 10.0,
-) -> None:
+) -> List[str]:
     """Validate that LLM alignment covers the full duration of the audio.
 
     Args:
@@ -518,13 +548,18 @@ def _validate_alignment_coverage(
         whisper_phrases: Original Whisper transcription phrases
         duration_threshold_seconds: Threshold for duration coverage warning
 
+    Returns:
+        Warning strings for the checks that fired (also logged).
+
     Logs warnings if:
         - LLM output has significantly fewer lines than Whisper phrases
         - Last timestamp in LLM output is much earlier than last Whisper phrase
     """
+    warnings: List[str] = []
     if not lrc_lines or not whisper_phrases:
         logger.warning("Cannot validate alignment: empty LRC lines or Whisper phrases")
-        return
+        warnings.append("Cannot validate alignment: empty LRC lines or Whisper phrases")
+        return warnings
 
     # Get last timestamps
     last_lrc_time = max(line.time_seconds for line in lrc_lines)
@@ -533,21 +568,25 @@ def _validate_alignment_coverage(
     # Check duration coverage
     duration_gap = last_whisper_time - last_lrc_time
     if duration_gap > duration_threshold_seconds:
-        logger.warning(
+        message = (
             f"LRC alignment may be incomplete: last LRC timestamp is {last_lrc_time:.2f}s, "
             f"but audio continues until {last_whisper_time:.2f}s (gap: {duration_gap:.2f}s). "
             f"The song may have repeated sections that were not properly aligned."
         )
+        logger.warning(message)
+        warnings.append(message)
 
     # Check line count ratio
     expected_lines = len(whisper_phrases)
     actual_lines = len(lrc_lines)
     if actual_lines < expected_lines * 0.7:  # Less than 70% of expected lines
-        logger.warning(
+        message = (
             f"LRC alignment may be missing repetitions: got {actual_lines} lines "
             f"but Whisper detected {expected_lines} phrases. "
             f"Repeated sections may have been consolidated incorrectly."
         )
+        logger.warning(message)
+        warnings.append(message)
 
     # Log coverage stats at info level
     coverage_pct = (last_lrc_time / last_whisper_time * 100) if last_whisper_time > 0 else 0
@@ -566,6 +605,9 @@ async def _llm_align(
         [str, List[WhisperPhrase], ResolvedLrcLanguage], str
     ] = _build_alignment_prompt,
     language: ResolvedLrcLanguage = "zh",
+    *,
+    trace: Optional[LLMTrace] = None,
+    stage: str = "alignment",
 ) -> List[LRCLine]:
     """Use LLM to align lyrics with Whisper timestamps.
 
@@ -656,6 +698,20 @@ async def _llm_align(
             attempt_elapsed = time.time() - attempt_start
             logger.info(f"LLM call completed in {attempt_elapsed:.2f}s")
 
+            if trace is not None:
+                trace.append(
+                    "llm_alignment_attempt",
+                    {
+                        "stage": stage,
+                        "attempt": attempt + 1,
+                        "model": effective_model,
+                        "prompt": prompt,
+                        "response": response_text,
+                        "parse_error": None,
+                        "elapsed_s": attempt_elapsed,
+                    },
+                )
+
             # Log the LLM response
             logger.debug("=" * 80)
             logger.debug(f"LLM RESPONSE (attempt {attempt + 1}/{max_retries})")
@@ -670,7 +726,17 @@ async def _llm_align(
                 raise ValueError("LLM returned empty alignment")
 
             # Phase 2: Post-alignment validation
-            _validate_alignment_coverage(lines, whisper_phrases)
+            coverage_warnings = _validate_alignment_coverage(lines, whisper_phrases)
+            if trace is not None and coverage_warnings:
+                trace.append(
+                    "alignment_coverage",
+                    {
+                        "stage": stage,
+                        "warnings": coverage_warnings,
+                        "lines": len(lines),
+                        "whisper_phrases": len(whisper_phrases),
+                    },
+                )
 
             total_llm_elapsed = time.time() - llm_start
             logger.info(
@@ -681,9 +747,35 @@ async def _llm_align(
         except json.JSONDecodeError as e:
             last_error = e
             logger.warning(f"LLM response parse error (attempt {attempt + 1}): {e}")
+            if trace is not None:
+                trace.append(
+                    "llm_alignment_attempt",
+                    {
+                        "stage": stage,
+                        "attempt": attempt + 1,
+                        "model": effective_model,
+                        "prompt": prompt,
+                        "response": response_text,
+                        "parse_error": str(e),
+                        "elapsed_s": attempt_elapsed,
+                    },
+                )
         except ValueError as e:
             last_error = e
             logger.warning(f"LLM response validation error (attempt {attempt + 1}): {e}")
+            if trace is not None:
+                trace.append(
+                    "llm_alignment_attempt",
+                    {
+                        "stage": stage,
+                        "attempt": attempt + 1,
+                        "model": effective_model,
+                        "prompt": prompt,
+                        "response": response_text,
+                        "parse_error": str(e),
+                        "elapsed_s": attempt_elapsed,
+                    },
+                )
         except Exception as e:
             if _is_llm_rate_limited_error(e):
                 # Rate-limit errors should have been retried inside
@@ -694,6 +786,16 @@ async def _llm_align(
             else:
                 last_error = e
                 logger.warning(f"LLM API error (attempt {attempt + 1}): {e}")
+            if trace is not None:
+                trace.append(
+                    "llm_alignment_error",
+                    {
+                        "stage": stage,
+                        "attempt": attempt + 1,
+                        "model": effective_model,
+                        "error": str(e),
+                    },
+                )
 
     raise LLMAlignmentError(f"LLM alignment failed after {max_retries} attempts: {last_error}")
 
@@ -887,6 +989,8 @@ async def fill_uncovered_tail(
     stem_kind: str = "full_mix",
     resolved_language: ResolvedLrcLanguage = "zh",
     qwen3_client: Optional[Qwen3AsrClient] = None,
+    *,
+    trace: Optional[LLMTrace] = None,
 ) -> tuple[List[LRCLine], int]:
     """Transcribe the uncovered tail, align it to the official lyrics, merge into the LRC."""
 
@@ -905,6 +1009,8 @@ async def fill_uncovered_tail(
     )
 
     qwen3_phrases: Optional[List[WhisperPhrase]] = None
+    qwen3_fallback_reason: Optional[str] = None
+    qwen3_cache_hit: Optional[bool] = None
     # v3: the ASR prompt is the last lyric line, not the full lyrics. A full-lyrics
     # prompt makes Whisper collapse a repeated final chorus into one phrase; the
     # single-line prompt keeps each repeat as its own segment.
@@ -941,9 +1047,11 @@ async def fill_uncovered_tail(
         try:
             if cached_payload:
                 logger.info("Tail fill: Qwen3 ASR cache hit")
+                qwen3_cache_hit = True
                 asr_result = Qwen3AsrResult.from_cache_payload(cached_payload)
             else:
                 logger.info("Tail fill: Qwen3 ASR cache miss; calling DashScope")
+                qwen3_cache_hit = False
                 client = (
                     qwen3_client
                     if qwen3_client is not None
@@ -968,6 +1076,7 @@ async def fill_uncovered_tail(
         except Qwen3AsrError as e:
             # DashScope quota/errors must not fail the job; fall through to Whisper.
             qwen3_phrases = None
+            qwen3_fallback_reason = f"Qwen3AsrError: {e}"
             logger.warning("Tail fill: Qwen3 ASR unavailable (%s); falling back to Whisper", e)
 
     # Too few usable Qwen3 phrases (junk direct-flash result on a sung tail) must also
@@ -977,8 +1086,13 @@ async def fill_uncovered_tail(
             "Tail fill: Qwen3 ASR returned only %d usable phrase(s); falling back to Whisper",
             len(qwen3_phrases),
         )
+        qwen3_fallback_reason = (
+            f"only {len(qwen3_phrases)} usable phrase(s) "
+            f"(min {options.qwen3_asr_min_usable_segments})"
+        )
         qwen3_phrases = None
 
+    whisper_cache_hit: Optional[bool] = None
     if qwen3_phrases is not None:
         phrases = qwen3_phrases
     else:
@@ -993,9 +1107,11 @@ async def fill_uncovered_tail(
         cached_whisper = cache_manager.get_whisper_transcription(whisper_key)
         if cached_whisper is not None:
             logger.info("Tail fill: Whisper cache hit")
+            whisper_cache_hit = True
             phrases = [WhisperPhrase(p["text"], p["start"], p["end"]) for p in cached_whisper]
         else:
             logger.info("Tail fill: running Whisper on the tail clip")
+            whisper_cache_hit = False
             phrases = await _run_whisper_transcription(
                 clip_path,
                 model_name=options.whisper_model,
@@ -1004,6 +1120,7 @@ async def fill_uncovered_tail(
                 vad_filter=False,
                 condition_on_previous_text=False,
                 max_no_speech_prob=settings.SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB,
+                trace=trace,
             )
             cache_manager.save_whisper_transcription(
                 whisper_key,
@@ -1027,6 +1144,8 @@ async def fill_uncovered_tail(
             else _build_alignment_prompt
         ),
         language=resolved_language,
+        trace=trace,
+        stage="tail_fill",
     )
     recovered = [
         LRCLine(time_seconds=line.time_seconds + clip_start, text=line.text) for line in recovered
@@ -1037,6 +1156,25 @@ async def fill_uncovered_tail(
         last_lyric_ts,
         settings.SOW_LRC_TAIL_DUP_WINDOW_SECONDS,
     )
+    if trace is not None:
+        trace.append(
+            "tail_fill",
+            {
+                "clip_start": clip_start,
+                "clip_duration": clip_duration,
+                "range_suffix": range_suffix,
+                "engine": "qwen3" if qwen3_phrases is not None else "whisper",
+                "qwen3_fallback_reason": qwen3_fallback_reason,
+                "cache_hit": whisper_cache_hit if qwen3_phrases is None else qwen3_cache_hit,
+                "phrases": [{"text": p.text, "start": p.start, "end": p.end} for p in phrases],
+                "recovered_lines": [
+                    {"time_seconds": ln.time_seconds, "text": ln.text} for ln in recovered
+                ],
+                "appended": appended,
+                "last_lyric_ts": last_lyric_ts,
+                "dup_window_seconds": settings.SOW_LRC_TAIL_DUP_WINDOW_SECONDS,
+            },
+        )
     if appended:
         logger.info("Tail fill: recovered %d line(s) after %.2fs", appended, last_lyric_ts)
     else:
@@ -1062,6 +1200,8 @@ async def generate_lrc_from_qwen3_asr(
     dashscope_semaphore: asyncio.Semaphore,
     resolved_language: ResolvedLrcLanguage = "zh",
     qwen3_client: Optional["Qwen3AsrClient"] = None,
+    *,
+    trace: Optional[LLMTrace] = None,
 ) -> tuple[Path, int, list[WhisperPhrase]]:
     """Generate LRC from DashScope Qwen3 ASR, snap, then LLM alignment."""
     context_limit = min(
@@ -1106,12 +1246,31 @@ async def generate_lrc_from_qwen3_asr(
             f"Qwen3 ASR snapping returned too few usable phrases: {len(qwen_phrases)}"
         )
 
+    if trace is not None:
+        trace.append(
+            "qwen3_asr",
+            {
+                "cache_hit": bool(cached_payload),
+                "cache_key": cache_key,
+                "segments": [
+                    {"text": s.text, "start": s.start, "end": s.end}
+                    if hasattr(s, "text")
+                    else dict(s)
+                    for s in result.segments
+                ],
+                "snapped_phrases": [
+                    {"text": p.text, "start": p.start, "end": p.end} for p in qwen_phrases
+                ],
+            },
+        )
+
     lrc_lines = await _llm_align(
         lyrics_text,
         qwen_phrases,
         llm_model=options.llm_model,
         prompt_builder=_build_qwen3_asr_alignment_prompt,
         language=resolved_language,
+        trace=trace,
     )
     line_count = _write_lrc(lrc_lines, output_path)
     logger.info("Qwen3 ASR LRC generation wrote %s lines", line_count)
@@ -1124,6 +1283,8 @@ async def try_youtube_transcript_lrc(
     options: LrcOptions,
     output_path: Path,
     resolved_language: ResolvedLrcLanguage = "zh",
+    *,
+    trace: Optional[LLMTrace] = None,
 ) -> Optional[tuple[Path, int, List[WhisperPhrase]]]:
     """Attempt LRC generation via YouTube transcript (primary path).
 
@@ -1156,6 +1317,7 @@ async def try_youtube_transcript_lrc(
             llm_model=options.llm_model,
             language=resolved_language,
             tempo_bpm=options.tempo_bpm,
+            trace=trace,
         )
         line_count = _write_lrc(lrc_lines, output_path)
         total_elapsed = time.time() - lrc_start
@@ -1196,6 +1358,8 @@ async def generate_lrc(
     content_hash: Optional[str] = None,
     vocals_stem_url: Optional[str] = None,
     resolved_language: ResolvedLrcLanguage = "zh",
+    *,
+    trace: Optional[LLMTrace] = None,
 ) -> tuple[Path, int, List[WhisperPhrase]]:
     """Generate timestamped LRC file from audio and lyrics.
 
@@ -1228,7 +1392,7 @@ async def generate_lrc(
     # Primary path: YouTube transcript + LLM correction
     if youtube_url:
         result = await try_youtube_transcript_lrc(
-            youtube_url, lyrics_text, options, output_path, resolved_language
+            youtube_url, lyrics_text, options, output_path, resolved_language, trace=trace
         )
         if result is not None:
             return result
@@ -1258,6 +1422,7 @@ async def generate_lrc(
             model_name=options.whisper_model,
             language=resolved_language,
             lyrics_text=lyrics_text,
+            trace=trace,
         )
 
     # Step 2: LLM alignment
@@ -1266,6 +1431,7 @@ async def generate_lrc(
         whisper_phrases,
         llm_model=options.llm_model,
         language=resolved_language,
+        trace=trace,
     )
 
     # Step 3: Write LRC file

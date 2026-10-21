@@ -410,6 +410,8 @@ class AnalysisClient:
         force_qwen3_asr: bool = False,
         tempo_bpm: Optional[float] = None,
         duration_seconds: Optional[float] = None,
+        song_id: str = "",
+        dump_llm_trace: bool = False,
     ) -> JobInfo:
         """Submit an audio file for LRC generation.
 
@@ -430,6 +432,10 @@ class AnalysisClient:
             (None disables placeholder insertion)
             duration_seconds: Recording duration for tail-coverage fill
             (None disables tail fill)
+            song_id: Catalog song id forwarded for trace/debug identification
+            dump_llm_trace: Dump per-step LLM/ASR trace JSON+HTML to
+            SOW_DEBUG_DUMP_DIR on the analysis service (auto-bypasses the LRC
+            result cache)
 
         Returns:
             JobInfo for the submitted job
@@ -443,6 +449,7 @@ class AnalysisClient:
             "content_hash": content_hash,
             "lyrics_text": lyrics_text,
             "song_title": song_title,
+            "song_id": song_id,
             "youtube_url": youtube_url,
             "options": {
                 "whisper_model": whisper_model,
@@ -454,6 +461,7 @@ class AnalysisClient:
                 "force_qwen3_asr": force_qwen3_asr,
                 "tempo_bpm": tempo_bpm,
                 "duration_seconds": duration_seconds,
+                "dump_llm_trace": dump_llm_trace,
             },
         }
 

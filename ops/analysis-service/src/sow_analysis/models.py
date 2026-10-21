@@ -129,6 +129,7 @@ class LrcOptions(BaseModel):
     qwen3_asr_min_usable_segments: int = 3
     tempo_bpm: Optional[float] = None  # Recording tempo for gap placeholder insertion
     duration_seconds: Optional[float] = None  # Recording duration for tail-coverage fill
+    dump_llm_trace: bool = False  # Dump per-step LLM/ASR trace JSON+HTML to SOW_DEBUG_DUMP_DIR
 
     @model_validator(mode="before")
     @classmethod
@@ -159,6 +160,7 @@ class LrcJobRequest(BaseModel):
     content_hash: str
     lyrics_text: str
     song_title: str = ""
+    song_id: str = ""  # Catalog song id, for trace/debug identification (empty for non-CLI callers)
     youtube_url: str = ""  # YouTube URL for transcript-based LRC (primary path)
     options: LrcOptions = Field(default_factory=LrcOptions)
 

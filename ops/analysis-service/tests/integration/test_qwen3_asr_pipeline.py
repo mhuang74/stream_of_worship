@@ -262,6 +262,7 @@ async def test_qwen_lrc_alignment_uses_snapped_phrases(tmp_path: Path):
         max_retries=3,
         prompt_builder=None,
         language="zh",
+        trace=None,
     ):
         assert [p.text for p in phrases] == [
             "我要看見",
