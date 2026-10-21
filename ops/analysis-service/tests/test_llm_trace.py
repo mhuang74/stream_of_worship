@@ -79,6 +79,20 @@ class TestLLMTraceFinish:
         assert doc["events"][-1]["step"] == "error"
         assert doc["events"][-1]["error"] == "boom"
 
+    def test_html_flushed_per_step_before_finish(self, tmp_path):
+        """The flush-per-step guarantee: HTML exists and reflects steps mid-job."""
+        trace = LLMTrace(tmp_path, "job_html", {"song_id": "s1"})
+        html_path = tmp_path / f"{trace.base_name}.html"
+        # Constructor flush already wrote the HTML.
+        assert html_path.exists()
+        trace.append("youtube_transcript", {"video_id": "v1"})
+        html_text = html_path.read_text(encoding="utf-8")
+        assert "youtube_transcript" in html_text
+        assert "v1" in html_text
+        # finish() records the error into the same per-job HTML.
+        trace.finish(error="late crash")
+        assert "Error: late crash" in html_path.read_text(encoding="utf-8")
+
     def test_second_finish_is_noop(self, tmp_path):
         trace = LLMTrace(tmp_path, "job_test123", {"song_id": "s1"})
         trace.finish()

@@ -154,7 +154,10 @@ class LLMTrace:
         self._finished = True
         if error:
             self._doc["events"].append({"step": "error", "at": _utc_now(), "error": error})
-        self._flush()
+        try:
+            self._flush()
+        except (OSError, TypeError, ValueError) as e:
+            LLMTrace._warn("trace final write failed: %s", e)
 
     def _flush(self) -> None:
         """Rewrite the JSON doc and the HTML render so both stay current."""
