@@ -13,7 +13,10 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 from ..config import settings
 from ..logging_config import set_job_id
-from ..services.llm_models import LLMModelValidationError, validate_llm_model
+from ..services.llm_models import (
+    LLMModelValidationError,
+    validate_llm_model_request,
+)
 from ..step_timer import step_timer
 
 logger = logging.getLogger(__name__)
@@ -1422,11 +1425,13 @@ class JobQueue:
         # ASR). Empty llm_model (env default) is never validated.
         if request.options.llm_model:
             try:
-                model_ids = await validate_llm_model(request.options.llm_model)
+                model_id, reasoning_effort = await validate_llm_model_request(
+                    request.options.llm_model
+                )
                 logger.info(
-                    "LLM model '%s' validated against provider (%d models listed)",
-                    request.options.llm_model,
-                    len(model_ids),
+                    "LLM model '%s' validated against provider%s",
+                    model_id,
+                    f" (reasoning_effort={reasoning_effort})" if reasoning_effort else "",
                 )
             except LLMModelValidationError as e:
                 logger.error("LLM model validation failed: %s", e)
