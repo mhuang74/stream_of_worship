@@ -48,6 +48,11 @@ async def validate_llm_model(llm_model: str) -> set[str]:
         raise LLMModelValidationError(
             f"SOW_LLM_BASE_URL not set; cannot validate llm_model '{llm_model}'"
         )
+    logger.info(
+        "Validating LLM model '%s' against provider /models (base_url=%s)",
+        llm_model,
+        settings.SOW_LLM_BASE_URL,
+    )
     try:
         model_ids: set[str] = await asyncio.get_running_loop().run_in_executor(
             None, _fetch_provider_model_ids
@@ -60,8 +65,8 @@ async def validate_llm_model(llm_model: str) -> set[str]:
         raise LLMModelValidationError(
             f"LLM model '{llm_model}' is not in the provider's model list (base_url={settings.SOW_LLM_BASE_URL})"
         )
-    logger.debug(
-        "LLM model '%s' found in provider model list (%d models)",
+    logger.info(
+        "LLM model '%s' validated against provider (%d models listed)",
         llm_model,
         len(model_ids),
     )

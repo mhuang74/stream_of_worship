@@ -1325,7 +1325,14 @@ class JobQueue:
         """
         set_job_id(job.id)
         job_start_time = time.time()
-        logger.info(f"Starting LRC job for audio: {job.request.audio_url}")
+        # Non-LRC request objects (mismatched job, handled below) may lack llm_model
+        request_options = getattr(job.request, "options", None)
+        requested_llm_model = getattr(request_options, "llm_model", None) or (
+            f"<service default: {settings.SOW_LLM_MODEL}>"
+        )
+        logger.info(
+            f"Starting LRC job for audio: {job.request.audio_url} | llm_model: {requested_llm_model}"
+        )
 
         job.status = JobStatus.PROCESSING
         job.updated_at = datetime.now(timezone.utc)
@@ -1422,6 +1429,7 @@ class JobQueue:
                     len(model_ids),
                 )
             except LLMModelValidationError as e:
+                logger.error("LLM model validation failed: %s", e)
                 job.status = JobStatus.FAILED
                 job.error_message = str(e)
                 job.stage = "invalid_llm_model"

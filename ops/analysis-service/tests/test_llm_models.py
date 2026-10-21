@@ -1,5 +1,6 @@
 """Tests for LLM model validation (services/llm_models.py)."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -68,6 +69,26 @@ class TestValidateLLMModel:
                 LLMModelValidationError, match="not in the provider's model list"
             ):
                 await validate_llm_model("openai/bogus-model")
+
+    @pytest.mark.asyncio
+    async def test_invalid_model_logs_validation_info(self, caplog):
+        """Invalid model id leaves an INFO log naming the model and /models."""
+        openai_module, _ = _make_openai_module(model_ids=["openai/gpt-4o-mini"])
+
+        with (
+            caplog.at_level(logging.INFO, logger="sow_analysis.services.llm_models"),
+            _patched_settings(),
+            patch.dict("sys.modules", {"openai": openai_module}),
+            pytest.raises(LLMModelValidationError),
+        ):
+            await validate_llm_model("openai/bogus-model")
+
+        assert any(
+            r.levelname == "INFO"
+            and "openai/bogus-model" in r.getMessage()
+            and "/models" in r.getMessage()
+            for r in caplog.records
+        ), "expected the fail-path INFO log naming the model and /models"
 
     @pytest.mark.asyncio
     async def test_provider_error_raises_validation_error(self):
