@@ -30,6 +30,7 @@ from sow_analysis.workers.lrc import (
     resolve_lrc_language,
     warn_if_lrc_language_script_mismatch,
 )
+from sow_analysis.services.llm_models import LLMModelValidationError
 from sow_analysis.workers.queue import Job, JobQueue, _compute_lrc_cache_key
 
 
@@ -793,6 +794,60 @@ class TestLRCJobQueueProcessing:
 
         assert job.status == JobStatus.FAILED
         assert "SOW_LLM_API_KEY" in job.error_message
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_invalid_llm_model_fails_at_start(self, queue):
+        """Explicit bad llm_model fails the job before Stage 1 (invalid_llm_model)."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="測試歌詞",
+            options=LrcOptions(llm_model="openai/bogus-model"),
+        )
+
+        job = Job(
+            id="job_test123",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        with patch(
+            "sow_analysis.workers.queue.validate_llm_model",
+            AsyncMock(
+                side_effect=LLMModelValidationError(
+                    "LLM model 'openai/bogus-model' is not in the provider's model list"
+                )
+            ),
+        ):
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.FAILED
+        assert job.stage == "invalid_llm_model"
+        assert "openai/bogus-model" in job.error_message
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_empty_llm_model_skips_validation(self, queue):
+        """Default (empty) llm_model never triggers the provider validation."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="測試歌詞",
+        )
+
+        job = Job(
+            id="job_test123",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        with patch(
+            "sow_analysis.workers.queue.validate_llm_model", AsyncMock()
+        ) as mock_validate:
+            await queue._process_lrc_job(job)
+
+        mock_validate.assert_not_awaited()
 
 
 class TestLRCOptions:

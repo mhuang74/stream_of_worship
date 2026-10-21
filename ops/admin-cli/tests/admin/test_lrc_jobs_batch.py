@@ -182,3 +182,80 @@ def test_submit_lrc_single_forwards_song_id_and_dump_llm_trace():
     kwargs = analysis.submit_lrc.call_args.kwargs
     assert kwargs["song_id"] == "song_001"
     assert kwargs["dump_llm_trace"] is True
+
+
+def _run_batch_with_llm_model(llm_model):
+    recording = _make_recording()
+    db = _make_db(recording)
+    analysis = _make_analysis_client()
+    console = Console()
+    with patch.object(lrc_jobs, "resolve_lyrics_text", return_value="lyrics"):
+        submit_lrc_batch(
+            song_ids=["song_001"],
+            db_client=db,
+            analysis_client=analysis,
+            force=False,
+            whisper_model="base",
+            language="zh",
+            no_vocals=False,
+            no_youtube=False,
+            no_whisper_cache=False,
+            no_qwen3_asr=False,
+            force_qwen3_asr=False,
+            console=console,
+            llm_model=llm_model,
+        )
+    return analysis
+
+
+def test_submit_lrc_batch_forwards_llm_model():
+    analysis = _run_batch_with_llm_model("openai/gpt-4o-mini")
+
+    analysis.submit_lrc.assert_called_once()
+    assert analysis.submit_lrc.call_args.kwargs["llm_model"] == "openai/gpt-4o-mini"
+
+
+def test_submit_lrc_batch_default_llm_model_empty():
+    analysis = _run_batch_with_llm_model("")
+
+    analysis.submit_lrc.assert_called_once()
+    assert analysis.submit_lrc.call_args.kwargs["llm_model"] == ""
+
+
+def _run_single_with_llm_model(llm_model):
+    recording = _make_recording()
+    db = _make_db(recording)
+    analysis = _make_analysis_client()
+    console = Console()
+    with patch.object(lrc_jobs, "resolve_lyrics_text", return_value="lyrics"):
+        submit_lrc_single(
+            song_id="song_001",
+            db_client=db,
+            analysis_client=analysis,
+            force=False,
+            whisper_model="base",
+            language="zh",
+            no_vocals=False,
+            no_youtube=False,
+            no_whisper_cache=False,
+            no_qwen3_asr=False,
+            force_qwen3_asr=False,
+            wait=False,
+            console=console,
+            llm_model=llm_model,
+        )
+    return analysis
+
+
+def test_submit_lrc_single_forwards_llm_model():
+    analysis = _run_single_with_llm_model("openai/gpt-4o-mini")
+
+    analysis.submit_lrc.assert_called_once()
+    assert analysis.submit_lrc.call_args.kwargs["llm_model"] == "openai/gpt-4o-mini"
+
+
+def test_submit_lrc_single_default_llm_model_empty():
+    analysis = _run_single_with_llm_model("")
+
+    analysis.submit_lrc.assert_called_once()
+    assert analysis.submit_lrc.call_args.kwargs["llm_model"] == ""

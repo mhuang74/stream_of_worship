@@ -13,6 +13,7 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 from ..config import settings
 from ..logging_config import set_job_id
+from ..services.llm_models import LLMModelValidationError, validate_llm_model
 from ..step_timer import step_timer
 
 logger = logging.getLogger(__name__)
@@ -1408,6 +1409,33 @@ class JobQueue:
             request.song_title,
         )
         warn_if_lrc_language_script_mismatch(resolved_language, request.lyrics_text)
+
+        # Fail-closed guard: an explicitly-requested LLM model must exist in the
+        # provider's live /models list before any work begins (YouTube fetch,
+        # ASR). Empty llm_model (env default) is never validated.
+        if request.options.llm_model:
+            try:
+                model_ids = await validate_llm_model(request.options.llm_model)
+                logger.info(
+                    "LLM model '%s' validated against provider (%d models listed)",
+                    request.options.llm_model,
+                    len(model_ids),
+                )
+            except LLMModelValidationError as e:
+                job.status = JobStatus.FAILED
+                job.error_message = str(e)
+                job.stage = "invalid_llm_model"
+                job.updated_at = datetime.now(timezone.utc)
+                try:
+                    await self.job_store.update_job(
+                        job.id,
+                        status="failed",
+                        stage="invalid_llm_model",
+                        error_message=str(e),
+                    )
+                except Exception as db_err:
+                    logger.error(f"Failed to update job {job.id} in database: {db_err}")
+                return
 
         trace = None
         if request.options.dump_llm_trace:

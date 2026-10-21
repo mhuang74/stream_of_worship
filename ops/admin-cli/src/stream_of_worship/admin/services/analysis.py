@@ -401,6 +401,7 @@ class AnalysisClient:
         lyrics_text: str,
         song_title: str = "",
         whisper_model: str = "large-v3",
+        llm_model: str = "",
         language: str = "auto",
         use_vocals_stem: bool = True,
         force: bool = False,
@@ -421,6 +422,7 @@ class AnalysisClient:
             lyrics_text: Raw lyrics text to align
             song_title: Song title used for auto language detection
             whisper_model: Whisper model to use
+            llm_model: LLM model for the align/correct step ("" = service SOW_LLM_MODEL default)
             language: Language mode for transcription ("auto", "zh", or "en")
             use_vocals_stem: Whether to use vocals stem for better alignment
             force: Whether to force re-generation
@@ -453,6 +455,7 @@ class AnalysisClient:
             "youtube_url": youtube_url,
             "options": {
                 "whisper_model": whisper_model,
+                "llm_model": llm_model,
                 "language": language,
                 "use_vocals_stem": use_vocals_stem,
                 "force": force,
