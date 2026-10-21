@@ -6,6 +6,8 @@ editor header both render them, so the glyphs live here once.
 
 from typing import Optional
 
+# Ordered for the status menu; mirrors db.client._VALID_VISIBILITY_STATUSES
+# (a status added there must be added here, or the menu can never offer it).
 VISIBILITY_STATUSES: tuple[str, ...] = ("published", "review", "hold")
 VISIBILITY_BADGES: dict[str, str] = {"published": "●", "review": "◐", "hold": "○"}
 NO_VISIBILITY_BADGE = "·"

@@ -690,6 +690,52 @@ class TestPlainEditStillWorks:
         assert "Resolved 1 poor rating(s)" in result.output
         assert "set to published" in result.output
 
+    def test_visibility_reread_after_upload(
+        self, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """The menu reads the status after the upload, not the stale object.
+
+        A fresh recording is NULL in the DB, so the pre-session Recording
+        handed to the editor has ``visibility_status is None``. The upload
+        COALESCEs it to 'review'. Reading the stale object would render
+        ``· none`` and offer three statuses; the DB re-read renders
+        ``◐ review`` and offers only published/hold.
+        """
+        provider = _init_schema(make_test_provider)
+        self._seed_single_song(provider)
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET visibility_status = NULL WHERE hash_prefix = 'hash-aa'"
+            )
+        conn.commit()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+            assert recording.visibility_status is None  # stale, pre-upload value
+            db_client.update_recording_lrc(recording.hash_prefix, "https://r2/x.lrc")
+            return lyrics_commands.EditorSessionOutcome(
+                no_audio=False, upload_attempted=True, upload_result=_upload_outcome()
+            )
+
+        monkeypatch.setattr(lyrics_commands, "_run_editor_session", _fake_session)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["edit", "song_001", "--config", str(config_path)],
+            input="n\n1\n",  # decline clear, choose "published" (menu 1)
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "Set visibility for hash-aa (current: ◐ review):" in result.output
+        assert "  [1] ● published" in result.output
+        assert "  [2] ○ hold" in result.output
+        assert "  [3]" not in result.output  # a stale NULL read would offer 3
+        assert "  · none" not in result.output
+        assert "visibility set to published" in result.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-aa").visibility_status == "published"
+
     def test_no_audio_clear_error(self, make_test_provider, postgres_url, tmp_path, monkeypatch):
         provider = _init_schema(make_test_provider)
         self._seed_single_song(provider)
@@ -849,11 +895,16 @@ class TestLoopExitAndDraftBehavior:
         assert client.get_recording_feedback_summary("hd" * 16).open_sad_count == 1
         assert client.get_recording_by_hash("hash-dd").visibility_status == "review"
 
-    def test_visibility_reread_after_upload_in_loop(
+    def test_post_upload_menu_in_loop_reports_current_status(
         self, make_test_provider, postgres_url, tmp_path, patched_editor
     ):
-        """Upload COALESCEs NULL visibility to 'review'; the publish offer
-        must appear even though the pre-session Recording object had NULL."""
+        """Loop mode shows the menu after the clear offer and writes the pick.
+
+        Setting hash-dd's visibility to NULL drops it out of the review pool,
+        so the pick is hash-cc (still 'review' in the DB) — this covers the
+        loop-mode menu plumbing, not the post-upload re-read (see
+        TestPlainEditStillWorks.test_visibility_reread_after_upload).
+        """
         provider = _init_schema(make_test_provider)
         _seed_review_pool(provider)
         # Set the picked recording's visibility to NULL (fresh-recording case).
@@ -869,9 +920,8 @@ class TestLoopExitAndDraftBehavior:
 
         result = self._invoke_quit(config_path, "\nn\n1\nn\n")
         assert result.exit_code == 0, result.output
-        # The menu reports the status read straight from the DB ("review"
-        # for hash-cc) and offers only the alternatives.
         assert "Set visibility for hash-cc (current: ◐ review):" in result.output
+        assert "  [1] ● published" in result.output
         assert "visibility set to published" in result.output
 
     def test_clean_quit_offers_publish_and_continues(
