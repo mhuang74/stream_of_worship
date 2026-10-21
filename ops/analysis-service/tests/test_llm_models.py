@@ -59,9 +59,7 @@ class TestValidateLLMModel:
             model_ids=["openai/gpt-4o-mini", "anthropic/claude-3-haiku"]
         )
 
-        with _patched_settings(), patch.dict(
-            "sys.modules", {"openai": openai_module}
-        ):
+        with _patched_settings(), patch.dict("sys.modules", {"openai": openai_module}):
             result = await validate_llm_model("openai/gpt-4o-mini")
 
         assert result == {"openai/gpt-4o-mini", "anthropic/claude-3-haiku"}
@@ -75,9 +73,7 @@ class TestValidateLLMModel:
         openai_module, _ = _make_openai_module(model_ids=["openai/gpt-4o-mini"])
 
         with _patched_settings(), patch.dict("sys.modules", {"openai": openai_module}):
-            with pytest.raises(
-                LLMModelValidationError, match="not in the provider's model list"
-            ):
+            with pytest.raises(LLMModelValidationError, match="not in the provider's model list"):
                 await validate_llm_model("openai/bogus-model")
 
     @pytest.mark.asyncio
@@ -106,18 +102,14 @@ class TestValidateLLMModel:
         openai_module, _ = _make_openai_module(list_side_effect=ConnectionError("boom"))
 
         with _patched_settings(), patch.dict("sys.modules", {"openai": openai_module}):
-            with pytest.raises(
-                LLMModelValidationError, match="LLM model validation failed for"
-            ):
+            with pytest.raises(LLMModelValidationError, match="LLM model validation failed for"):
                 await validate_llm_model("openai/gpt-4o-mini")
 
     @pytest.mark.asyncio
     async def test_openai_missing_raises_validation_error(self):
         """ImportError (openai not installed) is caught by the same guard."""
         with _patched_settings(), patch.dict("sys.modules", {"openai": None}):
-            with pytest.raises(
-                LLMModelValidationError, match="LLM model validation failed for"
-            ):
+            with pytest.raises(LLMModelValidationError, match="LLM model validation failed for"):
                 await validate_llm_model("openai/gpt-4o-mini")
 
     @pytest.mark.asyncio
@@ -137,9 +129,7 @@ class TestValidateLLMModel:
             mock_settings.SOW_LLM_API_KEY = "test-key"
             mock_settings.SOW_LLM_BASE_URL = ""
 
-            with pytest.raises(
-                LLMModelValidationError, match="SOW_LLM_BASE_URL not set"
-            ):
+            with pytest.raises(LLMModelValidationError, match="SOW_LLM_BASE_URL not set"):
                 await validate_llm_model("openai/gpt-4o-mini")
 
 
@@ -216,9 +206,7 @@ class TestValidateLLMModelRequest:
         openai_module, _ = _make_openai_module(model_ids=["m"])
 
         with _patched_settings(), patch.dict("sys.modules", {"openai": openai_module}):
-            with pytest.raises(
-                LLMModelValidationError, match="does not report reasoning metadata"
-            ):
+            with pytest.raises(LLMModelValidationError, match="does not report reasoning metadata"):
                 await validate_llm_model_request("m:low")
 
     @pytest.mark.asyncio

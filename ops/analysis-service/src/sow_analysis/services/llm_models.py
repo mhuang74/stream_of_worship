@@ -30,9 +30,7 @@ class LLMModelValidationError(Exception):
 
 #: Reasoning-effort variants accepted by the provider's ``reasoning_effort``
 #: chat parameter (source: provider 400 error message listing the variants).
-KNOWN_REASONING_EFFORTS = frozenset(
-    {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
-)
+KNOWN_REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max"})
 
 
 def split_llm_model_effort(llm_model: str) -> tuple[str, Optional[str]]:
@@ -127,9 +125,7 @@ async def validate_llm_model(llm_model: str) -> set[str]:
             None, _fetch_provider_models
         )
     except Exception as e:  # network, auth, openai not installed (ImportError), etc.
-        raise LLMModelValidationError(
-            f"LLM model validation failed for '{llm_model}': {e}"
-        ) from e
+        raise LLMModelValidationError(f"LLM model validation failed for '{llm_model}': {e}") from e
     if llm_model not in model_ids:
         raise LLMModelValidationError(
             f"LLM model '{llm_model}' is not in the provider's model list (base_url={settings.SOW_LLM_BASE_URL})"
@@ -172,9 +168,7 @@ async def validate_llm_model_request(llm_model: str) -> tuple[str, Optional[str]
             None, _fetch_provider_models
         )
     except Exception as e:  # network, auth, openai not installed (ImportError), etc.
-        raise LLMModelValidationError(
-            f"LLM model validation failed for '{llm_model}': {e}"
-        ) from e
+        raise LLMModelValidationError(f"LLM model validation failed for '{llm_model}': {e}") from e
     if model_id not in model_ids:
         raise LLMModelValidationError(
             f"LLM model '{model_id}' is not in the provider's model list (base_url={settings.SOW_LLM_BASE_URL})"

@@ -296,7 +296,12 @@ async def _run_whisper_transcription(
                 "condition_on_previous_text": condition_on_previous_text,
                 "max_no_speech_prob": max_no_speech_prob,
                 "phrases": [
-                    {"text": p.text, "start": p.start, "end": p.end, "no_speech_prob": p.no_speech_prob}
+                    {
+                        "text": p.text,
+                        "start": p.start,
+                        "end": p.end,
+                        "no_speech_prob": p.no_speech_prob,
+                    }
                     for p in phrases
                 ],
                 "dropped_segments": dropped,
@@ -684,9 +689,7 @@ async def _llm_align(
         return response.choices[0].message.content
 
     if reasoning_effort is not None:
-        logger.info(
-            f"Using LLM model: {effective_model} (reasoning_effort={reasoning_effort})"
-        )
+        logger.info(f"Using LLM model: {effective_model} (reasoning_effort={reasoning_effort})")
     else:
         logger.info(f"Using LLM model: {effective_model}")
 
@@ -1286,9 +1289,11 @@ async def generate_lrc_from_qwen3_asr(
                 "cache_hit": bool(cached_payload),
                 "cache_key": cache_key,
                 "segments": [
-                    {"text": s.text, "start": s.start, "end": s.end}
-                    if hasattr(s, "text")
-                    else dict(s)
+                    (
+                        {"text": s.text, "start": s.start, "end": s.end}
+                        if hasattr(s, "text")
+                        else dict(s)
+                    )
                     for s in result.segments
                 ],
                 "snapped_phrases": [

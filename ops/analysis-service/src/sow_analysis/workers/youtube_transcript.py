@@ -1211,12 +1211,18 @@ async def _llm_correct(
         if trace is not None:
             trace.append(
                 "llm_correction_error",
-                {"model": effective_model, **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}), "error": str(e)},
+                {
+                    "model": effective_model,
+                    **(
+                        {"reasoning_effort": reasoning_effort}
+                        if reasoning_effort is not None
+                        else {}
+                    ),
+                    "error": str(e),
+                },
             )
         if _is_llm_rate_limited_error(e):
-            raise LLMCorrectionError(
-                f"LLM correction failed after rate-limit retries: {e}"
-            ) from e
+            raise LLMCorrectionError(f"LLM correction failed after rate-limit retries: {e}") from e
         if _is_llm_retryable_error(e):
             raise LLMCorrectionError(
                 f"LLM correction failed after transient-error retries: {e}"
@@ -1227,11 +1233,7 @@ async def _llm_correct(
             "llm_correction_attempt",
             {
                 "model": effective_model,
-                **(
-                    {"reasoning_effort": reasoning_effort}
-                    if reasoning_effort is not None
-                    else {}
-                ),
+                **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}),
                 "prompt": prompt,
                 "response": response_text,
                 "elapsed_s": time.time() - attempt_start,
