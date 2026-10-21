@@ -266,41 +266,35 @@ def _seed_review_pool(provider):
 class TestPlanPostUploadOffers:
     """Pure decision-function tests (no DB)."""
 
-    def test_full_plan_loop_mode_with_open_sad_and_review(self):
+    def test_full_plan_loop_mode_with_open_sad(self):
         plan = lyrics_commands.plan_post_upload_offers(
-            upload_ok=True, open_sad_count=2, is_review_visibility=True, loop_mode=True
+            upload_ok=True, open_sad_count=2, loop_mode=True
         )
-        assert plan == ["clear", "publish", "skip-if-publish-declined", "continue"]
+        assert plan == ["clear", "visibility", "skip-if-visibility-declined", "continue"]
 
     def test_no_open_sad_omits_clear(self):
         plan = lyrics_commands.plan_post_upload_offers(
-            upload_ok=True, open_sad_count=0, is_review_visibility=True, loop_mode=True
+            upload_ok=True, open_sad_count=0, loop_mode=True
         )
-        assert plan == ["publish", "skip-if-publish-declined", "continue"]
+        assert plan == ["visibility", "skip-if-visibility-declined", "continue"]
 
     def test_failed_upload_produces_no_offers(self):
         plan = lyrics_commands.plan_post_upload_offers(
-            upload_ok=False, open_sad_count=5, is_review_visibility=True, loop_mode=True
+            upload_ok=False, open_sad_count=5, loop_mode=True
         )
         assert plan == []
 
     def test_single_mode_no_loop_only_steps(self):
         plan = lyrics_commands.plan_post_upload_offers(
-            upload_ok=True, open_sad_count=0, is_review_visibility=True, loop_mode=False
+            upload_ok=True, open_sad_count=0, loop_mode=False
         )
-        assert plan == ["publish"]
+        assert plan == ["visibility"]
 
-    def test_single_mode_clear_only(self):
+    def test_single_mode_with_open_sad(self):
         plan = lyrics_commands.plan_post_upload_offers(
-            upload_ok=True, open_sad_count=3, is_review_visibility=False, loop_mode=False
+            upload_ok=True, open_sad_count=3, loop_mode=False
         )
-        assert plan == ["clear"]
-
-    def test_published_recording_gets_no_publish_offer(self):
-        plan = lyrics_commands.plan_post_upload_offers(
-            upload_ok=True, open_sad_count=0, is_review_visibility=False, loop_mode=True
-        )
-        assert plan == ["continue"]
+        assert plan == ["clear", "visibility"]
 
 
 @pytest.mark.integration
@@ -462,10 +456,10 @@ class TestReviewNextSongCommand:
         patched_editor.append(_upload_outcome())  # session 1 only
 
         # Declining the skip offer leaves the song eligible (story 20):
-        # with nothing changed (no clear, no publish), the loop re-picks
-        # song_c. Session 2 has no scripted audio, so the no-audio skip
-        # path then walks the remaining queue to exhaustion. The trailing
-        # Enters feed the pauses of the no-audio walk.
+        # with nothing changed (no clear, no visibility change), the loop
+        # re-picks song_c. Session 2 has no scripted audio, so the no-audio
+        # skip path then walks the remaining queue to exhaustion. The
+        # trailing Enters feed the pauses of the no-audio walk.
         result = self._invoke(config_path, "\nn\nn\nn\n\n\n\n\n")
         assert result.exit_code == 0, result.output
         assert result.output.count("Next review song: Song C") == 2
@@ -480,7 +474,8 @@ class TestReviewNextSongCommand:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor.append(_upload_outcome())
 
-        # decline clear, decline publish, accept skip, accept continue
+        # decline clear, leave visibility unchanged ("n" is not a menu
+        # number), accept skip, accept continue
         result = self._invoke(config_path, "\nn\nn\nyes\n\n")
         assert result.exit_code == 0, result.output
         assert "will be skipped for the rest of this session" in result.output
@@ -495,10 +490,12 @@ class TestReviewNextSongCommand:
         client = DatabaseClient(make_test_provider())
         patched_editor.append(_upload_outcome())
 
-        # accept clear, accept publish, accept continue, Enter at next pause
-        result = self._invoke(config_path, "\nyes\nyes\n\n\n")
+        # accept clear, choose "published" (menu 1), accept continue,
+        # Enter at next pause
+        result = self._invoke(config_path, "\nyes\n1\n\n\n")
         assert result.exit_code == 0, result.output
         assert "Resolved 1 poor rating(s)" in result.output
+        assert "Set visibility for hash-dd (current: ◐ review):" in result.output
         assert "set to published" in result.output
 
         # DB state: song_c's edited recording promoted; feedback resolved.
@@ -518,8 +515,9 @@ class TestReviewNextSongCommand:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor.append(_upload_outcome())
 
-        # decline clear, accept publish, accept continue, Enter at next pause
-        result = self._invoke(config_path, "\nn\nyes\n\n\n")
+        # decline clear, choose "published" (menu 1), accept continue,
+        # Enter at next pause
+        result = self._invoke(config_path, "\nn\n1\n\n\n")
         assert result.exit_code == 0, result.output
         assert "Visibility left unchanged" not in result.output
         assert result.output.count("Next review song:") >= 2
@@ -677,7 +675,7 @@ class TestPlainEditStillWorks:
         result = runner.invoke(
             lyrics_app,
             ["edit", "song_001", "--config", str(config_path)],
-            input="yes\nyes\n",  # accept clear, accept publish
+            input="yes\n1\n",  # accept clear, choose "published" (menu 1)
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
@@ -686,7 +684,7 @@ class TestPlainEditStillWorks:
         assert "Press Enter" not in result.output
         # Same post-upload offers as loop mode minus loop-only steps.
         assert "Clear poor ratings?" in result.output
-        assert "Set visibility to published?" in result.output
+        assert "Set visibility for hash-aa (current: ◐ review):" in result.output
         assert "Skip this song" not in result.output
         assert "Continue to next review song" not in result.output
         assert "Resolved 1 poor rating(s)" in result.output
@@ -717,7 +715,7 @@ class TestPlainEditStillWorks:
     def test_clean_quit_offers_publish_single_song(
         self, make_test_provider, postgres_url, tmp_path, monkeypatch
     ):
-        """Clean quit in single-song mode offers publish when eligible."""
+        """Clean quit in single-song mode offers a visibility change."""
         provider = _init_schema(make_test_provider)
         self._seed_single_song(provider)
         conn = provider.get_connection()
@@ -739,14 +737,48 @@ class TestPlainEditStillWorks:
         result = runner.invoke(
             lyrics_app,
             ["edit", "song_001", "--config", str(config_path)],
-            input="yes\n",
+            input="1\n",  # menu 1 = "● published"
             env={"COLUMNS": "200"},
         )
         assert result.exit_code == 0, result.output
-        assert "Set visibility to published?" in result.output
+        assert "Set visibility for hash-aa (current: ◐ review):" in result.output
         assert "set to published" in result.output
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_by_hash("hash-aa").visibility_status == "published"
+
+    def test_clean_quit_offers_demote_for_published(
+        self, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """A published recording is offered review/hold — never its own status."""
+        provider = _init_schema(make_test_provider)
+        self._seed_single_song(provider)
+        conn = provider.get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET lrc_status = 'completed', "
+                "visibility_status = 'published' WHERE hash_prefix = 'hash-aa'"
+            )
+        conn.commit()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+            return lyrics_commands.EditorSessionOutcome(
+                no_audio=False, upload_attempted=False, upload_result=None, quit_clean=True
+            )
+
+        monkeypatch.setattr(lyrics_commands, "_run_editor_session", _fake_session)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["edit", "song_001", "--config", str(config_path)],
+            input="1\n",  # menu 1 = "◐ review" (published is not offered)
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "Set visibility for hash-aa (current: ● published):" in result.output
+        assert "visibility set to review" in result.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-aa").visibility_status == "review"
 
     def test_feedback_user_id_passed_in_single_song_mode(
         self, make_test_provider, postgres_url, tmp_path, monkeypatch
@@ -811,7 +843,7 @@ class TestLoopExitAndDraftBehavior:
         assert result.exit_code == 0, result.output
         # No offers after a draft save (story 17).
         assert "Clear poor ratings?" not in result.output
-        assert "Set visibility to published?" not in result.output
+        assert "Set visibility for" not in result.output
         # Feedback rows stay open.
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_feedback_summary("hd" * 16).open_sad_count == 1
@@ -835,10 +867,12 @@ class TestLoopExitAndDraftBehavior:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor.append(_upload_outcome())
 
-        result = self._invoke_quit(config_path, "\nn\nyes\nn\n")
+        result = self._invoke_quit(config_path, "\nn\n1\nn\n")
         assert result.exit_code == 0, result.output
-        # Publish offer fired despite stale in-memory None visibility.
-        assert "Set visibility to published?" in result.output
+        # The menu reports the status read straight from the DB ("review"
+        # for hash-cc) and offers only the alternatives.
+        assert "Set visibility for hash-cc (current: ◐ review):" in result.output
+        assert "visibility set to published" in result.output
 
     def test_clean_quit_offers_publish_and_continues(
         self, make_test_provider, postgres_url, tmp_path, patched_editor, monkeypatch
@@ -858,9 +892,9 @@ class TestLoopExitAndDraftBehavior:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor.append(_clean_quit_outcome())
 
-        result = self._invoke_quit(config_path, "\nyes\n\n")
+        result = self._invoke_quit(config_path, "\n1\n\n")
         assert result.exit_code == 0, result.output
-        assert "Set visibility to published?" in result.output
+        assert "Set visibility for hash-dd (current: ◐ review):" in result.output
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_by_hash("hash-dd").visibility_status == "published"
         # The loop continues after the publish offer.
@@ -890,7 +924,7 @@ class TestLoopExitAndDraftBehavior:
     def test_clean_quit_bare_enter_does_not_publish(
         self, make_test_provider, postgres_url, tmp_path, patched_editor
     ):
-        """A bare Enter at the publish prompt must NOT publish (typed 'yes' required)."""
+        """A bare Enter at the menu must leave visibility unchanged."""
         provider = _init_schema(make_test_provider)
         _seed_review_pool(provider)
         conn = provider.get_connection()
@@ -905,15 +939,15 @@ class TestLoopExitAndDraftBehavior:
 
         result = self._invoke_quit(config_path, "\n\n")
         assert result.exit_code == 0, result.output
-        assert "Set visibility to published?" in result.output
+        assert "Set visibility for hash-dd (current: ◐ review):" in result.output
         assert "Visibility left unchanged." in result.output
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_by_hash("hash-dd").visibility_status == "review"
 
-    def test_clean_quit_single_y_does_not_publish(
+    def test_clean_quit_invalid_choice_leaves_visibility(
         self, make_test_provider, postgres_url, tmp_path, patched_editor
     ):
-        """Typing bare 'y' at the publish prompt must NOT publish (typed 'yes' required)."""
+        """A non-numeric reply at the menu leaves visibility unchanged."""
         provider = _init_schema(make_test_provider)
         _seed_review_pool(provider)
         conn = provider.get_connection()
@@ -928,7 +962,7 @@ class TestLoopExitAndDraftBehavior:
 
         result = self._invoke_quit(config_path, "\ny\n")
         assert result.exit_code == 0, result.output
-        assert "Set visibility to published?" in result.output
+        assert "Set visibility for hash-dd (current: ◐ review):" in result.output
         assert "Visibility left unchanged." in result.output
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_by_hash("hash-dd").visibility_status == "review"
@@ -943,7 +977,7 @@ class TestLoopExitAndDraftBehavior:
 
         result = self._invoke_quit(config_path, "\n")
         assert result.exit_code == 0, result.output
-        assert "Set visibility to published?" not in result.output
+        assert "Set visibility for" not in result.output
 
     @staticmethod
     def _invoke_quit(config_path, input_text):

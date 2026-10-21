@@ -5,6 +5,7 @@ multiple command modules.
 """
 
 import sys
+from typing import Optional
 
 from rich.console import Console
 
@@ -87,3 +88,32 @@ def prompt_choice(prompt: str, choices: list[str]) -> int:
             console.print(f"[red]Please enter a number between 1 and {len(choices)}[/red]")
         except (ValueError, EOFError):
             console.print(f"[red]Please enter a number between 1 and {len(choices)}[/red]")
+
+
+def prompt_choice_or_none(prompt: str, choices: list[str]) -> Optional[int]:
+    """Numbered menu where any non-answer means "leave unchanged".
+
+    Unlike :func:`prompt_choice`, this never loops: empty input, EOF,
+    Ctrl+C, non-integer text, or an out-of-range number all return None
+    so finite stdin in tests and non-interactive runs cannot hang.
+
+    Returns:
+        0-based index of the chosen option, or None for no change.
+    """
+    console.print(f"\n[bold]{prompt}[/bold]")
+    for i, choice in enumerate(choices):
+        console.print(f"  [{i + 1}] {choice}")
+
+    try:
+        raw = input(f"Enter choice [1-{len(choices)}, Enter=leave unchanged]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    if not raw:
+        return None
+    try:
+        selection = int(raw) - 1
+    except ValueError:
+        return None
+    if 0 <= selection < len(choices):
+        return selection
+    return None

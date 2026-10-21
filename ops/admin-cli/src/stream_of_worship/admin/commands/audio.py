@@ -58,6 +58,7 @@ from stream_of_worship.admin.services.lrc_parser import (
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.structured_lyrics import flatten_structured_lyrics
+from stream_of_worship.admin.services.visibility import format_visibility
 from stream_of_worship.admin.services.lrc_jobs import (
     display_lrc,
     fetch_structured_lyrics,
@@ -314,28 +315,6 @@ def _colorize_status(status: str) -> str:
         return f"[red]{status}[/red]"
     else:
         return f"[dim]{status}[/dim]"
-
-
-def _colorize_visibility(visibility: Optional[str]) -> str:
-    """Get Rich markup for visibility status.
-
-    Returns a one-cell badge so the audio list table can spend its width
-    budget on text columns; the legend line under the table decodes it.
-
-    Args:
-        visibility: Visibility status string
-
-    Returns:
-        Rich markup string with visual indicator
-    """
-    if visibility == "published":
-        return "[green]●[/green]"
-    elif visibility == "review":
-        return "[yellow]◐[/yellow]"
-    elif visibility == "hold":
-        return "[dim]○[/dim]"
-    else:
-        return "[dim]·[/dim]"
 
 
 def _format_lrc_source(lrc_source: Optional[str]) -> str:
@@ -1717,7 +1696,7 @@ def list_recordings(
             song_id = rec.song_id or "-"
 
             # Visibility status with visual indicator
-            visibility_text = _colorize_visibility(rec.visibility_status)
+            visibility_text = format_visibility(rec.visibility_status)
 
             # Format duration if available (from analysis results)
             duration_str = (
@@ -1829,7 +1808,7 @@ def show_recording(
         info_lines.append(f"[cyan]LRC Job:[/cyan] {recording.lrc_job_id}")
     info_lines.append(f"[cyan]LRC Source:[/cyan] {_format_lrc_source(recording.lrc_source)}")
     info_lines.append(
-        f"[cyan]Visibility:[/cyan] {_colorize_visibility(recording.visibility_status)}"
+        f"[cyan]Visibility:[/cyan] {format_visibility(recording.visibility_status)}"
     )
     info_lines.append(f"[cyan]Theme:[/cyan] {recording.theme or '- none -'}")
     info_lines.append(f"[cyan]Posture:[/cyan] {recording.vocal_posture or '- none -'}")
@@ -2010,7 +1989,7 @@ def set_visibility(
         try:
             db_client.update_recording_visibility(recording.hash_prefix, status)
             console.print(
-                f"[green]{sid}: Updated visibility to {_colorize_visibility(status)}[/green]"
+                f"[green]{sid}: Updated visibility to {format_visibility(status)}[/green]"
             )
             succeeded.append(sid)
         except ValueError as e:

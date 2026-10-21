@@ -529,10 +529,10 @@ class TestReviewFreshCommand:
 
         monkeypatch.setattr(lyrics_commands, "_run_editor_session", _fake_with_feedback)
 
-        # Pause, decline skip (publish accepted so no skip offer fires… the
-        # plan is publish → continue): accept publish, accept continue →
-        # loop re-picks with the recomputed queue.
-        result = self._invoke(config_path, "\nyes\n\n")
+        # Pause, choose "published" (menu 1) so no skip offer fires (the
+        # plan is visibility → continue), accept continue → loop re-picks
+        # with the recomputed queue.
+        result = self._invoke(config_path, "\n1\n\n")
         assert result.exit_code == 0, result.output
         assert "Next review song: Song C" in result.output
         assert "Next review song: Song D" in result.output
@@ -564,10 +564,11 @@ class TestReviewFreshCommand:
         config_path = _write_config(tmp_path, postgres_url)
         patched_editor["outcomes"].append(_upload_outcome())
 
-        # pause, decline publish, decline continue
+        # pause, invalid menu reply (leaves visibility unchanged), decline
+        # continue
         result = self._invoke(config_path, "\nn\nn\n")
         assert result.exit_code == 0, result.output
-        assert "Set visibility to published?" in result.output
+        assert "Set visibility for" in result.output
         assert "Visibility left unchanged." in result.output
         # No clear-ratings offer in fresh mode (open_sad_count is 0 here —
         # feedback only exists on other recordings).

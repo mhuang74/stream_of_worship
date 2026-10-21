@@ -59,7 +59,9 @@ def _make_app(line_count: int) -> tuple[LRCEditorApp, EditorState]:
     return _make_app_with_lines(lines)
 
 
-def _make_app_with_lines(lines: list[LRCLine]) -> tuple[LRCEditorApp, EditorState]:
+def _make_app_with_lines(
+    lines: list[LRCLine], visibility_status: str | None = None
+) -> tuple[LRCEditorApp, EditorState]:
     state = EditorState(
         timed_lines=lines,
         preserved_lines=[],
@@ -75,6 +77,7 @@ def _make_app_with_lines(lines: list[LRCLine]) -> tuple[LRCEditorApp, EditorStat
         db_client=MagicMock(),
         hash_prefix="abc123",
         original_transcribed_content=None,
+        visibility_status=visibility_status,
     )
     return app, state
 
@@ -588,3 +591,29 @@ async def test_quit_dirty_sets_quit_clean_false():
         await pilot.pause()
 
         assert app.quit_clean is False
+
+
+@pytest.mark.parametrize(
+    ("visibility_status", "expected_sub_title"),
+    [
+        ("published", "Visibility: ● published"),
+        ("review", "Visibility: ◐ review"),
+        ("hold", "Visibility: ○ hold"),
+        (None, "Visibility: · none"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_header_shows_visibility_badge(visibility_status, expected_sub_title):
+    from textual.widgets import Header
+
+    app, _ = _make_app_with_lines(
+        [LRCLine(time_seconds=0.0, text="Line 1", raw_timestamp="[00:00.00]")],
+        visibility_status=visibility_status,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        assert app.screen.sub_title == expected_sub_title
+        # Header renders "title — sub_title" as plain Content.
+        assert expected_sub_title in str(app.screen.query_one(Header).format_title())
