@@ -2661,3 +2661,79 @@ class TestListFallbackDelay:
         assert len(result) == 1
         # The 2.0s delay should be among the sleep calls
         assert 2.0 in sleep_calls
+
+
+class TestYouTubeTranscriptToLrcTrace:
+    """youtube_transcript_to_lrc(trace=...) must record transcript, LLM, gap events."""
+
+    @pytest.mark.asyncio
+    async def test_trace_records_transcript_llm_and_gap_events(self, tmp_path, monkeypatch):
+        import json
+
+        from sow_analysis.workers.llm_trace import LLMTrace
+
+        class _Snippet:
+            def __init__(self, text, start, duration):
+                self.text = text
+                self.start = start
+                self.duration = duration
+
+        async def _fake_fetch(video_id, language="zh"):
+            return [_Snippet("hello", 0.0, 1.0), _Snippet("world", 5.0, 1.0)]
+
+        async def _fake_retry(fn, description="", loop=None):
+            return "[00:01.00] hello\n[00:06.00] world"
+
+        monkeypatch.setattr(
+            "sow_analysis.workers.youtube_transcript.fetch_youtube_transcript", _fake_fetch
+        )
+        import sow_analysis.workers.llm_rate_limit as llm_rate_limit_module
+
+        monkeypatch.setattr(llm_rate_limit_module, "call_llm_with_retry", _fake_retry)
+        monkeypatch.setattr(llm_rate_limit_module, "_is_llm_rate_limited_error", lambda e: False)
+        monkeypatch.setattr(llm_rate_limit_module, "_is_llm_retryable_error", lambda e: False)
+        monkeypatch.setattr(
+            "sow_analysis.workers.youtube_transcript.settings.SOW_LLM_API_KEY", "test-key"
+        )
+        monkeypatch.setattr(
+            "sow_analysis.workers.youtube_transcript.settings.SOW_LLM_BASE_URL", "http://test"
+        )
+
+        trace = LLMTrace(tmp_path, "job_yt", {"song_id": "s9", "job_id": "job_yt"})
+        from sow_analysis.workers.youtube_transcript import youtube_transcript_to_lrc
+
+        lines = await youtube_transcript_to_lrc(
+            "https://www.youtube.com/watch?v=abc12345678",
+            "official line one\nofficial line two",
+            "model-x",
+            language="zh",
+            tempo_bpm=100.0,
+            trace=trace,
+        )
+        assert [ln.text for ln in lines] == ["hello", "world"]
+
+        doc = json.loads((tmp_path / f"{trace.base_name}.json").read_text(encoding="utf-8"))
+        steps = [e["step"] for e in doc["events"]]
+        assert "youtube_transcript" in steps
+        assert "llm_correction_attempt" in steps
+        assert "gap_placeholder_lines" in steps
+
+        yt_event = next(e for e in doc["events"] if e["step"] == "youtube_transcript")
+        assert yt_event["video_id"] == "abc12345678"
+        assert "hello" in yt_event["transcript_text"]
+        assert yt_event["cues"] == [
+            {"start": 0.0, "end": 1.0, "duration": 1.0},
+            {"start": 5.0, "end": 6.0, "duration": 1.0},
+        ]
+
+        correction = next(e for e in doc["events"] if e["step"] == "llm_correction_attempt")
+        assert correction["model"] == "model-x"
+        assert "hello" in correction["prompt"]
+        assert "[00:01.00] hello" in correction["response"]
+        assert correction["elapsed_s"] >= 0.0
+
+        gap_event = next(e for e in doc["events"] if e["step"] == "gap_placeholder_lines")
+        assert gap_event["tempo_bpm"] == 100.0
+        assert gap_event["lines_before"] == 2
+        assert gap_event["lines_after"] == 2
+        assert gap_event["inserted"] == []

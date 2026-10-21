@@ -67,6 +67,7 @@ def submit_lrc_single(
     force_qwen3_asr: bool,
     wait: bool,
     console: Console,
+    dump_llm_trace: bool = False,
 ) -> None:
     """Submit LRC for a single recording (original behavior with wait support)."""
     # Look up recording by song_id
@@ -127,6 +128,8 @@ def submit_lrc_single(
                 force_qwen3_asr=force_qwen3_asr,
                 tempo_bpm=recording.tempo_bpm,
                 duration_seconds=recording.duration_seconds,
+                song_id=song_id,
+                dump_llm_trace=dump_llm_trace,
             )
         except AnalysisServiceError as e:
             console.print(f"[red]Failed to submit LRC job: {e}[/red]")
@@ -212,6 +215,7 @@ def submit_lrc_batch(
     no_qwen3_asr: bool,
     force_qwen3_asr: bool,
     console: Console,
+    dump_llm_trace: bool = False,
 ) -> list[tuple[str, str, str]]:
     """Submit LRC for multiple recordings (batch mode, no wait).
 
@@ -277,6 +281,8 @@ def submit_lrc_batch(
                 force_qwen3_asr=force_qwen3_asr,
                 tempo_bpm=recording.tempo_bpm,
                 duration_seconds=recording.duration_seconds,
+                song_id=song_id,
+                dump_llm_trace=dump_llm_trace,
             )
 
             # Update DB
@@ -321,6 +327,7 @@ def submit_lrc_job(
     no_whisper_cache: bool = False,
     use_qwen3_asr: bool = True,
     force_qwen3_asr: bool = False,
+    dump_llm_trace: bool = False,
 ) -> Optional[str]:
     """Submit LRC generation job for a recording.
 
@@ -338,6 +345,7 @@ def submit_lrc_job(
         no_whisper_cache: Bypass Whisper transcription cache
         use_qwen3_asr: Use DashScope Qwen3 ASR before Whisper fallback
         force_qwen3_asr: Bypass only the Qwen3 ASR cache
+        dump_llm_trace: Dump per-step LLM/ASR trace on the analysis service
 
     Returns:
         Job ID if submission succeeded, None otherwise
@@ -369,6 +377,8 @@ def submit_lrc_job(
             force_qwen3_asr=force_qwen3_asr,
             tempo_bpm=recording.tempo_bpm,
             duration_seconds=recording.duration_seconds,
+            song_id=song_id,
+            dump_llm_trace=dump_llm_trace,
         )
 
         # Update DB

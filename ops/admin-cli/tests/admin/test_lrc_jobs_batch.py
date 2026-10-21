@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 from rich.console import Console
 
 from stream_of_worship.admin.services import lrc_jobs
-from stream_of_worship.admin.services.lrc_jobs import submit_lrc_batch
+from stream_of_worship.admin.services.lrc_jobs import submit_lrc_batch, submit_lrc_single
 
 
 def _make_recording():
@@ -107,3 +107,78 @@ def test_submit_lrc_batch_skips_processing_without_force():
 
     analysis.submit_lrc.assert_not_called()
     db.update_recording_status.assert_not_called()
+
+
+def _run_batch_with_trace(dump_llm_trace):
+    recording = _make_recording()
+    db = _make_db(recording)
+    analysis = _make_analysis_client()
+    console = Console()
+    with patch.object(lrc_jobs, "resolve_lyrics_text", return_value="lyrics"):
+        submit_lrc_batch(
+            song_ids=["song_001"],
+            db_client=db,
+            analysis_client=analysis,
+            force=False,
+            whisper_model="base",
+            language="zh",
+            no_vocals=False,
+            no_youtube=False,
+            no_whisper_cache=False,
+            no_qwen3_asr=False,
+            force_qwen3_asr=False,
+            console=console,
+            dump_llm_trace=dump_llm_trace,
+        )
+    return analysis
+
+
+def test_submit_lrc_batch_forwards_song_id_and_dump_llm_trace():
+    analysis = _run_batch_with_trace(dump_llm_trace=True)
+
+    analysis.submit_lrc.assert_called_once()
+    kwargs = analysis.submit_lrc.call_args.kwargs
+    assert kwargs["song_id"] == "song_001"
+    assert kwargs["dump_llm_trace"] is True
+
+
+def test_submit_lrc_batch_default_clears_dump_llm_trace():
+    analysis = _run_batch_with_trace(dump_llm_trace=False)
+
+    analysis.submit_lrc.assert_called_once()
+    kwargs = analysis.submit_lrc.call_args.kwargs
+    assert kwargs["dump_llm_trace"] is False
+
+
+def _run_single_with_trace(dump_llm_trace):
+    recording = _make_recording()
+    db = _make_db(recording)
+    analysis = _make_analysis_client()
+    console = Console()
+    with patch.object(lrc_jobs, "resolve_lyrics_text", return_value="lyrics"):
+        submit_lrc_single(
+            song_id="song_001",
+            db_client=db,
+            analysis_client=analysis,
+            force=False,
+            whisper_model="base",
+            language="zh",
+            no_vocals=False,
+            no_youtube=False,
+            no_whisper_cache=False,
+            no_qwen3_asr=False,
+            force_qwen3_asr=False,
+            wait=False,
+            console=console,
+            dump_llm_trace=dump_llm_trace,
+        )
+    return analysis
+
+
+def test_submit_lrc_single_forwards_song_id_and_dump_llm_trace():
+    analysis = _run_single_with_trace(dump_llm_trace=True)
+
+    analysis.submit_lrc.assert_called_once()
+    kwargs = analysis.submit_lrc.call_args.kwargs
+    assert kwargs["song_id"] == "song_001"
+    assert kwargs["dump_llm_trace"] is True

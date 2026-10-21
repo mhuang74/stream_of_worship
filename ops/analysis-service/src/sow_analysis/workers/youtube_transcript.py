@@ -18,6 +18,7 @@ from typing import Any, Callable, List, Optional
 
 from ..config import settings
 from ..workers.exceptions import LLMConfigError
+from .llm_trace import LLMTrace
 from .lrc import LRCLine, LRCWorkerError
 
 logger = logging.getLogger(__name__)
@@ -1121,6 +1122,8 @@ async def fetch_youtube_transcript(
 async def _llm_correct(
     prompt: str,
     llm_model: str,
+    *,
+    trace: Optional[LLMTrace] = None,
 ) -> str:
     """Call LLM to correct YouTube transcript against official lyrics.
 
@@ -1189,13 +1192,19 @@ async def _llm_correct(
         return response.choices[0].message.content
 
     logger.info(f"Calling LLM ({effective_model}) for YouTube transcript correction")
+    attempt_start = time.time()
     try:
-        return await call_llm_with_retry(
+        response_text = await call_llm_with_retry(
             _call_llm,
             description=f"LLM correction ({effective_model})",
             loop=loop,
         )
     except Exception as e:
+        if trace is not None:
+            trace.append(
+                "llm_correction_error",
+                {"model": effective_model, "error": str(e)},
+            )
         if _is_llm_rate_limited_error(e):
             raise LLMCorrectionError(
                 f"LLM correction failed after rate-limit retries: {e}"
@@ -1205,6 +1214,17 @@ async def _llm_correct(
                 f"LLM correction failed after transient-error retries: {e}"
             ) from e
         raise LLMCorrectionError(f"LLM correction failed: {e}") from e
+    if trace is not None:
+        trace.append(
+            "llm_correction_attempt",
+            {
+                "model": effective_model,
+                "prompt": prompt,
+                "response": response_text,
+                "elapsed_s": time.time() - attempt_start,
+            },
+        )
+    return response_text
 
 
 async def youtube_transcript_to_lrc(
@@ -1213,6 +1233,8 @@ async def youtube_transcript_to_lrc(
     llm_model: str,
     language: str = "zh",
     tempo_bpm: Optional[float] = None,
+    *,
+    trace: Optional[LLMTrace] = None,
 ) -> List[LRCLine]:
     """End-to-end: YouTube transcript -> LLM correction -> LRC lines.
 
@@ -1241,6 +1263,20 @@ async def youtube_transcript_to_lrc(
     # Step 2: Fetch transcript
     transcript = await fetch_youtube_transcript(video_id, language=language)
 
+    if trace is not None:
+        trace.append(
+            "youtube_transcript",
+            {
+                "youtube_url": youtube_url,
+                "video_id": video_id,
+                "transcript_text": _format_transcript_text(transcript),
+                "cues": [
+                    {"start": c.start, "end": c.end, "duration": c.duration}
+                    for c in _extract_cue_timings(transcript)
+                ],
+            },
+        )
+
     # Step 3: Format transcript and build prompt
     transcript_text = _format_transcript_text(transcript)
     lyrics_lines = [line for line in lyrics_text.split("\n") if line.strip()]
@@ -1253,7 +1289,7 @@ async def youtube_transcript_to_lrc(
     logger.debug("=" * 80)
 
     # Step 4: LLM correction
-    response_text = await _llm_correct(prompt, llm_model)
+    response_text = await _llm_correct(prompt, llm_model, trace=trace)
 
     # Log the response
     logger.debug("=" * 80)
@@ -1270,8 +1306,26 @@ async def youtube_transcript_to_lrc(
         raise YouTubeTranscriptError(f"Failed to parse LLM response: {e}") from e
 
     # Step 6: Insert blank placeholder lines into long instrumental gaps
+    pre_gap = list(lrc_lines)
     cues = _extract_cue_timings(transcript)
     lrc_lines = insert_gap_placeholder_lines(lrc_lines, cues, tempo_bpm)
+
+    if trace is not None:
+        pre_keys = [(ln.time_seconds, ln.text) for ln in pre_gap]
+        inserted = [
+            {"time_seconds": ln.time_seconds, "text": ln.text}
+            for ln in lrc_lines
+            if (ln.time_seconds, ln.text) not in pre_keys
+        ]
+        trace.append(
+            "gap_placeholder_lines",
+            {
+                "tempo_bpm": tempo_bpm,
+                "lines_before": len(pre_gap),
+                "lines_after": len(lrc_lines),
+                "inserted": inserted,
+            },
+        )
 
     elapsed = time.time() - start_time
     logger.info(f"YouTube transcript -> LRC completed: {len(lrc_lines)} lines in {elapsed:.2f}s")
