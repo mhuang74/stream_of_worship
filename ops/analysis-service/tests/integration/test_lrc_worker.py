@@ -1,6 +1,7 @@
 """Tests for LRC generation worker."""
 
 import json
+import logging
 import sys
 import tempfile
 from pathlib import Path
@@ -796,7 +797,7 @@ class TestLRCJobQueueProcessing:
         assert "SOW_LLM_API_KEY" in job.error_message
 
     @pytest.mark.asyncio
-    async def test_lrc_job_invalid_llm_model_fails_at_start(self, queue):
+    async def test_lrc_job_invalid_llm_model_fails_at_start(self, queue, caplog):
         """Explicit bad llm_model fails the job before Stage 1 (invalid_llm_model)."""
         request = LrcJobRequest(
             audio_url="s3://bucket/hash/audio.mp3",
@@ -812,12 +813,15 @@ class TestLRCJobQueueProcessing:
             request=request,
         )
 
-        with patch(
-            "sow_analysis.workers.queue.validate_llm_model",
-            AsyncMock(
-                side_effect=LLMModelValidationError(
-                    "LLM model 'openai/bogus-model' is not in the provider's model list"
-                )
+        with (
+            caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"),
+            patch(
+                "sow_analysis.workers.queue.validate_llm_model",
+                AsyncMock(
+                    side_effect=LLMModelValidationError(
+                        "LLM model 'openai/bogus-model' is not in the provider's model list"
+                    )
+                ),
             ),
         ):
             await queue._process_lrc_job(job)
@@ -825,6 +829,20 @@ class TestLRCJobQueueProcessing:
         assert job.status == JobStatus.FAILED
         assert job.stage == "invalid_llm_model"
         assert "openai/bogus-model" in job.error_message
+
+        start_records = [
+            r for r in caplog.records if "Starting LRC job for audio" in r.getMessage()
+        ]
+        assert start_records, "expected a 'Starting LRC job' log record"
+        assert "llm_model: openai/bogus-model" in start_records[0].getMessage()
+
+        error_records = [
+            r
+            for r in caplog.records
+            if r.levelname == "ERROR" and "LLM model validation failed" in r.getMessage()
+        ]
+        assert error_records, "expected an ERROR log for the invalid llm_model guard"
+        assert "openai/bogus-model" in error_records[0].getMessage()
 
     @pytest.mark.asyncio
     async def test_lrc_job_empty_llm_model_skips_validation(self, queue):
