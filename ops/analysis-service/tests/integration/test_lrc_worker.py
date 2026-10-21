@@ -292,9 +292,7 @@ class TestRunWhisperTranscription:
                 "language_probability": 1.0,
             }
         )
-        monkeypatch.setattr(
-            "sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub
-        )
+        monkeypatch.setattr("sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub)
         with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
             phrases = await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh")
 
@@ -316,9 +314,7 @@ class TestRunWhisperTranscription:
                 "language_probability": 1.0,
             }
         )
-        monkeypatch.setattr(
-            "sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub
-        )
+        monkeypatch.setattr("sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub)
         with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
             phrases = await _run_whisper_transcription(
                 Path(tmp.name), "large-v3", "zh", max_no_speech_prob=0.6
@@ -331,9 +327,7 @@ class TestRunWhisperTranscription:
     async def test_transcription_no_phrases_raises(self, monkeypatch):
         """Test that no phrases raises WhisperTranscriptionError."""
         stub = self._StubModalWhisperClient({"phrases": [], "language": "zh"})
-        monkeypatch.setattr(
-            "sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub
-        )
+        monkeypatch.setattr("sow_analysis.workers.lrc.get_modal_whisper_client", lambda: stub)
         with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
             with pytest.raises(WhisperTranscriptionError):
                 await _run_whisper_transcription(Path(tmp.name), "large-v3", "zh")
@@ -786,9 +780,7 @@ class TestLRCJobQueueProcessing:
 
                 monkeypatch.setattr(
                     "sow_analysis.workers.lrc._run_whisper_transcription",
-                    AsyncMock(
-                        return_value=[WhisperPhrase(text="test", start=0.0, end=0.5)]
-                    ),
+                    AsyncMock(return_value=[WhisperPhrase(text="test", start=0.0, end=0.5)]),
                 )
 
                 await queue._process_lrc_job(job)
@@ -899,9 +891,7 @@ class TestLRCJobQueueProcessing:
         # Job must not fail at the guard stage; it proceeds past validation.
         assert job.stage != "invalid_llm_model"
         success_records = [
-            r
-            for r in caplog.records
-            if "validated against provider" in r.getMessage()
+            r for r in caplog.records if "validated against provider" in r.getMessage()
         ]
         assert success_records, "expected the guard success log"
         assert "deepseek-v4.1-flash" in success_records[0].getMessage()

@@ -1693,7 +1693,9 @@ class JobQueue:
                         tail_audio_path = temp_path / "audio_tail_fill.mp3"
                         try:
                             if self.r2_client:
-                                await self.r2_client.download_audio(request.audio_url, tail_audio_path)
+                                await self.r2_client.download_audio(
+                                    request.audio_url, tail_audio_path
+                                )
                             existing_lines, tail_line_count = await fill_uncovered_tail(
                                 audio_path=tail_audio_path,
                                 lyrics_text=request.lyrics_text,
@@ -1715,7 +1717,9 @@ class JobQueue:
                                 line_count = _write_lrc(existing_lines, lrc_path)
                                 lrc_source = "youtube_transcript_asr_tail"
                                 logger.info(
-                                    "Tail fill appended %d line(s) for job %s", tail_line_count, job.id
+                                    "Tail fill appended %d line(s) for job %s",
+                                    tail_line_count,
+                                    job.id,
                                 )
                             else:
                                 logger.info("Tail fill recovered no lyric lines for job %s", job.id)

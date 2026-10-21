@@ -2526,13 +2526,17 @@ def _run_editor_session(
                 r2_client.download_audio(recording.hash_prefix, audio_path)
             except ClientError as e:
                 if e.response.get("Error", {}).get("Code", "") in ("404", "NoSuchKey"):
-                    return EditorSessionOutcome(no_audio=True, upload_attempted=False, upload_result=None)
+                    return EditorSessionOutcome(
+                        no_audio=True, upload_attempted=False, upload_result=None
+                    )
                 raise
             except Exception:
                 # Non-ClientError failures may still be missing-object cases
                 # surfaced differently by R2 clients; verify explicitly.
                 if not r2_client.audio_exists(recording.hash_prefix):
-                    return EditorSessionOutcome(no_audio=True, upload_attempted=False, upload_result=None)
+                    return EditorSessionOutcome(
+                        no_audio=True, upload_attempted=False, upload_result=None
+                    )
                 raise
         else:
             try:

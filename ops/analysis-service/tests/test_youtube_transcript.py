@@ -312,8 +312,7 @@ class TestGenerateLrcFallback:
                 "sow_analysis.workers.youtube_transcript.youtube_transcript_to_lrc",
                 new_callable=AsyncMock,
                 side_effect=LLMCorrectionError(
-                    "LLM correction failed after transient-error retries: "
-                    "Error code: 524"
+                    "LLM correction failed after transient-error retries: " "Error code: 524"
                 ),
             ),
             patch(
@@ -860,7 +859,9 @@ class TestRedactProxyUrl:
     """Tests for _redact_proxy_url()."""
 
     def test_redacts_userinfo(self):
-        assert _redact_proxy_url("http://user:pass@host:10001-10010") == "http://***@host:10001-10010"
+        assert (
+            _redact_proxy_url("http://user:pass@host:10001-10010") == "http://***@host:10001-10010"
+        )
 
     def test_redacts_password_with_colons(self):
         assert _redact_proxy_url("http://u:p:a@host:8080") == "http://***@host:8080"
@@ -971,9 +972,7 @@ class TestYouTubeRateLimiter:
         rl = self._fresh_rate_limiter()
         rl._ensure_initialized()
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 3.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
@@ -1017,9 +1016,7 @@ class TestYouTubeRateLimiter:
                 raise Exception("too many 429 error responses")
             return "success"
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
@@ -1043,9 +1040,7 @@ class TestYouTubeRateLimiter:
         def fn():
             raise Exception("too many 429 error responses")
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
@@ -1090,9 +1085,7 @@ class TestYouTubeRateLimiter:
         # Set circuit open in the past
         rl._circuit_open_until = time.monotonic() - 1
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
@@ -1114,9 +1107,7 @@ class TestYouTubeRateLimiter:
         rl._ensure_initialized()
         rl._consecutive_429_count = 3
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
@@ -1144,9 +1135,7 @@ class TestYouTubeRateLimiter:
             call_count += 1
             raise Exception("Subtitles are disabled for this video")
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
@@ -1180,9 +1169,7 @@ class TestYouTubeRateLimiter:
             current_concurrent -= 1
             return "done"
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
@@ -1206,9 +1193,7 @@ class TestYouTubeRateLimiter:
 
         rl = self._fresh_rate_limiter()
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
@@ -1286,9 +1271,7 @@ class TestYouTubeRateLimiter:
             call_count += 1
             raise IpBlocked("testVideoId")
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 1
@@ -1608,7 +1591,6 @@ class TestLLMCorrectRateLimitRetry:
         assert len(sleep_calls) == 1
         # Delay should be >= retry_after (5.0)
         assert sleep_calls[0] >= 5.0
-
 
     @pytest.mark.asyncio
     async def test_llm_correct_raises_llm_correction_error(self):
@@ -2108,9 +2090,7 @@ class TestConcurrentBreakerStateSafety:
         await asyncio.sleep(0.1)
 
         # Multiple concurrent is_circuit_open() calls
-        results = await asyncio.gather(
-            *[rl.is_circuit_open() for _ in range(10)]
-        )
+        results = await asyncio.gather(*[rl.is_circuit_open() for _ in range(10)])
 
         # All should return False
         assert all(r is False for r in results)
@@ -2168,51 +2148,48 @@ class TestIsTransientConnectionError:
 
     def test_ssl_marker_in_message(self):
         """Exception message containing SSL markers is detected."""
-        assert _is_transient_connection_error(
-            Exception("[SSL: BAD_EXTENSION] bad extension (_ssl.c:1016)")
-        ) is True
+        assert (
+            _is_transient_connection_error(
+                Exception("[SSL: BAD_EXTENSION] bad extension (_ssl.c:1016)")
+            )
+            is True
+        )
 
     def test_wrong_version_number_marker(self):
         """Exception message with wrong_version_number is detected."""
-        assert _is_transient_connection_error(
-            Exception("[SSL: WRONG_VERSION_NUMBER] wrong version number")
-        ) is True
+        assert (
+            _is_transient_connection_error(
+                Exception("[SSL: WRONG_VERSION_NUMBER] wrong version number")
+            )
+            is True
+        )
 
     def test_record_layer_failure_marker(self):
         """Exception message with record layer failure is detected."""
-        assert _is_transient_connection_error(
-            Exception("[SSL] record layer failure (_ssl.c:2590)")
-        ) is True
+        assert (
+            _is_transient_connection_error(Exception("[SSL] record layer failure (_ssl.c:2590)"))
+            is True
+        )
 
     def test_tls_marker_in_message(self):
         """Exception message containing 'tls' is detected."""
-        assert _is_transient_connection_error(
-            Exception("tls handshake failed")
-        ) is True
+        assert _is_transient_connection_error(Exception("tls handshake failed")) is True
 
     def test_connection_reset_marker(self):
         """Exception message with 'connection reset' is detected."""
-        assert _is_transient_connection_error(
-            Exception("Connection reset by peer")
-        ) is True
+        assert _is_transient_connection_error(Exception("Connection reset by peer")) is True
 
     def test_connection_aborted_marker(self):
         """Exception message with 'connection aborted' is detected."""
-        assert _is_transient_connection_error(
-            Exception("Connection aborted")
-        ) is True
+        assert _is_transient_connection_error(Exception("Connection aborted")) is True
 
     def test_broken_pipe_marker(self):
         """Exception message with 'broken pipe' is detected."""
-        assert _is_transient_connection_error(
-            Exception("broken pipe")
-        ) is True
+        assert _is_transient_connection_error(Exception("broken pipe")) is True
 
     def test_read_timed_out_marker(self):
         """Exception message with 'read timed out' is detected."""
-        assert _is_transient_connection_error(
-            Exception("Read timed out")
-        ) is True
+        assert _is_transient_connection_error(Exception("Read timed out")) is True
 
     def test_max_retries_exceeded_with_ssl_cause(self):
         """Max retries exceeded wrapping an SSL error is detected via __cause__."""
@@ -2245,15 +2222,14 @@ class TestIsTransientConnectionError:
 
     def test_non_transient_error_not_detected(self):
         """Non-SSL, non-connection error is not detected."""
-        assert _is_transient_connection_error(
-            Exception("Subtitles are disabled for this video")
-        ) is False
+        assert (
+            _is_transient_connection_error(Exception("Subtitles are disabled for this video"))
+            is False
+        )
 
     def test_429_error_not_detected_as_transient(self):
         """429 errors are not classified as transient connection errors."""
-        assert _is_transient_connection_error(
-            Exception("too many 429 error responses")
-        ) is False
+        assert _is_transient_connection_error(Exception("too many 429 error responses")) is False
 
     def test_requests_proxy_error_type_detected(self):
         """requests.exceptions.ProxyError is detected via type name."""
@@ -2267,9 +2243,12 @@ class TestIsTransientConnectionError:
 
     def test_bare_oserror_tunnel_message_detected(self):
         """Bare OSError with tunnel-failure message is detected via markers."""
-        assert _is_transient_connection_error(
-            OSError("Tunnel connection failed: 502 Bad Gateway or Proxy Error")
-        ) is True
+        assert (
+            _is_transient_connection_error(
+                OSError("Tunnel connection failed: 502 Bad Gateway or Proxy Error")
+            )
+            is True
+        )
 
     def test_none_exception_returns_false(self):
         """None exception returns False (no crash)."""
@@ -2316,9 +2295,7 @@ class TestSSLRetryBehavior:
                 raise Exception("[SSL: BAD_EXTENSION] bad extension (_ssl.c:1016)")
             return "success"
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
@@ -2342,9 +2319,7 @@ class TestSSLRetryBehavior:
         def fn():
             raise Exception("[SSL: WRONG_VERSION_NUMBER] wrong version number")
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
@@ -2374,9 +2349,7 @@ class TestSSLRetryBehavior:
             call_count += 1
             raise Exception("[SSL] record layer failure (_ssl.c:2590)")
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
@@ -2415,9 +2388,7 @@ class TestSSLRetryBehavior:
             await original_sleep(0)
 
         with (
-            patch(
-                "sow_analysis.workers.youtube_transcript.settings"
-            ) as mock_settings,
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
             patch(
                 "sow_analysis.workers.youtube_transcript.asyncio.sleep",
                 side_effect=mock_sleep,
@@ -2456,9 +2427,7 @@ class TestSSLRetryBehavior:
                 raise Exception("Connection reset by peer")
             return "recovered"
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
@@ -2486,9 +2455,7 @@ class TestSSLRetryBehavior:
             call_count += 1
             raise Exception("Subtitles are disabled for this video")
 
-        with patch(
-            "sow_analysis.workers.youtube_transcript.settings"
-        ) as mock_settings:
+        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
             mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
@@ -2529,9 +2496,7 @@ class TestSSLRetryBehavior:
             await original_sleep(0)
 
         with (
-            patch(
-                "sow_analysis.workers.youtube_transcript.settings"
-            ) as mock_settings,
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
             patch(
                 "sow_analysis.workers.youtube_transcript.asyncio.sleep",
                 side_effect=mock_sleep,

@@ -122,7 +122,9 @@ class TestLlmAlignReasoningEffort:
         with (
             lrc_settings as mock_settings,
             rl_settings as mock_rl_settings,
-            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=MagicMock(return_value=mock_client))}),
+            patch.dict(
+                "sys.modules", {"openai": MagicMock(OpenAI=MagicMock(return_value=mock_client))}
+            ),
         ):
             mock_settings.SOW_LLM_API_KEY = "test-key"
             mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
@@ -155,7 +157,9 @@ class TestLlmAlignReasoningEffort:
         with (
             lrc_settings as mock_settings,
             rl_settings as mock_rl_settings,
-            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=MagicMock(return_value=mock_client))}),
+            patch.dict(
+                "sys.modules", {"openai": MagicMock(OpenAI=MagicMock(return_value=mock_client))}
+            ),
         ):
             mock_settings.SOW_LLM_API_KEY = "test-key"
             mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
