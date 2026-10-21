@@ -645,6 +645,10 @@ async def _llm_align(
             "or set SOW_LLM_MODEL environment variable."
         )
 
+    from ..services.llm_models import split_llm_model_effort
+
+    model_id, reasoning_effort = split_llm_model_effort(effective_model)
+
     loop = asyncio.get_running_loop()
     prompt = prompt_builder(lyrics_text, whisper_phrases, language)
 
@@ -665,17 +669,26 @@ async def _llm_align(
             max_retries=0,
         )
 
-        response = client.chat.completions.create(
-            model=effective_model,
-            messages=[
+        create_kwargs: dict = {
+            "model": model_id,
+            "messages": [
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.1,  # Low temperature for consistent output
-        )
+            "temperature": 0.1,  # Low temperature for consistent output
+        }
+        if reasoning_effort is not None:
+            create_kwargs["reasoning_effort"] = reasoning_effort
+
+        response = client.chat.completions.create(**create_kwargs)
 
         return response.choices[0].message.content
 
-    logger.info(f"Using LLM model: {effective_model}")
+    if reasoning_effort is not None:
+        logger.info(
+            f"Using LLM model: {effective_model} (reasoning_effort={reasoning_effort})"
+        )
+    else:
+        logger.info(f"Using LLM model: {effective_model}")
 
     from .llm_rate_limit import (
         _is_llm_rate_limited_error,
@@ -705,6 +718,11 @@ async def _llm_align(
                         "stage": stage,
                         "attempt": attempt + 1,
                         "model": effective_model,
+                        **(
+                            {"reasoning_effort": reasoning_effort}
+                            if reasoning_effort is not None
+                            else {}
+                        ),
                         "prompt": prompt,
                         "response": response_text,
                         "parse_error": None,
@@ -754,6 +772,11 @@ async def _llm_align(
                         "stage": stage,
                         "attempt": attempt + 1,
                         "model": effective_model,
+                        **(
+                            {"reasoning_effort": reasoning_effort}
+                            if reasoning_effort is not None
+                            else {}
+                        ),
                         "prompt": prompt,
                         "response": response_text,
                         "parse_error": str(e),
@@ -770,6 +793,11 @@ async def _llm_align(
                         "stage": stage,
                         "attempt": attempt + 1,
                         "model": effective_model,
+                        **(
+                            {"reasoning_effort": reasoning_effort}
+                            if reasoning_effort is not None
+                            else {}
+                        ),
                         "prompt": prompt,
                         "response": response_text,
                         "parse_error": str(e),
@@ -793,6 +821,11 @@ async def _llm_align(
                         "stage": stage,
                         "attempt": attempt + 1,
                         "model": effective_model,
+                        **(
+                            {"reasoning_effort": reasoning_effort}
+                            if reasoning_effort is not None
+                            else {}
+                        ),
                         "error": str(e),
                     },
                 )

@@ -2737,3 +2737,52 @@ class TestYouTubeTranscriptToLrcTrace:
         assert gap_event["lines_before"] == 2
         assert gap_event["lines_after"] == 2
         assert gap_event["inserted"] == []
+
+
+class TestLLMCorrectReasoningEffort:
+    """Tests for _llm_correct model:effort parsing and reasoning_effort kwarg."""
+
+    @pytest.mark.asyncio
+    async def test_effort_suffix_passes_reasoning_effort(self):
+        """\"m:low\" llm_model -> create(model=\"m\", reasoning_effort=\"low\")."""
+        from unittest.mock import MagicMock, patch
+
+        from sow_analysis.workers.youtube_transcript import _llm_correct
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "[00:15.00] 我要看見"
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class = MagicMock(return_value=mock_client)
+
+        original_sleep = asyncio.sleep
+
+        async def mock_sleep(duration):
+            await original_sleep(0)
+
+        with (
+            patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
+            patch("sow_analysis.workers.llm_rate_limit.settings") as mock_rl_settings,
+            patch.dict("sys.modules", {"openai": MagicMock(OpenAI=mock_openai_class)}),
+            patch("sow_analysis.workers.llm_rate_limit.asyncio.sleep", side_effect=mock_sleep),
+        ):
+            mock_settings.SOW_LLM_API_KEY = "test-key"
+            mock_settings.SOW_LLM_BASE_URL = "https://api.test.com"
+            mock_settings.SOW_LLM_MODEL = "test-model"
+            mock_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MAX_CONCURRENT = 0
+            mock_rl_settings.SOW_LLM_MIN_INTERVAL_SECONDS = 0.0
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_RETRIES = 8
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_BASE_DELAY = 0.01
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_MAX_DELAY = 0.1
+            mock_rl_settings.SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS = 300
+
+            result = await _llm_correct("test prompt", "m:low")
+
+        assert result == "[00:15.00] 我要看見"
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert kwargs["model"] == "m"
+        assert kwargs["reasoning_effort"] == "low"
+        assert kwargs["temperature"] == 0.1

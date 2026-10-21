@@ -582,8 +582,10 @@ def lyrics_generate(
     llm_model: Optional[str] = typer.Option(
         None,
         "--llm-model",
-        help="LLM model for the LLM align/correct step (e.g. openai/gpt-4o-mini). "
-        "Validated against the provider at job start. Default: analysis service's SOW_LLM_MODEL.",
+        help="LLM model for the LLM align/correct step (e.g. openai/gpt-4o-mini, or "
+        "model:effort like deepseek-v4.1-flash:low; effort: none|minimal|low|medium|"
+        "high|xhigh|max). Validated against the provider at job start. Default: "
+        "analysis service's SOW_LLM_MODEL.",
     ),
     language: str = typer.Option("auto", "--lang", help="Language mode: auto, zh, or en"),
     no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),

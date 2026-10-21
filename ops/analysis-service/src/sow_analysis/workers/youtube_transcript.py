@@ -1170,6 +1170,10 @@ async def _llm_correct(
             "or set SOW_LLM_MODEL environment variable."
         )
 
+    from ..services.llm_models import split_llm_model_effort
+
+    model_id, reasoning_effort = split_llm_model_effort(effective_model)
+
     loop = asyncio.get_running_loop()
 
     def _call_llm():
@@ -1181,13 +1185,17 @@ async def _llm_correct(
             max_retries=0,
         )
 
-        response = client.chat.completions.create(
-            model=effective_model,
-            messages=[
+        create_kwargs: dict = {
+            "model": model_id,
+            "messages": [
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.1,
-        )
+            "temperature": 0.1,
+        }
+        if reasoning_effort is not None:
+            create_kwargs["reasoning_effort"] = reasoning_effort
+
+        response = client.chat.completions.create(**create_kwargs)
 
         return response.choices[0].message.content
 
@@ -1203,7 +1211,7 @@ async def _llm_correct(
         if trace is not None:
             trace.append(
                 "llm_correction_error",
-                {"model": effective_model, "error": str(e)},
+                {"model": effective_model, **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}), "error": str(e)},
             )
         if _is_llm_rate_limited_error(e):
             raise LLMCorrectionError(
@@ -1219,6 +1227,11 @@ async def _llm_correct(
             "llm_correction_attempt",
             {
                 "model": effective_model,
+                **(
+                    {"reasoning_effort": reasoning_effort}
+                    if reasoning_effort is not None
+                    else {}
+                ),
                 "prompt": prompt,
                 "response": response_text,
                 "elapsed_s": time.time() - attempt_start,

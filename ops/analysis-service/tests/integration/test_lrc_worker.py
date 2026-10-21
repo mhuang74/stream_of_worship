@@ -816,7 +816,7 @@ class TestLRCJobQueueProcessing:
         with (
             caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"),
             patch(
-                "sow_analysis.workers.queue.validate_llm_model",
+                "sow_analysis.workers.queue.validate_llm_model_request",
                 AsyncMock(
                     side_effect=LLMModelValidationError(
                         "LLM model 'openai/bogus-model' is not in the provider's model list"
@@ -861,11 +861,51 @@ class TestLRCJobQueueProcessing:
         )
 
         with patch(
-            "sow_analysis.workers.queue.validate_llm_model", AsyncMock()
+            "sow_analysis.workers.queue.validate_llm_model_request", AsyncMock()
         ) as mock_validate:
             await queue._process_lrc_job(job)
 
         mock_validate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_suffixed_llm_model_passes_guard(self, queue, caplog):
+        """Valid 'model:effort' llm_model passes the guard; log records the effort."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="測試歌詞",
+            options=LrcOptions(llm_model="deepseek-v4.1-flash:low"),
+        )
+
+        job = Job(
+            id="job_test123",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        async def _passthrough_validate(llm_model):
+            return "deepseek-v4.1-flash", "low"
+
+        with (
+            caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"),
+            patch(
+                "sow_analysis.workers.queue.validate_llm_model_request",
+                AsyncMock(side_effect=_passthrough_validate),
+            ),
+        ):
+            await queue._process_lrc_job(job)
+
+        # Job must not fail at the guard stage; it proceeds past validation.
+        assert job.stage != "invalid_llm_model"
+        success_records = [
+            r
+            for r in caplog.records
+            if "validated against provider" in r.getMessage()
+        ]
+        assert success_records, "expected the guard success log"
+        assert "deepseek-v4.1-flash" in success_records[0].getMessage()
+        assert "reasoning_effort=low" in success_records[0].getMessage()
 
 
 class TestLRCOptions:
