@@ -35,6 +35,7 @@ class LRCEditorApp(App[None]):
         original_transcribed_content,
         feedback_user_id=None,
         recording_content_hash=None,
+        visibility_status=None,
     ):
         super().__init__()
         self.editor_state = editor_state
@@ -48,6 +49,10 @@ class LRCEditorApp(App[None]):
         # feedback hotkey; None disables submitting (display still works).
         self.feedback_user_id = feedback_user_id
         self.recording_content_hash = recording_content_hash
+        # Current visibility status, rendered as a badge in the header.
+        # Session-constant: the command layer only mutates visibility after
+        # app.run() returns.
+        self.visibility_status = visibility_status
         # Outcome of the last save/upload dialog attempt; None until the
         # user attempts a save/upload. Read by the command layer after
         # app.run() to drive the post-upload offers (issue #260).
@@ -58,7 +63,7 @@ class LRCEditorApp(App[None]):
         # offers, review loop re-picks) from a genuine attempt (issue #260).
         self.upload_attempted = False
         # True when the session ended via the quit dialog with no unsaved
-        # changes; read by the command layer to offer publish.
+        # changes; read by the command layer to offer a visibility change.
         self.quit_clean = False
 
     def on_mount(self) -> None:
@@ -73,6 +78,7 @@ class LRCEditorApp(App[None]):
             upload_result_out=self._on_upload_result,
             feedback_user_id=self.feedback_user_id,
             recording_content_hash=self.recording_content_hash,
+            visibility_status=self.visibility_status,
         ))
 
     def _on_upload_result(self, result: UploadResult) -> None:

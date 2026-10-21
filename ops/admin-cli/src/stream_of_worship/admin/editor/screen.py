@@ -43,6 +43,7 @@ from stream_of_worship.admin.services.lrc_parser import (
 )
 from stream_of_worship.admin.services.playback import PlaybackService, PlaybackState
 from stream_of_worship.admin.services.r2 import R2Client
+from stream_of_worship.admin.services.visibility import visibility_label
 
 logger = logging.getLogger(__name__)
 
@@ -506,6 +507,7 @@ class LRCEditorScreen(Screen[None]):
         upload_result_out: Optional[Callable[[UploadResult], None]] = None,
         feedback_user_id: Optional[int] = None,
         recording_content_hash: Optional[str] = None,
+        visibility_status: Optional[str] = None,
     ):
         super().__init__()
         self.title = (
@@ -513,6 +515,8 @@ class LRCEditorScreen(Screen[None]):
             if editor_state.song_id
             else f"LRC Editor — {editor_state.song_title}"
         )
+        # Plain text (no Rich markup): Header.format_title renders Content.
+        self.sub_title = f"Visibility: {visibility_label(visibility_status)}"
         self.state = editor_state
         self.playback = playback_service
         self.cache_dir = cache_dir

@@ -572,8 +572,11 @@ sow-admin lyrics edit --review-next-song
 
 Picks the next review-visibility song ranked by most recent open poor
 (sad) lyrics feedback, then songset appearances, favorites, and newest
-album. After each upload it offers to clear the poor ratings, publish
-the recording, and continue to the next song.
+album. After each upload it offers to clear the poor ratings and to set
+the visibility status: a numbered menu listing every valid status except
+the current one (`published` / `review` / `hold`), then continue to the
+next song. The editor header shows the recording's current status as a
+badge — `● published / ◐ review / ○ hold / · none`.
 
 ### Fresh Sweep (never-reviewed songs)
 

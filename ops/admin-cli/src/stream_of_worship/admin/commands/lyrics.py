@@ -52,6 +52,7 @@ from stream_of_worship.admin.services.lrc_parser import (
 )
 from stream_of_worship.admin.services.prompts import (
     prompt_choice,
+    prompt_choice_or_none,
     prompt_enter_or_no,
     prompt_typed_yes,
     read_song_ids_from_stdin,
@@ -60,6 +61,11 @@ from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.structured_lyrics import (
     format_structured_lyrics_canonical,
     parse_structured_lyrics,
+)
+from stream_of_worship.admin.services.visibility import (
+    visibility_alternatives,
+    visibility_badge,
+    visibility_label,
 )
 from stream_of_worship.db.connection import ConnectionProvider
 from stream_of_worship.db.user_client import UserClient
@@ -2049,8 +2055,9 @@ def lyrics_edit(
     automatically ranked queue (most recent open poor lyrics feedback first,
     then songset appearances, favorites, newest album), shows why it was
     picked, and after a successful upload offers to resolve the open poor
-    ratings, promote the recording to published, and continue to the next
-    review song in one sitting.
+    ratings, change the recording's visibility status
+    (published/review/hold), and continue to the next review song in one
+    sitting.
 
     With --review-fresh, sweeps songs nobody has ever reviewed (no
     lyrics_feedback row of any rating on the picked recording), ranked by
@@ -2132,7 +2139,7 @@ def lyrics_edit(
         raise typer.Exit(1)
 
     if outcome.quit_clean:
-        _offer_publish_on_clean_quit(db_client, recording)
+        _offer_visibility_on_clean_quit(db_client, recording)
 
     if outcome.upload_attempted and outcome.upload_result is not None:
         _run_single_mode_offers(db_client, outcome.upload_result, recording)
@@ -2141,20 +2148,19 @@ def lyrics_edit(
 def plan_post_upload_offers(
     upload_ok: bool,
     open_sad_count: int,
-    is_review_visibility: bool,
     loop_mode: bool,
 ) -> list[str]:
     """Compute the ordered post-upload offer plan (pure; issue #260).
 
-    Inputs are the upload outcome, the open-feedback state, the recording's
-    current visibility, and whether we are in a review loop session.
-    Output is the ordered list of prompts to present:
+    Inputs are the upload outcome, the open-feedback state, and whether we
+    are in a review loop session. Output is the ordered list of prompts:
 
     - ``clear``: "Clear poor ratings?" — resolve open sad rows (ADR 0007).
-    - ``publish``: "Set visibility to published?" — per-recording; only
-      offered when the recording is currently ``review``.
-    - ``skip``: "Skip this song in the next pick?" — loop mode only,
-      offered when the publish offer is declined.
+    - ``visibility``: numbered status menu offering every valid status
+      except the recording's current one (published/review/hold).
+    - ``skip-if-visibility-declined``: "Skip this song in the next pick?" —
+      loop mode only, offered when visibility was left unchanged and
+      ratings were not cleared.
     - ``continue``: "Continue to next review song?" — loop mode only.
 
     Local-draft saves (upload_ok=False) produce no offers at all.
@@ -2162,19 +2168,15 @@ def plan_post_upload_offers(
     if not upload_ok:
         return []
     plan: list[str] = []
-    has_open_sad = open_sad_count > 0
-    if has_open_sad:
+    if open_sad_count > 0:
         plan.append("clear")
-    if is_review_visibility:
-        plan.append("publish")
+    # Every valid status has at least one alternative, so the menu is
+    # always worth offering. An upload turns NULL visibility into
+    # 'review'; a published recording is not demoted.
+    plan.append("visibility")
     if loop_mode:
-        if "publish" in plan:
-            plan.append("skip-if-publish-declined")
+        plan.append("skip-if-visibility-declined")
         plan.append("continue")
-    elif "publish" in plan:
-        # Single-song sessions have no next pick; the skip offer is
-        # meaningless there.
-        pass
     return plan
 
 
@@ -2259,7 +2261,7 @@ def _run_review_session(db_client, cache_dir, r2_client, feedback_user_id: Optio
             # an explicit way out instead of silently re-launching the
             # same editor.
             if outcome.quit_clean:
-                _offer_publish_on_clean_quit(db_client, recording)
+                _offer_visibility_on_clean_quit(db_client, recording)
             console.print(
                 f"[dim]No upload for {candidate.song_id} "
                 f"({candidate.song_title}); it stays in the queue.[/dim]"
@@ -2271,10 +2273,6 @@ def _run_review_session(db_client, cache_dir, r2_client, feedback_user_id: Optio
             plan = plan_post_upload_offers(
                 upload_ok=upload_result is not None and upload_result.success,
                 open_sad_count=candidate.open_sad_count,
-                # Re-read visibility: update_recording_lrc COALESCEs a NULL
-                # visibility to 'review' on upload, so the in-memory object
-                # from before the session may be stale.
-                is_review_visibility=_current_visibility(db_client, recording) == "review",
                 loop_mode=True,
             )
             accepted = _run_post_upload_prompts(
@@ -2348,7 +2346,7 @@ def _run_fresh_review_session(
             # an explicit way out instead of silently re-launching the
             # same editor.
             if outcome.quit_clean:
-                _offer_publish_on_clean_quit(db_client, recording)
+                _offer_visibility_on_clean_quit(db_client, recording)
             console.print(
                 f"[dim]No upload for {candidate.song_id} "
                 f"({candidate.song_title}); it stays in the queue.[/dim]"
@@ -2364,10 +2362,6 @@ def _run_fresh_review_session(
                 # admin just wrote via the in-editor `f` hotkey can't trigger
                 # the clear-ratings offer and resolve their own fresh entry.
                 open_sad_count=0,
-                # Re-read visibility: update_recording_lrc COALESCEs a NULL
-                # visibility to 'review' on upload, so the in-memory object
-                # from before the session may be stale.
-                is_review_visibility=_current_visibility(db_client, recording) == "review",
                 loop_mode=True,
             )
             accepted = _run_post_upload_prompts(
@@ -2679,6 +2673,7 @@ def _run_editor_session(
         original_transcribed_content=transcribed_content,
         feedback_user_id=feedback_user_id,
         recording_content_hash=recording.content_hash,
+        visibility_status=recording.visibility_status,
     )
     app.run()
 
@@ -2703,7 +2698,7 @@ def _run_post_upload_prompts(
     Returns True to continue the review loop, False to stop. Single-song
     mode (loop plan without ``continue``) always returns False.
     """
-    publish_declined = False
+    visibility_declined = False
     cleared_ratings = False
 
     for step in plan:
@@ -2718,17 +2713,22 @@ def _run_post_upload_prompts(
                 )
             else:
                 console.print("[dim]Ratings left open.[/dim]")
-        elif step == "publish":
-            if prompt_typed_yes("Set visibility to published?"):
-                db_client.update_recording_visibility(recording.hash_prefix, "published")
-                console.print(f"[green]Recording {recording.hash_prefix} set to published.[/green]")
-            else:
-                publish_declined = True
+        elif step == "visibility":
+            target = _prompt_visibility_change(
+                recording.hash_prefix, _current_visibility(db_client, recording)
+            )
+            if target is None:
+                visibility_declined = True
                 console.print("[dim]Visibility left unchanged.[/dim]")
-        elif step == "skip-if-publish-declined":
+            else:
+                db_client.update_recording_visibility(recording.hash_prefix, target)
+                console.print(
+                    f"[green]Recording {recording.hash_prefix} visibility set to {target}.[/green]"
+                )
+        elif step == "skip-if-visibility-declined":
             if (
                 candidate is not None
-                and publish_declined
+                and visibility_declined
                 and not cleared_ratings
                 and prompt_typed_yes("Skip this song in the next pick?")
             ):
@@ -2743,19 +2743,40 @@ def _run_post_upload_prompts(
     return False
 
 
-def _offer_publish_on_clean_quit(db_client, recording) -> None:
-    """Offer to publish when a no-edit session ends and the recording is
-    publish-eligible (completed LRC, review/NULL visibility)."""
+def _offer_visibility_on_clean_quit(db_client, recording) -> None:
+    """Offer a visibility change when a no-edit session ends.
+
+    Eligible only for completed-LRC recordings. Offers every valid status
+    except the current one (published -> review/hold, review/NULL ->
+    published/hold, hold -> published/review).
+    """
     fresh = db_client.get_recording_by_hash(recording.hash_prefix)
     if fresh is None or fresh.lrc_status != "completed":
         return
-    if (fresh.visibility_status or "") not in ("review", ""):
-        return
-    if not prompt_typed_yes("Set visibility to published?"):
+    target = _prompt_visibility_change(recording.hash_prefix, fresh.visibility_status or "")
+    if target is None:
         console.print("[dim]Visibility left unchanged.[/dim]")
         return
-    db_client.update_recording_visibility(recording.hash_prefix, "published")
-    console.print(f"[green]Recording {recording.hash_prefix} set to published.[/green]")
+    db_client.update_recording_visibility(recording.hash_prefix, target)
+    console.print(f"[green]Recording {recording.hash_prefix} visibility set to {target}.[/green]")
+
+
+def _prompt_visibility_change(hash_prefix: str, current: str) -> Optional[str]:
+    """Numbered menu of every valid status except the current one.
+
+    ``current`` is "" for unset visibility. Returns the chosen status, or
+    None when the admin leaves it unchanged (Enter, invalid input, EOF).
+    """
+    choices = visibility_alternatives(current)
+    if not choices:
+        return None
+    index = prompt_choice_or_none(
+        f"Set visibility for {hash_prefix} (current: {visibility_label(current)}):",
+        [f"{visibility_badge(status)} {status}" for status in choices],
+    )
+    if index is None:
+        return None
+    return choices[index]
 
 
 def _current_visibility(db_client, recording) -> str:
@@ -2782,7 +2803,6 @@ def _run_single_mode_offers(db_client, upload_result, recording) -> None:
     plan = plan_post_upload_offers(
         upload_ok=True,
         open_sad_count=_open_sad_count(db_client, recording.content_hash),
-        is_review_visibility=_current_visibility(db_client, recording) == "review",
         loop_mode=False,
     )
     _run_post_upload_prompts(
