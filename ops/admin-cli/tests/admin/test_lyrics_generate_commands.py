@@ -509,3 +509,78 @@ class TestDumpLlmTraceFlag:
         assert result.exit_code == 0, result.output
         batch_mock.assert_called_once()
         assert batch_mock.call_args.kwargs["dump_llm_trace"] is False
+
+
+class TestLlmModelFlag:
+    """--llm-model forwarding for lyrics generate (single + piped stdin)."""
+
+    def test_single_mode_forwards_llm_model(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "submit_lrc_single") as single_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "song_001", "--llm-model", "openai/gpt-4o-mini"],
+            )
+        assert result.exit_code == 0, result.output
+        single_mock.assert_called_once()
+        assert single_mock.call_args.kwargs["llm_model"] == "openai/gpt-4o-mini"
+
+    def test_single_mode_default_llm_model_empty(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "submit_lrc_single") as single_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(lyrics_app, ["generate", "song_001"])
+        assert result.exit_code == 0, result.output
+        single_mock.assert_called_once()
+        assert single_mock.call_args.kwargs["llm_model"] == ""
+
+    def test_batch_piped_stdin_forwards_llm_model(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "ConnectionProvider", MagicMock()),
+            patch.object(
+                lyrics_commands, "submit_lrc_batch", return_value=[]
+            ) as batch_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "--stdin", "--force", "--llm-model", "openai/gpt-4o-mini"],
+                input="song_001\nsong_002\n",
+            )
+        assert result.exit_code == 0, result.output
+        batch_mock.assert_called_once()
+        assert batch_mock.call_args.kwargs["llm_model"] == "openai/gpt-4o-mini"
+
+    def test_batch_piped_stdin_default_llm_model_empty(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "ConnectionProvider", MagicMock()),
+            patch.object(
+                lyrics_commands, "submit_lrc_batch", return_value=[]
+            ) as batch_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app, ["generate", "--stdin", "--force"], input="song_001\n"
+            )
+        assert result.exit_code == 0, result.output
+        batch_mock.assert_called_once()
+        assert batch_mock.call_args.kwargs["llm_model"] == ""

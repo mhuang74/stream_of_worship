@@ -67,9 +67,14 @@ def submit_lrc_single(
     force_qwen3_asr: bool,
     wait: bool,
     console: Console,
+    llm_model: str = "",
     dump_llm_trace: bool = False,
 ) -> None:
-    """Submit LRC for a single recording (original behavior with wait support)."""
+    """Submit LRC for a single recording (original behavior with wait support).
+
+    Args:
+        llm_model: LLM model for the LLM alignment step (empty = service default).
+    """
     # Look up recording by song_id
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
@@ -119,6 +124,7 @@ def submit_lrc_single(
                 lyrics_text=lyrics_text,
                 song_title=song.title,
                 whisper_model=whisper_model,
+                llm_model=llm_model,
                 language=language,
                 use_vocals_stem=not no_vocals,
                 force=force,
@@ -215,9 +221,13 @@ def submit_lrc_batch(
     no_qwen3_asr: bool,
     force_qwen3_asr: bool,
     console: Console,
+    llm_model: str = "",
     dump_llm_trace: bool = False,
 ) -> list[tuple[str, str, str]]:
     """Submit LRC for multiple recordings (batch mode, no wait).
+
+    Args:
+        llm_model: LLM model for the LLM alignment step (empty = service default).
 
     Returns the submitted ``(song_id, content_hash, job_id)`` triples;
     skipped/errored songs are not included.
@@ -272,6 +282,7 @@ def submit_lrc_batch(
                 lyrics_text=lyrics_text,
                 song_title=song.title,
                 whisper_model=whisper_model,
+                llm_model=llm_model,
                 language=language,
                 use_vocals_stem=not no_vocals,
                 force=force,

@@ -205,6 +205,10 @@ class Settings(BaseSettings):
     # call_llm_with_retry() budget (SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS=1200s)
     # is the overall wall-clock ceiling across all retries.
 
+    SOW_LLM_MODEL_VALIDATION_TIMEOUT_SECONDS: float = 30.0
+    # Per-request SDK-level HTTP timeout for the job-start /models validation call
+    # in services/llm_models.py.
+
     # v6: LLM whole-song segmentation (Design C) gate + tuning.
     SOW_COMPONENTS_USE_LLM_SEGMENTATION: bool = False
     # Master switch for the LLM segmentation identification path. Off by

@@ -579,6 +579,12 @@ def lyrics_generate(
     force: bool = typer.Option(False, "--force", "-f", help="Force re-generation"),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
     whisper_model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model to use"),
+    llm_model: Optional[str] = typer.Option(
+        None,
+        "--llm-model",
+        help="LLM model for the LLM align/correct step (e.g. openai/gpt-4o-mini). "
+        "Validated against the provider at job start. Default: analysis service's SOW_LLM_MODEL.",
+    ),
     language: str = typer.Option("auto", "--lang", help="Language mode: auto, zh, or en"),
     no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),
     no_youtube: bool = typer.Option(
@@ -687,6 +693,7 @@ def lyrics_generate(
             config=config,
             force=force,
             whisper_model=whisper_model,
+            llm_model=llm_model or "",
             language=language,
             no_vocals=no_vocals,
             no_youtube=no_youtube,
@@ -706,6 +713,7 @@ def lyrics_generate(
         analysis_client=analysis_client,
         force=force,
         whisper_model=whisper_model,
+        llm_model=llm_model or "",
         language=language,
         no_vocals=no_vocals,
         no_youtube=no_youtube,
@@ -1145,6 +1153,7 @@ def _run_stdin_batch(
     force_qwen3_asr: bool,
     wait: bool,
     dry_run: bool,
+    llm_model: str = "",
     dump_llm_trace: bool = False,
 ) -> None:
     """Batch flow for all stdin input: guard → submit → (poll) → report."""
@@ -1184,6 +1193,7 @@ def _run_stdin_batch(
         no_qwen3_asr=no_qwen3_asr,
         force_qwen3_asr=force_qwen3_asr,
         console=console,
+        llm_model=llm_model,
         dump_llm_trace=dump_llm_trace,
     )
 
