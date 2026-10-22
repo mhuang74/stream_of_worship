@@ -218,7 +218,7 @@ If `use_qwen3=true` and `content_hash` is provided and audio duration <= `max_qw
 
 Two mechanisms for the Admin CLI to retrieve results:
 
-**Mechanism 1: Synchronous wait** (`--wait` flag)
+**Mechanism 1: Synchronous wait** (default; `--no-wait` opts out)
 - Poll `GET /api/v1/jobs/{job_id}` every 30 seconds
 - When `status=completed`, update catalog with `r2_lrc_url` and `lrc_status=completed`
 

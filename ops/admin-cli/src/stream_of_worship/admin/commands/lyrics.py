@@ -858,6 +858,7 @@ def _write_lyrics_manifest(
     manifest_dir: Path,
     started_at: str,
     entries: list[dict],
+    kind: str = "lyrics_generate",
 ) -> Optional[Path]:
     """Write (or rewrite) the lyrics-batch run manifest to disk.
 
@@ -872,7 +873,7 @@ def _write_lyrics_manifest(
         manifest_path = manifest_dir / f"{batch_id}_manifest.json"
         manifest = {
             "batch_id": batch_id,
-            "kind": "lyrics_generate",
+            "kind": kind,
             "started_at": started_at,
             "jobs": entries,
         }
@@ -912,6 +913,9 @@ def _poll_lrc_batch(
     console: Console,
     manifest_path: Optional[Path],
     existing_entries: Optional[list[dict]] = None,
+    *,
+    kind: str = "lyrics_generate",
+    default_lrc_source: Optional[str] = None,
 ) -> list[dict]:
     """Poll every submitted LRC job to completion (no overall timeout).
 
@@ -926,6 +930,9 @@ def _poll_lrc_batch(
     - 404 (job lost): fall back to R2; if not there, mark failed.
 
     Manifest entries are updated in place and re-flushed after each settle.
+    ``kind`` is stamped into every flush so a rewritten manifest keeps its
+    owner command; ``default_lrc_source`` fills in ``lrc_source`` when the
+    service reports none (forced alignment does not).
 
     Returns the manifest entries list.
     """
@@ -957,7 +964,9 @@ def _poll_lrc_batch(
 
     def _flush() -> None:
         if manifest_path:
-            _write_lyrics_manifest(batch_id, manifest_path.parent, started_at, entries)
+            _write_lyrics_manifest(
+                batch_id, manifest_path.parent, started_at, entries, kind=kind
+            )
 
     poll_interval = 30.0
     try:
@@ -1013,6 +1022,8 @@ def _poll_lrc_batch(
                 if job.status == "completed":
                     # Service-first: use the reported lrc_url; fall back to R2.
                     lrc_url = job.result.lrc_url if job.result else None
+                    result_lrc_source = job.result.lrc_source if job.result else None
+                    lrc_source = result_lrc_source or default_lrc_source
                     if not lrc_url:
                         lrc_url = _r2_lrc_lookup(r2_client, hash_prefix)
                     if lrc_url:
@@ -1020,7 +1031,7 @@ def _poll_lrc_batch(
                             hash_prefix=hash_prefix,
                             r2_lrc_url=lrc_url,
                             visibility_status="review",
-                            lrc_source=job.result.lrc_source if job.result else None,
+                            lrc_source=lrc_source,
                         )
                         log_change(
                             "lrc_save",
@@ -1031,7 +1042,7 @@ def _poll_lrc_batch(
                         )
                         entry["outcome"] = "completed"
                         entry["lrc_url"] = lrc_url
-                        entry["lrc_source"] = job.result.lrc_source if job.result else None
+                        entry["lrc_source"] = lrc_source
                         console.print(f"  [green]✓[/green] {song_id}: LRC completed")
                     else:
                         # Completed but object not visible yet; retry next cycle.
@@ -1500,8 +1511,13 @@ def _submit_forced_alignment_batch(
     use_vocals_stem: bool,
     console: Console,
     r2_client: Optional[R2Client] = None,
-) -> None:
-    """Submit forced alignment for multiple recordings (batch mode, no wait)."""
+) -> tuple[list[tuple[str, str, str]], int, int]:
+    """Submit forced alignment for multiple recordings.
+
+    Returns ``(submissions, skipped, errors)`` where each submission is
+    ``(song_id, content_hash, job_id)``.
+    """
+    submissions: list[tuple[str, str, str]] = []
     submitted = 0
     skipped = 0
     errors = 0
@@ -1569,6 +1585,7 @@ def _submit_forced_alignment_batch(
             )
 
             console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
+            submissions.append((song_id, recording.content_hash, job.job_id))
             submitted += 1
 
         except AnalysisServiceError as e:
@@ -1583,6 +1600,155 @@ def _submit_forced_alignment_batch(
     console.print(f"  Submitted: {submitted}")
     console.print(f"  Skipped: {skipped}")
     console.print(f"  Errors: {errors}")
+    return submissions, skipped, errors
+
+
+def _report_alignment_outcomes(
+    submissions: list[tuple[str, str, str]],
+    entries: list[dict],
+    manifest_path: Optional[Path],
+    console: Console,
+) -> None:
+    """Print the end-of-run report for a forced-alignment batch."""
+    by_song = {entry["song_id"]: entry for entry in entries}
+    completed = [
+        by_song[song_id]
+        for song_id, _, _ in submissions
+        if by_song.get(song_id, {}).get("outcome") == "completed"
+    ]
+    failed = [
+        by_song[song_id]
+        for song_id, _, _ in submissions
+        if by_song.get(song_id, {}).get("outcome") == "failed"
+    ]
+    pending = [
+        by_song[song_id]
+        for song_id, _, _ in submissions
+        if by_song.get(song_id, {}).get("outcome") == "pending"
+    ]
+
+    console.print()
+    console.print("[cyan]Run Report[/cyan]")
+    console.print(f"  Completed: {len(completed)}")
+    console.print(f"  Failed: {len(failed)}")
+    console.print(f"  Pending (interrupted): {len(pending)}")
+
+    for entry in failed:
+        console.print(
+            f"  [red]✗ {entry['song_id']} (job {entry['job_id']}): "
+            f"{entry.get('error', 'Unknown error')}[/red]"
+        )
+    for entry in pending:
+        console.print(
+            f"  [yellow]… {entry['song_id']} (job {entry['job_id']}): still running[/yellow]"
+        )
+        if manifest_path:
+            console.print(
+                f"  [yellow]— resume with: sow-admin lyrics align "
+                f"--resume {manifest_path}[/yellow]"
+            )
+    console.print()
+
+
+def _run_alignment_batch(
+    *,
+    song_ids: list[str],
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    r2_client: Optional[R2Client],
+    language: str,
+    force: bool,
+    use_vocals_stem: bool,
+    console: Console,
+    no_wait: bool,
+) -> None:
+    """Batch flow for ``lyrics align --stdin``: submit → (manifest + poll) → report."""
+    submissions, _skipped, _errors = _submit_forced_alignment_batch(
+        song_ids=song_ids,
+        db_client=db_client,
+        analysis_client=analysis_client,
+        language=language,
+        force=force,
+        use_vocals_stem=use_vocals_stem,
+        console=console,
+        r2_client=r2_client,
+    )
+
+    if no_wait:
+        console.print(
+            "[dim]Not waiting (--no-wait). Poll with 'sow-admin audio status <job_id>'.[/dim]"
+        )
+        return
+
+    if not submissions:
+        return
+
+    batch_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S") + "_align"
+    started_at = datetime.now(timezone.utc).isoformat()
+    manifest_path = _write_lyrics_manifest(
+        batch_id,
+        _get_lyrics_manifest_dir(),
+        started_at,
+        [
+            {
+                "song_id": song_id,
+                "content_hash": content_hash,
+                "job_id": job_id,
+                "outcome": "pending",
+            }
+            for song_id, content_hash, job_id in submissions
+        ],
+        kind="lyrics_align",
+    )
+
+    entries = _poll_lrc_batch(
+        submissions,
+        db_client,
+        analysis_client,
+        r2_client,
+        console,
+        manifest_path,
+        kind="lyrics_align",
+        default_lrc_source="forced_alignment",
+    )
+    _report_alignment_outcomes(submissions, entries, manifest_path, console)
+
+
+def _resume_alignment_batch(
+    *,
+    manifest_file: Path,
+    db_client: DatabaseClient,
+    analysis_client: AnalysisClient,
+    r2_client: Optional[R2Client],
+    console: Console,
+) -> None:
+    """Re-poll an interrupted alignment run from its manifest without resubmitting."""
+    manifest = _load_lyrics_manifest(manifest_file)
+    if not manifest or manifest.get("kind") != "lyrics_align":
+        console.print(f"[red]Invalid or missing lyrics alignment manifest: {manifest_file}[/red]")
+        raise typer.Exit(1)
+
+    entries = manifest.get("jobs", [])
+    pending = [e for e in entries if e.get("outcome") == "pending"]
+    if not pending:
+        console.print("[green]Nothing pending in the manifest; run already complete.[/green]")
+        return
+
+    console.print(f"[cyan]Resuming {len(pending)} pending job(s) from {manifest_file}[/cyan]")
+
+    submissions = [(entry["song_id"], entry["content_hash"], entry["job_id"]) for entry in pending]
+    updated = _poll_lrc_batch(
+        submissions,
+        db_client,
+        analysis_client,
+        r2_client,
+        console,
+        manifest_file,
+        existing_entries=entries,
+        kind="lyrics_align",
+        default_lrc_source="forced_alignment",
+    )
+    _report_alignment_outcomes(submissions, updated, manifest_file, console)
 
 
 @app.command("align")
@@ -1596,7 +1762,14 @@ def lyrics_align(
         help="Use clean vocal stem for better accuracy",
     ),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin"),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for alignment to complete"),
+    no_wait: bool = typer.Option(
+        False, "--no-wait", help="Submit without waiting for job completion"
+    ),
+    resume: Optional[Path] = typer.Option(
+        None,
+        "--resume",
+        help="Resume an interrupted batch run from its manifest (re-polls without resubmitting)",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Submit a recording for forced LRC alignment using Qwen3ForcedAligner.
@@ -1606,15 +1779,28 @@ def lyrics_align(
 
     For batch processing, pipe song IDs via stdin:
         sow-admin audio list --lrc incomplete --format ids | sow-admin lyrics align --stdin
+
+    By default the command waits for job completion. Single-song mode polls
+    with live progress (10-minute timeout); --stdin batch mode writes a run
+    manifest and polls every job (Ctrl+C-safe, resumable with --resume). Use
+    --no-wait to submit and exit immediately.
     """
-    if not song_id and not stdin:
-        console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+    if not song_id and not stdin and not resume:
+        console.print(
+            "[red]Error: Either provide a song_id argument, use --stdin, or use --resume[/red]"
+        )
         raise typer.Exit(1)
     if song_id and stdin:
         console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
         raise typer.Exit(1)
-    if stdin and wait:
-        console.print("[red]Error: --wait is not supported with --stdin (too many jobs)[/red]")
+    if song_id and resume:
+        console.print("[red]Error: Cannot use both song_id argument and --resume[/red]")
+        raise typer.Exit(1)
+    if stdin and resume:
+        console.print("[red]Error: Cannot use both --stdin and --resume[/red]")
+        raise typer.Exit(1)
+    if no_wait and resume:
+        console.print("[red]Error: --no-wait is not valid with --resume[/red]")
         raise typer.Exit(1)
     if language not in {"auto", "zh", "en"}:
         console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
@@ -1639,37 +1825,45 @@ def lyrics_align(
     except ValueError:
         r2_client = None
 
+    if resume:
+        _resume_alignment_batch(
+            manifest_file=resume,
+            db_client=db_client,
+            analysis_client=analysis_client,
+            r2_client=r2_client,
+            console=console,
+        )
+        return
+
     if stdin:
         song_ids = read_song_ids_from_stdin()
         if not song_ids:
             console.print("[yellow]No song IDs provided via stdin[/yellow]")
             raise typer.Exit(0)
-    else:
-        song_ids = [song_id]
-
-    if len(song_ids) == 1:
-        _submit_forced_alignment_single(
-            song_id=song_ids[0],
-            db_client=db_client,
-            analysis_client=analysis_client,
-            language=language,
-            force=force,
-            use_vocals_stem=use_vocals_stem,
-            wait=wait,
-            console=console,
-            r2_client=r2_client,
-        )
-    else:
-        _submit_forced_alignment_batch(
+        _run_alignment_batch(
             song_ids=song_ids,
             db_client=db_client,
             analysis_client=analysis_client,
+            r2_client=r2_client,
             language=language,
             force=force,
             use_vocals_stem=use_vocals_stem,
             console=console,
-            r2_client=r2_client,
+            no_wait=no_wait,
         )
+        return
+
+    _submit_forced_alignment_single(
+        song_id=song_id,
+        db_client=db_client,
+        analysis_client=analysis_client,
+        language=language,
+        force=force,
+        use_vocals_stem=use_vocals_stem,
+        wait=not no_wait,
+        console=console,
+        r2_client=r2_client,
+    )
 
 
 @app.command("view")

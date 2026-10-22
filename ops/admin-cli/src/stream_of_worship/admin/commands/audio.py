@@ -2037,7 +2037,9 @@ def analyze_recording(
     no_stems: bool = typer.Option(
         False, "--no-stems", help="Skip stem separation (full tier only)"
     ),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for analysis to complete"),
+    no_wait: bool = typer.Option(
+        False, "--no-wait", help="Submit and exit without waiting for completion"
+    ),
     components: bool = typer.Option(
         False, "--components", help="Submit component analysis after full analysis completes"
     ),
@@ -2050,7 +2052,13 @@ def analyze_recording(
     embeddings) via allin1, with optional stem separation.
 
     Looks up the recording by song_id and submits it to the analysis service.
+
+    By default the command waits for completion (30-minute timeout) and writes
+    results back. Use --no-wait to submit and exit immediately; write back later
+    with 'sow-admin audio status --sync' (or --reconcile).
     """
+    wait = not no_wait
+
     # Standard config/db boilerplate
     try:
         config = AdminConfig.load(config_path)
@@ -2137,6 +2145,10 @@ def analyze_recording(
             else:
                 job_id = recording.analysis_job_id
                 skip_submission = True
+        except typer.Exit:
+            # The --no-wait short-circuit above raises typer.Exit; it must
+            # propagate, not be mistaken for an unreachable analysis service.
+            raise
         except Exception:
             # Can't reach service or job not found — submit new
             skip_submission = False
@@ -3547,7 +3559,9 @@ def embed_songs(
     song_id: Optional[str] = typer.Argument(None, help="Song ID to embed"),
     all_songs: bool = typer.Option(False, "--all", help="Embed all songs without embeddings"),
     force: bool = typer.Option(False, "--force", help="Re-embed even if content hash matches"),
-    wait: bool = typer.Option(False, "--wait", help="Wait for all jobs to complete"),
+    no_wait: bool = typer.Option(
+        False, "--no-wait", help="Submit and exit without polling job completion"
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
     """Generate text embeddings for songs using OpenAI text-embedding-3-small.
@@ -3555,11 +3569,14 @@ def embed_songs(
     Embeddings power semantic search in the webapp. Run this after scraping
     new songs or when lyrics are corrected.
 
+    By default the command polls until all jobs finish (120 s per job) and
+    writes the embeddings.
+
     Examples:
         sow-admin audio embed song_0001
         sow-admin audio embed --all
         sow-admin audio embed --all --force
-        sow-admin audio embed --all --wait
+        sow-admin audio embed --all --no-wait
     """
     from rich.console import Console
 
@@ -3567,6 +3584,7 @@ def embed_songs(
     from stream_of_worship.admin.services.analysis import AnalysisClient, AnalysisServiceError
 
     console = Console()
+    wait = not no_wait
 
     if not song_id and not all_songs:
         console.print("[red]Error:[/red] Provide a song_id or use --all")
@@ -3622,7 +3640,8 @@ def embed_songs(
     console.print(f"\nSubmitted {len(job_ids)} embedding jobs")
 
     if not wait:
-        console.print("Use --wait to poll until jobs complete")
+        console.print(f"Job IDs: {', '.join(job_ids)}")
+        console.print("Not waiting (--no-wait). Poll with 'sow-admin audio status <job_id>'.")
         return
 
     console.print("Waiting for jobs to complete...")
