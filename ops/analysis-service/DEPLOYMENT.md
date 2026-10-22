@@ -145,39 +145,20 @@ ls -la ~/.cache/audio-separator/
 # Should show model files (several GB total)
 ```
 
-### 2.2 Qwen3 Forced Aligner Model
+### 2.2 Forced Aligner (no download)
 
-This model is used for precise lyric-to-audio alignment.
-
-```bash
-# Install huggingface-hub
-pip install huggingface-hub
-
-# Download Qwen3 Forced Aligner model
-huggingface-cli download Qwen/Qwen3-ForcedAligner-0.6B
-
-# Note the snapshot hash - you'll need this for configuration
-ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
-# Example output: c7cbfc2048c462b0d63a45797104fc9db3ad62b7
-```
-
-**Get model path for configuration:**
-```bash
-# Get the full model snapshot path
-export FORCED_ALIGNER_MODEL_PATH="$HOME/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/$(ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/ | head -1)"
-echo "Model Path: $FORCED_ALIGNER_MODEL_PATH"
-
-# Verify model files exist
-ls "$FORCED_ALIGNER_MODEL_PATH/"
-```
+Forced alignment runs on Modal (the `sow-forced-aligner` app), so there is no local
+Qwen3-ForcedAligner checkpoint to download in this step. Deploy the app once with the
+Modal token and the volume handles the weights — see the Modal section in
+`README.md` ("Forced alignment on Modal").
 
 ### 2.3 Model Storage Summary
 
 | Model | Location | Size |
 |-------|----------|------|
 | Audio-Separator | `~/.cache/audio-separator/` | ~3-5 GB |
-| Qwen3 Forced Aligner | `~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B` | ~2.4 GB |
-| **Total** | | **~6-8 GB** |
+| Qwen3 Forced Aligner | Modal volume `sow-forced-aligner-models` | ~2.4 GB (Modal-side) |
+| **Total (host)** | | **~3-5 GB** |
 
 ---
 
@@ -243,14 +224,6 @@ SOW_EMBEDDING_BASE_URL=""     # e.g., https://api.openai.com/v1
 SOW_EMBEDDING_MODEL="text-embedding-3-small"
 
 # =============================================================================
-# FORCED ALIGNER MODEL CONFIGURATION (REQUIRED for LRC refinement)
-# =============================================================================
-# Path to the Qwen3 Forced Aligner model snapshot (downloaded in Step 2)
-
-SOW_FORCED_ALIGNER_MODEL_PATH=""
-SOW_FORCED_ALIGNER_DEVICE="auto"
-
-# =============================================================================
 # AUDIO-SEPARATOR MODEL CONFIGURATION (REQUIRED for stem separation)
 # =============================================================================
 # This path must match where you downloaded the models in Step 2
@@ -273,9 +246,12 @@ BPM_ALGORITHM_VERSION=v4_octave_guard
 
 # Device selection (cpu or cuda - requires GPU setup)
 SOW_DEMUCS_DEVICE=cpu
-SOW_FORCED_ALIGNER_DEVICE=auto
 
-# Whisper runs on Modal (modal_apps/whisper_app.py); fill these in on the server
+# Whisper AND forced alignment run on Modal; fill these in on the server.
+# Deploy both apps once (see README.md "Whisper on Modal" and
+# "Forced alignment on Modal"):
+#   modal deploy modal_apps/whisper_app.py
+#   modal deploy modal_apps/forced_aligner_app.py
 MODAL_TOKEN_ID=""
 MODAL_TOKEN_SECRET=""
 SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
@@ -332,8 +308,7 @@ vim ~/sow-deployment/.env
 | `SOW_EMBEDDING_API_KEY` | Embedding API key | OpenAI-compatible embedding provider |
 | `SOW_EMBEDDING_BASE_URL` | Embedding endpoint | e.g., `https://api.openai.com/v1` |
 | `SOW_EMBEDDING_MODEL` | Embedding model | default `text-embedding-3-small` |
-| `SOW_FORCED_ALIGNER_MODEL_PATH` | Model path | Output from Step 2.2 |
-| `SOW_FORCED_ALIGNER_DEVICE` | Device | `auto`, `cpu`, or `cuda` |
+| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Modal tokens | Whisper + forced alignment on Modal |
 | `SOW_AUDIO_SEPARATOR_MODEL_ROOT` | Model path | Output from Step 2.1 |
 
 ### 3.3 Secure the .env File
@@ -392,10 +367,6 @@ services:
       SOW_EMBEDDING_API_KEY: ${SOW_EMBEDDING_API_KEY}
       SOW_EMBEDDING_BASE_URL: ${SOW_EMBEDDING_BASE_URL}
       SOW_EMBEDDING_MODEL: ${SOW_EMBEDDING_MODEL:-text-embedding-3-small}
-      
-      # Forced Aligner Configuration (in-process, no separate service)
-      SOW_FORCED_ALIGNER_MODEL_PATH: ${SOW_FORCED_ALIGNER_MODEL_PATH}
-      SOW_FORCED_ALIGNER_DEVICE: ${SOW_FORCED_ALIGNER_DEVICE:-auto}
       
       # Whisper runs on Modal (modal_apps/whisper_app.py); tokens come from /opt/sow/.env
       MODAL_TOKEN_ID: ${MODAL_TOKEN_ID}
@@ -726,7 +697,6 @@ docker compose exec analysis ls -la /models/audio-separator/
 
 # Check model files exist on host
 ls -la ~/.cache/audio-separator/
-ls -la ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
 ```
 
 ### Out of Memory

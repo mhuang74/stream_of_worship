@@ -85,10 +85,6 @@ SOW_AUDIO_SEPARATOR_MODEL_ROOT="/path/to/audio-separator-models"  # Host path to
 SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"  # Vocal separation model filename
 SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
 
-# Forced Aligner Model Configuration (Required for LRC refinement with forced alignment)
-SOW_FORCED_ALIGNER_MODEL_PATH="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
-SOW_FORCED_ALIGNER_DEVICE="auto"
-
 # DashScope Qwen3 ASR (Optional — improves LRC transcription quality)
 SOW_DASHSCOPE_API_KEY=""  # DashScope API key; leave empty to skip Qwen3 ASR (uses Whisper only)
 SOW_DASHSCOPE_ASR_REGION="intl"  # Region: intl, cn, or us
@@ -288,37 +284,69 @@ export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator"
 
 The docker-compose.yml automatically mounts this directory to `/models/audio-separator:ro` in the container.
 
-## Forced Aligner Model Setup (for LRC Refinement)
+## Forced alignment on Modal
 
-The LRC generation feature uses Qwen3 Forced Aligner for precise lyric-to-audio alignment. The model is loaded in-process by the analysis service (no separate service needed).
+Forced alignment (the `forced_alignment` job type) runs on [Modal](https://modal.com) as
+the **sow-forced-aligner** app, not in this container — the container is CPU-only, so an
+in-process Qwen3-ForcedAligner would serialize every alignment on CPU.
 
-### One-Time Model Download
+The deployed app is **required at runtime**: the job fails with a configuration error
+until `sow-forced-aligner` is deployed and the Modal tokens are set. There is no local
+fallback by design.
+
+One-time setup:
+
+1. Deploy the app (from `ops/analysis-service/`, with your Modal token exported — this
+   also creates the `sow-forced-aligner-models` volume that caches the ~1.2 GB checkpoint):
+
+   ```bash
+   uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/forced_aligner_app.py
+   ```
+
+2. Put the token in `/opt/sow/.env` (shared with Whisper):
+
+   ```bash
+   MODAL_TOKEN_ID="ak-..."
+   MODAL_TOKEN_SECRET="as-..."
+   ```
+
+The client sends the resolved audio (vocal stem or original) as 16 kHz mono PCM-16 WAV —
+the input rate of the aligner — so upload is ~9.6 MB for a 5-minute song.
+
+Tunable knobs (all optional, defaults shown):
 
 ```bash
-# Install huggingface-cli if not already installed
-pip install huggingface-hub
-
-# Download the Qwen3 Forced Aligner model
-huggingface-cli download Qwen/Qwen3-ForcedAligner-0.6B
+SOW_MODAL_FORCED_ALIGNER_APP_NAME="sow-forced-aligner"
+SOW_MODAL_FORCED_ALIGNER_CLASS_NAME="ForcedAligner"
+SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS=2
+SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS=5.0
+SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES=90000000
 ```
 
-### Configure Environment
+- Retries are owned by the client; the Modal class deliberately sets no `retries=`, so a
+  crashing input cannot be executed N×M times on the GPU.
+- `SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES` caps the WAV upload; `validate_audio_duration`
+  already rejects inputs longer than 300 s, so the default is headroom, not a real limit.
+- Concurrency is bounded by the app (`max_containers=2`), not by
+  `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS`.
 
-Add to `/opt/sow/.env`:
+Every call logs one line with the total Modal time (it includes cold start and the audio
+upload, and starts after the local transcode):
+
+```
+Forced alignment total Modal elapsed time: 3.41s (attempts=1/2, segments=57, request_id=9f2c…; includes cold start and audio upload)
+```
+
+Troubleshooting: container-side failures (cold start, CUDA OOM, model load) are only
+visible in Modal's logs:
 
 ```bash
-SOW_FORCED_ALIGNER_MODEL_PATH="/home/user/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
-SOW_FORCED_ALIGNER_DEVICE="auto"
+uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-forced-aligner
 ```
 
-The model path should point to the snapshot directory (e.g., `.../snapshots/c7cbfc2048c462b0d63a45797104fc9db3ad62b7`). Find your snapshot hash:
-
-```bash
-ls ~/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B/snapshots/
-# Output example: c7cbfc2048c462b0d63a45797104fc9db3ad62b7
-```
-
-**Note:** The snapshot hash changes when the model is updated. If LRC jobs fail with model loading errors, check for a new snapshot hash after re-downloading.
+For a failed alignment, the analysis-service error message contains a `request_id` —
+grep `modal app logs` for that id to find the matching `[sow-forced-aligner][<id>]`
+traceback.
 
 ## Audio LRC Alignment CLI
 

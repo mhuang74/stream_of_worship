@@ -13,7 +13,6 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MODEL_DIR="${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-$HOME/.cache/audio-separator}"
-HF_CACHE_DIR="${SOW_FORCED_ALIGNER_MODEL_ROOT:-$HOME/.cache/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B}"
 NO_START=false
 REBUILD=false
 LOG_LEVEL=""
@@ -169,47 +168,8 @@ if [[ "$NEED_DOWNLOAD" == true ]]; then
     echo ""
 fi
 
-# Check for Qwen3 Forced Aligner model
-echo -e "${YELLOW}Checking for Qwen3 Forced Aligner model...${NC}"
-
-QWEN3_MODEL_FOUND=false
-if [[ -d "$HF_CACHE_DIR" ]] && [[ -n "$(ls -A "$HF_CACHE_DIR/snapshots/" 2>/dev/null)" ]]; then
-    QWEN3_SNAPSHOT=$(ls "$HF_CACHE_DIR/snapshots/" | head -1)
-    if [[ -n "$QWEN3_SNAPSHOT" ]]; then
-        echo -e "  ${GREEN}Found: Qwen3-ForcedAligner-0.6B (snapshot: $QWEN3_SNAPSHOT)${NC}"
-        QWEN3_MODEL_FOUND=true
-    fi
-fi
-
-if [[ "$QWEN3_MODEL_FOUND" == false ]]; then
-    echo -e "  ${YELLOW}Missing: Qwen3-ForcedAligner-0.6B${NC}"
-    echo ""
-    echo -e "${YELLOW}Downloading Qwen3 Forced Aligner model from Hugging Face...${NC}"
-    echo "This may take several minutes (~1.2GB)..."
-    echo ""
-
-    uv run --project "$SCRIPT_DIR/../../lab/poc-scripts" --python 3.11 --extra poc_qwen3_asr python << EOF
-from huggingface_hub import snapshot_download
-import os
-
-try:
-    path = snapshot_download("Qwen/Qwen3-ForcedAligner-0.6B")
-    print(f"  ✓ Qwen3-ForcedAligner-0.6B downloaded to: {path}")
-except Exception as e:
-    print(f"  ✗ Failed to download Qwen3-ForcedAligner-0.6B: {e}")
-    exit(1)
-EOF
-
-    # Re-check for snapshot after download
-    if [[ -d "$HF_CACHE_DIR" ]]; then
-        QWEN3_SNAPSHOT=$(ls "$HF_CACHE_DIR/snapshots/" | head -1)
-    fi
-    echo ""
-fi
-
 # Export the model roots for docker compose
 export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$MODEL_DIR"
-export SOW_FORCED_ALIGNER_MODEL_ROOT="$HF_CACHE_DIR"
 
 # Validate and export the log level (mirrors config.py SOW_LOG_LEVEL validation)
 if [[ -n "$LOG_LEVEL" ]]; then
@@ -222,11 +182,6 @@ if [[ -n "$LOG_LEVEL" ]]; then
             exit 1
             ;;
     esac
-fi
-
-# If we found a snapshot, set the model path to use the local mount
-if [[ -n "${QWEN3_SNAPSHOT:-}" ]]; then
-    export SOW_FORCED_ALIGNER_MODEL_PATH="/models/hf-model/snapshots/$QWEN3_SNAPSHOT"
 fi
 
 # Check if .env file exists
@@ -251,7 +206,7 @@ fi
 echo ""
 echo -e "${GREEN}Starting Analysis Service in development mode...${NC}"
 echo "  Audio-separator model directory: $MODEL_DIR"
-echo "  Forced aligner model directory: $HF_CACHE_DIR"
+echo "  Forced alignment: Modal app ${SOW_MODAL_FORCED_ALIGNER_APP_NAME:-sow-forced-aligner}"
 echo "  Log level: ${SOW_LOG_LEVEL:-INFO}"
 
 # Determine the bind IP for display (matches docker-compose SOW_BIND_IP logic)

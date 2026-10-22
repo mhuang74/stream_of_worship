@@ -126,25 +126,6 @@ EOF
     log_success "Audio-Separator models downloaded to: $MODEL_DIR"
 }
 
-download_qwen3_model() {
-    log_info "Downloading Qwen3 Forced Aligner model..."
-    
-    local MODEL_ROOT="$MODEL_CACHE_DIR/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
-    
-    if [ -d "$MODEL_ROOT" ] && [ "$(ls -A $MODEL_ROOT/snapshots/ 2>/dev/null)" ]; then
-        log_success "Qwen3 model already exists"
-        return 0
-    fi
-    
-    # Install huggingface-hub
-    pip install -q huggingface-hub
-    
-    log_info "Downloading from Hugging Face (this may take several minutes)..."
-    huggingface-cli download Qwen/Qwen3-ForcedAligner-0.6B
-    
-    log_success "Qwen3 model downloaded to: $MODEL_ROOT"
-}
-
 # ============================================================================
 # Get Model Paths for Configuration
 # ============================================================================
@@ -155,25 +136,8 @@ get_model_paths() {
     # Audio-Separator
     export AUDIO_SEPARATOR_ROOT="$MODEL_CACHE_DIR/audio-separator"
     
-    # Qwen3 Forced Aligner
-    export FORCED_ALIGNER_ROOT="$MODEL_CACHE_DIR/huggingface/hub/models--Qwen--Qwen3-ForcedAligner-0.6B"
-    
-    if [ ! -d "$FORCED_ALIGNER_ROOT" ]; then
-        log_error "Qwen3 Forced Aligner model not found. Please run model download first."
-        exit 1
-    fi
-    
-    # Get snapshot hash
-    export QWEN3_SNAPSHOT=$(ls "$FORCED_ALIGNER_ROOT/snapshots/" | head -1)
-    
-    if [ -z "$QWEN3_SNAPSHOT" ]; then
-        log_error "Could not find Qwen3 snapshot hash"
-        exit 1
-    fi
-    
     log_info "Audio-Separator: $AUDIO_SEPARATOR_ROOT"
-    log_info "Forced Aligner Root: $FORCED_ALIGNER_ROOT"
-    log_info "Forced Aligner Snapshot: $QWEN3_SNAPSHOT"
+    log_info "Forced alignment: Modal app sow-forced-aligner (deploy separately)"
 }
 
 # ============================================================================
@@ -230,13 +194,6 @@ SOW_LLM_MODEL=""
 SOW_EMBEDDING_API_KEY=""
 SOW_EMBEDDING_BASE_URL=""
 SOW_EMBEDDING_MODEL="text-embedding-3-small"
-
-# =============================================================================
-# FORCED ALIGNER MODEL CONFIGURATION (Auto-detected)
-# =============================================================================
-SOW_FORCED_ALIGNER_MODEL_ROOT="$FORCED_ALIGNER_ROOT"
-SOW_FORCED_ALIGNER_MODEL_PATH="/models/hf-model/snapshots/$QWEN3_SNAPSHOT"
-SOW_FORCED_ALIGNER_DEVICE=auto
 
 # =============================================================================
 # AUDIO-SEPARATOR MODEL CONFIGURATION (Auto-detected)
@@ -302,7 +259,6 @@ services:
     volumes:
       - analysis-cache:/cache
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT}:/models/audio-separator:ro
-      - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
@@ -381,7 +337,7 @@ print_summary() {
     echo ""
     echo "Models:"
     echo "  - Audio-Separator:   $AUDIO_SEPARATOR_ROOT"
-    echo "  - Forced Aligner:    $FORCED_ALIGNER_ROOT"
+    echo "  - Forced Aligner:    Modal app sow-forced-aligner (no local model)"
     echo ""
     echo "Useful Commands:"
     echo "  cd $DEPLOYMENT_DIR && docker compose logs -f"
@@ -406,7 +362,6 @@ main() {
     
     # Download models
     download_audio_separator_models
-    download_qwen3_model
     
     # Get model paths
     get_model_paths

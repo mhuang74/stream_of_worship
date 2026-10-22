@@ -88,6 +88,7 @@ from ..models import (
     Section,
     StemSeparationJobRequest,
 )
+from ..services.modal_forced_aligner_client import get_modal_forced_aligner_client
 from ..storage.cache import CacheManager
 from ..storage.db import JobStore
 from ..storage.r2 import R2Client
@@ -209,7 +210,6 @@ class JobQueue:
         self.r2_client: Optional[R2Client] = None
         self._separator_wrapper: Optional[Any] = None
         self._mvsep_client: Optional[Any] = None
-        self._forced_aligner_wrapper: Optional[Any] = None
         self._qwen3_client: Any = None
         self._mvsep_quota_waiter: Optional[Any] = None
         self._qwen3_quota_waiter: Optional[Any] = None
@@ -268,14 +268,6 @@ class JobQueue:
             mvsep_client: MvsepClient instance
         """
         self._mvsep_client = mvsep_client
-
-    def set_forced_aligner_wrapper(self, wrapper: Any) -> None:
-        """Set the forced aligner wrapper for forced alignment jobs.
-
-        Args:
-            wrapper: ForcedAlignerWrapper instance
-        """
-        self._forced_aligner_wrapper = wrapper
 
     def set_quota_waiters(self, mvsep: Any = None, qwen3: Any = None) -> None:
         """Set QuotaWaiter instances for free-only patient mode.
@@ -2071,7 +2063,7 @@ class JobQueue:
 
         if map_segments_to_lines is None or validate_audio_duration is None:
             job.status = JobStatus.FAILED
-            job.error_message = "Forced alignment dependencies not available (qwen-asr, soundfile)"
+            job.error_message = "Forced alignment dependencies not available (soundfile)"
             job.stage = "missing_dependencies"
             job.updated_at = datetime.now(timezone.utc)
             try:
@@ -2079,23 +2071,7 @@ class JobQueue:
                     job.id,
                     status="failed",
                     stage="missing_dependencies",
-                    error_message="Forced alignment dependencies not available (qwen-asr, soundfile)",
-                )
-            except Exception as e:
-                logger.error(f"Failed to update job {job.id} in database: {e}")
-            return
-
-        if not self._forced_aligner_wrapper:
-            job.status = JobStatus.FAILED
-            job.error_message = "Forced aligner wrapper not available"
-            job.stage = "missing_aligner"
-            job.updated_at = datetime.now(timezone.utc)
-            try:
-                await self.job_store.update_job(
-                    job.id,
-                    status="failed",
-                    stage="missing_aligner",
-                    error_message="Forced aligner wrapper not available",
+                    error_message="Forced alignment dependencies not available (soundfile)",
                 )
             except Exception as e:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
@@ -2193,10 +2169,11 @@ class JobQueue:
                 validate_audio_duration(resolved_audio.path, max_seconds=300.0)
 
                 await self._update_stage(job, "aligning", 0.4)
-                async with optional_semaphore(self._local_model_semaphore):
-                    raw_segments = await self._forced_aligner_wrapper.align(
-                        resolved_audio.path, request.lyrics_text, language_mapped
-                    )
+                # Alignment runs on Modal (sow-forced-aligner); concurrency is bounded
+                # by the app's max_containers, not by the local-model semaphore.
+                raw_segments = await get_modal_forced_aligner_client().align(
+                    resolved_audio.path, request.lyrics_text, language_mapped
+                )
 
                 await self._update_stage(job, "mapping_segments", 0.6)
                 lyrics_lines = [line.rstrip() for line in request.lyrics_text.splitlines()]
@@ -2680,8 +2657,6 @@ class JobQueue:
         """Stop processing jobs."""
         self._running = False
         await self.stop_periodic_logging()
-        if self._forced_aligner_wrapper is not None:
-            await self._forced_aligner_wrapper.cleanup()
         await self.job_store.close()
 
     def _is_quota_wait_quiescent(self) -> bool:

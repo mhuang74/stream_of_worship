@@ -274,6 +274,13 @@ class Settings(BaseSettings):
     SOW_MODAL_WHISPER_ALLOWED_MODELS: str = "tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
     SOW_WHISPER_CACHE_VERSION: int = 2  # bump: local int8 -> Modal float16 changes outputs
 
+    # Forced alignment runs on Modal (modal_apps/forced_aligner_app.py), not in this container.
+    SOW_MODAL_FORCED_ALIGNER_APP_NAME: str = "sow-forced-aligner"
+    SOW_MODAL_FORCED_ALIGNER_CLASS_NAME: str = "ForcedAligner"
+    SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS: int = 2
+    SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS: float = 5.0
+    SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES: int = 90_000_000
+
     # DashScope Qwen3 ASR Configuration
     SOW_DASHSCOPE_API_KEY: str = ""
     SOW_DASHSCOPE_ASR_REGION: str = "intl"  # intl, cn, us
@@ -367,12 +374,6 @@ class Settings(BaseSettings):
     SOW_QUEUE_START_DELAY_SECONDS: int = (
         30  # Delay before processing starts (window to cancel/clear jobs)
     )
-
-    # Forced Aligner Configuration (Qwen3ForcedAligner-0.6B, runs in-process)
-    SOW_FORCED_ALIGNER_MODEL_PATH: str = (
-        "Qwen/Qwen3-ForcedAligner-0.6B"  # HF model ID or local path
-    )
-    SOW_FORCED_ALIGNER_DEVICE: str = "auto"  # auto/mps/cuda/cpu
 
     # YouTube Proxy Configuration
     SOW_YOUTUBE_PROXY: str = (
