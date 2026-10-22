@@ -1,4 +1,4 @@
-"""Seam 3 tests: `lyrics generate --stdin --wait` batch end-state.
+"""Seam 3 tests: `lyrics generate --stdin` batch end-state (waiting is the default).
 
 Real Postgres (testcontainers) + mocked AnalysisClient driving jobs through
 pending → completed/failed. Asserts the recordings rows end at
@@ -249,7 +249,7 @@ class TestBatchWaitEndState:
             with patch.object(lyrics_commands, "submit_lrc_batch", side_effect=_fake_submit_batch):
                 result = runner.invoke(
                     lyrics_app,
-                    ["generate", "--stdin", "--force", "--wait", "--config", str(config_path)],
+                    ["generate", "--stdin", "--force", "--config", str(config_path)],
                     input="song_001\nsong_002\n",
                 )
 

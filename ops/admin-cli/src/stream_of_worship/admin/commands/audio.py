@@ -3624,6 +3624,22 @@ def embed_songs(
     db_client.close()
 
 
+def _record_sync_error(
+    error_groups: dict[tuple[str, str], list[str]],
+    kind: str,
+    job_id: str,
+    error: AnalysisServiceError,
+) -> None:
+    """Accumulate one ``--sync`` failure for grouped reporting.
+
+    ``AnalysisServiceError`` messages embed the job ID (``Job not found:
+    job_abc``), so grouping raw messages would produce one group per job.
+    Replace that ID with ``<job>`` before counting.
+    """
+    message = str(error).replace(job_id, "<job>")
+    error_groups.setdefault((kind, message), []).append(job_id)
+
+
 @app.command("status")
 def check_status(
     job_id: Optional[str] = typer.Argument(None, help="Job ID to check"),
@@ -3965,7 +3981,7 @@ def check_status(
         if hashes_to_sync:
             console.print(f"[cyan]Syncing {len(hashes_to_sync)} pending recording(s)...[/cyan]")
             synced_count = 0
-            failed_count = 0
+            error_groups: dict[tuple[str, str], list[str]] = {}
 
             for h_prefix in hashes_to_sync:
                 rec = db_client.get_recording_by_hash(h_prefix)
@@ -4032,10 +4048,7 @@ def check_status(
                             )
                             synced_count += 1
                     except AnalysisServiceError as e:
-                        console.print(
-                            f"[dim]Could not sync analysis {rec.analysis_job_id}: {e}[/dim]"
-                        )
-                        failed_count += 1
+                        _record_sync_error(error_groups, "analysis", rec.analysis_job_id, e)
 
                 # Sync LRC job
                 if rec.lrc_job_id and rec.lrc_status in ("pending", "processing"):
@@ -4057,13 +4070,20 @@ def check_status(
                             )
                             synced_count += 1
                     except AnalysisServiceError as e:
-                        console.print(f"[dim]Could not sync LRC {rec.lrc_job_id}: {e}[/dim]")
-                        failed_count += 1
+                        _record_sync_error(error_groups, "LRC", rec.lrc_job_id, e)
 
             if synced_count > 0:
                 console.print(f"[green]Synced {synced_count} job(s)[/green]")
-            if failed_count > 0:
-                console.print(f"[yellow]Failed to sync {failed_count} job(s)[/yellow]")
+            failed_total = sum(len(job_ids) for job_ids in error_groups.values())
+            if failed_total > 0:
+                console.print(f"[yellow]Failed to sync {failed_total} job(s):[/yellow]")
+                for (kind, message), job_ids in sorted(
+                    error_groups.items(), key=lambda item: (-len(item[1]), item[0])
+                ):
+                    console.print(
+                        f"  [yellow]•[/yellow] {len(job_ids)} × {kind}: {message} "
+                        f"[dim](e.g. {job_ids[0]})[/dim]"
+                    )
             console.print("")
         else:
             console.print("[green]No pending jobs to sync.[/green]")

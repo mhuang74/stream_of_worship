@@ -353,7 +353,7 @@ on for debugging sessions.
 
 ```bash
 # Single song with trace dump
-sow-admin lyrics generate song_0001 --dump-llm-trace --wait
+sow-admin lyrics generate song_0001 --dump-llm-trace
 ```
 
 Common flags:

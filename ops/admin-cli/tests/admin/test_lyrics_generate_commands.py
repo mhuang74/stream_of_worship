@@ -178,10 +178,43 @@ def test_generate_rejects_song_id_with_stdin():
     assert "Cannot use both song_id argument and --stdin flag" in result.output
 
 
-def test_generate_accepts_wait_with_stdin():
-    """--wait is now valid with --stdin (batch mode polls all jobs)."""
-    result, single_mock, batch_mock = _invoke_stdin_generate("song_001\n", ("--wait",))
+def test_generate_accepts_no_wait_with_stdin():
+    """--no-wait is valid with --stdin (fire-and-forget batch)."""
+    result, single_mock, batch_mock = _invoke_stdin_generate("song_001\n", ("--no-wait",))
+    assert result.exit_code == 0, result.output
     assert "not supported with --stdin" not in result.output
+
+
+@pytest.mark.parametrize("extra_args, expected_wait", [((), True), (("--no-wait",), False)])
+def test_generate_single_forwards_wait(extra_args, expected_wait):
+    """Single-song mode waits by default; --no-wait opts out."""
+    with (
+        patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+        patch.object(lyrics_commands, "get_db_client", MagicMock()),
+        patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+        patch.object(lyrics_commands, "submit_lrc_single") as single_mock,
+    ):
+        config_mock.return_value.get_connection_url.return_value = "postgresql://fake"
+        result = runner.invoke(lyrics_app, ["generate", "song_001", *extra_args])
+    assert result.exit_code == 0, result.output
+    assert single_mock.call_args.kwargs["wait"] is expected_wait
+
+
+@pytest.mark.parametrize("extra_args, expected_wait", [((), True), (("--no-wait",), False)])
+def test_generate_stdin_batch_forwards_wait(extra_args, expected_wait):
+    """--stdin batch mode waits by default; --no-wait opts out."""
+    with (
+        patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+        patch.object(lyrics_commands, "get_db_client", MagicMock()),
+        patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+        patch.object(lyrics_commands, "_run_stdin_batch") as batch_mock,
+    ):
+        config_mock.return_value.get_connection_url.return_value = "postgresql://fake"
+        result = runner.invoke(
+            lyrics_app, ["generate", "--stdin", "--force", *extra_args], input="song_001\n"
+        )
+    assert result.exit_code == 0, result.output
+    assert batch_mock.call_args.kwargs["wait"] is expected_wait
 
 
 def test_generate_rejects_resume_with_stdin():
