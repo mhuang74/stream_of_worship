@@ -1332,12 +1332,23 @@ class LRCEditorScreen(Screen[None]):
             return
         if self._guard_preview():
             return
-        recording = self.db_client.get_recording_by_hash(self.hash_prefix)
+        if self._save_in_flight:
+            # The upload worker shares db_client.connection; refusing beats blocking
+            # the event loop on _db_lock for the length of a DB stage.
+            self.notify(
+                "Save/upload in progress — try again when it finishes",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        with self._db_lock:
+            recording = self.db_client.get_recording_by_hash(self.hash_prefix)
         if not recording or not recording.song_id:
             self.notify("No song linked", severity="warning", timeout=3)
             return
 
-        song = self.db_client.get_song(recording.song_id)
+        with self._db_lock:
+            song = self.db_client.get_song(recording.song_id)
         if not song:
             self.notify("No canonical lyrics found", severity="warning", timeout=3)
             return
