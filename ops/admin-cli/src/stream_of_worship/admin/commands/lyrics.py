@@ -607,7 +607,9 @@ def lyrics_generate(
     force_qwen3_asr: bool = typer.Option(
         False, "--force-qwen3-asr", help="Bypass cached Qwen3 ASR transcription only"
     ),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for LRC generation to complete"),
+    no_wait: bool = typer.Option(
+        False, "--no-wait", help="Submit without waiting for job completion"
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -632,13 +634,18 @@ def lyrics_generate(
     Use --no-youtube to skip the YouTube path and use Whisper directly.
     Use --no-qwen3-asr to skip Qwen3 ASR and use Whisper.
 
+    By default the command waits for job completion. Single-song mode polls with
+    live progress (10-minute timeout); --stdin batch mode writes a run manifest
+    and polls every job (Ctrl+C-safe, resumable with --resume). Use --no-wait
+    to submit and exit immediately.
+
     Use --dump-llm-trace to dump per-step LLM/ASR traces to SOW_DEBUG_DUMP_DIR
     on the analysis service (auto-bypasses the LRC result cache).
 
     For batch processing, pipe song IDs via stdin (always batch mode, with
-    feedback guard, manifest, and optional --wait polling):
+    feedback guard, manifest, and polling):
         sow-admin audio list --lrc incomplete --format ids | sow-admin lyrics generate --stdin
-        sow-admin lyrics feedback list --rating poor --format ids | sow-admin lyrics generate --force --stdin --wait
+        sow-admin lyrics feedback list --rating poor --format ids | sow-admin lyrics generate --force --stdin
     """
     # Validate mutually exclusive inputs
     if not song_id and not stdin and not resume:
@@ -708,7 +715,7 @@ def lyrics_generate(
             no_whisper_cache=no_whisper_cache,
             no_qwen3_asr=no_qwen3_asr,
             force_qwen3_asr=force_qwen3_asr,
-            wait=wait,
+            wait=not no_wait,
             dry_run=dry_run,
             dump_llm_trace=dump_llm_trace,
         )
@@ -728,7 +735,7 @@ def lyrics_generate(
         no_whisper_cache=no_whisper_cache,
         no_qwen3_asr=no_qwen3_asr,
         force_qwen3_asr=force_qwen3_asr,
-        wait=wait,
+        wait=not no_wait,
         console=console,
         dump_llm_trace=dump_llm_trace,
     )

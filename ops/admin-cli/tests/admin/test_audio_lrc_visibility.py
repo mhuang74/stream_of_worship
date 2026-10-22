@@ -9,7 +9,11 @@ from rich.console import Console
 from stream_of_worship.admin.commands import audio
 from stream_of_worship.admin.services import lrc_jobs
 from stream_of_worship.admin.db.models import Recording, Song
-from stream_of_worship.admin.services.analysis import AnalysisResult, JobInfo
+from stream_of_worship.admin.services.analysis import (
+    AnalysisResult,
+    AnalysisServiceError,
+    JobInfo,
+)
 
 
 def _console() -> Console:
@@ -411,3 +415,102 @@ def test_status_sync_skips_pending_table():
     assert "Synced 1 job(s)" in text
     assert "Pending Recordings" not in text
     assert cursor.execute.call_count == 1
+
+
+def test_status_sync_summarizes_repeated_job_not_found():
+    """Repeated 404s collapse into one grouped line instead of one per job."""
+    db_client = MagicMock()
+    db_client.list_recordings.return_value = []
+    db_client.get_recording_by_hash.side_effect = [
+        _recording(hash_prefix="hash_a", lrc_job_id="job_a"),
+        _recording(hash_prefix="hash_b", lrc_job_id="job_b"),
+    ]
+
+    cursor = MagicMock()
+    cursor.fetchall.return_value = [("hash_a",), ("hash_b",)]
+    db_client.connection.cursor.return_value = cursor
+
+    analysis_client = MagicMock()
+    analysis_client.get_job.side_effect = [
+        AnalysisServiceError("Job not found: job_a", status_code=404),
+        AnalysisServiceError("Job not found: job_b", status_code=404),
+    ]
+
+    config = SimpleNamespace(
+        analysis_url="http://analysis.example",
+        r2_bucket="bucket",
+        r2_endpoint_url="https://r2.example",
+        r2_region="auto",
+    )
+
+    output = io.StringIO()
+    with (
+        patch.object(audio.AdminConfig, "load", return_value=config),
+        patch.object(audio, "get_db_client", return_value=db_client),
+        patch.object(audio, "AnalysisClient", return_value=analysis_client),
+        patch.object(audio, "console", Console(file=output, force_terminal=False)),
+    ):
+        audio.check_status(
+            job_id=None,
+            sync=True,
+            force_status=None,
+            force_url=None,
+            reconcile=False,
+            config_path=None,
+        )
+
+    text = output.getvalue()
+    assert "Failed to sync 2 job(s):" in text
+    assert "2 × LRC: Job not found: <job>" in text
+    assert text.count("Job not found: <job>") == 1
+    assert "Could not sync" not in text
+
+
+def test_status_sync_summary_separates_error_kinds():
+    """Analysis and LRC failures with different messages form separate groups."""
+    db_client = MagicMock()
+    db_client.list_recordings.return_value = []
+    db_client.get_recording_by_hash.return_value = _recording(
+        hash_prefix="hash_a",
+        analysis_job_id="job_an",
+        analysis_status="processing",
+        lrc_job_id="job_lrc",
+    )
+
+    cursor = MagicMock()
+    cursor.fetchall.return_value = [("hash_a",)]
+    db_client.connection.cursor.return_value = cursor
+
+    analysis_client = MagicMock()
+    analysis_client.get_job.side_effect = [
+        AnalysisServiceError("Failed to get job status (HTTP 500): boom", status_code=500),
+        AnalysisServiceError("Job not found: job_lrc", status_code=404),
+    ]
+
+    config = SimpleNamespace(
+        analysis_url="http://analysis.example",
+        r2_bucket="bucket",
+        r2_endpoint_url="https://r2.example",
+        r2_region="auto",
+    )
+
+    output = io.StringIO()
+    with (
+        patch.object(audio.AdminConfig, "load", return_value=config),
+        patch.object(audio, "get_db_client", return_value=db_client),
+        patch.object(audio, "AnalysisClient", return_value=analysis_client),
+        patch.object(audio, "console", Console(file=output, force_terminal=False)),
+    ):
+        audio.check_status(
+            job_id=None,
+            sync=True,
+            force_status=None,
+            force_url=None,
+            reconcile=False,
+            config_path=None,
+        )
+
+    text = output.getvalue()
+    assert "Failed to sync 2 job(s):" in text
+    assert "1 × analysis: Failed to get job status (HTTP 500): boom" in text
+    assert "1 × LRC: Job not found: <job>" in text
