@@ -63,9 +63,11 @@ cd ops/analysis-service
 SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator" ./start-dev.sh --no-start
 ```
 
-### Forced Aligner Model (Required for LRC Refinement)
+### Forced Aligner (Runs on Modal)
 
-The forced aligner model is loaded in-process by the analysis service. Download instructions are in the [README](README.md#forced-aligner-model-setup-for-lrc-refinement).
+Nothing to download here: forced alignment runs in the `sow-forced-aligner` Modal
+app, which caches the Qwen3-ForcedAligner checkpoint in its own volume. Deploy it
+once with your Modal token — see [README](README.md#forced-alignment-on-modal).
 
 ## Development Workflow
 
@@ -357,8 +359,12 @@ docker compose down -v
 | `SOW_EMBEDDING_BASE_URL` | For embedding jobs | - | Embedding base URL |
 | `SOW_EMBEDDING_MODEL` | For embedding jobs | text-embedding-3-small | Embedding model name |
 | `BPM_ALGORITHM_VERSION` | Optional | v4_octave_guard | Tempo algorithm for Fast Analysis jobs (v4_octave_guard / v5_cps_prior) |
-| `SOW_FORCED_ALIGNER_MODEL_PATH` | For LRC | - | Path to forced aligner model snapshot |
-| `SOW_FORCED_ALIGNER_DEVICE` | For LRC | auto | Device for forced aligner (cpu, cuda, auto) |
+| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | For LRC | - | Modal tokens (Whisper + forced alignment) |
+| `SOW_MODAL_FORCED_ALIGNER_APP_NAME` | Optional | sow-forced-aligner | Deployed forced-aligner app |
+| `SOW_MODAL_FORCED_ALIGNER_CLASS_NAME` | Optional | ForcedAligner | Deployed Modal class name |
+| `SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS` | Optional | 2 | Retry budget per alignment call |
+| `SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS` | Optional | 5.0 | Linear backoff between attempts |
+| `SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES` | Optional | 90000000 | Cap on the 16 kHz mono WAV upload |
 | `SOW_DASHSCOPE_API_KEY` | Optional | - | DashScope API key for Qwen3 ASR |
 | `SOW_DASHSCOPE_ASR_REGION` | Optional | intl | DashScope region (intl, cn, us) |
 | `SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS` | Optional | 300 | Direct ASR call timeout |

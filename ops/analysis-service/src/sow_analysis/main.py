@@ -36,11 +36,6 @@ except ImportError:
     MvsepClient = None
 
 try:
-    from .workers.forced_aligner import ForcedAlignerWrapper
-except ImportError:
-    ForcedAlignerWrapper = None
-
-try:
     from .services.qwen3_asr_client import Qwen3AsrClient
 except ImportError:
     Qwen3AsrClient = None
@@ -53,9 +48,6 @@ separator_wrapper: "AudioSeparatorWrapper | None" = None
 
 # Global MVSEP client instance
 mvsep_client: "MvsepClient | None" = None
-
-# Global forced aligner wrapper instance
-forced_aligner_wrapper: "ForcedAlignerWrapper | None" = None
 
 # Global Qwen3 ASR client instance
 qwen3_client: "Qwen3AsrClient | None" = None
@@ -75,7 +67,7 @@ async def lifespan(app: FastAPI):
     Yields:
         None
     """
-    global job_queue, separator_wrapper, mvsep_client, forced_aligner_wrapper
+    global job_queue, separator_wrapper, mvsep_client
     global qwen3_client, mvsep_quota_waiter, qwen3_quota_waiter
 
     # Startup
@@ -174,17 +166,6 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("AudioSeparatorWrapper not available (audio-separator not installed)")
 
-    # Create forced aligner wrapper (lazy init)
-    if ForcedAlignerWrapper is not None:
-        forced_aligner_wrapper = ForcedAlignerWrapper(
-            model_path=settings.SOW_FORCED_ALIGNER_MODEL_PATH,
-            device=settings.SOW_FORCED_ALIGNER_DEVICE,
-        )
-        job_queue.set_forced_aligner_wrapper(forced_aligner_wrapper)
-        logger.info("Forced aligner wrapper created (lazy init on first use)")
-    else:
-        logger.warning("ForcedAlignerWrapper not available (qwen-asr not installed)")
-
     # Log startup configuration (non-sensitive values only)
     headers = ("Category", "Setting", "Value")
     config_rows = [
@@ -210,8 +191,23 @@ async def lifespan(app: FastAPI):
         ("DashScope Qwen3 ASR", "flash_model", settings.SOW_DASHSCOPE_ASR_FLASH_MODEL),
         ("DashScope Qwen3 ASR", "filetrans_model", settings.SOW_DASHSCOPE_ASR_FILETRANS_MODEL),
         ("DashScope Qwen3 ASR", "max_concurrent", str(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)),
-        ("Qwen3 ForcedAligner", "model_path", settings.SOW_FORCED_ALIGNER_MODEL_PATH),
-        ("Qwen3 ForcedAligner", "device", settings.SOW_FORCED_ALIGNER_DEVICE),
+        ("Forced Aligner", "backend", "modal"),
+        (
+            "Forced Aligner",
+            "app",
+            f"{settings.SOW_MODAL_FORCED_ALIGNER_APP_NAME}/{settings.SOW_MODAL_FORCED_ALIGNER_CLASS_NAME}",
+        ),
+        (
+            "Forced Aligner",
+            "configured",
+            str(
+                bool(
+                    os.environ.get("MODAL_TOKEN_ID")
+                    and os.environ.get("MODAL_TOKEN_SECRET")
+                )
+            ),
+        ),
+        ("Forced Aligner", "max_attempts", str(settings.SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS)),
         ("Whisper", "backend", "modal"),
         (
             "Whisper",
@@ -281,11 +277,6 @@ async def lifespan(app: FastAPI):
     if separator_wrapper is not None:
         await separator_wrapper.cleanup()
         logger.info("Audio separator wrapper cleaned up")
-
-    # Cleanup forced aligner wrapper
-    if forced_aligner_wrapper is not None:
-        await forced_aligner_wrapper.cleanup()
-        logger.info("Forced aligner wrapper cleaned up")
 
     # Cleanup MVSEP client
     if mvsep_client is not None:

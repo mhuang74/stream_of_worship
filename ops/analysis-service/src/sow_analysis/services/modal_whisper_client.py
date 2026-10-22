@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -30,6 +29,12 @@ import modal
 import modal.exception as modal_exception
 
 from ..config import settings
+from .audio_transcode import transcode_to_16k_mono_wav
+from .modal_retry import (
+    RETRYABLE_GRPC_STATUSES,
+    RETRYABLE_MODAL_ERRORS,
+    looks_like_oversize_payload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,40 +47,8 @@ class ModalWhisperConfigError(ModalWhisperError):
     """Modal is not configured, or the deployed app/class is unreachable."""
 
 
-# Only classes that exist in modal.exception (verified in modal 1.2.x).
-# NOTE: modal.exception has NO ServiceError/ResourceExhaustedError/PermissionDeniedError.
-# Two subtleties verified against the modal client source:
-# 1. A crashed/failed input re-raises the ORIGINAL user exception from the container
-#    (container_io_manager pickles it; _process_result deserializes and re-raises it).
-#    RemoteError is only the fallback when deserialization fails. So a ctranslate2
-#    RuntimeError arrives as RuntimeError — the final `except Exception` below is the
-#    contract backstop, not RemoteError.
-# 2. Raw grpclib.GRPCError escapes Modal's conversion once its transport retries are
-#    exhausted (grpc_utils re-raises for any status except UNAUTHENTICATED→AuthError).
-#    It must be classified by gRPC status here.
-_RETRYABLE_ERRORS = (
-    modal_exception.ConnectionError,   # socket/transport failures
-    modal_exception.TimeoutError,      # base of FunctionTimeoutError/ExecTimeoutError
-    modal_exception.InternalFailure,   # crash-looped container / infra failure
-    modal_exception.RemoteError,       # container exception that could not be deserialized;
-                                       # bounded retries absorb transient cases. Non-transient
-                                       # model errors fail after SOW_MODAL_WHISPER_MAX_ATTEMPTS.
-)
-_RETRYABLE_GRPC_STATUSES = frozenset(
-    {
-        grpclib.Status.DEADLINE_EXCEEDED,
-        grpclib.Status.UNAVAILABLE,
-        grpclib.Status.CANCELLED,
-        grpclib.Status.INTERNAL,
-        grpclib.Status.UNKNOWN,
-    }
-)
-
-
-def _looks_too_large(exc: BaseException) -> bool:
-    """Blob-upload 413s surface as RemoteError/InternalFailure, not RequestSizeError."""
-    message = str(exc)
-    return "413" in message or "too large" in message
+# Retryable-error classification lives in services/modal_retry.py so the forced-aligner
+# client classifies failures identically (see that module for the verified subtleties).
 
 
 class ModalWhisperClient:
@@ -130,27 +103,6 @@ class ModalWhisperClient:
             self._instances[model_name] = self._cls(model_name=model_name)
         return self._instances[model_name]
 
-    async def _transcode_to_16k_mono_wav(self, audio_path: Path) -> bytes:
-        """Transcode to 16 kHz mono PCM-16 WAV — Whisper's internal input rate, so
-        zero ASR quality loss. Heavy libs are imported lazily and run off the event
-        loop (same recipe as _slice_audio_tail in workers/lrc.py)."""
-
-        def _transcode() -> bytes:
-            import librosa
-            import soundfile as sf
-
-            y, _ = librosa.load(str(audio_path), sr=16000, mono=True)
-            fd, name = tempfile.mkstemp(suffix=".wav")
-            os.close(fd)
-            tmp_path = Path(name)
-            try:
-                sf.write(str(tmp_path), y, 16000, subtype="PCM_16")
-                return tmp_path.read_bytes()
-            finally:
-                tmp_path.unlink(missing_ok=True)
-
-        return await asyncio.to_thread(_transcode)
-
     async def transcribe(
         self,
         audio_path: Path,
@@ -180,7 +132,7 @@ class ModalWhisperClient:
         if len(audio_bytes) > self.max_audio_bytes:
             # The old local path had no size cap; hard-failing here would regress
             # long lossless stems. Transcode instead, then re-check.
-            audio_bytes = await self._transcode_to_16k_mono_wav(audio_path)
+            audio_bytes = await asyncio.to_thread(transcode_to_16k_mono_wav, audio_path)
             if len(audio_bytes) > self.max_audio_bytes:
                 raise ModalWhisperError(
                     f"Audio too large even after 16kHz mono transcode "
@@ -232,7 +184,7 @@ class ModalWhisperClient:
                     f"Modal Whisper execution failed (request_id={request_id}): {exc}"
                 ) from exc
             except grpclib.GRPCError as exc:
-                if exc.status not in _RETRYABLE_GRPC_STATUSES:
+                if exc.status not in RETRYABLE_GRPC_STATUSES:
                     raise ModalWhisperError(
                         f"Modal transport error {exc.status} (request_id={request_id}): {exc.message}"
                     ) from exc
@@ -251,8 +203,8 @@ class ModalWhisperClient:
                     delay,
                 )
                 await asyncio.sleep(delay)
-            except _RETRYABLE_ERRORS as exc:
-                if _looks_too_large(exc):
+            except RETRYABLE_MODAL_ERRORS as exc:
+                if looks_like_oversize_payload(exc):
                     raise ModalWhisperError(
                         f"Modal rejected the {len(audio_bytes)}-byte audio payload as too large: {exc}"
                     ) from exc

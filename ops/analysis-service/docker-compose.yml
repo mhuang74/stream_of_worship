@@ -41,6 +41,12 @@ x-common-env: &common-env
   SOW_MODAL_WHISPER_MAX_AUDIO_BYTES: ${SOW_MODAL_WHISPER_MAX_AUDIO_BYTES:-90000000}
   SOW_MODAL_WHISPER_ALLOWED_MODELS: ${SOW_MODAL_WHISPER_ALLOWED_MODELS:-tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3}
   SOW_WHISPER_CACHE_VERSION: ${SOW_WHISPER_CACHE_VERSION:-2}
+  # Forced alignment runs on Modal (modal_apps/forced_aligner_app.py); same tokens as Whisper
+  SOW_MODAL_FORCED_ALIGNER_APP_NAME: ${SOW_MODAL_FORCED_ALIGNER_APP_NAME:-sow-forced-aligner}
+  SOW_MODAL_FORCED_ALIGNER_CLASS_NAME: ${SOW_MODAL_FORCED_ALIGNER_CLASS_NAME:-ForcedAligner}
+  SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS: ${SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS:-2}
+  SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS: ${SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS:-5.0}
+  SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES: ${SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES:-90000000}
   # MVSEP Cloud API Configuration
   SOW_MVSEP_API_KEY: ${SOW_MVSEP_API_KEY}
   SOW_MVSEP_ENABLED: ${SOW_MVSEP_ENABLED:-true}
@@ -83,9 +89,6 @@ x-common-env: &common-env
   SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS: ${SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS:-1800}
   SOW_DASHSCOPE_ASR_MAX_CONCURRENT: ${SOW_DASHSCOPE_ASR_MAX_CONCURRENT:-2}
   SOW_DASHSCOPE_ASR_CACHE_VERSION: ${SOW_DASHSCOPE_ASR_CACHE_VERSION:-1}
-  # Forced Aligner Configuration (Qwen3ForcedAligner-0.6B, runs in-process)
-  SOW_FORCED_ALIGNER_MODEL_PATH: ${SOW_FORCED_ALIGNER_MODEL_PATH:-Qwen/Qwen3-ForcedAligner-0.6B}
-  SOW_FORCED_ALIGNER_DEVICE: ${SOW_FORCED_ALIGNER_DEVICE:-auto}
   # Fast Analysis (librosa-only) Concurrency
   SOW_FAST_ANALYZE_MAX_CONCURRENT: ${SOW_FAST_ANALYZE_MAX_CONCURRENT:-0}
   # BPM Algorithm Configuration (Fast Analysis tempo detection)
@@ -118,7 +121,6 @@ services:
       - analysis-cache:/cache
       - ${SOW_DEBUG_DUMP_DIR:-./debug-dumps}:/cache/debug-dumps
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
-      - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
     # deploy:
@@ -143,7 +145,6 @@ services:
       - ./src:/workspace/src:ro
       - ${SOW_DEBUG_DUMP_DIR:-./debug-dumps}:/cache/debug-dumps
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
-      - ${SOW_FORCED_ALIGNER_MODEL_ROOT:-/dev/null}:/models/hf-model:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
     # deploy:

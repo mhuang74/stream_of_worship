@@ -1,23 +1,19 @@
 """Tests for forced alignment job processing."""
 
-import asyncio
 import logging
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from sow_analysis.models import (
     ForcedAlignmentJobRequest,
     ForcedAlignmentOptions,
-    JobResult,
     JobStatus,
     JobType,
 )
 from sow_analysis.workers.forced_alignment import (
     format_timestamp,
-    map_segments_to_lines,
-    normalize_text,
     validate_audio_duration,
 )
 
@@ -102,17 +98,25 @@ class TestForcedAlignmentWorker:
     """Test forced alignment job processing with mocked dependencies."""
 
     @pytest.fixture
-    def mock_queue(self):
-        from sow_analysis.workers.queue import JobQueue
-
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
-        queue._forced_aligner_wrapper = AsyncMock()
-        queue._forced_aligner_wrapper.align = AsyncMock(
+    def align_client(self, mocker):
+        client = MagicMock()
+        client.align = AsyncMock(
             return_value=[
                 (0.0, 2.0, "hello"),
                 (2.0, 4.0, "world"),
             ]
         )
+        mocker.patch(
+            "sow_analysis.workers.queue.get_modal_forced_aligner_client",
+            return_value=client,
+        )
+        return client
+
+    @pytest.fixture
+    def mock_queue(self, align_client):
+        from sow_analysis.workers.queue import JobQueue
+
+        queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
         queue.r2_client = AsyncMock()
         queue.r2_client.bucket = "test-bucket"
         queue.r2_client.download_audio = AsyncMock()
@@ -163,18 +167,20 @@ class TestForcedAlignmentWorker:
         mock_queue.r2_client.upload_official_lrc.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_process_forced_alignment_job_language_mapping(self, mock_queue, fa_job):
+    async def test_process_forced_alignment_job_language_mapping(
+        self, mock_queue, fa_job, align_client
+    ):
         fa_job.request.options.language = "en"
         with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
 
-        mock_queue._forced_aligner_wrapper.align.assert_called_once()
-        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        align_client.align.assert_called_once()
+        call_args = align_client.align.call_args
         assert call_args[0][2] == "English"
 
     @pytest.mark.asyncio
     async def test_process_forced_alignment_job_logs_resolved_audio_input(
-        self, mock_queue, fa_job, caplog
+        self, mock_queue, fa_job, align_client, caplog
     ):
         from sow_analysis.workers.queue import ResolvedTranscriptionAudio
 
@@ -192,8 +198,8 @@ class TestForcedAlignmentWorker:
                 await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
-        mock_queue._forced_aligner_wrapper.align.assert_awaited_once()
-        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        align_client.align.assert_awaited_once()
+        call_args = align_client.align.call_args
         assert call_args[0][0] == stem_path
         assert "Forced alignment audio input resolved" in caplog.text
         assert "stem_kind=vocals_dry" in caplog.text
@@ -216,25 +222,10 @@ class TestForcedAlignmentWorker:
         assert job.status == JobStatus.FAILED
 
     @pytest.mark.asyncio
-    async def test_process_forced_alignment_job_no_wrapper(self, fa_job):
-        from sow_analysis.workers.queue import JobQueue
-
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
-        queue.r2_client = AsyncMock()
-        queue.r2_client.download_audio = AsyncMock()
-        queue.job_store = AsyncMock()
-        queue.job_store.update_job = AsyncMock()
-        queue._forced_aligner_wrapper = None
-
-        await queue._process_forced_alignment_job(fa_job)
-        assert fa_job.status == JobStatus.FAILED
-        assert "not available" in fa_job.error_message
-
-    @pytest.mark.asyncio
-    async def test_process_forced_alignment_job_alignment_failure(self, mock_queue, fa_job):
-        mock_queue._forced_aligner_wrapper.align = AsyncMock(
-            side_effect=RuntimeError("Model failed")
-        )
+    async def test_process_forced_alignment_job_alignment_failure(
+        self, mock_queue, fa_job, align_client
+    ):
+        align_client.align = AsyncMock(side_effect=RuntimeError("Model failed"))
 
         with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
             await mock_queue._process_forced_alignment_job(fa_job)
@@ -257,32 +248,7 @@ class TestForcedAlignmentWorker:
         assert call_kwargs.get("expected_etag") == "oldetag"
 
     @pytest.mark.asyncio
-    async def test_deadlock_prevention(self, fa_job):
-        """Verify forced alignment job + stem separation child job completes
-        when SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1."""
-        from sow_analysis.workers.queue import JobQueue
-
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
-        queue._forced_aligner_wrapper = AsyncMock()
-        queue._forced_aligner_wrapper.align = AsyncMock(return_value=[(0.0, 2.0, "test")])
-        queue.r2_client = AsyncMock()
-        queue.r2_client.bucket = "test-bucket"
-        queue.r2_client.download_audio = AsyncMock()
-        queue.r2_client.upload_official_lrc = AsyncMock(return_value="s3://bucket/test.lrc")
-        queue.r2_client.head_object = AsyncMock(return_value={"ETag": '"etag"'})
-        queue.r2_client.check_exists = AsyncMock(return_value=False)
-        queue.r2_client.copy_object = AsyncMock()
-        queue.job_store = AsyncMock()
-        queue.job_store.update_job = AsyncMock()
-
-        fa_job.request.options.use_vocals_stem = False
-
-        with patch("sow_analysis.workers.queue.validate_audio_duration", return_value=120.0):
-            await queue._process_forced_alignment_job(fa_job)
-        assert fa_job.status == JobStatus.COMPLETED
-
-    @pytest.mark.asyncio
-    async def test_auto_detect_english(self, mock_queue, fa_job):
+    async def test_auto_detect_english(self, mock_queue, fa_job, align_client):
         """When language='auto' and lyrics are English, resolve to 'English'."""
         fa_job.request.options.language = "auto"
         fa_job.request.lyrics_text = "Hello world\nThis is English"
@@ -301,11 +267,11 @@ class TestForcedAlignmentWorker:
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
-        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        call_args = align_client.align.call_args
         assert call_args[0][2] == "English"
 
     @pytest.mark.asyncio
-    async def test_auto_detect_chinese(self, mock_queue, fa_job):
+    async def test_auto_detect_chinese(self, mock_queue, fa_job, align_client):
         """When language='auto' and lyrics are Chinese, resolve to 'Chinese'."""
         fa_job.request.options.language = "auto"
         fa_job.request.lyrics_text = "我要看見\n如同摩西看見祢的榮耀"
@@ -324,11 +290,11 @@ class TestForcedAlignmentWorker:
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
-        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        call_args = align_client.align.call_args
         assert call_args[0][2] == "Chinese"
 
     @pytest.mark.asyncio
-    async def test_explicit_zh_bypasses_auto(self, mock_queue, fa_job):
+    async def test_explicit_zh_bypasses_auto(self, mock_queue, fa_job, align_client):
         """When language='zh' explicitly, auto-detection is skipped."""
         fa_job.request.options.language = "zh"
 
@@ -336,11 +302,11 @@ class TestForcedAlignmentWorker:
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
-        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        call_args = align_client.align.call_args
         assert call_args[0][2] == "Chinese"
 
     @pytest.mark.asyncio
-    async def test_explicit_en_bypasses_auto(self, mock_queue, fa_job):
+    async def test_explicit_en_bypasses_auto(self, mock_queue, fa_job, align_client):
         """When language='en' explicitly, auto-detection is skipped."""
         fa_job.request.options.language = "en"
 
@@ -348,7 +314,7 @@ class TestForcedAlignmentWorker:
             await mock_queue._process_forced_alignment_job(fa_job)
 
         assert fa_job.status == JobStatus.COMPLETED
-        call_args = mock_queue._forced_aligner_wrapper.align.call_args
+        call_args = align_client.align.call_args
         assert call_args[0][2] == "English"
 
     @pytest.mark.asyncio
@@ -357,7 +323,6 @@ class TestForcedAlignmentWorker:
         from sow_analysis.workers.queue import JobQueue
 
         queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
-        queue._forced_aligner_wrapper = AsyncMock()
         queue.r2_client = AsyncMock()
         queue.job_store = AsyncMock()
         queue.job_store.update_job = AsyncMock()
@@ -404,41 +369,3 @@ class TestForcedAlignmentWorker:
 
         assert fa_job.status == JobStatus.FAILED
         assert "backup_failed" in fa_job.stage
-
-
-class TestForcedAlignerWrapper:
-    """Test ForcedAlignerWrapper double-check locking."""
-
-    @pytest.mark.asyncio
-    async def test_ensure_ready_raises_on_failure(self):
-        from sow_analysis.workers.forced_aligner import ForcedAlignerWrapper
-
-        wrapper = ForcedAlignerWrapper(model_path="/nonexistent", device="cpu")
-        wrapper.initialize = AsyncMock()
-        wrapper._ready = False
-
-        with pytest.raises(RuntimeError, match="failed to load"):
-            await wrapper._ensure_ready()
-
-    @pytest.mark.asyncio
-    async def test_ensure_ready_skips_if_ready(self):
-        from sow_analysis.workers.forced_aligner import ForcedAlignerWrapper
-
-        wrapper = ForcedAlignerWrapper(model_path="test", device="cpu")
-        wrapper._ready = True
-
-        await wrapper._ensure_ready()
-
-    @pytest.mark.asyncio
-    async def test_cleanup(self):
-        from sow_analysis.workers.forced_aligner import ForcedAlignerWrapper
-
-        wrapper = ForcedAlignerWrapper(model_path="test", device="cpu")
-        wrapper._ready = True
-        wrapper._model = MagicMock()
-
-        await wrapper.cleanup()
-
-        assert wrapper._ready is False
-        assert wrapper._model is None
-        assert wrapper.is_ready is False
