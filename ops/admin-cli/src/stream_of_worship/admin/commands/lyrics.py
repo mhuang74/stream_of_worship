@@ -961,6 +961,13 @@ def _poll_lrc_batch(
     else:
         started_at = datetime.now(timezone.utc).isoformat()
     batch_id = manifest_path.name.replace("_manifest.json", "") if manifest_path else None
+    # The resume hint must name the command that owns this manifest kind:
+    # `lyrics generate --resume` rejects a `lyrics_align` manifest.
+    resume_command = (
+        "sow-admin lyrics align --resume"
+        if kind == "lyrics_align"
+        else "sow-admin lyrics generate --resume"
+    )
 
     def _flush() -> None:
         if manifest_path:
@@ -1096,7 +1103,7 @@ def _poll_lrc_batch(
                 entry["outcome"] = "pending"
                 console.print(
                     f"  [cyan]→ {entry['song_id']}: job continues server-side; "
-                    f"resume with: sow-admin lyrics generate --resume {manifest_path}[/cyan]"
+                    f"resume with: {resume_command} {manifest_path}[/cyan]"
                     if manifest_path
                     else f"  [cyan]→ {entry['song_id']}: job continues server-side[/cyan]"
                 )
@@ -1104,7 +1111,7 @@ def _poll_lrc_batch(
         console.print()
         console.print(
             "[dim]Tip: unfinished jobs stay valid server-side; resume with "
-            "'sow-admin lyrics generate --resume <manifest>' to finish the run.[/dim]"
+            f"'{resume_command} <manifest>' to finish the run.[/dim]"
         )
     return entries
 

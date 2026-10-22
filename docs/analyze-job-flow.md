@@ -119,7 +119,7 @@ The command (`analyze_recording`, audio.py:1514):
 4. Builds `AnalysisClient(config.analysis_url)` — requires env var `SOW_ANALYSIS_API_KEY` (`services/analysis.py:149`).
 5. Calls `client.submit_analysis(audio_url, content_hash, generate_stems=not no_stems, force=force)` (audio.py:1582).
 6. Updates DB: `analysis_status="processing"`, `analysis_job_id=job_id` (audio.py:1598).
-7. Unless `--no-wait`: polls `client.wait_for_completion(job_id, poll_interval=30, timeout=600)` (audio.py:1625), then `db_client.update_recording_analysis(...)` writes `tempo_bpm`, key/mode, beats, sections, etc. (audio.py:1651).
+7. Unless `--no-wait`: polls `client.wait_for_completion(job_id, poll_interval=30, timeout=1800)` (audio.py:2213), then `db_client.update_recording_analysis(...)` writes `tempo_bpm`, key/mode, beats, sections, etc. (audio.py:1651).
 
 ### HTTP submission — `AnalysisClient.submit_analysis`
 
