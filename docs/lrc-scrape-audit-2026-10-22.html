@@ -375,7 +375,7 @@ GET /api/lyrics/{contentHash} × 20 (spread across the catalogue, 0.25 s spacing
   <code>expiresInSeconds</code> may be as large as 86,400.</p>
 
   <dl class="kv">
-    <dt>Minted URL</dt><dd>https://stream-of-worship.6c80769fe5aa4be53908b83c3d0454cd.r2.cloudflarestorage.com/b275c5784170/lyrics.lrc?[query string redacted]</dd>
+    <dt>Minted URL</dt><dd>https://&lt;bucket&gt;.&lt;account-id&gt;.r2.cloudflarestorage.com/&lt;hashPrefix&gt;/lyrics.lrc?[query string redacted]</dd>
     <dt>Validity</dt><dd>X-Amz-Expires=86400 · expiresAt 2026-10-23T08:03:41Z · requested cacheControl “public, max-age=86400”</dd>
   </dl>
 
@@ -386,8 +386,8 @@ GET /api/lyrics/{contentHash} × 20 (spread across the catalogue, 0.25 s spacing
         timestamped LRC lines in body: 48
   SHA-256 of body: 37fd73d167b13dee…</pre>
 
-  <p><b>Evidence — no ownership dimension.</b> A second recording (<code>36547af30f79</code>) that the test account
-  has never interacted with was signed with the same result (200, <code>/36547af30f79/lyrics.lrc</code>,
+  <p><b>Evidence — no ownership dimension.</b> A second recording (<code>&lt;hashPrefix&gt;</code>) that the test account
+  has never interacted with was signed with the same result (200, <code>/&lt;hashPrefix&gt;/lyrics.lrc</code>,
   expiresAt +24 h). The TTL floor is enforced: <code>expiresInSeconds=30</code> → 400
   <code>too_small: expected number to be &gt;=60</code>.</p>
 
@@ -473,13 +473,13 @@ sow-artifacts       0 entries  · no chapters artifact cached in this session
   <p><b>What happens.</b> Every recording object returned by <code>/api/songs*</code> carries
   <code>r2LrcUrl</code>, which is an <code>s3://</code> pseudo-URL, not a fetchable address — but it names the bucket
   and the exact object key for each recording.</p>
-  <pre>recording.r2LrcUrl = s3://stream-of-worship/b275c5784170/lyrics.lrc
-                       ↑ bucket            ↑ hashPrefix     ↑ fixed object name
+  <pre>recording.r2LrcUrl = s3://&lt;bucket&gt;/&lt;hashPrefix&gt;/lyrics.lrc
+                          ↑ bucket ↑ hashPrefix ↑ fixed object name
   present on 444 / 444 recordings; bucket name is the same for all</pre>
   <p><b>Impact.</b> An authenticated user learns the storage vendor, the bucket name and the deterministic key
   scheme. It is a reconnaissance gift that pairs with any future R2 misconfiguration (public bucket, permissive CORS,
   leaked credential) and it identifies audio objects by the same convention
-  (<code>s3://stream-of-worship/{hashPrefix}/audio.mp3</code>). It is not a direct disclosure today because the
+  (<code>s3://&lt;bucket&gt;/{hashPrefix}/audio.mp3</code>). It is not a direct disclosure today because the
   private endpoint rejects unsigned requests (see <a href="#P4">P4</a>).</p>
   <p><b>Remediation (not applied).</b> Drop the field from API payloads; the client never needs it because signed URLs
   are minted on demand:</p>
@@ -696,12 +696,12 @@ recording hash prefix / content hash, and lyric text is represented only by dige
 <tr><td><code>B9a-head</code></td><td><code>HEAD /api/lyrics/&lt;hash&gt;</code></td><td class="n">401</td><td class="n">363</td><td><code class="sha">618bb7d5f08c</code></td></tr>
 <tr><td><code>B9b-options</code></td><td><code>OPTIONS /api/lyrics/&lt;hash&gt; (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
 <tr class="grp"><td colspan="5">CORS matrix</td></tr>
-<tr><td><code>CORS-GET-_api_lyrics_b275c5784170</code></td><td><code>GET /api/lyrics/&lt;hash&gt; (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>CORS-GET-_api_lyrics_&lt;hash&gt;</code></td><td><code>GET /api/lyrics/&lt;hash&gt; (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
 <tr><td><code>CORS-GET-_api_share_AAAAAAAAAAAAAAAAAAAAAAAA</code></td><td><code>GET /api/share/AAAA… (Origin: evil.example)</code></td><td class="n">404</td><td class="n">27</td><td><code class="sha">a22e5433a7be</code></td></tr>
-<tr><td><code>CORS-GET-_api_signed-url_fileType_lrc_hashPrefix_b275c5784170</code></td><td><code>GET /api/signed-url?fileType=lrc… (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
-<tr><td><code>CORS-OPT-_api_lyrics_b275c5784170</code></td><td><code>OPTIONS /api/lyrics/&lt;hash&gt; (Origin: evil.example, ACRM: GET)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>CORS-GET-_api_signed-url_fileType_lrc_hashPrefix_&lt;hash&gt;</code></td><td><code>GET /api/signed-url?fileType=lrc… (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>CORS-OPT-_api_lyrics_&lt;hash&gt;</code></td><td><code>OPTIONS /api/lyrics/&lt;hash&gt; (Origin: evil.example, ACRM: GET)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
 <tr><td><code>CORS-OPT-_api_share_AAAAAAAAAAAAAAAAAAAAAAAA</code></td><td><code>OPTIONS /api/share/AAAA… (Origin: evil.example)</code></td><td class="n">204</td><td class="n">0</td><td><code class="sha">e3b0c44298fc</code></td></tr>
-<tr><td><code>CORS-OPT-_api_signed-url_fileType_lrc_hashPrefix_b275c5784170</code></td><td><code>OPTIONS /api/signed-url?fileType=lrc… (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>CORS-OPT-_api_signed-url_fileType_lrc_hashPrefix_&lt;hash&gt;</code></td><td><code>OPTIONS /api/signed-url?fileType=lrc… (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
 <tr class="grp"><td colspan="5">Anonymous gate</td></tr>
 <tr><td><code>an-A1-root</code></td><td><code>GET /</code></td><td class="n">307</td><td class="n">15</td><td><code class="sha">7c040f8633b8</code></td></tr>
 <tr><td><code>an-A10-share-random</code></td><td><code>GET /api/share/AAAA…(24)</code></td><td class="n">404</td><td class="n">27</td><td><code class="sha">a22e5433a7be</code></td></tr>
@@ -754,12 +754,12 @@ recording hash prefix / content hash, and lyric text is represented only by dige
 <tr><td><code>meta-robots</code></td><td><code>GET /robots.txt</code></td><td class="n">200</td><td class="n">27</td><td><code class="sha">d17b641665bc</code></td></tr>
 <tr><td><code>meta-sitemap</code></td><td><code>GET /sitemap.xml</code></td><td class="n">404</td><td class="n">24,340</td><td><code class="sha">db093b9a9da6</code></td></tr>
 <tr class="grp"><td colspan="5">Signed-URL</td></tr>
-<tr><td><code>pre-GET</code></td><td><code>GET /api/signed-url?fileType=lrc&amp;hashPrefix=b275c5784170&amp;expiresInSeconds=86400</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">4ed0aed5aac3</code></td></tr>
+<tr><td><code>pre-GET</code></td><td><code>GET /api/signed-url?fileType=lrc&amp;hashPrefix=&lt;hash&gt;&amp;expiresInSeconds=86400</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">4ed0aed5aac3</code></td></tr>
 <tr><td><code>pre-POST</code></td><td><code>POST /api/signed-url {fileType:lrc, expiresInSeconds:86400}</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">057cb04dfc93</code></td></tr>
 <tr><td><code>pre-anon-fetch</code></td><td><code>GET &lt;presigned R2 URL&gt; (no cookies)</code></td><td class="n">200</td><td class="n">1,637</td><td><code class="sha">37fd73d167b1</code></td></tr>
-<tr><td><code>pre-audio</code></td><td><code>GET /api/signed-url?fileType=audio&amp;hashPrefix=b275c5784170</code></td><td class="n">200</td><td class="n">583</td><td><code class="sha">e1bea71d5acf</code></td></tr>
+<tr><td><code>pre-audio</code></td><td><code>GET /api/signed-url?fileType=audio&amp;hashPrefix=&lt;hash&gt;</code></td><td class="n">200</td><td class="n">583</td><td><code class="sha">e1bea71d5acf</code></td></tr>
 <tr><td><code>pre-floor</code></td><td><code>GET /api/signed-url?…&amp;expiresInSeconds=30</code></td><td class="n">400</td><td class="n">195</td><td><code class="sha">66a8e0aac156</code></td></tr>
-<tr><td><code>pre-other</code></td><td><code>GET /api/signed-url?fileType=lrc&amp;hashPrefix=36547af30f79&amp;expiresInSeconds=86400</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">a4b288878d8c</code></td></tr>
+<tr><td><code>pre-other</code></td><td><code>GET /api/signed-url?fileType=lrc&amp;hashPrefix=&lt;hash&gt;&amp;expiresInSeconds=86400</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">a4b288878d8c</code></td></tr>
 <tr class="grp"><td colspan="5">Direct R2</td></tr>
 <tr><td><code>r2-path-head</code></td><td><code>HEAD same (unsigned)</code></td><td class="n">400</td><td class="n">0</td><td><code class="sha">-</code></td></tr>
 <tr><td><code>r2-path</code></td><td><code>GET https://&lt;acct&gt;.r2.cloudflarestorage.com/&lt;bucket&gt;/&lt;hash&gt;/lyrics.lrc (unsigned)</code></td><td class="n">400</td><td class="n">113</td><td><code class="sha">14e81c7d501a</code></td></tr>
