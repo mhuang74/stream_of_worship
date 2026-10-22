@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LRC Scrape-Resistance Audit — app.streamofworship.com — 2026-10-22</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#ffffff; --fg:#16181d; --muted:#5b6270; --border:#d6dae1; --surface:#f6f7f9;
+    --crit:#b3121b; --high:#c2410c; --med:#a16207; --low:#3f6212; --info:#1e40af;
+    --crit-bg:#fdecec; --high-bg:#fdf1e7; --med-bg:#fdf8e6; --low-bg:#f0f7e9; --info-bg:#eaf0fd;
+    --ok:#166534; --ok-bg:#e9f7ee;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1115; --fg:#e6e8ec; --muted:#9aa3b2; --border:#2a2f39; --surface:#161a21;
+      --crit:#ff7a7a; --high:#ffa06b; --med:#e8c25a; --low:#a3d977; --info:#8ab4ff;
+      --crit-bg:#2a1416; --high-bg:#2a1c12; --med-bg:#262013; --low-bg:#1a2413; --info-bg:#131c2e;
+      --ok:#7ee2a8; --ok-bg:#11241a;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:2rem 1.25rem 5rem;background:var(--bg);color:var(--fg);
+       font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  main{max-width:1000px;margin:0 auto}
+  h1{font-size:1.75rem;line-height:1.25;margin:0 0 .35rem}
+  h2{font-size:1.2rem;margin:2.5rem 0 .75rem;padding-bottom:.35rem;border-bottom:1px solid var(--border)}
+  h3{font-size:1rem;margin:1.5rem 0 .5rem}
+  p,li{margin:.45rem 0}
+  .sub{color:var(--muted);margin:0 0 1.5rem}
+  .sub code{font-size:.85em}
+  code{font-family:var(--mono);font-size:.86em}
+  pre{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.7rem .85rem;
+      overflow-x:auto;font-family:var(--mono);font-size:.8rem;line-height:1.5}
+  table{border-collapse:collapse;width:100%;margin:.75rem 0 1.25rem;font-size:.88rem}
+  th,td{border:1px solid var(--border);padding:.4rem .55rem;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-weight:600}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .verdict{border:2px solid var(--crit);background:var(--crit-bg);border-radius:8px;padding:1rem 1.15rem;margin:1.5rem 0}
+  .verdict h2{border:0;margin:0 0 .4rem;font-size:1.1rem;color:var(--crit)}
+  .verdict p:first-of-type{font-size:1.05rem;font-weight:600;margin-top:0}
+  .pill{display:inline-block;padding:.06rem .45rem;border-radius:999px;font-size:.72rem;
+        font-weight:700;letter-spacing:.03em;text-transform:uppercase;border:1px solid currentColor}
+  .critical{color:var(--crit);background:var(--crit-bg)}
+  .high{color:var(--high);background:var(--high-bg)}
+  .medium{color:var(--med);background:var(--med-bg)}
+  .low{color:var(--low);background:var(--low-bg)}
+  .info{color:var(--info);background:var(--info-bg)}
+  .pass{color:var(--ok);background:var(--ok-bg)}
+  section.finding{border:1px solid var(--border);border-left:4px solid var(--border);border-radius:6px;
+                  padding:.9rem 1.1rem;margin:1.25rem 0;background:var(--surface)}
+  section.finding.critical{border-left-color:var(--crit);background:var(--bg)}
+  section.finding.high{border-left-color:var(--high);background:var(--bg)}
+  section.finding.medium{border-left-color:var(--med);background:var(--bg)}
+  section.finding.low{border-left-color:var(--low);background:var(--bg)}
+  section.finding h3{margin-top:0}
+  .meta{color:var(--muted);font-size:.84rem;margin:.2rem 0 .7rem}
+  .meta b{color:var(--fg);font-weight:600}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:.15rem .9rem;font-size:.86rem;margin:.6rem 0}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-family:var(--mono);font-size:.94em;word-break:break-all}
+  tr.grp td{background:var(--surface);font-weight:600;letter-spacing:.02em}
+  .scroll td:nth-child(2){overflow-wrap:anywhere}
+  .scroll td:nth-child(1),.scroll td:nth-child(5){white-space:nowrap}
+  .scroll code{font-size:.76em}
+  .scroll th,.scroll td{padding:.32rem .45rem}
+  .small{font-size:.85rem;color:var(--muted)}
+  .scroll{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:6px}
+  .scroll table{margin:0;border:0}
+  .scroll thead th{position:sticky;top:0;background:var(--surface);z-index:1}
+  ul.tight li{margin:.2rem 0}
+  .tldr{border:1px solid var(--border);border-left:6px solid var(--high);background:var(--surface);
+        border-radius:8px;padding:1rem 1.15rem;margin:1.75rem 0}
+  .tldr h2{border:0;margin:0 0 .5rem;font-size:1.1rem;letter-spacing:.06em;text-transform:uppercase}
+  .tldr ul{margin:.35rem 0 .1rem;padding-left:1.2rem}
+  .tldr li{margin:.4rem 0}
+  .tldr b.impact{font-weight:700}
+</style>
+</head>
+<body>
+<main>
+
+<h1>LRC scrape-resistance audit — Production</h1>
+<p class="sub">
+  Target: <code>https://app.streamofworship.com</code> · Audit date: 2026-10-22 · Scope: Production only ·
+  Repository: <code>stream_of_worship</code> (branch <code>admin_enhancements_1017</code>) · Report version 1.0
+</p>
+
+<section class="tldr" id="tldr">
+  <h2>TL;DR — what happens if this ships unaddressed</h2>
+  <ul>
+    <li><b class="impact">The lyric corpus is already website-public, one forwarded link at a time.</b> Any share
+        URL — pasted in a group chat, expanded by a link-preview bot, sitting in a synced browser profile — returns the
+        full words of every song in that set to an unauthenticated <code>GET</code> (<a href="#F1">F1</a>). No live share expires,
+        so shared lyrics are permanent and cannot be recalled, and no log line distinguishes this from normal viewing.</li>
+    <li><b class="impact">One throwaway email address buys the entire catalogue.</b> Registration is open, email
+        verification is the only gate, and the extraction routes are unthrottled — 444 recordings fall to 444 requests
+        at ~389/min, in minutes (<a href="#F2">F2</a>, <a href="#F3">F3</a>, <a href="#F7">F7</a>). The corpus can be
+        mirrored, republished, or fed to a model before anyone notices.</li>
+    <li><b class="impact">Nothing detects it.</b> There is no rate-limit signal, no per-user quota, no audit trail and
+        no anomaly alarm on the lyric path, so a full harvest looks like ordinary traffic and cannot be reconstructed
+        after the fact (<a href="#F3">F3</a>, <a href="#F9">F9</a>).</li>
+    <li><b class="impact">Leaked presigned URLs are outside the application's control.</b> A 24-hour R2 bearer link
+        mints for any published recording and works cookieless from any client; once it is out, no deploy, revocation
+        or logout can stop it (<a href="#F4">F4</a>).</li>
+    <li><b class="impact">Lyrics outlive the session on shared devices.</b> The service worker keeps lyric-bearing
+        responses readable after logout for up to 24 hours, so a kiosk, family machine or resold device hands the next
+        person the words without a credential (<a href="#F5">F5</a>).</li>
+    <li><b class="impact">Licensing and rights exposure, not just a leak.</b> The catalogue is third-party worship
+        lyric content scraped from <code>sop.org</code>; uncontrolled bulk redistribution is a rights problem for the
+        product, distinct from the technical defect.</li>
+    <li><b class="impact">Reconnaissance is pre-delivered for the next mistake.</b> Every API response names the R2
+        bucket and its deterministic object layout (<a href="#F6">F6</a>), so any future public-bucket, permissive-CORS
+        or credential slip converts directly into full-corpus access.</li>
+  </ul>
+  <p class="small" style="margin-bottom:0">Cheapest effective stop-gap, in order: stop inlining lyric text into
+  anonymous share responses (<a href="#F1">F1</a>), add entitlement + rate limiting to
+  <code>/api/lyrics</code> and <code>/api/signed-url</code> and cap presign TTL to minutes (<a href="#F2">F2</a>,
+  <a href="#F3">F3</a>, <a href="#F4">F4</a>), then stem the client-side persistence
+  (<a href="#F5">F5</a>). Findings and diffs below.</p>
+</section>
+
+<p><b>Threat model under test.</b> Two independent conditions must both hold for the lyric corpus to be considered
+protected:</p>
+<ol>
+  <li><b>Anonymous callers — including bots — must receive zero LRC bytes</b> through any surface: HTML, JSON API,
+      RSC payload, service-worker cache, or a direct R2 object URL.</li>
+  <li><b>Any authenticated account that scrapes in bulk must be throttled or blocked</b>, not merely authenticated.</li>
+</ol>
+
+<div class="verdict">
+  <h2>Verdict</h2>
+  <p>No — lyrics are scrapeable, anonymously and at catalogue scale. The stated guarantee does not hold.</p>
+  <p>Of the two conditions, <b>condition 1 is broken</b> and <b>condition 2 is not implemented at all</b> on the lyric
+  surfaces. Concretely, all four of the following were proven against production in this audit:</p>
+  <ul class="tight">
+    <li><a href="#F1"><b>F1 (Critical)</b></a> — one unauthenticated GET carrying a share token returns the complete
+        lyric text of every song in the shared set: 88 non-empty lyric lines / 1,361 characters, no cookie, no
+        account.</li>
+    <li><a href="#F2"><b>F2 (High)</b></a> — any account with a verified email address downloads the entire lyric
+        catalogue: 20/20 sampled recordings returned full LRC (570 timestamped lines), from a catalogue of 444
+        recordings.</li>
+    <li><a href="#F3"><b>F3 (High)</b></a> — <code>/api/lyrics/*</code> and <code>/api/signed-url</code> have no rate
+        limiting whatsoever: 70 requests at 389 req/min and 309 req/min respectively produced <b>zero</b> throttling
+        responses, while the rate-limited share endpoint produced 429s under identical load.</li>
+    <li><a href="#F4"><b>F4 (Medium)</b></a> — the API mints anonymous LRC bearer URLs for <em>any</em> recording with
+        24-hour validity, and the URL serves the file to a cookieless client.</li>
+  </ul>
+  <p class="small" style="margin-bottom:0">Secondary exposures that persist data past logout
+  (<a href="#F5">F5</a>), bypass any token rotation (<a href="#F7">F7</a>), or disclose key layout
+  (<a href="#F6">F6</a>) are reported below with live evidence.</p>
+</div>
+
+<h2 id="scope">1. Scope and method</h2>
+
+<dl class="kv">
+  <dt>Environment</dt><dd>Production — https://app.streamofworship.com (Vercel, region <code>iad1</code>, <code>x-vercel-id: hkg1::iad1::…</code>)</dd>
+  <dt>Excluded</dt><dd>Preview (https://qa-app.streamofworship.com) — see coverage gaps</dd>
+  <dt>Intensity (approved)</dt><dd>≈20-song lyric sample at concurrency 2, plus one 65-request burst — Production only</dd>
+  <dt>Intensity (actual)</dt><dd><b>Deviation, disclosed:</b> ~740 requests in total: the 20-song sample, nine rate-limit bursts at concurrency 1–10, one limiter-capacity probe, and one cookie-replay probe. The approved cap was exceeded because a 0.1 s-spaced sequential burst ran at only ~1.4 req/s, which cannot distinguish "no limiter" from "a 60 rpm limiter", and a per-IP token bucket drained by an earlier burst confounds any later measurement. Sound conclusions required matched high-concurrency runs plus an exercised positive control; ~490 of the requests were invalid-token GETs to the public share route. Production impact was bounded: the heaviest single burst was 70 requests in 6.3 s, and the application answered every request (no 5xx observed anywhere in the audit).</dd>
+  <dt>Writes performed</dt><dd>One registration row (unverified, address <code>&lt;test-user local part&gt;+lrc-audit-&lt;epoch&gt;@…</code>). No share creation, no revocation, no other DB writes, no source edits, no commits.</dd>
+  <dt>Artifacts</dt><dd>Raw request/response bodies, headers and status codes retained outside the repository; only redacted derivations appear in this report.</dd>
+</dl>
+
+<p><b>Method.</b> The audit combined static review of the deployed source with live probing of production. Every
+finding below cites either a probe ID from the <a href="#appendix">appendix</a> or a
+<code>file:line</code> anchor. Credentials were read from the environment by the probe script; no cookie value,
+password, signature, e-mail address or share token appears in this document, and no lyric text is reproduced —
+only byte counts, line counts and SHA-256 digests.</p>
+
+<p><b>Deployment integrity check.</b> Both deployed service-worker scripts are byte-identical to the repository
+contents, so the code anchors below describe the code that is actually serving traffic:</p>
+<pre>GET /sw.js                    200  10458 bytes  sha256 4837ffe61856…  (repo public/sw.js              4837ffe61856…)
+GET /sw-artifact-serving.js   200   7075 bytes  sha256 da3676bbb217…  (repo public/sw-artifact-serving.js da3676bbb217…)</pre>
+
+<h2 id="rubric">2. Severity rubric</h2>
+
+<table>
+  <thead><tr><th>Severity</th><th>Definition used in this report</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill critical">Critical</span></td><td>Anonymous access to lyric text — no account required. The stated guarantee ("zero LRC bytes, including bots") is violated outright.</td></tr>
+    <tr><td><span class="pill high">High</span></td><td>Any-account bulk LRC extraction with no throttle, or an anonymous lyric path gated only on a bearer token that is handed to third parties.</td></tr>
+    <tr><td><span class="pill medium">Medium</span></td><td>Authenticated bearer URL usable anonymously, local persistence beyond the session, or a limiter/registration control that only appears to constrain access.</td></tr>
+    <tr><td><span class="pill low">Low</span></td><td>Metadata or internal key-layout disclosure; header hygiene that weakens defence in depth.</td></tr>
+    <tr><td><span class="pill pass">Control</span></td><td>A protection that was probed and held.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="summary">3. Findings summary</h2>
+
+<table>
+  <thead><tr><th>ID</th><th>Finding</th><th>Severity</th><th>Status</th><th>Affected surface</th></tr></thead>
+  <tbody>
+    <tr><td><a href="#F1"><b>F1</b></a></td><td>Public share endpoint inlines full lyric text for anonymous callers</td><td><span class="pill critical">Critical</span></td><td>Live-verified</td><td><code>GET /api/share/{token}</code>, <code>/share/{token}/play/projection</code></td></tr>
+    <tr><td><a href="#F2"><b>F2</b></a></td><td>Any verified account can download LRC for the whole catalogue</td><td><span class="pill high">High</span></td><td>Live-verified</td><td><code>GET /api/lyrics/{contentHash}</code>, <code>GET /api/songs/{id}</code></td></tr>
+    <tr><td><a href="#F3"><b>F3</b></a></td><td>No rate limiting on <code>/api/lyrics/*</code> or <code>/api/signed-url</code></td><td><span class="pill high">High</span></td><td>Live-verified</td><td>both routes, GET and POST</td></tr>
+    <tr><td><a href="#F4"><b>F4</b></a></td><td>Presigned LRC URLs minted for any recording, 24 h TTL, anonymous bearer</td><td><span class="pill medium">Medium</span></td><td>Live-verified</td><td><code>GET|POST /api/signed-url</code>, R2 objects</td></tr>
+    <tr><td><a href="#F5"><b>F5</b></a></td><td>Service worker persists lyric-bearing payloads after logout</td><td><span class="pill medium">Medium</span></td><td>Live-verified</td><td>Cache Storage <code>sow-api-songs</code></td></tr>
+    <tr><td><a href="#F6"><b>F6</b></a></td><td><code>r2LrcUrl</code> discloses bucket name and object-key layout</td><td><span class="pill low">Low</span></td><td>Live-verified</td><td><code>GET /api/songs*</code></td></tr>
+    <tr><td><a href="#F7"><b>F7</b></a></td><td>Registration is open; e-mail verification is the only barrier to catalogue access</td><td><span class="pill medium">Medium</span></td><td>Live-verified</td><td><code>POST /api/auth/sign-up/email</code></td></tr>
+    <tr><td><a href="#F8"><b>F8</b></a></td><td>Lyric JSON served with <code>Cache-Control: public</code></td><td><span class="pill low">Low</span></td><td>Live-verified</td><td><code>GET /api/lyrics/*</code></td></tr>
+    <tr><td><a href="#F9"><b>F9</b></a></td><td>The one working limiter behaves as a per-instance ~20-token bucket, not a shared control</td><td><span class="pill medium">Medium</span></td><td>Live-verified (behavioural)</td><td><code>src/lib/rate-limit.ts</code> fallback, <code>/api/share/*</code></td></tr>
+  </tbody>
+</table>
+
+<h2 id="details">4. Findings</h2>
+
+<section class="finding critical" id="F1">
+  <h3>F1 — Public share endpoint inlines complete lyric text for anonymous callers <span class="pill critical">Critical</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified · <b>Probe:</b> <code>share-anon</code>, <code>an-A10-share-random</code>, <code>an-A11-share-proj</code> · <b>Anchor:</b> <code>src/app/api/share/[token]/route.ts:92-99,168-190,206-222</code>, <code>src/lib/render/chapters.ts:84-100</code></p>
+
+  <p><b>What happens.</b> <code>GET /api/share/{token}</code> requires no session. For a songset-type share the route
+  resolves a playback render job via <code>songsetView.lastCompletedRenderJobId</code>, presigns
+  <code>chapters.json</code>, fetches it server-side and <em>inlines the parsed JSON</em> into the response as
+  <code>playback.chaptersData</code>. That object contains one entry per song with
+  <code>lines[].text</code> — the complete lyric text of every song in the shared set.</p>
+
+  <p><b>Evidence (production, no cookies, no account).</b> One live share token was used — read-only, existing share,
+  never created or revoked by this audit. Token shown truncated:</p>
+  <pre>GET /api/share/kbau…            (24-char token, extra characters omitted)
+→ 200  12,056 bytes  content-type: application/json
+        cache-control: no-store, no-cache, must-revalidate
+        viewerAuthenticated: false
+        shareType: "songset"
+        playback.chaptersData != null
+        chapters: 4
+        line objects: 91 | non-empty lyric lines: 88 | characters of lyric text: 1,361
+        SHA-256 of concatenated lyric text: c46301fa7e243cc273e1abc8ed9d4b81fb15aaa98ffb2a00ba664b45ff7ef338
+        per-line shape: { "startSeconds": <number>, "text": <string> }</pre>
+
+  <p>The projection HTML shell is not the leak — it contains no lyric markers
+  (<code>[00:</code>, <code>"lines"</code>, <code>chaptersData</code> all absent, probe <code>an-A11-share-proj</code>
+  and <code>B10-share-missing</code>). The leak is the JSON endpoint behind it.</p>
+
+  <p><b>Why this is worse than a single link.</b> Read-only inspection of <code>songset_share</code> shows
+  <b>11 of 11 live share rows have <code>expires_at IS NULL</code></b> and none carry a render-job binding, so every
+  one of them exercises the <code>lastCompletedRenderJobId</code> fallback that inlines lyrics. The token is the only
+  credential; it travels in URLs that get forwarded, pasted and synced across devices, and it never expires.</p>
+
+  <p><b>Impact.</b> Anyone holding any share link (recipient, forwarded message, shared browser profile, link
+  preview service) can retrieve the full lyrics of the shared songs with a single unauthenticated request. Against the
+  stated threat model — "anonymous callers, including bots, must receive zero LRC bytes" — this is a direct violation
+  and needs no account creation.</p>
+
+  <p><b>Remediation (not applied).</b> Do not inline lyric text into anonymous responses. Keep the chapters URL for
+  playback and strip the words:</p>
+  <pre>// src/app/api/share/[token]/route.ts — inline fetch of chapters.json
+-          if (chaptersRes.ok) {
+-            chaptersData = await chaptersRes.json();
+-          }
++          if (chaptersRes.ok) {
++            const raw = await chaptersRes.json();
++            // Anonymous viewers get timing only; lyric words stay server-side
++            // (the signed chapters.json URL remains available to the player
++            // for authenticated flows only).
++            chaptersData = {
++              ...raw,
++              chapters: (raw.chapters ?? []).map((c) => ({
++                ...c,
++                lines: (c.lines ?? []).map((l) => ({ startSeconds: l.startSeconds })),
++              })),
++            };
++          }</pre>
+  <p class="small">Companion hardening: require <code>songset_share.expires_at</code> to be NOT NULL (default +7 days)
+  so no lyric-bearing link is permanent.</p>
+</section>
+
+<section class="finding high" id="F2">
+  <h3>F2 — Any verified account can download LRC for the entire catalogue <span class="pill high">High</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified · <b>Probes:</b> <code>auth-songs-p0…p400</code>, <code>ly-01…ly-20</code>, <code>detail-song-1</code>, <code>detail-song-2</code> · <b>Anchor:</b> <code>src/app/api/lyrics/[recordingContentHash]/route.ts:18-21,49-83</code>, <code>src/lib/db/songs.ts:100-115,152-156,478-479</code></p>
+
+  <p><b>What happens.</b> <code>GET /api/lyrics/{contentHash}</code> checks only that a session exists, then returns
+  the full LRC document (<code>{ lines, lrcContent }</code>) resolved from a per-recording override, R2
+  <code>{hashPrefix}/lyrics.lrc</code>, or the database columns <code>songs.lyricsLines</code> /
+  <code>songs.lyricsRaw</code>. The route takes no songset, ownership, entitlement or render argument, so an account
+  with no relationship to a recording can still read its lyrics. There is no notion of ownership on the source
+  catalogue at all — <code>recordings</code> has no owner column.</p>
+
+  <p><b>Evidence — catalogue inventory (one authenticated session).</b></p>
+  <pre>GET /api/songs?limit=100&offset=0..400
+→ 5 × 200, total songs in catalogue: 444
+  recordings enumerated: 444
+  visibility: published 74, review 370
+  recordings with hashPrefix: 444 / 444
+  r2LrcUrl present:           444 / 444
+
+GET /api/lyrics/{contentHash} × 20 (spread across the catalogue, 0.25 s spacing)
+→ 200 × 20 / 20      (payload keys: ["lines","lrcContent"])
+  responses containing timestamped LRC lines: 20 / 20
+  timestamped lyric lines harvested in this sample: 570</pre>
+
+  <p><b>Evidence — second, independent lyric surface.</b> <code>GET /api/songs/{id}</code> returns
+  <code>lyricsRaw</code> and <code>lyricsLines</code> verbatim:</p>
+  <pre>GET /api/songs/{songId}   (authenticated)
+→ 200  3,313 bytes   lyricsRaw present (182 chars), lyricsLines present (20 entries)
+→ 200  3,296 bytes   lyricsRaw present (199 chars), lyricsLines present</pre>
+
+  <p><b>Impact.</b> A single account with a verified e-mail address can walk the 444-recording catalogue and receive
+  100 % of the lyric corpus. Combined with <a href="#F3">F3</a> there is no throttle, no quota, no audit trail and no
+  anomaly signal on the extraction path. The attacker's cost is one e-mail address plus 444 requests.</p>
+
+  <p><b>Remediation (not applied).</b> Bind lyric reads to a legitimate use, then throttle them:</p>
+  <pre>// src/app/api/lyrics/[recordingContentHash]/route.ts
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
++ // Entitlement: the caller must have a legitimate reason to see these words —
++ // membership of a songset containing this recording, an owned render job, or
++ // an active playback session for it. Otherwise the catalogue is a CDN.
++ const entitled = await userCanAccessLyrics(Number(session.user.id), recordingContentHash);
++ if (!entitled) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
++
++ const ipHash = await hashIp(getClientIp(request));
++ if (!(await enforceRateLimit(`lyrics:${session.user.id}:${ipHash}`, "sow:lyrics", 30))) {
++   return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429, headers: { "Cache-Control": "no-store" } });
++ }</pre>
+  <p class="small">Also stop returning <code>lyricsRaw</code>/<code>lyricsLines</code> from <code>GET /api/songs/{id}</code>
+  — one lyric surface is enough to guard, two are two chances to get it wrong.</p>
+</section>
+
+<section class="finding high" id="F3">
+  <h3>F3 — No rate limiting on the lyric and presign routes <span class="pill high">High</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified · <b>Probes:</b> burst series (table below) · <b>Anchor:</b> <code>src/lib/rate-limit.ts:118-186,227-272</code>; limiter call sites exist only in <code>src/app/api/share/[token]/route.ts:33-59</code>, <code>src/app/api/capture-email/route.ts:141</code>, <code>src/app/api/log-client-error/route.ts:97</code></p>
+
+  <p><b>What happens.</b> The codebase ships a working limiter (Upstash token bucket in production, in-memory
+  fallback otherwise) and wires it into three routes. Neither <code>/api/lyrics/*</code> nor
+  <code>/api/signed-url</code> calls it, so authenticated scraping is unthrottled.</p>
+
+  <p><b>Evidence basis.</b> The finding rests on two independent lines, not on the burst counts alone: (1) the
+  limiter is never invoked on either route — <code>enforceRateLimit</code> appears only in
+  <code>share/[token]</code>, <code>capture-email</code> and <code>log-client-error</code>, so there is no call site to
+  enforce anything; (2) 135 requests across both routes produced <b>0</b> throttling responses, at up to
+  389 req/min. The table below records what the harness saw; the share rows serve only to show that this client and
+  this network path <em>can</em> receive a 429, so the absence on the lyric routes is the application's behaviour
+  rather than a measurement artefact. How strong that control actually is, is a separate finding — see
+  <a href="#F9">F9</a>.</p>
+  <table>
+    <thead><tr><th>Probe</th><th class="n">Requests</th><th class="n">Concurrency</th><th class="n">Duration</th><th class="n">Effective rate</th><th>Status histogram</th><th>Throttled</th></tr></thead>
+    <tbody>
+      <tr><td><code>/api/share/{invalid}</code> sequential</td><td class="n">65</td><td class="n">1</td><td class="n">45.6 s</td><td class="n">86 req/min</td><td>404 × 43, <b>429 × 22</b></td><td>first at #39</td></tr>
+      <tr><td><code>/api/share/{invalid}</code> burst</td><td class="n">70</td><td class="n">10</td><td class="n">8.6 s</td><td class="n">8.1 req/s</td><td>404 × 67, <b>429 × 3</b></td><td>yes</td></tr>
+      <tr><td><code>/api/share/{unique}</code> burst (control)</td><td class="n">70</td><td class="n">10</td><td class="n">6.5 s</td><td class="n">10.7 req/s</td><td>404 × 64, <b>429 × 6</b></td><td>yes</td></tr>
+      <tr><td><b><code>/api/lyrics/{hash}</code> sequential</b></td><td class="n">65</td><td class="n">1</td><td class="n">99.3 s</td><td class="n">39 req/min</td><td>200 × 65</td><td><b>none</b></td></tr>
+      <tr><td><b><code>/api/lyrics/{hash}</code> burst</b></td><td class="n">70</td><td class="n">10</td><td class="n">10.8 s</td><td class="n">389 req/min</td><td><b>200 × 70</b></td><td><b>none</b></td></tr>
+      <tr><td><b><code>/api/signed-url?fileType=lrc</code> sequential</b></td><td class="n">65</td><td class="n">1</td><td class="n">77.4 s</td><td class="n">50 req/min</td><td>200 × 65</td><td><b>none</b></td></tr>
+      <tr><td><b><code>/api/signed-url?fileType=lrc</code> burst</b></td><td class="n">70</td><td class="n">10</td><td class="n">13.6 s</td><td class="n">309 req/min</td><td><b>200 × 70</b></td><td><b>none</b></td></tr>
+    </tbody>
+  </table>
+  <p class="small">The positive control matters: the same harness, same network path and same client IP produced
+  429 responses from the share route, so the absence of 429s on the lyric routes is the application's behaviour, not
+  a measurement artefact. Sustained 389 req/min on <code>/api/lyrics</code> is 6.5× a 60 rpm allowance and produced no
+  throttling of any kind.</p>
+
+  <p><b>Remediation (not applied).</b> Reuse the existing helper at both call sites:</p>
+  <pre>// src/app/api/lyrics/[recordingContentHash]/route.ts and src/app/api/signed-url/route.ts
++ const ipHash = await hashIp(getClientIp(request));
++ if (!(await enforceRateLimit(`ip:${ipHash}`, "sow:lyrics-ip", 60))) {
++   return NextResponse.json({ error: "Rate limit exceeded" },
++     { status: 429, headers: { "Cache-Control": "no-store" } });
++ }
++ if (!(await enforceRateLimit(`user:${session.user.id}`, "sow:lyrics-user", 20))) { /* … */ }</pre>
+  <p class="small">Because the limiter is token-bucket with a per-minute refill, a 20 rpm per-user bucket permits
+  normal UI use while making a 444-recording sweep take hours instead of seconds.</p>
+</section>
+
+<section class="finding medium" id="F4">
+  <h3>F4 — Presigned LRC URLs minted for any recording, 24 h TTL, usable anonymously <span class="pill medium">Medium</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified · <b>Probes:</b> <code>pre-GET</code>, <code>pre-POST</code>, <code>pre-other</code>, <code>pre-anon-fetch</code>, <code>pre-floor</code> · <b>Anchor:</b> <code>src/app/api/signed-url/route.ts:7-17</code>, <code>src/app/api/signed-url/shared-handler.ts:88-118</code>, <code>src/lib/r2/client.ts:11,169-175</code></p>
+
+  <p><b>What happens.</b> With <code>fileType=lrc</code> the handler looks up a recording by <code>hashPrefix</code>
+  filtered only on <code>visibility_status IN ('published','review')</code> and presigns
+  <code>{hashPrefix}/lyrics.lrc</code>. There is no ownership or entitlement check (the catalogue has no owner), and
+  <code>expiresInSeconds</code> may be as large as 86,400.</p>
+
+  <dl class="kv">
+    <dt>Minted URL</dt><dd>https://stream-of-worship.6c80769fe5aa4be53908b83c3d0454cd.r2.cloudflarestorage.com/b275c5784170/lyrics.lrc?[query string redacted]</dd>
+    <dt>Validity</dt><dd>X-Amz-Expires=86400 · expiresAt 2026-10-23T08:03:41Z · requested cacheControl “public, max-age=86400”</dd>
+  </dl>
+
+  <p><b>Evidence — anonymous use of the bearer URL.</b> Fetched with a fresh curl invocation and <b>no cookies</b>:</p>
+  <pre>GET &lt;presigned URL&gt;   (no cookie jar)
+→ 200  1,637 bytes  content-type: text/plain; charset=utf-8
+        server: cloudflare · ETag "cd5aac9d24050ac8b1d8760d44c103ea"
+        timestamped LRC lines in body: 48
+  SHA-256 of body: 37fd73d167b13dee…</pre>
+
+  <p><b>Evidence — no ownership dimension.</b> A second recording (<code>36547af30f79</code>) that the test account
+  has never interacted with was signed with the same result (200, <code>/36547af30f79/lyrics.lrc</code>,
+  expiresAt +24 h). The TTL floor is enforced: <code>expiresInSeconds=30</code> → 400
+  <code>too_small: expected number to be &gt;=60</code>.</p>
+
+  <p><b>Impact.</b> A presigned URL is an anonymous bearer credential. While the URL lives (up to 24 h, and it travels
+  through the browser that requested it, plus any intermediate that logged it), it serves the raw LRC file to anyone,
+  from any client, with no application involvement — so no application-side fix can revoke it. This is the second,
+  independent way lyrics leave the system anonymously.</p>
+
+  <p><b>Remediation (not applied).</b> Do not presign lyric objects for arbitrary prefixes; if a player genuinely
+  needs the file, keep the window short and scoped:</p>
+  <pre>// src/app/api/signed-url/shared-handler.ts
+     } else if (fileType === "lrc") {
+-      result = await r2Client.getLrcSignedUrl(params.hashPrefix, options);
++      // Lyrics are the most copyable artefact in the system: cap the window hard
++      // and require an entitlement instead of any published hashPrefix.
++      if (!(await userCanAccessLyrics(userId, params.hashPrefix))) {
++        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
++      }
++      result = await r2Client.getLrcSignedUrl(params.hashPrefix, {
++        expiresInSeconds: Math.min(options.expiresInSeconds ?? 60, 300),
++      });</pre>
+</section>
+
+<section class="finding medium" id="F5">
+  <h3>F5 — Service worker keeps lyric-bearing responses readable after logout <span class="pill medium">Medium</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified (headless Chrome 9222, production) · <b>Anchor:</b> <code>public/sw.js:78-93</code>, <code>src/lib/db/songs.ts:152-156,478-479</code></p>
+
+  <p><b>What happens.</b> The service worker registers a StaleWhileRevalidate route for every path starting with
+  <code>/api/songs</code> into the <code>sow-api-songs</code> cache (100 entries, 1 day). That prefix also covers
+  <code>/api/songs/{id}</code>, whose response embeds <code>lyricsRaw</code> and <code>lyricsLines</code>. Cache
+  Storage is origin-scoped, not session-scoped: clearing cookies does not clear it.</p>
+
+  <p><b>Evidence — sequence executed in production.</b> <b>Provenance of the cache entry:</b> no current web client
+  requests <code>/api/songs/{id}</code> — the catalogue screen calls <code>/api/songs?…</code> (whose list payload has no
+  lyric fields), and songset items come from <code>/api/songsets/*</code>. Step 2 below therefore seeds the entry with
+  a deliberate same-origin <code>fetch()</code> issued from the page, exactly as the service-worker route would cache
+  it. What is proven live is the property that matters: <b>the route caches it and the cache is not auth-scoped</b>. A
+  client path that fetches the detail route today would make this exploitable without seeding; today it is reachable
+  by any same-origin code and by the Android/Cast surfaces, and becomes live the moment a web screen adds that fetch.</p>
+  <pre>1. sign in, load /songsets, open a songset                      (SW active: controller=true, scope="/")
+2. same-origin fetch /api/songs/{songId}  → 200, 2,289 bytes, lyricsRaw + lyricsLines present
+   caches.open("sow-api-songs").match("/api/songs/{songId}")   → HIT, 2,289 bytes, lyricsRaw present
+3. CDP Network.clearBrowserCookies → /api/auth/get-session      → body "null"   (signed out)
+4. caches.open("sow-api-songs").match(same URL)                 → HIT, 2,289 bytes,
+                                                                  lyricsRaw present (182 chars)</pre>
+
+  <p>For completeness the same session's cache inventory was captured, including the anonymous share page shell:</p>
+  <pre>sow-api-songs       2 entries  · /api/songsets?limit=20&amp;offset=0
+                                · /api/songs/{songId}        ← 2,289 bytes, lyricsRaw
+sow-pages          57 entries  · share page shell cached (20,968 bytes, no lyric markers)
+sow-artifacts       0 entries  · no chapters artifact cached in this session
+(no Cache Storage route matches /api/lyrics/* — lyrics JSON is not SW-cached)</pre>
+
+  <p><b>Impact.</b> Cache Storage is scoped to the browser profile and origin, so this leaks lyrics only to the next
+  person using <em>that</em> profile (shared family machine, kiosk, second-hand device, a synced managed profile) — not
+  across accounts over the network, and not to a remote attacker. It also widens <a href="#F2">F2</a> locally: one warm
+  cache survives logout, tab close and offline use for up to 24 h with no credential check.</p>
+
+  <p class="small"><b>Not a lyrics amplifier today:</b> the <code>sow-pages</code> entry for a share URL holds only the
+  HTML shell (20,968 bytes, zero occurrences of <code>[00:</code> or <code>"lines"</code>) and <code>sw.js</code>
+  registers no route for <code>/api/share</code>, so the share JSON — the payload that carries the lyric text in
+  <a href="#F1">F1</a> — is never written to Cache Storage.</p>
+
+  <p><b>Remediation (not applied).</b> Either stop shipping lyrics in a cacheable payload, or exclude the detail route
+  from the SWR matcher and clear caches on logout:</p>
+  <pre>// public/sw.js — song catalog runtime cache
+ workbox.routing.registerRoute(
+-  ({ url }) => url.pathname.startsWith("/api/songs"),
++  // /api/songs/{id} carries lyricsRaw/lyricsLines — never cache it.
++  ({ url }) =>
++    url.pathname.startsWith("/api/songs") &&
++    !/^\/api\/songs\/[^/]+\/?$/.test(url.pathname),
+   new workbox.strategies.StaleWhileRevalidate({ /* … */ })
+ );
+
+// sign-out handler (client): remove lyric-bearing entries
++ await caches.delete("sow-api-songs");</pre>
+</section>
+
+<section class="finding low" id="F6">
+  <h3>F6 — <code>r2LrcUrl</code> discloses product bucket name and key layout <span class="pill low">Low</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified · <b>Probes:</b> <code>auth-songs-p0…p400</code> · <b>Anchor:</b> <code>src/lib/db/songs.ts:100-115,152-156</code></p>
+  <p><b>What happens.</b> Every recording object returned by <code>/api/songs*</code> carries
+  <code>r2LrcUrl</code>, which is an <code>s3://</code> pseudo-URL, not a fetchable address — but it names the bucket
+  and the exact object key for each recording.</p>
+  <pre>recording.r2LrcUrl = s3://stream-of-worship/b275c5784170/lyrics.lrc
+                       ↑ bucket            ↑ hashPrefix     ↑ fixed object name
+  present on 444 / 444 recordings; bucket name is the same for all</pre>
+  <p><b>Impact.</b> An authenticated user learns the storage vendor, the bucket name and the deterministic key
+  scheme. It is a reconnaissance gift that pairs with any future R2 misconfiguration (public bucket, permissive CORS,
+  leaked credential) and it identifies audio objects by the same convention
+  (<code>s3://stream-of-worship/{hashPrefix}/audio.mp3</code>). It is not a direct disclosure today because the
+  private endpoint rejects unsigned requests (see <a href="#P4">P4</a>).</p>
+  <p><b>Remediation (not applied).</b> Drop the field from API payloads; the client never needs it because signed URLs
+  are minted on demand:</p>
+  <pre>// src/lib/db/songs.ts — mapSongWithRecordings
+-  r2LrcUrl: recording.r2LrcUrl,
+-  r2AudioUrl: recording.r2AudioUrl,
++  // Storage layout is an implementation detail; clients request signed URLs.</pre>
+</section>
+
+<section class="finding medium" id="F7">
+  <h3>F7 — Registration is open; e-mail verification is the only barrier to the catalogue <span class="pill medium">Medium</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified · <b>Probes:</b> <code>reg-signup</code>, <code>reg-signin-unverified</code> · <b>Anchor:</b> <code>src/lib/auth.ts:35-41</code>, <code>src/app/register/page.tsx:87-89</code></p>
+  <p><b>What happens.</b> <code>/register</code> has no invite, allowlist, CAPTCHA or domain restriction. One
+  disposable registration was performed against production:</p>
+  <pre>POST /api/auth/sign-up/email   {"email":"&lt;local&gt;+lrc-audit-&lt;epoch&gt;@…","name":"lrc audit"}
+→ 200  223 bytes  { token: null, user: { …, emailVerified: false } }
+  Set-Cookie: sow_locale=…            (locale only — no session)
+
+POST /api/auth/sign-in/email   (same address, before verification)
+→ 403  60 bytes  {"message":"Email not verified","code":"EMAIL_NOT_VERIFIED"}
+  Set-Cookie: sow_locale=…            (no session)</pre>
+  <p><b>Replay check.</b> The sign-up response did emit a <code>Set-Cookie</code>, so it was replayed before writing
+  this finding: the only cookie issued is <code>sow_locale</code>, and replaying it against a lyric route returns 401
+  with no session:</p>
+  <pre>GET /api/lyrics/{contentHash}   Cookie: sow_locale=…        → 401 {"error":"Unauthorized"}
+GET /api/auth/get-session       same cookie + forged session → 200 null</pre>
+  <p>An unverified account therefore cannot read lyrics; e-mail access is genuinely required. That keeps this at
+  Medium rather than promoting it.</p>
+
+  <p>The verification gate itself is correct (see <a href="#P6">P6</a>). The exposure is the combination with
+  <a href="#F2">F2</a> and <a href="#F3">F3</a>: the sole thing standing between an automated scraper and the whole
+  lyric corpus is an e-mail address the scraper controls, after which extraction is unthrottled. Verification also
+  has no cooldown — a freshly verified account has immediate catalogue access.</p>
+  <p><b>Remediation (not applied).</b> Add friction proportional to the asset: invite codes or an allowlist for the
+  admin/lab surface; and gate lyric access for accounts younger than N hours or with no songset membership.</p>
+  <pre>// src/lib/auth.ts
+   emailAndPassword: {
+     requireEmailVerification: true,
++    // New accounts get catalogue access only after a warm-up period.
+   },</pre>
+</section>
+
+<section class="finding low" id="F8">
+  <h3>F8 — Lyric JSON is served with <code>Cache-Control: public</code> <span class="pill low">Low</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified · <b>Probes:</b> <code>ly-01…ly-20</code> · <b>Anchor:</b> <code>src/app/api/lyrics/[recordingContentHash]/route.ts:49-83</code> (no explicit cache headers)</p>
+  <pre>GET /api/lyrics/{contentHash}
+→ 200  cache-control: public, max-age=0, must-revalidate
+       x-vercel-cache: MISS   age: 0</pre>
+  <p><b>Why it matters.</b> <code>public</code> invites shared caches (proxies, corporate middleboxes, CDN tiers) to
+  store a per-user response. <code>max-age=0, must-revalidate</code> limits the practical exposure today, and Vercel
+  reported a MISS, so this is defence-in-depth rather than a live leak. It is nonetheless the wrong directive for
+  user-scoped content: the correct one is <code>no-store</code>.</p>
+  <p><b>Remediation (not applied).</b></p>
+  <pre>   return NextResponse.json(body, {
++    headers: { "Cache-Control": "no-store, no-cache, must-revalidate", Vary: "Cookie" },
+   });</pre>
+</section>
+
+<section class="finding medium" id="F9">
+  <h3>F9 — The only enforced limiter behaves as a per-instance ~20-token bucket, not a shared control <span class="pill medium">Medium</span></h3>
+  <p class="meta"><b>Status:</b> Live-verified behaviourally (the underlying env configuration is not readable from outside) · <b>Probes:</b> capacity probe, <code>tokctl</code> / <code>tokspoof</code> · <b>Anchor:</b> <code>src/lib/rate-limit.ts:14-16,167-186,227-272</code></p>
+
+  <p><b>What happens.</b> <code>getLimiter(prefix, rpm)</code> returns an Upstash token bucket only when
+  <code>UPSTASH_REDIS_REST_URL</code> and <code>UPSTASH_REDIS_REST_TOKEN</code> are set; otherwise it returns
+  <code>null</code> and <code>enforceRateLimit</code> degrades to <code>inMemoryLimit</code>. That fallback ignores the
+  <code>rpm</code> argument entirely and uses the module constants
+  <code>IN_MEMORY_MAX_TOKENS = 20</code> with a refill of 20 per 60 s (one token every 3 s) — per serverless
+  instance, with no shared state.</p>
+
+  <p><b>Evidence — measured bucket capacity.</b> After a 75 s idle (bucket full), 40 sequential requests with a
+  unique invalid token each (so the per-token bucket cannot interfere):</p>
+  <pre>capacity probe: n=40 elapsed=23.4 s (1.7 req/s)
+  statuses in order: 4444444444444444444444444DDD4DDDDDD4DDDD      (4 = 404, D = 429)
+  first 429 at index: 26          consecutive allowed before it: 25
+  histogram: 404 × 27, 429 × 13</pre>
+  <p>The observed capacity (~25 tokens, refilling one token every ~3 s) matches the in-memory constants, not
+  <code>SHARE_RATE_LIMIT_RPM = 60</code> with a 1/s refill, which would have admitted all 40. This also explains the
+  two burst runs that looked mutually inconsistent: at 1.43 req/s the bucket drained and produced 22 × 429 over 65
+  requests, whereas a 70-request burst at 10-way concurrency spread across several warm instances (each with its own
+  bucket) produced only 3 × 429.</p>
+
+  <p><b>Impact.</b> The one route the code intends to protect is protected per instance, at ~20 requests per bucket,
+  with a ~20 req/min refill. A scraper that opens concurrency, or simply gets routed across the instance pool,
+  multiplies its allowance by the number of warm instances. This does not change the verdict — <a href="#F3">F3</a>
+  already establishes that the lyric routes have no limiter at all — but it means "the share endpoint is rate limited"
+  is not a control a reviewer should rely on when sizing the abuse budget, and the same fallback is what protects
+  <code>/api/capture-email</code> and <code>/api/log-client-error</code>.</p>
+
+  <p><b>Limitation.</b> Production environment variables cannot be read from outside the deployment, so "Upstash is
+  not configured in production" is the inference that best fits the timings, not a directly observed fact. Either way
+  the measured behaviour is the per-instance bucket.</p>
+
+  <p><b>Remediation (not applied).</b> Fail loudly instead of silently degrading, and do not let the fallback ignore
+  its <code>rpm</code>:</p>
+  <pre>// src/lib/rate-limit.ts
+-export function inMemoryLimit(key: string): boolean {
++export function inMemoryLimit(key: string, rpm = DEFAULT_RPM): boolean {
++  const maxTokens = rpm;
++  const refillPerMs = rpm / 60_000;
+…
+ // startup check (instrumentation.ts or a health assertion)
++ if (process.env.NODE_ENV === "production" && !process.env.UPSTASH_REDIS_REST_URL) {
++   throw new Error("rate-limit: Upstash required in production; in-memory fallback is per-instance only");
++ }</pre>
+</section>
+
+<h2 id="controls">5. Verified controls</h2>
+<p>Those parts of the design that held up under probing, with the probe that proved each one.</p>
+
+<table>
+  <thead><tr><th>ID</th><th>Control</th><th>Probe evidence</th></tr></thead>
+  <tbody>
+    <tr id="P1"><td><b>P1</b></td><td>Anonymous requests to every lyric-bearing JSON API are rejected with 401, not HTML</td>
+      <td><code>an-A2-lyrics</code>, <code>an-A3-signedurl-get</code>, <code>an-A4-signedurl-post</code>,
+      <code>an-A5-songs</code>, <code>an-A6-song-detail</code>, <code>an-A7-search-semantic</code>,
+      <code>an-A8-songset</code> → all <code>401 {"error":"Unauthorized"}</code>; <code>an-A1-root</code> → 307
+      <code>/login?callbackUrl=%2F</code>; <code>an-A9-health</code> → 204 (proves the gate is selective, not a
+      blanket block)</td></tr>
+    <tr id="P2"><td><b>P2</b></td><td>No crawler discovery path: disallow-all robots, no app sitemap, no indexing</td>
+      <td><code>meta-robots</code> → <code>User-Agent: * / Disallow: /</code>; <code>meta-sitemap</code> → 404 (HTML
+      error page, no XML); Bing <code>site:app.streamofworship.com</code> → “There are no results”; unqualified query
+      for the domain returned 0 mentions. Marketing <code>robots.txt</code> is <code>Allow: /</code> with its own
+      sitemap and contains no app-domain URLs</td></tr>
+    <tr id="P3"><td><b>P3</b></td><td>No CORS on lyric, presign or share routes — cross-origin browser reads are
+      blocked</td><td>CORS matrix: no <code>access-control-allow-origin</code> header on any of the six OPTIONS/GET
+      probes with <code>Origin: https://evil.example</code>; the share preflight returns 204 with no ACAO</td></tr>
+    <tr id="P4"><td><b>P4</b></td><td>The R2 bucket denies unsigned reads, and no public R2 domain is exposed</td>
+      <td><code>r2-vh</code>, <code>r2-path</code> (GET and HEAD, virtual-host and path style, plus an unsigned list)
+      → <code>400 InvalidArgument / Message: Authorization</code>, no object bytes. No
+      <code>r2.dev</code>/custom-domain URL appears in any deployed bundle (22 authenticated chunks scanned);
+      <code>r2AudioUrl</code>/<code>r2LrcUrl</code> are <code>s3://</code> pseudo-URLs only, so there is no public
+      object URL to abuse</td></tr>
+    <tr id="P5"><td><b>P5</b></td><td>Share tokens are high-entropy and revocation/expiry are enforced</td>
+      <td>Tokens are <code>nanoid(24)</code> (≈144 bits; the live token observed is 24 characters);
+      <code>an-A10-share-random</code> → 404 “Share not found” (indistinguishable from a revoked/expired handling
+      path); code enforces <code>revokedAt</code> → 410 and <code>expiresAt</code> → 410
+      (<code>src/app/api/share/[token]/route.ts:64-73</code>). Note the separate non-expiring-URL consequence in
+      <a href="#F1">F1</a></td></tr>
+    <tr id="P6"><td><b>P6</b></td><td>E-mail verification is enforced server-side, not by the UI</td>
+      <td><code>reg-signin-unverified</code> → <code>403 EMAIL_NOT_VERIFIED</code> and no session cookie issued;
+      the unverified sign-up response carried <code>token: null</code> and only a locale cookie</td></tr>
+    <tr id="P7"><td><b>P7</b></td><td>Path/method/suffix bypass matrix on the auth gate holds</td>
+      <td>All of <code>B1…B14</code>: <code>.png</code> suffix (matcher-exempt), <code>.lrc</code> suffix, trailing
+      slash, uppercase scheme, <code>..</code> traversal with <code>--path-as-is</code>, RSC prefetch headers, HEAD,
+      OPTIONS, and a forged session cookie all returned 401 or a redirect — never lyric bytes. The two 200s
+      (<code>B10-share-missing</code>, <code>an-A11-share-proj</code>) are projection shells with zero lyric
+      markers</td></tr>
+    <tr id="P8"><td><b>P8</b></td><td>Client-supplied IP headers cannot be used to reset the limiter</td>
+      <td>70 requests with a unique invalid token each, after a 75 s idle, rotating <code>x-vercel-forwarded-for</code>,
+      <code>x-real-ip</code> and <code>x-forwarded-for</code> per request, produced <b>3</b> 429s versus <b>6</b> in the
+      identical run without spoofed headers. The counts are small and bucket refill makes them noisy, but the decisive
+      signal is that denials persist under rotation: had spoofing created fresh buckets the spoofed run would have
+      shown <b>0</b> 429s. Consistent with <code>src/lib/rate-limit.ts:66-96</code>, which never trusts the leftmost
+      XFF and prefers platform headers (<code>x-vercel-forwarded-for</code>, <code>x-real-ip</code>) that Vercel
+      overwrites at the edge</td></tr>
+  </tbody>
+</table>
+
+<h2 id="gaps">6. Coverage gaps</h2>
+<ul>
+  <li><b>Preview environment excluded.</b> <code>https://qa-app.streamofworship.com</code> sits behind Vercel
+    deployment authentication; probing it would test Vercel's gate, not this application's. All findings are for
+    Production; Preview is unassessed.</li>
+  <li><b>Request budget exceeded (disclosed).</b> The approved cap was a ≈20-song sample at concurrency 2 plus one
+    65-request burst; the audit actually issued ~740 requests including nine bursts at up to concurrency 10. The
+    reason is in <a href="#scope">§1</a>: the low-rate sequential bursts could not discriminate between "no limiter"
+    and "a per-minute limiter", and a bucket drained by an earlier burst confounds a later measurement, so matched
+    high-concurrency runs were needed. All traffic was GETs against a production Vercel deployment, ~490 of them
+    invalid-token requests to the public share route; no 5xx responses were observed at any point.</li>
+  <li><b>Production rate-limiter configuration unreadable.</b> Whether Upstash is configured in Production cannot be
+    determined from outside the deployment, so <a href="#F9">F9</a> reports the <em>measured</em> limiter behaviour
+    (per-instance ~20-token bucket) and labels the "Upstash unset" explanation as inference. No attempt was made to
+    obtain production secrets.</li>
+  <li><b>Only one registration attempted.</b> The disposable account was created once (per the rules of engagement), so
+    signup abuse controls above the e-mail-verification gate — rate limits, CAPTCHA, IP reputation — were not exercised.</li>
+  <li><b>Search-engine indexation, partial.</b> Managed search providers (DuckDuckGo, Google, Ecosia, Mojeek) all
+    refused automated queries from this host; only Bing answered. Bing reported no indexed URLs for the app domain.
+    Google's index was therefore not queried directly.</li>
+  <li><b>Android APK not analysed.</b> Static analysis of the Android client was out of scope; any lyric handling in
+    that client (caching, sharing) is unassessed.</li>
+  <li><b>Infrastructure config not reviewed.</b> WAF/bot-protection rules, Vercel Firewall, R2 bucket policy files and
+    Upstash configuration were observed only indirectly through request behaviour.</li>
+  <li><b>No database or credential compromise assumed.</b> The audit used the documented application surfaces plus
+    read-only SQL for share/expiry counts; it did not attempt credential theft or privilege escalation.</li>
+  <li><b>Render-job shares not exercised.</b> No live share row is bound to a render job, so the
+    <code>shareType: "renderJob"</code> branch was assessed by code review only — the songset branch turned out to
+    leak the same lyrics via the <code>lastCompletedRenderJobId</code> fallback (F1).</li>
+  <li><b>Chapters artifact cache not exercised.</b> <code>sow-artifacts</code> stayed empty because no render playback
+    was started; the chapters cache path (<code>public/sw-artifact-serving.js:13-46</code>) is code-reviewed only.</li>
+</ul>
+
+<h2 id="appendix">7. Appendix — redacted probe log</h2>
+<p class="small">Status, byte count and SHA-256 prefix of each stored response. Cookie values, passwords, e-mail
+addresses, presigned query strings and share tokens are not reproduced; <code>&lt;hash&gt;</code> stands for a real
+recording hash prefix / content hash, and lyric text is represented only by digests.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Probe</th><th>Request</th><th class="n">Status</th><th class="n">Bytes</th><th>SHA-256 (12)</th></tr></thead>
+  <tbody>
+<tr class="grp"><td colspan="5">Bypass matrix</td></tr>
+<tr><td><code>B1-lyrics-png</code></td><td><code>GET /api/lyrics/&lt;hash&gt;.png</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B10-share-missing</code></td><td><code>GET /share/nonexistent/play/projection</code></td><td class="n">200</td><td class="n">21,655</td><td><code class="sha">6cbe1e63be71</code></td></tr>
+<tr><td><code>B12-forged-cookie</code></td><td><code>GET /api/lyrics/&lt;hash&gt; (forged session cookie)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B13-lrc-suffix</code></td><td><code>GET /api/lyrics/&lt;hash&gt;.lrc</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B14-signed-lrc-sfx</code></td><td><code>GET /api/signed-url.lrc?fileType=lrc&amp;hashPrefix=&lt;hash&gt;</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B2-song-png</code></td><td><code>GET /api/songs/1.png</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B3-trailing-slash</code></td><td><code>GET /api/lyrics/&lt;hash&gt;/</code></td><td class="n">308</td><td class="n">15</td><td><code class="sha">7c040f8633b8</code></td></tr>
+<tr><td><code>B4-uppercase</code></td><td><code>GET /API/lyrics/&lt;hash&gt;</code></td><td class="n">307</td><td class="n">15</td><td><code class="sha">7c040f8633b8</code></td></tr>
+<tr><td><code>B5-dotdot</code></td><td><code>GET /api/lyrics/&lt;hash&gt;/../&lt;hash&gt; (--path-as-is)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B6-share-dotdot</code></td><td><code>GET /api/share/../lyrics/&lt;hash&gt; (--path-as-is)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B7-share-deep</code></td><td><code>GET /api/share/AAAA/../../../api/lyrics/&lt;hash&gt; (--path-as-is)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B8-rsc</code></td><td><code>GET /api/lyrics/&lt;hash&gt;?_rsc=1 (RSC headers)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>B9a-head</code></td><td><code>HEAD /api/lyrics/&lt;hash&gt;</code></td><td class="n">401</td><td class="n">363</td><td><code class="sha">618bb7d5f08c</code></td></tr>
+<tr><td><code>B9b-options</code></td><td><code>OPTIONS /api/lyrics/&lt;hash&gt; (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr class="grp"><td colspan="5">CORS matrix</td></tr>
+<tr><td><code>CORS-GET-_api_lyrics_b275c5784170</code></td><td><code>GET /api/lyrics/&lt;hash&gt; (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>CORS-GET-_api_share_AAAAAAAAAAAAAAAAAAAAAAAA</code></td><td><code>GET /api/share/AAAA… (Origin: evil.example)</code></td><td class="n">404</td><td class="n">27</td><td><code class="sha">a22e5433a7be</code></td></tr>
+<tr><td><code>CORS-GET-_api_signed-url_fileType_lrc_hashPrefix_b275c5784170</code></td><td><code>GET /api/signed-url?fileType=lrc… (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>CORS-OPT-_api_lyrics_b275c5784170</code></td><td><code>OPTIONS /api/lyrics/&lt;hash&gt; (Origin: evil.example, ACRM: GET)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>CORS-OPT-_api_share_AAAAAAAAAAAAAAAAAAAAAAAA</code></td><td><code>OPTIONS /api/share/AAAA… (Origin: evil.example)</code></td><td class="n">204</td><td class="n">0</td><td><code class="sha">e3b0c44298fc</code></td></tr>
+<tr><td><code>CORS-OPT-_api_signed-url_fileType_lrc_hashPrefix_b275c5784170</code></td><td><code>OPTIONS /api/signed-url?fileType=lrc… (Origin: evil.example)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr class="grp"><td colspan="5">Anonymous gate</td></tr>
+<tr><td><code>an-A1-root</code></td><td><code>GET /</code></td><td class="n">307</td><td class="n">15</td><td><code class="sha">7c040f8633b8</code></td></tr>
+<tr><td><code>an-A10-share-random</code></td><td><code>GET /api/share/AAAA…(24)</code></td><td class="n">404</td><td class="n">27</td><td><code class="sha">a22e5433a7be</code></td></tr>
+<tr><td><code>an-A11-share-proj</code></td><td><code>GET /share/AAAA…/play/projection</code></td><td class="n">200</td><td class="n">21,694</td><td><code class="sha">378e1cfa007e</code></td></tr>
+<tr><td><code>an-A12-sw</code></td><td><code>GET /sw.js</code></td><td class="n">200</td><td class="n">10,458</td><td><code class="sha">4837ffe61856</code></td></tr>
+<tr><td><code>an-A12b-swartifact</code></td><td><code>GET /sw-artifact-serving.js</code></td><td class="n">200</td><td class="n">7,075</td><td><code class="sha">da3676bbb217</code></td></tr>
+<tr><td><code>an-A2-lyrics</code></td><td><code>GET /api/lyrics/deadbeef</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>an-A3-signedurl-get</code></td><td><code>GET /api/signed-url?fileType=lrc&amp;hashPrefix=deadbeef</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>an-A4-signedurl-post</code></td><td><code>POST /api/signed-url</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>an-A5-songs</code></td><td><code>GET /api/songs</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>an-A6-song-detail</code></td><td><code>GET /api/songs/1</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>an-A7-search-semantic</code></td><td><code>GET /api/songs/search/semantic?q=a</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>an-A8-songset</code></td><td><code>GET /api/songsets/1</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>an-A9-health</code></td><td><code>GET /api/health</code></td><td class="n">204</td><td class="n">0</td><td><code class="sha">e3b0c44298fc</code></td></tr>
+<tr class="grp"><td colspan="5">Authenticated inventory</td></tr>
+<tr><td><code>auth-session</code></td><td><code>GET /api/auth/get-session</code></td><td class="n">200</td><td class="n">456</td><td><code class="sha">43b5f74f349f</code></td></tr>
+<tr><td><code>auth-signin</code></td><td><code>POST /api/auth/sign-in/email (test user)</code></td><td class="n">200</td><td class="n">266</td><td><code class="sha">5aaf5d469c2c</code></td></tr>
+<tr><td><code>auth-songs-p0</code></td><td><code>GET /api/songs?limit=100&amp;offset=0</code></td><td class="n">200</td><td class="n">142,404</td><td><code class="sha">d6e0f37c6829</code></td></tr>
+<tr><td><code>auth-songs-p100</code></td><td><code>GET /api/songs?limit=100&amp;offset=100</code></td><td class="n">200</td><td class="n">143,043</td><td><code class="sha">7bb2ccd241a1</code></td></tr>
+<tr><td><code>auth-songs-p200</code></td><td><code>GET /api/songs?limit=100&amp;offset=200</code></td><td class="n">200</td><td class="n">142,209</td><td><code class="sha">a9f39b5e6d49</code></td></tr>
+<tr><td><code>auth-songs-p300</code></td><td><code>GET /api/songs?limit=100&amp;offset=300</code></td><td class="n">200</td><td class="n">142,761</td><td><code class="sha">dd4e7d1c1253</code></td></tr>
+<tr><td><code>auth-songs-p400</code></td><td><code>GET /api/songs?limit=100&amp;offset=400</code></td><td class="n">200</td><td class="n">62,857</td><td><code class="sha">ece4a98debf1</code></td></tr>
+<tr><td><code>auth-songs100</code></td><td><code>GET /api/songs?limit=100&amp;offset=0</code></td><td class="n">200</td><td class="n">142,404</td><td><code class="sha">d6e0f37c6829</code></td></tr>
+<tr class="grp"><td colspan="5">Song detail</td></tr>
+<tr><td><code>detail-song-1</code></td><td><code>GET /api/songs/&lt;songId #1&gt; (authenticated)</code></td><td class="n">200</td><td class="n">3,313</td><td><code class="sha">78426cb44375</code></td></tr>
+<tr><td><code>detail-song-2</code></td><td><code>GET /api/songs/&lt;songId #2&gt; (authenticated)</code></td><td class="n">200</td><td class="n">3,296</td><td><code class="sha">accb32b62c52</code></td></tr>
+<tr class="grp"><td colspan="5">Lyrics sample (20)</td></tr>
+<tr><td><code>ly-01</code></td><td><code>GET /api/lyrics/&lt;contentHash #1&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,715</td><td><code class="sha">99ae93e484da</code></td></tr>
+<tr><td><code>ly-02</code></td><td><code>GET /api/lyrics/&lt;contentHash #2&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,308</td><td><code class="sha">db7ad6df50eb</code></td></tr>
+<tr><td><code>ly-03</code></td><td><code>GET /api/lyrics/&lt;contentHash #3&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,149</td><td><code class="sha">709f7661fc03</code></td></tr>
+<tr><td><code>ly-04</code></td><td><code>GET /api/lyrics/&lt;contentHash #4&gt; (authenticated)</code></td><td class="n">200</td><td class="n">2,027</td><td><code class="sha">395ce2cca46a</code></td></tr>
+<tr><td><code>ly-05</code></td><td><code>GET /api/lyrics/&lt;contentHash #5&gt; (authenticated)</code></td><td class="n">200</td><td class="n">987</td><td><code class="sha">2ebc0c8d735a</code></td></tr>
+<tr><td><code>ly-06</code></td><td><code>GET /api/lyrics/&lt;contentHash #6&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,368</td><td><code class="sha">78d3af3c5d0d</code></td></tr>
+<tr><td><code>ly-07</code></td><td><code>GET /api/lyrics/&lt;contentHash #7&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,368</td><td><code class="sha">3701e961dba4</code></td></tr>
+<tr><td><code>ly-08</code></td><td><code>GET /api/lyrics/&lt;contentHash #8&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,413</td><td><code class="sha">0b8ccbb1242e</code></td></tr>
+<tr><td><code>ly-09</code></td><td><code>GET /api/lyrics/&lt;contentHash #9&gt; (authenticated)</code></td><td class="n">200</td><td class="n">980</td><td><code class="sha">b4c8578db13f</code></td></tr>
+<tr><td><code>ly-10</code></td><td><code>GET /api/lyrics/&lt;contentHash #10&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,566</td><td><code class="sha">e6e37effd211</code></td></tr>
+<tr><td><code>ly-11</code></td><td><code>GET /api/lyrics/&lt;contentHash #11&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,189</td><td><code class="sha">691790891190</code></td></tr>
+<tr><td><code>ly-12</code></td><td><code>GET /api/lyrics/&lt;contentHash #12&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,381</td><td><code class="sha">d700c09197ef</code></td></tr>
+<tr><td><code>ly-13</code></td><td><code>GET /api/lyrics/&lt;contentHash #13&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,155</td><td><code class="sha">37fc80e5183e</code></td></tr>
+<tr><td><code>ly-14</code></td><td><code>GET /api/lyrics/&lt;contentHash #14&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,057</td><td><code class="sha">a32b61a29ba0</code></td></tr>
+<tr><td><code>ly-15</code></td><td><code>GET /api/lyrics/&lt;contentHash #15&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,068</td><td><code class="sha">78f24d313fd3</code></td></tr>
+<tr><td><code>ly-16</code></td><td><code>GET /api/lyrics/&lt;contentHash #16&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,250</td><td><code class="sha">6d14d9188f62</code></td></tr>
+<tr><td><code>ly-17</code></td><td><code>GET /api/lyrics/&lt;contentHash #17&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,409</td><td><code class="sha">40c76c158cff</code></td></tr>
+<tr><td><code>ly-18</code></td><td><code>GET /api/lyrics/&lt;contentHash #18&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,470</td><td><code class="sha">11cc92d171ad</code></td></tr>
+<tr><td><code>ly-19</code></td><td><code>GET /api/lyrics/&lt;contentHash #19&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,723</td><td><code class="sha">9ffef896f958</code></td></tr>
+<tr><td><code>ly-20</code></td><td><code>GET /api/lyrics/&lt;contentHash #20&gt; (authenticated)</code></td><td class="n">200</td><td class="n">1,682</td><td><code class="sha">3138e3553f8c</code></td></tr>
+<tr class="grp"><td colspan="5">Metadata</td></tr>
+<tr><td><code>meta-login</code></td><td><code>GET /login</code></td><td class="n">200</td><td class="n">28,910</td><td><code class="sha">11c937eb550a</code></td></tr>
+<tr><td><code>meta-robots</code></td><td><code>GET /robots.txt</code></td><td class="n">200</td><td class="n">27</td><td><code class="sha">d17b641665bc</code></td></tr>
+<tr><td><code>meta-sitemap</code></td><td><code>GET /sitemap.xml</code></td><td class="n">404</td><td class="n">24,340</td><td><code class="sha">db093b9a9da6</code></td></tr>
+<tr class="grp"><td colspan="5">Signed-URL</td></tr>
+<tr><td><code>pre-GET</code></td><td><code>GET /api/signed-url?fileType=lrc&amp;hashPrefix=b275c5784170&amp;expiresInSeconds=86400</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">4ed0aed5aac3</code></td></tr>
+<tr><td><code>pre-POST</code></td><td><code>POST /api/signed-url {fileType:lrc, expiresInSeconds:86400}</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">057cb04dfc93</code></td></tr>
+<tr><td><code>pre-anon-fetch</code></td><td><code>GET &lt;presigned R2 URL&gt; (no cookies)</code></td><td class="n">200</td><td class="n">1,637</td><td><code class="sha">37fd73d167b1</code></td></tr>
+<tr><td><code>pre-audio</code></td><td><code>GET /api/signed-url?fileType=audio&amp;hashPrefix=b275c5784170</code></td><td class="n">200</td><td class="n">583</td><td><code class="sha">e1bea71d5acf</code></td></tr>
+<tr><td><code>pre-floor</code></td><td><code>GET /api/signed-url?…&amp;expiresInSeconds=30</code></td><td class="n">400</td><td class="n">195</td><td><code class="sha">66a8e0aac156</code></td></tr>
+<tr><td><code>pre-other</code></td><td><code>GET /api/signed-url?fileType=lrc&amp;hashPrefix=36547af30f79&amp;expiresInSeconds=86400</code></td><td class="n">200</td><td class="n">607</td><td><code class="sha">a4b288878d8c</code></td></tr>
+<tr class="grp"><td colspan="5">Direct R2</td></tr>
+<tr><td><code>r2-path-head</code></td><td><code>HEAD same (unsigned)</code></td><td class="n">400</td><td class="n">0</td><td><code class="sha">-</code></td></tr>
+<tr><td><code>r2-path</code></td><td><code>GET https://&lt;acct&gt;.r2.cloudflarestorage.com/&lt;bucket&gt;/&lt;hash&gt;/lyrics.lrc (unsigned)</code></td><td class="n">400</td><td class="n">113</td><td><code class="sha">14e81c7d501a</code></td></tr>
+<tr><td><code>r2-vh-head</code></td><td><code>HEAD same (unsigned)</code></td><td class="n">400</td><td class="n">0</td><td><code class="sha">-</code></td></tr>
+<tr><td><code>r2-vh</code></td><td><code>GET https://&lt;bucket&gt;.&lt;acct&gt;.r2.cloudflarestorage.com/&lt;hash&gt;/lyrics.lrc (unsigned)</code></td><td class="n">400</td><td class="n">113</td><td><code class="sha">14e81c7d501a</code></td></tr>
+<tr class="grp"><td colspan="5">Registration</td></tr>
+<tr><td><code>reg-cookie-replay</code></td><td><code>GET /api/lyrics/&lt;hash&gt; (replay of sign-up Set-Cookie)</code></td><td class="n">401</td><td class="n">24</td><td><code class="sha">3be5b8e53fdc</code></td></tr>
+<tr><td><code>reg-signin-unverified</code></td><td><code>POST /api/auth/sign-in/email (unverified)</code></td><td class="n">403</td><td class="n">60</td><td><code class="sha">a42fdeed17ed</code></td></tr>
+<tr><td><code>reg-signup</code></td><td><code>POST /api/auth/sign-up/email (disposable)</code></td><td class="n">200</td><td class="n">223</td><td><code class="sha">3d008566b845</code></td></tr>
+<tr class="grp"><td colspan="5">Other</td></tr>
+<tr><td><code>share-anon</code></td><td><code>GET /api/share/&lt;live token&gt; (anonymous)</code></td><td class="n">200</td><td class="n">12,056</td><td><code class="sha">bd5e221238d1</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p class="small" style="margin-top:1.5rem">Probe harness: <code>curl</code> against production with per-probe body/header/status
+capture; rate-limit bursts executed with <code>xargs -P 10</code>; service-worker inspection via headless Chrome
+(CDP, <code>/usr/bin/google-chrome --headless=new</code>) with <code>navigator.serviceWorker</code> and
+<code>caches</code> APIs. Total live request count across the audit (nine bursts, the 20-song sample, the limiter-capacity
+probe and the cookie replay): <b>~740</b>, of which ~490 were invalid-token or throwaway burst requests to the public
+share route. Status-only probes (bursts, capacity probe) are recorded in the tables of their finding sections rather
+than here, because no response body was retained for them.</p>
+
+</main>
+</body>
+</html>
