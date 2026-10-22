@@ -23,7 +23,7 @@ The Stream of Worship platform has **two analysis tiers**, both served by the An
 ```mermaid
 flowchart TD
     subgraph CLI["Admin CLI Submission"]
-        A1["sow-admin audio analyze &lt;song_id&gt;<br/>[--force] [--no-stems] [--wait]<br/>(full tier only)"]
+        A1["sow-admin audio analyze &lt;song_id&gt;<br/>[--force] [--no-stems] [--no-wait]<br/>(full tier only)"]
         A2["sow-admin audio batch --analyze<br/>[--analysis-tier fast|full, default fast]<br/>[--limit N] [--force]"]
     end
 
@@ -65,7 +65,7 @@ flowchart TD
         K1["Upload result JSON to R2<br/>{hash_prefix}.json<br/>queue.py:551-556"]
         K2["No R2 upload<br/>(fast results stay in cache only)"]
         L["job.status=COMPLETED<br/>persist to SQLite jobs.db"]
-        M1["CLI --wait: db_client.update_recording_analysis<br/>analysis_status=completed"]
+        M1["CLI wait (default): db_client.update_recording_analysis<br/>analysis_status=completed"]
         M2["CLI batch poll: db_client.update_recording_analysis<br/>analysis_status=partial<br/>(or completed if already completed)"]
     end
 
@@ -108,18 +108,18 @@ flowchart TD
 **File:** `ops/admin-cli/src/stream_of_worship/admin/commands/audio.py:1514`
 
 ```bash
-sow-admin audio analyze <song_id> [--force/-f] [--no-stems] [--wait/-w] [--config/-c PATH]
+sow-admin audio analyze <song_id> [--force/-f] [--no-stems] [--no-wait] [--config/-c PATH]
 ```
 
-The command (`analyze_recording`, audio.py:1514-1685):
+The command (`analyze_recording`, audio.py:1514):
 
 1. Loads config → `AdminConfig.load(config_path)` (`config.py:75`) reads TOML at `~/.config/stream-of-worship-admin/config.toml` to get `analysis_url` (default `http://localhost:8000`, `config.py:34`).
 2. Looks up recording via `db_client.get_recording_by_song_id(song_id)` → fetches `r2_audio_url` + `content_hash` (audio.py:1537).
-3. Short-circuits if `analysis_status == "completed"` without `--force` (audio.py:1551), or if `"processing"` without `--wait` (audio.py:1559).
+3. Short-circuits if `analysis_status == "completed"` without `--force` (audio.py:1551), or if `"processing"` without `--no-wait` (audio.py:1559).
 4. Builds `AnalysisClient(config.analysis_url)` — requires env var `SOW_ANALYSIS_API_KEY` (`services/analysis.py:149`).
 5. Calls `client.submit_analysis(audio_url, content_hash, generate_stems=not no_stems, force=force)` (audio.py:1582).
 6. Updates DB: `analysis_status="processing"`, `analysis_job_id=job_id` (audio.py:1598).
-7. With `--wait`: polls `client.wait_for_completion(job_id, poll_interval=30, timeout=600)` (audio.py:1625), then `db_client.update_recording_analysis(...)` writes `tempo_bpm`, key/mode, beats, sections, etc. (audio.py:1651).
+7. Unless `--no-wait`: polls `client.wait_for_completion(job_id, poll_interval=30, timeout=600)` (audio.py:1625), then `db_client.update_recording_analysis(...)` writes `tempo_bpm`, key/mode, beats, sections, etc. (audio.py:1651).
 
 ### HTTP submission — `AnalysisClient.submit_analysis`
 
@@ -577,7 +577,7 @@ This is intentional: fast results are considered transient and may be superseded
 
 The CLI writes results back to the `recordings` table on job completion:
 
-**Full tier** (`audio analyze --wait`, audio.py:1651-1675): writes all fields including `beats`, `downbeats`, `sections`, `embeddings_shape`, `r2_stems_url`. Sets `analysis_status="completed"`.
+**Full tier** (`audio analyze` default wait, audio.py:1651-1675): writes all fields including `beats`, `downbeats`, `sections`, `embeddings_shape`, `r2_stems_url`. Sets `analysis_status="completed"`.
 
 **Fast tier** (`audio batch` poll loop, audio.py:5847-5889): writes only the fast subset. Sets `analysis_status="partial"` — unless the recording was already `"completed"`, in which case it stays `"completed"` (audio.py:5850-5851). Full-only fields (`beats`, `downbeats`, `sections`, `embeddings_shape`) are explicitly set to `None` for fast tier (audio.py:5869-5886) so a re-run after `--force` doesn't leave stale full-tier data behind.
 
@@ -615,7 +615,7 @@ The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes 
 | Aspect | Full Analysis | Fast Analysis |
 |---|---|---|
 | CLI command | `sow-admin audio analyze <song_id>` | `sow-admin audio batch --analyze [--analysis-tier fast]` |
-| CLI flags | `--force`, `--no-stems`, `--wait`, `--config` | `--analysis-tier fast` (default), `--force`, `--limit`, `--analysis-status`, `--album`, `--song`, `--stdin`, `--resume` |
+| CLI flags | `--force`, `--no-stems`, `--no-wait`, `--config` | `--analysis-tier fast` (default), `--force`, `--limit`, `--analysis-status`, `--album`, `--song`, `--stdin`, `--resume` |
 | HTTP endpoint | `POST /api/v1/jobs/analyze` | `POST /api/v1/jobs/fast-analyze` |
 | JobType | `ANALYZE` (`"analyze"`) | `FAST_ANALYZE` (`"fast_analyze"`) |
 | Request model | `AnalyzeJobRequest` / `AnalyzeOptions` | `FastAnalyzeJobRequest` / `FastAnalyzeOptions` |
@@ -627,7 +627,7 @@ The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes 
 | Cache file | `{hash_prefix}.v{version}.json` | `{hash_prefix}_fast.v{version}.json` |
 | R2 upload | Yes (`{hash_prefix}.json`) | No |
 | DB status on success | `completed` | `partial` (or stays `completed` if already completed) |
-| CLI `--wait` support | Yes (single recording) | No (batch uses its own poll loop) |
+| CLI wait support | Default (opt out with `--no-wait`) | No (batch uses its own poll loop) |
 | Key detection | `detect_key(y, sr, sections)` — per-section vote | `detect_key(y, sr, None)` — fixed-window vote |
 | Typical use case | Single-song deep analysis with structural detail | Bulk library classification (BPM/key for hundreds of songs) |
 
@@ -655,8 +655,8 @@ The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes 
 
 5. **Run the analysis**:
    ```bash
-   # Full (single song, blocking)
-   sow-admin audio analyze <song_id> --wait
+   # Full (single song, blocks until done)
+   sow-admin audio analyze <song_id>
 
    # Fast (bulk, default tier)
    sow-admin audio batch --analysis-status incomplete --analyze --limit 500
@@ -674,7 +674,7 @@ The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes 
 
 2. **Webapp and Android never trigger fast analysis.** Fast is strictly an admin/batch-side concept. The webapp and Android client only ever submit full `ANALYZE` jobs (or LRC/embedding jobs). There is no UI surface for fast analysis in the user-facing apps.
 
-3. **Fast results are not uploaded to R2.** This means a fast-analyzed recording's results live only in the Analysis Service's local cache and in Postgres. If the cache is cleared, the fast result is lost (though the Postgres row still has the fast-tier fields). A subsequent `audio analyze <song_id> --wait` (full) will recompute and upload to R2.
+3. **Fast results are not uploaded to R2.** This means a fast-analyzed recording's results live only in the Analysis Service's local cache and in Postgres. If the cache is cleared, the fast result is lost (though the Postgres row still has the fast-tier fields). A subsequent `audio analyze <song_id>` (full, which waits by default) will recompute and upload to R2.
 
 4. **Cache key versioning is shared.** Both fast and full caches are versioned by the same `KEY_ALGORITHM_VERSION` setting. Bumping `KEY_ALGORITHM_VERSION` invalidates both caches simultaneously. There is no way to invalidate just one tier's cache without also invalidating the other (short of manually deleting cache files).
 

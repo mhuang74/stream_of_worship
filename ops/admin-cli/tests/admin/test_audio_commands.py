@@ -1,5 +1,6 @@
 """Tests for audio CLI commands."""
 
+import contextlib
 import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,25 @@ from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
 runner = CliRunner()
 
 WIDE_ENV = {"COLUMNS": "200"}
+
+
+@pytest.fixture(autouse=True)
+def _disable_ssl(monkeypatch):
+    """Force sslmode=disable for DB connections the CLI builds from config.
+
+    ``ConnectionProvider`` defaults to ``sslmode="require"``, which the
+    testcontainers Postgres does not support — every integration test that
+    invokes a command through ``--config`` would otherwise fail at connect.
+    """
+    from stream_of_worship.admin.commands import audio as audio_commands
+    from stream_of_worship.admin.commands import catalog as catalog_commands
+    from stream_of_worship.db.connection import ConnectionProvider
+
+    def _factory(url, sslmode="require"):
+        return ConnectionProvider(url, sslmode="disable")
+
+    monkeypatch.setattr(catalog_commands, "ConnectionProvider", _factory)
+    monkeypatch.setattr(audio_commands, "ConnectionProvider", _factory)
 
 
 def _make_provider_and_schema(make_test_provider):
@@ -1560,6 +1580,14 @@ class TestAudioShowCommand:
         _drop_all_tables(make_test_provider)
 
 
+def test_analyze_rejects_wait_flag():
+    """--wait was removed; Click rejects it with exit code 2."""
+    result = runner.invoke(app, ["audio", "analyze", "song_001", "--wait"])
+
+    assert result.exit_code == 2
+    assert "No such option" in result.output
+
+
 @pytest.mark.integration
 class TestAnalyzeCommand:
     """Tests for 'audio analyze' command.
@@ -1681,7 +1709,15 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--force"],
+            [
+                "audio",
+                "analyze",
+                "song_001",
+                "--config",
+                str(setup_db["config_path"]),
+                "--no-wait",
+                "--force",
+            ],
         )
 
         assert result.exit_code == 0
@@ -1718,7 +1754,14 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
+            [
+                "audio",
+                "analyze",
+                "song_001",
+                "--config",
+                str(setup_db["config_path"]),
+                "--no-wait",
+            ],
         )
 
         assert result.exit_code == 0
@@ -1761,14 +1804,15 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--wait"],
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
         )
 
         assert result.exit_code == 0
         mock_client.wait_for_completion.assert_called_once()
 
-    def test_analyze_missing_api_key(self, setup_db):
+    def test_analyze_missing_api_key(self, setup_db, monkeypatch):
         """Error when SOW_ANALYSIS_API_KEY not set."""
+        monkeypatch.delenv("SOW_ANALYSIS_API_KEY", raising=False)
         db_client = setup_db["db_client"]
         recording = Recording(
             content_hash="a" * 64,
@@ -1848,7 +1892,14 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
+            [
+                "audio",
+                "analyze",
+                "song_001",
+                "--config",
+                str(setup_db["config_path"]),
+                "--no-wait",
+            ],
         )
 
         assert result.exit_code == 0
@@ -1887,7 +1938,14 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
+            [
+                "audio",
+                "analyze",
+                "song_001",
+                "--config",
+                str(setup_db["config_path"]),
+                "--no-wait",
+            ],
         )
 
         assert result.exit_code == 0
@@ -1945,7 +2003,6 @@ class TestAnalyzeCommand:
                 "full",
                 "--config",
                 str(setup_db["config_path"]),
-                "--wait",
             ],
         )
 
@@ -1993,7 +2050,7 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--wait"],
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
         )
 
         assert result.exit_code == 1
@@ -2004,7 +2061,7 @@ class TestAnalyzeCommand:
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_analyze_wait_mode_timeout(self, mock_client_cls, setup_db, monkeypatch):
-        """Error on poll timeout."""
+        """Poll timeout exits 0 (job keeps running server-side) and stays 'processing'."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
         db_client = setup_db["db_client"]
@@ -2033,11 +2090,16 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--wait"],
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
         )
 
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert "Timed out" in result.output
+
+        # The job is still running server-side; status must not be flipped.
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "processing"
+        assert updated.analysis_job_id == "job-123"
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_analyze_no_stems_flag(self, mock_client_cls, setup_db, monkeypatch):
@@ -2076,6 +2138,7 @@ class TestAnalyzeCommand:
                 "--config",
                 str(setup_db["config_path"]),
                 "--no-stems",
+                "--no-wait",
             ],
         )
 
@@ -2111,7 +2174,14 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
+            [
+                "audio",
+                "analyze",
+                "song_001",
+                "--config",
+                str(setup_db["config_path"]),
+                "--no-wait",
+            ],
         )
 
         assert result.exit_code == 0
@@ -2154,6 +2224,7 @@ class TestAnalyzeCommand:
                 "fast",
                 "--config",
                 str(setup_db["config_path"]),
+                "--no-wait",
             ],
         )
 
@@ -2196,6 +2267,7 @@ class TestAnalyzeCommand:
                 "full",
                 "--config",
                 str(setup_db["config_path"]),
+                "--no-wait",
             ],
         )
 
@@ -2241,6 +2313,7 @@ class TestAnalyzeCommand:
                 "--no-stems",
                 "--config",
                 str(setup_db["config_path"]),
+                "--no-wait",
             ],
         )
 
@@ -2286,6 +2359,7 @@ class TestAnalyzeCommand:
                 "--no-stems",
                 "--config",
                 str(setup_db["config_path"]),
+                "--no-wait",
             ],
         )
 
@@ -2387,7 +2461,6 @@ class TestAnalyzeCommand:
                 "full",
                 "--config",
                 str(setup_db["config_path"]),
-                "--wait",
             ],
         )
 
@@ -2434,6 +2507,7 @@ class TestAnalyzeCommand:
                 "--force",
                 "--config",
                 str(setup_db["config_path"]),
+                "--no-wait",
             ],
         )
 
@@ -2442,7 +2516,7 @@ class TestAnalyzeCommand:
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_analyze_fast_wait_sets_partial(self, mock_client_cls, setup_db, monkeypatch):
-        """Fast tier --wait sets analysis_status='partial', not 'completed'."""
+        """Fast tier (default wait) sets analysis_status='partial', not 'completed'."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
         db_client = setup_db["db_client"]
@@ -2484,7 +2558,7 @@ class TestAnalyzeCommand:
 
         result = runner.invoke(
             app,
-            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"]), "--wait"],
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
         )
 
         assert result.exit_code == 0
@@ -2496,7 +2570,7 @@ class TestAnalyzeCommand:
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_analyze_fast_wait_preserves_completed(self, mock_client_cls, setup_db, monkeypatch):
-        """Fast tier --force --wait on already-completed recording keeps 'completed' status."""
+        """Fast tier --force on already-completed recording keeps 'completed' status."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
         db_client = setup_db["db_client"]
@@ -2546,7 +2620,6 @@ class TestAnalyzeCommand:
                 "--force",
                 "--config",
                 str(setup_db["config_path"]),
-                "--wait",
             ],
         )
 
@@ -2556,7 +2629,7 @@ class TestAnalyzeCommand:
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     def test_analyze_full_wait_sets_completed(self, mock_client_cls, setup_db, monkeypatch):
-        """Full tier --wait sets analysis_status='completed' and writes all fields."""
+        """Full tier (default wait) sets analysis_status='completed' and writes all fields."""
         monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
 
         db_client = setup_db["db_client"]
@@ -2610,7 +2683,6 @@ class TestAnalyzeCommand:
                 "full",
                 "--config",
                 str(setup_db["config_path"]),
-                "--wait",
             ],
         )
 
@@ -2671,7 +2743,6 @@ class TestAnalyzeCommand:
                 "full",
                 "--config",
                 str(setup_db["config_path"]),
-                "--wait",
             ],
         )
 
@@ -2680,6 +2751,169 @@ class TestAnalyzeCommand:
         mock_client.submit_analysis.assert_called_once()
         # Should NOT have reused the existing fast job
         assert mock_client.wait_for_completion.call_args[0][0] == "new-full-job"
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_default_waits(self, mock_client_cls, setup_db, monkeypatch):
+        """No flag: polls the submitted job to completion."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        db_client.insert_recording(
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="aaaaaaaaaaaa",
+                song_id="song_001",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-15T10:30:00",
+                r2_audio_url="s3://sow-audio/test/audio.mp3",
+            )
+        )
+
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-default-wait",
+            status="queued",
+            job_type="fast_analyze",
+            progress=0.0,
+        )
+        mock_client.wait_for_completion.return_value = JobInfo(
+            job_id="job-default-wait",
+            status="completed",
+            job_type="fast_analyze",
+            progress=1.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            ["audio", "analyze", "song_001", "--config", str(setup_db["config_path"])],
+        )
+
+        assert result.exit_code == 0
+        mock_client.wait_for_completion.assert_called_once()
+        assert mock_client.wait_for_completion.call_args[0][0] == "job-default-wait"
+        assert "Analysis completed" in result.output
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    def test_analyze_no_wait_skips_polling(self, mock_client_cls, setup_db, monkeypatch):
+        """--no-wait: submits and leaves the recording 'processing'."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+
+        db_client = setup_db["db_client"]
+        db_client.insert_recording(
+            Recording(
+                content_hash="a" * 64,
+                hash_prefix="aaaaaaaaaaaa",
+                song_id="song_001",
+                original_filename="test.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-15T10:30:00",
+                r2_audio_url="s3://sow-audio/test/audio.mp3",
+            )
+        )
+
+        mock_client = MagicMock()
+        mock_client.submit_fast_analysis.return_value = JobInfo(
+            job_id="job-no-wait",
+            status="queued",
+            job_type="fast_analyze",
+            progress=0.0,
+        )
+        mock_client_cls.return_value = mock_client
+
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "analyze",
+                "song_001",
+                "--config",
+                str(setup_db["config_path"]),
+                "--no-wait",
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_client.wait_for_completion.assert_not_called()
+        updated = db_client.get_recording_by_hash("aaaaaaaaaaaa")
+        assert updated.analysis_status == "processing"
+
+
+class TestEmbedCommand:
+    """Tests for 'audio embed' wait-by-default behaviour (analysis service mocked)."""
+
+    @staticmethod
+    def _stack():
+        """Patch config/db/analysis-client/submit/write; return (stack, mocks)."""
+        stack = contextlib.ExitStack()
+        mock_config_cls = stack.enter_context(
+            patch("stream_of_worship.admin.commands.audio.AdminConfig")
+        )
+        mock_get_db = stack.enter_context(
+            patch("stream_of_worship.admin.commands.audio.get_db_client")
+        )
+        mock_client_cls = stack.enter_context(
+            patch("stream_of_worship.admin.services.analysis.AnalysisClient")
+        )
+        mock_submit = stack.enter_context(
+            patch("stream_of_worship.admin.commands.audio._submit_embedding_single")
+        )
+        mock_write = stack.enter_context(
+            patch("stream_of_worship.admin.commands.audio._write_embedding_result")
+        )
+        mock_config_cls.load.return_value = MagicMock(analysis_url="http://analysis")
+        mock_get_db.return_value.get_song.return_value = MagicMock(song_id="song_001")
+        return stack, mock_client_cls, mock_submit, mock_write
+
+    def test_embed_default_waits(self):
+        """No flag: polls every job and writes the embedding."""
+        stack, mock_client_cls, mock_submit, mock_write = self._stack()
+        with stack:
+            mock_submit.return_value = "job-1"
+            mock_write.return_value = True
+
+            analysis_client = MagicMock()
+            analysis_client.wait_for_completion.return_value = JobInfo(
+                job_id="job-1",
+                status="completed",
+                job_type="embedding",
+                progress=1.0,
+            )
+            mock_client_cls.return_value = analysis_client
+
+            result = runner.invoke(app, ["audio", "embed", "song_001", "--config", "x"])
+
+        assert result.exit_code == 0, result.output
+        analysis_client.wait_for_completion.assert_called_once()
+        mock_write.assert_called_once()
+        assert "Done: 1 succeeded, 0 failed" in result.output
+
+    def test_embed_no_wait_skips_polling(self):
+        """--no-wait: reports the job ids and exits without polling."""
+        stack, mock_client_cls, mock_submit, mock_write = self._stack()
+        with stack:
+            mock_submit.return_value = "job-1"
+
+            analysis_client = MagicMock()
+            mock_client_cls.return_value = analysis_client
+
+            result = runner.invoke(
+                app, ["audio", "embed", "song_001", "--config", "x", "--no-wait"]
+            )
+
+        assert result.exit_code == 0, result.output
+        analysis_client.wait_for_completion.assert_not_called()
+        mock_write.assert_not_called()
+        assert "job-1" in result.output
+        assert "--wait" not in result.output
+
+    def test_embed_rejects_wait_flag(self):
+        """--wait was removed; Click rejects it with exit code 2."""
+        result = runner.invoke(app, ["audio", "embed", "song_001", "--wait"])
+
+        assert result.exit_code == 2
+        assert "No such option" in result.output
 
 
 class TestStatusCommand:

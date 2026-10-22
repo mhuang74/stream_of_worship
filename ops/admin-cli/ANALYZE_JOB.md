@@ -30,19 +30,19 @@ sow-admin audio analyze <song-id> --analysis-tier full
 # Full tier without stem separation
 sow-admin audio analyze <song-id> --analysis-tier full --no-stems
 
-# Block until the job completes (30 min timeout)
-sow-admin audio analyze <song-id> --analysis-tier full --wait
+# Submit and return immediately (don't block, don't write back)
+sow-admin audio analyze <song-id> --analysis-tier full --no-wait
 
 # Force re-analysis even if already completed
 sow-admin audio analyze <song-id> --analysis-tier full --force
 ```
 
-If `--wait` is omitted, the CLI exits immediately after submission. The job
-keeps running server-side; you must trigger write-back separately (see
-[USER_GUIDE.md](./USER_GUIDE.md)).
+By default the CLI blocks until the job completes (30-minute timeout) and
+writes the results back. With `--no-wait` the CLI exits immediately after
+submission. The job keeps running server-side; you must trigger write-back
+separately (see [USER_GUIDE.md](./USER_GUIDE.md)).
 
-If `--wait` is used and the job does not finish within 30 minutes, the CLI
-prints:
+If the job does not finish within 30 minutes, the CLI prints:
 
 ```
 Timed out after 30 min. The job is still running server-side.
@@ -66,17 +66,17 @@ The analysis service never writes to the `recordings` table directly.
 
 ### Write-Back Triggers
 
-Use these when you did not pass `--wait`, when `--wait` timed out, or when the
-CLI was interrupted (Ctrl-C). All of them call
+Use these when you passed `--no-wait`, when the default wait timed out, or when
+the CLI was interrupted (Ctrl-C). All of them call
 `db_client.update_recording_analysis(tempo_bpm=..., ...)` against the
 `recordings` table.
 
 | Situation | Recommended command |
 |-----------|---------------------|
-| `--wait` timed out, service still running | `status --sync` |
-| `--wait` timed out, service restarted | `status --reconcile` |
-| Did not use `--wait`, want to backfill now | `status --reconcile` |
-| Want to resume blocking on one job | `audio analyze <song-id> --wait` |
+| Wait timed out, service still running | `status --sync` |
+| Wait timed out, service restarted | `status --reconcile` |
+| Used `--no-wait`, want to backfill now | `status --reconcile` |
+| Want to resume blocking on one job | `audio analyze <song-id>` |
 | Recording stuck in `processing`, no R2 output yet | `status <job-id>` to inspect, then `--force-status failed` to unstick |
 | Bulk backfill after service outage | `status --reconcile` |
 
@@ -280,7 +280,7 @@ loudness measurement.
 5. The service persists the result as `result_json` in its jobs table and
    uploads the same dict as `{hash_prefix}.json` to R2
    (`queue.py:550-556`).
-6. The admin CLI (via `--wait`, `--sync`, or `--reconcile`) fetches the result
+6. The admin CLI (via the default wait, `--sync`, or `--reconcile`) fetches the result
    and calls `DatabaseClient.update_recording_analysis()` in
    `ops/admin-cli/src/stream_of_worship/admin/db/client.py:945`.
 7. For the full tier, all columns are written and `analysis_status` is set to
