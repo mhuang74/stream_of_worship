@@ -130,12 +130,9 @@ export SOW_ANALYSIS_API_KEY="your-api-key"
 
 ### Session Logging
 
-Every `sow-admin` run appends to a rotating log file (5 MB per file, 3 backups):
-
-```
-~/.cache/stream-of-worship-admin/logs/sow-admin.log
-```
-
+Every `sow-admin` run appends to a rotating log file (5 MB per file, 3 backups) under the
+admin cache directory: `~/.cache/stream-of-worship-admin/logs/sow-admin.log` by default, or
+`$XDG_CACHE_HOME/stream-of-worship-admin/logs/sow-admin.log` when `XDG_CACHE_HOME` is set.
 It holds `INFO` records that would otherwise be lost inside the Textual TUI, including
 timed save stages (`save_upload stage=r2_upload elapsed_ms=…`) and one audit line per
 important mutation (`audit event=lrc_save song_id=… hash_prefix=… via=editor …`). The LRC
