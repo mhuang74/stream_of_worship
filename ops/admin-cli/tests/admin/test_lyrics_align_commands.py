@@ -228,6 +228,40 @@ def test_poll_prefers_service_lrc_source(tmp_path):
     assert db_client.update_recording_lrc.call_args.kwargs["lrc_source"] == "qwen3_forced_alignment"
 
 
+@pytest.mark.parametrize(
+    "kind, expected, unexpected",
+    [
+        ("lyrics_align", "sow-admin lyrics align --resume", "lyrics generate --resume"),
+        ("lyrics_generate", "sow-admin lyrics generate --resume", "lyrics align --resume"),
+    ],
+)
+def test_poll_interrupt_hint_names_owner_command(tmp_path, kind, expected, unexpected):
+    """Ctrl+C must point at the command that can actually resume this manifest."""
+    manifest_path = tmp_path / "run1_manifest.json"
+    _write_manifest(manifest_path, kind, [_pending_entry()])
+
+    analysis_client = MagicMock()
+    analysis_client.get_job.side_effect = KeyboardInterrupt()
+    r2_client = MagicMock()
+    r2_client.lrc_exists.return_value = None
+    output = io.StringIO()
+
+    lyrics_commands._poll_lrc_batch(
+        [("song_001", HASH, "job-1")],
+        MagicMock(),
+        analysis_client,
+        r2_client,
+        Console(file=output, width=200),
+        manifest_path,
+        kind=kind,
+        default_lrc_source="forced_alignment",
+    )
+
+    text = output.getvalue()
+    assert expected in text
+    assert unexpected not in text
+
+
 def test_run_alignment_batch_no_wait_writes_no_manifest(tmp_path, monkeypatch):
     monkeypatch.setenv("SOW_BATCH_MANIFEST_DIR", str(tmp_path))
 
