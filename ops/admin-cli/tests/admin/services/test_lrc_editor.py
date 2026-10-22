@@ -20,7 +20,9 @@ from stream_of_worship.admin.editor.autosave import (
     save_autosave,
 )
 from stream_of_worship.admin.editor.upload import (
+    R2UploadOutcome,
     check_active_lrc_job,
+    finalize_upload,
     save_local_draft,
     save_local_backup,
     upload_r2_backup,
@@ -214,20 +216,14 @@ class TestCheckActiveLrcJob:
 
 
 class TestUploadRevisedLrc:
-    def test_manual_editor_upload_does_not_force_review_visibility(self, tmp_path):
+    def test_manual_editor_upload_does_not_force_review_visibility(self, tmp_path, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO, logger="stream_of_worship.admin.editor.upload")
         r2_client = MagicMock()
         r2_client.upload_official_lrc.return_value = "s3://bucket/abc123def456/lyrics.lrc"
 
         db_client = MagicMock()
-        db_client.get_recording_by_hash.return_value = Recording(
-            content_hash="a" * 64,
-            hash_prefix="abc123def456",
-            original_filename="test.mp3",
-            file_size_bytes=1000,
-            imported_at="2024-01-01",
-            lrc_status="completed",
-            lrc_job_id=None,
-        )
 
         state = EditorState(
             timed_lines=_make_lines([(10.0, "Manual edit")]),
@@ -237,21 +233,60 @@ class TestUploadRevisedLrc:
             transcribed_identity=R2ObjectIdentity(exists=True, etag="etag-1"),
         )
 
-        result = upload_revised_lrc(
+        outcome = upload_revised_lrc(
             r2_client=r2_client,
-            db_client=db_client,
             cache_dir=tmp_path,
-            state=state,
+            revised_content=state.serialize(),
+            transcribed_identity=state.transcribed_identity,
             original_transcribed_content=None,
             hash_prefix="abc123def456",
             force=True,
         )
+        result = finalize_upload(db_client, "abc123def456", outcome)
 
         assert result.success is True
         db_client.update_recording_lrc.assert_called_once_with(
             hash_prefix="abc123def456",
             r2_lrc_url="s3://bucket/abc123def456/lyrics.lrc",
         )
+        # Every save stage is timed into the session log.
+        for stage in ("conflict_check", "r2_upload", "total", "db_update"):
+            assert f"save_upload stage={stage}" in caplog.text
+
+    def test_finalize_upload_partial_when_db_update_fails(self):
+        db_client = MagicMock()
+        db_client.update_recording_lrc.side_effect = RuntimeError("boom")
+
+        outcome = R2UploadOutcome(
+            r2_url="s3://bucket/abc123def456/lyrics.lrc",
+            local_backup_path=Path("/tmp/backup.lrc"),
+        )
+        result = finalize_upload(db_client, "abc123def456", outcome)
+
+        assert result.success is False
+        assert result.partial is True
+        assert result.r2_url == "s3://bucket/abc123def456/lyrics.lrc"
+        assert "DB update failed" in result.error
+
+    def test_upload_revised_lrc_blocks_on_stale_etag_without_upload(self, tmp_path):
+        r2_client = MagicMock()
+        r2_client.get_lrc_identity.return_value = R2ObjectIdentity(
+            exists=True, etag="etag-new"
+        )
+
+        outcome = upload_revised_lrc(
+            r2_client=r2_client,
+            cache_dir=tmp_path,
+            revised_content="[00:10.00]Edited\n",
+            transcribed_identity=R2ObjectIdentity(exists=True, etag="etag-old"),
+            original_transcribed_content=None,
+            hash_prefix="abc123def456",
+            force=False,
+        )
+
+        assert outcome.ok is False
+        assert "Upload blocked" in outcome.error
+        r2_client.upload_official_lrc.assert_not_called()
 
 
 class TestEditorState:

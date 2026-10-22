@@ -6,11 +6,12 @@ line table, editing panel, and save/upload flow.
 
 import asyncio
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Literal, Optional
 
-from textual import events
+from textual import events, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -26,13 +27,16 @@ from textual.widgets import (
     Static,
 )
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.autosave import AutosaveState, save_autosave
 from stream_of_worship.admin.editor.footer import GroupedFooter, format_key_display
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.editor.upload import (
     UploadResult,
+    check_active_lrc_job,
     check_transcribed_changed,
+    finalize_upload,
     save_local_draft,
     upload_revised_lrc,
 )
@@ -127,10 +131,20 @@ class StatusIndicator(Static):
         self._preview_active = False
         self._padding_offset = 0.0
         self._padding_quarters = 0
+        self._activity = ""
 
     def set_feedback_summary(self, text: str) -> None:
         """Set the trailing feedback segment ("" = omitted) and re-render."""
         self._feedback_summary = text
+        self._render_status()
+
+    def set_activity(self, text: str) -> None:
+        """Set the trailing activity segment ("" = omitted) and re-render.
+
+        Survives ``update_status`` calls so edits made during a save/upload do
+        not erase the in-progress indicator.
+        """
+        self._activity = text
         self._render_status()
 
     def update_status(
@@ -151,17 +165,19 @@ class StatusIndicator(Static):
         self._render_status()
 
     def _render_status(self) -> None:
-        dirty_mark = "[red]*[/red]" if self._dirty else "[green]✓[/green]"
+        changed_text = "[yellow]Changed[/yellow]" if self._dirty else "[green]No Changes[/green]"
         autosave_mark = "[green]saved[/green]" if self._autosave_ok else "[dim]—[/dim]"
         source_label = {"r2": "R2", "catalog": "Catalog"}.get(self._source, self._source)
 
-        parts = [f" {dirty_mark} Dirty | Autosave: {autosave_mark} | Source: {source_label}"]
+        parts = [f" {changed_text} | Autosave: {autosave_mark} | Source: {source_label}"]
         if self._preview_active:
             parts.append(" | PREVIEW")
         if self._padding_quarters != 0:
             parts.append(f" | Pad: {self._padding_offset:+.2f}s ({self._padding_quarters:+d}q)")
         if self._feedback_summary:
             parts.append(f" ·{self._feedback_summary}")
+        if self._activity:
+            parts.append(f" | [yellow]{self._activity}[/yellow]")
         self.update("".join(parts))
 
 
@@ -180,7 +196,8 @@ class _FeedbackSummary:
         ):
             return " Feedback: unavailable"
         try:
-            rows = screen.db_client.get_recording_feedback_rows(screen.recording_content_hash)
+            with screen._db_lock:
+                rows = screen.db_client.get_recording_feedback_rows(screen.recording_content_hash)
         except Exception as e:  # never crash the editor on feedback errors
             logger.warning(f"Feedback bar refresh failed: {e}")
             return " Feedback: unavailable"
@@ -545,6 +562,10 @@ class LRCEditorScreen(Screen[None]):
         self._preview_prev_index: int = -1
         self._preview_display_index: Optional[int] = None
         self._preview_end_seconds: float = 0.0
+        self._save_in_flight: bool = False
+        # psycopg connections are not safe for concurrent use: the upload worker
+        # shares db_client.connection with the main-thread feedback paths.
+        self._db_lock = threading.RLock()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -1422,19 +1443,29 @@ class LRCEditorScreen(Screen[None]):
             original_preserved_lines=self.state.original_preserved_lines,
         )
 
-        etag_changed, etag_reason = check_transcribed_changed(
-            self.r2_client,
-            self.hash_prefix,
-            self.state.transcribed_identity,
-        )
+        if self._save_in_flight:
+            self.notify("Save/upload already in progress", severity="warning", timeout=3)
+            return
 
-        self._show_save_upload_prompt(result, revised, etag_changed, etag_reason)
+        # The R2 conflict check is blocking network I/O: run it off the event loop
+        # so playback/navigation keys keep responding (see _check_r2_worker).
+        identity = self.state.transcribed_identity
+        self._save_in_flight = True
+        self.query_one(StatusIndicator).set_activity("Checking R2…")
+        self._check_r2_worker(result, revised, identity)
 
     def action_feedback(self) -> None:
         """Open the lyrics feedback dialog (hotkey f)."""
         if self._guard_active_edit():
             return
         if self._guard_preview():
+            return
+        if self._save_in_flight:
+            self.notify(
+                "Save/upload in progress — try again when it finishes",
+                severity="warning",
+                timeout=3,
+            )
             return
         if self.feedback_user_id is None:
             self.notify(
@@ -1448,7 +1479,8 @@ class LRCEditorScreen(Screen[None]):
             return
 
         try:
-            rows = self.db_client.get_recording_feedback_rows(self.recording_content_hash)
+            with self._db_lock:
+                rows = self.db_client.get_recording_feedback_rows(self.recording_content_hash)
         except Exception as e:
             self.query_one(StatusIndicator).update(f" [red]Feedback load failed: {e}[/red]")
             return
@@ -1465,10 +1497,18 @@ class LRCEditorScreen(Screen[None]):
 
         if result == "retract":
             try:
-                self.db_client.delete_recording_feedback(
-                    self.recording_content_hash, self.feedback_user_id
+                with self._db_lock:
+                    self.db_client.delete_recording_feedback(
+                        self.recording_content_hash, self.feedback_user_id
+                    )
+                    status.set_feedback_summary(_FeedbackSummary.summary_for(self))
+                log_change(
+                    "feedback_clear",
+                    song_id=self.state.song_id or None,
+                    hash_prefix=self.hash_prefix,
+                    mode="retract",
+                    rows=1,
                 )
-                status.set_feedback_summary(_FeedbackSummary.summary_for(self))
                 self.notify("Your feedback removed", timeout=3)
             except Exception as e:
                 status.update(f" [red]Feedback delete failed: {e}[/red]")
@@ -1476,8 +1516,18 @@ class LRCEditorScreen(Screen[None]):
 
         if result == "resolve_all":
             try:
-                resolved = self.db_client.resolve_recording_feedback(self.recording_content_hash)
-                status.set_feedback_summary(_FeedbackSummary.summary_for(self))
+                with self._db_lock:
+                    resolved = self.db_client.resolve_recording_feedback(
+                        self.recording_content_hash
+                    )
+                    status.set_feedback_summary(_FeedbackSummary.summary_for(self))
+                log_change(
+                    "feedback_clear",
+                    song_id=self.state.song_id or None,
+                    hash_prefix=self.hash_prefix,
+                    mode="resolve_all",
+                    rows=resolved,
+                )
                 self.notify(f"Resolved {resolved} open row(s)", timeout=3)
             except Exception as e:
                 status.update(f" [red]Feedback resolve failed: {e}[/red]")
@@ -1485,10 +1535,19 @@ class LRCEditorScreen(Screen[None]):
 
         rating, reason, note = result
         try:
-            self.db_client.upsert_recording_feedback(
-                self.recording_content_hash, self.feedback_user_id, rating, reason, note
+            with self._db_lock:
+                self.db_client.upsert_recording_feedback(
+                    self.recording_content_hash, self.feedback_user_id, rating, reason, note
+                )
+                status.set_feedback_summary(_FeedbackSummary.summary_for(self))
+            log_change(
+                "feedback_add",
+                song_id=self.state.song_id or None,
+                hash_prefix=self.hash_prefix,
+                rating=rating,
+                reason=reason,
+                note_len=len(note or ""),
             )
-            status.set_feedback_summary(_FeedbackSummary.summary_for(self))
             self.notify("Feedback saved", timeout=3)
         except Exception as e:
             status.update(f" [red]Feedback save failed: {e}[/red]")
@@ -1574,7 +1633,7 @@ class LRCEditorScreen(Screen[None]):
             def action_cancel(self) -> None:
                 self.dismiss("cancel")
 
-        async def _handle_dialog_result(result_str: str) -> None:
+        def _handle_dialog_result(result_str: str) -> None:
             if result_str == "draft":
                 try:
                     draft_path = save_local_draft(self.cache_dir, self.hash_prefix, revised)
@@ -1585,63 +1644,174 @@ class LRCEditorScreen(Screen[None]):
                     self.query_one(StatusIndicator).update(f" [red]Draft save failed: {e}[/red]")
 
             elif result_str in ("upload", "force_upload"):
-                force = result_str == "force_upload"
-                upload_result = upload_revised_lrc(
-                    r2_client=self.r2_client,
-                    db_client=self.db_client,
-                    cache_dir=self.cache_dir,
-                    state=self.state,
-                    original_transcribed_content=self.original_transcribed_content,
-                    hash_prefix=self.hash_prefix,
-                    force=force,
+                if self._save_in_flight:
+                    return
+                self._save_in_flight = True
+                self.query_one(StatusIndicator).set_activity("Uploading to R2…")
+                self._upload_worker(
+                    result_str == "force_upload", revised, self.state.transcribed_identity
                 )
-                if self.upload_result_out is not None:
-                    try:
-                        self.upload_result_out(upload_result)
-                    except Exception as e:  # never break the editor on observer errors
-                        logger.warning(f"upload_result_out callback failed: {e}")
-
-                if upload_result.success:
-                    from stream_of_worship.admin.editor.autosave import clear_autosave
-
-                    clear_autosave(self.cache_dir, self.hash_prefix)
-                    self.state.dirty = False
-
-                    prefix = (
-                        " [green]Force upload successful![/green]\n"
-                        if force
-                        else " [green]Upload successful![/green]\n"
-                    )
-                    msg = prefix + f" R2 URL: {upload_result.r2_url}\n"
-                    if upload_result.local_backup_path:
-                        msg += f" Local backup: {upload_result.local_backup_path}\n"
-                    if upload_result.r2_backup_url:
-                        msg += f" R2 backup: {upload_result.r2_backup_url}\n"
-                    self.query_one(StatusIndicator).update(msg)
-                    self._update_displays()
-
-                elif upload_result.partial:
-                    msg = (
-                        f" [yellow]Partial success:[/yellow]\n"
-                        f" R2 URL: {upload_result.r2_url}\n"
-                        f" {upload_result.error}\n"
-                    )
-                    if upload_result.local_backup_path:
-                        msg += f" Local backup: {upload_result.local_backup_path}\n"
-                    if upload_result.r2_backup_url:
-                        msg += f" R2 backup: {upload_result.r2_backup_url}\n"
-                    self.query_one(StatusIndicator).update(msg)
-
-                else:
-                    self.query_one(StatusIndicator).update(
-                        f" [red]Upload failed: {upload_result.error}[/red]"
-                    )
 
         self.app.push_screen(
             SaveUploadDialog(validation, revised, self, etag_changed, etag_reason),
             _handle_dialog_result,
         )
         self.app.upload_attempted = True
+
+    @work(thread=True, group="save", exit_on_error=False)
+    def _check_r2_worker(self, validation: ValidationResult, revised: str, transcribed_identity) -> None:
+        """Run the blocking R2 stale-session check off the event loop."""
+        started = time.monotonic()
+        try:
+            changed, reason = check_transcribed_changed(
+                self.r2_client, self.hash_prefix, transcribed_identity
+            )
+        except Exception as e:
+            # A failed probe is reported as a conflict: draft/force-upload stay available.
+            changed, reason = True, f"Could not check R2: {e}"
+            logger.warning(f"R2 conflict check failed: {e}")
+        elapsed = time.monotonic() - started
+        logger.info(
+            "save_upload stage=precheck elapsed_ms=%.1f changed=%s", elapsed * 1000.0, changed
+        )
+        try:
+            self.app.call_from_thread(
+                self._open_save_dialog, validation, revised, changed, reason, elapsed
+            )
+        except Exception as e:  # worker finished during shutdown
+            logger.warning(f"Could not deliver save precheck result: {e}")
+
+    def _open_save_dialog(
+        self,
+        validation: ValidationResult,
+        revised: str,
+        etag_changed: bool,
+        etag_reason: str,
+        elapsed: float,
+    ) -> None:
+        """Main-thread continuation of ``_check_r2_worker``."""
+        self._save_in_flight = False
+        self.query_one(StatusIndicator).set_activity("")
+        if elapsed >= 1.0:
+            self.notify(
+                f"R2 conflict check took {elapsed:.1f}s", severity="warning", timeout=4
+            )
+        self._show_save_upload_prompt(validation, revised, etag_changed, etag_reason)
+
+    @work(thread=True, group="save", exit_on_error=False)
+    def _upload_worker(self, force: bool, revised: str, transcribed_identity) -> None:
+        """Perform the blocking R2 upload and DB update off the event loop."""
+        started = time.monotonic()
+        try:
+            stage_started = time.monotonic()
+            with self._db_lock:
+                active, job_id = check_active_lrc_job(self.db_client, self.hash_prefix)
+            logger.info(
+                "save_upload stage=active_job_check elapsed_ms=%.1f active=%s",
+                (time.monotonic() - stage_started) * 1000.0,
+                active,
+            )
+            if active:
+                result = UploadResult(
+                    success=False,
+                    error=f"Upload blocked: LRC generation job {job_id} is active",
+                )
+            else:
+                outcome = upload_revised_lrc(
+                    r2_client=self.r2_client,
+                    cache_dir=self.cache_dir,
+                    revised_content=revised,
+                    transcribed_identity=transcribed_identity,
+                    original_transcribed_content=self.original_transcribed_content,
+                    hash_prefix=self.hash_prefix,
+                    force=force,
+                )
+                with self._db_lock:
+                    result = finalize_upload(self.db_client, self.hash_prefix, outcome)
+        except Exception as e:
+            logger.warning(f"Upload worker failed: {e}")
+            result = UploadResult(success=False, error=f"Upload failed: {e}")
+
+        elapsed = time.monotonic() - started
+        logger.info(
+            "save_upload stage=worker_total elapsed_ms=%.1f success=%s partial=%s",
+            elapsed * 1000.0,
+            result.success,
+            result.partial,
+        )
+        try:
+            self.app.call_from_thread(self._finish_upload, result, force, revised, elapsed)
+        except Exception as e:  # worker finished during shutdown
+            logger.warning(f"Could not deliver upload result: {e}")
+
+    def _finish_upload(
+        self, result: UploadResult, force: bool, revised: str, elapsed: float
+    ) -> None:
+        """Main-thread continuation of ``_upload_worker``."""
+        self._save_in_flight = False
+        status = self.query_one(StatusIndicator)
+        status.set_activity("")
+
+        if self.upload_result_out is not None:
+            try:
+                self.upload_result_out(result)
+            except Exception as e:  # never break the editor on observer errors
+                logger.warning(f"upload_result_out callback failed: {e}")
+
+        if result.success or result.partial:
+            log_change(
+                "lrc_save",
+                song_id=self.state.song_id or None,
+                hash_prefix=self.hash_prefix,
+                via="editor",
+                r2_url=result.r2_url,
+                bytes=len(revised.encode("utf-8")),
+                db_updated=result.success,
+            )
+
+        elapsed_text = f" ({elapsed:.1f}s)"
+
+        if result.success:
+            # Only clear the dirty flag when the session still matches what was uploaded.
+            still_current = self.state.serialize() == revised
+            if still_current:
+                from stream_of_worship.admin.editor.autosave import clear_autosave
+
+                clear_autosave(self.cache_dir, self.hash_prefix)
+                self.state.dirty = False
+
+            prefix = (
+                " [green]Force upload successful![/green]"
+                if force
+                else " [green]Upload successful![/green]"
+            )
+            msg = prefix + elapsed_text + "\n"
+            msg += f" R2 URL: {result.r2_url}\n"
+            if result.local_backup_path:
+                msg += f" Local backup: {result.local_backup_path}\n"
+            if result.r2_backup_url:
+                msg += f" R2 backup: {result.r2_backup_url}\n"
+            if not still_current:
+                msg += " (edits made during upload remain unsaved)\n"
+            # Refresh first: _update_displays re-renders the status line and would
+            # otherwise wipe this result message.
+            self._update_displays()
+            status.update(msg)
+
+        elif result.partial:
+            msg = (
+                f" [yellow]Partial success:[/yellow]{elapsed_text}\n"
+                f" R2 URL: {result.r2_url}\n"
+                f" {result.error}\n"
+            )
+            if result.local_backup_path:
+                msg += f" Local backup: {result.local_backup_path}\n"
+            if result.r2_backup_url:
+                msg += f" R2 backup: {result.r2_backup_url}\n"
+            status.update(msg)
+
+        else:
+            status.update(f" [red]Upload failed: {result.error}[/red]{elapsed_text}")
 
     def action_show_keymap(self) -> None:
         if self._is_edit_active():
@@ -1692,6 +1862,12 @@ class LRCEditorScreen(Screen[None]):
 
         if self._preview_active:
             self._stop_preview()
+            return
+
+        if self._save_in_flight:
+            self.notify(
+                "Save/upload in progress — wait for it to finish", severity="warning", timeout=3
+            )
             return
 
         from textual.screen import ModalScreen

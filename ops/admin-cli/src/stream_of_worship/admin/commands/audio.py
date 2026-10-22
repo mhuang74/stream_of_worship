@@ -31,6 +31,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.rule import Rule
 from rich.table import Table
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, get_db_client
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
@@ -555,6 +556,17 @@ def _backfill_lyrics_for_song(
         structured_json = json.loads(structured_json_str)
     else:
         structured_json = None
+    log_change(
+        "structured_lyrics_save",
+        song_id=song_id,
+        hash_prefix=recording.hash_prefix,
+        via="audio_fetch",
+        sections=(
+            len(structured_json["sections"])
+            if structured_json and structured_json.get("sections")
+            else 0
+        ),
+    )
     if structured_json and structured_json.get("sections"):
         num_sections = len(structured_json["sections"])
         console.print(
@@ -1988,6 +2000,13 @@ def set_visibility(
 
         try:
             db_client.update_recording_visibility(recording.hash_prefix, status)
+            log_change(
+                "visibility_change",
+                song_id=sid,
+                hash_prefix=recording.hash_prefix,
+                previous=recording.visibility_status,
+                new=status,
+            )
             console.print(
                 f"[green]{sid}: Updated visibility to {format_visibility(status)}[/green]"
             )

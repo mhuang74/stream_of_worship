@@ -5,6 +5,7 @@ detection, and partial failure reporting.
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,6 @@ from typing import Optional, Tuple
 import psycopg
 
 from stream_of_worship.admin.db.client import DatabaseClient
-from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 
 logger = logging.getLogger(__name__)
@@ -181,63 +181,100 @@ class UploadResult:
     error: Optional[str] = None
 
 
+@dataclass
+class R2UploadOutcome:
+    """Result of the R2 half of an upload (no database writes)."""
+
+    r2_url: Optional[str] = None
+    local_backup_path: Optional[Path] = None
+    r2_backup_url: Optional[str] = None
+    error: Optional[str] = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None and self.r2_url is not None
+
+
+def _log_stage(stage: str, started: float, **fields: object) -> None:
+    """Log one timed save stage as a single INFO line."""
+    elapsed_ms = (time.monotonic() - started) * 1000.0
+    extra = " ".join(f"{k}={v}" for k, v in fields.items())
+    logger.info(
+        "save_upload stage=%s elapsed_ms=%.1f%s",
+        stage,
+        elapsed_ms,
+        f" {extra}" if extra else "",
+    )
+
+
 def upload_revised_lrc(
     r2_client: R2Client,
-    db_client: DatabaseClient,
     cache_dir: Path,
-    state: EditorState,
+    revised_content: str,
+    transcribed_identity: R2ObjectIdentity,
     original_transcribed_content: Optional[str],
     hash_prefix: str,
     force: bool = False,
-) -> UploadResult:
-    """Upload the revised LRC to R2 and update the database.
+) -> R2UploadOutcome:
+    """Upload the revised LRC to R2 (no database access).
 
-    Performs stale-session check, active job check, creates backups,
-    uploads revised LRC, and updates DB.
+    Performs the stale-session check, creates backups, and uploads the revised
+    LRC. Safe to call from a Textual thread worker: every stage is blocking
+    boto3/filesystem I/O.
 
     Args:
         r2_client: R2 client
-        db_client: Database client
         cache_dir: Admin cache directory
-        state: Current editor state
+        revised_content: Serialized revised LRC snapshot to upload
+        transcribed_identity: R2 identity captured at editor open
         original_transcribed_content: Force-refreshed transcribed LRC content
         hash_prefix: 12-character hash prefix
         force: Skip stale-session (ETag) check when True
 
     Returns:
-        UploadResult with outcome details
+        R2UploadOutcome with outcome details
     """
+    started = time.monotonic()
+
+    stage_started = time.monotonic()
     if not force:
         changed, reason = check_transcribed_changed(
-            r2_client, hash_prefix, state.transcribed_identity,
+            r2_client, hash_prefix, transcribed_identity,
         )
         if changed:
-            return UploadResult(success=False, error=f"Upload blocked: {reason}")
+            _log_stage("conflict_check", stage_started, blocked=True)
+            logger.warning(
+                "save_upload stage=conflict_check elapsed_ms=%.1f blocked=true reason=%s",
+                (time.monotonic() - stage_started) * 1000.0,
+                reason,
+            )
+            return R2UploadOutcome(error=f"Upload blocked: {reason}")
     else:
         logger.warning("ETag stale-session check skipped (force=True)")
-
-    active, job_id = check_active_lrc_job(db_client, hash_prefix)
-    if active:
-        return UploadResult(success=False, error=f"Upload blocked: LRC generation job {job_id} is active")
+    _log_stage("conflict_check", stage_started, blocked=False, forced=force)
 
     local_backup_path = None
     r2_backup_url = None
 
     if original_transcribed_content:
+        stage_started = time.monotonic()
         try:
             local_backup_path = save_local_backup(cache_dir, hash_prefix, original_transcribed_content)
         except Exception as e:
             logger.warning(f"Failed to save local backup: {e}")
+        _log_stage("local_backup", stage_started, ok=local_backup_path is not None)
 
+        stage_started = time.monotonic()
         try:
             r2_backup_url = upload_r2_backup(r2_client, hash_prefix, original_transcribed_content)
         except Exception as e:
             logger.warning(f"Failed to upload R2 backup: {e}")
+        _log_stage("r2_backup", stage_started, ok=r2_backup_url is not None)
 
-    revised_content = state.serialize()
     revised_path = cache_dir / hash_prefix / "lrc" / "lyrics.upload.tmp.lrc"
     revised_path.parent.mkdir(parents=True, exist_ok=True)
 
+    stage_started = time.monotonic()
     try:
         revised_path.write_text(revised_content, encoding="utf-8")
 
@@ -246,8 +283,9 @@ def upload_revised_lrc(
         # ETag-based protection, so we don't pass expected_etag here.
         r2_url = r2_client.upload_official_lrc(hash_prefix, revised_path)
     except Exception as e:
-        return UploadResult(
-            success=False,
+        _log_stage("r2_upload", stage_started, ok=False)
+        _log_stage("total", started, ok=False)
+        return R2UploadOutcome(
             local_backup_path=local_backup_path,
             r2_backup_url=r2_backup_url,
             error=f"R2 upload failed: {e}",
@@ -259,21 +297,57 @@ def upload_revised_lrc(
         except OSError:
             pass
 
+    _log_stage("r2_upload", stage_started, ok=True, bytes=len(revised_content.encode("utf-8")))
+    _log_stage("total", started, ok=True)
+    return R2UploadOutcome(
+        r2_url=r2_url,
+        local_backup_path=local_backup_path,
+        r2_backup_url=r2_backup_url,
+    )
+
+
+def finalize_upload(
+    db_client: DatabaseClient,
+    hash_prefix: str,
+    outcome: R2UploadOutcome,
+) -> UploadResult:
+    """Write the uploaded LRC URL to the database (the only DB writer).
+
+    Args:
+        db_client: Database client
+        hash_prefix: 12-character hash prefix
+        outcome: Result of the R2 half of the upload
+
+    Returns:
+        UploadResult combining R2 and database outcomes
+    """
+    if not outcome.ok:
+        return UploadResult(
+            success=False,
+            local_backup_path=outcome.local_backup_path,
+            r2_backup_url=outcome.r2_backup_url,
+            error=outcome.error or "R2 upload did not return a URL",
+        )
+
+    r2_url = outcome.r2_url
+    stage_started = time.monotonic()
     try:
         db_client.update_recording_lrc(hash_prefix=hash_prefix, r2_lrc_url=r2_url)
     except Exception as e:
+        _log_stage("db_update", stage_started, ok=False)
         return UploadResult(
             success=False,
             partial=True,
             r2_url=r2_url,
-            local_backup_path=local_backup_path,
-            r2_backup_url=r2_backup_url,
+            local_backup_path=outcome.local_backup_path,
+            r2_backup_url=outcome.r2_backup_url,
             error=f"R2 upload succeeded but DB update failed: {e}. Rerun status reconciliation.",
         )
 
+    _log_stage("db_update", stage_started, ok=True)
     return UploadResult(
         success=True,
         r2_url=r2_url,
-        local_backup_path=local_backup_path,
-        r2_backup_url=r2_backup_url,
+        local_backup_path=outcome.local_backup_path,
+        r2_backup_url=outcome.r2_backup_url,
     )

@@ -13,6 +13,7 @@ from typing import Any, Generator, Optional
 import psycopg
 import psycopg.errors
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.db.models import (
     DatabaseStats,
     FeedbackRow,
@@ -2602,14 +2603,13 @@ class DatabaseClient:
         Returns:
             Number of rows inserted.
         """
+        inserted = 0
         with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "DELETE FROM song_components WHERE song_id = %s AND content_hash = %s",
                 (song_id, content_hash),
             )
-            if not components:
-                return 0
             values = [
                 (
                     c.song_id or song_id,
@@ -2650,22 +2650,32 @@ class DatabaseClient:
                 )
                 for c in components
             ]
-            cursor.executemany(
-                """
-                INSERT INTO song_components (
-                    song_id, content_hash, component_type, occurrence_index,
-                    role, start_time, end_time, bpm, key, groove_density,
-                    backbeat_strength, energy_level, confidence,
-                    bpm_confidence, key_confidence, groove_confidence, backbeat_confidence,
-                    energy_confidence, theme, vocal_posture, theme_confidence,
-                    vocal_posture_confidence, theme_reasoning, posture_reasoning,
-                    line_start, line_end
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                values,
-            )
-            return len(values)
+            if values:
+                cursor.executemany(
+                    """
+                    INSERT INTO song_components (
+                        song_id, content_hash, component_type, occurrence_index,
+                        role, start_time, end_time, bpm, key, groove_density,
+                        backbeat_strength, energy_level, confidence,
+                        bpm_confidence, key_confidence, groove_confidence, backbeat_confidence,
+                        energy_confidence, theme, vocal_posture, theme_confidence,
+                        vocal_posture_confidence, theme_reasoning, posture_reasoning,
+                        line_start, line_end
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    values,
+                )
+                inserted = len(values)
+
+        log_change(
+            "song_structure_save",
+            song_id=song_id,
+            via="analysis",
+            components=inserted,
+            content_hash=content_hash,
+        )
+        return inserted
 
     def get_song_components(self, song_id: str) -> list[SongComponent]:
         """Return all component rows for a song, ordered by start_time.

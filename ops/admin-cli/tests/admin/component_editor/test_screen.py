@@ -425,8 +425,11 @@ async def test_c1_r2_download_failure_returns_retryable(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_c2_save_calls_txn_helper(tmp_path):
+async def test_c2_save_calls_txn_helper(tmp_path, caplog):
     """C2 regression: action_save calls update_song_component_fields_txn."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
     r2_client = MagicMock()
     r2_client.download_component_result.return_value = None
     db_client = MagicMock()
@@ -450,6 +453,10 @@ async def test_c2_save_calls_txn_helper(tmp_path):
         await pilot.pause()
         assert db_client.update_song_component_fields_txn.called
         assert db_client.transaction.called
+        assert (
+            "audit event=song_structure_save song_id=song_001" in caplog.text
+        )
+        assert "via=editor" in caplog.text
 
 
 @pytest.mark.asyncio
