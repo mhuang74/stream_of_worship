@@ -174,7 +174,8 @@ except ImportError:
     StemSeparationWorkerError = Exception
     process_stem_separation = None
 
-# Optional forced alignment imports - require qwen-asr
+# Forced alignment utilities (stdlib-only module; soundfile/librosa are imported
+# lazily inside validate_audio_duration)
 try:
     from .forced_alignment import (
         format_timestamp,
@@ -2063,7 +2064,7 @@ class JobQueue:
 
         if map_segments_to_lines is None or validate_audio_duration is None:
             job.status = JobStatus.FAILED
-            job.error_message = "Forced alignment dependencies not available (soundfile)"
+            job.error_message = "Forced alignment utilities failed to import"
             job.stage = "missing_dependencies"
             job.updated_at = datetime.now(timezone.utc)
             try:
@@ -2071,7 +2072,7 @@ class JobQueue:
                     job.id,
                     status="failed",
                     stage="missing_dependencies",
-                    error_message="Forced alignment dependencies not available (soundfile)",
+                    error_message="Forced alignment utilities failed to import",
                 )
             except Exception as e:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
