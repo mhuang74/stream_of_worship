@@ -26,6 +26,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.rule import Rule
 from rich.table import Table
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.commands.catalog import get_db_client
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.db.client import DatabaseClient
@@ -346,17 +347,20 @@ def feedback_list(
     console.print(table)
 
 
-def _resolve_target(conn, target: str) -> Optional[str]:
+def _resolve_target(conn, target: str) -> Optional[tuple[str, Optional[str]]]:
     """Resolve the CLI target to a recording content_hash filter.
 
-    Returns 'content_hash=<value>' if target is a recording content hash,
-    or a song-level sub-select clause if it is a songs.id. Returns None
-    when the target matches neither.
+    Returns ``(clause, song_id)``: ``clause`` is
+    ``'content_hash=<value>'`` if target is a recording content hash, or a
+    song-level sub-select clause if it is a songs.id. ``song_id`` is the
+    owning song id (the recording's or the target's own) for audit lines.
+    Returns None when the target matches neither.
     """
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM recordings WHERE content_hash = %s", (target,))
-        if cur.fetchone():
-            return "recording_content_hash = %(target)s"
+        cur.execute("SELECT song_id FROM recordings WHERE content_hash = %s", (target,))
+        row = cur.fetchone()
+        if row:
+            return "recording_content_hash = %(target)s", row[0]
         cur.execute(
             """
             SELECT 1 FROM songs
@@ -368,7 +372,7 @@ def _resolve_target(conn, target: str) -> Optional[str]:
             return (
                 "recording_content_hash IN (SELECT content_hash FROM recordings "
                 "WHERE song_id = %(target)s AND deleted_at IS NULL)"
-            )
+            ), target
     return None
 
 
@@ -383,10 +387,11 @@ def _set_resolved(
     neither a recording nor a song.
     """
     conn = provider.get_connection()
-    clause = _resolve_target(conn, target)
-    if clause is None:
+    resolved_target = _resolve_target(conn, target)
+    if resolved_target is None:
         provider.close()
         raise ValueError(f"No recording or song matches {target!r}")
+    clause, song_id = resolved_target
 
     with conn.cursor() as cur:
         if resolved:
@@ -409,6 +414,13 @@ def _set_resolved(
             )
         affected = cur.rowcount
     conn.commit()
+    log_change(
+        "feedback_clear",
+        song_id=song_id,
+        mode="bulk_resolve" if resolved else "bulk_unresolve",
+        rows=affected,
+        target=target,
+    )
     return affected
 
 
@@ -427,12 +439,13 @@ def feedback_show(
     config = _load_connection_provider(config_path)
     provider = ConnectionProvider(config.get_connection_url())
     conn = provider.get_connection()
-    clause = _resolve_target(conn, target)
-    if clause is None:
+    resolved_clause = "" if all else "f.resolved_at IS NULL AND "
+    resolved_target = _resolve_target(conn, target)
+    if resolved_target is None:
         provider.close()
         console.print(f"[red]No recording or song matches {target!r}[/red]")
         raise typer.Exit(1)
-    resolved_clause = "" if all else "f.resolved_at IS NULL AND "
+    clause, _song_id = resolved_target
     with conn.cursor() as cur:
         cur.execute(
             f"""
@@ -967,6 +980,13 @@ def _poll_lrc_batch(
                                 visibility_status="review",
                                 lrc_source=entry.get("lrc_source") or "r2_preexisting",
                             )
+                            log_change(
+                                "lrc_save",
+                                song_id=song_id,
+                                hash_prefix=hash_prefix,
+                                via="batch_poll",
+                                r2_url=lrc_url,
+                            )
                             entry["outcome"] = "completed"
                             entry["lrc_url"] = lrc_url
                             console.print(
@@ -1001,6 +1021,13 @@ def _poll_lrc_batch(
                             r2_lrc_url=lrc_url,
                             visibility_status="review",
                             lrc_source=job.result.lrc_source if job.result else None,
+                        )
+                        log_change(
+                            "lrc_save",
+                            song_id=song_id,
+                            hash_prefix=hash_prefix,
+                            via="batch_poll",
+                            r2_url=lrc_url,
                         )
                         entry["outcome"] = "completed"
                         entry["lrc_url"] = lrc_url
@@ -1043,6 +1070,13 @@ def _poll_lrc_batch(
                     r2_lrc_url=lrc_url,
                     visibility_status="review",
                     lrc_source=entry.get("lrc_source") or "r2_preexisting",
+                )
+                log_change(
+                    "lrc_save",
+                    song_id=entry["song_id"],
+                    hash_prefix=hash_prefix,
+                    via="batch_poll",
+                    r2_url=lrc_url,
                 )
                 entry["outcome"] = "completed"
                 entry["lrc_url"] = lrc_url
@@ -1394,6 +1428,14 @@ def _submit_forced_alignment_single(
         lrc_status="processing",
         lrc_job_id=job_id,
     )
+    log_change(
+        "lrc_submit",
+        song_id=song_id,
+        hash_prefix=recording.hash_prefix,
+        via="align_single",
+        job_id=job_id,
+        force=force,
+    )
 
     console.print(f"[green]Forced alignment job submitted (job: {job_id})[/green]")
 
@@ -1516,6 +1558,14 @@ def _submit_forced_alignment_batch(
                 hash_prefix=recording.hash_prefix,
                 lrc_status="processing",
                 lrc_job_id=job.job_id,
+            )
+            log_change(
+                "lrc_submit",
+                song_id=song_id,
+                hash_prefix=recording.hash_prefix,
+                via="align_batch",
+                job_id=job.job_id,
+                force=force,
             )
 
             console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
@@ -1840,6 +1890,14 @@ def lyrics_upload(
         r2_lrc_url=r2_url,
         lrc_source="manual_upload",
     )
+    log_change(
+        "lrc_save",
+        song_id=song_id,
+        hash_prefix=recording.hash_prefix,
+        via="manual_upload",
+        r2_url=r2_url,
+        bytes=len(content.encode("utf-8")),
+    )
 
     # Display success summary
     console.print()
@@ -1947,6 +2005,14 @@ def lyrics_upload_structured(
         hash_prefix=recording.hash_prefix,
         structured_lyrics_raw=formatted,
         structured_lyrics=json.dumps(parsed, ensure_ascii=False),
+    )
+    log_change(
+        "structured_lyrics_save",
+        song_id=song_id,
+        hash_prefix=recording.hash_prefix,
+        via="upload_structured",
+        sections=len(sections),
+        overwritten=overwriting,
     )
 
     console.print()
@@ -2665,6 +2731,10 @@ def _run_editor_session(
 
     console.print(f"[cyan]Launching LRC editor for: {song_title}[/cyan]")
     console.print("[dim]Press Ctrl+C in the editor to quit.[/dim]")
+
+    from stream_of_worship.admin.logging_config import get_log_path
+
+    console.print(f"[dim]Session log: {get_log_path()}[/dim]")
 
     from stream_of_worship.admin.editor.app import LRCEditorApp
     from stream_of_worship.admin.services.playback import PlaybackService

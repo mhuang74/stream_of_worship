@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Song
 from stream_of_worship.admin.services.catalog_edit import compute_song_id, title_to_pinyin
@@ -168,7 +169,7 @@ class CatalogScraper:
                 logger.info(f"Soft-deleting {len(missing_ids)} songs not seen in this scrape")
                 for song_id in missing_ids:
                     self.db_client.soft_delete_song(song_id)
-                    logger.debug(f"Soft-deleted song: {song_id}")
+                    log_change("song_soft_delete", song_id=song_id, via="catalog_sync")
 
         self.last_run_duplicate_count = duplicate_count
         logger.info(f"Successfully parsed {len(songs)} songs")

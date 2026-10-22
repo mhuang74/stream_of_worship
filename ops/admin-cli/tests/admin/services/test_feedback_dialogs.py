@@ -140,7 +140,10 @@ async def _bar_text(app) -> str:
 
 
 @pytest.mark.asyncio
-async def test_happy_flow_upserts_and_updates_status_summary():
+async def test_happy_flow_upserts_and_updates_status_summary(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
     db = StubDB([])
     app = _make_app(db)
     async with app.run_test() as pilot:
@@ -152,6 +155,8 @@ async def test_happy_flow_upserts_and_updates_status_summary():
         assert db.upserts == [(HASH, 7, "happy", None, None)], db.upserts
         bar = await _bar_text(app)
         assert "Feedback: 👍1 👎0 · open 1" in bar, bar
+        assert "audit event=feedback_add" in caplog.text
+        assert "rating=happy" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -213,7 +218,10 @@ async def test_sad_flow_with_note_text():
 
 
 @pytest.mark.asyncio
-async def test_retract_deletes_own_row():
+async def test_retract_deletes_own_row(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
     db = StubDB([_feedback_row(email="me@x.com")])
     app = _make_app(db)
     async with app.run_test() as pilot:
@@ -222,10 +230,15 @@ async def test_retract_deletes_own_row():
             await pilot.pause()
         assert db.deletes == [(HASH, 7)], db.deletes
         assert db.upserts == []
+        assert "audit event=feedback_clear" in caplog.text
+        assert "mode=retract" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_resolve_all_calls_resolve():
+async def test_resolve_all_calls_resolve(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
     db = StubDB([_feedback_row(rating="sad", reason="timing")])
     app = _make_app(db)
     async with app.run_test() as pilot:
@@ -234,6 +247,8 @@ async def test_resolve_all_calls_resolve():
             await pilot.pause()
         assert db.resolves == 1
         assert db.upserts == []
+        assert "audit event=feedback_clear" in caplog.text
+        assert "mode=resolve_all" in caplog.text
 
 
 @pytest.mark.asyncio

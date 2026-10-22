@@ -159,6 +159,9 @@ def config(
 # Entry point for the CLI
 def cli_entry() -> None:
     """Entry point for the CLI application."""
+    from stream_of_worship.admin.logging_config import setup_logging
+
+    setup_logging()
     app()
 
 

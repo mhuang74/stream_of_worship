@@ -17,6 +17,7 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.config import AdminConfig
 
 from stream_of_worship.admin.db.client import DatabaseClient
@@ -148,6 +149,14 @@ def submit_lrc_single(
             hash_prefix=recording.hash_prefix,
             lrc_status="processing",
             lrc_job_id=job_id,
+        )
+        log_change(
+            "lrc_submit",
+            song_id=song_id,
+            hash_prefix=recording.hash_prefix,
+            via="generate_single",
+            job_id=job_id,
+            force=force,
         )
 
         console.print(f"[green]LRC job submitted (job: {job_id})[/green]")
@@ -302,6 +311,14 @@ def submit_lrc_batch(
                 lrc_status="processing",
                 lrc_job_id=job.job_id,
             )
+            log_change(
+                "lrc_submit",
+                song_id=song_id,
+                hash_prefix=recording.hash_prefix,
+                via="generate_batch",
+                job_id=job.job_id,
+                force=force,
+            )
 
             console.print(f"  [green]Submitted (job: {job.job_id})[/green]")
             submitted += 1
@@ -397,6 +414,14 @@ def submit_lrc_job(
             hash_prefix=recording.hash_prefix,
             lrc_status="processing",
             lrc_job_id=job.job_id,
+        )
+        log_change(
+            "lrc_submit",
+            song_id=song_id,
+            hash_prefix=recording.hash_prefix,
+            via="audio_download",
+            job_id=job.job_id,
+            force=force,
         )
 
         console.print(f"[green]LRC job submitted (job: {job.job_id})[/green]")

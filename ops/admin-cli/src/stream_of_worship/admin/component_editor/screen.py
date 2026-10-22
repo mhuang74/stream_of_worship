@@ -46,6 +46,7 @@ from textual.widgets import (
     Static,
 )
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.component_editor.autosave import (
     ComponentAutosaveState,
     clear_autosave,
@@ -1416,6 +1417,15 @@ class ComponentEditorScreen(Screen[None]):
         except Exception as e:  # noqa: BLE001
             self._notify(f"[red]DB save failed: {e}[/]")
             return
+
+        log_change(
+            "song_structure_save",
+            song_id=session.song_id,
+            hash_prefix=session.hash_prefix,
+            via="editor",
+            components=len(updates_by_role),
+            fields=sum(len(f) for f in updates_by_role.values()),
+        )
 
         # 3. Write R2 components.json (merge).
         r2_ok = self._save_r2_component_result(session, updates_by_role)

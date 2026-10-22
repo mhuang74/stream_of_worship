@@ -554,10 +554,113 @@ async def test_save_after_real_edit_opens_dialog():
 
         state.set_text(0, "Changed")
         await pilot.press("s")
+        await app.workers.wait_for_complete()
         await pilot.pause()
 
         assert isinstance(app.screen, ModalScreen)
         assert app.upload_attempted is True
+
+
+@pytest.mark.asyncio
+async def test_save_upload_does_not_block_event_loop(monkeypatch):
+    """Regression: the R2 conflict check must run off the Textual event loop."""
+    import time as time_module
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+
+    def _slow_check(*args, **kwargs):
+        time_module.sleep(0.5)
+        return False, ""
+
+    monkeypatch.setattr(screen_module, "check_transcribed_changed", _slow_check)
+
+    app, state = _make_app(line_count=3)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        state.set_text(0, "Changed")
+
+        started = time_module.monotonic()
+        editor.action_save_upload()
+        elapsed = time_module.monotonic() - started
+
+        assert elapsed < 0.1
+        assert editor._save_in_flight is True
+        assert "Checking R2" in str(editor.query_one(StatusIndicator).visual)
+
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert isinstance(app.screen, ModalScreen)
+        assert editor._save_in_flight is False
+
+
+@pytest.mark.asyncio
+async def test_upload_dialog_does_not_block_event_loop(monkeypatch, caplog):
+    """Regression: the R2 upload + DB write must run off the Textual event loop."""
+    import logging
+    import time as time_module
+
+    import stream_of_worship.admin.editor.screen as screen_module
+    from stream_of_worship.admin.editor.upload import R2UploadOutcome
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
+
+    def _slow_upload(**kwargs):
+        time_module.sleep(0.5)
+        return R2UploadOutcome(r2_url="s3://bucket/abc123def456/lyrics.lrc")
+
+    monkeypatch.setattr(screen_module, "upload_revised_lrc", _slow_upload)
+    monkeypatch.setattr(screen_module, "check_transcribed_changed", lambda *a, **k: (False, ""))
+
+    app, state = _make_app(line_count=3)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        state.set_text(0, "Changed")
+        await pilot.press("s")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        started = time_module.monotonic()
+        await pilot.press("u")
+        elapsed = time_module.monotonic() - started
+
+        assert elapsed < 0.2
+        assert "Uploading to R2" in str(editor.query_one(StatusIndicator).visual)
+
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        status_visual = str(editor.query_one(StatusIndicator).visual)
+        assert "Upload successful" in status_visual
+        assert "audit event=lrc_save" in caplog.text
+        assert "via=editor" in caplog.text
+        assert "db_updated=True" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_status_indicator_shows_changed_or_no_changes():
+    app, _ = _make_app(line_count=3)
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        status = app.screen.query_one(StatusIndicator)
+
+        status.update_status(dirty=True, autosave_ok=True, source="r2")
+        await pilot.pause()
+        visual = str(status.visual)
+        assert "Changed" in visual
+        assert "No Changes" not in visual
+
+        status.update_status(dirty=False, autosave_ok=True, source="r2")
+        await pilot.pause()
+        visual = str(status.visual)
+        assert "No Changes" in visual
+        assert "Changed" not in visual
 
 
 @pytest.mark.asyncio

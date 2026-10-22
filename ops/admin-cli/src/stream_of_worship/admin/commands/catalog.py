@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.config import AdminConfig
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Song
@@ -552,6 +553,12 @@ def _delete_song_single(
     console.print("[cyan]Soft-deleting song...[/cyan]")
     db_client.soft_delete_song(song_id)
     held_count = db_client.hold_recordings_for_song(song_id)
+    log_change(
+        "song_soft_delete",
+        song_id=song_id,
+        via="catalog_delete",
+        recordings_held=held_count,
+    )
     console.print(f"[green]Song {song_id} soft-deleted successfully.[/green]")
     console.print(f"[cyan]Recordings placed on hold:[/cyan] {held_count}")
     console.print("[dim]R2 audio, stems, and LRC files were preserved.[/dim]")
@@ -634,7 +641,13 @@ def _delete_songs_batch(
     for sid, song in songs_to_delete:
         try:
             db_client.soft_delete_song(sid)
-            db_client.hold_recordings_for_song(sid)
+            held = db_client.hold_recordings_for_song(sid)
+            log_change(
+                "song_soft_delete",
+                song_id=sid,
+                via="catalog_delete",
+                recordings_held=held,
+            )
             deleted_count += 1
             console.print(f"[green]✓ Deleted: {sid} ({song.title})[/green]")
         except Exception as e:

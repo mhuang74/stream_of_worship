@@ -67,12 +67,16 @@ def _invoke_upload(tmp_path, recording, args=(), confirm="yes", text: str = SECT
     return result, db_mock
 
 
-def test_upload_structured_happy_path(tmp_path):
+def test_upload_structured_happy_path(tmp_path, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
     recording = _make_recording()
     result, db_mock = _invoke_upload(tmp_path, recording)
 
     assert result.exit_code == 0, result.output
     assert "Upload Complete" in result.output
+    assert "audit event=structured_lyrics_save song_id=song_0001 hash_prefix=abc123" in caplog.text
     db_mock.update_recording_structured_lyrics.assert_called_once()
     kwargs = db_mock.update_recording_structured_lyrics.call_args.kwargs
     assert kwargs["hash_prefix"] == "abc123"

@@ -278,7 +278,10 @@ def _build_song(song_id: str, title: str = "Test Song") -> Song:
     )
 
 
-def test_catalog_delete_single_soft_deletes_song(monkeypatch):
+def test_catalog_delete_single_soft_deletes_song(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
     db = FakeDbClient()
     song = _build_song("delete_me_deadbeef", "Delete Me")
     db.insert_song(song)
@@ -293,6 +296,10 @@ def test_catalog_delete_single_soft_deletes_song(monkeypatch):
     updated = db.get_song("delete_me_deadbeef", include_deleted=True)
     assert updated is not None
     assert updated.deleted_at is not None
+    assert (
+        "audit event=song_soft_delete song_id=delete_me_deadbeef" in caplog.text
+    )
+    assert "via=catalog_delete" in caplog.text
 
 
 def test_catalog_delete_already_deleted_song_errors(monkeypatch):
@@ -334,7 +341,10 @@ def test_catalog_delete_no_args_no_stdin_errors(monkeypatch):
     assert "song_id" in result.output
 
 
-def test_catalog_delete_batch_from_stdin(monkeypatch):
+def test_catalog_delete_batch_from_stdin(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="stream_of_worship.admin.audit")
     db = FakeDbClient()
     song_a = _build_song("batch_a_deadbeef", "Batch A")
     song_b = _build_song("batch_b_deadbeef", "Batch B")
@@ -354,6 +364,9 @@ def test_catalog_delete_batch_from_stdin(monkeypatch):
     assert "2 deleted" in result.output
     assert db.get_song("batch_a_deadbeef", include_deleted=True).deleted_at is not None
     assert db.get_song("batch_b_deadbeef", include_deleted=True).deleted_at is not None
+    assert "audit event=song_soft_delete song_id=batch_a_deadbeef" in caplog.text
+    assert "audit event=song_soft_delete song_id=batch_b_deadbeef" in caplog.text
+    assert "via=catalog_delete" in caplog.text
 
 
 def test_catalog_delete_batch_skips_already_deleted(monkeypatch):

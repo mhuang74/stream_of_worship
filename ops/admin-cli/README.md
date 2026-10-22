@@ -128,6 +128,23 @@ export SOW_ANALYSIS_API_KEY="your-api-key"
 
 **Note:** Non-sensitive settings like `database.url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
 
+### Session Logging
+
+Every `sow-admin` run appends to a rotating log file (5 MB per file, 3 backups):
+
+```
+~/.cache/stream-of-worship-admin/logs/sow-admin.log
+```
+
+It holds `INFO` records that would otherwise be lost inside the Textual TUI, including
+timed save stages (`save_upload stage=r2_upload elapsed_ms=…`) and one audit line per
+important mutation (`audit event=lrc_save song_id=… hash_prefix=… via=editor …`). The LRC
+editor prints the log path when it starts. Raise the level with:
+
+```bash
+export SOW_ADMIN_LOG_LEVEL=DEBUG   # default INFO; invalid values fall back to INFO
+```
+
 ## Database Commands
 
 The database uses PostgreSQL (hosted on Neon) for storing song catalog and recording metadata.
