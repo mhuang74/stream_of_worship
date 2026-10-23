@@ -792,10 +792,15 @@ class TestPlainEditStillWorks:
         client = DatabaseClient(make_test_provider())
         assert client.get_recording_by_hash("hash-aa").visibility_status == "published"
 
-    def test_clean_quit_offers_demote_for_published(
+    def test_published_recording_refused_then_editable_after_demotion(
         self, make_test_provider, postgres_url, tmp_path, monkeypatch
     ):
-        """A published recording is offered review/hold — never its own status."""
+        """`lyrics edit <song>` refuses a published recording; after the
+        documented demotion the editor opens and offers the reverse status.
+
+        Editing rewrites validated timestamps, so the guard forces
+        `audio set-visibility` first (the single escape hatch).
+        """
         provider = _init_schema(make_test_provider)
         self._seed_single_song(provider)
         conn = provider.get_connection()
@@ -807,24 +812,46 @@ class TestPlainEditStillWorks:
         conn.commit()
         config_path = _write_config(tmp_path, postgres_url)
 
+        sessions: list[str] = []
+
         def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+            sessions.append(recording.hash_prefix)
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=False, upload_attempted=False, upload_result=None, quit_clean=True
             )
 
         monkeypatch.setattr(lyrics_commands, "_run_editor_session", _fake_session)
 
-        result = runner.invoke(
+        refused = runner.invoke(
             lyrics_app,
             ["edit", "song_001", "--config", str(config_path)],
-            input="1\n",  # menu 1 = "◐ review" (published is not offered)
+            input="",
             env={"COLUMNS": "200"},
         )
-        assert result.exit_code == 0, result.output
-        assert "Set visibility for hash-aa (current: ● published):" in result.output
-        assert "visibility set to review" in result.output
+        assert refused.exit_code == 1, refused.output
+        assert "audio set-visibility song_001 --status review" in refused.output
+        assert sessions == []
         client = DatabaseClient(make_test_provider())
-        assert client.get_recording_by_hash("hash-aa").visibility_status == "review"
+        assert client.get_recording_by_hash("hash-aa").visibility_status == "published"
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recordings SET visibility_status = 'review' WHERE hash_prefix = 'hash-aa'"
+            )
+        conn.commit()
+
+        allowed = runner.invoke(
+            lyrics_app,
+            ["edit", "song_001", "--config", str(config_path)],
+            input="1\n",  # menu 1 = "● published" (review offers published/hold)
+            env={"COLUMNS": "200"},
+        )
+        assert allowed.exit_code == 0, allowed.output
+        assert sessions == ["hash-aa"]
+        assert "Set visibility for hash-aa (current: ◐ review):" in allowed.output
+        assert "visibility set to published" in allowed.output
+        client = DatabaseClient(make_test_provider())
+        assert client.get_recording_by_hash("hash-aa").visibility_status == "published"
 
     def test_feedback_user_id_passed_in_single_song_mode(
         self, make_test_provider, postgres_url, tmp_path, monkeypatch

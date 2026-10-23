@@ -59,7 +59,11 @@ from stream_of_worship.admin.services.lrc_parser import (
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.structured_lyrics import flatten_structured_lyrics
-from stream_of_worship.admin.services.visibility import format_visibility
+from stream_of_worship.admin.services.visibility import (
+    ensure_reprocessable,
+    format_visibility,
+    is_published,
+)
 from stream_of_worship.admin.services.lrc_jobs import (
     display_lrc,
     fetch_structured_lyrics,
@@ -519,6 +523,9 @@ def _backfill_lyrics_for_song(
             f"Run 'sow-admin audio download {song_id}' first.[/red]"
         )
         raise typer.Exit(1)
+    ensure_reprocessable(
+        recording, song_id=song_id, action="backfill structured lyrics", console=console
+    )
 
     yt_url = url or recording.youtube_url
     if structured_lyrics_source != "zanmei" and not yt_url:
@@ -623,6 +630,9 @@ def import_youtube_audio_for_song(
         raise typer.Exit(1)
 
     existing = _get_single_active_recording_for_song(db_client, song_id, console)
+    ensure_reprocessable(
+        existing, song_id=song_id, action="replace the recording audio", console=console
+    )
     if existing:
         if not force:
             console.print(
@@ -917,6 +927,13 @@ def _backfill_lyrics_batch(
         console.rule(f"[bold cyan][{idx}/{len(song_ids)}] {sid}")
         try:
             recording = db_client.get_recording_by_song_id(sid)
+            if recording and is_published(recording):
+                console.print(
+                    f"[yellow]~ Skipped (published): {sid} — demote with "
+                    f"'sow-admin audio set-visibility {sid} --status review'[/yellow]"
+                )
+                skipped += 1
+                continue
             # Skip-if-present: batch backfill is fill-missing regardless of
             # force; the explicit single-song call stays always-refetch.
             if recording and recording.structured_lyrics:
@@ -1010,9 +1027,12 @@ def _download_audio_batch(
         raise typer.Exit(0)
 
     already_present: list[tuple[str, Song]] = []
+    protected: list[tuple[str, Song]] = []
     to_download: list[tuple[str, Song]] = []
     for sid, song, existing in eligible:
-        if existing and not force:
+        if existing and is_published(existing):
+            protected.append((sid, song))
+        elif existing and not force:
             already_present.append((sid, song))
         else:
             to_download.append((sid, song))
@@ -1026,6 +1046,15 @@ def _download_audio_batch(
             console.print(f"  • {sid}: {song.title}")
         if len(already_present) > 10:
             console.print(f"  ... and {len(already_present) - 10} more")
+
+    if protected:
+        console.print(
+            f"[yellow]Protected {len(protected)} published recording(s); demote first:[/yellow]"
+        )
+        for sid, song in protected:
+            console.print(
+                f"  • {sid}: {song.title} — sow-admin audio set-visibility {sid} --status review"
+            )
 
     if dry_run:
         if to_download:
@@ -1042,6 +1071,7 @@ def _download_audio_batch(
         console.print(
             f"\n[bold]Summary:[/bold] {len(to_download)} to download, "
             f"{len(already_present)} skipped (already present), "
+            f"{len(protected)} protected (published), "
             f"{len(not_found)} not found"
         )
         return
@@ -1115,6 +1145,8 @@ def _download_audio_batch(
     ]
     if already_present:
         summary_parts.append(f"{len(already_present)} skipped (already present)")
+    if protected:
+        summary_parts.append(f"{len(protected)} protected (published)")
     if not_found:
         summary_parts.append(f"{len(not_found)} not found")
     console.print(", ".join(summary_parts))
@@ -1362,6 +1394,7 @@ def _delete_recording_single(
     if not recording:
         console.print(f"[red]No recording found for song: {song_id}[/red]")
         raise typer.Exit(1)
+    ensure_reprocessable(recording, song_id=song_id, action="delete the recording", console=console)
 
     song = db_client.get_song(song_id)
     song_title = song.title if song else "Unknown"
@@ -1433,6 +1466,7 @@ def _delete_recordings_batch(
     console.print(f"[cyan]Looking up {len(song_ids)} recording(s)...[/cyan]")
 
     recordings_to_delete: list[tuple[str, Recording, str]] = []
+    protected: list[tuple[str, Recording, str]] = []
     not_found: list[str] = []
 
     for sid in song_ids:
@@ -1440,7 +1474,10 @@ def _delete_recordings_batch(
         if recording:
             song = db_client.get_song(sid)
             title = song.title if song else "Unknown"
-            recordings_to_delete.append((sid, recording, title))
+            if is_published(recording):
+                protected.append((sid, recording, title))
+            else:
+                recordings_to_delete.append((sid, recording, title))
         else:
             not_found.append(sid)
 
@@ -1448,6 +1485,15 @@ def _delete_recordings_batch(
         console.print(
             f"[yellow]No recording found for {len(not_found)} song(s): {', '.join(not_found[:5])}{'...' if len(not_found) > 5 else ''}[/yellow]"
         )
+
+    if protected:
+        console.print(
+            f"[yellow]{len(protected)} published recording(s) protected — demote first:[/yellow]"
+        )
+        for sid, _recording, title in protected:
+            console.print(
+                f"  • {sid}: {title} — sow-admin audio set-visibility {sid} --status review"
+            )
 
     if not recordings_to_delete:
         console.print("[yellow]No valid recordings to delete.[/yellow]")
@@ -1495,7 +1541,10 @@ def _delete_recordings_batch(
             console.print(f"[red]✗ Failed to delete {sid}: {e}[/red]")
 
     console.print()
-    console.print(f"[bold]Summary:[/bold] {deleted_count} deleted, {failed_count} failed")
+    summary = f"[bold]Summary:[/bold] {deleted_count} deleted, {failed_count} failed"
+    if protected:
+        summary += f", {len(protected)} protected (published)"
+    console.print(summary)
 
 
 @app.command("list")
@@ -2096,6 +2145,8 @@ def analyze_recording(
     if not recording.r2_audio_url:
         console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
         raise typer.Exit(1)
+
+    ensure_reprocessable(recording, song_id=song_id, action="re-analyze", console=console)
 
     # Check if already analyzed (tier-aware)
     if not force:
@@ -3119,6 +3170,14 @@ def components_recording(
             if not recording:
                 results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
                 continue
+            if is_published(recording):
+                out_console.print(
+                    f"  [yellow]→ {sid} (skipped: published recording — demote first)[/yellow]"
+                )
+                results.append(
+                    {"song_id": sid, "status": "skipped_published", "error": "published"}
+                )
+                continue
             if not recording.r2_audio_url:
                 results.append({"song_id": sid, "status": "failed", "error": "No audio URL"})
                 continue
@@ -3186,11 +3245,16 @@ def components_recording(
         if format_ == "json":
             print(json.dumps(results, ensure_ascii=False, indent=2))
         else:
-            succeeded_count = sum(1 for r in results if r["status"] != "failed")
+            succeeded_count = sum(
+                1 for r in results if r["status"] not in ("failed", "skipped_published")
+            )
             failed_count = sum(1 for r in results if r["status"] == "failed")
+            protected_count = sum(1 for r in results if r["status"] == "skipped_published")
             console.print(
                 f"\n[bold]Summary:[/bold] {succeeded_count} succeeded, {failed_count} failed"
             )
+            if protected_count:
+                console.print(f"  Protected (published): {protected_count}")
             for r in results:
                 if r["status"] == "failed":
                     console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
@@ -3207,6 +3271,9 @@ def components_recording(
             f"Run 'sow-admin audio download {song_id}' first.[/red]"
         )
         raise typer.Exit(1)
+    ensure_reprocessable(
+        recording, song_id=song_id, action="re-extract components", console=out_console
+    )
 
     if not recording.r2_audio_url:
         out_console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
@@ -5334,6 +5401,12 @@ def batch(
                 console.print(f"  [yellow]→ {sid} (skipped: no recording)[/yellow]")
                 backfill_results[sid]["backfill_lyrics"] = "skipped"
                 continue
+            if is_published(recording):
+                console.print(
+                    f"  [yellow]→ {sid} (skipped: published recording — demote first)[/yellow]"
+                )
+                backfill_results[sid]["backfill_lyrics"] = "skipped_published"
+                continue
             if not recording.youtube_url:
                 console.print(f"  [yellow]→ {sid} (skipped: no YouTube URL)[/yellow]")
                 backfill_results[sid]["backfill_lyrics"] = "skipped"
@@ -5377,11 +5450,17 @@ def batch(
             backfill_failed = sum(
                 1 for r in backfill_results.values() if r.get("backfill_lyrics") == "failed"
             )
+            backfill_protected = sum(
+                1
+                for r in backfill_results.values()
+                if r.get("backfill_lyrics") == "skipped_published"
+            )
             console.print()
             console.print("[cyan]Backfill Summary:[/cyan]")
             console.print(f"  Completed: {backfill_completed}")
             console.print(f"  Skipped:   {backfill_skipped}")
             console.print(f"  Failed:    {backfill_failed}")
+            console.print(f"  Protected (published): {backfill_protected}")
             console.print(f"  Total:     {len(song_ids)}")
             if backfill_failed:
                 raise typer.Exit(1)
@@ -5988,7 +6067,7 @@ def _submit_lrc_for_song(
 
     Returns:
         Status string: 'submitted', 'reused', 'skipped_r2',
-        'skipped_no_recording', 'skipped_no_lyrics', or 'failed'.
+        'skipped_no_recording', 'skipped_no_lyrics', 'skipped_published', or 'failed'.
     """
     lrc_attempted.add(song_id)
 
@@ -5997,6 +6076,13 @@ def _submit_lrc_for_song(
         console.print(f"  [yellow]→ {song_id} (skipped: generate_lyrics no recording)[/yellow]")
         results[song_id]["generate_lyrics"] = "skipped_no_recording"
         return "skipped_no_recording"
+
+    if is_published(recording):
+        console.print(
+            f"  [yellow]→ {song_id} (skipped: published recording — demote first)[/yellow]"
+        )
+        results[song_id]["generate_lyrics"] = "skipped_published"
+        return "skipped_published"
 
     song = db_client.get_song(song_id)
     lyrics_text = resolve_lyrics_text(song, recording) if song else None
@@ -6170,6 +6256,13 @@ def _submit_analysis_for_song(
             error_message="No recording or audio URL",
         )
         return (None, "skipped_no_recording")
+
+    if is_published(recording):
+        console.print(
+            f"  [yellow]→ {song_id} (skipped: published recording — demote first)[/yellow]"
+        )
+        results[song_id]["analyze"] = "skipped_published"
+        return (None, "skipped_published")
 
     # Non-force skip logic
     if not force:
@@ -6418,6 +6511,13 @@ def _submit_components_for_song(
             error_message="No recording or audio URL",
         )
         return (None, "skipped_no_recording")
+
+    if is_published(recording):
+        console.print(
+            f"  [yellow]→ {song_id} (skipped: published recording — demote first)[/yellow]"
+        )
+        results[song_id]["components"] = "skipped_published"
+        return (None, "skipped_published")
 
     # Eligibility mirror of the components stdin-batch check: components
     # identification needs sections (analysis) or LRC to segment on.
@@ -6818,6 +6918,7 @@ def _advance_song(
             "skipped_no_recording",
             "skipped_no_sections",
             "skipped_up_to_date",
+            "skipped_published",
         ):
             continue  # try next step in chain
         else:  # failed
@@ -8604,6 +8705,27 @@ def _print_stats(
     lines.append("╰" + "─" * 52 + "╯")
 
     console.print("\n".join(lines))
+
+    published_protected = sorted(
+        song_id
+        for song_id, r in results.items()
+        if any(
+            r.get(step) == "skipped_published"
+            for step in ("generate_lyrics", "analyze", "components", "backfill_lyrics")
+        )
+    )
+    if published_protected:
+        console.print(
+            f"\n[bold yellow]Published (protected from re-processing): "
+            f"{len(published_protected)}[/bold yellow]"
+        )
+        for song_id in published_protected:
+            song = db_client.get_song(song_id)
+            title = song.title if song else song_id
+            console.print(
+                f"  - {title} [{song_id}] — "
+                f"sow-admin audio set-visibility {song_id} --status review"
+            )
 
     if attention:
         console.print("\n[bold red]Requires manual intervention:[/bold red]")

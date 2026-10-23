@@ -64,6 +64,8 @@ from stream_of_worship.admin.services.structured_lyrics import (
     parse_structured_lyrics,
 )
 from stream_of_worship.admin.services.visibility import (
+    ensure_reprocessable,
+    is_published,
     visibility_alternatives,
     visibility_badge,
     visibility_label,
@@ -819,6 +821,20 @@ def _preflight_guard(
                 f"for this song id)[/yellow]"
             )
             continue
+        if is_published(recording):
+            skipped.append(
+                {
+                    "song_id": song_id,
+                    "reason": "skipped-published",
+                    "target_hash": recording.content_hash,
+                    "feedback_hashes": [],
+                }
+            )
+            console.print(
+                f"  [yellow]→ {song_id} (skipped-published: demote with "
+                f"'sow-admin audio set-visibility {song_id} --status review')[/yellow]"
+            )
+            continue
         feedback = _fetch_open_feedback_hashes(provider, song_id)
         sad_hashes = feedback.get("sad", [])
         if not sad_hashes:
@@ -1145,8 +1161,11 @@ def _print_run_report(
         else:
             pending.append(entry)
 
-    skipped_guard = [s for s in skipped if s.get("reason") != "skipped-songless"]
+    skipped_guard = [
+        s for s in skipped if s.get("reason") not in ("skipped-songless", "skipped-published")
+    ]
     skipped_songless = [s for s in skipped if s.get("reason") == "skipped-songless"]
+    skipped_published = [s for s in skipped if s.get("reason") == "skipped-published"]
 
     console.print()
     console.print("[cyan]Run Report[/cyan]")
@@ -1155,6 +1174,7 @@ def _print_run_report(
     console.print(f"  Failed: {len(failed)}")
     console.print(f"  Pending (interrupted): {len(pending)}")
     console.print(f"  Skipped (guard): {len(skipped_guard)}")
+    console.print(f"  Skipped (published): {len(skipped_published)}")
     console.print(f"  Skipped (songless): {len(skipped_songless)}")
 
     for entry in failed:
@@ -1176,6 +1196,11 @@ def _print_run_report(
         console.print(
             f"  [yellow]→ skipped-songless {skip['song_id']}: no recording "
             f"found for this song id[/yellow]"
+        )
+    for skip in skipped_published:
+        console.print(
+            f"  [yellow]→ skipped-published {skip['song_id']}: demote with "
+            f"'sow-admin audio set-visibility {skip['song_id']} --status review'[/yellow]"
         )
 
     if completed:
@@ -1240,8 +1265,12 @@ def _run_stdin_batch(
         console.print("[cyan]Dry run — would submit:[/cyan]")
         for song_id in accepted:
             console.print(f"  {song_id}")
-        if skipped_guard:
-            console.print(f"  Skipped (guard): {len(skipped_guard)}")
+        skipped_guard_only = [s for s in skipped_guard if s.get("reason") != "skipped-published"]
+        skipped_published = [s for s in skipped_guard if s.get("reason") == "skipped-published"]
+        if skipped_guard_only:
+            console.print(f"  Skipped (guard): {len(skipped_guard_only)}")
+        if skipped_published:
+            console.print(f"  Skipped (published): {len(skipped_published)}")
         return
 
     if dump_llm_trace and not _confirm_llm_trace_dump(len(accepted), console=console):
@@ -1392,6 +1421,7 @@ def _submit_forced_alignment_single(
     if not recording:
         console.print(f"[red]No recording found for {song_id}.[/red]")
         raise typer.Exit(1)
+    ensure_reprocessable(recording, song_id=song_id, action="re-align LRC", console=console)
 
     song = db_client.get_song(song_id)
     if not song or not song.lyrics_raw:
@@ -1536,6 +1566,14 @@ def _submit_forced_alignment_batch(
         if not recording:
             console.print("  [red]No recording found[/red]")
             errors += 1
+            continue
+
+        if is_published(recording):
+            console.print(
+                "  [yellow]Published recording — skipped; demote with "
+                f"'sow-admin audio set-visibility {song_id} --status review'[/yellow]"
+            )
+            skipped += 1
             continue
 
         song = db_client.get_song(song_id)
@@ -1997,6 +2035,7 @@ def lyrics_upload(
             f"Run 'sow-admin audio download {song_id}' first.[/red]"
         )
         raise typer.Exit(1)
+    ensure_reprocessable(recording, song_id=song_id, action="upload LRC", console=console)
 
     # Get song info for display
     song = db_client.get_song(song_id)
@@ -2145,6 +2184,9 @@ def lyrics_upload_structured(
             f"Run 'sow-admin audio download {song_id}' first.[/red]"
         )
         raise typer.Exit(1)
+    ensure_reprocessable(
+        recording, song_id=song_id, action="replace structured lyrics", console=console
+    )
 
     song = db_client.get_song(song_id)
     song_title = song.title if song else "Unknown"
@@ -2394,6 +2436,7 @@ def lyrics_edit(
             f"Run 'sow-admin audio download {song_id}' first.[/red]"
         )
         raise typer.Exit(1)
+    ensure_reprocessable(recording, song_id=song_id, action="edit LRC", console=console)
 
     song = db_client.get_song(song_id)
 

@@ -33,6 +33,7 @@ from stream_of_worship.admin.services.structured_lyrics import (
     flatten_structured_lyrics,
     parse_structured_lyrics_smart,
 )
+from stream_of_worship.admin.services.visibility import ensure_reprocessable, is_published
 from stream_of_worship.admin.services.youtube import extract_video_metadata
 from stream_of_worship.admin.services.zanmei import fetch_structured_lyrics_from_zanmei
 
@@ -81,6 +82,7 @@ def submit_lrc_single(
     if not recording:
         console.print(f"[red]No recording found for {song_id}.[/red]")
         raise typer.Exit(1)
+    ensure_reprocessable(recording, song_id=song_id, action="regenerate LRC", console=console)
 
     # Look up song for lyrics
     song = db_client.get_song(song_id)
@@ -256,6 +258,14 @@ def submit_lrc_batch(
             errors += 1
             continue
 
+        if is_published(recording):
+            console.print(
+                f"  [yellow]Published recording — skipped; demote with "
+                f"'sow-admin audio set-visibility {song_id} --status review'[/yellow]"
+            )
+            skipped += 1
+            continue
+
         # Look up song for lyrics
         song = db_client.get_song(song_id)
         lyrics_text = resolve_lyrics_text(song, recording) if song else None
@@ -378,6 +388,8 @@ def submit_lrc_job(
     Returns:
         Job ID if submission succeeded, None otherwise
     """
+    ensure_reprocessable(recording, song_id=song_id, action="regenerate LRC", console=console)
+
     # Look up song for lyrics
     song = db_client.get_song(song_id)
     lyrics_text = resolve_lyrics_text(song, recording) if song else None
