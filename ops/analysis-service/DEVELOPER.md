@@ -247,6 +247,11 @@ ops/analysis-service/src/sow_analysis/
 ├── routes/
 │   ├── health.py           # Health check endpoint
 │   └── jobs.py             # Job submission endpoints
+├── services/               # External backends
+│   ├── modal_stem_separator_client.py  # sow-stems client (MVSEP failover)
+│   ├── modal_whisper_client.py         # sow-whisper client
+│   ├── modal_forced_aligner_client.py  # sow-forced-aligner client
+│   └── ...
 ├── storage/
 │   ├── cache.py            # Local filesystem caching
 │   ├── db.py               # SQLite job persistence
@@ -256,8 +261,7 @@ ops/analysis-service/src/sow_analysis/
     ├── lrc.py              # LRC generation (Whisper + LLM)
     ├── queue.py            # Job queue and concurrency management
     ├── separator.py        # Demucs stem separation
-        ├── stem_separation.py  # Vocal separation (MelBand Roformer) + UVR clean vocals
-    └── separator_wrapper.py # AudioSeparator model management
+    └── stem_separation.py  # MVSEP pipeline + sow-stems Modal failover
 ```
 
 ### Adding a New Job Type
