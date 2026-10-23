@@ -307,6 +307,7 @@ class JobResult(BaseModel):
     )
     # Number of LRC lines recovered by the tail-coverage fill (YouTube transcript path)
     asr_tail_line_count: int = 0
+    trace_url: Optional[str] = None  # Browser URL of the dump_llm_trace HTML report
 
     # Stem separation results
     vocals_dry_url: Optional[str] = None  # Stage 2 output (de-reverb/dry)

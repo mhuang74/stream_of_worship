@@ -2016,6 +2016,7 @@ class JobQueue:
                     line_count=line_count,
                     lrc_source=lrc_source,
                     asr_tail_line_count=tail_line_count,
+                    trace_url=trace.report_url if trace is not None else None,
                 )
                 if trace is not None:
                     trace.set(

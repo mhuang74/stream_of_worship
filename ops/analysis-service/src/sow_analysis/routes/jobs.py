@@ -133,6 +133,7 @@ def job_to_response(job, warning: Optional[str] = None) -> JobResponse:
                 lrc_url=job.result.lrc_url,
                 line_count=job.result.line_count,
                 lrc_source=job.result.lrc_source,
+                trace_url=job.result.trace_url,
                 vocals_dry_url=job.result.vocals_dry_url,
                 vocals_url=job.result.vocals_url,
                 instrumental_url=job.result.instrumental_url,

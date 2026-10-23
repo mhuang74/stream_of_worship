@@ -375,6 +375,42 @@ class TestJobsEndpoints:
         assert data["result"] is not None
         assert data["result"]["segmentation_mode_resolved"] == "structured_lyrics"
 
+    def test_get_job_status_includes_trace_url(self, client, mock_job_queue):
+        """job_to_response() must propagate trace_url (dump_llm_trace report).
+
+        Regression: the manual JobResult reconstruction in job_to_response()
+        dropped fields it did not enumerate, so the admin CLI could never see
+        the report URL produced by --dump-llm-trace.
+        """
+        from sow_analysis.models import JobResult
+
+        url = "http://localhost:8000/debug-dumps/report.html"
+
+        async def mock_get_job_with_trace(job_id):
+            now = datetime.now(timezone.utc)
+            return Job(
+                id=job_id,
+                type=JobType.LRC,
+                status=JobStatus.COMPLETED,
+                request=MagicMock(),
+                created_at=now,
+                updated_at=now,
+                progress=1.0,
+                stage="done",
+                result=JobResult(lrc_url="s3://bucket/l.lrc", trace_url=url),
+            )
+
+        mock_job_queue.get_job = mock_get_job_with_trace
+
+        response = client.get(
+            "/api/v1/jobs/job_lrc1",
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["trace_url"] == url
+
     def test_get_job_status_segmentation_mode_resolved_none_for_non_component(
         self, client, mock_job_queue
     ):

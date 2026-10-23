@@ -1082,6 +1082,11 @@ def _poll_lrc_batch(
                         entry["lrc_url"] = lrc_url
                         entry["lrc_source"] = lrc_source
                         console.print(f"  [green]✓[/green] {song_id}: LRC completed")
+                        trace_url = (
+                            getattr(job.result, "trace_url", None) if job.result else None
+                        )
+                        if trace_url:
+                            console.print(f"    LLM trace report: {trace_url}")
                     else:
                         # Completed but object not visible yet; retry next cycle.
                         console.print(

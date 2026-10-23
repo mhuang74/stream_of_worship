@@ -48,6 +48,7 @@ class AnalysisResult:
         stems_url: R2 URL for stems directory
         lrc_url: R2 URL for LRC file
         lrc_source: Source of LRC generation ("youtube_transcript", "qwen3_asr", or "whisper_asr")
+        trace_url: Browser URL of the LLM trace HTML report (--dump-llm-trace)
     """
 
     duration_seconds: Optional[float] = None
@@ -69,6 +70,7 @@ class AnalysisResult:
     lrc_url: Optional[str] = None
     lrc_source: Optional[str] = None
     line_count: Optional[int] = None
+    trace_url: Optional[str] = None
     vocals_dry_url: Optional[str] = None
     vocals_url: Optional[str] = None
     instrumental_url: Optional[str] = None
@@ -1077,6 +1079,7 @@ class AnalysisClient:
                     lrc_url=result_data.get("lrc_url"),
                     lrc_source=result_data.get("lrc_source"),
                     line_count=result_data.get("line_count"),
+                    trace_url=result_data.get("trace_url"),
                     vocals_dry_url=result_data.get("vocals_dry_url"),
                     vocals_url=result_data.get("vocals_url"),
                     instrumental_url=result_data.get("instrumental_url"),

@@ -359,11 +359,17 @@ sow-admin audio show song_0001
 (JSON for tooling + collapsible HTML for reading) of every LLM/ASR step of the
 LRC job — YouTube transcript fetch, LLM correction prompts/responses, Qwen3 ASR,
 Whisper fallback, gap placeholders, final LRC, and R2 location — into
-`SOW_DEBUG_DUMP_DIR` (default `ops/analysis-service/debug-dumps/`, mounted from
-`/cache/debug-dumps` in Docker). Files appear immediately and are rewritten per
-step, so a failed or still-running job already has most of its trace. The flag
-auto-bypasses the LRC result cache (ASR caches stay warm) and is safe to leave
-on for debugging sessions.
+`SOW_DEBUG_DUMP_DIR` (default `~/.cache/sow-analysis-service/debug-dumps/`,
+mounted from `/cache/debug-dumps` in Docker). Files appear immediately and are
+rewritten per step, so a failed or still-running job already has most of its
+trace. Reports are also served by the analysis service at
+`<analysis-service>/debug-dumps/` (newest-first index), and every dump logs its
+report URL in the service log — the admin CLI prints that URL when a
+`--dump-llm-trace` job completes (`LLM trace report: ...`). Set
+`SOW_DEBUG_DUMP_PUBLIC_BASE_URL` when the service is not reachable at
+`http://localhost:8000` (e.g. behind a reverse proxy) so the printed link works.
+The flag auto-bypasses the LRC result cache (ASR caches stay warm) and is safe
+to leave on for debugging sessions.
 
 ```bash
 # Single song with trace dump
