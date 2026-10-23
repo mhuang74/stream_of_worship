@@ -29,8 +29,13 @@ from textual.widgets import (
 
 from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.db.client import DatabaseClient
-from stream_of_worship.admin.editor.autosave import AutosaveState, save_autosave
+from stream_of_worship.admin.editor.autosave import (
+    AutosaveState,
+    clear_autosave,
+    save_autosave,
+)
 from stream_of_worship.admin.editor.footer import GroupedFooter, format_key_display
+from stream_of_worship.admin.editor.regenerate import RegenerateResult, regenerate_lrc_for_editor
 from stream_of_worship.admin.editor.state import EditorState
 from stream_of_worship.admin.editor.upload import (
     UploadResult,
@@ -41,6 +46,7 @@ from stream_of_worship.admin.editor.upload import (
     upload_revised_lrc,
 )
 from stream_of_worship.admin.editor.validation import ValidationResult, validate_lrc
+from stream_of_worship.admin.services.analysis import AnalysisClient
 from stream_of_worship.admin.services.lrc_parser import (
     format_centiseconds,
     format_duration,
@@ -470,6 +476,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("P", "preview_continuous", "Preview All"),
         Binding("f", "feedback", "Feedback"),
         Binding("s", "save_upload", "Save/Upload"),
+        Binding("G", "regenerate_lrc", "Regenerate LRC"),
         Binding("ctrl+z", "undo", "Undo"),
         Binding("ctrl+y", "redo", "Redo"),
         Binding("escape", "quit_editor", "Quit"),
@@ -505,6 +512,7 @@ class LRCEditorScreen(Screen[None]):
             "preview_continuous",
             "feedback",
             "save_upload",
+            "regenerate_lrc",
             "undo",
             "redo",
             "quit_editor",
@@ -525,6 +533,7 @@ class LRCEditorScreen(Screen[None]):
         feedback_user_id: Optional[int] = None,
         recording_content_hash: Optional[str] = None,
         visibility_status: Optional[str] = None,
+        analysis_client: Optional[AnalysisClient] = None,
     ):
         super().__init__()
         self.title = (
@@ -563,6 +572,11 @@ class LRCEditorScreen(Screen[None]):
         self._preview_display_index: Optional[int] = None
         self._preview_end_seconds: float = 0.0
         self._save_in_flight: bool = False
+        # In-editor force-regeneration (hotkey G): None disables the hotkey.
+        self.analysis_client = analysis_client
+        self._regen_in_flight: bool = False
+        self._regen_thread: Optional[threading.Thread] = None
+        self._regen_snapshot: str = ""
         # psycopg connections are not safe for concurrent use: the upload worker
         # shares db_client.connection with the main-thread feedback paths.
         self._db_lock = threading.RLock()
@@ -1457,6 +1471,13 @@ class LRCEditorScreen(Screen[None]):
         if self._save_in_flight:
             self.notify("Save/upload already in progress", severity="warning", timeout=3)
             return
+        if self._regen_in_flight:
+            self.notify(
+                "Regeneration in progress — wait for it to finish",
+                severity="warning",
+                timeout=3,
+            )
+            return
 
         # The R2 conflict check is blocking network I/O: run it off the event loop
         # so playback/navigation keys keep responding (see _check_r2_worker).
@@ -1474,6 +1495,13 @@ class LRCEditorScreen(Screen[None]):
         if self._save_in_flight:
             self.notify(
                 "Save/upload in progress — try again when it finishes",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        if self._regen_in_flight:
+            self.notify(
+                "Regeneration in progress — wait for it to finish",
                 severity="warning",
                 timeout=3,
             )
@@ -1562,6 +1590,168 @@ class LRCEditorScreen(Screen[None]):
             self.notify("Feedback saved", timeout=3)
         except Exception as e:
             status.update(f" [red]Feedback save failed: {e}[/red]")
+
+    def action_regenerate_lrc(self) -> None:
+        """Force-regenerate the LRC via the analysis service (hotkey G)."""
+        if self._guard_active_edit():
+            return
+        if self._guard_preview():
+            return
+        if self._save_in_flight:
+            self.notify(
+                "Save/upload in progress — try again when it finishes",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        if self._regen_in_flight:
+            self.notify("Regeneration already in progress", severity="warning", timeout=3)
+            return
+        if self.analysis_client is None:
+            self.notify(
+                "Regeneration disabled: analysis service not configured "
+                "(SOW_ANALYSIS_API_KEY / service.analysis_url)",
+                severity="warning",
+                timeout=5,
+            )
+            return
+        if not self.state.song_id:
+            self.notify(
+                "Regeneration unavailable: no song id for this recording",
+                severity="warning",
+                timeout=5,
+            )
+            return
+
+        from textual.screen import ModalScreen
+
+        class RegenerateConfirmDialog(ModalScreen[bool]):
+            BINDINGS = [
+                Binding("y", "confirm", "Yes"),
+                Binding("n", "cancel", "No"),
+                Binding("escape", "cancel", "No"),
+            ]
+
+            def __init__(self, unsaved: bool):
+                super().__init__()
+                self.unsaved = unsaved
+
+            def compose(self) -> ComposeResult:
+                with Vertical():
+                    yield Label("[bold yellow]Force-regenerate LRC?[/bold yellow]")
+                    yield Label(
+                        "Submits a new LRC generation job (force) and replaces the editor "
+                        "with the freshly generated LRC when it finishes."
+                    )
+                    if self.unsaved:
+                        yield Label(
+                            "[yellow]Unsaved edits will be discarded (autosave cleared).[/yellow]"
+                        )
+                    yield Label("[d]Press [bold]y[/bold] to regenerate | [bold]n[/bold] to cancel[/]")
+
+            def action_confirm(self) -> None:
+                self.dismiss(True)
+
+            def action_cancel(self) -> None:
+                self.dismiss(False)
+
+        def _handle_regenerate_confirm(should_regenerate: bool) -> None:
+            if should_regenerate:
+                self._start_regenerate()
+
+        self.app.push_screen(
+            RegenerateConfirmDialog(self.state.dirty or self._has_unsaved_changes()),
+            _handle_regenerate_confirm,
+        )
+
+    def _start_regenerate(self) -> None:
+        """Kick off the blocking regeneration pipeline on a daemon thread."""
+        self._regen_in_flight = True
+        self._regen_snapshot = self.state.serialize()
+        self.query_one(StatusIndicator).set_activity("Submitting LRC job…")
+        self._regen_thread = threading.Thread(
+            target=self._regenerate_worker, name="lrc-regenerate", daemon=True
+        )
+        self._regen_thread.start()
+
+    def _regenerate_worker(self) -> None:
+        """Run the submit → poll → DB → R2-download chain off the event loop.
+
+        Deliberately a plain daemon thread, not a Textual ``@work`` worker:
+        thread workers run in the default executor, which ``asyncio.run``
+        joins at app exit, so a force-quit would hang until the job timeout.
+        """
+        try:
+            result = regenerate_lrc_for_editor(
+                analysis_client=self.analysis_client,
+                db_client=self.db_client,
+                r2_client=self.r2_client,
+                db_lock=self._db_lock,
+                song_id=self.state.song_id,
+                hash_prefix=self.hash_prefix,
+                on_progress=self._regen_progress,
+            )
+        except Exception as e:  # unexpected: never kill the TUI
+            logger.warning(f"LRC regeneration failed: {e}")
+            result = RegenerateResult(ok=False, error=f"LRC regeneration failed: {e}")
+        try:
+            self.app.call_from_thread(self._finish_regenerate, result)
+        except Exception as e:  # app already exited (force quit)
+            logger.warning(f"Could not deliver LRC regeneration result: {e}")
+
+    def _regen_progress(self, text: str) -> None:
+        """Report worker-thread progress on the main thread."""
+        try:
+            self.app.call_from_thread(self._set_regen_activity, text)
+        except Exception:  # app exited mid-flight
+            pass
+
+    def _set_regen_activity(self, text: str) -> None:
+        self.query_one(StatusIndicator).set_activity(text)
+
+    def _finish_regenerate(self, result: RegenerateResult) -> None:
+        """Apply a worker result on the main thread."""
+        self._regen_in_flight = False
+        status = self.query_one(StatusIndicator)
+        status.set_activity("")
+
+        if not result.ok:
+            status.update(f" [red]LRC regeneration failed: {result.error}[/red]")
+            self.notify(
+                f"LRC regeneration failed: {result.error}", severity="error", timeout=8
+            )
+            return
+
+        # Edits made while the job ran would be lost by the refresh: keep
+        # them in a local draft before overwriting the session.
+        current = self.state.serialize()
+        if self._regen_snapshot and current != self._regen_snapshot:
+            try:
+                draft_path = save_local_draft(self.cache_dir, self.hash_prefix, current)
+                self.notify(f"Edits made during regeneration saved as draft: {draft_path}",
+                            timeout=6)
+            except OSError as e:
+                logger.warning(f"Could not save concurrent-edit draft: {e}")
+
+        content = result.lrc_content
+        identity = result.identity
+        if not content or identity is None:
+            status.update(" [red]LRC regeneration returned no LRC content[/red]")
+            return
+        if not self.state.replace_content(content, identity):
+            status.update(" [red]LRC regeneration returned no timed lines[/red]")
+            return
+
+        self.original_transcribed_content = content
+        clear_autosave(self.cache_dir, self.hash_prefix)
+        self._autosave_ok = False
+        self._regen_snapshot = ""
+
+        self._clear_selection_range(refresh=False)
+        self._rebuild_table()
+        self.sub_title = f"Visibility: {visibility_label('review')}"
+        self._update_displays()
+        self.notify("LRC regenerated and refreshed from R2", timeout=5)
 
     def _show_save_upload_prompt(
         self,
@@ -1879,6 +2069,42 @@ class LRCEditorScreen(Screen[None]):
             self.notify(
                 "Save/upload in progress — wait for it to finish", severity="warning", timeout=3
             )
+            return
+
+        if self._regen_in_flight:
+            from textual.screen import ModalScreen
+
+            class ForceQuitRegenDialog(ModalScreen[bool]):
+                BINDINGS = [
+                    Binding("y", "confirm", "Yes"),
+                    Binding("n", "cancel", "No"),
+                    Binding("escape", "cancel", "No"),
+                ]
+
+                def compose(self) -> ComposeResult:
+                    with Vertical():
+                        yield Label(
+                            "[bold yellow]LRC regeneration is still running.[/bold yellow]"
+                        )
+                        yield Label(
+                            "Force quit? The job keeps running server-side and the "
+                            "recording stays 'processing' until you run "
+                            "'sow-admin lyrics generate <song>' (without --force) to poll it."
+                        )
+                        yield Label("[d]Press [bold]y[/bold] to force quit | [bold]n[/bold] to wait[/]")
+
+                def action_confirm(self) -> None:
+                    self.dismiss(True)
+
+                def action_cancel(self) -> None:
+                    self.dismiss(False)
+
+            def _handle_force_quit(force: bool) -> None:
+                if force:
+                    self.app.quit_clean = False
+                    self.app.exit()
+
+            self.app.push_screen(ForceQuitRegenDialog(), _handle_force_quit)
             return
 
         from textual.screen import ModalScreen

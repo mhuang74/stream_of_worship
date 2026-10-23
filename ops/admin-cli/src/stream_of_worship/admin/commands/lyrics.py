@@ -2380,6 +2380,11 @@ def lyrics_edit(
     songset appearances, favorites, and newest album. The admin's own
     Happy/Sad feedback can be recorded in the editor via the `f` hotkey
     (rows attributed to admin.feedback_email).
+
+    Press `G` in the editor to force-regenerate the LRC through the
+    analysis service and refresh the editor from the new R2 LRC without
+    leaving the editor (generation defaults match
+    `lyrics generate --force`).
     """
     if not song_id and not review_next_song and not review_fresh:
         console.print(
@@ -2415,16 +2420,28 @@ def lyrics_edit(
         console.print(f"[red]R2 configuration error: {e}[/red]")
         raise typer.Exit(1)
 
+    # Analysis service client for the in-editor force-regenerate hotkey (G).
+    # A missing API key only disables that hotkey; the editor still opens.
+    try:
+        analysis_client: Optional[AnalysisClient] = AnalysisClient(config.analysis_url)
+    except ValueError as e:
+        analysis_client = None
+        console.print(f"[yellow]Regenerate hotkey (G) disabled: {e}[/yellow]")
+
     # Reviewer identity for the in-editor feedback hotkey (resolved once,
     # before any session starts; None disables the hotkey with a warning).
     feedback_user_id = _resolve_feedback_user_id(config)
 
     if review_next_song:
-        _run_review_session(db_client, cache_dir, r2_client, feedback_user_id)
+        _run_review_session(
+            db_client, cache_dir, r2_client, feedback_user_id, analysis_client=analysis_client
+        )
         return
 
     if review_fresh:
-        _run_fresh_review_session(db_client, cache_dir, r2_client, feedback_user_id)
+        _run_fresh_review_session(
+            db_client, cache_dir, r2_client, feedback_user_id, analysis_client=analysis_client
+        )
         return
 
     # Single-song mode: resolve the recording the legacy way and run one
@@ -2445,7 +2462,13 @@ def lyrics_edit(
     _print_feedback_banner(db_client, recording.content_hash)
 
     outcome = _run_editor_session(
-        db_client, cache_dir, r2_client, song, recording, feedback_user_id
+        db_client,
+        cache_dir,
+        r2_client,
+        song,
+        recording,
+        feedback_user_id,
+        analysis_client=analysis_client,
     )
     if outcome.no_audio:
         # Audio unavailable — clear error (spec story 12).
@@ -2521,7 +2544,13 @@ def _resolve_feedback_user_id(config: AdminConfig) -> Optional[int]:
     return user.id
 
 
-def _run_review_session(db_client, cache_dir, r2_client, feedback_user_id: Optional[int]) -> None:
+def _run_review_session(
+    db_client,
+    cache_dir,
+    r2_client,
+    feedback_user_id: Optional[int],
+    analysis_client: Optional[AnalysisClient] = None,
+) -> None:
     """Run the --review-next-song loop: pick, edit, post-upload offers, repeat.
 
     The skip set lives in process memory only — a fresh invocation starts
@@ -2561,7 +2590,13 @@ def _run_review_session(db_client, cache_dir, r2_client, feedback_user_id: Optio
         )
 
         outcome = _run_editor_session(
-            db_client, cache_dir, r2_client, song, recording, feedback_user_id
+            db_client,
+            cache_dir,
+            r2_client,
+            song,
+            recording,
+            feedback_user_id,
+            analysis_client=analysis_client,
         )
         if outcome.no_audio:
             # No audio in object storage: skip message + move on.
@@ -2609,7 +2644,11 @@ def _open_sad_count(db_client, content_hash: str) -> int:
 
 
 def _run_fresh_review_session(
-    db_client, cache_dir, r2_client, feedback_user_id: Optional[int]
+    db_client,
+    cache_dir,
+    r2_client,
+    feedback_user_id: Optional[int],
+    analysis_client: Optional[AnalysisClient] = None,
 ) -> None:
     """Run the --review-fresh sweep: pick never-reviewed songs, edit, repeat.
 
@@ -2646,7 +2685,13 @@ def _run_fresh_review_session(
             return
 
         outcome = _run_editor_session(
-            db_client, cache_dir, r2_client, song, recording, feedback_user_id
+            db_client,
+            cache_dir,
+            r2_client,
+            song,
+            recording,
+            feedback_user_id,
+            analysis_client=analysis_client,
         )
         if outcome.no_audio:
             # No audio in object storage: skip message + move on.
@@ -2813,7 +2858,13 @@ class EditorSessionOutcome:
 
 
 def _run_editor_session(
-    db_client, cache_dir, r2_client, song, recording, feedback_user_id: Optional[int]
+    db_client,
+    cache_dir,
+    r2_client,
+    song,
+    recording,
+    feedback_user_id: Optional[int],
+    analysis_client: Optional[AnalysisClient] = None,
 ):
     """Prepare caches + editor state and run one editor session.
 
@@ -2823,6 +2874,9 @@ def _run_editor_session(
     ``upload_attempted`` when the save/upload dialog opened at least once
     and carries the resulting ``UploadResult`` (``None`` when the user
     quit without attempting a save — no post-upload offers in that case).
+
+    ``analysis_client`` enables the editor's force-regenerate hotkey
+    (``G``); ``None`` disables it.
     """
     song_title = song.title if song else "Unknown"
 
@@ -2995,6 +3049,7 @@ def _run_editor_session(
         feedback_user_id=feedback_user_id,
         recording_content_hash=recording.content_hash,
         visibility_status=recording.visibility_status,
+        analysis_client=analysis_client,
     )
     app.run()
 

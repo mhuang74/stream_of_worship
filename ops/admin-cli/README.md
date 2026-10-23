@@ -625,6 +625,20 @@ first or the hotkey stays disabled:
 sow-admin config set admin.feedback_email you@example.com
 ```
 
+### Regenerate in the Editor
+
+Press `G` (Regenerate LRC) to force-regenerate the current recording's LRC through
+the analysis service and reload the editor from the new R2 LRC — no need to quit
+and rerun `lyrics generate --force`. Generation uses the same defaults as
+`sow-admin lyrics generate --force` (YouTube → Qwen3 ASR → Whisper,
+`large-v3`, service LLM default). A `y`/`n` confirmation always runs; it warns
+when unsaved edits would be discarded (edit autosave is cleared on refresh).
+The recording's `lrc_status` becomes `processing`, then `completed` with
+visibility set to `review`; on job failure it is marked `failed` and the editor
+content is left untouched. Requires `SOW_ANALYSIS_API_KEY`; otherwise the
+hotkey is disabled and the editor prints why at launch. Quitting while the job
+runs asks for a second, explicit force-quit confirmation.
+
 ## License
 
 MIT License - See project root for details.
