@@ -82,8 +82,7 @@ class MvsepParsingError(MvsepNonRetriableError):
     """MVSEP returned files but we could not classify them (parsing bug).
 
     Non-retriable: retrying will always fail because the classification logic
-    cannot match the response format. Propagates up to fail the job in both
-    free-only and non-free modes.
+    cannot match the response format. Propagates up to fail the job.
     """
 
     pass
