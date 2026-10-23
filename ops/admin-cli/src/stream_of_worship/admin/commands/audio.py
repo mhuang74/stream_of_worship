@@ -5889,9 +5889,20 @@ def _download_if_needed(
         console: Rich console
 
     Returns:
-        Dict with download result: {'download': 'completed'|'skipped'|'failed', 'error': str}
+        Dict with download result:
+            {'download': 'completed'|'skipped_r2'|'skipped_published'|'failed',
+             'error': str}
     """
     hash_prefix = recording.hash_prefix
+
+    if is_published(recording):
+        console.print(
+            f"  [yellow]→ {song_id} (skipped: published recording — demote first)[/yellow]"
+        )
+        return {
+            "download": "skipped_published",
+            "skip_reason": "published recording; demote first",
+        }
 
     if recording.download_status == "completed" and recording.r2_audio_url:
         return {"download": "skipped_r2", "skip_reason": "download completed, audio on R2"}
@@ -8711,7 +8722,13 @@ def _print_stats(
         for song_id, r in results.items()
         if any(
             r.get(step) == "skipped_published"
-            for step in ("generate_lyrics", "analyze", "components", "backfill_lyrics")
+            for step in (
+                "download",
+                "generate_lyrics",
+                "analyze",
+                "components",
+                "backfill_lyrics",
+            )
         )
     )
     if published_protected:
