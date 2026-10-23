@@ -112,8 +112,12 @@ Rules:
 
 - A pre-existing key is never overwritten: the loop only proceeds on a confirmed
   not-found.
+- **Each attempt re-probes its own candidate key with a fresh HEAD.** The
+  not-found result is never cached or reused across attempts; the loop breaks
+  only after the *current* candidate returns not-found.
 - A HEAD failure that is **not** not-found (403, 5xx, network) is treated as
-  failure and raises `BackupFailedError` — never "assume free".
+  failure and raises `BackupFailedError` — never "assume free". Only a
+  `ClientError` whose code is `404` or `NoSuchKey` counts as free.
 - `BackupFailedError` is already handled by every caller
   (`admin/commands/lyrics.py:2081`, `analysis/workers/queue.py:1928,2222`), so
   no call-site changes are needed there.
@@ -154,7 +158,9 @@ def select_backups_to_delete(
 Invariants:
 
 - **Ordering key is `LastModified` only.** Ties break on key string, so the
-  result is deterministic and independent of listing order.
+  result is deterministic and independent of listing order. Because
+  `datetime.timestamp()` applies the same naive-means-local assumption,
+  comparison is only safe after the `_utc()` normalization above.
 - **Oldest first, in the returned order.** Callers MUST iterate the returned
   list as-is. If the process dies mid-prune, the surviving set is biased toward
   recent backups, which is the safe direction.
