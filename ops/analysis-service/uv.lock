@@ -1253,6 +1253,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pyyaml" },
     { name = "stream-of-worship" },
 ]
 service = [
@@ -1277,6 +1278,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.10.0" },
     { name = "python-multipart", marker = "extra == 'service'", specifier = ">=0.0.6" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.3" },
     { name = "rapidfuzz", specifier = ">=3.9.0" },
     { name = "scipy", specifier = ">=1.10.0" },
     { name = "soundfile", specifier = ">=0.12.0" },
