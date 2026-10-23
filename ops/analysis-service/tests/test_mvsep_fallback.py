@@ -32,8 +32,8 @@ from test_mvsep_client import client
 
 
 @pytest.fixture
-def mock_separator_wrapper():
-    """Create a mock AudioSeparatorWrapper."""
+def mock_stem_separator():
+    """Create a mock ModalStemSeparatorClient."""
     wrapper = MagicMock()
     wrapper.separate_stems = AsyncMock(return_value=(
         Path("/tmp/dry.flac"),      # vocals_dry (Stage 2 output)
@@ -88,14 +88,14 @@ def mock_job():
 
 
 @pytest.mark.asyncio
-async def test_mvsep_both_stages_succeed(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test MVSEP both stages succeed - local never called."""
+async def test_mvsep_both_stages_succeed(mock_job, mock_mvsep_client, mock_stem_separator):
+    """Test MVSEP both stages succeed - Modal never called."""
     result = await _separate_with_mvsep_fallback(
         input_path=Path("/tmp/input.mp3"),
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
     assert result[0] == Path("/tmp/mvsep_dry.flac")      # vocals_dry (Stage 2 output)
@@ -104,11 +104,11 @@ async def test_mvsep_both_stages_succeed(mock_job, mock_mvsep_client, mock_separ
 
     mock_mvsep_client.separate_vocals.assert_called_once()
     mock_mvsep_client.remove_reverb.assert_called_once()
-    mock_separator_wrapper.separate_stems.assert_not_called()
+    mock_stem_separator.separate_stems.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_mvsep_stage1_fails_retries_then_succeeds(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_mvsep_stage1_fails_retries_then_succeeds(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test Stage 1 MVSEP fails twice then succeeds."""
     # First two calls fail, third succeeds
     mock_mvsep_client.separate_vocals.side_effect = [
@@ -122,17 +122,17 @@ async def test_mvsep_stage1_fails_retries_then_succeeds(mock_job, mock_mvsep_cli
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
     assert result[0] == Path("/tmp/mvsep_dry.flac")
     assert mock_mvsep_client.separate_vocals.call_count == 3
-    mock_separator_wrapper.separate_stems.assert_not_called()
+    mock_stem_separator.separate_stems.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_mvsep_stage1_exhausts_retries_falls_back_full_local(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test Stage 1 MVSEP exhausts retries and falls back to full local."""
+async def test_mvsep_stage1_exhausts_retries_falls_back_to_modal(mock_job, mock_mvsep_client, mock_stem_separator):
+    """Test Stage 1 MVSEP exhausts retries and falls back to the full Modal pipeline."""
     # All retries fail
     mock_mvsep_client.separate_vocals.side_effect = MvsepClientError("Persistent error")
 
@@ -141,10 +141,10 @@ async def test_mvsep_stage1_exhausts_retries_falls_back_full_local(mock_job, moc
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
-    assert mock_job.stage == "fallback_local"
+    assert mock_job.stage == "fallback_modal"
     assert result == (
         Path("/tmp/dry.flac"),      # vocals_dry
         Path("/tmp/vocals.flac"),   # vocals
@@ -153,13 +153,13 @@ async def test_mvsep_stage1_exhausts_retries_falls_back_full_local(mock_job, moc
 
     # Verify MVSEP was tried 3 times
     assert mock_mvsep_client.separate_vocals.call_count == 3
-    # Verify local was called once
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    # Verify the Modal client was called once
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_mvsep_stage1_succeeds_stage2_fails_handoff(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test Stage 1 MVSEP succeeds but Stage 2 fails - local Stage 2 fallback."""
+async def test_mvsep_stage1_succeeds_stage2_fails_handoff(mock_job, mock_mvsep_client, mock_stem_separator):
+    """Test Stage 1 MVSEP succeeds but Stage 2 fails - Modal Stage 2 fallback."""
     mock_mvsep_client.remove_reverb.side_effect = [
         MvsepClientError("Stage 2 error"),
         MvsepClientError("Stage 2 error again"),
@@ -171,22 +171,22 @@ async def test_mvsep_stage1_succeeds_stage2_fails_handoff(mock_job, mock_mvsep_c
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
-    assert mock_job.stage == "fallback_local_stage2"
-    assert result[0] == Path("/tmp/local_dry.flac")     # From local remove_reverb
+    assert mock_job.stage == "fallback_modal_stage2"
+    assert result[0] == Path("/tmp/local_dry.flac")     # From Modal remove_reverb
     assert result[1] == Path("/tmp/mvsep_vocals.flac")  # From MVSEP Stage 1
 
-    # Verify cross-backend handoff: local remove_reverb called with MVSEP vocals
-    mock_separator_wrapper.remove_reverb.assert_called_once_with(
+    # Verify cross-backend handoff: Modal remove_reverb called with MVSEP vocals
+    mock_stem_separator.remove_reverb.assert_called_once_with(
         Path("/tmp/mvsep_vocals.flac"),
         Path("/tmp/output/mvsep_stage2"),
     )
 
 
 @pytest.mark.asyncio
-async def test_mvsep_stage2_skipped_when_disabled(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_mvsep_stage2_skipped_when_disabled(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test Stage 2 is skipped when stage2_sep_type is None."""
     mock_mvsep_client.stage2_sep_type = None  # Stage 2 disabled
 
@@ -195,7 +195,7 @@ async def test_mvsep_stage2_skipped_when_disabled(mock_job, mock_mvsep_client, m
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
     # When Stage 2 is skipped: (None, vocals, instrumental)
@@ -205,13 +205,13 @@ async def test_mvsep_stage2_skipped_when_disabled(mock_job, mock_mvsep_client, m
 
     # Stage 2 should not be called
     mock_mvsep_client.remove_reverb.assert_not_called()
-    mock_separator_wrapper.remove_reverb.assert_not_called()
+    mock_stem_separator.remove_reverb.assert_not_called()
     # Only Stage 1 should be called
     mock_mvsep_client.separate_vocals.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_mvsep_non_retriable_fast_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_mvsep_non_retriable_fast_fallback(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test non-retriable error causes immediate fallback without retries."""
     mock_mvsep_client.separate_vocals.side_effect = MvsepNonRetriableError("Invalid key")
 
@@ -220,13 +220,13 @@ async def test_mvsep_non_retriable_fast_fallback(mock_job, mock_mvsep_client, mo
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
     # Should have tried only once (no retries on non-retriable)
     assert mock_mvsep_client.separate_vocals.call_count == 1
     # Should have fallen back to local
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -248,8 +248,8 @@ async def test_mvsep_non_retriable_disables_future_jobs(mock_mvsep_client):
 
 
 @pytest.mark.asyncio
-async def test_mvsep_not_available_uses_local(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test when MVSEP client is None or not available, local is used immediately."""
+async def test_mvsep_not_available_uses_modal(mock_job, mock_mvsep_client, mock_stem_separator):
+    """Test when MVSEP client is None or not available, Modal is used immediately."""
     mock_mvsep_client.is_available = False
 
     result = await _separate_with_mvsep_fallback(
@@ -257,32 +257,32 @@ async def test_mvsep_not_available_uses_local(mock_job, mock_mvsep_client, mock_
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
     # MVSEP should not be called
     mock_mvsep_client.separate_vocals.assert_not_called()
     mock_mvsep_client.remove_reverb.assert_not_called()
-    # Local should be called immediately
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    # Modal should be called immediately
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_mvsep_none_uses_local(mock_job, mock_separator_wrapper):
-    """Test when MVSEP client is None, local is used immediately."""
+async def test_mvsep_none_uses_modal(mock_job, mock_stem_separator):
+    """Test when MVSEP client is None, Modal is used immediately."""
     result = await _separate_with_mvsep_fallback(
         input_path=Path("/tmp/input.mp3"),
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=None,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_total_timeout_exceeded_falls_back(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_total_timeout_exceeded_falls_back(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test that total timeout causes fallback mid-retry.
 
     With the guarantee-first-attempt change, the first attempt still runs
@@ -307,19 +307,19 @@ async def test_total_timeout_exceeded_falls_back(mock_job, mock_mvsep_client, mo
             output_dir=Path("/tmp/output"),
             job=mock_job,
             mvsep_client=mock_mvsep_client,
-            separator_wrapper=mock_separator_wrapper,
+            stem_separator=mock_stem_separator,
         )
 
         # First attempt ran despite timeout, then retry was skipped
         assert mock_mvsep_client.separate_vocals.call_count == 1
         # Should have fallen back due to timeout
-        mock_separator_wrapper.separate_stems.assert_called_once()
+        mock_stem_separator.separate_stems.assert_called_once()
     finally:
         _ss.settings.SOW_MVSEP_TOTAL_TIMEOUT = original_total_timeout
 
 
 @pytest.mark.asyncio
-async def test_stage_callback_updates(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_stage_callback_updates(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test that stage callback updates job.stage appropriately."""
     # Ensure stage2 is enabled
     mock_mvsep_client.stage2_sep_type = 22
@@ -366,17 +366,17 @@ async def test_stage_callback_updates(mock_job, mock_mvsep_client, mock_separato
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
     # Job should have been updated through stage callbacks
-    # Valid final stages include: mvsep_stage2_downloading (success), complete (done), fallback_local_stage2 (Stage 2 failed)
-    assert mock_job.stage in ["mvsep_stage2_downloading", "complete", "fallback_local_stage2"]
+    # Valid final stages include: mvsep_stage2_downloading (success), complete (done), fallback_modal_stage2 (Stage 2 failed)
+    assert mock_job.stage in ["mvsep_stage2_downloading", "complete", "fallback_modal_stage2"]
 
 
 @pytest.mark.asyncio
-async def test_quota_exhausted_uses_local(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test that quota exhaustion causes immediate local fallback."""
+async def test_quota_exhausted_uses_modal(mock_job, mock_mvsep_client, mock_stem_separator):
+    """Test that quota exhaustion causes immediate Modal failover."""
     mock_mvsep_client.is_available = False  # Simulate limit hit
 
     result = await _separate_with_mvsep_fallback(
@@ -384,21 +384,21 @@ async def test_quota_exhausted_uses_local(mock_job, mock_mvsep_client, mock_sepa
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
     )
 
     # MVSEP should not be called
     mock_mvsep_client.separate_vocals.assert_not_called()
-    # Local should be used
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    # Modal should be used
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_stage1_no_vocals_file_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
-    """Test Stage 1 succeeds but returns no vocals file - falls back to local.
+async def test_stage1_no_vocals_file_fallback(mock_job, mock_mvsep_client, mock_stem_separator):
+    """Test Stage 1 succeeds but returns no vocals file - falls back to Modal? No.
 
-    In non-free mode, MvsepParsingError (classification failure) propagates up
-    and fails the job in both modes (no local fallback for parsing bugs).
+    MvsepParsingError (classification failure) propagates up and fails the job
+    (no Modal failover for parsing bugs).
     """
     mock_mvsep_client.separate_vocals.side_effect = MvsepParsingError(
         "MVSEP Stage 1 returned 1 file(s) but none could be classified as vocals"
@@ -410,10 +410,10 @@ async def test_stage1_no_vocals_file_fallback(mock_job, mock_mvsep_client, mock_
             output_dir=Path("/tmp/output"),
             job=mock_job,
             mvsep_client=mock_mvsep_client,
-            separator_wrapper=mock_separator_wrapper,
+            stem_separator=mock_stem_separator,
         )
 
-    mock_separator_wrapper.separate_stems.assert_not_called()
+    mock_stem_separator.separate_stems.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -451,7 +451,7 @@ async def test_upload_stems_return_order_matches_separate_stems():
 
 
 @pytest.mark.asyncio
-async def test_queue_full_backoff_timing(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_queue_full_backoff_timing(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test that queue-full errors trigger correct backoff delays."""
     from unittest.mock import patch
 
@@ -473,7 +473,7 @@ async def test_queue_full_backoff_timing(mock_job, mock_mvsep_client, mock_separ
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
 
     assert len(sleep_times) == 2
@@ -483,7 +483,7 @@ async def test_queue_full_backoff_timing(mock_job, mock_mvsep_client, mock_separ
 
 
 @pytest.mark.asyncio
-async def test_other_error_backoff_timing(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_other_error_backoff_timing(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test that non-queue-full errors use shorter backoff delays."""
     from unittest.mock import patch
 
@@ -505,7 +505,7 @@ async def test_other_error_backoff_timing(mock_job, mock_mvsep_client, mock_sepa
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
 
     assert len(sleep_times) == 2
@@ -515,7 +515,7 @@ async def test_other_error_backoff_timing(mock_job, mock_mvsep_client, mock_sepa
 
 
 @pytest.mark.asyncio
-async def test_queue_full_6_attempts_before_fallback(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_queue_full_6_attempts_before_fallback(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test that queue-full errors get 6 attempts (vs 3 for other errors)."""
     from unittest.mock import patch
 
@@ -533,17 +533,17 @@ async def test_queue_full_6_attempts_before_fallback(mock_job, mock_mvsep_client
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
 
     assert mock_mvsep_client.separate_vocals.call_count == 6
     assert len(sleep_times) == 5
     assert sleep_times == [30, 60, 120, 240, 300]
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_queue_full_backoff_jitter_applied(mock_job, mock_mvsep_client, mock_separator_wrapper):
+async def test_queue_full_backoff_jitter_applied(mock_job, mock_mvsep_client, mock_stem_separator):
     """Test that jitter is applied to queue-full backoff (sleep > base value)."""
     from unittest.mock import patch
 
@@ -565,7 +565,7 @@ async def test_queue_full_backoff_jitter_applied(mock_job, mock_mvsep_client, mo
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
 
     assert len(sleep_times) == 1
@@ -575,7 +575,7 @@ async def test_queue_full_backoff_jitter_applied(mock_job, mock_mvsep_client, mo
 
 @pytest.mark.asyncio
 async def test_stage2_gets_dedicated_budget_after_stage1_consumed_total(
-    mock_job, mock_mvsep_client, mock_separator_wrapper
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
     """Stage 2 still gets retries even when Stage 1 consumed most of the total timeout."""
     import time
@@ -604,11 +604,11 @@ async def test_stage2_gets_dedicated_budget_after_stage1_consumed_total(
                     output_dir=Path("/tmp/output"),
                     job=mock_job,
                     mvsep_client=mock_mvsep_client,
-                    separator_wrapper=mock_separator_wrapper,
+                    stem_separator=mock_stem_separator,
                 )
         # remove_reverb should have been called at least once (guarantee first attempt)
         assert mock_mvsep_client.remove_reverb.call_count >= 1
-        assert mock_separator_wrapper.remove_reverb.call_count >= 0
+        assert mock_stem_separator.remove_reverb.call_count >= 0
     finally:
         _ss.settings.SOW_MVSEP_TOTAL_TIMEOUT = original_total_timeout
         _ss.settings.SOW_MVSEP_STAGE2_TIMEOUT = original_stage2_timeout
@@ -616,7 +616,7 @@ async def test_stage2_gets_dedicated_budget_after_stage1_consumed_total(
 
 @pytest.mark.asyncio
 async def test_stage2_timeout_uses_queue_full_backoff(
-    mock_job, mock_mvsep_client, mock_separator_wrapper
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
     """MvsepTimeoutError triggers 6 attempts with 30/60/120/240/300s backoff."""
     from sow_analysis.services.mvsep_client import MvsepTimeoutError
@@ -636,7 +636,7 @@ async def test_stage2_timeout_uses_queue_full_backoff(
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
 
     assert mock_mvsep_client.remove_reverb.call_count == 6
@@ -645,7 +645,7 @@ async def test_stage2_timeout_uses_queue_full_backoff(
 
 @pytest.mark.asyncio
 async def test_stage2_first_attempt_runs_even_when_time_exhausted(
-    mock_job, mock_mvsep_client, mock_separator_wrapper
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
     """Stage 2 gets at least one real submission attempt even when total budget is 0."""
     import time
@@ -669,7 +669,7 @@ async def test_stage2_first_attempt_runs_even_when_time_exhausted(
                     output_dir=Path("/tmp/output"),
                     job=mock_job,
                     mvsep_client=mock_mvsep_client,
-                    separator_wrapper=mock_separator_wrapper,
+                    stem_separator=mock_stem_separator,
                 )
         # remove_reverb called at least once despite time budget being exhausted
         assert mock_mvsep_client.remove_reverb.call_count >= 1
@@ -680,7 +680,7 @@ async def test_stage2_first_attempt_runs_even_when_time_exhausted(
 
 @pytest.mark.asyncio
 async def test_timeout_error_backoff_uses_queue_full_constants(
-    mock_job, mock_mvsep_client, mock_separator_wrapper
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
     """Verify timeout errors use 30s base backoff, not 5s."""
     from sow_analysis.services.mvsep_client import MvsepTimeoutError
@@ -703,7 +703,7 @@ async def test_timeout_error_backoff_uses_queue_full_constants(
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
 
     assert len(sleep_times) == 1
@@ -711,38 +711,37 @@ async def test_timeout_error_backoff_uses_queue_full_constants(
 
 
 # =============================================================================
-# Free-only mode tests (SOW_FREE_ONLY_MODE=True)
+# Quota waiting + Modal failover
 # =============================================================================
 
 
 @pytest.mark.asyncio
-async def test_free_mode_stage1_non_quota_failure_raises_no_local(
-    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+async def test_stage1_non_quota_exhaustion_fails_over_to_modal(
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
-    """In free mode, non-quota Stage 1 exhaustion raises instead of local fallback."""
-    monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", True)
+    """Exhausted non-quota Stage 1 failures fail over to Modal."""
     mock_mvsep_client.is_quota_exhausted = False
     mock_mvsep_client.separate_vocals.side_effect = MvsepClientError("Persistent error")
 
     with patch("asyncio.sleep"):
         with patch("random.uniform", return_value=0.0):
-            with pytest.raises(StemSeparationWorkerError, match="free-only mode"):
-                await _separate_with_mvsep_fallback(
-                    input_path=Path("/tmp/input.mp3"),
-                    output_dir=Path("/tmp/output"),
-                    job=mock_job,
-                    mvsep_client=mock_mvsep_client,
-                    separator_wrapper=mock_separator_wrapper,
-                )
-    mock_separator_wrapper.separate_stems.assert_not_called()
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                stem_separator=mock_stem_separator,
+            )
+    assert result[0] == Path("/tmp/dry.flac")
+    assert mock_job.stage == "fallback_modal"
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_free_mode_stage1_quota_exhausted_waits_and_retries(
-    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+async def test_stage1_quota_exhausted_waits_and_retries(
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
-    """In free mode, quota exhaustion triggers QuotaWaiter. Job resumes after reset."""
-    monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", True)
+    """Quota exhaustion triggers QuotaWaiter. Job resumes after reset."""
 
     call_count = 0
 
@@ -778,35 +777,36 @@ async def test_free_mode_stage1_quota_exhausted_waits_and_retries(
         output_dir=Path("/tmp/output"),
         job=mock_job,
         mvsep_client=mock_mvsep_client,
-        separator_wrapper=mock_separator_wrapper,
+        stem_separator=mock_stem_separator,
         mvsep_quota_waiter=qw,
     )
 
     assert result[1] == Path("/tmp/v.flac")  # vocals from 2nd call
-    mock_separator_wrapper.separate_stems.assert_not_called()
+    mock_stem_separator.separate_stems.assert_not_called()
     await qw.stop()
 
 
 @pytest.mark.asyncio
-async def test_free_mode_stage2_non_quota_failure_raises_no_local(
-    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+async def test_stage2_non_quota_exhaustion_fails_over_to_modal(
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
-    """In free mode, non-quota Stage 2 exhaustion raises instead of local Stage 2 fallback."""
-    monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", True)
+    """Exhausted non-quota Stage 2 failures fail over to Modal de-reverb."""
     mock_mvsep_client.is_quota_exhausted = False
     mock_mvsep_client.remove_reverb.side_effect = MvsepClientError("Stage 2 persistent error")
 
     with patch("asyncio.sleep"):
         with patch("random.uniform", return_value=0.0):
-            with pytest.raises(StemSeparationWorkerError, match="free-only mode"):
-                await _separate_with_mvsep_fallback(
-                    input_path=Path("/tmp/input.mp3"),
-                    output_dir=Path("/tmp/output"),
-                    job=mock_job,
-                    mvsep_client=mock_mvsep_client,
-                    separator_wrapper=mock_separator_wrapper,
-                )
-    mock_separator_wrapper.remove_reverb.assert_not_called()
+            result = await _separate_with_mvsep_fallback(
+                input_path=Path("/tmp/input.mp3"),
+                output_dir=Path("/tmp/output"),
+                job=mock_job,
+                mvsep_client=mock_mvsep_client,
+                stem_separator=mock_stem_separator,
+            )
+    assert mock_job.stage == "fallback_modal_stage2"
+    assert result[0] == Path("/tmp/local_dry.flac")
+    assert result[1] == Path("/tmp/mvsep_vocals.flac")
+    mock_stem_separator.remove_reverb.assert_called_once()
 
 
 # =============================================================================
@@ -816,13 +816,13 @@ async def test_free_mode_stage2_non_quota_failure_raises_no_local(
 
 @pytest.mark.asyncio
 async def test_mvsep_stage1_api_empty_raises_retriable(
-    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+    mock_job, mock_mvsep_client, mock_stem_separator, monkeypatch
 ):
     """Case A: API returned no file entries — retriable MvsepClientError.
 
     MvsepClientError is retriable, so the retry loop catches it. After
-    exhaustion in non-free mode, local fallback runs (unlike MvsepParsingError
-    which propagates immediately).
+    exhaustion, Modal failover runs (unlike MvsepParsingError which propagates
+    immediately).
     """
     mock_mvsep_client.separate_vocals.side_effect = MvsepClientError(
         "MVSEP Stage 1 returned no file entries"
@@ -836,21 +836,21 @@ async def test_mvsep_stage1_api_empty_raises_retriable(
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
-    # Retriable error exhausted -> local fallback in non-free mode
+    # Retriable error exhausted -> Modal failover
     assert mock_mvsep_client.separate_vocals.call_count == 3
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_mvsep_stage1_download_failure_raises_retriable(
-    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+    mock_job, mock_mvsep_client, mock_stem_separator, monkeypatch
 ):
     """Case B: Files returned but download failed — retriable MvsepClientError.
 
     MvsepClientError is retriable, so the retry loop catches it. After
-    exhaustion in non-free mode, local fallback runs.
+    exhaustion, Modal failover runs.
     """
     mock_mvsep_client.separate_vocals.side_effect = MvsepClientError(
         "MVSEP Stage 1: file(s) returned but download failed"
@@ -864,16 +864,16 @@ async def test_mvsep_stage1_download_failure_raises_retriable(
                 output_dir=Path("/tmp/output"),
                 job=mock_job,
                 mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
+                stem_separator=mock_stem_separator,
             )
-    # Retriable error exhausted -> local fallback in non-free mode
+    # Retriable error exhausted -> Modal failover
     assert mock_mvsep_client.separate_vocals.call_count == 3
-    mock_separator_wrapper.separate_stems.assert_called_once()
+    mock_stem_separator.separate_stems.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_mvsep_stage1_classification_failure_raises_non_retriable(
-    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+    mock_job, mock_mvsep_client, mock_stem_separator, monkeypatch
 ):
     """Case C: Files downloaded but none classified as vocals — non-retriable MvsepParsingError."""
     mock_mvsep_client.separate_vocals.side_effect = MvsepParsingError(
@@ -887,29 +887,25 @@ async def test_mvsep_stage1_classification_failure_raises_non_retriable(
             output_dir=Path("/tmp/output"),
             job=mock_job,
             mvsep_client=mock_mvsep_client,
-            separator_wrapper=mock_separator_wrapper,
+            stem_separator=mock_stem_separator,
         )
-    mock_separator_wrapper.separate_stems.assert_not_called()
+    mock_stem_separator.separate_stems.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_mvsep_stage1_classification_failure_fails_in_both_modes(
-    mock_job, mock_mvsep_client, mock_separator_wrapper, monkeypatch
+async def test_mvsep_stage1_classification_failure_propagates(
+    mock_job, mock_mvsep_client, mock_stem_separator
 ):
-    """Case C must fail in both free and non-free modes — no local fallback."""
-    for free_mode in (True, False):
-        monkeypatch.setattr(_ss.settings, "SOW_FREE_ONLY_MODE", free_mode)
-        mock_mvsep_client.separate_vocals.side_effect = MvsepParsingError(
-            "classification failed"
-        )
-        mock_mvsep_client.is_quota_exhausted = False
+    """Case C must fail the job (no modal failover for parsing bugs)."""
+    mock_mvsep_client.separate_vocals.side_effect = MvsepParsingError("classification failed")
+    mock_mvsep_client.is_quota_exhausted = False
 
-        with pytest.raises(MvsepParsingError, match="classification failed"):
-            await _separate_with_mvsep_fallback(
-                input_path=Path("/tmp/input.mp3"),
-                output_dir=Path("/tmp/output"),
-                job=mock_job,
-                mvsep_client=mock_mvsep_client,
-                separator_wrapper=mock_separator_wrapper,
-            )
-        mock_separator_wrapper.separate_stems.assert_not_called()
+    with pytest.raises(MvsepParsingError, match="classification failed"):
+        await _separate_with_mvsep_fallback(
+            input_path=Path("/tmp/input.mp3"),
+            output_dir=Path("/tmp/output"),
+            job=mock_job,
+            mvsep_client=mock_mvsep_client,
+            stem_separator=mock_stem_separator,
+        )
+    mock_stem_separator.separate_stems.assert_not_called()

@@ -5,11 +5,10 @@ import hashlib
 import logging
 import time
 import uuid
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from ..config import settings
 from ..logging_config import set_job_id
@@ -37,19 +36,6 @@ class ResolvedTranscriptionAudio:
     r2_url: Optional[str]
     stem_kind: str
     is_dry_or_clean_vocals: bool
-
-
-@asynccontextmanager
-async def optional_semaphore(sem: Optional[asyncio.Semaphore]) -> AsyncIterator[None]:
-    """Context manager that acquires semaphore if provided, otherwise no-op.
-
-    This is a Python 3.8+ compatible alternative to `async with (sem or nullcontext())`.
-    """
-    if sem is not None:
-        async with sem:
-            yield
-    else:
-        yield
 
 
 def _compute_lrc_cache_key(content_hash: str, lyrics_text: str, language: str = "zh") -> str:
@@ -167,12 +153,9 @@ try:
 except ImportError:
     EmbeddingWorker = None
 
-# Optional stem separation imports - require audio-separator
-try:
-    from .stem_separation import StemSeparationWorkerError, process_stem_separation
-except ImportError:
-    StemSeparationWorkerError = Exception
-    process_stem_separation = None
+# Stem separation worker. Imported directly (not optionally): it no longer pulls in the
+# audio-separator stack — stem separation failover runs on Modal, a core dependency.
+from .stem_separation import StemSeparationWorkerError, process_stem_separation
 
 # Forced alignment utilities (stdlib-only module; soundfile/librosa are imported
 # lazily inside validate_audio_duration)
@@ -201,7 +184,7 @@ class JobQueue:
 
         Args:
             max_concurrent_local_model: Maximum concurrent local model executions
-                (audio-separator, allin1, demucs). Default 1 due to
+                (allin1, demucs). Default 1 due to
                 memory constraints - only one local model can run at a time.
             cache_dir: Directory for caching results
             db_path: Path to job database (default: cache_dir / "jobs.db")
@@ -209,15 +192,15 @@ class JobQueue:
         self.max_concurrent_local_model = max_concurrent_local_model
         self.cache_manager = CacheManager(cache_dir)
         self.r2_client: Optional[R2Client] = None
-        self._separator_wrapper: Optional[Any] = None
+        self._stem_separator: Optional[Any] = None
         self._mvsep_client: Optional[Any] = None
         self._qwen3_client: Any = None
         self._mvsep_quota_waiter: Optional[Any] = None
         self._qwen3_quota_waiter: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
-        # Global semaphore for local model execution (audio-separator, allin1, demucs).
-        # Whisper runs on Modal and Qwen3 ASR is cloud-only; neither acquires this.
+        # Global semaphore for local model execution (allin1, demucs).
+        # Whisper, Qwen3 ASR and stem separation run on Modal; none acquire this.
         # Cloud operations (YouTube transcript, MVSEP, LLM alignment) don't acquire this.
         self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
         self._dashscope_asr_semaphore = asyncio.Semaphore(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)
@@ -254,13 +237,13 @@ class JobQueue:
         # Set cache manager on job store for job reconstruction
         self.job_store.set_cache_manager(self.cache_manager)
 
-    def set_separator_wrapper(self, separator_wrapper: Any) -> None:
-        """Set the audio separator wrapper for stem separation jobs.
+    def set_stem_separator(self, stem_separator: Any) -> None:
+        """Set the Modal stem separator client for stem separation jobs.
 
         Args:
-            separator_wrapper: AudioSeparatorWrapper instance
+            stem_separator: ModalStemSeparatorClient instance
         """
-        self._separator_wrapper = separator_wrapper
+        self._stem_separator = stem_separator
 
     def set_mvsep_client(self, mvsep_client: Any) -> None:
         """Set the MVSEP client for cloud stem separation.
@@ -501,16 +484,16 @@ class JobQueue:
             async with self._local_model_semaphore:
                 await self._process_analysis_job(job)
         elif job.type == JobType.LRC:
-            # LRC tries YouTube (cloud) first; the local-model semaphore is acquired
-            # inside process_stem_separation()/forced alignment only. This outer
+            # LRC tries YouTube (cloud) first; forced alignment acquires the
+            # local-model semaphore inside its own job only. This outer
             # semaphore caps concurrently *executing* LRC tasks (restart-recovery
-            # fan-out herd). Whisper transcription is a remote Modal call and does
-            # not acquire the local-model semaphore.
+            # fan-out herd). Whisper transcription is a remote Modal call, and
+            # stem separation runs locally only through the Modal failover.
             async with self._lrc_semaphore:
                 await self._process_lrc_job(job)
         elif job.type == JobType.STEM_SEPARATION:
-            # Stem separation tries MVSEP (cloud) first; semaphore acquired inside
-            # process_stem_separation() only for local fallback
+            # Stem separation tries MVSEP (cloud) first and fails over to the
+            # sow-stems Modal app; it never runs models in this container.
             await self._process_stem_separation_job(job)
         elif job.type == JobType.EMBEDDING:
             # Embedding uses external OpenAI API - separate semaphore
@@ -1242,17 +1225,13 @@ class JobQueue:
                 break
             if child_job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
                 break
-            # In free-only mode, suspend the parent's wait-timeout budget
-            # while the child stem separation job is blocked on MVSEP quota
-            # reset. The quota resets once per UTC day, which may be many
-            # hours away; the timeout budget must not elapse during that
-            # legitimate wait, otherwise the parent would erroneously fall
-            # back to full-mix audio (which yields very poor ASR results).
-            if (
-                settings.SOW_FREE_ONLY_MODE
-                and child_job
-                and child_job.stage == "waiting_for_mvsep_quota_reset"
-            ):
+            # Suspend the parent's wait-timeout budget while the child stem
+            # separation job is blocked on MVSEP quota reset. The quota resets
+            # once per UTC day, which may be many hours away; the timeout budget
+            # must not elapse during that legitimate wait, otherwise the parent
+            # would erroneously fall back to full-mix audio (which yields very
+            # poor ASR results).
+            if child_job.stage == "waiting_for_mvsep_quota_reset":
                 now = time.time()
                 # Log suspension once per 5 minutes to avoid log spam
                 if now - last_suspend_log > 300.0:
@@ -1603,67 +1582,26 @@ class JobQueue:
                 youtube_lrc_result = None
                 if use_youtube:
                     from .lrc import try_youtube_transcript_lrc
-                    from .youtube_transcript import (
-                        YouTubeRateLimitedError,
-                        wait_for_youtube_cooldown_if_open,
-                    )
+                    from .youtube_transcript import YouTubeRateLimitedError
 
-                    youtube_breaker_cycles_waited = 0
-                    while True:
-                        await self._update_stage(job, "trying_youtube_transcript", 0.2)
-                        try:
-                            youtube_lrc_result = await try_youtube_transcript_lrc(
-                                request.youtube_url,
-                                request.lyrics_text,
-                                request.options,
-                                lrc_path,
-                                resolved_language,
-                                trace=trace,
-                            )
-                            break  # success or permanent failure (None) → exit loop
-                        except YouTubeRateLimitedError as e:
-                            if not settings.SOW_FREE_ONLY_MODE:
-                                # Non-free: don't wait, fall through to Whisper/Qwen3 ASR
-                                youtube_lrc_result = None
-                                break
-                            # Free mode: check cycle cap before waiting
-                            if (
-                                youtube_breaker_cycles_waited
-                                >= settings.SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES
-                            ):
-                                logger.warning(
-                                    "YouTube transcript rate-limited for job %s: exceeded max "
-                                    "breaker cycles (%d) in free mode — giving up and falling back "
-                                    "to local ASR",
-                                    job.id,
-                                    settings.SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES,
-                                )
-                                youtube_lrc_result = None
-                                break
-                            # Free mode: wait for breaker cooldown with heartbeat, then retry
-                            await self._update_stage(job, "waiting_for_youtube_rate_limit", 0.2)
-                            logger.warning(
-                                "YouTube transcript rate-limited for job %s: %s — waiting for "
-                                "circuit-breaker cooldown in free-only mode (cycle %d/%d)",
-                                job.id,
-                                e,
-                                youtube_breaker_cycles_waited + 1,
-                                settings.SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES,
-                            )
-                            while True:
-                                closed = await wait_for_youtube_cooldown_if_open(
-                                    max_heartbeat_seconds=60.0,
-                                    is_cancelled=lambda: job.status == JobStatus.CANCELLED,
-                                )
-                                if job.status == JobStatus.CANCELLED:
-                                    return
-                                if closed:
-                                    break
-                                # Heartbeat: refresh updated_at
-                                await self._update_stage(job, "waiting_for_youtube_rate_limit", 0.2)
-                            youtube_breaker_cycles_waited += 1
-                            # Breaker closed — retry YouTube transcript
-                            continue
+                    await self._update_stage(job, "trying_youtube_transcript", 0.2)
+                    try:
+                        youtube_lrc_result = await try_youtube_transcript_lrc(
+                            request.youtube_url,
+                            request.lyrics_text,
+                            request.options,
+                            lrc_path,
+                            resolved_language,
+                            trace=trace,
+                        )
+                    except YouTubeRateLimitedError as e:
+                        # Don't wait out the cooldown: fall through to Qwen3/Modal Whisper ASR.
+                        logger.warning(
+                            "YouTube transcript rate-limited for job %s: %s — falling back to ASR",
+                            job.id,
+                            e,
+                        )
+                        youtube_lrc_result = None
 
                     if youtube_lrc_result:
                         lrc_path, line_count, whisper_phrases = youtube_lrc_result
@@ -1774,16 +1712,8 @@ class JobQueue:
                         generator == "auto" and request.options.use_qwen3_asr
                     )
                     if qwen_enabled:
-                        # Guard: free-only mode requires DashScope to be configured
-                        if settings.SOW_FREE_ONLY_MODE and not settings.SOW_DASHSCOPE_API_KEY:
-                            raise LRCWorkerError(
-                                "SOW_FREE_ONLY_MODE is enabled but DashScope Qwen3 ASR "
-                                "is not configured. Set SOW_DASHSCOPE_API_KEY to use "
-                                "free-only mode, or disable use_qwen3_asr to skip "
-                                "ASR-based LRC generation."
-                            )
-
                         lrc_source = None  # Initialize before retry loop
+                        qwen_quota_wait_cycles = 0
                         while True:
                             try:
                                 from .lrc import _build_qwen3_context
@@ -1832,7 +1762,9 @@ class JobQueue:
                                 await self._update_stage(job, "qwen3_asr_done", 0.7)
                                 break  # success
                             except Qwen3AsrQuotaExhaustedError as e:
-                                if settings.SOW_FREE_ONLY_MODE:
+                                if qwen_quota_wait_cycles == 0 and self._qwen3_quota_waiter is not None:
+                                    # Wait out the free-tier reset, then retry Qwen3 ASR once.
+                                    qwen_quota_wait_cycles += 1
                                     await self._qwen3_quota_waiter.mark_exhausted()
                                     await self._update_stage(
                                         job, "waiting_for_qwen3_asr_quota_reset", 0.4
@@ -1844,25 +1776,29 @@ class JobQueue:
                                             lambda: job.status == JobStatus.CANCELLED,
                                             max_wait_seconds=60,
                                         )
-                                        if available:
-                                            break
                                         if job.status == JobStatus.CANCELLED:
                                             return  # cancelled
+                                        if available:
+                                            break
                                         # Heartbeat: refresh updated_at
                                         await self._update_stage(
                                             job, "waiting_for_qwen3_asr_quota_reset", 0.4
                                         )
                                     await self._update_stage(job, "qwen3_asr_transcribing", 0.4)
                                     continue  # retry Qwen3 ASR
-                                else:
-                                    # Existing: fall back to Whisper
-                                    if generator == "qwen3_asr":
-                                        raise LRCWorkerError(
-                                            "lrc_generator='qwen3_asr' requested but Qwen3 ASR "
-                                            f"quota is exhausted; fallback is disabled: {e}"
-                                        )
-                                    await self._update_stage(job, "falling_back_to_whisper", 0.45)
-                                    break
+                                # Already waited once (or nothing to wait on): use Modal Whisper.
+                                if generator == "qwen3_asr":
+                                    raise LRCWorkerError(
+                                        "lrc_generator='qwen3_asr' requested but Qwen3 ASR "
+                                        f"quota is exhausted; fallback is disabled: {e}"
+                                    )
+                                logger.warning(
+                                    "Qwen3 ASR quota still exhausted after waiting; "
+                                    "falling back to Modal Whisper: %s",
+                                    e,
+                                )
+                                await self._update_stage(job, "falling_back_to_whisper", 0.45)
+                                break
                             except Qwen3AsrError as e:
                                 if generator == "qwen3_asr":
                                     raise LRCWorkerError(
@@ -2369,35 +2305,18 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
-        # Check if stem separation dependencies are available
-        if process_stem_separation is None:
+        # Check if the Modal stem separator client is available
+        if not self._stem_separator:
             job.status = JobStatus.FAILED
-            job.error_message = "Stem separation dependencies not available (audio-separator)"
-            job.stage = "missing_dependencies"
+            job.error_message = "Modal stem separator client not configured"
+            job.stage = "missing_stem_separator"
             job.updated_at = datetime.now(timezone.utc)
             try:
                 await self.job_store.update_job(
                     job.id,
                     status="failed",
-                    stage="missing_dependencies",
-                    error_message="Stem separation dependencies not available (audio-separator)",
-                )
-            except Exception as e:
-                logger.error(f"Failed to update job {job.id} in database: {e}")
-            return
-
-        # Check if separator wrapper is available (it lazy-initializes on first use)
-        if not self._separator_wrapper:
-            job.status = JobStatus.FAILED
-            job.error_message = "Separator wrapper not available"
-            job.stage = "missing_separator"
-            job.updated_at = datetime.now(timezone.utc)
-            try:
-                await self.job_store.update_job(
-                    job.id,
-                    status="failed",
-                    stage="missing_separator",
-                    error_message="Separator wrapper not available",
+                    stage="missing_stem_separator",
+                    error_message="Modal stem separator client not configured",
                 )
             except Exception as e:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
@@ -2411,11 +2330,10 @@ class JobQueue:
             # Process the stem separation
             await process_stem_separation(
                 job=job,
-                separator_wrapper=self._separator_wrapper,
+                stem_separator=self._stem_separator,
                 r2_client=self.r2_client,
                 cache_manager=self.cache_manager,
                 mvsep_client=self._mvsep_client,
-                local_model_semaphore=self._local_model_semaphore,
                 stage_updater=lambda s, p=None: self._update_stage(job, s, p),
                 mvsep_quota_waiter=self._mvsep_quota_waiter,
             )

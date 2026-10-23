@@ -133,15 +133,9 @@ async def health_check() -> dict:
     Returns:
         Service health status
     """
-    from ..workers.separator_wrapper import AudioSeparatorWrapper
+    from ..services.modal_stem_separator_client import get_modal_stem_separator_client
 
-    separator_status = "not_installed"
-    try:
-        from ..main import separator_wrapper as sw
-
-        separator_status = "ready" if sw and sw.is_ready else "loading"
-    except ImportError:
-        pass
+    stem_client = get_modal_stem_separator_client()
 
     return {
         "status": "healthy",
@@ -151,6 +145,10 @@ async def health_check() -> dict:
             "cache": check_cache_access(),
             "llm": check_llm_connection(),
             "embedding": await asyncio.to_thread(check_embedding_connection),
-            "separator": {"status": separator_status},
+            "stem_separation": {
+                "backend": "modal",
+                "app": stem_client.app_name,
+                "status": "configured" if stem_client.is_configured else "not_configured",
+            },
         },
     }

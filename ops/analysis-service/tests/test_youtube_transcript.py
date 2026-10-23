@@ -890,7 +890,6 @@ class TestFetchYoutubeTranscriptWithProxy:
             patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
             patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi,
         ):
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_PROXY = "http://proxy:8080"
             mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
@@ -928,7 +927,6 @@ class TestFetchYoutubeTranscriptWithProxy:
             patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings,
             patch("youtube_transcript_api.YouTubeTranscriptApi") as MockApi,
         ):
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_PROXY = ""
             mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
@@ -973,7 +971,6 @@ class TestYouTubeRateLimiter:
         rl._ensure_initialized()
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 3.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.1
@@ -1017,7 +1014,6 @@ class TestYouTubeRateLimiter:
             return "success"
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1041,7 +1037,6 @@ class TestYouTubeRateLimiter:
             raise Exception("too many 429 error responses")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1086,7 +1081,6 @@ class TestYouTubeRateLimiter:
         rl._circuit_open_until = time.monotonic() - 1
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1108,7 +1102,6 @@ class TestYouTubeRateLimiter:
         rl._consecutive_429_count = 3
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1136,7 +1129,6 @@ class TestYouTubeRateLimiter:
             raise Exception("Subtitles are disabled for this video")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1170,7 +1162,6 @@ class TestYouTubeRateLimiter:
             return "done"
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1194,7 +1185,6 @@ class TestYouTubeRateLimiter:
         rl = self._fresh_rate_limiter()
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
@@ -1272,7 +1262,6 @@ class TestYouTubeRateLimiter:
             raise IpBlocked("testVideoId")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 1
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.0
@@ -1706,7 +1695,6 @@ class TestYouTubeRateLimitedErrorRaised:
             raise Exception("too many 429 error responses")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1729,7 +1717,6 @@ class TestYouTubeRateLimitedErrorRaised:
             raise Exception("too many 429 error responses")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 1
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1751,7 +1738,6 @@ class TestYouTubeRateLimitedErrorRaised:
             raise Exception("Subtitles are disabled for this video")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -1764,8 +1750,8 @@ class TestYouTubeRateLimitedErrorRaised:
             assert not isinstance(exc_info.value, YouTubeRateLimitedError)
 
 
-class TestFreeModeConfigSelection:
-    """Tests that free-mode threshold/cooldown/retry/min-interval values are used."""
+class TestRateLimiterConfigSelection:
+    """Tests that threshold/cooldown/min-interval come from settings."""
 
     def _fresh_rate_limiter(self):
         rl = _YouTubeRateLimiter()
@@ -1778,8 +1764,8 @@ class TestFreeModeConfigSelection:
         return rl
 
     @pytest.mark.asyncio
-    async def test_free_mode_uses_free_threshold(self):
-        """In free mode, breaker opens at the *_FREE threshold (10), not default (5)."""
+    async def test_breaker_opens_at_configured_threshold(self):
+        """The breaker opens after the configured number of consecutive 429s."""
         from unittest.mock import patch
 
         rl = self._fresh_rate_limiter()
@@ -1793,52 +1779,30 @@ class TestFreeModeConfigSelection:
             raise Exception("too many 429 error responses")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = True
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS_FREE = 0.0
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES_FREE = 0
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY_FREE = 0.01
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD_FREE = 10
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE = 300
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD = 10
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 300
 
             # With threshold=10 and max_retries=0, each call() does 1 attempt and
             # increments count by 1. After 10 calls, breaker opens.
             for i in range(10):
                 with pytest.raises(YouTubeRateLimitedError):
-                    await rl.call(fn, description=f"free-threshold-{i}")
+                    await rl.call(fn, description=f"threshold-{i}")
 
             assert await rl._is_circuit_open()
 
     @pytest.mark.asyncio
-    async def test_free_mode_uses_free_cooldown(self):
-        """In free mode, _open_circuit uses the *_FREE cooldown value."""
+    async def test_open_circuit_uses_configured_cooldown(self):
+        """_open_circuit uses the configured cooldown value."""
         from unittest.mock import patch
 
         rl = self._fresh_rate_limiter()
         rl._ensure_initialized()
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = True
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE = 300
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 120
-
-            await rl._open_circuit()
-
-            # Cooldown should be ~300s from now
-            remaining = rl.remaining_cooldown()
-            assert 290 < remaining <= 300
-
-    @pytest.mark.asyncio
-    async def test_non_free_mode_uses_default_cooldown(self):
-        """In non-free mode, _open_circuit uses the default cooldown value."""
-        from unittest.mock import patch
-
-        rl = self._fresh_rate_limiter()
-        rl._ensure_initialized()
-
-        with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN = 120
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE = 300
 
             await rl._open_circuit()
 
@@ -1991,8 +1955,8 @@ class TestFreeModeJitter:
         return rl
 
     @pytest.mark.asyncio
-    async def test_jitter_varies_interval_in_free_mode(self):
-        """In free mode, min-interval sleep varies within ±25% of 30.0s."""
+    async def test_jitter_only_increases_min_interval(self):
+        """Min-interval sleep is the configured value plus up to 25% jitter."""
         from unittest.mock import patch
 
         rl = self._fresh_rate_limiter()
@@ -2012,8 +1976,7 @@ class TestFreeModeJitter:
                 side_effect=mock_sleep,
             ),
         ):
-            mock_settings.SOW_FREE_ONLY_MODE = True
-            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS_FREE = 30.0
+            mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 30.0
 
             # Call _enforce_min_interval many times with _last_request_time set to now
             # so elapsed is ~0 and the min-interval sleep triggers
@@ -2021,10 +1984,10 @@ class TestFreeModeJitter:
                 rl._last_request_time = time.monotonic()
                 await rl._enforce_min_interval()
 
-        # All sleeps should be within [22.5, 37.5] (30 ± 25%)
+        # All sleeps should be within [30.0, 37.5]: never below the configured floor.
         assert len(sleep_durations) == 20
         for d in sleep_durations:
-            assert 22.5 <= d <= 37.5, f"Sleep {d} outside jitter range [22.5, 37.5]"
+            assert 30.0 <= d <= 37.5, f"Sleep {d} outside jitter range [30, 37.5]"
 
         # And they should vary (not all the same)
         assert len(set(sleep_durations)) > 1
@@ -2056,7 +2019,6 @@ class TestConcurrentBreakerStateSafety:
             raise Exception("too many 429 error responses")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -2296,7 +2258,6 @@ class TestSSLRetryBehavior:
             return "success"
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -2320,7 +2281,6 @@ class TestSSLRetryBehavior:
             raise Exception("[SSL: WRONG_VERSION_NUMBER] wrong version number")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -2350,7 +2310,6 @@ class TestSSLRetryBehavior:
             raise Exception("[SSL] record layer failure (_ssl.c:2590)")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -2394,7 +2353,6 @@ class TestSSLRetryBehavior:
                 side_effect=mock_sleep,
             ),
         ):
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 5.0
@@ -2428,7 +2386,6 @@ class TestSSLRetryBehavior:
             return "recovered"
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -2456,7 +2413,6 @@ class TestSSLRetryBehavior:
             raise Exception("Subtitles are disabled for this video")
 
         with patch("sow_analysis.workers.youtube_transcript.settings") as mock_settings:
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -2502,7 +2458,6 @@ class TestSSLRetryBehavior:
                 side_effect=mock_sleep,
             ),
         ):
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS = 0.0
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES = 2
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY = 0.01
@@ -2552,7 +2507,6 @@ class TestPhase1SkipsListFallbackOnRateLimited:
                 side_effect=AssertionError("fallback delay must not run"),
             ),
         ):
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_PROXY = "http://proxy:8080"
             mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1
@@ -2607,7 +2561,6 @@ class TestListFallbackDelay:
                 side_effect=mock_sleep,
             ),
         ):
-            mock_settings.SOW_FREE_ONLY_MODE = False
             mock_settings.SOW_YOUTUBE_PROXY = ""
             mock_settings.SOW_YOUTUBE_PROXY_RETRIES = 3
             mock_settings.SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT = 1

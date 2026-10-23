@@ -17,7 +17,7 @@ The LRC (Lyric) job generates timestamped lyric files (`.lrc`) for songs in the 
 
 1. **YouTube Transcript** (preferred) — When a YouTube URL is provided, the system fetches human-curated or auto-generated captions, uses an LLM to correct them against official lyrics, and produces LRC directly. No audio download or stem separation is needed for this path. Sets `lrc_source="youtube_transcript"`.
 
-2. **DashScope Qwen3 ASR** (second) — When the YouTube path fails/skips and `use_qwen3_asr=true` (default), the system downloads audio, calls the DashScope Qwen3 ASR cloud API (context-biased with official lyrics), snaps segments to canonical lyric lines, then runs LLM alignment. Sets `lrc_source="qwen3_asr"`. Quota exhaustion waits in free-only mode; any other error falls back to Whisper.
+2. **DashScope Qwen3 ASR** (second) — When the YouTube path fails/skips and `use_qwen3_asr=true` (default), the system downloads audio, calls the DashScope Qwen3 ASR cloud API (context-biased with official lyrics), snaps segments to canonical lyric lines, then runs LLM alignment. Sets `lrc_source="qwen3_asr"`. Quota exhaustion always waits for the daily reset; any other error falls back to Whisper.
 
 3. **Whisper ASR** (fallback) — Runs Whisper on Modal (`faster-whisper` inside the `sow-whisper` Modal app) to produce phrase-level transcriptions with timestamps, then uses an LLM to align the official lyrics with Whisper's output. Sets `lrc_source="whisper_asr"`.
 
@@ -277,7 +277,7 @@ The `stage` field tracks progress through the pipeline:
 
 | Resource | Limit | Controlled By |
 |----------|-------|---------------|
-| Local models (Whisper, Qwen3, audio-separator, allin1, demucs) | 1 concurrent | `_local_model_semaphore` |
+| Local models (Qwen3, allin1, demucs) | 1 concurrent | `_local_model_semaphore` |
 | Embedding jobs (cloud API) | 5 concurrent | `_embedding_semaphore` |
 | Analysis jobs | Serialized (via local model semaphore) | Same semaphore |
 | LRC jobs | Whisper/Qwen3 steps serialized; YouTube/LLM steps concurrent | Semaphore only for local model steps |

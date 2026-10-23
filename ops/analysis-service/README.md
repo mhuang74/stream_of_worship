@@ -6,7 +6,7 @@ The Analysis Service is a FastAPI-based microservice that performs CPU/GPU-inten
 
 - **Audio Analysis**: Detects tempo (BPM), musical key, mode, loudness, beats, and song sections
 - **Stem Separation (Demucs)**: Separates audio into vocals, drums, bass, and other stems using Demucs
-- **Clean Vocals Generation (Vocal Separation + UVR)**: Two-stage pipeline for high-quality vocal extraction with echo/reverb removal
+- **Clean Vocals Generation (Vocal Separation + UVR)**: Two-stage pipeline for high-quality vocal extraction with echo/reverb removal (MVSEP cloud API, failing over to the `sow-stems` Modal app)
 - **LRC Generation**: Generates timestamped lyric files using Whisper + LLM alignment
 - **R2 Storage**: Uploads/download results to/from Cloudflare R2 (S3-compatible)
 
@@ -80,10 +80,11 @@ SOW_WHISPER_CACHE_VERSION=2
 # BPM Algorithm (used by Fast Analysis jobs)
 BPM_ALGORITHM_VERSION="v4_octave_guard"  # v4_octave_guard (default) or v5_cps_prior
 
-# Stem Separation Model Configuration
-SOW_AUDIO_SEPARATOR_MODEL_ROOT="/path/to/audio-separator-models"  # Host path to pre-downloaded models
+# Stem separation runs on Modal (see "Stem separation on Modal" below)
 SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"  # Vocal separation model filename
 SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
+SOW_MODAL_STEM_MAX_ATTEMPTS=2
+SOW_MODAL_STEM_MAX_AUDIO_BYTES=100000000
 
 # DashScope Qwen3 ASR (Optional — improves LRC transcription quality)
 SOW_DASHSCOPE_API_KEY=""  # DashScope API key; leave empty to skip Qwen3 ASR (uses Whisper only)
@@ -199,8 +200,10 @@ curl -X POST http://localhost:8000/api/v1/jobs/stem-separation \
 **Job Stages:**
 - `checking_cache` - Checking for existing stems in R2
 - `downloading` - Downloading source audio
-- `stage1_vocal_separation` - Running MelBand Roformer vocal separation
-- `stage2_dereverb` - Running UVR-De-Echo dereverberation
+- `mvsep_stage1_*` / `stage1_vocal_separation` - Vocal separation (MVSEP, or Modal directly when MVSEP is unavailable)
+- `mvsep_stage2_*` / `stage2_dereverb` - De-reverb (MVSEP, or Modal)
+- `fallback_modal` - MVSEP Stage 1 exhausted its retries; the whole pipeline runs on Modal
+- `fallback_modal_stage2` - MVSEP Stage 1 succeeded but Stage 2 exhausted its retries; de-reverb runs on Modal
 - `renaming_outputs` - Renaming outputs to canonical names
 - `caching` - Caching results locally
 - `uploading` - Uploading to R2
@@ -225,64 +228,74 @@ curl http://localhost:8000/api/v1/jobs/job_abc123 \
   -H "Authorization: Bearer $SOW_ANALYSIS_API_KEY"
 ```
 
-## Stem Separation Model Setup
+## Stem separation on Modal
 
-The stem separation feature requires pre-downloaded AI models on the host machine. Models are bind-mounted into the container as read-only.
+Stem separation (the `stem_separation` job type and the LRC job's vocal-stem
+prerequisite) runs on [Modal](https://modal.com), not in this container:
 
-### One-Time Model Download
+1. **MVSEP cloud API** is the primary backend when `SOW_MVSEP_API_KEY` is set
+   (two-stage: vocal separation, then UVR-De-Echo).
+2. **sow-stems** (Modal, `modal_apps/stem_separator_app.py`) is the failover — it
+   runs `audio-separator` with the same two models on a GPU. There is **no in-container
+   fallback by design**: the container is CPU-only and the audio-separator stack (plus
+   its ONNX runtime and model files) was dropped from `pyproject.toml`.
 
-Run this Python script on your host machine (outside Docker) to download the required models:
+Failover is per stage: if Stage 1 exhausts its retries, the whole two-stage pipeline
+reruns on Modal (`fallback_modal`). If only Stage 2 (de-reverb) exhausts its retries,
+MVSEP's Stage 1 vocals are re-de-reverbed on Modal (`fallback_modal_stage2`). A
+non-retryable MVSEP classification error fails the job instead — a parsing bug is not
+an infrastructure outage.
 
-```python
-# download_stem_models.py
-from audio_separator.separator import Separator
-import os
+One-time setup:
 
-# Set cache directory for models
-model_dir = os.path.expanduser("~/.cache/audio-separator")
-os.makedirs(model_dir, exist_ok=True)
+1. Deploy the app (from `ops/analysis-service/`, with your Modal token exported — this
+   also creates the `sow-stems-models` volume that caches the two model files):
 
-    print("Downloading MelBand Roformer model...")
-    sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-    sep1.load_model(model_filename="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt")
+   ```bash
+   uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/stem_separator_app.py
+   ```
 
-print("Downloading UVR-De-Echo model...")
-sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-sep2.load_model(model_filename="UVR-De-Echo-Normal.pth")
+2. Put the token in `/opt/sow/.env` (shared with Whisper and the forced aligner):
 
-print(f"Models downloaded to: {model_dir}")
-```
+   ```bash
+   MODAL_TOKEN_ID="ak-..."
+   MODAL_TOKEN_SECRET="as-..."
+   ```
 
-Or run directly:
+The two model filenames are passed to the Modal class as parameters
+(`SOW_VOCAL_SEPARATION_MODEL`, `SOW_DEREVERB_MODEL`), so changing a model means a new
+Modal class handle — not an image rebuild.
 
-```bash
-python -c "
-from audio_separator.separator import Separator
-import os
-
-model_dir = os.path.expanduser('~/.cache/audio-separator')
-os.makedirs(model_dir, exist_ok=True)
-
-sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format='FLAC')
-sep1.load_model(model_filename='model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt')
-
-sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format='FLAC')
-sep2.load_model(model_filename='UVR-De-Echo-Normal.pth')
-
-print(f'Models downloaded to: {model_dir}')
-"
-```
-
-### Configure Environment
-
-After downloading, set the environment variable:
+Tunable knobs (all optional, defaults shown):
 
 ```bash
-# Add to /opt/sow/.env
-export SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator"
+SOW_MODAL_STEM_APP_NAME="sow-stems"
+SOW_MODAL_STEM_CLASS_NAME="StemSeparator"
+SOW_MODAL_STEM_MAX_ATTEMPTS=2
+SOW_MODAL_STEM_RETRY_DELAY_SECONDS=5.0
+SOW_MODAL_STEM_MAX_AUDIO_BYTES=100000000
+SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
+SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"
 ```
 
-The docker-compose.yml automatically mounts this directory to `/models/audio-separator:ro` in the container.
+- Retries are owned by the client; the Modal class deliberately sets no `retries=`.
+- `SOW_MODAL_STEM_MAX_AUDIO_BYTES` caps the uploaded audio. Stage 2 uploads the
+  lossless vocals FLAC (larger than the original MP3), hence the higher cap than
+  Whisper's/aligner's.
+- Concurrency is bounded by the app (`max_containers=2`), not by
+  `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS`.
+- Waiting for MVSEP free-tier quota is unconditional (no `SOW_FREE_ONLY_MODE` any
+  more): the job waits for the daily reset and then runs on MVSEP, failover to Modal
+  only happens once there is nothing left to wait for.
+
+Troubleshooting: container-side failures only appear in Modal's logs:
+
+```bash
+uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-stems
+```
+
+The analysis-service error message contains a `request_id` — grep `modal app logs`
+for it to find the matching `[sow-stems][<id>]` traceback.
 
 ## Forced alignment on Modal
 
@@ -571,7 +584,7 @@ If the container can resolve DNS but cannot establish TCP connections to externa
 
 **Symptoms:**
 - `Could not connect to the endpoint URL` errors when downloading audio from R2
-- `Failed to load audio-separator models: HTTPSConnectionPool ... Network is unreachable` during first stem separation job (lazy initialization)
+- `Failed to load audio-separator models: HTTPSConnectionPool ... Network is unreachable` in Modal logs for `sow-stems` (the container itself no longer loads these models)
 - LRC or stem separation jobs fail after hanging for several minutes
 
 **Diagnosis:**
@@ -607,16 +620,23 @@ except Exception as e:
 3. **Quick workaround** — use host networking (no isolation):
    Add `network_mode: host` to the `analysis-dev` service in `docker-compose.yml`. Note: this removes container network isolation and port mapping is ignored.
 
-### Models re-download every time / not found in cache directory
+### Stem separation fails with a Modal configuration error
 
-The `audio_separator.Separator` class stores downloaded model files in `model_file_dir`, **not** `output_dir`. If `model_file_dir` is not set, it defaults to `/tmp/audio-separator-models/` which is ephemeral.
+Stem separation has no in-container backend: the container image does not ship
+`audio-separator`, its ONNX runtime, or the model files. The job fails with
+`ModalStemSeparatorConfigError` (message mentions `MODAL_TOKEN_ID` or the deploy
+command) until:
 
-**Fix:** Always pass `model_file_dir` when creating a `Separator` instance:
-```python
-sep = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-```
+1. `sow-stems` is deployed (`modal deploy modal_apps/stem_separator_app.py`), and
+2. `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` are set for the container.
 
-This applies to both the `start-dev.sh` download script and the `separator_wrapper.py` inside the container.
+Model files are downloaded by the Modal container on first use into the
+`sow-stems-models` volume, so the first job is slow and later ones are not.
+
+### Models re-download every time (other backends)
+
+Demucs/allin1 models still live in the container's cache volume; only the Modal-hosted
+models (Whisper, forced aligner, stem separator) are cached in Modal volumes.
 
 ## Development
 

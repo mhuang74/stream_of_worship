@@ -507,7 +507,7 @@ class FastAnalyzeJobRequest(BaseModel):
 **File:** `ops/analysis-service/src/sow_analysis/workers/queue.py:164-173`
 
 ```python
-# Global semaphore for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
+# Global semaphore for local model execution (Qwen3, allin1, demucs)
 self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
 # ...
 # Separate semaphore for fast analysis (librosa-only, CPU/memory heavy).

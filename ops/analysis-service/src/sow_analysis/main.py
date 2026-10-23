@@ -22,15 +22,10 @@ logger = logging.getLogger(__name__)
 
 from .routes import debug_dumps, health, jobs
 from .routes.jobs import set_job_queue
+from .services.modal_stem_separator_client import get_modal_stem_separator_client
 from .workers.llm_trace import DEBUG_DUMPS_URL_PATH
 from .workers.queue import JobQueue
 from .workers.youtube_transcript import _redact_proxy_url
-
-# Optional imports for heavy dependencies
-try:
-    from .workers.separator_wrapper import AudioSeparatorWrapper
-except ImportError:
-    AudioSeparatorWrapper = None
 
 try:
     from .services.mvsep_client import MvsepClient
@@ -44,9 +39,6 @@ except ImportError:
 
 # Global job queue instance
 job_queue: JobQueue
-
-# Global separator wrapper instance
-separator_wrapper: "AudioSeparatorWrapper | None" = None
 
 # Global MVSEP client instance
 mvsep_client: "MvsepClient | None" = None
@@ -69,7 +61,7 @@ async def lifespan(app: FastAPI):
     Yields:
         None
     """
-    global job_queue, separator_wrapper, mvsep_client
+    global job_queue, mvsep_client
     global qwen3_client, mvsep_quota_waiter, qwen3_quota_waiter
 
     # Serve and index the trace dump directory even before the first dump exists.
@@ -104,14 +96,14 @@ async def lifespan(app: FastAPI):
             mvsep_client = MvsepClient()
             job_queue.set_mvsep_client(mvsep_client)
             logger.info("MVSEP client initialized (cloud stem separation enabled)")
-            if settings.SOW_FREE_ONLY_MODE and not mvsep_client.is_available:
+            if not mvsep_client.is_available:
                 logger.warning(
-                    "SOW_FREE_ONLY_MODE=True but MVSEP is unavailable at startup "
-                    "(missing API key, disabled, or quota already exhausted). "
-                    "Stem-separation jobs will wait for quota or fail permanently."
+                    "MVSEP unavailable at startup (missing API key, disabled, or quota "
+                    "already exhausted). Stem-separation jobs will wait for quota or fail "
+                    "over to Modal."
                 )
         else:
-            logger.info("MVSEP not configured (using local audio-separator only)")
+            logger.info("MVSEP not configured (stem separation runs on Modal only)")
     else:
         logger.warning("MvsepClient not available")
 
@@ -153,33 +145,21 @@ async def lifespan(app: FastAPI):
         )
     job_queue.set_quota_waiters(mvsep=mvsep_quota_waiter, qwen3=qwen3_quota_waiter)
 
-    # Startup validation: warn about missing keys in free-only mode
-    if settings.SOW_FREE_ONLY_MODE:
-        if not settings.SOW_DASHSCOPE_API_KEY:
-            logger.warning(
-                "SOW_FREE_ONLY_MODE is enabled but SOW_DASHSCOPE_API_KEY is not set. "
-                "LRC jobs with use_qwen3_asr=True will FAIL instead of waiting. "
-                "Set SOW_DASHSCOPE_API_KEY to use free-only mode."
-            )
-        if not settings.SOW_MVSEP_API_KEY:
-            logger.warning(
-                "SOW_FREE_ONLY_MODE is enabled but SOW_MVSEP_API_KEY is not set. "
-                "Stem separation jobs will FAIL (permanently unavailable). "
-                "Set SOW_MVSEP_API_KEY to use free-only mode."
-            )
-
-    # Create separator wrapper (lazy init — models validated on first use, not at startup)
-    if AudioSeparatorWrapper is not None:
-        separator_wrapper = AudioSeparatorWrapper(
-            model_dir=settings.SOW_AUDIO_SEPARATOR_MODEL_DIR,
-            vocal_model=settings.SOW_VOCAL_SEPARATION_MODEL,
-            dereverb_model=settings.SOW_DEREVERB_MODEL,
-            output_format="FLAC",
+    # Create the Modal stem separator client (sow-stems). MVSEP remains the primary
+    # backend; this client only runs when MVSEP is unavailable or a stage exhausts retries.
+    stem_separator = get_modal_stem_separator_client()
+    job_queue.set_stem_separator(stem_separator)
+    logger.info(
+        "Modal stem separator client: app=%s class=%s configured=%s",
+        stem_separator.app_name,
+        stem_separator.class_name,
+        stem_separator.is_configured,
+    )
+    if not stem_separator.is_configured:
+        logger.warning(
+            "MODAL_TOKEN_ID/MODAL_TOKEN_SECRET are not set: stem separation jobs will fail "
+            "once MVSEP is unavailable (there is no in-container fallback)"
         )
-        job_queue.set_separator_wrapper(separator_wrapper)
-        logger.info("Audio separator wrapper created (lazy init on first use)")
-    else:
-        logger.warning("AudioSeparatorWrapper not available (audio-separator not installed)")
 
     # Log startup configuration (non-sensitive values only)
     headers = ("Category", "Setting", "Value")
@@ -243,15 +223,30 @@ async def lifespan(app: FastAPI):
         ("Whisper", "max_attempts", str(settings.SOW_MODAL_WHISPER_MAX_ATTEMPTS)),
         ("Demucs", "model", settings.SOW_DEMUCS_MODEL),
         ("Demucs", "device", settings.SOW_DEMUCS_DEVICE),
-        ("Audio Separator", "model_dir", str(settings.SOW_AUDIO_SEPARATOR_MODEL_DIR)),
-        ("Audio Separator", "vocal_model", settings.SOW_VOCAL_SEPARATION_MODEL),
-        ("Audio Separator", "dereverb_model", settings.SOW_DEREVERB_MODEL),
+        ("Stem Separator", "backend", "modal"),
+        (
+            "Stem Separator",
+            "app",
+            f"{settings.SOW_MODAL_STEM_APP_NAME}/{settings.SOW_MODAL_STEM_CLASS_NAME}",
+        ),
+        (
+            "Stem Separator",
+            "configured",
+            str(
+                bool(
+                    os.environ.get("MODAL_TOKEN_ID")
+                    and os.environ.get("MODAL_TOKEN_SECRET")
+                )
+            ),
+        ),
+        ("Stem Separator", "vocal_model", settings.SOW_VOCAL_SEPARATION_MODEL),
+        ("Stem Separator", "dereverb_model", settings.SOW_DEREVERB_MODEL),
+        ("Stem Separator", "max_attempts", str(settings.SOW_MODAL_STEM_MAX_ATTEMPTS)),
         ("MVSEP", "enabled", str(settings.SOW_MVSEP_ENABLED)),
         ("MVSEP", "stage1_sep_type", str(settings.SOW_MVSEP_STAGE1_SEP_TYPE)),
         ("MVSEP", "stage2_sep_type", str(settings.SOW_MVSEP_STAGE2_SEP_TYPE)),
         ("MVSEP", "max_concurrent", str(settings.SOW_MVSEP_MAX_CONCURRENT)),
-        ("Free-Only Mode", "enabled", str(settings.SOW_FREE_ONLY_MODE)),
-        ("Free-Only Mode", "poll_interval_seconds", str(settings.SOW_QUOTA_POLL_INTERVAL_SECONDS)),
+        ("Quota Waiting", "poll_interval_seconds", str(settings.SOW_QUOTA_POLL_INTERVAL_SECONDS)),
         (
             "YouTube",
             "proxy",
@@ -287,11 +282,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     await job_queue.stop()
-
-    # Cleanup separator wrapper
-    if separator_wrapper is not None:
-        await separator_wrapper.cleanup()
-        logger.info("Audio separator wrapper cleaned up")
 
     # Cleanup MVSEP client
     if mvsep_client is not None:

@@ -335,11 +335,7 @@ class _YouTubeRateLimiter:
 
     async def _open_circuit(self) -> None:
         """Open the circuit breaker for the configured cooldown period."""
-        cooldown = (
-            settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE
-            if settings.SOW_FREE_ONLY_MODE
-            else settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN
-        )
+        cooldown = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN
         async with self._state_lock:
             self._circuit_open_until = time.monotonic() + cooldown
             logger.warning(
@@ -366,15 +362,10 @@ class _YouTubeRateLimiter:
         async with self._interval_lock:
             now = time.monotonic()
             elapsed = now - self._last_request_time
-            min_interval = (
-                settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS_FREE
-                if settings.SOW_FREE_ONLY_MODE
-                else settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS
-            )
-            # Add jitter to prevent thundering herd when multiple jobs wake from cooldown
-            if settings.SOW_FREE_ONLY_MODE:
-                jitter = min_interval * 0.25
-                min_interval = random.uniform(min_interval - jitter, min_interval + jitter)
+            min_interval = settings.SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS
+            # Jitter spreads parallel jobs apart so they do not wake together, but only
+            # upward: the configured interval stays a hard floor for rate-limit safety.
+            min_interval = random.uniform(min_interval, min_interval * 1.25)
             if elapsed < min_interval:
                 wait = min_interval - elapsed
                 logger.debug("YouTube rate limit: spacing request, sleeping %.2fs", wait)
@@ -410,14 +401,9 @@ class _YouTubeRateLimiter:
             )
 
         loop = asyncio.get_running_loop()
-        if settings.SOW_FREE_ONLY_MODE:
-            threshold = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD_FREE
-            max_retries = settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES_FREE
-            base_delay = settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY_FREE
-        else:
-            threshold = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD
-            max_retries = settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES
-            base_delay = settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY
+        threshold = settings.SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD
+        max_retries = settings.SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES
+        base_delay = settings.SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY
 
         for attempt in range(max_retries + 1):
             # Layer 2: Circuit breaker check (re-check each iteration)
@@ -489,9 +475,8 @@ class _YouTubeRateLimiter:
                     # with backoff. These are proxy-level, not YouTube rate
                     # limiting, so the circuit breaker is NOT tripped.
                     if attempt >= max_retries:
-                        # Retries exhausted — surface as retryable so queue.py's
-                        # free-only-mode loop can wait and retry YouTube instead
-                        # of falling back to ASR while the proxy is down.
+                        # Retries exhausted — surface as retryable so the LRC job can
+                        # fall through to ASR while the proxy is down.
                         raise YouTubeRateLimitedError(
                             f"YouTube API transient connection/proxy errors after "
                             f"{max_retries + 1} attempts for {description}: {e}"

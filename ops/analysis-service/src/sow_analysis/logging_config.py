@@ -101,10 +101,6 @@ def configure_logging(
 
     # Suppress external library logs if requested
     if suppress_external:
-        # audio-separator and related libraries
-        logging.getLogger("audio_separator").setLevel(logging.WARNING)
-        logging.getLogger("audio_separator.separator").setLevel(logging.WARNING)
-        logging.getLogger("audio_separator.separator.separator").setLevel(logging.WARNING)
         # Other potentially noisy libraries
         logging.getLogger("urllib3").setLevel(logging.WARNING)
         logging.getLogger("botocore").setLevel(logging.WARNING)

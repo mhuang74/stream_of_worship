@@ -53,8 +53,8 @@ RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
 # Copy application code (only used in production mode, overridden by volume in dev)
 COPY src/ ./src/
 
-# Create cache and model directories
-RUN mkdir -p /cache /models/audio-separator
+# Create cache directory (ML models run on Modal, not in this container)
+RUN mkdir -p /cache
 
 # Expose port
 EXPOSE 8000
