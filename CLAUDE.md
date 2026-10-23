@@ -141,7 +141,7 @@ The project consists of **nine architecturally separate components**:
 - **Commands:** `pnpm --filter sow-marketing dev`, `pnpm --filter sow-marketing build`, `pnpm --filter sow-marketing lint`, `pnpm --filter sow-marketing typecheck`
 - **Boundary:** No PostgreSQL/R2/SQS access. CTAs link to the webapp domain (`NEXT_PUBLIC_APP_URL`, default `https://app.streamofworship.com`).
 
-**Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is the only component with heavy ML dependencies. The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components. The Android app is a separate Kotlin mobile client and must use the webapp JSON APIs instead of PostgreSQL, R2, or SQS directly.
+**Critical Separation:** Admin CLI (`sow-admin`) never imports PyTorch/ML libraries. It submits jobs to Analysis Service via HTTP. The Analysis Service is a FastAPI service whose container is librosa-only; all heavy ML (allin1, Demucs, madmom, Whisper, Qwen3 forced aligner, stem separator) runs on Modal apps (`ops/analysis-service/modal_apps/`). The Web App is a separate Node.js stack with its own package.json and dependencies, distinct from the Python components. The Android app is a separate Kotlin mobile client and must use the webapp JSON APIs instead of PostgreSQL, R2, or SQS directly.
 
 - **Admin CLI**: Lightweight catalog/audio management
 - **Lab User App**: Deprecated TUI for transitions, read-only from PostgreSQL/R2

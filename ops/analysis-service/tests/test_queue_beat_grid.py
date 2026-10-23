@@ -37,7 +37,7 @@ def temp_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 async def job_queue(temp_dir: Path) -> JobQueue:
     queue = JobQueue(
-        max_concurrent_local_model=1,
+        max_concurrent_analyze=1,
         cache_dir=temp_dir,
         db_path=temp_dir / "jobs.db",
     )

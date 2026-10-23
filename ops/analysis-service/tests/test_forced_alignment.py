@@ -116,7 +116,7 @@ class TestForcedAlignmentWorker:
     def mock_queue(self, align_client):
         from sow_analysis.workers.queue import JobQueue
 
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=Path("/tmp/test_cache"))
         queue.r2_client = AsyncMock()
         queue.r2_client.bucket = "test-bucket"
         queue.r2_client.download_audio = AsyncMock()
@@ -322,7 +322,7 @@ class TestForcedAlignmentWorker:
         """When language='auto' but resolver is not available, job fails."""
         from sow_analysis.workers.queue import JobQueue
 
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path("/tmp/test_cache"))
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=Path("/tmp/test_cache"))
         queue.r2_client = AsyncMock()
         queue.job_store = AsyncMock()
         queue.job_store.update_job = AsyncMock()

@@ -135,7 +135,7 @@ class TestJobQueue:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_analyze=1, cache_dir=Path(tmp))
             yield q
             await q.stop()
 
@@ -187,7 +187,7 @@ class TestJobQueueStateLogging:
     """Test queue state logging suppression and emission rules."""
 
     def test_log_queue_state_skips_empty_queue(self, tmp_path, caplog):
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
 
         with caplog.at_level(logging.INFO, logger="sow_analysis.workers.queue"):
             queue._log_queue_state()
@@ -195,7 +195,7 @@ class TestJobQueueStateLogging:
         assert _queue_state_messages(caplog) == []
 
     def test_log_queue_state_skips_completed_only_queue(self, tmp_path, caplog):
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_analysis_job("job_completed", JobStatus.COMPLETED)
         queue._jobs[job.id] = job
 
@@ -205,7 +205,7 @@ class TestJobQueueStateLogging:
         assert _queue_state_messages(caplog) == []
 
     def test_log_queue_state_emits_for_queued_job(self, tmp_path, caplog):
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_analysis_job("job_queued", JobStatus.QUEUED)
         queue._jobs[job.id] = job
 
@@ -224,7 +224,7 @@ class TestJobQueueStateLogging:
         assert "queued_wait=[" in messages[0]
 
     def test_log_queue_state_emits_for_processing_job(self, tmp_path, caplog):
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_analysis_job("job_processing", JobStatus.PROCESSING)
         queue._jobs[job.id] = job
 
@@ -243,7 +243,7 @@ class TestJobQueueStateLogging:
         assert "processing=" in messages[0]
 
     def test_log_queue_state_emits_for_recent_failed_job(self, tmp_path, caplog):
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_analysis_job("job_failed", JobStatus.FAILED)
         queue._jobs[job.id] = job
 
@@ -261,7 +261,7 @@ class TestJobQueueStateLogging:
         assert row["failed"] == "1"
 
     def test_log_queue_state_skips_stale_failed_job(self, tmp_path, caplog):
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_analysis_job("job_stale_failed", JobStatus.FAILED)
         job.updated_at = datetime.now(timezone.utc) - timedelta(
             seconds=FINISHED_JOB_MEMORY_RETENTION_SECONDS + 1
@@ -275,7 +275,7 @@ class TestJobQueueStateLogging:
 
     def test_log_queue_state_handles_embedding_queued_job(self, tmp_path, caplog):
         """Regression: EMBEDDING jobs must not cause KeyError in _log_queue_state."""
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_embedding_job("job_emb_queued", JobStatus.QUEUED)
         queue._jobs[job.id] = job
 
@@ -295,7 +295,7 @@ class TestJobQueueStateLogging:
 
     def test_log_queue_state_handles_embedding_processing_job(self, tmp_path, caplog):
         """Regression: EMBEDDING processing jobs must not cause KeyError."""
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_embedding_job("job_emb_processing", JobStatus.PROCESSING)
         queue._jobs[job.id] = job
 
@@ -317,7 +317,7 @@ class TestJobQueueStateLogging:
     @pytest.mark.parametrize("job_type", list(JobType))
     def test_log_queue_state_covers_every_job_type(self, tmp_path, caplog, job_type):
         """Future-proof: every JobType member renders without raising."""
-        queue = JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path)
+        queue = JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path)
         job = _make_job_for_type(job_type, f"job_{job_type.value}", JobStatus.QUEUED)
         queue._jobs[job.id] = job
 
@@ -343,7 +343,7 @@ class TestLRCJobProcessing:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_analyze=1, cache_dir=Path(tmp))
             yield q
             await q.stop()
 
@@ -600,9 +600,9 @@ class TestJobQueueConcurrency:
     async def test_max_concurrent_jobs(self):
         """Test max concurrent job limit."""
         with tempfile.TemporaryDirectory() as tmp:
-            queue = JobQueue(max_concurrent_local_model=2, cache_dir=Path(tmp))
+            queue = JobQueue(max_concurrent_analyze=2, cache_dir=Path(tmp))
 
-            assert queue.max_concurrent_local_model == 2
+            assert queue.max_concurrent_analyze == 2
 
             await queue.stop()
 
@@ -614,7 +614,7 @@ class TestJobQueueR2:
     async def test_initialize_r2(self):
         """Test initializing R2 client."""
         with tempfile.TemporaryDirectory() as tmp:
-            queue = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
+            queue = JobQueue(max_concurrent_analyze=1, cache_dir=Path(tmp))
 
             with patch("sow_analysis.workers.queue.R2Client") as mock_r2:
                 mock_instance = MagicMock()

@@ -17,7 +17,6 @@ import re
 import string
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +25,7 @@ import numpy as np
 import zhconv
 
 from ..config import settings
+from ..services.modal_analyzer_client import get_modal_analyzer_client
 from ..storage.cache import BEAT_GRID_SCHEMA_VERSION, COMPONENT_SCHEMA_VERSION, CacheManager
 from ..storage.r2 import R2Client
 from .lrc_parser import parse_lrc
@@ -33,59 +33,6 @@ from .lrc_parser import parse_lrc
 logger = logging.getLogger(__name__)
 
 # Lyrical content cues that nudge chorus identification.
-
-
-def _detect_downbeats_madmom(
-    audio_path: Path,
-) -> Optional[dict]:
-    """Detect beats + downbeats via madmom's two-stage pipeline.
-
-    madmom API (correct usage):
-      1. RNNDownBeatProcessor() takes a FILE PATH (not numpy array),
-         returns activations array at 100 fps.
-      2. DBNDownBeatTrackingProcessor(beats_per_bar=[3,4], fps=100) takes
-         activations, returns [[time, beat_in_bar], ...].
-      3. Downbeats = rows where beat_in_bar == 1.
-
-    Note: madmom resamples to 44100 Hz internally. fps=100 must match between
-    RNNDownBeatProcessor and DBNDownBeatTrackingProcessor.
-
-    Args:
-        audio_path: Path to audio file.
-
-    Returns:
-        A partial beat-grid payload (source/beats/downbeats/detected_at/
-        madmom_params). Identity fields (schema_version/content_hash/
-        hash_prefix) are stamped by get_or_detect_beat_grid, which knows the
-        content hash. None if detection fails.
-    """
-    try:
-        from madmom.features.downbeats import (
-            RNNDownBeatProcessor,
-            DBNDownBeatTrackingProcessor,
-        )
-
-        rnn = RNNDownBeatProcessor()
-        activations = rnn(str(audio_path))
-
-        dbn = DBNDownBeatTrackingProcessor(
-            beats_per_bar=[3, 4],  # model 3/4 and 4/4 time
-            fps=100,               # must match RNNDownBeatProcessor's internal fps
-        )
-        grid = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
-
-        # Downbeats are where beat_in_bar == 1
-        downbeat_times = grid[grid[:, 1] == 1][:, 0]
-        return {
-            "source": "madmom",
-            "beats": grid.tolist(),
-            "downbeats": sorted(downbeat_times.tolist()),
-            "detected_at": datetime.now(timezone.utc).isoformat(),
-            "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
-        }
-    except Exception as e:
-        logger.warning(f"madmom downbeat detection failed: {e}")
-        return None
 
 
 async def get_or_detect_beat_grid(
@@ -101,9 +48,10 @@ async def get_or_detect_beat_grid(
       1. Local cache ({hash32}_beat_grid.json)
       2. R2 ({hash12}/beat_grid.json) — on hit, backfill local cache
 
-    On miss: run _detect_downbeats_madmom in an executor, stamp identity
-    fields, persist local (atomic) + R2 (best-effort; failure logs a warning).
-    Returns the payload dict or None if detection fails.
+    On miss: run madmom downbeat detection on the sow-analyzer Modal app
+    (client.detect_beats), stamp identity fields, persist local (atomic) + R2
+    (best-effort; failure logs a warning). Returns the payload dict or None if
+    detection fails.
 
     Args:
         audio_path: Path to the audio file.
@@ -129,8 +77,15 @@ async def get_or_detect_beat_grid(
                 cache_manager.save_beat_grid(content_hash, r2_cached)
                 return r2_cached
 
-    loop = asyncio.get_event_loop()
-    detected = await loop.run_in_executor(None, _detect_downbeats_madmom, audio_path)
+    # On miss, replacing the former run_in_executor(None, _detect_downbeats_madmom, ...)
+    # hop: madmom runs on the sow-analyzer Modal app (one more @modal.method()), and
+    # an async client call cannot go through the executor (it would hand back a
+    # coroutine).
+    try:
+        detected = await get_modal_analyzer_client().detect_beats(audio_path)
+    except Exception as e:
+        logger.warning(f"Modal madmom downbeat detection failed: {e}")
+        return None
     if detected is None:
         return None
 

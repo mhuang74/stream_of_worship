@@ -1,9 +1,6 @@
 # Use Python 3.11 slim as base
 FROM python:3.11-slim
 
-# Platform arg required for conditional PyTorch/NATTEN install
-ARG TARGETPLATFORM
-
 # Development mode flag - set to "true" for dev mode with volume mount
 ARG DEV_MODE=false
 
@@ -13,10 +10,6 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
-    gcc \
-    g++ \
-    git \
-    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -24,32 +17,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
 
-# Install build dependencies first (required before allin1/demucs)
-RUN uv pip install --no-cache Cython numpy
-
-# Install PyTorch — CPU-only on x86_64, standard on ARM64 (M-series)
-# torchaudio is required by demucs; torchvision is not needed by any remaining
-# dependency (audio-separator was the only one pulling it in).
-RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
-        uv pip install --no-cache \
-            --index-url https://download.pytorch.org/whl/cpu \
-            torch==2.4.1+cpu \
-            torchaudio==2.4.1+cpu; \
-    else \
-        uv pip install --no-cache torch==2.4.1; \
-    fi
-
 # Copy and install service dependencies
+# All ML (Whisper, forced alignment, stem separation, full analysis) runs on Modal
+# (modal_apps/*.py); this container is librosa-only (fast-analyze, component
+# features, LRC tail-fill clipping).
 # In dev mode, this prepares the environment; code comes from volume mount
 COPY pyproject.toml .
-RUN uv pip install --no-cache --no-build-isolation -e ".[service]"
-
-# Install NATTEN from source — platform-conditional flags
-RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
-        NATTEN_IS_FOR_PYPI=1 uv pip install --no-cache --no-build-isolation natten==0.17.1; \
-    else \
-        uv pip install --no-cache --no-build-isolation natten==0.17.1; \
-    fi
+RUN uv pip install --no-cache -e ".[service]"
 
 # Copy application code (only used in production mode, overridden by volume in dev)
 COPY src/ ./src/

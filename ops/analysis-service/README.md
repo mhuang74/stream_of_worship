@@ -4,8 +4,8 @@ The Analysis Service is a FastAPI-based microservice that performs CPU/GPU-inten
 
 ## Features
 
-- **Audio Analysis**: Detects tempo (BPM), musical key, mode, loudness, beats, and song sections
-- **Stem Separation (Demucs)**: Separates audio into vocals, drums, bass, and other stems using Demucs
+- **Audio Analysis**: Detects tempo (BPM), musical key, mode, loudness, beats, and song sections (all allin1 + Demucs + madmom work runs on Modal, not in this container)
+- **Stem Separation (Demucs on Modal)**: Separates audio into vocals, drums, bass, and other stems
 - **Clean Vocals Generation (Vocal Separation + UVR)**: Two-stage pipeline for high-quality vocal extraction with echo/reverb removal (MVSEP cloud API, failing over to the `sow-stems` Modal app)
 - **LRC Generation**: Generates timestamped lyric files using Whisper + LLM alignment
 - **R2 Storage**: Uploads/download results to/from Cloudflare R2 (S3-compatible)
@@ -16,7 +16,7 @@ This service is designed to run as a long-lived container with async job process
 
 - **API Layer**: FastAPI endpoints for job submission and status checking
 - **Job Queue**: In-memory queue with separate concurrency controls
-  - Analysis jobs: Serialized (1 at a time) due to high memory/CPU usage with allin1
+  - Analysis jobs: capped at `SOW_ANALYZE_MAX_CONCURRENT` (default 2); the GPU work (allin1 + Demucs + madmom) runs on Modal (`sow-analyzer`, max_containers=2)
   - LRC jobs: Configurable concurrency (default: 2); Whisper transcription runs on Modal
 - **Workers**: Background tasks for analysis, stem separation, and LRC generation
 - **Cache**: Local filesystem cache for expensive operations
@@ -24,9 +24,9 @@ This service is designed to run as a long-lived container with async job process
 ## Prerequisites
 
 - Docker with Docker Compose
-- For GPU support: NVIDIA Container Toolkit (`nvidia-container-toolkit`)
 - Cloudflare R2 account (for audio storage)
 - OpenAI-compatible API key (for LRC generation)
+- Modal account with `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` (all ML runs on Modal)
 
 ## Environment Variables
 
@@ -68,8 +68,7 @@ SOW_EMBEDDING_MODEL="text-embedding-3-small"
 
 ```bash
 # Processing Configuration
-SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1  # Max concurrent local model executions (default: 1)
-SOW_DEMUCS_DEVICE=cpu               # "cpu" or "cuda" (default: cpu)
+SOW_ANALYZE_MAX_CONCURRENT=2  # Max concurrent full-analyze jobs (default: 2)
 
 # Whisper runs on Modal (see "Whisper on Modal" below); fill these in on the server
 MODAL_TOKEN_ID=""
@@ -85,6 +84,13 @@ SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"  #
 SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"  # UVR-De-Echo model filename
 SOW_MODAL_STEM_MAX_ATTEMPTS=2
 SOW_MODAL_STEM_MAX_AUDIO_BYTES=100000000
+
+# Full analysis runs on Modal (sow-analyzer)
+SOW_MODAL_ANALYZER_APP_NAME="sow-analyzer"
+SOW_MODAL_ANALYZER_CLASS_NAME="SongAnalyzer"
+SOW_MODAL_ANALYZER_MAX_ATTEMPTS=2
+SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES=150000000
+SOW_ANALYSIS_CACHE_VERSION=2
 
 # DashScope Qwen3 ASR (Optional — improves LRC transcription quality)
 SOW_DASHSCOPE_API_KEY=""  # DashScope API key; leave empty to skip Qwen3 ASR (uses Whisper only)
@@ -152,7 +158,6 @@ curl -X POST http://localhost:8000/api/v1/jobs/analyze \
     "content_hash": "abc123...",
     "options": {
       "generate_stems": true,
-      "stem_model": "htdemucs",
       "force": false
     }
   }'
@@ -282,8 +287,7 @@ SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"
 - `SOW_MODAL_STEM_MAX_AUDIO_BYTES` caps the uploaded audio. Stage 2 uploads the
   lossless vocals FLAC (larger than the original MP3), hence the higher cap than
   Whisper's/aligner's.
-- Concurrency is bounded by the app (`max_containers=2`), not by
-  `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS`.
+- Concurrency is bounded by the app (`max_containers=2`).
 - Waiting for MVSEP free-tier quota is unconditional (no `SOW_FREE_ONLY_MODE` any
   more): the job waits for the daily reset and then runs on MVSEP, failover to Modal
   only happens once there is nothing left to wait for.
@@ -340,8 +344,7 @@ SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES=90000000
   crashing input cannot be executed N×M times on the GPU.
 - `SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES` caps the WAV upload; `validate_audio_duration`
   already rejects inputs longer than 300 s, so the default is headroom, not a real limit.
-- Concurrency is bounded by the app (`max_containers=2`), not by
-  `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS`.
+- Concurrency is bounded by the app (`max_containers=2`).
 
 Every call logs one line with the total Modal time (it includes cold start and the audio
 upload, and starts after the local transcode):
@@ -402,25 +405,6 @@ Results are cached locally to avoid redundant API calls. Cache version (`SOW_DAS
 | `SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS` | `1800` | Timeout for filetrans ASR calls |
 | `SOW_DASHSCOPE_ASR_MAX_CONCURRENT` | `2` | Max concurrent ASR requests |
 | `SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS` | `10000` | Max context chars for LLM alignment |
-| `SOW_DASHSCOPE_ASR_SNAP_THRESHOLD` | `0.60` | Threshold for snapping Qwen3 ASR segments |
-
-## Platform-Specific Builds
-
-The Dockerfile supports platform-specific builds for PyTorch and NATTEN:
-
-### x86_64 (Linux/AMD64) - CPU-only PyTorch
-
-```bash
-export TARGETPLATFORM=linux/amd64
-docker compose build
-```
-
-### ARM64 (Apple Silicon) - Standard PyTorch
-
-```bash
-export TARGETPLATFORM=linux/arm64
-docker compose build
-```
 
 ## Whisper on Modal
 
@@ -478,40 +462,6 @@ For a failed transcription, the analysis-service log's error message contains a
 `request_id` — grep `modal app logs` for that id to find the matching container-side
 traceback.
 
-## GPU Support
-
-To enable GPU acceleration for Demucs:
-
-1. Install NVIDIA Container Toolkit:
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install -y nvidia-container-toolkit
-   sudo systemctl restart docker
-   ```
-
-2. Set environment variables:
-   ```bash
-   export SOW_DEMUCS_DEVICE=cuda
-   ```
-
-3. Uncomment the GPU section in `docker-compose.yml`:
-   ```yaml
-   deploy:
-     resources:
-       reservations:
-         devices:
-           - driver: nvidia
-             count: 1
-             capabilities: [ gpu ]
-   ```
-
-4. Start the service:
-   ```bash
-   docker compose up -d
-   ```
-
-If you don't have a GPU, the service will run fine on CPU with the default configuration.
-
 ## Component Analysis (v5)
 
 The analysis service performs chorus/verse component extraction via the
@@ -528,7 +478,7 @@ are **opt-in** — when none are specified, the stable v3 path runs unchanged.
 
 | Option | Cost |
 |--------|------|
-| `use_stems` | **Heavy ML.** Triggers Demucs stem separation (CPU/GPU + storage per song). |
+| `use_stems` | **Heavy ML (Modal).** Triggers Demucs stem separation on the Modal GPU (storage per song). |
 | `classify_theme` | **LLM cost.** One LLM call per component (12 Chinese themes). Requires `SOW_LLM_*` env vars. |
 | `classify_vocal_posture` | **LLM cost.** One LLM call per component (3 posture categories). Requires `SOW_LLM_*` env vars. |
 | `snap_to_downbeat` | **NN inference.** Runs madmom two-stage RNN downbeat detector if downbeats not cached. Falls back to beat-only on failure. |
@@ -635,8 +585,9 @@ Model files are downloaded by the Modal container on first use into the
 
 ### Models re-download every time (other backends)
 
-Demucs/allin1 models still live in the container's cache volume; only the Modal-hosted
-models (Whisper, forced aligner, stem separator) are cached in Modal volumes.
+All models live in Modal volumes (`sow-whisper-models`, `sow-forced-aligner-*`,
+`sow-stems-models`, `sow-analyzer-models`); nothing model-sized is cached in the
+container's `/cache` volume.
 
 ## Development
 
@@ -645,13 +596,14 @@ models (Whisper, forced aligner, stem separator) are cached in Modal volumes.
 ```
 ops/analysis-service/
 ├── docker-compose.yml          # Docker Compose configuration
-├── Dockerfile                  # Multi-platform Docker build
+├── Dockerfile                  # Container build (librosa-only; no torch/natten)
 ├── pyproject.toml             # Python dependencies
 ├── README.md                  # This file
 ├── modal_apps/                # GPU work hosted on Modal (deployed separately)
 │   ├── whisper_app.py         # sow-whisper: faster-whisper transcription
 │   ├── forced_aligner_app.py  # sow-forced-aligner: Qwen3-ForcedAligner
-│   └── stem_separator_app.py  # sow-stems: audio-separator (MVSEP failover)
+│   ├── stem_separator_app.py  # sow-stems: audio-separator (MVSEP failover)
+│   └── analyzer_app.py        # sow-analyzer: allin1 + Demucs + madmom full analysis
 └── src/sow_analysis/
     ├── __init__.py
     ├── main.py                # FastAPI app entry point
@@ -661,6 +613,7 @@ ops/analysis-service/
     │   ├── health.py
     │   └── jobs.py
     ├── services/              # External backends (Modal, MVSEP, DashScope, LLM)
+    │   ├── modal_analyzer_client.py
     │   ├── modal_stem_separator_client.py
     │   └── ...
     ├── storage/               # R2 and cache clients
@@ -668,10 +621,9 @@ ops/analysis-service/
     │   ├── db.py              # SQLite job persistence
     │   └── r2.py
     └── workers/               # Background job processors
-        ├── analyzer.py
+        ├── analyzer.py        # Modal orchestration + cache for full analysis
         ├── lrc.py
         ├── queue.py
-        ├── separator.py       # Demucs stem separation
         └── stem_separation.py # MVSEP pipeline, Modal failover, canonical names
 ```
 

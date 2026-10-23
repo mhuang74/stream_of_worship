@@ -6,12 +6,9 @@ x-common-env: &common-env
   SOW_R2_SECRET_ACCESS_KEY: ${SOW_R2_SECRET_ACCESS_KEY}
   SOW_ANALYSIS_API_KEY: ${SOW_ANALYSIS_API_KEY}
   SOW_ADMIN_API_KEY: ${SOW_ADMIN_API_KEY}
-  SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: ${SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS:-1}
   SOW_LRC_MAX_CONCURRENT: ${SOW_LRC_MAX_CONCURRENT:-2}
-  SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
   SOW_VOCAL_SEPARATION_MODEL: ${SOW_VOCAL_SEPARATION_MODEL:-model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt}
   SOW_DEREVERB_MODEL: ${SOW_DEREVERB_MODEL:-UVR-De-Echo-Normal.pth}
-  NATTEN_LOG_LEVEL: error
   SOW_LOG_LEVEL: ${SOW_LOG_LEVEL:-INFO}
   # LLM Configuration for LRC generation
   SOW_LLM_API_KEY: ${SOW_LLM_API_KEY}
@@ -52,6 +49,14 @@ x-common-env: &common-env
   SOW_MODAL_STEM_MAX_ATTEMPTS: ${SOW_MODAL_STEM_MAX_ATTEMPTS:-2}
   SOW_MODAL_STEM_RETRY_DELAY_SECONDS: ${SOW_MODAL_STEM_RETRY_DELAY_SECONDS:-5.0}
   SOW_MODAL_STEM_MAX_AUDIO_BYTES: ${SOW_MODAL_STEM_MAX_AUDIO_BYTES:-100000000}
+  # Full analysis (allin1 + Demucs + madmom) runs on Modal (modal_apps/analyzer_app.py); same tokens
+  SOW_MODAL_ANALYZER_APP_NAME: ${SOW_MODAL_ANALYZER_APP_NAME:-sow-analyzer}
+  SOW_MODAL_ANALYZER_CLASS_NAME: ${SOW_MODAL_ANALYZER_CLASS_NAME:-SongAnalyzer}
+  SOW_MODAL_ANALYZER_MAX_ATTEMPTS: ${SOW_MODAL_ANALYZER_MAX_ATTEMPTS:-2}
+  SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS: ${SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS:-5.0}
+  SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES: ${SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES:-150000000}
+  SOW_ANALYSIS_CACHE_VERSION: ${SOW_ANALYSIS_CACHE_VERSION:-2}
+  SOW_ANALYZE_MAX_CONCURRENT: ${SOW_ANALYZE_MAX_CONCURRENT:-2}
   # MVSEP Cloud API Configuration
   SOW_MVSEP_API_KEY: ${SOW_MVSEP_API_KEY}
   SOW_MVSEP_ENABLED: ${SOW_MVSEP_ENABLED:-true}
@@ -82,7 +87,7 @@ x-common-env: &common-env
   SOW_DASHSCOPE_ASR_FLASH_MODEL: ${SOW_DASHSCOPE_ASR_FLASH_MODEL:-qwen3-asr-flash}
   SOW_DASHSCOPE_ASR_FILETRANS_MODEL: ${SOW_DASHSCOPE_ASR_FILETRANS_MODEL:-qwen3-asr-flash-filetrans}
   SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS: ${SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS:-10000}
-  SOW_DASHSCOPE_ASR_SNAP_THRESHOLD: ${SOW_DASHSCOPE_ASR_SNAP_THRESHOLD:-0.60}
+
   SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS: ${SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS:-300}
   SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS: ${SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS:-1800}
   SOW_DASHSCOPE_ASR_MAX_CONCURRENT: ${SOW_DASHSCOPE_ASR_MAX_CONCURRENT:-2}
@@ -94,22 +99,11 @@ x-common-env: &common-env
   # Free-tier quota waiting (MVSEP, DashScope Qwen3 ASR)
   SOW_QUOTA_POLL_INTERVAL_SECONDS: ${SOW_QUOTA_POLL_INTERVAL_SECONDS:-3600}
 
-# Define common GPU configuration using YAML anchor
-x-gpu-deploy: &gpu-deploy
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: 1
-          capabilities: [ gpu ]
-
 services:
   analysis:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
     ports:
       - "${SOW_BIND_IP:-0.0.0.0}:8000:8000"
     environment:
@@ -117,10 +111,6 @@ services:
     volumes:
       - analysis-cache:/cache
       - ${SOW_DEBUG_DUMP_DIR:-~/.cache/sow-analysis-service/debug-dumps}:/cache/debug-dumps
-    # GPU support: Uncomment the 'deploy' section below if you have a GPU
-    # and NVIDIA Container Toolkit installed. See README.md for details.
-    # deploy:
-    #   <<: *gpu-deploy
 
   # Development mode: mounts local code for hot-reload
   # Usage: docker compose up analysis-dev
@@ -129,7 +119,6 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
         - DEV_MODE=true
     ports:
       - "${SOW_BIND_IP:-0.0.0.0}:8000:8000"
@@ -140,10 +129,6 @@ services:
       - analysis-cache:/cache
       - ./src:/workspace/src:ro
       - ${SOW_DEBUG_DUMP_DIR:-~/.cache/sow-analysis-service/debug-dumps}:/cache/debug-dumps
-    # GPU support: Uncomment the 'deploy' section below if you have a GPU
-    # and NVIDIA Container Toolkit installed. See README.md for details.
-    # deploy:
-    #   <<: *gpu-deploy
 
 volumes:
   analysis-cache:

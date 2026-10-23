@@ -39,7 +39,10 @@ class CacheManager:
     def _versioned_analysis_file(self, content_hash: str, suffix: str = "") -> Path:
         hash_prefix = self._get_hash_prefix(content_hash)
         version = settings.KEY_ALGORITHM_VERSION
-        return self.cache_dir / f"{hash_prefix}.v{version}{suffix}.json"
+        # SOW_ANALYSIS_CACHE_VERSION segregates full-analysis results by backend
+        # (local allin1 CPU vs Modal GPU); mirrored on the fast-tier file below.
+        analysis_version = settings.SOW_ANALYSIS_CACHE_VERSION
+        return self.cache_dir / f"av{analysis_version}.{hash_prefix}.v{version}{suffix}.json"
 
     def _versioned_fast_file(self, content_hash: str) -> Path:
         """Fast-tier cache filename incorporating both KEY and BPM algorithm versions.

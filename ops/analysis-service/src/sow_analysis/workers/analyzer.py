@@ -1,8 +1,12 @@
-"""Audio analysis worker using allin1 and librosa."""
+"""Audio analysis workers.
+
+Full analysis runs on Modal (sow-analyzer: allin1 + Demucs + madmom); this module
+holds the orchestration wrapper plus the local librosa helpers shared by
+fast-analyze (tempo, key, loudness).
+"""
 
 import asyncio
 import logging
-import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -13,6 +17,10 @@ import librosa
 import numpy as np
 
 from ..config import settings
+from ..services.modal_analyzer_client import (
+    ModalAnalyzerError,
+    get_modal_analyzer_client,
+)
 from ..storage.cache import CacheManager
 from . import cps as cps_module
 
@@ -229,83 +237,74 @@ async def analyze_audio(
     content_hash: str,
     *,
     force: bool = False,
+    output_stems_dir: Optional[Path] = None,
 ) -> dict:
-    """Analyze audio file using allin1 + librosa.
+    """Full analysis via the sow-analyzer Modal app (allin1 + internal htdemucs demix).
 
     Steps:
-    1. Check cache (if not force)
-    2. Load audio with librosa
-    3. Run allin1.analyze() for tempo/beats/sections/embeddings
-    4. Run librosa chroma analysis for key detection
-    5. Compute loudness/energy metrics
-    6. Save to cache
-    7. Return results dict
+    1. Run one Modal analyze() call: allin1 (bpm/beats/downbeats/sections/
+       embeddings) + internal htdemucs demix written to output_stems_dir when
+       given.
+    2. Load audio locally with librosa; detect key and loudness (librosa stays a
+       container dependency for fast-analyze anyway).
+    3. Merge into the analysis-result shape, save to cache, return.
 
     Args:
         audio_path: Path to audio file
         cache_manager: Cache manager instance
         content_hash: SHA-256 hash of audio content for cache key
+        force: Bypass the analysis cache
+        output_stems_dir: When set, Modal-side stems are written here and the
+            ``stems`` key is stripped from the returned dict
 
     Returns:
-        Dictionary with all analysis fields
+        Dictionary with all analysis fields (same shape as the former allin1
+        in-process result; key/loudness/duration fields computed locally)
     """
-    import allin1
 
-    # Check cache first (unless force)
+    # Analysis-result cache (unless force). The cache key is av-versioned via
+    # _versioned_analysis_file (SOW_ANALYSIS_CACHE_VERSION), so pre-Modal local-CPU
+    # entries on disk are never read back.
     if not force:
         cached = cache_manager.get_analysis_result(content_hash)
         if cached:
             logger.info(f"Cache hit for analysis result: {content_hash[:16]}...")
+            if output_stems_dir is not None:
+                # Re-materialize stems from the cache instead of paying a second
+                # GPU pass (allin1 + htdemucs demix) just for the WAVs.
+                stems_hit = cache_manager.get_stems_dir(content_hash)
+                if stems_hit is None:
+                    raise ModalAnalyzerError(
+                        f"Analysis cache hit but stems cache miss for "
+                        f"{content_hash[:16]}... — resubmit with force=true to "
+                        "re-run the full Modal analysis"
+                    )
+                import shutil
+
+                output_stems_dir.mkdir(parents=True, exist_ok=True)
+                for stem in ("bass", "drums", "other", "vocals"):
+                    shutil.copy2(str(Path(stems_hit) / f"{stem}.wav"), str(output_stems_dir / f"{stem}.wav"))
+                logger.info(f"Stems served from cache: {content_hash[:16]}...")
             return cached
 
-    # Load audio
-    logger.info(f"Loading audio file: {audio_path}")
+    # Run Modal analysis (the client is async; retry ladder lives there).
+    logger.info("Starting full analysis on Modal (allin1 + htdemucs + madmom-capable)")
+    modal_start = time.time()
+    client = get_modal_analyzer_client()
+    modal_result = await client.analyze(audio_path, output_stems_dir=output_stems_dir)
+    logger.info(f"Modal analysis completed in {time.time() - modal_start:.2f}s")
+
+    beats = modal_result["beats"]
+    downbeats = modal_result["downbeats"]
+    sections = modal_result["sections"]
+
+    # Local librosa pass for key + loudness + duration.
+    logger.info(f"Loading audio file for local key/loudness pass: {audio_path}")
     load_start = time.time()
     y, sr = librosa.load(str(audio_path), sr=None, mono=True)
     duration = librosa.get_duration(y=y, sr=sr)
     load_elapsed = time.time() - load_start
     logger.info(f"Audio loaded in {load_elapsed:.2f}s - Duration: {duration:.2f}s")
-
-    # Run allin1 analysis in thread pool (it's blocking)
-    # Use isolated temp directory to prevent concurrent jobs from mixing outputs
-    logger.info("Starting allin1 analysis (tempo, beats, sections, embeddings)")
-    allin1_start = time.time()
-    loop = asyncio.get_event_loop()
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-
-        def run_allin1():
-            return allin1.analyze(
-                str(audio_path),
-                out_dir=temp_dir,
-                visualize=False,
-                include_embeddings=True,
-                sonify=False,
-            )
-
-        result = await loop.run_in_executor(None, run_allin1)
-
-    allin1_elapsed = time.time() - allin1_start
-    logger.info(f"allin1 analysis completed in {allin1_elapsed:.2f}s")
-
-    # Extract allin1 results
-    bpm = result.bpm
-
-    beats = result.beats
-    if isinstance(beats, np.ndarray):
-        beats = beats.tolist()
-    else:
-        beats = list(beats)
-
-    downbeats = result.downbeats
-    if isinstance(downbeats, np.ndarray):
-        downbeats = downbeats.tolist()
-    else:
-        downbeats = list(downbeats)
-
-    sections = [{"label": seg.label, "start": seg.start, "end": seg.end} for seg in result.segments]
-
-    embeddings_shape = list(result.embeddings.shape)
 
     # Key detection with librosa
     logger.info("Detecting musical key...")
@@ -320,19 +319,19 @@ async def analyze_audio(
     # Loudness
     loudness_db = compute_loudness(y)
 
-    total_elapsed = time.time() - load_start
+    total_elapsed = time.time() - modal_start
     logger.info(f"Total analysis time: {total_elapsed:.2f}s")
 
     # Build result
     analysis_result = {
         "duration_seconds": duration,
-        "tempo_bpm": round(bpm, 1),
+        "tempo_bpm": modal_result["tempo_bpm"],
         **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
         "beats": beats,
         "downbeats": downbeats,
         "sections": sections,
-        "embeddings_shape": embeddings_shape,
+        "embeddings_shape": modal_result["embeddings_shape"],
     }
 
     # Save to cache
