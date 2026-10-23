@@ -76,7 +76,10 @@ def patched_editor(monkeypatch):
     calls: list[str] = []
     outcomes: list[object] = []
 
-    def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+    def _fake_session(
+        db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+        analysis_client=None,
+    ):
         calls.append(recording.hash_prefix)
         scripted = outcomes.pop(0) if outcomes else None
         if scripted is None:
@@ -662,7 +665,10 @@ class TestPlainEditStillWorks:
         self._seed_single_song(provider)
         config_path = _write_config(tmp_path, postgres_url)
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+        def _fake_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+            analysis_client=None,
+        ):
             assert recording.hash_prefix == "hash-aa"
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=False,
@@ -711,7 +717,10 @@ class TestPlainEditStillWorks:
         conn.commit()
         config_path = _write_config(tmp_path, postgres_url)
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+        def _fake_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+            analysis_client=None,
+        ):
             assert recording.visibility_status is None  # stale, pre-upload value
             db_client.update_recording_lrc(recording.hash_prefix, "https://r2/x.lrc")
             return lyrics_commands.EditorSessionOutcome(
@@ -741,7 +750,10 @@ class TestPlainEditStillWorks:
         self._seed_single_song(provider)
         config_path = _write_config(tmp_path, postgres_url)
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+        def _fake_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+            analysis_client=None,
+        ):
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=True, upload_attempted=False, upload_result=None
             )
@@ -772,7 +784,10 @@ class TestPlainEditStillWorks:
         conn.commit()
         config_path = _write_config(tmp_path, postgres_url)
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+        def _fake_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+            analysis_client=None,
+        ):
             assert recording.hash_prefix == "hash-aa"
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=False, upload_attempted=False, upload_result=None, quit_clean=True
@@ -814,7 +829,10 @@ class TestPlainEditStillWorks:
 
         sessions: list[str] = []
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+        def _fake_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+            analysis_client=None,
+        ):
             sessions.append(recording.hash_prefix)
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=False, upload_attempted=False, upload_result=None, quit_clean=True
@@ -861,7 +879,10 @@ class TestPlainEditStillWorks:
         config_path = _write_config(tmp_path, postgres_url, feedback_email="u1@x.com")
         seen: list = []
 
-        def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id):
+        def _fake_session(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id,
+            analysis_client=None,
+        ):
             seen.append(feedback_user_id)
             return lyrics_commands.EditorSessionOutcome(
                 no_audio=False, upload_attempted=False, upload_result=None

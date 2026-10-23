@@ -48,9 +48,7 @@ def _song(**overrides) -> Song:
 
 def _clients(*, recording=None, song=None):
     db_client = MagicMock()
-    db_client.get_recording_by_hash.return_value = (
-        _recording() if recording is None else recording
-    )
+    db_client.get_recording_by_hash.return_value = _recording() if recording is None else recording
     db_client.get_song.return_value = _song() if song is None else song
     r2_client = MagicMock()
     analysis_client = MagicMock()
@@ -197,8 +195,11 @@ def test_regenerate_reports_progress_to_callback():
     )
 
     def _wait(job_id, poll_interval, timeout, callback):
-        callback(JobInfo(job_id=job_id, status="processing", job_type="lrc",
-                         progress=0.5, stage="whisper"))
+        callback(
+            JobInfo(
+                job_id=job_id, status="processing", job_type="lrc", progress=0.5, stage="whisper"
+            )
+        )
         return _completed_job()
 
     analysis_client.wait_for_completion.side_effect = _wait
