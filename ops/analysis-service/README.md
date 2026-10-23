@@ -116,7 +116,17 @@ docker compose logs -f
 
 The service will be available at `http://localhost:8000`.
 
-### 2. Verify Health
+### 2. Deploy the Modal Apps
+
+Full analysis (plus Whisper, forced alignment, stem-separation failover) runs on Modal.
+Deploy once with `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` exported — see the per-app
+sections below:
+
+```bash
+uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/analyzer_app.py
+```
+
+### 3. Verify Health
 
 ```bash
 curl http://localhost:8000/api/v1/health

@@ -14,7 +14,7 @@ The Stream of Worship platform has **two analysis tiers**, both served by the An
 - **Two distinct HTTP endpoints**: `POST /api/v1/jobs/analyze` (full) vs `POST /api/v1/jobs/fast-analyze` (fast). Both require Bearer auth via `SOW_ANALYSIS_API_KEY`.
 - **Two distinct JobType values**: `ANALYZE` vs `FAST_ANALYZE` (`ops/analysis-service/src/sow_analysis/models.py:21-29`).
 - **Two distinct concurrency semaphores** in the worker: `_analyze_semaphore` (full analysis, `SOW_ANALYZE_MAX_CONCURRENT` default 2; the GPU work runs on Modal with `max_containers=2`) vs `_fast_analyze_semaphore` (librosa-only, default cgroup-aware). They do not coordinate — operators size both together.
-- **Two distinct caches**: full results at `{hash_prefix}.v{version}.json`, fast results at `{hash_prefix}_fast.v{version}.json`. Fast never overwrites full (`ops/analysis-service/src/sow_analysis/storage/cache.py:36, 95`).
+- **Two distinct caches**: full results at `av{SOW_ANALYSIS_CACHE_VERSION}.{hash32}.v{version}.json`, fast results at `{hash32}.v{KEY}.v{BPM}_fast.json` (legacy fallbacks for fast only). Fast never overwrites full (`ops/analysis-service/src/sow_analysis/storage/cache.py`).
 - **Two distinct DB statuses on success**: `completed` (full) vs `partial` (fast). Recordings with `partial` can be later upgraded to `completed` by re-running with `--analysis-tier full`.
 - **Persistence**: Job state in local SQLite (`{CACHE_DIR}/jobs.db`), full-tier results uploaded to Cloudflare R2 as `{hash_prefix}.json`, both tiers' results written back to Postgres by the CLI on completion.
 
@@ -360,7 +360,7 @@ async def submit_fast_analysis_job(
 
 **File:** `ops/analysis-service/src/sow_analysis/workers/queue.py:616-763`
 
-The dispatcher (`_process_job_with_semaphore`, queue.py:409-418) acquires `_fast_analyze_semaphore` (separate from `_local_model_semaphore`), re-checks cancellation after acquiring, then calls `_process_fast_analyze_job`:
+The dispatcher (`_process_job_with_semaphore`) acquires `_fast_analyze_semaphore` (separate from `_analyze_semaphore`), re-checks cancellation after acquiring, then calls `_process_fast_analyze_job`:
 
 1. Sets state `PROCESSING / downloading / 0.1`, persists to SQLite (queue.py:630-640).
 2. Validates `analyze_audio_fast` is importable (queue.py:656-670).
@@ -524,10 +524,10 @@ The two semaphores are intentionally independent — a running full analysis doe
 
 Two separate cache namespaces, both keyed by `content_hash` and versioned by `KEY_ALGORITHM_VERSION`:
 
-| Method | File | Cache file pattern |
-|---|---|---|
-| `get_analysis_result` / `save_analysis_result` | cache.py:36, 80 | `{hash_prefix}.v{KEY_ALGORITHM_VERSION}.json` (legacy: `{hash_prefix}.json`) |
-| `get_fast_analyze_result` / `save_fast_analyze_result` | cache.py:95, 130 | `{hash_prefix}_fast.v{KEY_ALGORITHM_VERSION}.json` (legacy: `{hash_prefix}_fast.json`) |
+| Method | Cache file pattern |
+|---|---|
+| `get_analysis_result` / `save_analysis_result` | `av{SOW_ANALYSIS_CACHE_VERSION}.{hash32}.v{KEY}.v{BPM}.json` — the ONLY file read; no legacy fallback |
+| `get_fast_analyze_result` / `save_fast_analyze_result` | `{hash32}.v{KEY}.v{BPM}_fast.json` (legacy fallbacks: `{hash32}.v{KEY}_fast.json`, then `{hash32}_fast.json`) |
 
 Fast results are saved atomically via `NamedTemporaryFile` + `os.replace` (cache.py:145-154) so a mid-write reader sees either the old or new file, never a partial.
 
@@ -606,7 +606,7 @@ The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes 
 | Analyzer function | `analyze_audio` | `analyze_audio_fast` |
 | ML libraries | allin1 + demucs + madmom (all on Modal `sow-analyzer`) + librosa (local key/loudness) | `librosa` only |
 | Output fields | duration, tempo, key/mode/confidence, loudness, **beats, downbeats, sections, embeddings_shape**, optional stems_url | duration, tempo, key/mode/confidence, loudness only |
-| Cache file | `av{SOW_ANALYSIS_CACHE_VERSION}.{hash32}.v{version}.json` | `{hash_prefix}_fast.v{version}.json` |
+| Cache file | `av{SOW_ANALYSIS_CACHE_VERSION}.{hash32}.v{version}.json` | `{hash32}.v{KEY}.v{BPM}_fast.json` (legacy: `{hash32}.v{KEY}_fast.json`, `{hash32}_fast.json`) |
 | R2 upload | Yes (`{hash_prefix}.json`) | No |
 | DB status on success | `completed` | `partial` (or stays `completed` if already completed) |
 | CLI wait support | Default (opt out with `--no-wait`) | No (batch uses its own poll loop) |
