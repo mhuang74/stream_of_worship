@@ -378,10 +378,8 @@ class TestBatchWaitEndState:
             whisper_model="large-v3",
             language="auto",
             no_vocals=False,
-            no_youtube=False,
-            no_whisper_cache=False,
-            no_qwen3_asr=False,
-            force_qwen3_asr=False,
+            generator="auto",
+            no_cache=False,
             console=runner_console(),
         )
         assert len(submissions) == 2

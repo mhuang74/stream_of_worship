@@ -409,6 +409,7 @@ class AnalysisClient:
         youtube_url: str = "",
         use_qwen3_asr: bool = True,
         force_qwen3_asr: bool = False,
+        lrc_generator: str = "auto",
         tempo_bpm: Optional[float] = None,
         duration_seconds: Optional[float] = None,
         song_id: str = "",
@@ -430,6 +431,8 @@ class AnalysisClient:
             youtube_url: YouTube URL for transcript-based LRC (primary path)
             use_qwen3_asr: Whether to use DashScope Qwen3 ASR before Whisper fallback
             force_qwen3_asr: Bypass only the Qwen3 ASR cache
+            lrc_generator: "auto" | "youtube" | "qwen3_asr" | "whisper_asr"
+            (non-auto runs only that generator and does not fall back)
             tempo_bpm: Recording tempo for LRC gap placeholder insertion
             (None disables placeholder insertion)
             duration_seconds: Recording duration for tail-coverage fill
@@ -462,6 +465,7 @@ class AnalysisClient:
                 "force_whisper": force_whisper,
                 "use_qwen3_asr": use_qwen3_asr,
                 "force_qwen3_asr": force_qwen3_asr,
+                "lrc_generator": lrc_generator,
                 "tempo_bpm": tempo_bpm,
                 "duration_seconds": duration_seconds,
                 "dump_llm_trace": dump_llm_trace,

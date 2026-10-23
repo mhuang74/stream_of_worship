@@ -864,8 +864,6 @@ def import_youtube_audio_for_song(
             whisper_model="large-v3",
             language="auto",
             no_vocals=False,
-            use_qwen3_asr=True,
-            force_qwen3_asr=False,
         )
 
     if components:
@@ -6156,6 +6154,7 @@ def _submit_lrc_for_song(
             youtube_url=youtube_url,
             use_qwen3_asr=True,
             force_qwen3_asr=False,
+            lrc_generator="auto",
             tempo_bpm=recording.tempo_bpm,
             duration_seconds=recording.duration_seconds,
         )
@@ -7160,6 +7159,7 @@ def _handle_lrc_404(
             youtube_url=recording.youtube_url or "",
             use_qwen3_asr=True,
             force_qwen3_asr=False,
+            lrc_generator="auto",
             tempo_bpm=recording.tempo_bpm,
             duration_seconds=recording.duration_seconds,
         )

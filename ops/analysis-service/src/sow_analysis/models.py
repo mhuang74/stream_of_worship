@@ -124,6 +124,10 @@ class LrcOptions(BaseModel):
     force_whisper: bool = False  # Bypass Whisper transcription cache
     use_qwen3_asr: bool = True  # Use DashScope Qwen3 ASR before Whisper fallback
     force_qwen3_asr: bool = False  # Bypass Qwen3 ASR cache only
+    # Strict generator selection. "auto" keeps the priority chain
+    # (YouTube transcript -> Qwen3 ASR -> Whisper ASR). Any other value runs
+    # ONLY that generator and fails the job when it fails.
+    lrc_generator: Literal["auto", "youtube", "qwen3_asr", "whisper_asr"] = "auto"
     qwen3_asr_context_max_chars: int = 10000
     qwen3_asr_snap_threshold: float = 0.60
     qwen3_asr_min_usable_segments: int = 3

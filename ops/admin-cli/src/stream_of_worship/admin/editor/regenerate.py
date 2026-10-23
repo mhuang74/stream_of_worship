@@ -114,6 +114,7 @@ def regenerate_lrc_for_editor(
             song_title=song.title,
             force=True,
             youtube_url=recording.youtube_url or "",
+            lrc_generator="auto",
             tempo_bpm=recording.tempo_bpm,
             duration_seconds=recording.duration_seconds,
             song_id=target_song_id,

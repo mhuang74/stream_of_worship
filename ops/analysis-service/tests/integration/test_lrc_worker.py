@@ -12,6 +12,7 @@ import pytest
 # Mock openai before importing lrc module
 sys.modules["openai"] = MagicMock()
 
+from sow_analysis.config import settings
 from sow_analysis.models import JobStatus, JobType, LrcJobRequest, LrcOptions
 from sow_analysis.workers.lrc import (
     LLMAlignmentError,
@@ -727,6 +728,144 @@ class TestLRCJobQueueProcessing:
 
         # Should fail (no R2), but stage should not be "cached"
         assert job.stage != "cached"
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_strict_youtube_without_url_fails(self, queue):
+        """lrc_generator='youtube' with no youtube_url fails without ASR fallback."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="測試歌詞",
+            options=LrcOptions(lrc_generator="youtube", use_vocals_stem=False),
+        )
+
+        job = Job(
+            id="job_test123",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        with patch("sow_analysis.workers.queue.generate_lrc", AsyncMock()) as mock_whisper:
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.FAILED
+        assert job.stage == "generator_unavailable"
+        assert "youtube" in job.error_message
+        mock_whisper.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_strict_youtube_failure_does_not_fall_back(self, queue):
+        """A forced YouTube generator fails the job instead of running ASR."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="測試歌詞",
+            youtube_url="https://youtu.be/abc",
+            options=LrcOptions(lrc_generator="youtube", use_vocals_stem=False),
+        )
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={})
+        queue.r2_client.download_audio = AsyncMock()
+
+        job = Job(
+            id="job_test123",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        with (
+            patch(
+                "sow_analysis.workers.lrc.try_youtube_transcript_lrc",
+                AsyncMock(return_value=None),
+            ),
+            patch("sow_analysis.workers.queue.generate_lrc", AsyncMock()) as mock_whisper,
+        ):
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.FAILED
+        assert "fallback is disabled" in job.error_message
+        mock_whisper.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_forced_generator_bypasses_lrc_cache(self, queue):
+        """A forced generator never reads the generator-agnostic LRC cache."""
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="測試歌詞",
+            options=LrcOptions(lrc_generator="whisper_asr", use_vocals_stem=False),
+        )
+
+        cache_key = _compute_lrc_cache_key(request.content_hash, request.lyrics_text)
+        queue.cache_manager.save_lrc_result(
+            cache_key,
+            {
+                "lrc_url": "s3://bucket/abc123def456/lyrics.lrc",
+                "line_count": 5,
+                "lrc_source": "qwen3_asr",
+                "lrc_text": "[00:00.00] 測試歌詞\n",
+            },
+        )
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={})
+        queue.r2_client.download_audio = AsyncMock()
+
+        job = Job(
+            id="job_test123",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        with patch(
+            "sow_analysis.workers.queue.generate_lrc",
+            AsyncMock(side_effect=LRCWorkerError("no real transcription in test")),
+        ) as mock_whisper:
+            await queue._process_lrc_job(job)
+
+        mock_whisper.assert_awaited()
+        assert job.stage != "cached"
+
+    @pytest.mark.asyncio
+    async def test_lrc_job_strict_qwen3_failure_does_not_fall_back(self, queue, monkeypatch):
+        """A forced Qwen3 generator fails the job instead of falling back to Whisper."""
+        from sow_analysis.services.qwen3_asr_client import Qwen3AsrError
+
+        request = LrcJobRequest(
+            audio_url="s3://bucket/hash/audio.mp3",
+            content_hash="abc123def456",
+            lyrics_text="測試歌詞",
+            options=LrcOptions(lrc_generator="qwen3_asr", use_vocals_stem=False),
+        )
+
+        queue.r2_client = MagicMock()
+        queue.r2_client.head_object = AsyncMock(return_value={})
+        queue.r2_client.download_audio = AsyncMock()
+
+        job = Job(
+            id="job_test123",
+            type=JobType.LRC,
+            status=JobStatus.QUEUED,
+            request=request,
+        )
+
+        monkeypatch.setattr(settings, "SOW_DASHSCOPE_API_KEY", "test-key")
+        with (
+            patch(
+                "sow_analysis.workers.queue.generate_lrc_from_qwen3_asr",
+                AsyncMock(side_effect=Qwen3AsrError("boom")),
+            ),
+            patch("sow_analysis.workers.queue.generate_lrc", AsyncMock()) as mock_whisper,
+        ):
+            await queue._process_lrc_job(job)
+
+        assert job.status == JobStatus.FAILED
+        assert "qwen3_asr" in job.error_message
+        mock_whisper.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_lrc_job_invalid_request_type(self, queue):

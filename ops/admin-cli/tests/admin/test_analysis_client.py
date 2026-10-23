@@ -793,3 +793,26 @@ class TestSubmitLrcTracePayload:
         payload = mock_post.call_args.kwargs["json"]
         assert payload["song_id"] == ""
         assert payload["options"]["dump_llm_trace"] is False
+        assert payload["options"]["lrc_generator"] == "auto"
+
+    @patch("stream_of_worship.admin.services.analysis.requests.post")
+    def test_lrc_generator_option_forwarded(self, mock_post, api_key_env):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-lrc-3",
+            "status": "queued",
+            "job_type": "lrc",
+            "progress": 0.0,
+        }
+        mock_post.return_value = mock_response
+
+        client = AnalysisClient("http://localhost:8000")
+        client.submit_lrc(
+            audio_url="s3://bucket/audio.mp3",
+            content_hash="abc123",
+            lyrics_text="lyrics",
+            lrc_generator="qwen3_asr",
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["options"]["lrc_generator"] == "qwen3_asr"

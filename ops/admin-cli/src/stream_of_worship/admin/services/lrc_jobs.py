@@ -55,6 +55,34 @@ def resolve_lyrics_text(song: Song, recording: Recording) -> str | None:
     return song.lyrics_raw
 
 
+# CLI --generator name -> LrcOptions.lrc_generator value (service vocabulary).
+_LRC_GENERATOR_MODES = {
+    "auto": "auto",
+    "youtube": "youtube",
+    "qwen3": "qwen3_asr",
+    "whisper": "whisper_asr",
+}
+
+
+def lrc_generator_kwargs(recording: Recording, generator: str, no_cache: bool) -> dict:
+    """Map the CLI generator/cache selection onto AnalysisClient.submit_lrc kwargs.
+
+    Strictness itself is enforced by the analysis service; here we only feed the
+    selected generator its inputs and clear the others.
+    """
+    if generator not in _LRC_GENERATOR_MODES:
+        raise ValueError(f"Unknown LRC generator: {generator!r}")
+    return {
+        "youtube_url": (
+            (recording.youtube_url or "") if generator in ("auto", "youtube") else ""
+        ),
+        "use_qwen3_asr": generator != "whisper",
+        "force_whisper": no_cache,
+        "force_qwen3_asr": no_cache,
+        "lrc_generator": _LRC_GENERATOR_MODES[generator],
+    }
+
+
 def submit_lrc_single(
     song_id: str,
     db_client: DatabaseClient,
@@ -63,10 +91,8 @@ def submit_lrc_single(
     whisper_model: str,
     language: str,
     no_vocals: bool,
-    no_youtube: bool,
-    no_whisper_cache: bool,
-    no_qwen3_asr: bool,
-    force_qwen3_asr: bool,
+    generator: str,
+    no_cache: bool,
     wait: bool,
     console: Console,
     llm_model: str = "",
@@ -96,6 +122,13 @@ def submit_lrc_single(
         console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
         raise typer.Exit(1)
 
+    if generator == "youtube" and not (recording.youtube_url or "").strip():
+        console.print(
+            "[red]--generator youtube requires a YouTube URL on the recording; "
+            "none is stored.[/red]"
+        )
+        raise typer.Exit(1)
+
     # Check if already has LRC
     if recording.lrc_status == "completed" and not force:
         console.print(
@@ -119,7 +152,6 @@ def submit_lrc_single(
 
     # Submit LRC (unless we're polling an existing job)
     if not skip_submission:
-        youtube_url = "" if no_youtube else (recording.youtube_url or "")
         try:
             job = analysis_client.submit_lrc(
                 audio_url=recording.r2_audio_url,
@@ -131,10 +163,7 @@ def submit_lrc_single(
                 language=language,
                 use_vocals_stem=not no_vocals,
                 force=force,
-                force_whisper=no_whisper_cache,
-                youtube_url=youtube_url,
-                use_qwen3_asr=not no_qwen3_asr,
-                force_qwen3_asr=force_qwen3_asr,
+                **lrc_generator_kwargs(recording, generator, no_cache),
                 tempo_bpm=recording.tempo_bpm,
                 duration_seconds=recording.duration_seconds,
                 song_id=song_id,
@@ -227,10 +256,8 @@ def submit_lrc_batch(
     whisper_model: str,
     language: str,
     no_vocals: bool,
-    no_youtube: bool,
-    no_whisper_cache: bool,
-    no_qwen3_asr: bool,
-    force_qwen3_asr: bool,
+    generator: str,
+    no_cache: bool,
     console: Console,
     llm_model: str = "",
     dump_llm_trace: bool = False,
@@ -280,6 +307,13 @@ def submit_lrc_batch(
             errors += 1
             continue
 
+        if generator == "youtube" and not (recording.youtube_url or "").strip():
+            console.print(
+                "  [red]--generator youtube requires a YouTube URL on the recording[/red]"
+            )
+            errors += 1
+            continue
+
         # Check if already has LRC
         if recording.lrc_status == "completed" and not force:
             console.print("  [yellow]Already has LRC (skipped)[/yellow]")
@@ -293,7 +327,6 @@ def submit_lrc_batch(
             continue
 
         # Submit LRC
-        youtube_url = "" if no_youtube else (recording.youtube_url or "")
         try:
             job = analysis_client.submit_lrc(
                 audio_url=recording.r2_audio_url,
@@ -305,10 +338,7 @@ def submit_lrc_batch(
                 language=language,
                 use_vocals_stem=not no_vocals,
                 force=force,
-                force_whisper=no_whisper_cache,
-                youtube_url=youtube_url,
-                use_qwen3_asr=not no_qwen3_asr,
-                force_qwen3_asr=force_qwen3_asr,
+                **lrc_generator_kwargs(recording, generator, no_cache),
                 tempo_bpm=recording.tempo_bpm,
                 duration_seconds=recording.duration_seconds,
                 song_id=song_id,
@@ -361,10 +391,8 @@ def submit_lrc_job(
     whisper_model: str = "large-v3",
     language: str = "auto",
     no_vocals: bool = False,
-    no_youtube: bool = False,
-    no_whisper_cache: bool = False,
-    use_qwen3_asr: bool = True,
-    force_qwen3_asr: bool = False,
+    generator: str = "auto",
+    no_cache: bool = False,
     dump_llm_trace: bool = False,
 ) -> Optional[str]:
     """Submit LRC generation job for a recording.
@@ -379,10 +407,8 @@ def submit_lrc_job(
         whisper_model: Whisper model to use
         language: Language hint for Whisper
         no_vocals: Don't use vocals stem
-        no_youtube: Skip YouTube transcript, use Whisper directly
-        no_whisper_cache: Bypass Whisper transcription cache
-        use_qwen3_asr: Use DashScope Qwen3 ASR before Whisper fallback
-        force_qwen3_asr: Bypass only the Qwen3 ASR cache
+        generator: LRC generator: auto | youtube | qwen3 | whisper
+        no_cache: Bypass the LRC result cache and the selected ASR transcription cache
         dump_llm_trace: Dump per-step LLM/ASR trace on the analysis service
 
     Returns:
@@ -399,7 +425,6 @@ def submit_lrc_job(
         )
         return None
 
-    youtube_url = "" if no_youtube else (recording.youtube_url or "")
     try:
         client = AnalysisClient(analysis_url)
         job = client.submit_lrc(
@@ -411,10 +436,7 @@ def submit_lrc_job(
             language=language,
             use_vocals_stem=not no_vocals,
             force=force,
-            force_whisper=no_whisper_cache,
-            youtube_url=youtube_url,
-            use_qwen3_asr=use_qwen3_asr,
-            force_qwen3_asr=force_qwen3_asr,
+            **lrc_generator_kwargs(recording, generator, no_cache),
             tempo_bpm=recording.tempo_bpm,
             duration_seconds=recording.duration_seconds,
             song_id=song_id,

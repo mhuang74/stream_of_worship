@@ -617,3 +617,44 @@ class TestLlmModelFlag:
         assert result.exit_code == 0, result.output
         batch_mock.assert_called_once()
         assert batch_mock.call_args.kwargs["llm_model"] == ""
+
+
+class TestGeneratorAndCacheFlags:
+    """--generator/--no-cache replace the four old per-generator booleans."""
+
+    def test_rejects_unknown_generator(self):
+        result = runner.invoke(lyrics_app, ["generate", "song_001", "--generator", "banana"])
+        assert result.exit_code == 1
+        assert "--generator must be one of" in result.output
+
+    def test_single_mode_forwards_generator_and_no_cache(self):
+        with (
+            patch.object(lyrics_commands, "AdminConfig", MagicMock()) as config_mock,
+            patch.object(lyrics_commands, "get_db_client", MagicMock()),
+            patch.object(lyrics_commands, "AnalysisClient", MagicMock()),
+            patch.object(lyrics_commands, "submit_lrc_single") as single_mock,
+        ):
+            config = config_mock.return_value
+            config.get_connection_url.return_value = "postgresql://fake"
+            result = runner.invoke(
+                lyrics_app,
+                ["generate", "song_001", "--generator", "qwen3", "--no-cache"],
+            )
+        assert result.exit_code == 0, result.output
+        single_mock.assert_called_once()
+        kwargs = single_mock.call_args.kwargs
+        assert kwargs["generator"] == "qwen3"
+        assert kwargs["no_cache"] is True
+        # --no-cache must imply --force, otherwise the completed gate skips first.
+        assert kwargs["force"] is True
+
+    def test_stdin_batch_forwards_generator_and_no_cache(self):
+        result, _single_mock, batch_mock = _invoke_stdin_generate(
+            "song_001\n", ("--generator", "whisper", "--no-cache")
+        )
+        assert result.exit_code == 0, result.output
+        batch_mock.assert_called_once()
+        kwargs = batch_mock.call_args.kwargs
+        assert kwargs["generator"] == "whisper"
+        assert kwargs["no_cache"] is True
+        assert kwargs["force"] is True
