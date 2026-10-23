@@ -36,6 +36,7 @@ class LRCEditorApp(App[None]):
         feedback_user_id=None,
         recording_content_hash=None,
         visibility_status=None,
+        analysis_client=None,
     ):
         super().__init__()
         self.editor_state = editor_state
@@ -53,6 +54,9 @@ class LRCEditorApp(App[None]):
         # Session-constant: the command layer only mutates visibility after
         # app.run() returns.
         self.visibility_status = visibility_status
+        # Analysis service client for the in-editor force-regeneration
+        # hotkey (`G`); None keeps the editor read-only w.r.t. regeneration.
+        self.analysis_client = analysis_client
         # Outcome of the last save/upload dialog attempt; None until the
         # user attempts a save/upload. Read by the command layer after
         # app.run() to drive the post-upload offers (issue #260).
@@ -79,6 +83,7 @@ class LRCEditorApp(App[None]):
             feedback_user_id=self.feedback_user_id,
             recording_content_hash=self.recording_content_hash,
             visibility_status=self.visibility_status,
+            analysis_client=self.analysis_client,
         ))
 
     def _on_upload_result(self, result: UploadResult) -> None:

@@ -60,7 +60,9 @@ def _make_app(line_count: int) -> tuple[LRCEditorApp, EditorState]:
 
 
 def _make_app_with_lines(
-    lines: list[LRCLine], visibility_status: str | None = None
+    lines: list[LRCLine],
+    visibility_status: str | None = None,
+    analysis_client=None,
 ) -> tuple[LRCEditorApp, EditorState]:
     state = EditorState(
         timed_lines=lines,
@@ -78,6 +80,7 @@ def _make_app_with_lines(
         hash_prefix="abc123",
         original_transcribed_content=None,
         visibility_status=visibility_status,
+        analysis_client=analysis_client,
     )
     return app, state
 
@@ -720,3 +723,127 @@ async def test_header_shows_visibility_badge(visibility_status, expected_sub_tit
         assert app.screen.sub_title == expected_sub_title
         # Header renders "title — sub_title" as plain Content.
         assert expected_sub_title in str(app.screen.query_one(Header).format_title())
+
+
+@pytest.mark.asyncio
+async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
+    import asyncio
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+    from stream_of_worship.admin.editor.regenerate import RegenerateResult
+
+    monkeypatch.setattr(
+        screen_module,
+        "regenerate_lrc_for_editor",
+        lambda **kwargs: RegenerateResult(
+            ok=True,
+            lrc_content="[00:01.00]New A\n[00:02.00]New B",
+            identity=R2ObjectIdentity(exists=True, etag="new"),
+            job_id="job-1",
+        ),
+    )
+
+    app, state = _make_app_with_lines(
+        [
+            LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]"),
+            LRCLine(time_seconds=2.0, text="Old B", raw_timestamp="[00:02.00]"),
+        ],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("G")
+        await pilot.pause()
+        assert isinstance(app.screen, ModalScreen)
+
+        await pilot.press("y")
+        await asyncio.to_thread(editor._regen_thread.join, 5.0)
+        await pilot.pause()
+
+        assert [line.text for line in state.timed_lines] == ["New A", "New B"]
+        assert state.dirty is False
+        assert state.source_mode == "r2"
+        assert state.transcribed_identity.etag == "new"
+        assert editor._regen_in_flight is False
+
+        table = editor.query_one("#line-table", DataTable)
+        assert str(table.get_cell_at((0, 2))) == "New A"
+        assert "Source: R2" in str(editor.query_one(StatusIndicator).visual)
+
+
+@pytest.mark.asyncio
+async def test_regenerate_cancel_keeps_editor_untouched():
+    from textual.screen import ModalScreen
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("G")
+        await pilot.pause()
+        assert isinstance(app.screen, ModalScreen)
+
+        await pilot.press("n")
+        await pilot.pause()
+
+        assert editor._regen_thread is None
+        assert editor._regen_in_flight is False
+        assert [line.text for line in state.timed_lines] == ["Old A"]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_hotkey_disabled_without_analysis_client():
+    from textual.screen import ModalScreen
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")]
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("G")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, ModalScreen)
+        assert editor._regen_thread is None
+
+
+@pytest.mark.asyncio
+async def test_quit_during_regeneration_requires_force_confirm():
+    from textual.screen import ModalScreen
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        editor._regen_in_flight = True
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ModalScreen)
+        assert app.is_running is True
+
+        await pilot.press("y")
+        await pilot.pause()
+
+        assert app.quit_clean is False

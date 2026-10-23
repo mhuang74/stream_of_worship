@@ -10,6 +10,7 @@ from typing import List, Optional
 from stream_of_worship.admin.services.lrc_parser import (
     LRCLine,
     LRCPreservedLine,
+    parse_lrc_full,
     serialize_lrc,
 )
 from stream_of_worship.admin.services.r2 import R2ObjectIdentity
@@ -317,3 +318,35 @@ class EditorState:
     def serialize(self) -> str:
         """Serialize current state to LRC format."""
         return serialize_lrc(self.timed_lines, self.preserved_lines)
+
+    def replace_content(self, content: str, transcribed_identity: R2ObjectIdentity) -> bool:
+        """Replace the whole session with freshly generated LRC content.
+
+        Used after an in-editor force-regeneration: the new LRC becomes both
+        the editable rows and the diff base, so the session starts clean.
+
+        Args:
+            content: Raw LRC text downloaded from R2.
+            transcribed_identity: Identity snapshot of that R2 object.
+
+        Returns:
+            True when the content carried timed lines and was applied;
+            False when the caller should keep the session untouched.
+        """
+        parsed = parse_lrc_full(content)
+        if not parsed.timed_lines:
+            return False
+
+        self.timed_lines = parsed.timed_lines
+        self.preserved_lines = parsed.preserved_lines
+        self.original_serialized = serialize_lrc(parsed.timed_lines, parsed.preserved_lines)
+        self.original_preserved_lines = list(parsed.preserved_lines)
+        self.original_timestamps = [line.time_seconds for line in parsed.timed_lines]
+        self.transcribed_identity = transcribed_identity
+        self.padding_quarters = 0
+        self.dirty = False
+        self.source_mode = "r2"
+        self.selected_index = 0
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        return True
