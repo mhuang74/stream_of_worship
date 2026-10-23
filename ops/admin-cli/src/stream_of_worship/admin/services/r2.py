@@ -6,11 +6,12 @@ variables so they never appear in config files.
 """
 
 import json
+import logging
 import os
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -18,8 +19,55 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+logger = logging.getLogger(__name__)
+
+# Retention cap for ``{hash_prefix}/lyrics.backup.*.lrc``. Must stay equal to
+# MAX_BACKUPS_PER_PREFIX in
+# ops/analysis-service/src/sow_analysis/storage/r2.py.
 MAX_BACKUPS_PER_PREFIX = 5
 RECORDING_HASH_PREFIX_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
+def select_backups_to_delete(
+    objects: list[tuple[str, datetime]],
+    protected_key: Optional[str],
+    max_backups: int,
+) -> list[str]:
+    """Return backup keys to delete, oldest ``LastModified`` first.
+
+    Ordering is decided solely by the R2 ``LastModified`` values; the integer
+    embedded in legacy key names is never parsed. ``protected_key`` (the backup
+    created by the current call) is never returned, wherever it sorts.
+
+    Pure: no boto3, no logging, no I/O. A byte-identical copy is vendored at
+    ops/analysis-service/src/sow_analysis/storage/r2.py and must stay in sync.
+
+    Args:
+        objects: ``(key, LastModified)`` pairs as returned by the list API.
+        protected_key: Key to retain unconditionally, or None.
+        max_backups: Maximum objects to retain, counting the protected key.
+
+    Returns:
+        Keys to delete, oldest first.
+    """
+
+    def _utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            # Naive values are assumed UTC. astimezone() would instead assume
+            # local time and shift by the host offset, reordering retention.
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    ordered = sorted(((_utc(ts), key) for key, ts in objects), key=lambda o: (o[0], o[1]))
+    delete_count = max(0, len(ordered) - max(0, max_backups))
+    to_delete: list[str] = []
+    for _, key in ordered:
+        if len(to_delete) >= delete_count:
+            break
+        if key == protected_key:
+            continue
+        to_delete.append(key)
+    return to_delete
 
 
 class StaleObjectError(Exception):
@@ -652,10 +700,14 @@ class R2Client:
         2. If expected_etag is provided and current ETag != expected_etag:
              raise StaleObjectError
         3. If lyrics.lrc exists and not skip_backup:
-             copy to lyrics.backup.{timestamp_ms}.lrc
-             If copy fails: raise BackupFailedError
+             copy to {hash_prefix}/lyrics.backup.{epoch_ms}.lrc, probing forward
+             from int(time.time() * 1000) up to 10 ms so an existing key is
+             never overwritten. If copy fails: raise BackupFailedError
         4. Upload new lyrics.lrc
-        5. Prune old backups: list lyrics.backup.*.lrc, delete oldest if count > MAX_BACKUPS_PER_PREFIX
+        5. Prune old backups: list {hash_prefix}/lyrics.backup.*.lrc, then delete
+             the oldest LastModified entries first until at most
+             MAX_BACKUPS_PER_PREFIX remain (the new backup is kept). Failures are
+             logged, never fatal.
         6. Return s3://{bucket}/{hash_prefix}/lyrics.lrc
 
         Args:
@@ -693,10 +745,24 @@ class R2Client:
                     "lyrics.lrc was modified by another process after this job started"
                 )
 
-        # 3. Backup existing official LRC
+        # 3. Backup existing official LRC without overwriting an existing key
+        backup_key: Optional[str] = None
         if exists and not skip_backup:
-            timestamp_ms = int(time.time() * 1000)
-            backup_key = f"{hash_prefix}/lyrics.backup.{timestamp_ms}.lrc"
+            base_ms = int(time.time() * 1000)
+            for attempt in range(10):
+                candidate = f"{hash_prefix}/lyrics.backup.{base_ms + attempt}.lrc"
+                try:
+                    self._client.head_object(Bucket=self.bucket, Key=candidate)
+                except ClientError as e:
+                    error_code = e.response.get("Error", {}).get("Code", "")
+                    if error_code in ("404", "NoSuchKey"):
+                        backup_key = candidate
+                        break
+                    raise BackupFailedError(f"Failed to verify backup name {candidate}: {e}") from e
+            if backup_key is None:
+                raise BackupFailedError(
+                    f"Could not find a free backup key near {base_ms} for {hash_prefix}"
+                )
             copy_source = {"Bucket": self.bucket, "Key": official_key}
             try:
                 self._client.copy_object(CopySource=copy_source, Bucket=self.bucket, Key=backup_key)
@@ -706,36 +772,39 @@ class R2Client:
         # 4. Upload new lyrics.lrc
         self._client.upload_file(str(lrc_path), self.bucket, official_key)
 
-        # 5. Prune old backups
+        # 5. Prune old backups by LastModified, oldest first
         backup_prefix = f"{hash_prefix}/lyrics.backup."
+        scanned = 0
+        deleted = 0
+        failed = 0
         try:
-            backup_keys = []
+            objects: list[tuple[str, datetime]] = []
             paginator = self._client.get_paginator("list_objects_v2")
             for page in paginator.paginate(Bucket=self.bucket, Prefix=backup_prefix):
                 for obj in page.get("Contents", []):
                     key = obj["Key"]
                     if key.startswith(backup_prefix) and key.endswith(".lrc"):
-                        backup_keys.append(key)
+                        objects.append((key, obj["LastModified"]))
+            scanned = len(objects)
 
-            if len(backup_keys) > MAX_BACKUPS_PER_PREFIX:
-
-                def _extract_ts(key: str) -> int:
-                    try:
-                        parts = key.split("lyrics.backup.")
-                        if len(parts) == 2:
-                            ts_str = parts[1].split(".lrc")[0]
-                            return int(ts_str)
-                    except (ValueError, IndexError):
-                        pass
-                    return 0
-
-                backup_keys.sort(key=_extract_ts)
-                to_delete = backup_keys[:-MAX_BACKUPS_PER_PREFIX]
-                for key in to_delete:
+            for key in select_backups_to_delete(objects, backup_key, MAX_BACKUPS_PER_PREFIX):
+                try:
                     self._client.delete_object(Bucket=self.bucket, Key=key)
-        except Exception:
-            # Pruning failure is non-fatal
-            pass
+                except Exception as e:
+                    failed += 1
+                    logger.warning("Failed to delete LRC backup %s: %s", key, e)
+                    continue
+                deleted += 1
+        except Exception as e:
+            # Prune failure is non-fatal: an LRC upload must not fail on cleanup.
+            logger.warning(
+                "LRC backup prune failed for %s (scanned=%d deleted=%d failed=%d): %s",
+                hash_prefix,
+                scanned,
+                deleted,
+                failed,
+                e,
+            )
 
         return official_url
 

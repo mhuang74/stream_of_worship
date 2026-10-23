@@ -1,14 +1,68 @@
 """Tests for R2 storage client."""
 
 import json
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
+from stream_of_worship.admin.services.r2 import (
+    R2Client,
+    R2ObjectIdentity,
+    select_backups_to_delete,
+)
+
+LRC_PREFIX = "abc123"
+OFFICIAL_KEY = f"{LRC_PREFIX}/lyrics.lrc"
+BASE_MS = 1_792_712_640_000
+
+
+def _utc(*args) -> datetime:
+    """Timezone-aware UTC datetime from positional datetime() arguments."""
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+def _backup_key(timestamp_ms: int) -> str:
+    return f"{LRC_PREFIX}/lyrics.backup.{timestamp_ms}.lrc"
+
+
+def _not_found_error() -> ClientError:
+    return ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject")
+
+
+def _objects(pairs) -> list[dict]:
+    """Paginator ``Contents`` entries from ``(key, LastModified)`` pairs."""
+    return [{"Key": key, "LastModified": ts} for key, ts in pairs]
+
+
+def _configure_r2(mock_boto_client, contents, *, official_exists=True, occupied=()):
+    """Wire a mocked boto3 client whose HEAD answers per key.
+
+    ``lyrics.lrc`` answers 200 unless ``official_exists`` is False; backup keys in
+    ``occupied`` answer 200; every other key answers 404 (free).
+    """
+    mock_s3 = MagicMock()
+    occupied = set(occupied)
+
+    def _head(**kwargs):
+        key = kwargs["Key"]
+        if key == OFFICIAL_KEY:
+            if not official_exists:
+                raise _not_found_error()
+            return {"ETag": '"etag"'}
+        if key in occupied:
+            return {"ETag": '"occupied"'}
+        raise _not_found_error()
+
+    mock_s3.head_object.side_effect = _head
+    paginator = MagicMock()
+    paginator.paginate.return_value = [{"Contents": contents}] if contents else [{}]
+    mock_s3.get_paginator.return_value = paginator
+    mock_boto_client.return_value = mock_s3
+    return mock_s3
 
 
 @pytest.fixture
@@ -801,127 +855,389 @@ class TestUploadBytes:
 class TestUploadOfficialLrc:
     """Tests for R2Client.upload_official_lrc."""
 
+    @pytest.fixture
+    def lrc_path(self, tmp_path):
+        path = tmp_path / "lyrics.lrc"
+        path.write_text("[00:00.00]Line 1")
+        return path
+
+    @staticmethod
+    def _client() -> R2Client:
+        return R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+
     @patch("stream_of_worship.admin.services.r2.boto3.client")
-    def test_uploads_new_object_without_backup(self, mock_boto_client, r2_env, tmp_path):
+    def test_uploads_new_object_without_backup(self, mock_boto_client, r2_env, lrc_path):
         """When lyrics.lrc doesn't exist, upload without backup."""
-        mock_s3 = MagicMock()
-        mock_s3.head_object.side_effect = ClientError(
-            {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
-        )
-        mock_boto_client.return_value = mock_s3
+        mock_s3 = _configure_r2(mock_boto_client, [], official_exists=False)
 
-        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
-        lrc_path = tmp_path / "lyrics.lrc"
-        lrc_path.write_text("[00:00.00]Line 1")
-
-        result = client.upload_official_lrc("abc123", lrc_path)
+        result = self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
 
         assert result == "s3://sow-audio/abc123/lyrics.lrc"
         mock_s3.upload_file.assert_called_once()
         mock_s3.copy_object.assert_not_called()
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
-    def test_creates_backup_before_overwrite(self, mock_boto_client, r2_env, tmp_path):
-        """When lyrics.lrc exists, copy to backup before overwrite."""
-        mock_s3 = MagicMock()
-        mock_s3.head_object.return_value = {"ETag": '"oldetag"'}
-        mock_boto_client.return_value = mock_s3
+    def test_creates_backup_with_epoch_ms_key(self, mock_boto_client, r2_env, lrc_path):
+        """Backup key is exactly {hash_prefix}/lyrics.backup.{epoch_ms}.lrc."""
+        mock_s3 = _configure_r2(mock_boto_client, [])
 
-        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
-        lrc_path = tmp_path / "lyrics.lrc"
-        lrc_path.write_text("[00:00.00]Line 1")
-
-        result = client.upload_official_lrc("abc123", lrc_path)
+        with patch(
+            "stream_of_worship.admin.services.r2.time.time",
+            return_value=BASE_MS / 1000 + 0.5,
+        ):
+            result = self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
 
         assert result == "s3://sow-audio/abc123/lyrics.lrc"
-        mock_s3.copy_object.assert_called_once()
         copy_call = mock_s3.copy_object.call_args
-        assert "lyrics.backup." in copy_call.kwargs["Key"]
+        assert copy_call.kwargs["Key"] == _backup_key(BASE_MS + 500)
+        assert copy_call.kwargs["CopySource"] == {
+            "Bucket": "sow-audio",
+            "Key": OFFICIAL_KEY,
+        }
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
-    def test_stale_etag_raises(self, mock_boto_client, r2_env, tmp_path):
+    def test_stale_etag_raises(self, mock_boto_client, r2_env, lrc_path):
         """When expected_etag doesn't match current ETag, raise StaleObjectError."""
         from stream_of_worship.admin.services.r2 import StaleObjectError
 
-        mock_s3 = MagicMock()
-        mock_s3.head_object.return_value = {"ETag": '"newetag"'}
-        mock_boto_client.return_value = mock_s3
-
-        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
-        lrc_path = tmp_path / "lyrics.lrc"
-        lrc_path.write_text("[00:00.00]Line 1")
+        _configure_r2(mock_boto_client, [])
 
         with pytest.raises(StaleObjectError):
-            client.upload_official_lrc("abc123", lrc_path, expected_etag="oldetag")
+            self._client().upload_official_lrc(LRC_PREFIX, lrc_path, expected_etag="oldetag")
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
-    def test_backup_failure_raises(self, mock_boto_client, r2_env, tmp_path):
+    def test_backup_failure_raises(self, mock_boto_client, r2_env, lrc_path):
         """When copy_object fails and skip_backup=False, raise BackupFailedError."""
         from stream_of_worship.admin.services.r2 import BackupFailedError
 
-        mock_s3 = MagicMock()
-        mock_s3.head_object.return_value = {"ETag": '"etag"'}
+        mock_s3 = _configure_r2(mock_boto_client, [])
         mock_s3.copy_object.side_effect = ClientError(
             {"Error": {"Code": "InternalError"}}, "CopyObject"
         )
-        mock_boto_client.return_value = mock_s3
-
-        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
-        lrc_path = tmp_path / "lyrics.lrc"
-        lrc_path.write_text("[00:00.00]Line 1")
 
         with pytest.raises(BackupFailedError):
-            client.upload_official_lrc("abc123", lrc_path)
+            self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
-    def test_skip_backup_ignores_copy_failure(self, mock_boto_client, r2_env, tmp_path):
+    def test_skip_backup_ignores_copy_failure(self, mock_boto_client, r2_env, lrc_path):
         """When skip_backup=True, upload proceeds even if backup would fail."""
-        mock_s3 = MagicMock()
-        mock_s3.head_object.return_value = {"ETag": '"etag"'}
+        mock_s3 = _configure_r2(mock_boto_client, [])
         mock_s3.copy_object.side_effect = ClientError(
             {"Error": {"Code": "InternalError"}}, "CopyObject"
         )
-        mock_boto_client.return_value = mock_s3
 
-        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
-        lrc_path = tmp_path / "lyrics.lrc"
-        lrc_path.write_text("[00:00.00]Line 1")
-
-        result = client.upload_official_lrc("abc123", lrc_path, skip_backup=True)
+        result = self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
 
         assert result == "s3://sow-audio/abc123/lyrics.lrc"
         mock_s3.upload_file.assert_called_once()
 
     @patch("stream_of_worship.admin.services.r2.boto3.client")
-    def test_prunes_old_backups(self, mock_boto_client, r2_env, tmp_path):
-        """When backup count exceeds MAX_BACKUPS_PER_PREFIX, oldest are deleted."""
-        mock_s3 = MagicMock()
-        mock_s3.head_object.return_value = {"ETag": '"etag"'}
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {
-                "Contents": [
-                    {"Key": "abc123/lyrics.backup.1000.lrc"},
-                    {"Key": "abc123/lyrics.backup.2000.lrc"},
-                    {"Key": "abc123/lyrics.backup.3000.lrc"},
-                    {"Key": "abc123/lyrics.backup.4000.lrc"},
-                    {"Key": "abc123/lyrics.backup.5000.lrc"},
-                    {"Key": "abc123/lyrics.backup.6000.lrc"},
-                ]
-            }
-        ]
-        mock_s3.get_paginator.return_value = mock_paginator
-        mock_boto_client.return_value = mock_s3
+    def test_prune_keeps_manual_snapshot_and_deletes_oldest_by_last_modified(
+        self, mock_boto_client, r2_env, lrc_path
+    ):
+        """Incident regression: the monotonic-scale manual snapshot must survive.
 
-        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
-        lrc_path = tmp_path / "lyrics.lrc"
-        lrc_path.write_text("[00:00.00]Line 1")
-
-        client.upload_official_lrc("abc123", lrc_path)
-
-        mock_s3.delete_object.assert_called_once_with(
-            Bucket="sow-audio", Key="abc123/lyrics.backup.1000.lrc"
+        Pre-fix code parsed the filename integer, so it deleted ``357735493``
+        (numerically smallest) instead of the oldest ``LastModified``.
+        """
+        newest = _utc(2026, 10, 22, 23, 44, 0)
+        newest_ms = int(newest.timestamp() * 1000)
+        manual_key = _backup_key(357735493)
+        oldest_key = _backup_key(1792710546483)
+        contents = _objects(
+            [
+                (_backup_key(1792711476891), _utc(2026, 10, 22, 23, 24, 35)),
+                (manual_key, _utc(2026, 10, 22, 23, 27, 44)),
+                (_backup_key(newest_ms), newest),
+                (_backup_key(358288869), _utc(2026, 10, 22, 23, 36, 58)),
+                (oldest_key, _utc(2026, 10, 22, 23, 9, 5)),
+                (_backup_key(358431311), _utc(2026, 10, 22, 23, 39, 20)),
+            ]
         )
+        mock_s3 = _configure_r2(mock_boto_client, contents)
+
+        with patch(
+            "stream_of_worship.admin.services.r2.time.time",
+            return_value=newest.timestamp(),
+        ):
+            result = self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        assert result == "s3://sow-audio/abc123/lyrics.lrc"
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [oldest_key]
+        assert manual_key not in deleted
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_prune_deletes_oldest_first(self, mock_boto_client, r2_env, lrc_path, reverse):
+        """Delete calls are issued strictly oldest → newest by LastModified."""
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, 7 - i)) for i in range(8)]
+        if reverse:
+            pairs.reverse()
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [_backup_key(1007), _backup_key(1006), _backup_key(1005)]
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_unparsable_key_retained_when_recent(self, mock_boto_client, r2_env, lrc_path):
+        """Unparsable names are ordinary candidates: recent ones are kept."""
+        manual_key = f"{LRC_PREFIX}/lyrics.backup.manual.lrc"
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, i)) for i in range(5)]
+        pairs.append((manual_key, _utc(2026, 1, 1, 0, 30)))
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [_backup_key(1000)]
+        assert manual_key not in deleted
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_unparsable_key_deleted_when_oldest(self, mock_boto_client, r2_env, lrc_path):
+        """Nothing is pinned first: an oldest unparsable key is deleted."""
+        manual_key = f"{LRC_PREFIX}/lyrics.backup.manual.lrc"
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, i + 1)) for i in range(5)]
+        pairs.insert(2, (manual_key, _utc(2026, 1, 1, 0, 0)))
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [manual_key]
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_last_modified_tie_breaks_on_key(self, mock_boto_client, r2_env, lrc_path, reverse):
+        """Identical LastModified values fall back to the deterministic key order."""
+        tied = _utc(2026, 1, 1, 0, 0, 0)
+        pairs = [(_backup_key(ms), tied) for ms in (2000, 1000, 3000, 4000, 5000, 6000)]
+        if reverse:
+            pairs.reverse()
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [_backup_key(1000)]
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_protected_backup_survives_when_oldest(self, mock_boto_client, r2_env, lrc_path):
+        """A backwards clock must not delete the backup created in this call."""
+        new_ts = _utc(2025, 12, 31, 23, 0, 0)
+        new_key = _backup_key(int(new_ts.timestamp() * 1000))
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, i)) for i in range(5)]
+        pairs.append((new_key, new_ts))
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        with patch(
+            "stream_of_worship.admin.services.r2.time.time",
+            return_value=new_ts.timestamp(),
+        ):
+            self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [_backup_key(1000)]
+        assert new_key not in deleted
+        assert len(pairs) - len(deleted) == 5
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_naive_last_modified_is_treated_as_utc(self, mock_boto_client, r2_env, lrc_path):
+        """Naive LastModified is UTC, not local time (astimezone would shift it)."""
+        aware_key = _backup_key(1000)
+        naive_key = _backup_key(2000)
+        pairs = [
+            (naive_key, datetime(2026, 1, 1, 12, 0, 0)),
+            (aware_key, datetime(2026, 1, 1, 11, 59, 0, tzinfo=timezone.utc)),
+        ]
+        pairs += [(_backup_key(3000 + i), _utc(2026, 1, 1, 12, 1 + i)) for i in range(4)]
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [aware_key]
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_below_cap_deletes_nothing(self, mock_boto_client, r2_env, lrc_path):
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, i)) for i in range(5)]
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        mock_s3.delete_object.assert_not_called()
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_at_cap_with_new_backup_deletes_oldest_existing(
+        self, mock_boto_client, r2_env, lrc_path
+    ):
+        """The new backup counts inside the cap; only one old key goes."""
+        new_ts = _utc(2026, 1, 1, 0, 10)
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, i)) for i in range(5)]
+        pairs.append((_backup_key(int(new_ts.timestamp() * 1000)), new_ts))
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+
+        with patch(
+            "stream_of_worship.admin.services.r2.time.time",
+            return_value=new_ts.timestamp(),
+        ):
+            self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        deleted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert deleted == [_backup_key(1000)]
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_listing_failure_logs_warning_and_still_uploads(
+        self, mock_boto_client, r2_env, lrc_path, caplog
+    ):
+        mock_s3 = _configure_r2(mock_boto_client, [])
+        mock_s3.get_paginator.return_value.paginate.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "denied"}}, "ListObjectsV2"
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        assert result == "s3://sow-audio/abc123/lyrics.lrc"
+        mock_s3.delete_object.assert_not_called()
+        assert LRC_PREFIX in caplog.text
+        assert "scanned=0" in caplog.text
+        assert "deleted=0" in caplog.text
+        assert "failed=0" in caplog.text
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_delete_failure_is_logged_and_prune_continues(
+        self, mock_boto_client, r2_env, lrc_path, caplog
+    ):
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, 7 - i)) for i in range(8)]
+        mock_s3 = _configure_r2(mock_boto_client, _objects(pairs))
+        failing_key = _backup_key(1006)
+
+        def _delete(**kwargs):
+            if kwargs["Key"] == failing_key:
+                raise ClientError(
+                    {"Error": {"Code": "InternalError", "Message": "boom"}}, "DeleteObject"
+                )
+
+        mock_s3.delete_object.side_effect = _delete
+
+        with caplog.at_level(logging.WARNING):
+            result = self._client().upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        assert result == "s3://sow-audio/abc123/lyrics.lrc"
+        attempted = [c.kwargs["Key"] for c in mock_s3.delete_object.call_args_list]
+        assert attempted == [_backup_key(1007), failing_key, _backup_key(1005)]
+        assert failing_key in caplog.text
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_collision_guard_raises_after_ten_occupied_slots(
+        self, mock_boto_client, r2_env, lrc_path
+    ):
+        occupied = {_backup_key(BASE_MS + i) for i in range(10)}
+        mock_s3 = _configure_r2(mock_boto_client, [], occupied=occupied)
+
+        with patch(
+            "stream_of_worship.admin.services.r2.time.time",
+            return_value=BASE_MS / 1000,
+        ):
+            with pytest.raises(Exception) as excinfo:
+                self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        from stream_of_worship.admin.services.r2 import BackupFailedError
+
+        assert isinstance(excinfo.value, BackupFailedError)
+        assert "free backup key" in str(excinfo.value)
+        mock_s3.copy_object.assert_not_called()
+        mock_s3.upload_file.assert_not_called()
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_collision_guard_uses_next_free_millisecond(self, mock_boto_client, r2_env, lrc_path):
+        occupied = {_backup_key(BASE_MS), _backup_key(BASE_MS + 1)}
+        mock_s3 = _configure_r2(mock_boto_client, [], occupied=occupied)
+
+        with patch(
+            "stream_of_worship.admin.services.r2.time.time",
+            return_value=BASE_MS / 1000,
+        ):
+            self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        copied_key = mock_s3.copy_object.call_args.kwargs["Key"]
+        assert copied_key == _backup_key(BASE_MS + 2)
+        assert copied_key not in occupied
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_collision_probe_error_is_fatal(self, mock_boto_client, r2_env, lrc_path):
+        """Only 404/NoSuchKey means free; other HEAD errors must not be assumed free."""
+        from stream_of_worship.admin.services.r2 import BackupFailedError
+
+        mock_s3 = _configure_r2(mock_boto_client, [])
+
+        def _head(**kwargs):
+            if kwargs["Key"] == OFFICIAL_KEY:
+                return {"ETag": '"etag"'}
+            raise ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "denied"}}, "HeadObject"
+            )
+
+        mock_s3.head_object.side_effect = _head
+
+        with pytest.raises(BackupFailedError, match="Failed to verify backup name"):
+            self._client().upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        mock_s3.copy_object.assert_not_called()
+
+
+class TestSelectBackupsToDelete:
+    """Direct unit tests for the pure backup retention selector."""
+
+    def test_returns_oldest_last_modified_first(self):
+        objects = [
+            (_backup_key(3000), _utc(2026, 1, 1, 0, 2)),
+            (_backup_key(1000), _utc(2026, 1, 1, 0, 0)),
+            (_backup_key(2000), _utc(2026, 1, 1, 0, 1)),
+        ]
+
+        assert select_backups_to_delete(objects, None, 1) == [
+            _backup_key(1000),
+            _backup_key(2000),
+        ]
+
+    def test_naive_datetime_is_assumed_utc(self):
+        objects = [
+            (_backup_key(2000), datetime(2026, 1, 1, 12, 0)),
+            (_backup_key(1000), datetime(2026, 1, 1, 11, 59, tzinfo=timezone.utc)),
+        ]
+
+        assert select_backups_to_delete(objects, None, 1) == [_backup_key(1000)]
+
+    def test_protected_key_consumes_a_slot(self):
+        objects = [
+            (_backup_key(500), _utc(2026, 1, 1, 0, 0)),
+            (_backup_key(1000), _utc(2026, 1, 1, 0, 1)),
+            (_backup_key(2000), _utc(2026, 1, 1, 0, 2)),
+        ]
+
+        result = select_backups_to_delete(objects, _backup_key(500), 2)
+
+        assert result == [_backup_key(1000)]
+
+    def test_max_backups_zero_deletes_all_but_protected(self):
+        objects = [
+            (_backup_key(1000), _utc(2026, 1, 1, 0, 0)),
+            (_backup_key(2000), _utc(2026, 1, 1, 0, 1)),
+        ]
+
+        assert select_backups_to_delete(objects, _backup_key(2000), 0) == [_backup_key(1000)]
+
+    def test_result_is_independent_of_listing_order(self):
+        objects = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, i)) for i in range(6)]
+
+        forward = select_backups_to_delete(objects, None, 5)
+        backward = select_backups_to_delete(list(reversed(objects)), None, 5)
+
+        assert forward == backward == [_backup_key(1000)]
 
 
 class TestIterObjects:
@@ -1025,9 +1341,7 @@ class TestGetObjectStream:
         assert result["content_disposition"] == "attachment"
         assert result["content_encoding"] == "gzip"
         assert result["metadata"] == {"custom": "value"}
-        mock_s3.get_object.assert_called_once_with(
-            Bucket="sow-audio", Key="abc123/audio.mp3"
-        )
+        mock_s3.get_object.assert_called_once_with(Bucket="sow-audio", Key="abc123/audio.mp3")
 
 
 class TestHeadObject:

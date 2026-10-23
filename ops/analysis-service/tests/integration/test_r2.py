@@ -1,8 +1,10 @@
 """Tests for R2 storage client."""
 
 import json
+import logging
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +13,52 @@ from botocore.exceptions import ClientError
 
 from sow_analysis.storage.cache import BEAT_GRID_SCHEMA_VERSION
 from sow_analysis.storage.r2 import R2Client, parse_s3_url
+
+LRC_PREFIX = "abc123"
+OFFICIAL_KEY = f"{LRC_PREFIX}/lyrics.lrc"
+BASE_MS = 1_792_712_640_000
+
+
+def _utc(*args) -> datetime:
+    """Timezone-aware UTC datetime from positional datetime() arguments."""
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+def _backup_key(timestamp_ms: int) -> str:
+    return f"{LRC_PREFIX}/lyrics.backup.{timestamp_ms}.lrc"
+
+
+def _not_found_error() -> ClientError:
+    return ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject")
+
+
+def _objects(pairs) -> list[dict]:
+    """Paginator ``Contents`` entries from ``(key, LastModified)`` pairs."""
+    return [{"Key": key, "LastModified": ts} for key, ts in pairs]
+
+
+def _paginate(contents):
+    """Mocked list_objects_v2 paginator returning one page."""
+    paginator = MagicMock()
+    paginator.paginate.return_value = [{"Contents": contents}] if contents else [{}]
+    return paginator
+
+
+def _head_routing(occupied=(), official_exists=True):
+    """HEAD answers per key: official 200, ``occupied`` backups 200, else 404."""
+    occupied = set(occupied)
+
+    def _head(**kwargs):
+        key = kwargs["Key"]
+        if key == OFFICIAL_KEY:
+            if not official_exists:
+                raise _not_found_error()
+            return {"ETag": '"etag"'}
+        if key in occupied:
+            return {"ETag": '"occupied"'}
+        raise _not_found_error()
+
+    return _head
 
 
 class TestParseS3Url:
@@ -157,44 +205,50 @@ class TestR2Client:
     @pytest.mark.asyncio
     async def test_upload_official_lrc_new_object(self, mock_boto3):
         """upload_official_lrc uploads to lyrics.lrc when object doesn't exist."""
-        mock_boto3.head_object.side_effect = ClientError(
-            {"Error": {"Code": "404"}}, "HeadObject"
-        )
+        mock_boto3.head_object.side_effect = _head_routing(official_exists=False)
         client = R2Client("my-bucket", "https://r2.example.com")
 
         with tempfile.TemporaryDirectory() as tmp:
             lrc_path = Path(tmp) / "lyrics.lrc"
             lrc_path.write_text("[00:00.00]Line 1")
 
-            url = await client.upload_official_lrc("abc123", lrc_path)
+            url = await client.upload_official_lrc(LRC_PREFIX, lrc_path)
 
         assert url == "s3://my-bucket/abc123/lyrics.lrc"
         mock_boto3.upload_file.assert_called_once()
         mock_boto3.copy_object.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_upload_official_lrc_creates_backup(self, mock_boto3):
-        """upload_official_lrc copies existing object to backup before overwrite."""
-        mock_boto3.head_object.return_value = {"ETag": '"oldetag"'}
+    async def test_upload_official_lrc_creates_backup_with_epoch_ms_key(self, mock_boto3):
+        """Backup key is exactly {hash_prefix}/lyrics.backup.{epoch_ms}.lrc."""
+        mock_boto3.head_object.side_effect = _head_routing()
         client = R2Client("my-bucket", "https://r2.example.com")
 
         with tempfile.TemporaryDirectory() as tmp:
             lrc_path = Path(tmp) / "lyrics.lrc"
             lrc_path.write_text("[00:00.00]Line 1")
 
-            url = await client.upload_official_lrc("abc123", lrc_path)
+            with patch(
+                "sow_analysis.storage.r2.time.time",
+                return_value=BASE_MS / 1000 + 0.5,
+            ):
+                url = await client.upload_official_lrc(LRC_PREFIX, lrc_path)
 
         assert url == "s3://my-bucket/abc123/lyrics.lrc"
         mock_boto3.copy_object.assert_called_once()
         copy_call = mock_boto3.copy_object.call_args
-        assert "lyrics.backup." in copy_call.kwargs["Key"]
+        assert copy_call.kwargs["Key"] == _backup_key(BASE_MS + 500)
+        assert copy_call.kwargs["CopySource"] == {
+            "Bucket": "my-bucket",
+            "Key": OFFICIAL_KEY,
+        }
 
     @pytest.mark.asyncio
     async def test_upload_official_lrc_stale_etag_raises(self, mock_boto3):
         """upload_official_lrc raises StaleObjectError when ETag mismatches."""
         from sow_analysis.storage.r2 import StaleObjectError
 
-        mock_boto3.head_object.return_value = {"ETag": '"newetag"'}
+        mock_boto3.head_object.side_effect = _head_routing()
         client = R2Client("my-bucket", "https://r2.example.com")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -202,14 +256,14 @@ class TestR2Client:
             lrc_path.write_text("[00:00.00]Line 1")
 
             with pytest.raises(StaleObjectError):
-                await client.upload_official_lrc("abc123", lrc_path, expected_etag="oldetag")
+                await client.upload_official_lrc(LRC_PREFIX, lrc_path, expected_etag="oldetag")
 
     @pytest.mark.asyncio
     async def test_upload_official_lrc_backup_failure_raises(self, mock_boto3):
         """upload_official_lrc raises BackupFailedError when copy_object fails."""
         from sow_analysis.storage.r2 import BackupFailedError
 
-        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+        mock_boto3.head_object.side_effect = _head_routing()
         mock_boto3.copy_object.side_effect = ClientError(
             {"Error": {"Code": "InternalError"}}, "CopyObject"
         )
@@ -220,12 +274,12 @@ class TestR2Client:
             lrc_path.write_text("[00:00.00]Line 1")
 
             with pytest.raises(BackupFailedError):
-                await client.upload_official_lrc("abc123", lrc_path)
+                await client.upload_official_lrc(LRC_PREFIX, lrc_path)
 
     @pytest.mark.asyncio
     async def test_upload_official_lrc_skip_backup(self, mock_boto3):
         """upload_official_lrc proceeds even if backup would fail when skip_backup=True."""
-        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+        mock_boto3.head_object.side_effect = _head_routing()
         mock_boto3.copy_object.side_effect = ClientError(
             {"Error": {"Code": "InternalError"}}, "CopyObject"
         )
@@ -235,43 +289,123 @@ class TestR2Client:
             lrc_path = Path(tmp) / "lyrics.lrc"
             lrc_path.write_text("[00:00.00]Line 1")
 
-            url = await client.upload_official_lrc("abc123", lrc_path, skip_backup=True)
+            url = await client.upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
 
         assert url == "s3://my-bucket/abc123/lyrics.lrc"
         mock_boto3.upload_file.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_upload_official_lrc_prunes_old_backups(self, mock_boto3):
-        """upload_official_lrc deletes oldest backups when count exceeds MAX_BACKUPS_PER_PREFIX."""
-        mock_boto3.head_object.return_value = {"ETag": '"etag"'}
+    async def test_list_objects_returns_key_and_last_modified(self, mock_boto3):
+        """list_objects() exposes LastModified so callers can order by it."""
+        ts = _utc(2026, 10, 22, 23, 9, 5)
+        mock_boto3.get_paginator.return_value = _paginate(
+            [{"Key": f"{LRC_PREFIX}/lyrics.backup.1.lrc", "LastModified": ts}]
+        )
+        client = R2Client("my-bucket", "https://r2.example.com")
 
-        # Mock paginator to return 6 backup objects
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {
-                "Contents": [
-                    {"Key": "abc123/lyrics.backup.1000.lrc"},
-                    {"Key": "abc123/lyrics.backup.2000.lrc"},
-                    {"Key": "abc123/lyrics.backup.3000.lrc"},
-                    {"Key": "abc123/lyrics.backup.4000.lrc"},
-                    {"Key": "abc123/lyrics.backup.5000.lrc"},
-                    {"Key": "abc123/lyrics.backup.6000.lrc"},
-                ]
-            }
+        assert await client.list_objects(f"{LRC_PREFIX}/lyrics.backup.") == [
+            (f"{LRC_PREFIX}/lyrics.backup.1.lrc", ts)
         ]
-        mock_boto3.get_paginator.return_value = mock_paginator
 
+    @pytest.mark.asyncio
+    async def test_upload_official_lrc_prunes_old_backups_by_last_modified(self, mock_boto3):
+        """Incident regression: prune orders by LastModified, not key integers."""
+        newest = _utc(2026, 10, 22, 23, 44, 0)
+        newest_ms = int(newest.timestamp() * 1000)
+        oldest_key = _backup_key(1792710546483)
+        manual_key = _backup_key(357735493)
+        mock_boto3.head_object.side_effect = _head_routing()
+        mock_boto3.get_paginator.return_value = _paginate(
+            _objects(
+                [
+                    (_backup_key(1792711476891), _utc(2026, 10, 22, 23, 24, 35)),
+                    (manual_key, _utc(2026, 10, 22, 23, 27, 44)),
+                    (oldest_key, _utc(2026, 10, 22, 23, 9, 5)),
+                    (_backup_key(358288869), _utc(2026, 10, 22, 23, 36, 58)),
+                    (_backup_key(358431311), _utc(2026, 10, 22, 23, 39, 20)),
+                    (_backup_key(newest_ms), newest),
+                ]
+            )
+        )
         client = R2Client("my-bucket", "https://r2.example.com")
 
         with tempfile.TemporaryDirectory() as tmp:
             lrc_path = Path(tmp) / "lyrics.lrc"
             lrc_path.write_text("[00:00.00]Line 1")
 
-            await client.upload_official_lrc("abc123", lrc_path)
+            with patch("sow_analysis.storage.r2.time.time", return_value=newest.timestamp()):
+                url = await client.upload_official_lrc(LRC_PREFIX, lrc_path)
 
-        mock_boto3.delete_object.assert_called_once_with(
-            Bucket="my-bucket", Key="abc123/lyrics.backup.1000.lrc"
-        )
+        assert url == "s3://my-bucket/abc123/lyrics.lrc"
+        deleted = [c.kwargs["Key"] for c in mock_boto3.delete_object.call_args_list]
+        assert deleted == [oldest_key]
+        assert manual_key not in deleted
+
+    @pytest.mark.asyncio
+    async def test_prune_delete_failure_is_logged_and_continues(self, mock_boto3, caplog):
+        """A failed delete is logged, and the remaining keys are still deleted."""
+        pairs = [(_backup_key(1000 + i), _utc(2026, 1, 1, 0, 7 - i)) for i in range(8)]
+        mock_boto3.head_object.side_effect = _head_routing()
+        mock_boto3.get_paginator.return_value = _paginate(_objects(pairs))
+        failing_key = _backup_key(1006)
+
+        def _delete(**kwargs):
+            if kwargs["Key"] == failing_key:
+                raise ClientError(
+                    {"Error": {"Code": "InternalError", "Message": "boom"}}, "DeleteObject"
+                )
+
+        mock_boto3.delete_object.side_effect = _delete
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            with caplog.at_level(logging.WARNING):
+                url = await client.upload_official_lrc(LRC_PREFIX, lrc_path, skip_backup=True)
+
+        assert url == "s3://my-bucket/abc123/lyrics.lrc"
+        attempted = [c.kwargs["Key"] for c in mock_boto3.delete_object.call_args_list]
+        assert attempted == [_backup_key(1007), failing_key, _backup_key(1005)]
+        assert failing_key in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_collision_guard_raises_after_ten_occupied_slots(self, mock_boto3):
+        """Backup creation never overwrites an occupied key."""
+        from sow_analysis.storage.r2 import BackupFailedError
+
+        occupied = {_backup_key(BASE_MS + i) for i in range(10)}
+        mock_boto3.head_object.side_effect = _head_routing(occupied=occupied)
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            with patch("sow_analysis.storage.r2.time.time", return_value=BASE_MS / 1000):
+                with pytest.raises(BackupFailedError, match="free backup key"):
+                    await client.upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        mock_boto3.copy_object.assert_not_called()
+        mock_boto3.upload_file.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collision_guard_uses_next_free_millisecond(self, mock_boto3):
+        occupied = {_backup_key(BASE_MS), _backup_key(BASE_MS + 1)}
+        mock_boto3.head_object.side_effect = _head_routing(occupied=occupied)
+        client = R2Client("my-bucket", "https://r2.example.com")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc_path = Path(tmp) / "lyrics.lrc"
+            lrc_path.write_text("[00:00.00]Line 1")
+
+            with patch("sow_analysis.storage.r2.time.time", return_value=BASE_MS / 1000):
+                await client.upload_official_lrc(LRC_PREFIX, lrc_path)
+
+        copied_key = mock_boto3.copy_object.call_args.kwargs["Key"]
+        assert copied_key == _backup_key(BASE_MS + 2)
+        assert copied_key not in occupied
 
 
 class TestBeatGridR2:
