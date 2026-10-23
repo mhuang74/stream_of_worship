@@ -378,6 +378,77 @@ class TestAudioSingleTargetGuards:
 
 
 # ---------------------------------------------------------------------------
+# Manual lyrics writers
+# ---------------------------------------------------------------------------
+
+
+class TestManualLyricsWriterGuards:
+    def test_lyrics_upload_refuses_published(self, tmp_path):
+        lrc_file = tmp_path / "song.lrc"
+        lrc_file.write_text("[00:01.00]line one\n", encoding="utf-8")
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording()
+        r2_client_cls = MagicMock()
+
+        with (
+            patch.object(lyrics_commands, "AdminConfig") as config_cls,
+            patch.object(lyrics_commands, "get_db_client", return_value=db_client),
+            patch.object(lyrics_commands, "R2Client", r2_client_cls),
+        ):
+            config_cls.load.return_value = config_cls.return_value
+            result = runner.invoke(
+                lyrics_commands.app, ["upload", "song_1", str(lrc_file)]
+            )
+
+        assert result.exit_code == 1, result.output
+        assert REMEDIATION in _flat(result.output)
+        r2_client_cls.assert_not_called()
+        db_client.update_recording_lrc.assert_not_called()
+
+    def test_lyrics_upload_structured_refuses_published(self, tmp_path):
+        """Also blocks the first-time population path for a published song."""
+        lyrics_file = tmp_path / "song.txt"
+        lyrics_file.write_text("[Verse]\nline one\n", encoding="utf-8")
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording(
+            visibility_status="published"
+        )
+
+        with (
+            patch.object(lyrics_commands, "AdminConfig") as config_cls,
+            patch.object(lyrics_commands, "get_db_client", return_value=db_client),
+        ):
+            config_cls.load.return_value = config_cls.return_value
+            result = runner.invoke(
+                lyrics_commands.app,
+                ["upload-structured", "song_1", str(lyrics_file)],
+            )
+
+        assert result.exit_code == 1, result.output
+        assert REMEDIATION in _flat(result.output)
+        db_client.update_recording_structured_lyrics.assert_not_called()
+
+    def test_lyrics_edit_refuses_published(self):
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording()
+        session = MagicMock()
+
+        with (
+            patch.object(lyrics_commands, "AdminConfig") as config_cls,
+            patch.object(lyrics_commands, "get_db_client", return_value=db_client),
+            patch.object(lyrics_commands, "R2Client", MagicMock()),
+            patch.object(lyrics_commands, "_resolve_feedback_user_id", return_value=None),
+            patch.object(lyrics_commands, "_run_editor_session", session),
+        ):
+            config_cls.load.return_value = config_cls.return_value
+            result = runner.invoke(lyrics_commands.app, ["edit", "song_1"])
+
+        assert result.exit_code == 1, result.output
+        assert REMEDIATION in _flat(result.output)
+        session.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Batch submit helpers
 # ---------------------------------------------------------------------------
 
@@ -451,6 +522,25 @@ class TestBatchSubmitHelpers:
         assert (job_id, status) == (None, "skipped_published")
         assert results["song_1"]["components"] == "skipped_published"
         analysis_client.submit_component_analysis.assert_not_called()
+
+    def test_batch_download_skips_published(self):
+        """`audio batch` must not re-acquire audio for a published recording."""
+        recording = _make_recording()
+        recording.download_status = "pending"
+        recording.r2_audio_url = None
+        db_client = MagicMock()
+        r2_client = MagicMock()
+        console, buffer = _console()
+
+        result = audio_commands._download_if_needed(
+            "song_1", recording, db_client, r2_client, console
+        )
+
+        assert result["download"] == "skipped_published"
+        r2_client.audio_exists.assert_not_called()
+        db_client.update_recording_download.assert_not_called()
+        db_client.update_recording_r2_url.assert_not_called()
+        assert "demote first" in buffer.getvalue()
 
     def test_advance_song_continues_past_skipped_published(self):
         """A published skip must not fail or stall the step chain."""
