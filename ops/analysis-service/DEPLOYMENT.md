@@ -20,8 +20,7 @@ The Analysis Service is a single microservice (port 8000) that handles audio ana
 ### Required Software
 
 - Docker Engine 24.0+ with Docker Compose plugin
-- Internet access (for downloading models and images)
-- Optional: NVIDIA Container Toolkit (for GPU acceleration)
+- Internet access (for pulling images; ML weights live in Modal volumes)
 
 ### External Services
 
@@ -383,14 +382,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    # Uncomment below for GPU support
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
 
 # ============================================================================
 # Persistent Volumes

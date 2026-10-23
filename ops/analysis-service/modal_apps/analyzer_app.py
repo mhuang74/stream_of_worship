@@ -117,7 +117,12 @@ image = (
         "print(\"[sow-analyzer] imports OK\", natten.__version__)'"
     )
     # Silence NATTEN C++ runtime logs at inference (useless noise in a GPU container).
-    .env({"NATTEN_LOG_LEVEL": "error"})
+    # TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1: torch 2.6 defaults torch.load to
+    # weights_only=True, and allin1's loaders.py:55 calls it unguarded, then reads
+    # checkpoint['config'] (an OmegaConf object) — which the weights-only unpickler's
+    # allowlist rejects. These are trusted taejunkim/allinone checkpoints; overriding
+    # here keeps the failure out of the first cold-start request.
+    .env({"NATTEN_LOG_LEVEL": "error", "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": "1"})
 )
 model_volume = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
@@ -363,6 +368,8 @@ class SongAnalyzer:
         import time
         import traceback
         from datetime import datetime, timezone
+
+        import pathlib
 
         started = time.time()
         print(

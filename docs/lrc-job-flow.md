@@ -304,7 +304,6 @@ The `stage` field tracks progress through the pipeline:
 | `SOW_LLM_API_KEY` | For LLM steps | — | OpenRouter/OpenAI API key |
 | `SOW_LLM_BASE_URL` | For LLM steps | — | e.g., `https://openrouter.ai/api/v1` |
 | `SOW_LLM_MODEL` | For LLM steps | — | e.g., `openai/gpt-4o-mini` |
-| `SOW_WHISPER_CACHE_DIR` | No | `/cache/whisper` | Whisper model cache directory (legacy; Whisper runs on Modal, its cache lives in the `sow-whisper-models` Modal volume) |
 | `SOW_YOUTUBE_PROXY` | No | — | Proxy for YouTube transcript requests |
 | `SOW_YOUTUBE_PROXY_RETRIES` | No | `3` | Retries on HTTP 429 for proxy |
 

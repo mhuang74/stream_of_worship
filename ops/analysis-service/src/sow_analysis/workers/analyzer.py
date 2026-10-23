@@ -7,6 +7,7 @@ fast-analyze (tempo, key, loudness).
 
 import asyncio
 import logging
+import shutil
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -17,10 +18,7 @@ import librosa
 import numpy as np
 
 from ..config import settings
-from ..services.modal_analyzer_client import (
-    ModalAnalyzerError,
-    get_modal_analyzer_client,
-)
+from ..services.modal_analyzer_client import get_modal_analyzer_client
 from ..storage.cache import CacheManager
 from . import cps as cps_module
 
@@ -271,20 +269,23 @@ async def analyze_audio(
             logger.info(f"Cache hit for analysis result: {content_hash[:16]}...")
             if output_stems_dir is not None:
                 # Re-materialize stems from the cache instead of paying a second
-                # GPU pass (allin1 + htdemucs demix) just for the WAVs.
+                # GPU pass (allin1 + htdemucs demix) just for the WAVs. On a
+                # stems-cache miss (song analyzed with generate_stems=false, or
+                # stems pruned locally), pay one Modal call for the stems only —
+                # never hard-fail a job the old local path could backfill.
                 stems_hit = cache_manager.get_stems_dir(content_hash)
                 if stems_hit is None:
-                    raise ModalAnalyzerError(
+                    logger.info(
                         f"Analysis cache hit but stems cache miss for "
-                        f"{content_hash[:16]}... — resubmit with force=true to "
-                        "re-run the full Modal analysis"
+                        f"{content_hash[:16]}... — running Modal stems-only backfill"
                     )
-                import shutil
-
-                output_stems_dir.mkdir(parents=True, exist_ok=True)
-                for stem in ("bass", "drums", "other", "vocals"):
-                    shutil.copy2(str(Path(stems_hit) / f"{stem}.wav"), str(output_stems_dir / f"{stem}.wav"))
-                logger.info(f"Stems served from cache: {content_hash[:16]}...")
+                    client = get_modal_analyzer_client()
+                    await client.analyze(audio_path, output_stems_dir=output_stems_dir)
+                else:
+                    output_stems_dir.mkdir(parents=True, exist_ok=True)
+                    for stem in ("bass", "drums", "other", "vocals"):
+                        shutil.copy2(str(Path(stems_hit) / f"{stem}.wav"), str(output_stems_dir / f"{stem}.wav"))
+                    logger.info(f"Stems served from cache: {content_hash[:16]}...")
             return cached
 
     # Run Modal analysis (the client is async; retry ladder lives there).

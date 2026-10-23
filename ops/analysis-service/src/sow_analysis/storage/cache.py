@@ -57,29 +57,23 @@ class CacheManager:
     def get_analysis_result(self, content_hash: str) -> Optional[dict]:
         """Check if analysis result exists in cache.
 
+        Only the av-versioned full-tier file is read ({hash32}.json legacy files
+        written by the pre-Modal local-CPU analyzer are treated as a miss —
+        SOW_ANALYSIS_CACHE_VERSION exists precisely to segregate those).
+
         Args:
             content_hash: Full SHA-256 content hash
 
         Returns:
             Cached result dict or None
         """
-        hash_prefix = self._get_hash_prefix(content_hash)
-        cache_files = [
-            self._versioned_analysis_file(content_hash),
-            self.cache_dir / f"{hash_prefix}.json",
-        ]
-
-        for index, cache_file in enumerate(cache_files):
-            if not cache_file.exists():
-                continue
-            try:
-                data = json.loads(cache_file.read_text())
-                if index > 0:
-                    data.setdefault("key_algorithm_version", "ks_fulltrack_v1")
-                return data
-            except (json.JSONDecodeError, IOError):
-                continue
-        return None
+        cache_file = self._versioned_analysis_file(content_hash)
+        if not cache_file.exists():
+            return None
+        try:
+            return json.loads(cache_file.read_text())
+        except (json.JSONDecodeError, IOError):
+            return None
 
     def get_stems_dir(self, content_hash: str) -> Optional[Path]:
         """Check if stems exist in cache.
@@ -131,9 +125,17 @@ class CacheManager:
             Cached fast result dict or None (also None on corrupt JSON)
         """
         hash_prefix = self._get_hash_prefix(content_hash)
+        # Tier 2 is the pre-av legacy fast file ({hash32}.v{KEY}_fast.json built
+        # by the local-CPU era). _versioned_analysis_file would now prefix it
+        # with av{SOW_ANALYSIS_CACHE_VERSION}, a name the legacy writer never
+        # produced — build the plain legacy name directly.
+        legacy_v4_fast = (
+            self.cache_dir
+            / f"{hash_prefix}.v{settings.KEY_ALGORITHM_VERSION}_fast.json"
+        )
         cache_files = [
             self._versioned_fast_file(content_hash),
-            self._versioned_analysis_file(content_hash, "_fast"),
+            legacy_v4_fast,
             self.cache_dir / f"{hash_prefix}_fast.json",
         ]
 
