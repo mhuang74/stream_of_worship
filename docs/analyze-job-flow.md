@@ -4,7 +4,7 @@
 
 The Stream of Worship platform has **two analysis tiers**, both served by the Analysis Service (FastAPI in Docker) but reached through different Admin CLI commands and different HTTP endpoints:
 
-1. **Full Analysis** (`audio analyze <song_id>`) — invokes `allin1.analyze()` for structural analysis (beats, downbeats, sections, embeddings) plus librosa-based key detection and (optional) Demucs stem separation. Heavy ML; runs in Docker because `allin1` depends on `natten` native libs that don't work on Apple Silicon macOS.
+1. **Full Analysis** (`audio analyze <song_id>`) — one Modal call (`sow-analyzer`: allin1 harmonix-all + internal Demucs htdemucs demix + madmom) for structural analysis, beats/downbeats/sections/embeddings, and (optional) 4-stem separation; librosa-only key/loudness detection runs locally after the call.
 
 2. **Fast Analysis** (`audio batch --analyze [--analysis-tier fast]`) — librosa-only. Produces just the fast-tier subset: duration, tempo, key, mode, key confidence, loudness. No `allin1`, no beats/sections/embeddings, no stems. The default tier for `audio batch`.
 
@@ -13,7 +13,7 @@ The Stream of Worship platform has **two analysis tiers**, both served by the An
 - **Two distinct CLI entry points**: `audio analyze` (single recording, full tier only) vs `audio batch` (multi-recording, tier selectable via `--analysis-tier fast|full`, default `fast`).
 - **Two distinct HTTP endpoints**: `POST /api/v1/jobs/analyze` (full) vs `POST /api/v1/jobs/fast-analyze` (fast). Both require Bearer auth via `SOW_ANALYSIS_API_KEY`.
 - **Two distinct JobType values**: `ANALYZE` vs `FAST_ANALYZE` (`ops/analysis-service/src/sow_analysis/models.py:21-29`).
-- **Two distinct concurrency semaphores** in the worker: `_local_model_semaphore` (allin1/demucs, default 1) vs `_fast_analyze_semaphore` (librosa-only, default cgroup-aware). They do not coordinate — operators size both together (`ops/analysis-service/src/sow_analysis/workers/queue.py:166-173`).
+- **Two distinct concurrency semaphores** in the worker: `_analyze_semaphore` (full analysis, `SOW_ANALYZE_MAX_CONCURRENT` default 2; the GPU work runs on Modal with `max_containers=2`) vs `_fast_analyze_semaphore` (librosa-only, default cgroup-aware). They do not coordinate — operators size both together.
 - **Two distinct caches**: full results at `{hash_prefix}.v{version}.json`, fast results at `{hash_prefix}_fast.v{version}.json`. Fast never overwrites full (`ops/analysis-service/src/sow_analysis/storage/cache.py:36, 95`).
 - **Two distinct DB statuses on success**: `completed` (full) vs `partial` (fast). Recordings with `partial` can be later upgraded to `completed` by re-running with `--analysis-tier full`.
 - **Persistence**: Job state in local SQLite (`{CACHE_DIR}/jobs.db`), full-tier results uploaded to Cloudflare R2 as `{hash_prefix}.json`, both tiers' results written back to Postgres by the CLI on completion.
@@ -41,18 +41,18 @@ flowchart TD
 
     subgraph Worker["Background Worker (queue.py:349 process_jobs)"]
         F{"_process_job_with_semaphore<br/>dispatch by JobType<br/>queue.py:380"}
-        G1["_local_model_semaphore<br/>queue.py:166<br/>SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1"]
+        G1["_analyze_semaphore<br/>queue.py<br/>SOW_ANALYZE_MAX_CONCURRENT=2"]
         G2["_fast_analyze_semaphore<br/>queue.py:173<br/>SOW_FAST_ANALYZE_MAX_CONCURRENT=0 (auto)"]
         H1["_process_analysis_job<br/>queue.py:439"]
         H2["_process_fast_analyze_job<br/>queue.py:616"]
     end
 
     subgraph Analyzer["Analyzer (workers/analyzer.py)"]
-        I1["analyze_audio<br/>analyzer.py:226<br/>import allin1 + librosa"]
-        I2["analyze_audio_fast<br/>analyzer.py:347<br/>librosa only"]
+        I1["analyze_audio<br/>analyzer.py<br/>Modal client + librosa"]
+        I2["analyze_audio_fast<br/>analyzer.py<br/>librosa only"]
         I1a["cache_manager.get_analysis_result<br/>(skip if hit, unless force)"]
         I2a["cache_manager.get_fast_analyze_result<br/>(skip if hit, unless force)"]
-        I1b["allin1.analyze(audio_path,<br/>out_dir, include_embeddings=True)"]
+        I1b["modal_analyzer_client.analyze()<br/>(allin1 + htdemucs on Modal)"]
         I2b["librosa.beat.tempo +<br/>detect_key + compute_loudness"]
         I1c["detect_key(y, sr, sections)<br/>KEY_ALGORITHM_VERSION"]
         I2c["detect_key(y, sr, None)"]
@@ -61,7 +61,7 @@ flowchart TD
     end
 
     subgraph Finalize["Finalize"]
-        J1["Optional Demucs stems<br/>queue.py:527-548<br/>upload stems to R2"]
+        J1["Stems from the same Modal analyze() call<br/>upload stems to R2"]
         K1["Upload result JSON to R2<br/>{hash_prefix}.json<br/>queue.py:551-556"]
         K2["No R2 upload<br/>(fast results stay in cache only)"]
         L["job.status=COMPLETED<br/>persist to SQLite jobs.db"]
@@ -178,22 +178,21 @@ async def submit_analysis_job(
 
 **File:** `ops/analysis-service/src/sow_analysis/workers/queue.py:439-614`
 
-The dispatcher (`_process_job_with_semaphore`, queue.py:380) acquires `_local_model_semaphore` for the entire job (queue.py:391), then calls `_process_analysis_job`:
+The dispatcher (`_process_job_with_semaphore`) acquires `_analyze_semaphore` for the entire job, then calls `_process_analysis_job`:
 
 1. Sets state `PROCESSING / downloading / 0.1`, persists to SQLite (queue.py:449-460).
-2. Validates dependency availability — `analyze_audio` and `separate_stems` must be importable (queue.py:476-490).
 3. Initializes R2 client if `SOW_R2_ENDPOINT_URL` set (queue.py:493-495).
 4. Downloads audio from R2 into a `tempfile.TemporaryDirectory()` as `audio.mp3` (queue.py:500-509).
 5. Sets stage `analyzing / 0.3` (queue.py:511-512).
-6. Calls `analyze_audio(audio_path, cache_manager, content_hash, force=...)` (queue.py:516-521).
-7. (Optional) If `generate_stems`, calls `separate_stems()` (Demucs), uploads stems to R2 (queue.py:527-548).
+6. Calls `analyze_audio(audio_path, cache_manager, content_hash, force=..., output_stems_dir=stems_dir)` — ONE Modal call produces analysis AND (when `generate_stems`) the four Demucs stems.
+7. When stems were requested, persists them to the stems cache (`cache/stems/{hash12}/`) and uploads to R2.
 8. Uploads analysis result JSON to R2 as `{hash_prefix}.json` (queue.py:551-556).
 9. Builds `JobResult` with all fields (queue.py:561-578), sets `COMPLETED / 1.0` (queue.py:580-582).
 10. Persists completion to SQLite (queue.py:588-597).
 
-### The `allin1.analyze()` invocation — `analyze_audio`
+### The Modal analyzer call — `analyze_audio`
 
-**File:** `ops/analysis-service/src/sow_analysis/workers/analyzer.py:226-344`
+**File:** `ops/analysis-service/src/sow_analysis/workers/analyzer.py`
 
 ```python
 async def analyze_audio(
@@ -202,58 +201,43 @@ async def analyze_audio(
     content_hash: str,
     *,
     force: bool = False,
+    output_stems_dir: Optional[Path] = None,
 ) -> dict:
-    import allin1
-
-    # 1. Cache check (analyzer.py:254-259)
+    # 1. Analysis-result cache (av{SOW_ANALYSIS_CACHE_VERSION}-prefixed file);
+    #    on a hit with output_stems_dir set, stems are re-served from the
+    #    stems cache instead of a second GPU pass.
     if not force:
         cached = cache_manager.get_analysis_result(content_hash)
         if cached:
-            return cached
+            ... # re-materialize stems from cache when requested; return cached
 
-    # 2. Load audio (analyzer.py:263-267)
+    # 2. ONE Modal call (sow-analyzer): allin1 harmonix-all (bpm/beats/
+    #    downbeats/sections/embeddings) + internal htdemucs demix. The four
+    #    stem WAVs are written into output_stems_dir when given.
+    client = get_modal_analyzer_client()
+    modal_result = await client.analyze(audio_path, output_stems_dir=output_stems_dir)
+
+    # 3. Local librosa pass for key/duration/loudness (librosa is a hard
+    #    container dependency for fast-analyze anyway).
     y, sr = librosa.load(str(audio_path), sr=None, mono=True)
     duration = librosa.get_duration(y=y, sr=sr)
 
-    # 3. Run allin1.analyze() in thread pool — it's blocking (analyzer.py:277-286)
-    loop = asyncio.get_event_loop()
-    with tempfile.TemporaryDirectory() as temp_dir:
-        def run_allin1():
-            return allin1.analyze(
-                str(audio_path),
-                out_dir=temp_dir,
-                visualize=False,
-                include_embeddings=True,
-                sonify=False,
-            )
-        result = await loop.run_in_executor(None, run_allin1)
+    # 4. Key detection — Krumhansl-Schmuckler over the Modal sections
+    key_result = detect_key(y, sr, modal_result["sections"])
 
-    # 4. Extract allin1 results (analyzer.py:291-311)
-    bpm = result.bpm
-    beats = result.beats.tolist() if isinstance(result.beats, np.ndarray) else list(result.beats)
-    downbeats = result.downbeats.tolist() if isinstance(result.downbeats, np.ndarray) else list(result.downbeats)
-    sections = [
-        {"label": seg.label, "start": seg.start, "end": seg.end}
-        for seg in result.segments
-    ]
-    embeddings_shape = list(result.embeddings.shape)
-
-    # 5. Key detection (analyzer.py:316) — Krumhansl-Schmuckler
-    key_result = detect_key(y, sr, sections)
-
-    # 6. Loudness (analyzer.py:324) — RMS-based dB
+    # 5. Loudness — RMS-based dB
     loudness_db = compute_loudness(y)
 
-    # 7. Build + cache result (analyzer.py:329-344)
+    # 6. Build + cache result
     analysis_result = {
         "duration_seconds": duration,
-        "tempo_bpm": bpm,
+        "tempo_bpm": modal_result["tempo_bpm"],
         **key_result.to_analysis_fields(),
         "loudness_db": loudness_db,
-        "beats": beats,
-        "downbeats": downbeats,
-        "sections": sections,
-        "embeddings_shape": embeddings_shape,
+        "beats": modal_result["beats"],
+        "downbeats": modal_result["downbeats"],
+        "sections": modal_result["sections"],
+        "embeddings_shape": modal_result["embeddings_shape"],
     }
     cache_manager.save_analysis_result(content_hash, analysis_result)
     return analysis_result
@@ -261,7 +245,7 @@ async def analyze_audio(
 
 ### Key detection algorithm selection
 
-**File:** `ops/analysis-service/src/sow_analysis/workers/analyzer.py:200-208`
+**Function:** `detect_key` in `ops/analysis-service/src/sow_analysis/workers/analyzer.py`
 
 ```python
 def detect_key(y, sr, segments=None) -> KeyDetectionResult:
@@ -275,7 +259,7 @@ def detect_key(y, sr, segments=None) -> KeyDetectionResult:
     raise ValueError(f"Unsupported KEY_ALGORITHM_VERSION: {algorithm}")
 ```
 
-Default `KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"` (`config.py:27`) — Krumhansl-Schmuckler voted per-section using the allin1 segments as analysis windows.
+Default `KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"` — Krumhansl-Schmuckler voted per-section using the Modal analyzer's sections as analysis windows.
 
 ## Fast Analysis Path
 
@@ -390,7 +374,7 @@ The dispatcher (`_process_job_with_semaphore`, queue.py:409-418) acquires `_fast
 
 ### The librosa-only analyzer — `analyze_audio_fast`
 
-**File:** `ops/analysis-service/src/sow_analysis/workers/analyzer.py:347-440`
+**File:** `ops/analysis-service/src/sow_analysis/workers/analyzer.py` (`analyze_audio_fast`)
 
 ```python
 async def analyze_audio_fast(
@@ -401,7 +385,7 @@ async def analyze_audio_fast(
     hop_length: int = 4096,
     force: bool = False,
 ) -> dict:
-    # 1. Cache check (analyzer.py:377-381) — distinct from full-tier cache
+    # 1. Cache check — distinct from full-tier cache
     if not force:
         cached = cache_manager.get_fast_analyze_result(content_hash)
         if cached:
@@ -409,14 +393,14 @@ async def analyze_audio_fast(
 
     loop = asyncio.get_event_loop()
 
-    # 2. Load audio (analyzer.py:389-394)
+    # 2. Load audio
     def _load_audio():
         y, sr = librosa.load(str(audio_path), sr=sample_rate, mono=True)
         duration = librosa.get_duration(y=y, sr=sr)
         return y, sr, duration
     y, sr, duration = await loop.run_in_executor(None, _load_audio)
 
-    # 3. Tempo via librosa.beat.tempo (analyzer.py:402-409)
+    # 3. Tempo via librosa.beat.tempo
     def _compute_tempo() -> float:
         onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
         tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
@@ -425,13 +409,13 @@ async def analyze_audio_fast(
         return float(tempo)
     bpm = await loop.run_in_executor(None, _compute_tempo)
 
-    # 4. Key detection (analyzer.py:416) — segments=None (no allin1 sections available)
+    # 4. Key detection — segments=None (fast path has no sections windows)
     key_result = await loop.run_in_executor(None, detect_key, y, sr, None)
 
-    # 5. Loudness (analyzer.py:424)
+    # 5. Loudness
     loudness_db = await loop.run_in_executor(None, compute_loudness, y)
 
-    # 6. Build + cache result (analyzer.py:430-438)
+    # 6. Build + cache result
     analysis_result = {
         "duration_seconds": duration,
         "tempo_bpm": bpm,
@@ -442,7 +426,7 @@ async def analyze_audio_fast(
     return analysis_result
 ```
 
-Note: `detect_key` is called with `segments=None` for fast tier. With the default `KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"`, this routes to `detect_key_segment_vote(y, sr, None, ...)` which falls back to fixed-window voting rather than per-section voting (analyzer.py:206-207).
+Note: `detect_key` is called with `segments=None` for fast tier. With the default `KEY_ALGORITHM_VERSION = "ks_segment_vote_v1"`, this routes to `detect_key_segment_vote(y, sr, None, ...)` which falls back to fixed-window voting rather than per-section voting.
 
 ## Endpoints & Auth
 
@@ -480,7 +464,7 @@ class JobType(str, Enum):
 
 class AnalyzeOptions(BaseModel):
     generate_stems: bool = True
-    stem_model: str = "htdemucs"
+    # The stem model is fixed to htdemucs inside sow-analyzer.
     force: bool = False
 
 
@@ -504,29 +488,27 @@ class FastAnalyzeJobRequest(BaseModel):
 
 ## Queue Semaphore Isolation
 
-**File:** `ops/analysis-service/src/sow_analysis/workers/queue.py:164-173`
-
 ```python
-# Global semaphore for local model execution (Qwen3, allin1, demucs)
-self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
+# Global semaphore for full analysis (Modal sow-analyzer calls)
+self._analyze_semaphore = asyncio.Semaphore(settings.SOW_ANALYZE_MAX_CONCURRENT)
 # ...
 # Separate semaphore for fast analysis (librosa-only, CPU/memory heavy).
-# Distinct from _local_model_semaphore (allin1/demucs) so fast and full
-# analysis do not coordinate; operator sizes both together.
+# Distinct from _analyze_semaphore so fast and full analysis do not
+# coordinate; operator sizes both together.
 self._fast_analyze_semaphore = asyncio.Semaphore(settings.SOW_FAST_ANALYZE_MAX_CONCURRENT)
 ```
 
-Dispatch (`_process_job_with_semaphore`, queue.py:380-418):
+Dispatch (`_process_job_with_semaphore`):
 
 ```python
 if job.type == JobType.ANALYZE:
-    # Analysis always uses local models (allin1, demucs) - acquire semaphore for entire job
-    async with self._local_model_semaphore:
+    # Full analysis is one Modal call - acquire semaphore for entire job
+    async with self._analyze_semaphore:
         await self._process_analysis_job(job)
 # ...
 elif job.type == JobType.FAST_ANALYZE:
     # Fast analysis (librosa-only) uses its own semaphore, distinct from
-    # _local_model_semaphore (allin1/demucs) so the two do not coordinate.
+    # _analyze_semaphore so the two do not coordinate.
     async with self._fast_analyze_semaphore:
         latest = self._jobs.get(job.id, job)
         if latest.status == JobStatus.CANCELLED:
@@ -549,7 +531,7 @@ Two separate cache namespaces, both keyed by `content_hash` and versioned by `KE
 
 Fast results are saved atomically via `NamedTemporaryFile` + `os.replace` (cache.py:145-154) so a mid-write reader sees either the old or new file, never a partial.
 
-The `force` flag (passed through from `--force`) bypasses the cache check at the analyzer level (analyzer.py:255, 377). It does NOT delete the existing cache entry — it just re-runs the analysis and overwrites on save.
+The `force` flag (passed through from `--force`) bypasses the cache check at the analyzer level. It does NOT delete the existing cache entry — it just re-runs the analysis and overwrites on save.
 
 ## Persistence
 
@@ -603,10 +585,10 @@ The CLI writes results back to the `recordings` table on job completion:
 | `SOW_ADMIN_API_KEY` | same | 23 | `""` |
 | `CACHE_DIR` | same | 26 | `/cache` |
 | `KEY_ALGORITHM_VERSION` | same | 27 | `ks_segment_vote_v1` |
-| `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS` | same | 28 | `1` (allin1/demucs) |
+| `SOW_ANALYZE_MAX_CONCURRENT` | same | — | `2` (client-side cap; GPU queue lives on Modal) |
 | `SOW_FAST_ANALYZE_MAX_CONCURRENT` | same | 35 | `0` (auto: cgroup-aware, capped at 4) |
-| `SOW_DEMUCS_MODEL` | same | 59 | `htdemucs` |
-| `SOW_DEMUCS_DEVICE` | same | 60 | `cpu` |
+| `SOW_MODAL_ANALYZER_APP_NAME` / `SOW_MODAL_ANALYZER_CLASS_NAME` | same | — | `sow-analyzer` / `SongAnalyzer` |
+
 
 The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes when `<=0`: on Linux uses `min(4, max(1, len(os.sched_getaffinity(0)) // 2))`, on macOS falls back to `1`.
 
@@ -619,12 +601,12 @@ The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes 
 | HTTP endpoint | `POST /api/v1/jobs/analyze` | `POST /api/v1/jobs/fast-analyze` |
 | JobType | `ANALYZE` (`"analyze"`) | `FAST_ANALYZE` (`"fast_analyze"`) |
 | Request model | `AnalyzeJobRequest` / `AnalyzeOptions` | `FastAnalyzeJobRequest` / `FastAnalyzeOptions` |
-| Concurrency semaphore | `_local_model_semaphore` | `_fast_analyze_semaphore` |
-| Concurrency config | `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS` (default 1) | `SOW_FAST_ANALYZE_MAX_CONCURRENT` (default auto) |
-| Analyzer function | `analyze_audio` (analyzer.py:226) | `analyze_audio_fast` (analyzer.py:347) |
-| ML libraries | `allin1` + `librosa` + `demucs` (optional) | `librosa` only |
+| Concurrency semaphore | `_analyze_semaphore` | `_fast_analyze_semaphore` |
+| Concurrency config | `SOW_ANALYZE_MAX_CONCURRENT` (default 2) | `SOW_FAST_ANALYZE_MAX_CONCURRENT` (default auto) |
+| Analyzer function | `analyze_audio` | `analyze_audio_fast` |
+| ML libraries | allin1 + demucs + madmom (all on Modal `sow-analyzer`) + librosa (local key/loudness) | `librosa` only |
 | Output fields | duration, tempo, key/mode/confidence, loudness, **beats, downbeats, sections, embeddings_shape**, optional stems_url | duration, tempo, key/mode/confidence, loudness only |
-| Cache file | `{hash_prefix}.v{version}.json` | `{hash_prefix}_fast.v{version}.json` |
+| Cache file | `av{SOW_ANALYSIS_CACHE_VERSION}.{hash32}.v{version}.json` | `{hash_prefix}_fast.v{version}.json` |
 | R2 upload | Yes (`{hash_prefix}.json`) | No |
 | DB status on success | `completed` | `partial` (or stays `completed` if already completed) |
 | CLI wait support | Default (opt out with `--no-wait`) | No (batch uses its own poll loop) |
@@ -633,7 +615,7 @@ The `SOW_FAST_ANALYZE_MAX_CONCURRENT` validator (config.py:37-48) auto-computes 
 
 ## Prerequisites to Run
 
-1. **Start the Analysis Service in Docker** (only way to run `allin1` on macOS due to `natten` native libs):
+1. **Start the Analysis Service** (heavy ML runs on Modal `sow-analyzer`, not in this container):
    ```bash
    cd ops/analysis-service && docker compose up -d
    ```

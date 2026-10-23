@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 from .routes import debug_dumps, health, jobs
 from .routes.jobs import set_job_queue
+from .services.modal_analyzer_client import get_modal_analyzer_client
 from .services.modal_stem_separator_client import get_modal_stem_separator_client
 from .workers.llm_trace import DEBUG_DUMPS_URL_PATH
 from .workers.queue import JobQueue
@@ -79,7 +80,7 @@ async def lifespan(app: FastAPI):
 
     # Startup
     job_queue = JobQueue(
-        max_concurrent_local_model=settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS,
+        max_concurrent_analyze=settings.SOW_ANALYZE_MAX_CONCURRENT,
         cache_dir=settings.CACHE_DIR,
     )
 
@@ -161,13 +162,29 @@ async def lifespan(app: FastAPI):
             "once MVSEP is unavailable (there is no in-container fallback)"
         )
 
+    # Create the Modal analyzer client (sow-analyzer): backs full ANALYZE jobs and
+    # madmom beat-grid detection misses. There is no in-container fallback.
+    analyzer_client = get_modal_analyzer_client()
+    job_queue.set_analyzer_client(analyzer_client)
+    logger.info(
+        "Modal analyzer client: app=%s class=%s configured=%s",
+        analyzer_client.app_name,
+        analyzer_client.class_name,
+        analyzer_client.is_configured,
+    )
+    if not analyzer_client.is_configured:
+        logger.warning(
+            "MODAL_TOKEN_ID/MODAL_TOKEN_SECRET are not set: ANALYZE jobs will fail with "
+            "ModalAnalyzerConfigError (there is no in-container fallback)"
+        )
+
     # Log startup configuration (non-sensitive values only)
     headers = ("Category", "Setting", "Value")
     config_rows = [
         (
             "Processing",
-            "max_concurrent_local_model",
-            str(settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS),
+            "max_concurrent_analyze",
+            str(settings.SOW_ANALYZE_MAX_CONCURRENT),
         ),
         (
             "Processing",
@@ -221,8 +238,15 @@ async def lifespan(app: FastAPI):
         ),
         ("Whisper", "allowed_models", settings.SOW_MODAL_WHISPER_ALLOWED_MODELS),
         ("Whisper", "max_attempts", str(settings.SOW_MODAL_WHISPER_MAX_ATTEMPTS)),
-        ("Demucs", "model", settings.SOW_DEMUCS_MODEL),
-        ("Demucs", "device", settings.SOW_DEMUCS_DEVICE),
+        ("Analyzer", "backend", "modal"),
+        (
+            "Analyzer",
+            "app",
+            f"{settings.SOW_MODAL_ANALYZER_APP_NAME}/{settings.SOW_MODAL_ANALYZER_CLASS_NAME}",
+        ),
+        ("Analyzer", "configured", str(bool(os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")))),
+        ("Analyzer", "max_attempts", str(settings.SOW_MODAL_ANALYZER_MAX_ATTEMPTS)),
+        ("Analyzer", "cache_version", str(settings.SOW_ANALYSIS_CACHE_VERSION)),
         ("Stem Separator", "backend", "modal"),
         (
             "Stem Separator",

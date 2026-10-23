@@ -79,28 +79,18 @@ from ..storage.cache import CacheManager
 from ..storage.db import JobStore
 from ..storage.r2 import R2Client
 
-# Optional imports for heavy dependencies
-try:
-    from .analyzer import analyze_audio, analyze_audio_fast
-    from .separator import separate_stems
-except ImportError:
-    analyze_audio = None
-    analyze_audio_fast = None
-    separate_stems = None
+# Heavy local ML is gone: full analysis runs on Modal via the analyzer client, so
+# analyze_audio imports unconditionally (librosa is a hard dependency). Stem
+# separation failover also runs on Modal — no local demucs anymore.
+from .analyzer import analyze_audio, analyze_audio_fast
 
-# Optional component extraction imports - require librosa
-try:
-    from .components import (
-        ComponentInstance,
-        extract_components,
-        _detect_downbeats_madmom,
-        get_or_detect_beat_grid,
-    )
-except ImportError:
-    extract_components = None
-    ComponentInstance = None
-    _detect_downbeats_madmom = None
-    get_or_detect_beat_grid = None
+# Component extraction: librosa is a hard dependency; beat-grid detection misses
+# route to the sow-analyzer Modal app (madmom), so the import is unconditional.
+from .components import (
+    ComponentInstance,
+    extract_components,
+    get_or_detect_beat_grid,
+)
 
 # Optional LRC imports - require openai
 try:
@@ -176,38 +166,38 @@ class JobQueue:
 
     def __init__(
         self,
-        max_concurrent_local_model: int = 1,
+        max_concurrent_analyze: int = 2,
         cache_dir: Path = Path("/cache"),
         db_path: Optional[Path] = None,
     ):
         """Initialize job queue.
 
         Args:
-            max_concurrent_local_model: Maximum concurrent local model executions
-                (allin1, demucs). Default 1 due to
-                memory constraints - only one local model can run at a time.
+            max_concurrent_analyze: Maximum concurrent full-analyze jobs. Caps the
+                client side while Modal max_containers=2 handles the GPU queue.
             cache_dir: Directory for caching results
             db_path: Path to job database (default: cache_dir / "jobs.db")
         """
-        self.max_concurrent_local_model = max_concurrent_local_model
+        self.max_concurrent_analyze = max_concurrent_analyze
         self.cache_manager = CacheManager(cache_dir)
         self.r2_client: Optional[R2Client] = None
         self._stem_separator: Optional[Any] = None
+        self._analyzer_client: Optional[Any] = None
         self._mvsep_client: Optional[Any] = None
         self._qwen3_client: Any = None
         self._mvsep_quota_waiter: Optional[Any] = None
         self._qwen3_quota_waiter: Optional[Any] = None
         self._jobs: Dict[str, Job] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
-        # Global semaphore for local model execution (allin1, demucs).
+        # Semaphore for full analyze jobs (one Modal call each; each holds a temp
+        # copy of the audio while Modal max_containers=2 queues the GPU side).
         # Whisper, Qwen3 ASR and stem separation run on Modal; none acquire this.
-        # Cloud operations (YouTube transcript, MVSEP, LLM alignment) don't acquire this.
-        self._local_model_semaphore = asyncio.Semaphore(max_concurrent_local_model)
+        self._analyze_semaphore = asyncio.Semaphore(max_concurrent_analyze)
         self._dashscope_asr_semaphore = asyncio.Semaphore(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)
         # Separate semaphore for embedding jobs (external API, no GPU needed)
         self._embedding_semaphore = asyncio.Semaphore(5)
         # Separate semaphore for fast analysis (librosa-only, CPU/memory heavy).
-        # Distinct from _local_model_semaphore (allin1/demucs) so fast and full
+        # Distinct from _analyze_semaphore (Modal full analysis) so fast and full
         # analysis do not coordinate; operator sizes both together.
         self._fast_analyze_semaphore = asyncio.Semaphore(settings.SOW_FAST_ANALYZE_MAX_CONCURRENT)
         # Separate semaphore for component analysis (librosa feature extraction, CPU/memory heavy).
@@ -244,6 +234,14 @@ class JobQueue:
             stem_separator: ModalStemSeparatorClient instance
         """
         self._stem_separator = stem_separator
+
+    def set_analyzer_client(self, analyzer_client: Any) -> None:
+        """Set the Modal analyzer client for full-analysis jobs.
+
+        Args:
+            analyzer_client: ModalAnalyzerClient instance
+        """
+        self._analyzer_client = analyzer_client
 
     def set_mvsep_client(self, mvsep_client: Any) -> None:
         """Set the MVSEP client for cloud stem separation.
@@ -480,15 +478,16 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} to WAITING in database: {e}")
 
         if job.type == JobType.ANALYZE:
-            # Analysis always uses local models (allin1, demucs) - acquire semaphore for entire job
-            async with self._local_model_semaphore:
+            # Full analysis is one Modal call — cap the client side (each in-flight
+            # job holds a temp audio copy) while Modal max_containers=2 queues the GPU.
+            async with self._analyze_semaphore:
                 await self._process_analysis_job(job)
         elif job.type == JobType.LRC:
             # LRC tries YouTube (cloud) first; forced alignment acquires the
-            # local-model semaphore inside its own job only. This outer
+            # forced-alignment concurrency inside its own job only. This outer
             # semaphore caps concurrently *executing* LRC tasks (restart-recovery
-            # fan-out herd). Whisper transcription is a remote Modal call, and
-            # stem separation runs locally only through the Modal failover.
+            # fan-out herd). Whisper transcription and stem separation failover
+            # are remote Modal calls.
             async with self._lrc_semaphore:
                 await self._process_lrc_job(job)
         elif job.type == JobType.STEM_SEPARATION:
@@ -578,23 +577,6 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
-        # Check if analysis dependencies are available
-        if analyze_audio is None or separate_stems is None:
-            job.status = JobStatus.FAILED
-            job.error_message = "Analysis dependencies not available (librosa, allin1, demucs)"
-            job.stage = "missing_dependencies"
-            job.updated_at = datetime.now(timezone.utc)
-            try:
-                await self.job_store.update_job(
-                    job.id,
-                    status="failed",
-                    stage="missing_dependencies",
-                    error_message="Analysis dependencies not available (librosa, allin1, demucs)",
-                )
-            except Exception as e:
-                logger.error(f"Failed to update job {job.id} in database: {e}")
-            return
-
         try:
             # Initialize R2 if not done
             if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
@@ -617,36 +599,26 @@ class JobQueue:
                 job.stage = "analyzing"
                 job.progress = 0.3
 
-                # Run analysis
-                logger.info("Starting audio analysis...")
+                # One Modal call does analysis AND (when requested) stems — allin1's
+                # internal htdemucs demix IS the stem producer. Cache hit with stems
+                # re-checks the stems cache inside analyze_audio so no second GPU
+                # pass burns just to re-materialize stems.
+                logger.info("Starting audio analysis (Modal: allin1 + htdemucs)...")
+                stems_dir = (temp_path / "stems") if request.options.generate_stems else None
                 analysis_result = await analyze_audio(
                     audio_path,
                     self.cache_manager,
                     request.content_hash,
                     force=request.options.force,
+                    output_stems_dir=stems_dir,
                 )
 
-                job.progress = 0.6
+                job.progress = 0.8
 
-                # Generate stems if requested
+                # Persist + upload stems if requested
                 stems_url = None
-                if request.options.generate_stems:
-                    job.stage = "separating"
-                    logger.info("Starting stem separation...")
-
-                    stems_dir = temp_path / "stems"
-                    await separate_stems(
-                        audio_path,
-                        stems_dir,
-                        model=request.options.stem_model,
-                        device=settings.SOW_DEMUCS_DEVICE,
-                        cache_manager=self.cache_manager,
-                        content_hash=request.content_hash,
-                    )
-
-                    job.progress = 0.8
-
-                    # Upload stems to R2
+                if stems_dir is not None:
+                    await self.cache_manager.save_stems(request.content_hash, stems_dir)
                     if self.r2_client:
                         hash_prefix = request.content_hash[:12]
                         stems_url = await self.r2_client.upload_stems(hash_prefix, stems_dir)
@@ -973,11 +945,7 @@ class JobQueue:
                 # components.json, so this consults the cache even when options.force is set.
                 # Detection scope is unchanged: only when snap_to_downbeat is requested.
                 downbeats = request.downbeats
-                if (
-                    request.options.snap_to_downbeat
-                    and not downbeats
-                    and get_or_detect_beat_grid is not None
-                ):
+                if request.options.snap_to_downbeat and not downbeats:
                     with step_timer("Beat grid lookup / madmom detection", logger):
                         audio_size_mb = audio_path.stat().st_size / (1024 * 1024)
                         logger.info(f"Beat grid: processing {audio_size_mb:.1f}MB audio file")

@@ -131,12 +131,12 @@ SOW_EMBEDDING_MODEL="text-embedding-3-small"
 # =============================================================================
 # OPTIONAL: PROCESSING CONFIGURATION
 # =============================================================================
-SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
-SOW_DEMUCS_DEVICE=cpu
+SOW_ANALYZE_MAX_CONCURRENT=2
 
-# Whisper, forced alignment and stem separation all run on Modal
-# (modal_apps/whisper_app.py, forced_aligner_app.py, stem_separator_app.py);
-# fill the tokens in on the server, then deploy each app.
+# Whisper, forced alignment, stem separation and full analysis (allin1, Demucs,
+# madmom) all run on Modal (modal_apps/whisper_app.py, forced_aligner_app.py,
+# stem_separator_app.py, analyzer_app.py); fill the tokens in on the server, then
+# deploy each app.
 MODAL_TOKEN_ID=""
 MODAL_TOKEN_SECRET=""
 SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
@@ -146,6 +146,12 @@ SOW_MODAL_STEM_CLASS_NAME="StemSeparator"
 SOW_MODAL_STEM_MAX_ATTEMPTS=2
 SOW_MODAL_STEM_RETRY_DELAY_SECONDS=5.0
 SOW_MODAL_STEM_MAX_AUDIO_BYTES=100000000
+SOW_MODAL_ANALYZER_APP_NAME="sow-analyzer"
+SOW_MODAL_ANALYZER_CLASS_NAME="SongAnalyzer"
+SOW_MODAL_ANALYZER_MAX_ATTEMPTS=2
+SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS=5.0
+SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES=150000000
+SOW_ANALYSIS_CACHE_VERSION=2
 
 # =============================================================================
 # OPTIONAL: MVSEP CLOUD API
@@ -189,7 +195,6 @@ services:
       - .env
     environment:
       CACHE_DIR: /cache
-      NATTEN_LOG_LEVEL: error
     volumes:
       - analysis-cache:/cache
     healthcheck:
@@ -269,8 +274,10 @@ print_summary() {
     echo "  - Docker Compose:    $DEPLOYMENT_DIR/docker-compose.yml"
     echo ""
     echo "Models:"
-    echo "  - Stem Separator:    Modal app sow-stems (no local model)"
+    echo "  - Whisper:           Modal app sow-whisper (no local model)"
     echo "  - Forced Aligner:    Modal app sow-forced-aligner (no local model)"
+    echo "  - Stem Separator:    Modal app sow-stems (no local model)"
+    echo "  - Full Analysis:     Modal app sow-analyzer (no local model)"
     echo ""
     echo "Useful Commands:"
     echo "  cd $DEPLOYMENT_DIR && docker compose logs -f"

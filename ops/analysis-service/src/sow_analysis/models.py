@@ -32,10 +32,13 @@ class JobType(str, Enum):
 
 
 class AnalyzeOptions(BaseModel):
-    """Options for analysis jobs."""
+    """Options for analysis jobs.
+
+    The stem model is fixed to allin1's internal ``htdemucs`` demix; there is no
+    per-request stem-model selection on the Modal analyzer.
+    """
 
     generate_stems: bool = True
-    stem_model: str = "htdemucs"
     force: bool = False
 
 

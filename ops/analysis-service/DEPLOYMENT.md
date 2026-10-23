@@ -65,32 +65,12 @@ sudo docker compose version
 sudo usermod -aG docker $USER
 ```
 
-### Optional: Install NVIDIA Container Toolkit (GPU)
-
-```bash
-# Add NVIDIA package repositories
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | \
-    sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
-    sudo tee /etc/apt/sources.list.d/nvidia-docker.list
-
-# Install nvidia-container-toolkit
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-
-# Restart Docker
-sudo systemctl restart docker
-
-# Verify GPU access
-sudo docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
-```
-
 ---
 
-## Step 2: Download ML Models
+## Step 2: Deploy the Modal Apps
 
-Models are **not included in the Docker image** and must be downloaded separately on the host. They are mounted as read-only volumes into the containers.
+No ML weights are ever downloaded on the host or into the analysis container — all
+models live in Modal volumes after a one-time `modal deploy` per app.
 
 ### 2.1 Stem Separator (no host download)
 
@@ -112,14 +92,29 @@ Qwen3-ForcedAligner checkpoint to download in this step. Deploy the app once wit
 Modal token and the volume handles the weights — see the Modal section in
 `README.md` ("Forced alignment on Modal").
 
-### 2.3 Model Storage Summary
+### 2.3 Full Analyzer (no download)
+
+Full analysis (allin1 harmonix-all, Demucs `htdemucs`, madmom) runs on Modal (the
+`sow-analyzer` app, `modal_apps/analyzer_app.py`). Deploy it once; the
+`sow-analyzer-models` volume caches all weights on Modal's side:
+
+```bash
+# From ops/analysis-service/, with MODAL_TOKEN_ID/MODAL_TOKEN_SECRET exported
+uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/analyzer_app.py
+```
+
+First cold start downloads harmonix-all (8 checkpoints) + htdemucs into the volume;
+allow up to 30 minutes of startup time (`startup_timeout=1800`).
+
+### 2.4 Model Storage Summary
 
 | Model | Location | Size |
 |-------|----------|------|
 | Stem separator (MelBand Roformer + UVR-De-Echo) | Modal volume `sow-stems-models` | ~2-3 GB (Modal-side) |
 | Qwen3 Forced Aligner | Modal volume `sow-forced-aligner-models` | ~2.4 GB (Modal-side) |
 | Whisper | Modal volume `sow-whisper-models` | ~1-3 GB per model (Modal-side) |
-| **Total (host)** | | **~0 GB** (Demucs/allin1 download lazily into the cache volume) |
+| Full analysis (harmonix-all + htdemucs + madmom) | Modal volume `sow-analyzer-models` | ~1.5 GB (Modal-side) |
+| **Total (host)** | | **~0 GB** (all model weights live in Modal volumes) |
 
 ---
 
@@ -200,29 +195,33 @@ SOW_MODAL_STEM_MAX_AUDIO_BYTES=100000000
 # OPTIONAL: PROCESSING CONFIGURATION
 # =============================================================================
 
-# Maximum concurrent local model executions (default: 1)
-SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
-
 # Fast Analysis (librosa-only) concurrency (default: 0 = auto-detect, capped at 4)
 SOW_FAST_ANALYZE_MAX_CONCURRENT=0
+
+# Full analysis concurrency (default: 2; Modal sow-analyzer runs max_containers=2)
+SOW_ANALYZE_MAX_CONCURRENT=2
 
 # Tempo detection algorithm for Fast Analysis jobs
 # Allowed: v4_octave_guard (default) or v5_cps_prior
 BPM_ALGORITHM_VERSION=v4_octave_guard
 
-# Device selection (cpu or cuda - requires GPU setup)
-SOW_DEMUCS_DEVICE=cpu
-
-# Whisper AND forced alignment run on Modal; fill these in on the server.
-# Deploy both apps once (see README.md "Whisper on Modal" and
-# "Forced alignment on Modal" / "Stem separation on Modal"):
+# Whisper, forced alignment, stem separation and full analysis run on Modal;
+# fill these in on the server. Deploy each app once (see README.md "Whisper on
+# Modal", "Forced alignment on Modal", "Stem separation on Modal"):
 #   modal deploy modal_apps/whisper_app.py
 #   modal deploy modal_apps/forced_aligner_app.py
 #   modal deploy modal_apps/stem_separator_app.py
+#   modal deploy modal_apps/analyzer_app.py
 MODAL_TOKEN_ID=""
 MODAL_TOKEN_SECRET=""
 SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
 SOW_WHISPER_CACHE_VERSION=2
+SOW_MODAL_ANALYZER_APP_NAME="sow-analyzer"
+SOW_MODAL_ANALYZER_CLASS_NAME="SongAnalyzer"
+SOW_MODAL_ANALYZER_MAX_ATTEMPTS=2
+SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS=5.0
+SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES=150000000
+SOW_ANALYSIS_CACHE_VERSION=2
 
 # =============================================================================
 # OPTIONAL: MVSEP CLOUD API (for cloud-based stem separation)
@@ -342,8 +341,7 @@ services:
       SOW_WHISPER_CACHE_VERSION: ${SOW_WHISPER_CACHE_VERSION:-2}
       
       # Processing Configuration
-      SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: ${SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS:-1}
-      SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
+      SOW_ANALYZE_MAX_CONCURRENT: ${SOW_ANALYZE_MAX_CONCURRENT:-2}
       
       # Fast Analysis (librosa-only) Concurrency
       SOW_FAST_ANALYZE_MAX_CONCURRENT: ${SOW_FAST_ANALYZE_MAX_CONCURRENT:-0}
@@ -374,9 +372,6 @@ services:
       
       # Cache Configuration
       CACHE_DIR: /cache
-      
-      # Suppress verbose NATTEN logs
-      NATTEN_LOG_LEVEL: error
     volumes:
       # Persistent cache for processed audio
       - analysis-cache:/cache
@@ -663,8 +658,9 @@ print(s3.list_buckets())
 uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-stems
 uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-forced-aligner
 uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-whisper
+uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-analyzer
 
-# Demucs/allin1 models still cache inside the container volume
+# Analysis/beat-grid/stem cache (no model weights — those live in Modal volumes)
 docker compose exec analysis ls -la /cache
 ```
 
@@ -674,8 +670,11 @@ docker compose exec analysis ls -la /cache
 # Check memory usage
 docker stats
 
-# Reduce concurrent local model jobs in .env
-SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
+# The container is librosa-only (fast-analyze, component features); lower the
+# local concurrency knobs if needed:
+SOW_FAST_ANALYZE_MAX_CONCURRENT=0   # auto-detect, capped at 4
+SOW_COMPONENT_MAX_CONCURRENT=0      # auto-detect, capped at 4
+SOW_ANALYZE_MAX_CONCURRENT=2        # full analysis is one Modal call per job
 
 # Restart
 docker compose up -d

@@ -284,7 +284,6 @@ class TestJobsEndpoints:
                 "content_hash": "abc123",
                 "options": {
                     "generate_stems": False,
-                    "stem_model": "demucs",
                     "force": True,
                 },
             },

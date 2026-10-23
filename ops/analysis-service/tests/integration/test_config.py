@@ -22,9 +22,10 @@ class TestSettings:
             assert settings.SOW_R2_SECRET_ACCESS_KEY == ""
             assert settings.SOW_ANALYSIS_API_KEY == ""
             assert settings.CACHE_DIR == Path("/cache")
-            assert settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS == 1
-            assert settings.SOW_DEMUCS_MODEL == "htdemucs"
-            assert settings.SOW_DEMUCS_DEVICE == "cpu"
+            assert settings.SOW_MODAL_ANALYZER_APP_NAME == "sow-analyzer"
+            assert settings.SOW_MODAL_ANALYZER_CLASS_NAME == "SongAnalyzer"
+            assert settings.SOW_ANALYSIS_CACHE_VERSION == 2
+            assert settings.SOW_ANALYZE_MAX_CONCURRENT == 2
             assert settings.SOW_EMBEDDING_API_KEY == ""
             assert settings.SOW_EMBEDDING_BASE_URL == ""
             assert settings.SOW_EMBEDDING_MODEL == "text-embedding-3-small"
@@ -38,9 +39,8 @@ class TestSettings:
             "SOW_R2_SECRET_ACCESS_KEY": "secret-key",
             "SOW_ANALYSIS_API_KEY": "api-key",
             "CACHE_DIR": "/custom/cache",
-            "SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS": "4",
-            "SOW_DEMUCS_MODEL": "demucs",
-            "SOW_DEMUCS_DEVICE": "cuda",
+            "SOW_MODAL_ANALYZER_APP_NAME": "sow-analyzer-test",
+            "SOW_ANALYZE_MAX_CONCURRENT": "4",
         }
 
         with patch.dict(os.environ, env_vars, clear=True):
@@ -52,9 +52,8 @@ class TestSettings:
             assert settings.SOW_R2_SECRET_ACCESS_KEY == "secret-key"
             assert settings.SOW_ANALYSIS_API_KEY == "api-key"
             assert settings.CACHE_DIR == Path("/custom/cache")
-            assert settings.SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS == 4
-            assert settings.SOW_DEMUCS_MODEL == "demucs"
-            assert settings.SOW_DEMUCS_DEVICE == "cuda"
+            assert settings.SOW_MODAL_ANALYZER_APP_NAME == "sow-analyzer-test"
+            assert settings.SOW_ANALYZE_MAX_CONCURRENT == 4
 
     def test_embedding_values_from_env(self):
         """Test loading embedding-specific values from environment."""
@@ -83,13 +82,16 @@ class TestSettings:
             assert not hasattr(settings, "SOW_LLM_EMBEDDING_MODEL")
             assert settings.SOW_EMBEDDING_MODEL == "text-embedding-3-small"
 
-    def test_gpu_device_setting(self):
-        """Test setting GPU device."""
-        with patch.dict(os.environ, {"SOW_DEMUCS_DEVICE": "cuda"}, clear=True):
-            settings = Settings()
-            assert settings.SOW_DEMUCS_DEVICE == "cuda"
+    def test_analyze_max_concurrent_validator(self):
+        """SOW_ANALYZE_MAX_CONCURRENT must be >= 1."""
+        with patch.dict(os.environ, {"SOW_ANALYZE_MAX_CONCURRENT": "0"}, clear=True):
+            import pytest
 
-    def test_cpu_device_setting(self):
-        """Test CPU device is default."""
-        settings = Settings()
-        assert settings.SOW_DEMUCS_DEVICE == "cpu"
+            with pytest.raises(ValueError):
+                Settings()
+
+    def test_analyze_max_concurrent_env(self):
+        """Test the analyze concurrency override parses from env."""
+        with patch.dict(os.environ, {"SOW_ANALYZE_MAX_CONCURRENT": "3"}, clear=True):
+            settings = Settings()
+            assert settings.SOW_ANALYZE_MAX_CONCURRENT == 3

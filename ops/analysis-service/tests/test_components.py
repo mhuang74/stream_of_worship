@@ -1150,6 +1150,22 @@ class TestPerformanceRegression:
 class TestGetOrDetectBeatGrid:
     """Tests for the get_or_detect_beat_grid helper."""
 
+    @staticmethod
+    def _patch_client(payload, side_effect=None):
+        """Patch get_modal_analyzer_client to return a client whose
+        detect_beats is an AsyncMock resolving to payload."""
+        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock as _AM
+
+        client = MagicMock()
+        client.detect_beats = (
+            _AM(side_effect=side_effect) if side_effect else _AM(return_value=payload)
+        )
+        return patch(
+            "sow_analysis.workers.components.get_modal_analyzer_client",
+            return_value=client,
+        )
+
     def _make_payload(self, content_hash: str = "a" * 64) -> dict:
         return {
             "schema_version": BEAT_GRID_SCHEMA_VERSION,
@@ -1176,10 +1192,7 @@ class TestGetOrDetectBeatGrid:
             def _fail_if_called(*args, **kwargs):
                 raise AssertionError("detection should not run on cache hit")
 
-            with patch(
-                "sow_analysis.workers.components._detect_downbeats_madmom",
-                side_effect=_fail_if_called,
-            ):
+            with self._patch_client(None, side_effect=_fail_if_called):
                 result = await get_or_detect_beat_grid(
                     audio_path=audio_path,
                     content_hash=content_hash,
@@ -1206,10 +1219,7 @@ class TestGetOrDetectBeatGrid:
             def _fail_if_called(*args, **kwargs):
                 raise AssertionError("detection should not run on R2 hit")
 
-            with patch(
-                "sow_analysis.workers.components._detect_downbeats_madmom",
-                side_effect=_fail_if_called,
-            ):
+            with self._patch_client(None, side_effect=_fail_if_called):
                 result = await get_or_detect_beat_grid(
                     audio_path=audio_path,
                     content_hash=content_hash,
@@ -1241,10 +1251,7 @@ class TestGetOrDetectBeatGrid:
             r2_mock.download_beat_grid = AsyncMock(return_value=None)
             r2_mock.upload_beat_grid = AsyncMock(return_value="s3://bucket/key")
 
-            with patch(
-                "sow_analysis.workers.components._detect_downbeats_madmom",
-                return_value=detected_payload,
-            ):
+            with self._patch_client(detected_payload):
                 result = await get_or_detect_beat_grid(
                     audio_path=audio_path,
                     content_hash=content_hash,
@@ -1287,10 +1294,7 @@ class TestGetOrDetectBeatGrid:
             r2_mock.download_beat_grid = AsyncMock(return_value=None)
             r2_mock.upload_beat_grid = AsyncMock(return_value="s3://bucket/key")
 
-            with patch(
-                "sow_analysis.workers.components._detect_downbeats_madmom",
-                return_value=new_detected,
-            ):
+            with self._patch_client(new_detected):
                 result = await get_or_detect_beat_grid(
                     audio_path=audio_path,
                     content_hash=content_hash,
@@ -1320,10 +1324,7 @@ class TestGetOrDetectBeatGrid:
             r2_mock.download_beat_grid = AsyncMock(return_value=None)
             r2_mock.upload_beat_grid = AsyncMock(return_value="s3://bucket/key")
 
-            with patch(
-                "sow_analysis.workers.components._detect_downbeats_madmom",
-                return_value=None,
-            ):
+            with self._patch_client(None):
                 result = await get_or_detect_beat_grid(
                     audio_path=audio_path,
                     content_hash=content_hash,

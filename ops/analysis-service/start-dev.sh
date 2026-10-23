@@ -1,7 +1,8 @@
 #!/bin/bash
 # Start the Analysis Service in development mode
-# This script starts the docker compose dev environment. ML models (Whisper, forced
-# alignment, stem separation) run on Modal, so nothing is downloaded locally.
+# This script starts the docker compose dev environment. All ML models (Whisper,
+# forced alignment, stem separation, and full analysis: allin1, Demucs, madmom)
+# run on Modal, so nothing is downloaded locally.
 
 set -e
 

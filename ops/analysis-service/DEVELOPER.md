@@ -182,6 +182,17 @@ If the job fails instead:
 - `Modal app/class 'sow-stems/StemSeparator' not found` — the app is not deployed (the
   message contains the `modal deploy` command to run).
 
+### Check Full Analysis Backend
+
+Look for the client log line on the first ANALYZE job:
+
+```
+Modal Analyzer client: app=sow-analyzer class=SongAnalyzer max_attempts=2
+```
+
+`ModalAnalyzerConfigError` (missing token / app not deployed) fails the job — there is
+no in-container fallback.
+
 ### Database Inspection
 
 The SQLite job database is stored in the cache volume:
@@ -257,10 +268,9 @@ ops/analysis-service/src/sow_analysis/
 │   ├── db.py               # SQLite job persistence
 │   └── r2.py               # Cloudflare R2 client
 └── workers/
-    ├── analyzer.py         # Audio analysis (allin1)
+    ├── analyzer.py         # Modal orchestration + cache for full analysis
     ├── lrc.py              # LRC generation (Whisper + LLM)
     ├── queue.py            # Job queue and concurrency management
-    ├── separator.py        # Demucs stem separation
     └── stem_separation.py  # MVSEP pipeline + sow-stems Modal failover
 ```
 
@@ -367,12 +377,17 @@ docker compose down -v
 | `SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS` | Optional | 1800 | Filetrans ASR call timeout |
 | `SOW_DASHSCOPE_ASR_MAX_CONCURRENT` | Optional | 2 | Max concurrent ASR requests |
 | `SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS` | Optional | 10000 | Max context chars for LLM alignment |
-| `SOW_DASHSCOPE_ASR_SNAP_THRESHOLD` | Optional | 0.60 | Threshold for snapping Qwen3 ASR segments |
 | `SOW_MODAL_STEM_APP_NAME` | For stems | sow-stems | Deployed stem-separator app |
 | `SOW_MODAL_STEM_CLASS_NAME` | Optional | StemSeparator | Deployed Modal class name |
 | `SOW_MODAL_STEM_MAX_ATTEMPTS` | Optional | 2 | Retry budget per stem-separation call |
 | `SOW_MODAL_STEM_RETRY_DELAY_SECONDS` | Optional | 5.0 | Linear backoff between attempts |
 | `SOW_MODAL_STEM_MAX_AUDIO_BYTES` | Optional | 100000000 | Cap on the uploaded audio |
+| `SOW_MODAL_ANALYZER_APP_NAME` | For analyze | sow-analyzer | Deployed full-analysis app |
+| `SOW_MODAL_ANALYZER_CLASS_NAME` | Optional | SongAnalyzer | Deployed Modal class name |
+| `SOW_MODAL_ANALYZER_MAX_ATTEMPTS` | Optional | 2 | Retry budget per analyzer call |
+| `SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS` | Optional | 5.0 | Linear backoff between attempts |
+| `SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES` | Optional | 150000000 | Cap on the uploaded WAV payload |
+| `SOW_ANALYSIS_CACHE_VERSION` | Optional | 2 | Version prefix for full-analysis cache entries |
+| `SOW_ANALYZE_MAX_CONCURRENT` | Optional | 2 | Max concurrent full-analyze jobs (client side) |
 | `SOW_VOCAL_SEPARATION_MODEL` | Optional | model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt | Stage 1 model filename (Modal class parameter) |
 | `SOW_DEREVERB_MODEL` | Optional | UVR-De-Echo-Normal.pth | Stage 2 model filename (Modal class parameter) |
-| `TARGETPLATFORM` | No | linux/amd64 | Docker build platform |

@@ -27,3 +27,24 @@ def transcode_to_16k_mono_wav(audio_path: Path) -> bytes:
         return tmp_path.read_bytes()
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+def transcode_to_wav_fullrate(audio_path: Path) -> bytes:
+    """Decode a local audio file to native-rate stereo PCM-16 WAV bytes (no resample).
+
+    Blocking (soundfile decode); callers run it via asyncio.to_thread. Used for the
+    Modal analyzer upload: allin1/demucs see full-quality audio at the source's own
+    sample rate. The temp file descriptor is closed before soundfile writes to it
+    (mkstemp keeps the fd open otherwise).
+    """
+    import soundfile as sf
+
+    data, sr = sf.read(str(audio_path), dtype="float32", always_2d=True)
+    fd, name = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    tmp_path = Path(name)
+    try:
+        sf.write(str(tmp_path), data, sr, subtype="PCM_16")
+        return tmp_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)

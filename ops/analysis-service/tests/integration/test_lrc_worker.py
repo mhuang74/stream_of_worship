@@ -642,7 +642,7 @@ class TestLRCJobQueueProcessing:
     async def queue(self):
         """Create a test job queue."""
         with tempfile.TemporaryDirectory() as tmp:
-            q = JobQueue(max_concurrent_local_model=1, cache_dir=Path(tmp))
+            q = JobQueue(max_concurrent_analyze=1, cache_dir=Path(tmp))
             yield q
             await q.stop()
 

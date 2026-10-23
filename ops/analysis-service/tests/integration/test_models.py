@@ -23,14 +23,12 @@ class TestAnalyzeOptions:
         """Test default option values."""
         opts = AnalyzeOptions()
         assert opts.generate_stems is True
-        assert opts.stem_model == "htdemucs"
         assert opts.force is False
 
     def test_custom_values(self):
         """Test custom option values."""
-        opts = AnalyzeOptions(generate_stems=False, stem_model="demucs", force=True)
+        opts = AnalyzeOptions(generate_stems=False, force=True)
         assert opts.generate_stems is False
-        assert opts.stem_model == "demucs"
         assert opts.force is True
 
 

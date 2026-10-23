@@ -43,13 +43,9 @@ class Settings(BaseSettings):
     #   "v4_octave_guard" -> start_bpm=80 + double/half-time guard (current default)
     #   "v5_cps_prior"    -> CPS-derived lognormal prior (skips octave guard)
     BPM_ALGORITHM_VERSION: str = "v4_octave_guard"
-    SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = (
-        1  # Global limit for local model execution (allin1, demucs). Whisper, Qwen3 ASR and
-        # stem separation run on Modal and never acquire this semaphore.
-    )
 
-    # Fast analysis (librosa-only) concurrency. CPU/memory heavy; distinct from
-    # SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS. Default is cgroup-aware on Linux.
+    # Fast analysis (librosa-only) concurrency. CPU/memory heavy.
+    # Default is cgroup-aware on Linux.
     # A value <= 0 means auto-detect (cgroup-aware on Linux, 1 elsewhere), capped at 4.
     SOW_FAST_ANALYZE_MAX_CONCURRENT: int = 0
 
@@ -103,12 +99,12 @@ class Settings(BaseSettings):
         except (AttributeError, OSError):  # macOS / unsupported
             return 1
 
-    @field_validator("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS")
+    @field_validator("SOW_ANALYZE_MAX_CONCURRENT")
     @classmethod
-    def _validate_concurrent_jobs(cls, v: int) -> int:
-        """Ensure concurrent jobs is at least 1 to prevent deadlock."""
+    def _validate_analyze_max_concurrent(cls, v: int) -> int:
+        """Ensure analyze concurrency is at least 1 to prevent deadlock."""
         if v < 1:
-            raise ValueError("SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS must be at least 1")
+            raise ValueError("SOW_ANALYZE_MAX_CONCURRENT must be at least 1")
         return v
 
     @field_validator("SOW_LRC_MAX_CONCURRENT")
@@ -127,10 +123,6 @@ class Settings(BaseSettings):
         if v not in allowed:
             raise ValueError(f"BPM_ALGORITHM_VERSION must be one of {allowed}, got: {v!r}")
         return v
-
-    # Demucs Configuration
-    SOW_DEMUCS_MODEL: str = "htdemucs"
-    SOW_DEMUCS_DEVICE: str = "cpu"  # "cuda" or "cpu"
 
     # LLM Configuration (OpenAI-compatible API for LRC alignment)
     # Supports OpenRouter, nano-gpt.com, synthetic.new, or OpenAI direct
@@ -295,13 +287,25 @@ class Settings(BaseSettings):
     SOW_MODAL_STEM_RETRY_DELAY_SECONDS: float = 5.0
     SOW_MODAL_STEM_MAX_AUDIO_BYTES: int = 100_000_000  # stage-2 input is a lossless vocals FLAC
 
+    # Full analysis (allin1 + Demucs + madmom) runs on Modal
+    # (modal_apps/analyzer_app.py), not in this container.
+    SOW_MODAL_ANALYZER_APP_NAME: str = "sow-analyzer"
+    SOW_MODAL_ANALYZER_CLASS_NAME: str = "SongAnalyzer"
+    SOW_MODAL_ANALYZER_MAX_ATTEMPTS: int = 2
+    SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS: float = 5.0
+    SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES: int = 150_000_000
+    SOW_ANALYSIS_CACHE_VERSION: int = 2  # bump: local allin1 CPU -> Modal GPU may shift BPM/beats/embedding values
+    # Keeps ANALYZE jobs from all piling up client-side while Modal
+    # max_containers=2 handles the GPU-side queue.
+    SOW_ANALYZE_MAX_CONCURRENT: int = 2
+
     # DashScope Qwen3 ASR Configuration
     SOW_DASHSCOPE_API_KEY: str = ""
     SOW_DASHSCOPE_ASR_REGION: str = "intl"  # intl, cn, us
     SOW_DASHSCOPE_ASR_FLASH_MODEL: str = "qwen3-asr-flash"
     SOW_DASHSCOPE_ASR_FILETRANS_MODEL: str = "qwen3-asr-flash-filetrans"
     SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS: int = 10000
-    SOW_DASHSCOPE_ASR_SNAP_THRESHOLD: float = 0.60
+
     SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS: int = 300
     SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS: int = 1800
     SOW_DASHSCOPE_ASR_MAX_CONCURRENT: int = 2

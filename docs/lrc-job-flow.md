@@ -201,9 +201,10 @@ If `use_vocals_stem=true`:
 
 If `use_qwen3=true` and `content_hash` is provided and audio duration <= `max_qwen3_duration` (default 300s):
 
-1. Call in-process Qwen3 ForcedAligner (configured via `SOW_FORCED_ALIGNER_MODEL_PATH`)
+1. Call the Modal Qwen3 ForcedAligner (`sow-forced-aligner`, `modal_apps/forced_aligner_app.py`)
+   — no local model, no `SOW_FORCED_ALIGNER_*` env vars
 2. Uses clean vocals stem if available, otherwise full mix
-3. Semaphore-controlled: acquires `_local_model_semaphore`
+3. Not semaphore-controlled: it is a remote Modal call
 4. **Graceful fallback**: any exception (connection error, timeout, general) keeps the LLM-aligned timestamps
 
 ### Phase 5: Finalize
@@ -303,19 +304,15 @@ The `stage` field tracks progress through the pipeline:
 | `SOW_LLM_API_KEY` | For LLM steps | — | OpenRouter/OpenAI API key |
 | `SOW_LLM_BASE_URL` | For LLM steps | — | e.g., `https://openrouter.ai/api/v1` |
 | `SOW_LLM_MODEL` | For LLM steps | — | e.g., `openai/gpt-4o-mini` |
-| `SOW_WHISPER_DEVICE` | No | `cpu` | Whisper device (`cpu` or `cuda`) |
-| `SOW_WHISPER_CACHE_DIR` | No | `/cache/whisper` | Whisper model cache directory |
-| `SOW_FORCED_ALIGNER_MODEL_PATH` | No | `Qwen/Qwen3-ForcedAligner-0.6B` | Forced aligner model path (HF ID or local) |
-| `SOW_FORCED_ALIGNER_DEVICE` | No | `auto` | Device for forced alignment (auto/mps/cuda/cpu) |
+| `SOW_WHISPER_CACHE_DIR` | No | `/cache/whisper` | Whisper model cache directory (legacy; Whisper runs on Modal, its cache lives in the `sow-whisper-models` Modal volume) |
 | `SOW_YOUTUBE_PROXY` | No | — | Proxy for YouTube transcript requests |
 | `SOW_YOUTUBE_PROXY_RETRIES` | No | `3` | Retries on HTTP 429 for proxy |
-| `SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS` | No | `1` | Max concurrent local model executions |
 
 ## Model Roles Summary
 
 | Model | Role | Location | API Type |
 |-------|------|----------|----------|
 | YouTube captions | Human-curated subtitles | External (YouTube) | `youtube-transcript-api` |
-| Whisper (`faster_whisper`) | ASR transcription | Local (GPU/CPU) | Local model |
+| Whisper (`faster_whisper`) | ASR transcription | Modal (`sow-whisper`) | Modal RPC |
 | LLM (GPT-4o-mini, etc.) | Text correction (YouTube) / Timestamp alignment (Whisper) | Cloud API (OpenRouter, etc.) | OpenAI-compatible |
-| Qwen3 ForcedAligner | Timestamp precision refinement | In-process model | Direct model call |
+| Qwen3 ForcedAligner | Timestamp precision refinement | Modal (`sow-forced-aligner`) | Modal RPC |

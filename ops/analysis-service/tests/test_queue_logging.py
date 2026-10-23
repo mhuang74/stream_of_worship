@@ -34,7 +34,7 @@ def _make_job(
 
 @pytest.fixture
 def job_queue(tmp_path):
-    return JobQueue(max_concurrent_local_model=1, cache_dir=tmp_path, db_path=tmp_path / "jobs.db")
+    return JobQueue(max_concurrent_analyze=1, cache_dir=tmp_path, db_path=tmp_path / "jobs.db")
 
 
 # ── _is_quota_wait_quiescent() tests ──
