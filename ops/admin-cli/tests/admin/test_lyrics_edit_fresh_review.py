@@ -62,7 +62,10 @@ def patched_editor(monkeypatch):
     calls: list[tuple] = []
     outcomes: list[object] = []
 
-    def _fake_session(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+    def _fake_session(
+        db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+        analysis_client=None,
+    ):
         calls.append((recording.hash_prefix, feedback_user_id))
         scripted = outcomes.pop(0) if outcomes else None
         if scripted is None:
@@ -508,7 +511,10 @@ class TestReviewFreshCommand:
         # would create. The queue then recomputes → next pick is song_d.
         db_for_session = DatabaseClient(ConnectionProvider(postgres_url, sslmode="disable"))
 
-        def _fake_with_feedback(db_client, cache_dir, r2_client, song, recording, feedback_user_id=None):
+        def _fake_with_feedback(
+            db_client, cache_dir, r2_client, song, recording, feedback_user_id=None,
+            analysis_client=None,
+        ):
             # Behave like patched_editor's fake, but record feedback first.
             patched_editor["calls"].append((recording.hash_prefix, feedback_user_id))
             scripted = patched_editor["outcomes"].pop(0) if patched_editor["outcomes"] else None

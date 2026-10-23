@@ -90,9 +90,7 @@ def regenerate_lrc_for_editor(
 
     target_song_id = song_id or recording.song_id
     if not target_song_id:
-        return RegenerateResult(
-            ok=False, error=f"Recording {hash_prefix} has no linked song."
-        )
+        return RegenerateResult(ok=False, error=f"Recording {hash_prefix} has no linked song.")
     if is_published(recording):
         return RegenerateResult(
             ok=False,
@@ -151,9 +149,7 @@ def regenerate_lrc_for_editor(
         )
     except AnalysisServiceError as e:
         _mark_failed(db_client, db_lock, hash_prefix)
-        return RegenerateResult(
-            ok=False, error=f"LRC generation failed: {e}", job_id=job.job_id
-        )
+        return RegenerateResult(ok=False, error=f"LRC generation failed: {e}", job_id=job.job_id)
 
     if final_job.status != "completed":
         _mark_failed(db_client, db_lock, hash_prefix)
@@ -205,14 +201,10 @@ def regenerate_lrc_for_editor(
         )
 
     identity = r2_client.get_lrc_identity(hash_prefix)
-    return RegenerateResult(
-        ok=True, lrc_content=content, identity=identity, job_id=job.job_id
-    )
+    return RegenerateResult(ok=True, lrc_content=content, identity=identity, job_id=job.job_id)
 
 
-def _mark_failed(
-    db_client: DatabaseClient, db_lock: threading.RLock, hash_prefix: str
-) -> None:
+def _mark_failed(db_client: DatabaseClient, db_lock: threading.RLock, hash_prefix: str) -> None:
     """Record a failed LRC status, swallowing DB errors (best effort)."""
     try:
         with db_lock:
