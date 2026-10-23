@@ -648,6 +648,10 @@ ops/analysis-service/
 ├── Dockerfile                  # Multi-platform Docker build
 ├── pyproject.toml             # Python dependencies
 ├── README.md                  # This file
+├── modal_apps/                # GPU work hosted on Modal (deployed separately)
+│   ├── whisper_app.py         # sow-whisper: faster-whisper transcription
+│   ├── forced_aligner_app.py  # sow-forced-aligner: Qwen3-ForcedAligner
+│   └── stem_separator_app.py  # sow-stems: audio-separator (MVSEP failover)
 └── src/sow_analysis/
     ├── __init__.py
     ├── main.py                # FastAPI app entry point
@@ -656,6 +660,9 @@ ops/analysis-service/
     ├── routes/                # API endpoints
     │   ├── health.py
     │   └── jobs.py
+    ├── services/              # External backends (Modal, MVSEP, DashScope, LLM)
+    │   ├── modal_stem_separator_client.py
+    │   └── ...
     ├── storage/               # R2 and cache clients
     │   ├── cache.py
     │   ├── db.py              # SQLite job persistence
@@ -665,8 +672,7 @@ ops/analysis-service/
         ├── lrc.py
         ├── queue.py
         ├── separator.py       # Demucs stem separation
-        ├── stem_separation.py # Vocal separation (MelBand Roformer) + UVR clean vocals
-        └── separator_wrapper.py # AudioSeparator model management
+        └── stem_separation.py # MVSEP pipeline, Modal failover, canonical names
 ```
 
 ### Running Tests
