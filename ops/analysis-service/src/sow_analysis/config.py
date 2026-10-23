@@ -406,6 +406,8 @@ class Settings(BaseSettings):
     # With max_concurrent=1, this caps throughput at 1/min_interval requests per second.
     # Default 3.0 = ~20 requests/minute. Lower to 2.0 for ~30 req/min if
     # using a rotating proxy with good IP diversity.
+    # The actual sleep is this value plus up to 25% jitter (never less), so parallel
+    # jobs do not wake together while the configured interval stays a hard floor.
 
     SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES: int = 3
     # Retry attempts per YouTube API call on HTTP 429 (rate limited).

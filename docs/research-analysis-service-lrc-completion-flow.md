@@ -26,8 +26,8 @@ and records it in `lrc_source`:
 
 | Priority | Source | `lrc_source` value | Trigger |
 |---|---|---|---|
-| 1 | YouTube transcript + LLM correction | `youtube_transcript` | `recordings.youtube_url` present; free-only mode waits out rate-limit circuit breakers, non-free mode falls through |
-| 2 | DashScope Qwen3 ASR → canonical snap → LLM alignment | `qwen3_asr` | `options.use_qwen3_asr` (default true); quota exhaustion waits in free mode, errors fall back to Whisper |
+| 1 | YouTube transcript + LLM correction | `youtube_transcript` | `recordings.youtube_url` present; a rate-limited fetch falls through to ASR |
+| 2 | DashScope Qwen3 ASR → canonical snap → LLM alignment | `qwen3_asr` | `options.use_qwen3_asr` (default true); quota exhaustion always waits for the daily reset, other errors fall back to Whisper |
 | 3 | faster-Whisper transcription + LLM alignment | `whisper_asr` | Fallback; phrases cached under a language/prompt-aware key |
 | — | Qwen3ForcedAligner (separate job type) | `forced_alignment` | `sow-admin lyrics align` |
 | — | Admin manual paths (catalog-side, see below) | `manual_upload`, `r2_preexisting` | n/a |

@@ -57,12 +57,6 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check Python (needed for model downloads)
-    if ! command -v python3 &> /dev/null; then
-        log_error "Python 3 is required for model downloads."
-        exit 1
-    fi
-    
     log_success "Prerequisites check passed"
 }
 
