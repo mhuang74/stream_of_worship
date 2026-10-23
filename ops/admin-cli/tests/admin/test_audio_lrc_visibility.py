@@ -83,10 +83,8 @@ def test_submit_lrc_wait_completion_forces_review_visibility():
         whisper_model="large-v3",
         language="zh",
         no_vocals=False,
-        no_youtube=False,
-        no_whisper_cache=False,
-        no_qwen3_asr=False,
-        force_qwen3_asr=False,
+        generator="auto",
+        no_cache=False,
         wait=True,
         console=_console(),
     )

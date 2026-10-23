@@ -1373,14 +1373,32 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
-        # Log LRC generation strategy
-        if request.youtube_url:
+        generator = request.options.lrc_generator
+        if generator == "youtube" and not request.youtube_url:
+            job.status = JobStatus.FAILED
+            job.error_message = (
+                "lrc_generator='youtube' requires youtube_url, but the request has none"
+            )
+            job.stage = "generator_unavailable"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id,
+                    status="failed",
+                    stage="generator_unavailable",
+                    error_message=job.error_message,
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+        use_youtube = bool(request.youtube_url) and generator in ("auto", "youtube")
+        if generator == "auto":
             logger.info(
-                f"YouTube URL provided: {request.youtube_url} "
-                f"— will try YouTube transcript first, LLM-based ASR as fallback"
+                "LRC generator: auto (YouTube -> Qwen3 -> Whisper); youtube_url=%r",
+                request.youtube_url,
             )
         else:
-            logger.info("No YouTube URL — will use Whisper transcription directly")
+            logger.info("LRC generator forced: %s (fallbacks disabled)", generator)
 
         if resolve_lrc_language is None or warn_if_lrc_language_script_mismatch is None:
             job.status = JobStatus.FAILED
@@ -1490,10 +1508,16 @@ class JobQueue:
                 except Exception:
                     official_lrc_etag = None
 
-            # Check LRC result cache first (unless force=True - allows prompt improvements)
-            # dump_llm_trace implies a fresh run: a cache hit would skip the LLM steps
-            # and produce an empty trace.
-            if not request.options.force and not request.options.dump_llm_trace:
+            # Read the LRC result cache only for auto runs: a forced generator
+            # must never be answered by another generator's cached result, and
+            # forced runs are not written to this cache (see below). force=True
+            # allows prompt improvements; dump_llm_trace needs a fresh run.
+            cache_allowed = (
+                request.options.lrc_generator == "auto"
+                and not request.options.force
+                and not request.options.dump_llm_trace
+            )
+            if cache_allowed:
                 cached = self.cache_manager.get_lrc_result(lrc_cache_key)
                 if cached:
                     # Legacy metadata-only cache entries have no cached text; ignore and regenerate
@@ -1577,7 +1601,7 @@ class JobQueue:
 
                 # Stage 1: Try YouTube transcript first — no audio download or stem needed
                 youtube_lrc_result = None
-                if request.youtube_url:
+                if use_youtube:
                     from .lrc import try_youtube_transcript_lrc
                     from .youtube_transcript import (
                         YouTubeRateLimitedError,
@@ -1648,9 +1672,18 @@ class JobQueue:
                         logger.info(
                             "YouTube transcript succeeded — skipping audio download and stem separation"
                         )
+                    elif generator == "youtube":
+                        raise LRCWorkerError(
+                            "lrc_generator='youtube' requested but the YouTube transcript "
+                            "path failed; fallback is disabled"
+                        )
 
                 # Stage 1b: fill a tail the caption track never covered
-                if lrc_source == "youtube_transcript" and fill_uncovered_tail is not None:
+                if lrc_source == "youtube_transcript" and generator == "youtube":
+                    logger.info(
+                        "Tail fill skipped: lrc_generator='youtube' disables ASR tail fill"
+                    )
+                elif lrc_source == "youtube_transcript" and fill_uncovered_tail is not None:
                     from .lrc_parser import parse_lrc
 
                     existing_lines = [
@@ -1737,7 +1770,10 @@ class JobQueue:
                         logger.info("LRC job %s cancelled; skipping transcription", job.id)
                         return
 
-                    if request.options.use_qwen3_asr:
+                    qwen_enabled = generator == "qwen3_asr" or (
+                        generator == "auto" and request.options.use_qwen3_asr
+                    )
+                    if qwen_enabled:
                         # Guard: free-only mode requires DashScope to be configured
                         if settings.SOW_FREE_ONLY_MODE and not settings.SOW_DASHSCOPE_API_KEY:
                             raise LRCWorkerError(
@@ -1795,7 +1831,7 @@ class JobQueue:
                                 lrc_source = "qwen3_asr"
                                 await self._update_stage(job, "qwen3_asr_done", 0.7)
                                 break  # success
-                            except Qwen3AsrQuotaExhaustedError:
+                            except Qwen3AsrQuotaExhaustedError as e:
                                 if settings.SOW_FREE_ONLY_MODE:
                                     await self._qwen3_quota_waiter.mark_exhausted()
                                     await self._update_stage(
@@ -1820,9 +1856,19 @@ class JobQueue:
                                     continue  # retry Qwen3 ASR
                                 else:
                                     # Existing: fall back to Whisper
+                                    if generator == "qwen3_asr":
+                                        raise LRCWorkerError(
+                                            "lrc_generator='qwen3_asr' requested but Qwen3 ASR "
+                                            f"quota is exhausted; fallback is disabled: {e}"
+                                        )
                                     await self._update_stage(job, "falling_back_to_whisper", 0.45)
                                     break
                             except Qwen3AsrError as e:
+                                if generator == "qwen3_asr":
+                                    raise LRCWorkerError(
+                                        "lrc_generator='qwen3_asr' requested but Qwen3 ASR "
+                                        f"failed; fallback is disabled: {e}"
+                                    )
                                 # Existing: fall back to Whisper (unchanged)
                                 logger.warning(
                                     "Qwen3 ASR failed; falling back to LLM-based ASR: %s", e
@@ -1830,6 +1876,11 @@ class JobQueue:
                                 await self._update_stage(job, "falling_back_to_whisper", 0.45)
                                 break
                             except Exception as e:
+                                if generator == "qwen3_asr":
+                                    raise LRCWorkerError(
+                                        "lrc_generator='qwen3_asr' requested but Qwen3 ASR "
+                                        f"had an unexpected failure; fallback is disabled: {e}"
+                                    )
                                 # Existing: fall back to Whisper (unchanged)
                                 logger.warning(
                                     "Qwen3 ASR unexpected failure; falling back to LLM-based ASR: %s",
@@ -1838,7 +1889,7 @@ class JobQueue:
                                 await self._update_stage(job, "falling_back_to_whisper", 0.45)
                                 break
                     else:
-                        logger.info("Qwen3 ASR disabled (use_qwen3_asr=False); using Whisper")
+                        logger.info("Qwen3 ASR skipped (generator=%s); using Whisper", generator)
                         await self._update_stage(job, "falling_back_to_whisper", 0.35)
 
                     # Check for cached Whisper transcription with language/prompt-aware key.
@@ -1953,8 +2004,11 @@ class JobQueue:
                     "lrc_text": lrc_text,
                     "asr_tail_line_count": tail_line_count,
                 }
-                self.cache_manager.save_lrc_result(lrc_cache_key, cache_result)
-                logger.info(f"LRC result cached with key: {lrc_cache_key}")
+                # A forced generator must not poison the shared cache key
+                # (content hash + lyrics + language, generator-agnostic).
+                if request.options.lrc_generator == "auto":
+                    self.cache_manager.save_lrc_result(lrc_cache_key, cache_result)
+                    logger.info(f"LRC result cached with key: {lrc_cache_key}")
 
                 # Set job result
                 job.result = JobResult(

@@ -597,7 +597,12 @@ def feedback_unresolve(
 @app.command("generate")
 def lyrics_generate(
     song_id: Optional[str] = typer.Argument(None, help="Song ID to generate LRC for"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force re-generation"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Re-generate even if LRC already exists (also bypasses the LRC result cache)",
+    ),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin (one per line)"),
     whisper_model: str = typer.Option("large-v3", "--model", "-m", help="Whisper model to use"),
     llm_model: Optional[str] = typer.Option(
@@ -610,17 +615,19 @@ def lyrics_generate(
     ),
     language: str = typer.Option("auto", "--lang", help="Language mode: auto, zh, or en"),
     no_vocals: bool = typer.Option(False, "--no-vocals", help="Don't use vocals stem"),
-    no_youtube: bool = typer.Option(
-        False, "--no-youtube", help="Skip YouTube transcript, use Whisper directly"
+    generator: str = typer.Option(
+        "auto",
+        "--generator",
+        "-g",
+        help="LRC generator: auto | youtube | qwen3 | whisper. auto = YouTube "
+        "transcript, then Qwen3 ASR, then Whisper. Any other value runs ONLY that "
+        "generator and fails the job instead of falling back.",
     ),
-    no_whisper_cache: bool = typer.Option(
-        False, "--no-whisper-cache", help="Bypass cached Whisper transcription, re-run Whisper"
-    ),
-    no_qwen3_asr: bool = typer.Option(
-        False, "--no-qwen3-asr", help="Skip DashScope Qwen3 ASR and use Whisper fallback"
-    ),
-    force_qwen3_asr: bool = typer.Option(
-        False, "--force-qwen3-asr", help="Bypass cached Qwen3 ASR transcription only"
+    no_cache: bool = typer.Option(
+        False,
+        "--no-cache",
+        help="Bypass all caches: the LRC result cache and the Qwen3/Whisper "
+        "transcription caches (implies --force; YouTube transcripts are never cached).",
     ),
     no_wait: bool = typer.Option(
         False, "--no-wait", help="Submit without waiting for job completion"
@@ -644,10 +651,14 @@ def lyrics_generate(
 ) -> None:
     """Submit a recording for lyrics alignment (LRC generation).
 
-    By default, tries YouTube transcript first (if a YouTube URL is stored),
-    then falls back to DashScope Qwen3 ASR and finally Whisper transcription.
-    Use --no-youtube to skip the YouTube path and use Whisper directly.
-    Use --no-qwen3-asr to skip Qwen3 ASR and use Whisper.
+    Generators (--generator/-g; default auto):
+      auto     YouTube transcript, then Qwen3 ASR, then Whisper (fallback chain)
+      youtube  YouTube transcript only; fails if unavailable (no ASR tail fill)
+      qwen3    DashScope Qwen3 ASR only; fails instead of falling back to Whisper
+      whisper  Whisper ASR only
+
+    --no-cache bypasses the LRC result cache and the selected ASR transcription
+    cache (implies --force; YouTube transcripts are never cached).
 
     By default the command waits for job completion. Single-song mode polls with
     live progress (10-minute timeout); --stdin batch mode writes a run manifest
@@ -681,6 +692,14 @@ def lyrics_generate(
     if language not in {"auto", "zh", "en"}:
         console.print("[red]Error: --lang must be one of: auto, zh, en[/red]")
         raise typer.Exit(1)
+    if generator not in {"auto", "youtube", "qwen3", "whisper"}:
+        console.print(
+            "[red]Error: --generator must be one of: auto, youtube, qwen3, whisper[/red]"
+        )
+        raise typer.Exit(1)
+    # --no-cache must also clear the already-completed submit gate, otherwise a
+    # completed recording would skip before any cache is consulted.
+    force = force or no_cache
 
     # Standard config/db boilerplate
     try:
@@ -726,10 +745,8 @@ def lyrics_generate(
             llm_model=llm_model or "",
             language=language,
             no_vocals=no_vocals,
-            no_youtube=no_youtube,
-            no_whisper_cache=no_whisper_cache,
-            no_qwen3_asr=no_qwen3_asr,
-            force_qwen3_asr=force_qwen3_asr,
+            generator=generator,
+            no_cache=no_cache,
             wait=not no_wait,
             dry_run=dry_run,
             dump_llm_trace=dump_llm_trace,
@@ -746,10 +763,8 @@ def lyrics_generate(
         llm_model=llm_model or "",
         language=language,
         no_vocals=no_vocals,
-        no_youtube=no_youtube,
-        no_whisper_cache=no_whisper_cache,
-        no_qwen3_asr=no_qwen3_asr,
-        force_qwen3_asr=force_qwen3_asr,
+        generator=generator,
+        no_cache=no_cache,
         wait=not no_wait,
         console=console,
         dump_llm_trace=dump_llm_trace,
@@ -1239,10 +1254,8 @@ def _run_stdin_batch(
     whisper_model: str,
     language: str,
     no_vocals: bool,
-    no_youtube: bool,
-    no_whisper_cache: bool,
-    no_qwen3_asr: bool,
-    force_qwen3_asr: bool,
+    generator: str,
+    no_cache: bool,
     wait: bool,
     dry_run: bool,
     llm_model: str = "",
@@ -1284,10 +1297,8 @@ def _run_stdin_batch(
         whisper_model=whisper_model,
         language=language,
         no_vocals=no_vocals,
-        no_youtube=no_youtube,
-        no_whisper_cache=no_whisper_cache,
-        no_qwen3_asr=no_qwen3_asr,
-        force_qwen3_asr=force_qwen3_asr,
+        generator=generator,
+        no_cache=no_cache,
         console=console,
         llm_model=llm_model,
         dump_llm_trace=dump_llm_trace,

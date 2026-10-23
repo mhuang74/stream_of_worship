@@ -65,6 +65,7 @@ class TestLrcOptions:
         assert opts.force_qwen3_asr is False
         assert opts.qwen3_asr_context_max_chars == 10000
         assert opts.language == "auto"
+        assert opts.lrc_generator == "auto"
 
     def test_rejects_invalid_lrc_language(self):
         """Test invalid LRC language values are rejected."""
@@ -72,6 +73,13 @@ class TestLrcOptions:
 
         with pytest.raises(ValidationError):
             LrcOptions(language="ja")
+
+    def test_rejects_invalid_lrc_generator(self):
+        """Test invalid lrc_generator values are rejected."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            LrcOptions(lrc_generator="banana")
 
 
 class TestLrcJobRequest:

@@ -320,7 +320,7 @@ sow-admin audio download SONG_ID
 sow-admin audio list [--status pending|completed|failed]
 sow-admin audio show HASH_PREFIX
 sow-admin audio analyze HASH_PREFIX [--force] [--no-stems]
-sow-admin lyrics generate SONG_ID [--force] [--dump-llm-trace]
+sow-admin lyrics generate SONG_ID [--generator auto|youtube|qwen3|whisper] [--no-cache] [--force] [--dump-llm-trace]
 sow-admin audio components SONG_ID [v5 options]
 sow-admin audio status [JOB_ID]
 ```
