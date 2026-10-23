@@ -285,6 +285,27 @@ class TestGetJob:
         assert job.result.stems_url == "s3://bucket/stems/"
 
     @patch("stream_of_worship.admin.services.analysis.requests.get")
+    def test_completed_job_parses_trace_url(self, mock_get, api_key_env):
+        """JobResult.trace_url carries the dump_llm_trace report URL."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "job_id": "job-123",
+            "status": "completed",
+            "job_type": "lrc",
+            "progress": 1.0,
+            "result": {
+                "lrc_url": "s3://bucket/l.lrc",
+                "trace_url": "http://localhost:8000/debug-dumps/x.html",
+            },
+        }
+        mock_get.return_value = mock_response
+
+        job = AnalysisClient("http://localhost:8000").get_job("job-123")
+
+        assert job.result is not None
+        assert job.result.trace_url == "http://localhost:8000/debug-dumps/x.html"
+
+    @patch("stream_of_worship.admin.services.analysis.requests.get")
     def test_failed_job(self, mock_get, api_key_env):
         """Returns JobInfo with error_message for failed job."""
         mock_response = MagicMock()

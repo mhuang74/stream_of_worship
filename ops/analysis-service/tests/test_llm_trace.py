@@ -154,3 +154,71 @@ class TestRenderHtml:
         html_text = render_html(doc)
         assert "youtube_transcript @ ts" in html_text
         assert "vid" in html_text
+
+class TestLLMTraceReportUrl:
+    """Report URL construction and logging (served under /debug-dumps)."""
+
+    def test_report_url_uses_public_base_url(self, tmp_path, monkeypatch):
+        from sow_analysis.config import settings
+
+        monkeypatch.setattr(settings, "SOW_DEBUG_DUMP_PUBLIC_BASE_URL", "http://localhost:8000/")
+        trace = LLMTrace(tmp_path, "job_url1", {"song_id": "s1"})
+        assert trace.report_url == f"http://localhost:8000/debug-dumps/{trace.base_name}.html"
+
+    def test_report_url_none_when_base_url_empty(self, tmp_path, monkeypatch):
+        from sow_analysis.config import settings
+
+        monkeypatch.setattr(settings, "SOW_DEBUG_DUMP_PUBLIC_BASE_URL", "")
+        trace = LLMTrace(tmp_path, "job_url2", {"song_id": "s1"})
+        assert trace.report_url is None
+
+    def test_url_logged_at_start_and_finish_once(self, tmp_path, monkeypatch, caplog):
+        import logging
+
+        from sow_analysis.config import settings
+
+        monkeypatch.setattr(settings, "SOW_DEBUG_DUMP_PUBLIC_BASE_URL", "http://h:8000")
+        caplog.set_level(logging.INFO, logger="sow_analysis.workers.llm_trace")
+
+        trace = LLMTrace(tmp_path, "job_log1", {"song_id": "s1"})
+        url = f"http://h:8000/debug-dumps/{trace.base_name}.html"
+        started = [r for r in caplog.records if "LLM trace report (started)" in r.getMessage()]
+        assert len(started) == 1
+        assert url in started[0].getMessage()
+
+        trace.finish()
+        trace.finish()
+        complete = [r for r in caplog.records if "LLM trace report (complete)" in r.getMessage()]
+        assert len(complete) == 1
+        assert url in complete[0].getMessage()
+
+    def test_failed_finish_logs_failed_status(self, tmp_path, monkeypatch, caplog):
+        import logging
+
+        from sow_analysis.config import settings
+
+        monkeypatch.setattr(settings, "SOW_DEBUG_DUMP_PUBLIC_BASE_URL", "http://h:8000")
+        caplog.set_level(logging.INFO, logger="sow_analysis.workers.llm_trace")
+
+        trace = LLMTrace(tmp_path, "job_log2", {"song_id": "s1"})
+        trace.finish(error="boom")
+        failed = [r for r in caplog.records if "LLM trace report (failed)" in r.getMessage()]
+        assert len(failed) == 1
+        assert f"{trace.base_name}.html" in failed[0].getMessage()
+
+    def test_build_report_url_quotes_filename(self):
+        from sow_analysis.workers.llm_trace import build_report_url
+
+        assert build_report_url("http://x", "a b.html") == "http://x/debug-dumps/a%20b.html"
+
+    def test_broken_trace_has_no_report_url(self, tmp_path, monkeypatch):
+        from sow_analysis.config import settings
+
+        monkeypatch.setattr(settings, "SOW_DEBUG_DUMP_PUBLIC_BASE_URL", "http://h:8000")
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("x", encoding="utf-8")
+
+        trace = LLMTrace(blocker, "job_broken", {"song_id": "s1"})
+
+        assert trace.report_url is None
+        trace.finish()  # must not raise on a broken trace

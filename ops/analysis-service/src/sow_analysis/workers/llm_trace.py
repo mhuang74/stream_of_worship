@@ -16,10 +16,13 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
+
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-_HTML_STYLE = (
+HTML_STYLE = (
     "<style>"
     "body{font-family:system-ui,sans-serif;margin:1em}"
     "pre{font-family:ui-monospace,monospace;white-space:pre-wrap}"
@@ -29,6 +32,18 @@ _HTML_STYLE = (
     "td,th{border:1px solid #ccc;padding:2px 8px;text-align:left;vertical-align:top}"
     "</style>"
 )
+
+DEBUG_DUMPS_URL_PATH = "/debug-dumps"
+"""URL prefix where the dump directory is mounted by ``main.py``."""
+
+
+def build_report_url(base_url: str, filename: str) -> str:
+    """Absolute URL of a dump file served under ``DEBUG_DUMPS_URL_PATH``.
+
+    Filenames embed an unsanitized request ``song_id`` (``_trace_base_name``), so they are
+    URL-encoded whole; spaces/``%``/``#``/``&``/non-ASCII must produce a resolvable URL, not a 404.
+    """
+    return f"{base_url.rstrip('/')}{DEBUG_DUMPS_URL_PATH}/{quote(filename, safe='')}"
 
 
 def _utc_now() -> str:
@@ -85,6 +100,7 @@ class LLMTrace:
         self._finished = False
         self._json_path: Path | None = None
         self._html_path: Path | None = None
+        self._report_url: str | None = None
 
         try:
             doc_context: dict = dict(context)
@@ -110,6 +126,12 @@ class LLMTrace:
             self._json_path = base_dir / f"{self._base_name}.json"
             self._html_path = base_dir / f"{self._base_name}.html"
             self._flush()
+            self._report_url = (
+                build_report_url(settings.SOW_DEBUG_DUMP_PUBLIC_BASE_URL, self._html_path.name)
+                if settings.SOW_DEBUG_DUMP_PUBLIC_BASE_URL
+                else None
+            )
+            self._log_report_location("started")
         except OSError as e:
             self._broken = True
             LLMTrace._warn("cannot create trace files in %s: %s", base_dir, e)
@@ -122,6 +144,17 @@ class LLMTrace:
     def base_name(self) -> str:
         """File name base (without extension) chosen in the constructor."""
         return self._base_name
+
+    @property
+    def report_url(self) -> str | None:
+        """Browser URL of the HTML report; None when the trace is broken or no base URL is set."""
+        return self._report_url
+
+    def _log_report_location(self, status: str) -> None:
+        """Log the report URL (or filesystem path when no public base URL is configured)."""
+        location = self._report_url or (str(self._html_path) if self._html_path else "")
+        if location:
+            logger.info("LLM trace report (%s): %s", status, location)
 
     def append(self, step: str, data: dict) -> None:
         """Add an event ``{"step", "at", **data}`` and flush immediately."""
@@ -148,7 +181,7 @@ class LLMTrace:
             LLMTrace._warn("trace set failed (key %r): %s", key, e)
 
     def finish(self, error: str | None = None) -> None:
-        """Record the terminal error (if any), rewrite both files, idempotent."""
+        """Record the terminal error (if any), rewrite both files, log the report URL."""
         if self._broken or self._finished:
             return
         self._finished = True
@@ -158,6 +191,8 @@ class LLMTrace:
             self._flush()
         except (OSError, TypeError, ValueError) as e:
             LLMTrace._warn("trace final write failed: %s", e)
+            return
+        self._log_report_location("failed" if error else "complete")
 
     def _flush(self) -> None:
         """Rewrite the JSON doc and the HTML render so both stay current."""
@@ -276,7 +311,7 @@ def render_html(doc: dict) -> str:
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         + "<title>LLM trace</title>"
-        + _HTML_STYLE
+        + HTML_STYLE
         + "</head><body>"
         + error_section
         + context_section

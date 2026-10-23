@@ -6,6 +6,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from .logging_config import configure_logging
 
@@ -19,8 +20,9 @@ configure_logging(
 )
 logger = logging.getLogger(__name__)
 
-from .routes import health, jobs
+from .routes import debug_dumps, health, jobs
 from .routes.jobs import set_job_queue
+from .workers.llm_trace import DEBUG_DUMPS_URL_PATH
 from .workers.queue import JobQueue
 from .workers.youtube_transcript import _redact_proxy_url
 
@@ -69,6 +71,19 @@ async def lifespan(app: FastAPI):
     """
     global job_queue, separator_wrapper, mvsep_client
     global qwen3_client, mvsep_quota_waiter, qwen3_quota_waiter
+
+    # Serve and index the trace dump directory even before the first dump exists.
+    try:
+        settings.SOW_DEBUG_DUMP_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning("Cannot create debug dump directory %s: %s", settings.SOW_DEBUG_DUMP_DIR, e)
+
+    if settings.SOW_DEBUG_DUMP_PUBLIC_BASE_URL:
+        logger.info(
+            "LLM trace dumps served at %s%s/",
+            settings.SOW_DEBUG_DUMP_PUBLIC_BASE_URL.rstrip("/"),
+            DEBUG_DUMPS_URL_PATH,
+        )
 
     # Startup
     job_queue = JobQueue(
@@ -306,6 +321,14 @@ app = FastAPI(
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
+app.include_router(debug_dumps.router, prefix=DEBUG_DUMPS_URL_PATH)
+# Registered after the index routes: Mount matches the prefix and would shadow them.
+# check_dir=False: the dump dir is created lazily on the first trace / in lifespan startup.
+app.mount(
+    DEBUG_DUMPS_URL_PATH,
+    StaticFiles(directory=str(settings.SOW_DEBUG_DUMP_DIR), html=False, check_dir=False),
+    name="debug-dumps",
+)
 
 
 @app.get("/")

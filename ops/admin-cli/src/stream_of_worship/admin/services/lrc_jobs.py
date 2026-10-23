@@ -246,6 +246,8 @@ def submit_lrc_single(
         console.print(f"[green]LRC generation completed for {song_id}[/green]")
         if final_job.result and final_job.result.lrc_url:
             console.print(f"  LRC URL: {final_job.result.lrc_url}")
+        if final_job.result and final_job.result.trace_url:
+            console.print(f"  LLM trace report: {final_job.result.trace_url}")
 
 
 def submit_lrc_batch(

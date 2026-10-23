@@ -119,7 +119,7 @@ services:
       <<: *common-env
     volumes:
       - analysis-cache:/cache
-      - ${SOW_DEBUG_DUMP_DIR:-./debug-dumps}:/cache/debug-dumps
+      - ${SOW_DEBUG_DUMP_DIR:-~/.cache/sow-analysis-service/debug-dumps}:/cache/debug-dumps
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
@@ -143,7 +143,7 @@ services:
     volumes:
       - analysis-cache:/cache
       - ./src:/workspace/src:ro
-      - ${SOW_DEBUG_DUMP_DIR:-./debug-dumps}:/cache/debug-dumps
+      - ${SOW_DEBUG_DUMP_DIR:-~/.cache/sow-analysis-service/debug-dumps}:/cache/debug-dumps
       - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.

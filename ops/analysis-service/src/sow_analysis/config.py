@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # Directory for --dump-llm-trace debug dumps (JSON + HTML traces of LRC jobs).
     # Bind-mounted by docker-compose so dumps are viewable on the host.
     SOW_DEBUG_DUMP_DIR: Path = Path("/cache/debug-dumps")
+    # Base URL used when logging trace report links. docker-compose publishes the
+    # service on host port 8000. Set to the externally reachable origin when the
+    # service runs elsewhere (e.g. https://analysis.example.com). Empty = log the
+    # filesystem path instead of a URL.
+    SOW_DEBUG_DUMP_PUBLIC_BASE_URL: str = "http://localhost:8000"
     KEY_ALGORITHM_VERSION: str = "ks_segment_vote_v1"
     # Tempo detection algorithm version.
     #   "v4_octave_guard" -> start_bpm=80 + double/half-time guard (current default)

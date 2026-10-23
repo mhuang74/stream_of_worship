@@ -292,3 +292,45 @@ def test_submit_lrc_single_default_llm_model_empty():
 
     analysis.submit_lrc.assert_called_once()
     assert analysis.submit_lrc.call_args.kwargs["llm_model"] == ""
+
+
+def test_submit_lrc_single_prints_trace_url():
+    """Wait mode prints the LLM trace report URL returned on the job result."""
+    from io import StringIO
+
+    from stream_of_worship.admin.services.analysis import AnalysisResult, JobInfo
+
+    recording = _make_recording()
+    db = _make_db(recording)
+    analysis = _make_analysis_client()
+    analysis.wait_for_completion.return_value = JobInfo(
+        job_id="job_1",
+        status="completed",
+        job_type="lrc",
+        progress=1.0,
+        result=AnalysisResult(
+            lrc_url="s3://bucket/l.lrc",
+            trace_url="http://h/debug-dumps/x.html",
+        ),
+    )
+    buffer = StringIO()
+    console = Console(file=buffer, width=200)
+    with patch.object(lrc_jobs, "resolve_lyrics_text", return_value="lyrics"):
+        submit_lrc_single(
+            song_id="song_001",
+            db_client=db,
+            analysis_client=analysis,
+            force=False,
+            whisper_model="base",
+            language="zh",
+            no_vocals=False,
+            no_youtube=False,
+            no_whisper_cache=False,
+            no_qwen3_asr=False,
+            force_qwen3_asr=False,
+            wait=True,
+            console=console,
+            dump_llm_trace=True,
+        )
+
+    assert "LLM trace report: http://h/debug-dumps/x.html" in buffer.getvalue()
