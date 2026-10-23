@@ -28,12 +28,13 @@ ENV UV_COMPILE_BYTECODE=1
 RUN uv pip install --no-cache Cython numpy
 
 # Install PyTorch — CPU-only on x86_64, standard on ARM64 (M-series)
+# torchaudio is required by demucs; torchvision is not needed by any remaining
+# dependency (audio-separator was the only one pulling it in).
 RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then \
         uv pip install --no-cache \
             --index-url https://download.pytorch.org/whl/cpu \
             torch==2.4.1+cpu \
-            torchaudio==2.4.1+cpu \
-            torchvision==0.19.1+cpu; \
+            torchaudio==2.4.1+cpu; \
     else \
         uv pip install --no-cache torch==2.4.1; \
     fi
