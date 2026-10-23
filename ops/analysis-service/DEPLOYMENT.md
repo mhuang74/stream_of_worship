@@ -92,57 +92,17 @@ sudo docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
 
 Models are **not included in the Docker image** and must be downloaded separately on the host. They are mounted as read-only volumes into the containers.
 
-### 2.1 Audio-Separator Models
+### 2.1 Stem Separator (no host download)
 
-These models are used for vocal separation and dereverberation.
+Stem separation runs on Modal (the `sow-stems` app), so there are no
+`~/.cache/audio-separator` models to download and no `/models/audio-separator` volume
+to mount. Deploy the app once with the Modal token; the `sow-stems-models` volume then
+caches both model files on Modal's side — see the Modal section in `README.md`
+("Stem separation on Modal").
 
 ```bash
-# Create model directory
-mkdir -p ~/.cache/audio-separator
-cd ~/.cache/audio-separator
-
-# Create Python virtual environment for downloads
-python3 -m venv /tmp/model-downloader
-source /tmp/model-downloader/bin/activate
-
-# Install audio-separator
-pip install audio-separator>=0.30.0
-
-# Download models using Python
-cat > /tmp/download_models.py << 'EOF'
-from audio_separator.separator import Separator
-import os
-
-model_dir = os.path.expanduser("~/.cache/audio-separator")
-os.makedirs(model_dir, exist_ok=True)
-
-# Download MelBand Roformer model (Stage 1: Vocal Separation)
-print("Downloading MelBand Roformer model...")
-sep1 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-sep1.load_model(model_filename="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt")
-print("✓ MelBand Roformer model downloaded")
-
-# Download UVR-De-Echo model (Stage 2: Reverb Removal)
-print("Downloading UVR-De-Echo model...")
-sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-sep2.load_model(model_filename="UVR-De-Echo-Normal.pth")
-print("✓ UVR-De-Echo model downloaded")
-
-print(f"\nModels saved to: {model_dir}")
-print(f"Directory size: {sum(os.path.getsize(os.path.join(dirpath,filename)) for dirpath, dirnames, filenames in os.walk(model_dir) for filename in filenames) / 1024 / 1024:.1f} MB")
-EOF
-
-python /tmp/download_models.py
-
-# Cleanup
-deactivate
-rm -rf /tmp/model-downloader /tmp/download_models.py
-```
-
-**Verify models:**
-```bash
-ls -la ~/.cache/audio-separator/
-# Should show model files (several GB total)
+# From ops/analysis-service/, with MODAL_TOKEN_ID/MODAL_TOKEN_SECRET exported
+uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/stem_separator_app.py
 ```
 
 ### 2.2 Forced Aligner (no download)
@@ -156,9 +116,10 @@ Modal token and the volume handles the weights — see the Modal section in
 
 | Model | Location | Size |
 |-------|----------|------|
-| Audio-Separator | `~/.cache/audio-separator/` | ~3-5 GB |
+| Stem separator (MelBand Roformer + UVR-De-Echo) | Modal volume `sow-stems-models` | ~2-3 GB (Modal-side) |
 | Qwen3 Forced Aligner | Modal volume `sow-forced-aligner-models` | ~2.4 GB (Modal-side) |
-| **Total (host)** | | **~3-5 GB** |
+| Whisper | Modal volume `sow-whisper-models` | ~1-3 GB per model (Modal-side) |
+| **Total (host)** | | **~0 GB** (Demucs/allin1 download lazily into the cache volume) |
 
 ---
 
@@ -224,11 +185,16 @@ SOW_EMBEDDING_BASE_URL=""     # e.g., https://api.openai.com/v1
 SOW_EMBEDDING_MODEL="text-embedding-3-small"
 
 # =============================================================================
-# AUDIO-SEPARATOR MODEL CONFIGURATION (REQUIRED for stem separation)
+# STEM SEPARATOR CONFIGURATION (Modal failover)
 # =============================================================================
-# This path must match where you downloaded the models in Step 2
+# Stem separation runs on the sow-stems Modal app and reuses
+# MODAL_TOKEN_ID / MODAL_TOKEN_SECRET from the Whisper section above.
+# Model filenames are Modal class parameters.
 
-SOW_AUDIO_SEPARATOR_MODEL_ROOT=""
+SOW_VOCAL_SEPARATION_MODEL="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
+SOW_DEREVERB_MODEL="UVR-De-Echo-Normal.pth"
+SOW_MODAL_STEM_MAX_ATTEMPTS=2
+SOW_MODAL_STEM_MAX_AUDIO_BYTES=100000000
 
 # =============================================================================
 # OPTIONAL: PROCESSING CONFIGURATION
@@ -249,9 +215,10 @@ SOW_DEMUCS_DEVICE=cpu
 
 # Whisper AND forced alignment run on Modal; fill these in on the server.
 # Deploy both apps once (see README.md "Whisper on Modal" and
-# "Forced alignment on Modal"):
+# "Forced alignment on Modal" / "Stem separation on Modal"):
 #   modal deploy modal_apps/whisper_app.py
 #   modal deploy modal_apps/forced_aligner_app.py
+#   modal deploy modal_apps/stem_separator_app.py
 MODAL_TOKEN_ID=""
 MODAL_TOKEN_SECRET=""
 SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
@@ -260,7 +227,7 @@ SOW_WHISPER_CACHE_VERSION=2
 # =============================================================================
 # OPTIONAL: MVSEP CLOUD API (for cloud-based stem separation)
 # =============================================================================
-# Leave empty to use local audio-separator only
+# Leave empty to run stem separation on the sow-stems Modal app only
 # Get token from: https://mvsep.com/
 
 SOW_MVSEP_API_KEY=""
@@ -308,8 +275,8 @@ vim ~/sow-deployment/.env
 | `SOW_EMBEDDING_API_KEY` | Embedding API key | OpenAI-compatible embedding provider |
 | `SOW_EMBEDDING_BASE_URL` | Embedding endpoint | e.g., `https://api.openai.com/v1` |
 | `SOW_EMBEDDING_MODEL` | Embedding model | default `text-embedding-3-small` |
-| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Modal tokens | Whisper + forced alignment on Modal |
-| `SOW_AUDIO_SEPARATOR_MODEL_ROOT` | Model path | Output from Step 2.1 |
+| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Modal tokens | Whisper, forced alignment, stem separation on Modal |
+| `SOW_VOCAL_SEPARATION_MODEL` / `SOW_DEREVERB_MODEL` | Stem model filenames | Defaults are fine; change only if you want different Modal models |
 
 ### 3.3 Secure the .env File
 
@@ -383,10 +350,12 @@ services:
       # BPM Algorithm (Fast Analysis tempo detection)
       BPM_ALGORITHM_VERSION: ${BPM_ALGORITHM_VERSION:-v4_octave_guard}
       
-      # Stem Separation Model Configuration
-      SOW_AUDIO_SEPARATOR_MODEL_DIR: /models/audio-separator
+      # Stem separator runs on Modal (modal_apps/stem_separator_app.py); it reuses the
+      # MODAL_TOKEN_* values above. Model filenames are Modal class parameters.
       SOW_VOCAL_SEPARATION_MODEL: ${SOW_VOCAL_SEPARATION_MODEL:-model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt}
       SOW_DEREVERB_MODEL: ${SOW_DEREVERB_MODEL:-UVR-De-Echo-Normal.pth}
+      SOW_MODAL_STEM_MAX_ATTEMPTS: ${SOW_MODAL_STEM_MAX_ATTEMPTS:-2}
+      SOW_MODAL_STEM_MAX_AUDIO_BYTES: ${SOW_MODAL_STEM_MAX_AUDIO_BYTES:-100000000}
       
       # MVSEP Configuration
       SOW_MVSEP_API_KEY: ${SOW_MVSEP_API_KEY:-}
@@ -411,8 +380,6 @@ services:
     volumes:
       # Persistent cache for processed audio
       - analysis-cache:/cache
-      # Audio-separator models (read-only, from host)
-      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT}:/models/audio-separator:ro
     networks:
       - sow-network
     healthcheck:
@@ -692,11 +659,13 @@ print(s3.list_buckets())
 ### Model Loading Errors
 
 ```bash
-# Verify model paths are mounted correctly
-docker compose exec analysis ls -la /models/audio-separator/
+# Modal-hosted models: check the container-side logs (no host mounts any more)
+uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-stems
+uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-forced-aligner
+uv run --no-project --with 'modal>=1.2.6,<2' modal app logs sow-whisper
 
-# Check model files exist on host
-ls -la ~/.cache/audio-separator/
+# Demucs/allin1 models still cache inside the container volume
+docker compose exec analysis ls -la /cache
 ```
 
 ### Out of Memory
@@ -741,7 +710,8 @@ sudo ufw reload
 
 1. **Environment File**: Keep `.env` file permissions restricted (`chmod 600`)
 2. **API Keys**: Use strong, randomly generated keys
-3. **Model Mounts**: Models are mounted read-only (`:ro`) to prevent tampering
+3. **Modal tokens**: `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` grant access to your Modal
+   workspace (Whisper, forced alignment, stem separation); treat them like API keys
 4. **Network**: Only expose necessary ports (8000 for Analysis Service)
 5. **Updates**: Regularly update Docker images for security patches
 6. **Monitoring**: Set up log aggregation and alerting for failures

@@ -50,17 +50,16 @@ docker compose logs -f analysis-dev
 
 ## Model Setup (One-Time)
 
-### Audio-Separator Models (Required for Stem Separation)
+### Stem Separator (Runs on Modal)
 
-Models are automatically downloaded by the startup script (see Quick Start above). The script will:
-- Check for missing models (MelBand Roformer and UVR-De-Echo)
-- Download them to `~/.cache/audio-separator` (or `$SOW_AUDIO_SEPARATOR_MODEL_ROOT` if set)
-- Start the development server
+Nothing to download here: stem separation runs in the `sow-stems` Modal app
+(`modal_apps/stem_separator_app.py`), which caches the MelBand Roformer and
+UVR-De-Echo models in its own volume. There is no in-container `audio-separator`
+dependency and no `/models/audio-separator` bind mount any more. Deploy once with
+your Modal token — see [README](README.md#stem-separation-on-modal).
 
-To manually download models only (without starting the server):
 ```bash
-cd ops/analysis-service
-SOW_AUDIO_SEPARATOR_MODEL_ROOT="$HOME/.cache/audio-separator" ./start-dev.sh --no-start
+uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/stem_separator_app.py
 ```
 
 ### Forced Aligner (Runs on Modal)
@@ -169,26 +168,19 @@ logging.basicConfig(
 )
 ```
 
-### Check Model Loading
+### Check Stem Separation Backend
 
-Look for these log messages when the first stem separation job triggers lazy initialization:
+Look for the client log line on the first stem separation job:
+
 ```
-Validating vocal separation model: model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt
-Validating UVR-De-Echo model: UVR-De-Echo-Normal.pth
-Audio-separator models validated and ready
+Modal StemSeparator client: app=sow-stems class=StemSeparator max_attempts=2
 ```
 
-If you see:
-```
-AudioSeparatorWrapper not available (audio-separator not installed)
-```
-- The `audio-separator` package wasn't installed (check pyproject.toml)
-
-If you see:
-```
-Failed to load audio-separator models: ...
-```
-- The models aren't at `SOW_AUDIO_SEPARATOR_MODEL_ROOT` - check the path
+If the job fails instead:
+- `ModalStemSeparatorConfigError: MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set` —
+  the Modal token is missing from the dev container's environment.
+- `Modal app/class 'sow-stems/StemSeparator' not found` — the app is not deployed (the
+  message contains the `modal deploy` command to run).
 
 ### Database Inspection
 
@@ -225,14 +217,14 @@ docker compose restart analysis-dev
 
 ### Model Not Found Errors
 
-If you see "Model file not found" errors:
-1. Check `SOW_AUDIO_SEPARATOR_MODEL_ROOT` is set correctly
-2. Verify models were downloaded to that directory
-3. Check the bind mount in docker-compose.yml:
-   ```yaml
-   volumes:
-     - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT}:/models/audio-separator:ro
-   ```
+If the `sow-stems` container reports a model filename it cannot load:
+1. Check `SOW_VOCAL_SEPARATION_MODEL` / `SOW_DEREVERB_MODEL` — both are passed to the
+   Modal class as parameters and must be filenames `audio-separator` can resolve.
+2. Check the container logs: `modal app logs sow-stems`.
+3. The download markers (`.downloaded-<model>`) are written only after both
+   `load_model()` calls succeed, so a failed download retries on the next cold start
+   instead of being skipped. An `HTTPSConnectionPool`/`Network is unreachable` error
+   there points at Modal egress or a wrong filename, not at the container.
 
 ### Port Already in Use
 
@@ -359,7 +351,7 @@ docker compose down -v
 | `SOW_EMBEDDING_BASE_URL` | For embedding jobs | - | Embedding base URL |
 | `SOW_EMBEDDING_MODEL` | For embedding jobs | text-embedding-3-small | Embedding model name |
 | `BPM_ALGORITHM_VERSION` | Optional | v4_octave_guard | Tempo algorithm for Fast Analysis jobs (v4_octave_guard / v5_cps_prior) |
-| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | For LRC | - | Modal tokens (Whisper + forced alignment) |
+| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | For LRC + stems | - | Modal tokens (Whisper, forced alignment, stem separation) |
 | `SOW_MODAL_FORCED_ALIGNER_APP_NAME` | Optional | sow-forced-aligner | Deployed forced-aligner app |
 | `SOW_MODAL_FORCED_ALIGNER_CLASS_NAME` | Optional | ForcedAligner | Deployed Modal class name |
 | `SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS` | Optional | 2 | Retry budget per alignment call |
@@ -372,5 +364,11 @@ docker compose down -v
 | `SOW_DASHSCOPE_ASR_MAX_CONCURRENT` | Optional | 2 | Max concurrent ASR requests |
 | `SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS` | Optional | 10000 | Max context chars for LLM alignment |
 | `SOW_DASHSCOPE_ASR_SNAP_THRESHOLD` | Optional | 0.60 | Threshold for snapping Qwen3 ASR segments |
-| `SOW_AUDIO_SEPARATOR_MODEL_ROOT` | For stems | - | Audio-separator models path |
+| `SOW_MODAL_STEM_APP_NAME` | For stems | sow-stems | Deployed stem-separator app |
+| `SOW_MODAL_STEM_CLASS_NAME` | Optional | StemSeparator | Deployed Modal class name |
+| `SOW_MODAL_STEM_MAX_ATTEMPTS` | Optional | 2 | Retry budget per stem-separation call |
+| `SOW_MODAL_STEM_RETRY_DELAY_SECONDS` | Optional | 5.0 | Linear backoff between attempts |
+| `SOW_MODAL_STEM_MAX_AUDIO_BYTES` | Optional | 100000000 | Cap on the uploaded audio |
+| `SOW_VOCAL_SEPARATION_MODEL` | Optional | model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt | Stage 1 model filename (Modal class parameter) |
+| `SOW_DEREVERB_MODEL` | Optional | UVR-De-Echo-Normal.pth | Stage 2 model filename (Modal class parameter) |
 | `TARGETPLATFORM` | No | linux/amd64 | Docker build platform |

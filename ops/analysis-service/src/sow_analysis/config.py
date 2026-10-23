@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     #   "v5_cps_prior"    -> CPS-derived lognormal prior (skips octave guard)
     BPM_ALGORITHM_VERSION: str = "v4_octave_guard"
     SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: int = (
-        1  # Global limit for local model execution (Whisper, Qwen3, audio-separator, allin1, demucs)
+        1  # Global limit for local model execution (allin1, demucs). Whisper, Qwen3 ASR and
+        # stem separation run on Modal and never acquire this semaphore.
     )
 
     # Fast analysis (librosa-only) concurrency. CPU/memory heavy; distinct from
@@ -286,6 +287,14 @@ class Settings(BaseSettings):
     SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS: float = 5.0
     SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES: int = 90_000_000
 
+    # Stem-separation fallback runs on Modal (modal_apps/stem_separator_app.py), not in
+    # this container. MVSEP stays the primary backend.
+    SOW_MODAL_STEM_APP_NAME: str = "sow-stems"
+    SOW_MODAL_STEM_CLASS_NAME: str = "StemSeparator"
+    SOW_MODAL_STEM_MAX_ATTEMPTS: int = 2
+    SOW_MODAL_STEM_RETRY_DELAY_SECONDS: float = 5.0
+    SOW_MODAL_STEM_MAX_AUDIO_BYTES: int = 100_000_000  # stage-2 input is a lossless vocals FLAC
+
     # DashScope Qwen3 ASR Configuration
     SOW_DASHSCOPE_API_KEY: str = ""
     SOW_DASHSCOPE_ASR_REGION: str = "intl"  # intl, cn, us
@@ -299,7 +308,8 @@ class Settings(BaseSettings):
     SOW_DASHSCOPE_ASR_CACHE_VERSION: int = 1
 
     # Stem Separation Configuration
-    SOW_AUDIO_SEPARATOR_MODEL_DIR: Path = Path("/models/audio-separator")
+    # Both filenames are passed to the sow-stems Modal app (modal_apps/stem_separator_app.py)
+    # as class parameters; they select the models the GPU container loads.
     SOW_VOCAL_SEPARATION_MODEL: str = "model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt"
     SOW_DEREVERB_MODEL: str = "UVR-De-Echo-Normal.pth"
 
@@ -307,12 +317,7 @@ class Settings(BaseSettings):
     SOW_MVSEP_API_KEY: str = ""
     SOW_MVSEP_ENABLED: bool = True
 
-    # Free-Only Patient Mode
-    SOW_FREE_ONLY_MODE: bool = False
-    # When enabled, LRC and stem-separation jobs wait for free-tier API quota
-    # to reset (UTC daily) instead of falling back to local models (Whisper,
-    # audio-separator) or failing. Scoped to LRC generation (Qwen3 ASR) and
-    # stem separation (MVSEP) only. Other job types unaffected.
+    # Free-Tier Quota Waiting
     SOW_QUOTA_POLL_INTERVAL_SECONDS: int = 3600
     # How often the shared QuotaWaiter's poller checks whether free-tier API
     # quota has reset. Both MVSEP and DashScope. Lower values = faster detection
@@ -332,10 +337,9 @@ class Settings(BaseSettings):
     SOW_PARENT_STEM_WAIT_TIMEOUT_SECONDS: int = 7200
     # Wall-clock budget (seconds) a parent job (LRC, forced alignment)
     # waits for an auto-triggered child stem separation job to complete
-    # before giving up. In SOW_FREE_ONLY_MODE, this budget is suspended
-    # (reset to zero) while the child job is in the
-    # "waiting_for_mvsep_quota_reset" stage, so the parent does not time
-    # out while MVSEP quota is legitimately exhausted for the day.
+    # before giving up. This budget is suspended (reset to zero) while the child
+    # job is in the "waiting_for_mvsep_quota_reset" stage, so the parent does not
+    # time out while MVSEP quota is legitimately exhausted for the day.
 
     # Stage 1 (Vocal Separation)
     SOW_MVSEP_STAGE1_SEP_TYPE: int = 48
@@ -421,33 +425,6 @@ class Settings(BaseSettings):
     # Seconds before the circuit breaker auto-recovers (closes).
     # During cooldown, YouTube transcript fetches are skipped.
     # After cooldown, the next fetch attempt is allowed (and resets the breaker if successful).
-
-    # ── Free-only-mode overrides (patient retry, no local ML fallback) ──
-    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD_FREE: int = 10
-    # Consecutive 429s before breaker opens in free-only mode (vs 5 default).
-    # Higher because free mode prefers waiting over falling back to local Whisper.
-
-    SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN_FREE: int = 300
-    # Breaker cooldown in seconds in free-only mode (vs 120 default).
-    # Longer to let YouTube's IP-level rate-limit window pass.
-
-    SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES_FREE: int = 5
-    # Retry attempts per YouTube API call on 429 in free-only mode (vs 3 default).
-
-    SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY_FREE: float = 10.0
-    # Base backoff delay in seconds in free-only mode (vs 5.0 default).
-    # With base=10: 10s, 20s, 40s, 60s, 60s (capped).
-
-    SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS_FREE: float = 30.0
-    # Min seconds between YouTube API calls in free-only mode (vs 3.0 default).
-    # More conservative spacing to avoid triggering IP-level 429s.
-    # Actual interval includes ±25% jitter to prevent thundering herd.
-
-    SOW_YOUTUBE_TRANSCRIPT_FREE_MODE_MAX_BREAKER_CYCLES: int = 3
-    # Maximum number of breaker cooldown cycles a free-mode job will wait
-    # through before giving up and falling back to local ASR.
-    # Prevents infinite hangs if YouTube permanently blocks this IP.
-    # 3 cycles × 300s cooldown = ~15 minutes of patience per job.
 
     @field_validator("SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT")
     @classmethod

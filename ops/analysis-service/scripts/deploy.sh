@@ -15,7 +15,6 @@ NC='\033[0m' # No Color
 
 # Configuration
 DEPLOYMENT_DIR="${DEPLOYMENT_DIR:-$HOME/sow-deployment}"
-MODEL_CACHE_DIR="${MODEL_CACHE_DIR:-$HOME/.cache}"
 
 # ============================================================================
 # Helper Functions
@@ -81,66 +80,6 @@ setup_deployment_dir() {
 }
 
 # ============================================================================
-# Download Models
-# ============================================================================
-
-download_audio_separator_models() {
-    log_info "Downloading Audio-Separator models..."
-    
-    local MODEL_DIR="$MODEL_CACHE_DIR/audio-separator"
-    mkdir -p "$MODEL_DIR"
-    
-    if [ -f "$MODEL_DIR/model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt" ] && \
-       [ -f "$MODEL_DIR/UVR-De-Echo-Normal.pth" ]; then
-        log_success "Audio-Separator models already exist"
-        return 0
-    fi
-    
-    # Create temporary virtual environment
-    local TEMP_VENV=$(mktemp -d)
-    python3 -m venv "$TEMP_VENV"
-    source "$TEMP_VENV/bin/activate"
-    
-    log_info "Installing audio-separator..."
-    pip install -q audio-separator>=0.30.0
-    
-    log_info "Downloading MelBand Roformer model..."
-    python3 << EOF
-from audio_separator.separator import Separator
-import os
-
-model_dir = "$MODEL_DIR"
-sep = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-sep.load_model(model_filename="model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt")
-print("✓ MelBand Roformer downloaded")
-
-sep2 = Separator(output_dir=model_dir, model_file_dir=model_dir, output_format="FLAC")
-sep2.load_model(model_filename="UVR-De-Echo-Normal.pth")
-print("✓ UVR-De-Echo downloaded")
-EOF
-    
-    # Cleanup
-    deactivate
-    rm -rf "$TEMP_VENV"
-    
-    log_success "Audio-Separator models downloaded to: $MODEL_DIR"
-}
-
-# ============================================================================
-# Get Model Paths for Configuration
-# ============================================================================
-
-get_model_paths() {
-    log_info "Determining model paths..."
-    
-    # Audio-Separator
-    export AUDIO_SEPARATOR_ROOT="$MODEL_CACHE_DIR/audio-separator"
-    
-    log_info "Audio-Separator: $AUDIO_SEPARATOR_ROOT"
-    log_info "Forced alignment: Modal app sow-forced-aligner (deploy separately)"
-}
-
-# ============================================================================
 # Create Configuration Files
 # ============================================================================
 
@@ -196,21 +135,23 @@ SOW_EMBEDDING_BASE_URL=""
 SOW_EMBEDDING_MODEL="text-embedding-3-small"
 
 # =============================================================================
-# AUDIO-SEPARATOR MODEL CONFIGURATION (Auto-detected)
-# =============================================================================
-SOW_AUDIO_SEPARATOR_MODEL_ROOT="$AUDIO_SEPARATOR_ROOT"
-
-# =============================================================================
 # OPTIONAL: PROCESSING CONFIGURATION
 # =============================================================================
 SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS=1
 SOW_DEMUCS_DEVICE=cpu
 
-# Whisper runs on Modal (modal_apps/whisper_app.py); fill these in on the server
+# Whisper, forced alignment and stem separation all run on Modal
+# (modal_apps/whisper_app.py, forced_aligner_app.py, stem_separator_app.py);
+# fill the tokens in on the server, then deploy each app.
 MODAL_TOKEN_ID=""
 MODAL_TOKEN_SECRET=""
 SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
 SOW_WHISPER_CACHE_VERSION=2
+SOW_MODAL_STEM_APP_NAME="sow-stems"
+SOW_MODAL_STEM_CLASS_NAME="StemSeparator"
+SOW_MODAL_STEM_MAX_ATTEMPTS=2
+SOW_MODAL_STEM_RETRY_DELAY_SECONDS=5.0
+SOW_MODAL_STEM_MAX_AUDIO_BYTES=100000000
 
 # =============================================================================
 # OPTIONAL: MVSEP CLOUD API
@@ -254,11 +195,9 @@ services:
       - .env
     environment:
       CACHE_DIR: /cache
-      SOW_AUDIO_SEPARATOR_MODEL_DIR: /models/audio-separator
       NATTEN_LOG_LEVEL: error
     volumes:
       - analysis-cache:/cache
-      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT}:/models/audio-separator:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
@@ -336,7 +275,7 @@ print_summary() {
     echo "  - Docker Compose:    $DEPLOYMENT_DIR/docker-compose.yml"
     echo ""
     echo "Models:"
-    echo "  - Audio-Separator:   $AUDIO_SEPARATOR_ROOT"
+    echo "  - Stem Separator:    Modal app sow-stems (no local model)"
     echo "  - Forced Aligner:    Modal app sow-forced-aligner (no local model)"
     echo ""
     echo "Useful Commands:"
@@ -359,13 +298,7 @@ main() {
     
     check_prerequisites
     setup_deployment_dir
-    
-    # Download models
-    download_audio_separator_models
-    
-    # Get model paths
-    get_model_paths
-    
+
     # Create configuration
     create_env_file
     create_docker_compose

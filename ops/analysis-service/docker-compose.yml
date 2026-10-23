@@ -9,7 +9,6 @@ x-common-env: &common-env
   SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS: ${SOW_MAX_CONCURRENT_LOCAL_MODEL_JOBS:-1}
   SOW_LRC_MAX_CONCURRENT: ${SOW_LRC_MAX_CONCURRENT:-2}
   SOW_DEMUCS_DEVICE: ${SOW_DEMUCS_DEVICE:-cpu}
-  SOW_AUDIO_SEPARATOR_MODEL_DIR: ${SOW_AUDIO_SEPARATOR_MODEL_DIR:-/models/audio-separator}
   SOW_VOCAL_SEPARATION_MODEL: ${SOW_VOCAL_SEPARATION_MODEL:-model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt}
   SOW_DEREVERB_MODEL: ${SOW_DEREVERB_MODEL:-UVR-De-Echo-Normal.pth}
   NATTEN_LOG_LEVEL: error
@@ -47,6 +46,12 @@ x-common-env: &common-env
   SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS: ${SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS:-2}
   SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS: ${SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS:-5.0}
   SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES: ${SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES:-90000000}
+  # Stem separation failover runs on Modal (modal_apps/stem_separator_app.py); same tokens
+  SOW_MODAL_STEM_APP_NAME: ${SOW_MODAL_STEM_APP_NAME:-sow-stems}
+  SOW_MODAL_STEM_CLASS_NAME: ${SOW_MODAL_STEM_CLASS_NAME:-StemSeparator}
+  SOW_MODAL_STEM_MAX_ATTEMPTS: ${SOW_MODAL_STEM_MAX_ATTEMPTS:-2}
+  SOW_MODAL_STEM_RETRY_DELAY_SECONDS: ${SOW_MODAL_STEM_RETRY_DELAY_SECONDS:-5.0}
+  SOW_MODAL_STEM_MAX_AUDIO_BYTES: ${SOW_MODAL_STEM_MAX_AUDIO_BYTES:-100000000}
   # MVSEP Cloud API Configuration
   SOW_MVSEP_API_KEY: ${SOW_MVSEP_API_KEY}
   SOW_MVSEP_ENABLED: ${SOW_MVSEP_ENABLED:-true}
@@ -93,8 +98,7 @@ x-common-env: &common-env
   SOW_FAST_ANALYZE_MAX_CONCURRENT: ${SOW_FAST_ANALYZE_MAX_CONCURRENT:-0}
   # BPM Algorithm Configuration (Fast Analysis tempo detection)
   BPM_ALGORITHM_VERSION: ${BPM_ALGORITHM_VERSION:-v4_octave_guard}
-  # Free-Only Patient Mode
-  SOW_FREE_ONLY_MODE: ${SOW_FREE_ONLY_MODE:-false}
+  # Free-tier quota waiting (MVSEP, DashScope Qwen3 ASR)
   SOW_QUOTA_POLL_INTERVAL_SECONDS: ${SOW_QUOTA_POLL_INTERVAL_SECONDS:-3600}
 
 # Define common GPU configuration using YAML anchor
@@ -120,7 +124,6 @@ services:
     volumes:
       - analysis-cache:/cache
       - ${SOW_DEBUG_DUMP_DIR:-~/.cache/sow-analysis-service/debug-dumps}:/cache/debug-dumps
-      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
     # deploy:
@@ -144,7 +147,6 @@ services:
       - analysis-cache:/cache
       - ./src:/workspace/src:ro
       - ${SOW_DEBUG_DUMP_DIR:-~/.cache/sow-analysis-service/debug-dumps}:/cache/debug-dumps
-      - ${SOW_AUDIO_SEPARATOR_MODEL_ROOT:-/models/audio-separator}:/models/audio-separator:ro
     # GPU support: Uncomment the 'deploy' section below if you have a GPU
     # and NVIDIA Container Toolkit installed. See README.md for details.
     # deploy:
