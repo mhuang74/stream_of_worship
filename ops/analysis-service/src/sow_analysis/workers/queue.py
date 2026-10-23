@@ -254,7 +254,7 @@ class JobQueue:
         self._mvsep_client = mvsep_client
 
     def set_quota_waiters(self, mvsep: Any = None, qwen3: Any = None) -> None:
-        """Set QuotaWaiter instances for free-only patient mode.
+        """Set QuotaWaiter instances used when daily API quota is exhausted.
 
         Args:
             mvsep: QuotaWaiter for MVSEP quota (or None)

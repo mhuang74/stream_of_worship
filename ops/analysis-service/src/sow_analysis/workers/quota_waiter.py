@@ -1,4 +1,4 @@
-"""Shared quota waiter for free-only patient mode.
+"""Shared quota waiter for daily-quota exhaustion.
 
 One instance per API type (MVSEP, DashScope). Service-wide singleton shared
 by all jobs. When quota is exhausted, jobs call ``wait()`` to block until the

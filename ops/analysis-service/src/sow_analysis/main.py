@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Qwen3AsrClient not available")
 
-    # Create QuotaWaiters (for free-only patient mode)
+    # Create QuotaWaiters (jobs block until the daily quota resets)
     mvsep_quota_waiter = None
     qwen3_quota_waiter = None
     if mvsep_client is not None:

@@ -49,6 +49,7 @@ def _stub_queue(**attrs) -> JobQueue:
     q.cache_manager = MagicMock()
     q.cache_manager.get_lrc_result.return_value = None
     q.cache_manager.get_qwen3_asr_transcription.return_value = None
+    q.cache_manager.get_whisper_transcription.return_value = None
     q.r2_client = None
     q._dashscope_asr_semaphore = None
     q._qwen3_client = None
