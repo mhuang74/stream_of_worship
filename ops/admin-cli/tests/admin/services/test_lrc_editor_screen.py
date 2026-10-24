@@ -65,6 +65,7 @@ def _make_app_with_lines(
     analysis_client=None,
     cache_dir: Path | None = None,
     original_transcribed_content: str | None = None,
+    lrc_source: str | None = None,
 ) -> tuple[LRCEditorApp, EditorState]:
     state = EditorState(
         timed_lines=lines,
@@ -82,6 +83,7 @@ def _make_app_with_lines(
         hash_prefix="abc123",
         original_transcribed_content=original_transcribed_content,
         visibility_status=visibility_status,
+        lrc_source=lrc_source,
         analysis_client=analysis_client,
     )
     return app, state
@@ -655,13 +657,13 @@ async def test_status_indicator_shows_changed_or_no_changes():
         await pilot.pause()
         status = app.screen.query_one(StatusIndicator)
 
-        status.update_status(dirty=True, autosave_ok=True, source="r2")
+        status.update_status(dirty=True, autosave_ok=True)
         await pilot.pause()
         visual = str(status.visual)
         assert "Changed" in visual
         assert "No Changes" not in visual
 
-        status.update_status(dirty=False, autosave_ok=True, source="r2")
+        status.update_status(dirty=False, autosave_ok=True)
         await pilot.pause()
         visual = str(status.visual)
         assert "No Changes" in visual
@@ -727,6 +729,39 @@ async def test_header_shows_visibility_badge(visibility_status, expected_sub_tit
         assert expected_sub_title in str(app.screen.query_one(Header).format_title())
 
 
+@pytest.mark.parametrize(
+    ("lrc_source", "expected_sub_title"),
+    [
+        ("youtube_transcript", "Visibility: · none · Src: YT"),
+        ("youtube_transcript_asr_tail", "Visibility: · none · Src: YT+tail"),
+        ("qwen3_asr", "Visibility: · none · Src: Qwen3"),
+        ("whisper_asr", "Visibility: · none · Src: Whisper"),
+        ("forced_alignment", "Visibility: · none · Src: Align"),
+        ("manual_upload", "Visibility: · none · Src: Manual"),
+        ("llm_edit", "Visibility: · none · Src: LLM"),
+        ("r2_preexisting", "Visibility: · none · Src: R2"),
+        # Unmapped values render raw, truncated to LRC_SOURCE_BADGE_MAX_CHARS.
+        ("qwen3_forced_alignment", "Visibility: · none · Src: qwen3_forced…"),
+        ("custom", "Visibility: · none · Src: custom"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_header_shows_abbreviated_lrc_source(lrc_source, expected_sub_title):
+    from textual.widgets import Header
+
+    app, _ = _make_app_with_lines(
+        [LRCLine(time_seconds=0.0, text="Line 1", raw_timestamp="[00:00.00]")],
+        visibility_status=None,
+        lrc_source=lrc_source,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        assert app.screen.sub_title == expected_sub_title
+        assert expected_sub_title in str(app.screen.query_one(Header).format_title())
+
+
 @pytest.mark.asyncio
 async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
     import asyncio
@@ -744,6 +779,7 @@ async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
             lrc_content="[00:01.00]New A\n[00:02.00]New B",
             identity=R2ObjectIdentity(exists=True, etag="new"),
             job_id="job-1",
+            lrc_source="qwen3_asr",
         )
 
     monkeypatch.setattr(screen_module, "regenerate_lrc_for_editor", _fake_regenerate)
@@ -754,6 +790,7 @@ async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
             LRCLine(time_seconds=2.0, text="Old B", raw_timestamp="[00:02.00]"),
         ],
         analysis_client=MagicMock(),
+        lrc_source="whisper_asr",
     )
     state.song_id = "song_0001"
 
@@ -778,7 +815,9 @@ async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
 
         table = editor.query_one("#line-table", DataTable)
         assert str(table.get_cell_at((0, 2))) == "New A"
-        assert "Source: R2" in str(editor.query_one(StatusIndicator).visual)
+        # Job-result provenance replaces the loaded value in the header badge.
+        assert editor.sub_title == "Visibility: ◐ review · Src: Qwen3"
+        assert "Source:" not in str(editor.query_one(StatusIndicator).visual)
 
 
 @pytest.mark.asyncio
@@ -940,6 +979,7 @@ async def test_reload_hotkey_applies_changed_r2_content(tmp_path):
     app, state = _make_app_with_lines(
         [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
         cache_dir=tmp_path,
+        lrc_source="whisper_asr",
     )
 
     async with app.run_test(size=(80, 12)) as pilot:
@@ -961,12 +1001,13 @@ async def test_reload_hotkey_applies_changed_r2_content(tmp_path):
         assert state.transcribed_identity.etag == "new"
         assert editor._reload_in_flight is False
         assert editor.original_transcribed_content == "[00:01.00]From R2"
-        # The badge is the catalog's status, not an assumption about the reload.
-        assert editor.sub_title == "Visibility: ○ hold"
+        # The badge is the catalog's status, not an assumption about the reload;
+        # `L` reloads R2 content without changing provenance.
+        assert editor.sub_title == "Visibility: ○ hold · Src: Whisper"
 
         table = editor.query_one("#line-table", DataTable)
         assert str(table.get_cell_at((0, 2))) == "From R2"
-        assert "Source: R2" in str(editor.query_one(StatusIndicator).visual)
+        assert "Source:" not in str(editor.query_one(StatusIndicator).visual)
 
 
 @pytest.mark.asyncio
@@ -1090,6 +1131,7 @@ async def test_align_hotkey_asks_and_refreshes_from_r2(monkeypatch):
             LRCLine(time_seconds=2.0, text="Old B", raw_timestamp="[00:02.00]"),
         ],
         analysis_client=MagicMock(),
+        lrc_source="whisper_asr",
     )
     state.song_id = "song_0001"
     state.audio_duration = 200.0
@@ -1117,7 +1159,8 @@ async def test_align_hotkey_asks_and_refreshes_from_r2(monkeypatch):
 
         table = editor.query_one("#line-table", DataTable)
         assert str(table.get_cell_at((0, 2))) == "Old A"
-        assert "Source: R2" in str(editor.query_one(StatusIndicator).visual)
+        assert editor.sub_title == "Visibility: ◐ review · Src: Align"
+        assert "Source:" not in str(editor.query_one(StatusIndicator).visual)
 
 
 @pytest.mark.asyncio
