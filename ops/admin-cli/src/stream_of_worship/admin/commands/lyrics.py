@@ -129,11 +129,20 @@ def feedback_list(
     Default shows only recordings with OPEN (unresolved) feedback;
     --all includes fully resolved ones.
 
-    Feedback attached to soft-deleted recordings is always excluded: those
-    recordings cannot be targeted by `feedback show`, `feedback resolve`, or
-    `lyrics generate`, so counting them here would produce song IDs that only
-    hit the generate skipped-guard. Feedback rows with no matching recordings
-    row at all are still listed (reported via hash_prefix).
+    Feedback attached to a soft-deleted recording is always excluded: this
+    queue is grouped by song ID, and every song-level consumer (feedback show,
+    feedback resolve, lyrics generate) resolves through recordings with
+    `recordings.deleted_at IS NULL`, so such rows would advertise work no
+    song-level command can perform. Recording-hash targets still reach them
+    (`feedback show <content_hash>`); the exclusion is about the song-ID stream
+    that --format ids emits.
+
+    Residual gap: feedback on a live recording whose *song* is soft-deleted is
+    still listed here, while `feedback show <song_id>` reports nothing (song
+    targets also require `songs.deleted_at IS NULL`).
+
+    Feedback rows with no matching recordings row at all stay listed
+    (reported via hash_prefix).
 
     --rating all is an alias for no rating filter: it lists recordings that have
     both good and poor feedback (unresolved-only by default). --rating all --all
@@ -164,10 +173,12 @@ def feedback_list(
     config = _load_connection_provider(config_path)
     provider = ConnectionProvider(config.get_connection_url())
     conn = provider.get_connection()
-    # Always exclude feedback that hangs on a soft-deleted recording: show /
-    # resolve / generate all resolve targets with `deleted_at IS NULL`, so such
-    # rows are unreachable from those commands. `r.content_hash IS NULL` keeps
-    # the LEFT JOIN's rows whose hash has no recordings row at all visible.
+    # Always exclude feedback that hangs on a soft-deleted recording: the queue
+    # is grouped by song ID and song-ID targets resolve with
+    # `recordings.deleted_at IS NULL` (see _resolve_target / the generate
+    # feedback lookup), so those rows are unreachable from song-level commands.
+    # `r.content_hash IS NULL` keeps the LEFT JOIN's rows whose hash has no
+    # recordings row at all visible.
     clauses: list[str] = ["(r.content_hash IS NULL OR r.deleted_at IS NULL)"]
     params: dict = {}
     if rating is not None and rating != "all":
