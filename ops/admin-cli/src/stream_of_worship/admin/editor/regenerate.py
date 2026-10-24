@@ -31,8 +31,8 @@ from stream_of_worship.admin.services.visibility import is_published, reprocess_
 logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL = 5.0
-# Matches the single-song ``lyrics generate`` wait budget.
-DEFAULT_TIMEOUT = 600.0
+# Matches the single-song ``lyrics generate`` wait budget (20 minutes).
+DEFAULT_TIMEOUT = 1200.0
 R2_RETRY_INTERVAL = 2.0
 R2_RETRY_ATTEMPTS = 30
 
