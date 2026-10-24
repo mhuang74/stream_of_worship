@@ -3,6 +3,8 @@
 import threading
 from unittest.mock import MagicMock
 
+import pytest
+
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.editor.align import align_lrc_for_editor
 from stream_of_worship.admin.services.analysis import (
@@ -291,3 +293,28 @@ def test_align_missing_recording_is_an_error():
 
     assert result.ok is False
     assert "No recording found" in result.error
+
+
+@pytest.mark.parametrize(
+    ("duration_seconds", "expected_timeout"),
+    [
+        (None, 1200.0),  # unknown duration: base budget
+        (240.0, 1200.0),  # single chunk
+        (300.0, 1200.0),  # still a single chunk
+        (301.0, 1320.0),  # 2 chunks: +120s
+        (890.0, 1440.0),  # 3 chunks: +240s
+    ],
+)
+def test_align_wait_budget_scales_with_chunk_count(duration_seconds, expected_timeout):
+    db_client, r2_client, analysis_client = _clients(
+        recording=_recording(duration_seconds=duration_seconds)
+    )
+    analysis_client.submit_forced_alignment.return_value = _queued_job()
+    analysis_client.wait_for_completion.return_value = _completed_job()
+    r2_client.download_lrc_content.return_value = "[00:01.00]aligned"
+    r2_client.get_lrc_identity.return_value = R2ObjectIdentity(exists=True, etag="e")
+
+    result = _run(db_client, r2_client, analysis_client)
+
+    assert result.ok is True
+    assert analysis_client.wait_for_completion.call_args.kwargs["timeout"] == expected_timeout

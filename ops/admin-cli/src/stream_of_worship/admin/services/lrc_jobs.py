@@ -6,6 +6,7 @@ backfill orchestration) and the ``lyrics`` commands (generate/batch).
 """
 
 import json
+import math
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -100,6 +101,25 @@ _LRC_GENERATOR_MODES = {
     "qwen3": "qwen3_asr",
     "whisper": "whisper_asr",
 }
+
+
+def alignment_wait_timeout(duration_seconds: float | None, base: float = 1200.0) -> float:
+    """Wait budget for a forced alignment job, scaled by chunk count.
+
+    The analysis service splits recordings longer than 300 s into chunks and
+    aligns each one on Modal, so a 15-minute recording needs several GPU calls.
+    Budget grows by two minutes per extra 300 s chunk.
+
+    Args:
+        duration_seconds: Recording duration; ``None`` keeps the base budget.
+        base: Budget for a single-chunk (<=300 s) recording, in seconds.
+
+    Returns:
+        Seconds to wait before treating the job as timed out.
+    """
+    duration = max(duration_seconds or 0.0, 0.0)
+    chunk_count = max(1, math.ceil(duration / 300.0))
+    return max(base, base + 120.0 * (chunk_count - 1))
 
 
 def lrc_generator_kwargs(recording: Recording, generator: str, no_cache: bool) -> dict:

@@ -348,13 +348,34 @@ SOW_MODAL_FORCED_ALIGNER_CLASS_NAME="ForcedAligner"
 SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS=2
 SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS=5.0
 SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES=90000000
+SOW_FORCED_ALIGN_MAX_CHUNK_SECONDS=300.0
+SOW_FORCED_ALIGN_MAX_TOTAL_SECONDS=900.0
+SOW_FORCED_ALIGN_CUT_SEARCH_SECONDS=30.0
 ```
 
 - Retries are owned by the client; the Modal class deliberately sets no `retries=`, so a
   crashing input cannot be executed N×M times on the GPU.
 - `SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES` caps the WAV upload; `validate_audio_duration`
-  already rejects inputs longer than 300 s, so the default is headroom, not a real limit.
+  rejects inputs longer than `SOW_FORCED_ALIGN_MAX_TOTAL_SECONDS`, so the default is
+  headroom, not a real limit.
 - Concurrency is bounded by the app (`max_containers=2`).
+
+Long recordings (300–900 s) cannot be aligned in one pass — the model tops out at five
+minutes. Those jobs are chunked: `find_chunk_boundaries` splits the audio into
+`ceil(duration / (300 − 30))` pieces, snapping each ideal cut to the quietest RMS frame
+within ±`SOW_FORCED_ALIGN_CUT_SEARCH_SECONDS` (an unreadable file falls back to evenly
+spaced cuts), `assign_lines_to_chunks` hands each chunk the lyric lines whose timestamps
+fall inside it, each chunk is aligned separately, and the per-chunk `(start, end)` values
+are shifted by the chunk offset before the LRC is built. There is no separate LRC
+overlap/dedup step: the final LRC only uses line start timestamps.
+
+```
+Forced alignment chunking job_abc: duration=610.0s boundaries=[0.0, 203.3, 406.7, 610.0] chunks=3 lines_per_chunk=[12, 13, 11] lrc_times=True
+Forced alignment chunk 2/3: 203.3s-406.7s lines=13 segments=241
+```
+
+A failing chunk fails the job with the chunk index in the message (`chunk 2/3: …`), so the
+operator can tell a model failure from a bad cut.
 
 Every call logs one line with the total Modal time (it includes cold start and the audio
 upload, and starts after the local transcode):

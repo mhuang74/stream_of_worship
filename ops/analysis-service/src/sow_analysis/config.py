@@ -280,6 +280,12 @@ class Settings(BaseSettings):
     SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS: float = 5.0
     SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES: int = 90_000_000
 
+    # Long recordings are split into <=300s chunks (the Qwen3ForcedAligner
+    # model limit) cut at silence, aligned separately, then concatenated.
+    SOW_FORCED_ALIGN_MAX_CHUNK_SECONDS: float = 300.0
+    SOW_FORCED_ALIGN_MAX_TOTAL_SECONDS: float = 900.0
+    SOW_FORCED_ALIGN_CUT_SEARCH_SECONDS: float = 30.0
+
     # Stem-separation fallback runs on Modal (modal_apps/stem_separator_app.py), not in
     # this container. MVSEP stays the primary backend.
     SOW_MODAL_STEM_APP_NAME: str = "sow-stems"

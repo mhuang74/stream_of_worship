@@ -29,6 +29,7 @@ from rich.table import Table
 from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.commands.catalog import get_db_client
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
+from stream_of_worship.admin.constants import FORCED_ALIGN_MAX_DURATION_SECONDS
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.editor.state import EditorState
@@ -40,6 +41,7 @@ from stream_of_worship.admin.services.analysis import (
 )
 from stream_of_worship.admin.services.hasher import get_hash_prefix
 from stream_of_worship.admin.services.lrc_jobs import (
+    alignment_wait_timeout,
     display_lrc,
     resolve_alignment_lyrics_text,
     submit_lrc_batch,
@@ -1479,10 +1481,14 @@ def _submit_forced_alignment_single(
         )
         raise typer.Exit(0)
 
-    if recording.duration_seconds and recording.duration_seconds > 300:
+    if (
+        recording.duration_seconds
+        and recording.duration_seconds > FORCED_ALIGN_MAX_DURATION_SECONDS
+    ):
         console.print(
             f"[red]Recording {recording.hash_prefix} is too long "
-            f"({recording.duration_seconds:.0f}s > 300s limit).[/red]"
+            f"({recording.duration_seconds:.0f}s > "
+            f"{FORCED_ALIGN_MAX_DURATION_SECONDS:.0f}s limit).[/red]"
         )
         raise typer.Exit(1)
 
@@ -1539,7 +1545,7 @@ def _submit_forced_alignment_single(
                 final_job = analysis_client.wait_for_completion(
                     job_id,
                     poll_interval=30.0,
-                    timeout=1200.0,
+                    timeout=alignment_wait_timeout(recording.duration_seconds),
                     callback=update_progress,
                 )
             except AnalysisServiceError as e:
@@ -1630,8 +1636,11 @@ def _submit_forced_alignment_batch(
             skipped += 1
             continue
 
-        if recording.duration_seconds and recording.duration_seconds > 300:
-            console.print("  [yellow]Too long (>5 min, skipped)[/yellow]")
+        if (
+            recording.duration_seconds
+            and recording.duration_seconds > FORCED_ALIGN_MAX_DURATION_SECONDS
+        ):
+            console.print("  [yellow]Too long (>15 min, skipped)[/yellow]")
             skipped += 1
             continue
 
