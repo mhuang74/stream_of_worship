@@ -598,7 +598,13 @@ album. After each upload it offers to clear the poor ratings and to set
 the visibility status: a numbered menu listing every valid status except
 the current one (`published` / `review` / `hold`), then continue to the
 next song. The editor header shows the recording's current status as a
-badge — `● published / ◐ review / ○ hold / · none`.
+badge — `● published / ◐ review / ○ hold / · none` — followed by the
+recording's LRC provenance (`recordings.lrc_source`) abbreviated to
+`YT`, `YT+tail`, `Qwen3`, `Whisper`, `Align`, `Manual`, `LLM` or `R2`
+(NULL/unknown provenance omits the segment; an unrecognized value is
+printed raw, truncated to 12 characters). The badge refreshes in-session
+after `G` (regenerate) and `A` (align) from the job result; `L` (reload)
+leaves it alone because reloading does not change provenance.
 
 ### Fresh Sweep (never-reviewed songs)
 

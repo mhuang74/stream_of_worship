@@ -3113,6 +3113,7 @@ def _run_editor_session(
         feedback_user_id=feedback_user_id,
         recording_content_hash=recording.content_hash,
         visibility_status=recording.visibility_status,
+        lrc_source=recording.lrc_source,
         analysis_client=analysis_client,
     )
     app.run()

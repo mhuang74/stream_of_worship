@@ -36,6 +36,7 @@ class LRCEditorApp(App[None]):
         feedback_user_id=None,
         recording_content_hash=None,
         visibility_status=None,
+        lrc_source=None,
         analysis_client=None,
     ):
         super().__init__()
@@ -54,6 +55,11 @@ class LRCEditorApp(App[None]):
         # Session-constant: the command layer only mutates visibility after
         # app.run() returns.
         self.visibility_status = visibility_status
+        # Current LRC provenance (recordings.lrc_source), rendered in the
+        # header subtitle. Unlike visibility_status this IS mutated
+        # in-session: the regenerate (`G`) and align (`A`) hotkeys update it
+        # from the job result, which is why the screen owns its own copy.
+        self.lrc_source = lrc_source
         # Analysis service client for the in-editor force-regeneration
         # hotkey (`G`); None keeps the editor read-only w.r.t. regeneration.
         self.analysis_client = analysis_client
@@ -83,6 +89,7 @@ class LRCEditorApp(App[None]):
             feedback_user_id=self.feedback_user_id,
             recording_content_hash=self.recording_content_hash,
             visibility_status=self.visibility_status,
+            lrc_source=self.lrc_source,
             analysis_client=self.analysis_client,
         ))
 
