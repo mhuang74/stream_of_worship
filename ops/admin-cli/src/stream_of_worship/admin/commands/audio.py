@@ -3940,15 +3940,19 @@ def check_status(
                     try:
                         audio_url = r2_client.audio_url(rec.hash_prefix)
                         if audio_url:
-                            db_client.update_recording_download(
-                                hash_prefix=rec.hash_prefix,
-                                download_status="completed",
-                            )
+                            # Persist the URL before flipping the status: if the URL write
+                            # fails the recording stays incomplete and the next reconcile
+                            # retries, whereas the reverse order would strand a completed
+                            # recording that no longer matches the reconcile queue.
                             if not rec.r2_audio_url:
                                 db_client.update_recording_r2_url(
                                     hash_prefix=rec.hash_prefix,
                                     r2_audio_url=audio_url,
                                 )
+                            db_client.update_recording_download(
+                                hash_prefix=rec.hash_prefix,
+                                download_status="completed",
+                            )
                             reconciled_download += 1
                             console.print(
                                 f"  [green]✓[/green] {rec.song_id or rec.hash_prefix}: "
