@@ -127,12 +127,27 @@ describe("GET /api/lyrics/feedback/[recordingContentHash]", () => {
 
   it("returns the caller's current feedback with rating and reason", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
-    mockFindFirst.mockResolvedValue({ rating: "sad", reason: "timing" });
+    mockFindFirst.mockResolvedValue({ rating: "sad", reason: "timing", resolvedAt: null });
 
     const res = await GET(makeRequest("hash123"), mockParams("hash123"));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.feedback).toEqual({ rating: "sad", reason: "timing" });
+  });
+
+  it("returns null feedback when an admin has resolved the row", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(mockSession);
+    mockFindFirst.mockResolvedValue({
+      rating: "sad",
+      reason: "timing",
+      note: "line 3 off by a beat",
+      resolvedAt: new Date("2026-10-24T12:00:00Z"),
+    });
+
+    const res = await GET(makeRequest("hash123"), mockParams("hash123"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.feedback).toBeNull();
   });
 
   it("returns 500 on database error", async () => {
@@ -274,6 +289,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
 
     // Second call still upserts (overwrite, not a new row), and the deploy
     // path has no updated_at trigger — the route must set it explicitly.
+    // resolvedAt: null reopens a row an admin had already resolved.
     expect(onConflictDoUpdate).toHaveBeenCalledTimes(2);
     expect(onConflictDoUpdate.mock.calls[1][0]).toEqual(
       expect.objectContaining({
@@ -281,6 +297,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
           rating: "happy",
           reason: null,
           note: null,
+          resolvedAt: null,
           updatedAt: expect.any(Date),
         },
       })
@@ -442,6 +459,7 @@ describe("PUT /api/lyrics/feedback/[recordingContentHash] — validation matrix"
       rating: "sad",
       reason: "timing",
       note: "line 3 off by a beat",
+      resolvedAt: null,
     });
 
     const res = await GET(makeRequest("hash123"), mockParams("hash123"));
