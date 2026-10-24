@@ -2473,10 +2473,11 @@ class LRCEditorScreen(Screen[None]):
                         )
                         yield Label(
                             "Force quit? The job keeps running server-side and the "
-                            "recording stays 'processing' until you poll it: "
-                            "'sow-admin audio status <job_id>' (the job id is in the "
-                            "status line), or run 'sow-admin lyrics generate <song>' "
-                            "without --force."
+                            "recording stays 'processing'. Recover with "
+                            "'sow-admin audio status' (lists the LRC job id), then "
+                            "'sow-admin audio status <job_id>' or "
+                            "'sow-admin audio status --sync' to finish polling, or run "
+                            "'sow-admin lyrics generate <song>' without --force."
                         )
                         yield Label("[d]Press [bold]y[/bold] to force quit | [bold]n[/bold] to wait[/]")
 
