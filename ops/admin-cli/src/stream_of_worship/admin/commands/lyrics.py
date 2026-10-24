@@ -129,6 +129,12 @@ def feedback_list(
     Default shows only recordings with OPEN (unresolved) feedback;
     --all includes fully resolved ones.
 
+    Feedback attached to soft-deleted recordings is always excluded: those
+    recordings cannot be targeted by `feedback show`, `feedback resolve`, or
+    `lyrics generate`, so counting them here would produce song IDs that only
+    hit the generate skipped-guard. Feedback rows with no matching recordings
+    row at all are still listed (reported via hash_prefix).
+
     --rating all is an alias for no rating filter: it lists recordings that have
     both good and poor feedback (unresolved-only by default). --rating all --all
     includes fully-resolved recordings, same as plain --all.
@@ -158,7 +164,11 @@ def feedback_list(
     config = _load_connection_provider(config_path)
     provider = ConnectionProvider(config.get_connection_url())
     conn = provider.get_connection()
-    clauses: list[str] = []
+    # Always exclude feedback that hangs on a soft-deleted recording: show /
+    # resolve / generate all resolve targets with `deleted_at IS NULL`, so such
+    # rows are unreachable from those commands. `r.content_hash IS NULL` keeps
+    # the LEFT JOIN's rows whose hash has no recordings row at all visible.
+    clauses: list[str] = ["(r.content_hash IS NULL OR r.deleted_at IS NULL)"]
     params: dict = {}
     if rating is not None and rating != "all":
         # Open-only: with --rating poor, the group must be built from open sad
@@ -169,7 +179,7 @@ def feedback_list(
     if reason is not None:
         clauses.append("(f.resolved_at IS NULL AND f.reason = %(reason)s)")
         params["reason"] = reason
-    where = " AND ".join(clauses) if clauses else "TRUE"
+    where = " AND ".join(clauses)
     having = "" if include_all else "HAVING COUNT(*) FILTER (WHERE f.resolved_at IS NULL) > 0"
 
     with conn.cursor() as cur:
