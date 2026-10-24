@@ -157,9 +157,7 @@ def test_regenerate_maps_generator_to_service_kwargs(
 
 
 def test_regenerate_whisper_ignores_missing_youtube_url():
-    db_client, r2_client, analysis_client = _clients(
-        recording=_recording(youtube_url=None)
-    )
+    db_client, r2_client, analysis_client = _clients(recording=_recording(youtube_url=None))
     analysis_client.submit_lrc.return_value = JobInfo(
         job_id="job-1", status="queued", job_type="lrc"
     )

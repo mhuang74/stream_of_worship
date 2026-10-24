@@ -946,9 +946,7 @@ async def test_reload_hotkey_applies_changed_r2_content(tmp_path):
         await pilot.pause()
         editor = app.screen
         editor.r2_client.download_lrc_content.return_value = "[00:01.00]From R2"
-        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(
-            exists=True, etag="new"
-        )
+        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(exists=True, etag="new")
         editor.db_client.get_recording_by_hash.return_value = SimpleNamespace(
             visibility_status="hold"
         )
@@ -993,9 +991,7 @@ async def test_reload_hotkey_is_a_noop_when_r2_content_is_unchanged(tmp_path, mo
         await pilot.pause()
         editor = app.screen
         editor.r2_client.download_lrc_content.return_value = unchanged
-        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(
-            exists=True, etag="same"
-        )
+        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(exists=True, etag="same")
 
         await pilot.press("L")
         await asyncio.to_thread(editor._reload_thread.join, 5.0)
@@ -1027,9 +1023,7 @@ async def test_reload_preserves_edits_made_during_fetch_as_draft(tmp_path):
             return "[00:01.00]From R2"
 
         editor.r2_client.download_lrc_content.side_effect = _download
-        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(
-            exists=True, etag="new"
-        )
+        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(exists=True, etag="new")
 
         await pilot.press("L")
         await pilot.pause()

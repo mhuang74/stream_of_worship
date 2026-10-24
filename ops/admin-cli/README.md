@@ -652,7 +652,8 @@ force-quit confirmation.
 Press `L` (Reload from R2) to re-read the latest LRC from R2 without
 regenerating — useful after running `lyrics generate` in another terminal. The
 reload is a no-op when the R2 content is byte-identical to the loaded one, and
-unsaved edits made while the fetch is in flight are preserved as a local draft.
+any unsaved edits in the editor are preserved as a local draft before the
+session is replaced.
 
 ## License
 
