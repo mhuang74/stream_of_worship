@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .logging_config import configure_logging
 
 from . import __version__
-from .config import settings
+from .config import Settings, settings
 
 # Configure logging with job_id support
 configure_logging(
@@ -50,6 +50,231 @@ qwen3_client: "Qwen3AsrClient | None" = None
 # Global QuotaWaiter instances
 mvsep_quota_waiter = None
 qwen3_quota_waiter = None
+
+
+# Settings fields whose values are credentials. Their startup-table rows show only
+# "(set)" / "(not set)": no secret material is ever logged.
+SECRET_FIELDS: frozenset[str] = frozenset(
+    {
+        "SOW_R2_ACCESS_KEY_ID",
+        "SOW_R2_SECRET_ACCESS_KEY",
+        "SOW_ANALYSIS_API_KEY",
+        "SOW_ADMIN_API_KEY",
+        "SOW_LLM_API_KEY",
+        "SOW_EMBEDDING_API_KEY",
+        "SOW_DASHSCOPE_API_KEY",
+        "SOW_MVSEP_API_KEY",
+    }
+)
+
+# Display category for every Settings field. The startup table is generated from
+# Settings.model_fields, so a field missing here fails startup loudly (KeyError) and
+# fails tests/test_startup_config_table.py instead of disappearing from the log.
+_CATEGORY_FIELDS: dict[str, tuple[str, ...]] = {
+    "Logging": ("SOW_LOG_LEVEL",),
+    "R2": (
+        "SOW_R2_BUCKET",
+        "SOW_R2_ENDPOINT_URL",
+        "SOW_R2_ACCESS_KEY_ID",
+        "SOW_R2_SECRET_ACCESS_KEY",
+    ),
+    "API Security": ("SOW_ANALYSIS_API_KEY", "SOW_ADMIN_API_KEY"),
+    "Cache": (
+        "CACHE_DIR",
+        "SOW_DEBUG_DUMP_DIR",
+        "SOW_DEBUG_DUMP_PUBLIC_BASE_URL",
+        "KEY_ALGORITHM_VERSION",
+        "BPM_ALGORITHM_VERSION",
+        "SOW_WHISPER_CACHE_VERSION",
+        "SOW_ANALYSIS_CACHE_VERSION",
+        "SOW_DASHSCOPE_ASR_CACHE_VERSION",
+    ),
+    "Processing": (
+        "SOW_FAST_ANALYZE_MAX_CONCURRENT",
+        "SOW_COMPONENT_MAX_CONCURRENT",
+        "SOW_ANALYZE_MAX_CONCURRENT",
+        "SOW_LRC_MAX_CONCURRENT",
+        "SOW_QUEUE_START_DELAY_SECONDS",
+        "SOW_STEP_HEARTBEAT_INTERVAL_SECONDS",
+    ),
+    "LRC Gap/Tail": (
+        "SOW_LRC_GAP_THRESHOLD_BEATS",
+        "SOW_LRC_GAP_PLACEHOLDER_BEATS",
+        "SOW_LRC_TAIL_FILL_ENABLED",
+        "SOW_LRC_TAIL_GAP_SECONDS",
+        "SOW_LRC_TAIL_GAP_FRACTION",
+        "SOW_LRC_TAIL_LEAD_IN_SECONDS",
+        "SOW_LRC_TAIL_DUP_WINDOW_SECONDS",
+        "SOW_LRC_TAIL_WHISPER_MAX_NO_SPEECH_PROB",
+        "SOW_LRC_TAIL_MIN_USABLE_PHRASES",
+    ),
+    "LLM": (
+        "SOW_LLM_API_KEY",
+        "SOW_LLM_BASE_URL",
+        "SOW_LLM_MODEL",
+        "SOW_LLM_MAX_CONCURRENT",
+        "SOW_LLM_RATE_LIMIT_MAX_RETRIES",
+        "SOW_LLM_RATE_LIMIT_BASE_DELAY",
+        "SOW_LLM_RATE_LIMIT_MAX_DELAY",
+        "SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS",
+        "SOW_LLM_MIN_INTERVAL_SECONDS",
+        "SOW_LLM_CLASSIFICATION_TIMEOUT_SECONDS",
+        "SOW_LLM_MODEL_VALIDATION_TIMEOUT_SECONDS",
+    ),
+    "LLM Segmentation": (
+        "SOW_COMPONENTS_USE_LLM_SEGMENTATION",
+        "SOW_LLM_SEGMENTATION_MODEL",
+        "SOW_LLM_SEGMENTATION_TIMEOUT_SECONDS",
+        "SOW_LLM_STRUCTURED_LYRICS_TIMEOUT_SECONDS",
+        "SOW_LLM_STRUCTURED_LYRICS_MAX_ATTEMPTS",
+        "SOW_LLM_SEGMENTATION_SANITY_CHECK",
+        "SOW_LLM_SEGMENTATION_MAX_TOKENS",
+    ),
+    "Embedding": ("SOW_EMBEDDING_API_KEY", "SOW_EMBEDDING_BASE_URL", "SOW_EMBEDDING_MODEL"),
+    "Whisper (Modal)": (
+        "SOW_MODAL_WHISPER_APP_NAME",
+        "SOW_MODAL_WHISPER_CLASS_NAME",
+        "SOW_MODAL_WHISPER_MAX_ATTEMPTS",
+        "SOW_MODAL_WHISPER_RETRY_DELAY_SECONDS",
+        "SOW_MODAL_WHISPER_MAX_AUDIO_BYTES",
+        "SOW_MODAL_WHISPER_ALLOWED_MODELS",
+    ),
+    "Forced Aligner (Modal)": (
+        "SOW_MODAL_FORCED_ALIGNER_APP_NAME",
+        "SOW_MODAL_FORCED_ALIGNER_CLASS_NAME",
+        "SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS",
+        "SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS",
+        "SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES",
+    ),
+    "Analyzer (Modal)": (
+        "SOW_MODAL_ANALYZER_APP_NAME",
+        "SOW_MODAL_ANALYZER_CLASS_NAME",
+        "SOW_MODAL_ANALYZER_MAX_ATTEMPTS",
+        "SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS",
+        "SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES",
+    ),
+    "Stem Separator (Modal)": (
+        "SOW_MODAL_STEM_APP_NAME",
+        "SOW_MODAL_STEM_CLASS_NAME",
+        "SOW_MODAL_STEM_MAX_ATTEMPTS",
+        "SOW_MODAL_STEM_RETRY_DELAY_SECONDS",
+        "SOW_MODAL_STEM_MAX_AUDIO_BYTES",
+        "SOW_VOCAL_SEPARATION_MODEL",
+        "SOW_DEREVERB_MODEL",
+    ),
+    "DashScope Qwen3 ASR": (
+        "SOW_DASHSCOPE_API_KEY",
+        "SOW_DASHSCOPE_ASR_REGION",
+        "SOW_DASHSCOPE_ASR_FLASH_MODEL",
+        "SOW_DASHSCOPE_ASR_FILETRANS_MODEL",
+        "SOW_DASHSCOPE_ASR_CONTEXT_MAX_CHARS",
+        "SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS",
+        "SOW_DASHSCOPE_ASR_FILETRANS_TIMEOUT_SECONDS",
+        "SOW_DASHSCOPE_ASR_MAX_CONCURRENT",
+    ),
+    "MVSEP": (
+        "SOW_MVSEP_API_KEY",
+        "SOW_MVSEP_ENABLED",
+        "SOW_MVSEP_STAGE1_SEP_TYPE",
+        "SOW_MVSEP_STAGE1_ADD_OPT1",
+        "SOW_MVSEP_STAGE1_ADD_OPT2",
+        "SOW_MVSEP_STAGE2_SEP_TYPE",
+        "SOW_MVSEP_STAGE2_ADD_OPT1",
+        "SOW_MVSEP_STAGE2_ADD_OPT2",
+        "SOW_MVSEP_HTTP_TIMEOUT",
+        "SOW_MVSEP_STAGE_TIMEOUT",
+        "SOW_MVSEP_STAGE2_TIMEOUT",
+        "SOW_MVSEP_TOTAL_TIMEOUT",
+        "SOW_MVSEP_MAX_CONCURRENT",
+    ),
+    "Quota Waiting": (
+        "SOW_QUOTA_POLL_INTERVAL_SECONDS",
+        "SOW_QUOTA_WAIT_QUIESCENT_LOG_INTERVAL_SECONDS",
+        "SOW_PARENT_STEM_WAIT_TIMEOUT_SECONDS",
+    ),
+    "YouTube": (
+        "SOW_YOUTUBE_PROXY",
+        "SOW_YOUTUBE_PROXY_RETRIES",
+        "SOW_YOUTUBE_TRANSCRIPT_MAX_CONCURRENT",
+        "SOW_YOUTUBE_TRANSCRIPT_MIN_INTERVAL_SECONDS",
+        "SOW_YOUTUBE_TRANSCRIPT_MAX_RETRIES",
+        "SOW_YOUTUBE_TRANSCRIPT_RETRY_BASE_DELAY",
+        "SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_THRESHOLD",
+        "SOW_YOUTUBE_TRANSCRIPT_CIRCUIT_BREAKER_COOLDOWN",
+    ),
+}
+
+# Field -> category lookup plus display rank, derived from _CATEGORY_FIELDS so the
+# two can never disagree.
+_CATEGORY_BY_FIELD: dict[str, str] = {
+    field: category for category, fields in _CATEGORY_FIELDS.items() for field in fields
+}
+_CATEGORY_RANK: dict[str, int] = {name: rank for rank, name in enumerate(_CATEGORY_FIELDS)}
+
+
+def _format_setting_value(name: str, value: object) -> str:
+    """Render one Settings value for the startup table.
+
+    Secrets collapse to "(set)"/"(not set)"; an empty string or None means "unset";
+    the YouTube proxy is logged with its userinfo redacted.
+    """
+    if name in SECRET_FIELDS:
+        return "(set)" if value else "(not set)"
+    if name == "SOW_YOUTUBE_PROXY":
+        return (_redact_proxy_url(str(value)) or "(unparseable)") if value else "(not set)"
+    if value is None:
+        return "(not set)"
+    if isinstance(value, str) and not value:
+        return "(not set)"
+    return str(value)
+
+
+def _startup_config_rows() -> list[tuple[str, str, str]]:
+    """Build (category, setting, value) rows for every env-derived setting.
+
+    Covers all of Settings.model_fields plus the env-only Modal token flags. Raising
+    KeyError on an unmapped field is intentional: a new setting must not silently
+    vanish from the startup log.
+    """
+    rows = [
+        (_CATEGORY_BY_FIELD[name], name, _format_setting_value(name, getattr(settings, name)))
+        for name in sorted(
+            Settings.model_fields,
+            key=lambda field: (_CATEGORY_RANK[_CATEGORY_BY_FIELD[field]], field),
+        )
+    ]
+    modal_token_id = os.environ.get("MODAL_TOKEN_ID")
+    modal_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
+    rows.extend(
+        [
+            ("Modal", "MODAL_TOKEN_ID", "(set)" if modal_token_id else "(not set)"),
+            ("Modal", "MODAL_TOKEN_SECRET", "(set)" if modal_token_secret else "(not set)"),
+            (
+                "Modal",
+                "modal_token_configured",
+                str(bool(modal_token_id and modal_token_secret)),
+            ),
+        ]
+    )
+    return rows
+
+
+def _render_startup_config_table(rows: list[tuple[str, str, str]]) -> str:
+    """Render rows as a 3-column ASCII box for the startup log."""
+    headers = ("Category", "Setting", "Value")
+    col_widths = [max(len(r[i]) for r in rows + [headers]) for i in range(3)]
+    separator = f"+-{'-' * col_widths[0]}-+-{'-' * col_widths[1]}-+-{'-' * col_widths[2]}-+"
+    table_lines = [
+        separator,
+        f"| {headers[0]:<{col_widths[0]}} | {headers[1]:<{col_widths[1]}} | {headers[2]:<{col_widths[2]}} |",
+        separator,
+    ]
+    for row in rows:
+        table_lines.append(
+            f"| {row[0]:<{col_widths[0]}} | {row[1]:<{col_widths[1]}} | {row[2]:<{col_widths[2]}} |"
+        )
+    table_lines.append(separator)
+    return "\n".join(table_lines)
 
 
 @asynccontextmanager
@@ -178,123 +403,10 @@ async def lifespan(app: FastAPI):
             "ModalAnalyzerConfigError (there is no in-container fallback)"
         )
 
-    # Log startup configuration (non-sensitive values only)
-    headers = ("Category", "Setting", "Value")
-    config_rows = [
-        (
-            "Processing",
-            "max_concurrent_analyze",
-            str(settings.SOW_ANALYZE_MAX_CONCURRENT),
-        ),
-        (
-            "Processing",
-            "lrc_max_concurrent",
-            str(settings.SOW_LRC_MAX_CONCURRENT),
-        ),
-        ("Processing", "cache_dir", str(settings.CACHE_DIR)),
-        ("Processing", "queue_start_delay", f"{settings.SOW_QUEUE_START_DELAY_SECONDS}s"),
-        ("BPM (Fast Analysis)", "algorithm", settings.BPM_ALGORITHM_VERSION),
-        ("LLM", "model", settings.SOW_LLM_MODEL or "(not set)"),
-        ("LLM", "provider", settings.SOW_LLM_BASE_URL or "(not set)"),
-        ("Embedding", "model", settings.SOW_EMBEDDING_MODEL),
-        ("Embedding", "provider", settings.SOW_EMBEDDING_BASE_URL or "(not set)"),
-        ("DashScope Qwen3 ASR", "configured", str(bool(settings.SOW_DASHSCOPE_API_KEY))),
-        ("DashScope Qwen3 ASR", "region", settings.SOW_DASHSCOPE_ASR_REGION),
-        ("DashScope Qwen3 ASR", "flash_model", settings.SOW_DASHSCOPE_ASR_FLASH_MODEL),
-        ("DashScope Qwen3 ASR", "filetrans_model", settings.SOW_DASHSCOPE_ASR_FILETRANS_MODEL),
-        ("DashScope Qwen3 ASR", "max_concurrent", str(settings.SOW_DASHSCOPE_ASR_MAX_CONCURRENT)),
-        ("Forced Aligner", "backend", "modal"),
-        (
-            "Forced Aligner",
-            "app",
-            f"{settings.SOW_MODAL_FORCED_ALIGNER_APP_NAME}/{settings.SOW_MODAL_FORCED_ALIGNER_CLASS_NAME}",
-        ),
-        (
-            "Forced Aligner",
-            "configured",
-            str(
-                bool(
-                    os.environ.get("MODAL_TOKEN_ID")
-                    and os.environ.get("MODAL_TOKEN_SECRET")
-                )
-            ),
-        ),
-        ("Forced Aligner", "max_attempts", str(settings.SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS)),
-        ("Whisper", "backend", "modal"),
-        (
-            "Whisper",
-            "app",
-            f"{settings.SOW_MODAL_WHISPER_APP_NAME}/{settings.SOW_MODAL_WHISPER_CLASS_NAME}",
-        ),
-        (
-            "Whisper",
-            "configured",
-            str(
-                bool(
-                    os.environ.get("MODAL_TOKEN_ID")
-                    and os.environ.get("MODAL_TOKEN_SECRET")
-                )
-            ),
-        ),
-        ("Whisper", "allowed_models", settings.SOW_MODAL_WHISPER_ALLOWED_MODELS),
-        ("Whisper", "max_attempts", str(settings.SOW_MODAL_WHISPER_MAX_ATTEMPTS)),
-        ("Analyzer", "backend", "modal"),
-        (
-            "Analyzer",
-            "app",
-            f"{settings.SOW_MODAL_ANALYZER_APP_NAME}/{settings.SOW_MODAL_ANALYZER_CLASS_NAME}",
-        ),
-        ("Analyzer", "configured", str(bool(os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")))),
-        ("Analyzer", "max_attempts", str(settings.SOW_MODAL_ANALYZER_MAX_ATTEMPTS)),
-        ("Analyzer", "cache_version", str(settings.SOW_ANALYSIS_CACHE_VERSION)),
-        ("Stem Separator", "backend", "modal"),
-        (
-            "Stem Separator",
-            "app",
-            f"{settings.SOW_MODAL_STEM_APP_NAME}/{settings.SOW_MODAL_STEM_CLASS_NAME}",
-        ),
-        (
-            "Stem Separator",
-            "configured",
-            str(
-                bool(
-                    os.environ.get("MODAL_TOKEN_ID")
-                    and os.environ.get("MODAL_TOKEN_SECRET")
-                )
-            ),
-        ),
-        ("Stem Separator", "vocal_model", settings.SOW_VOCAL_SEPARATION_MODEL),
-        ("Stem Separator", "dereverb_model", settings.SOW_DEREVERB_MODEL),
-        ("Stem Separator", "max_attempts", str(settings.SOW_MODAL_STEM_MAX_ATTEMPTS)),
-        ("MVSEP", "enabled", str(settings.SOW_MVSEP_ENABLED)),
-        ("MVSEP", "stage1_sep_type", str(settings.SOW_MVSEP_STAGE1_SEP_TYPE)),
-        ("MVSEP", "stage2_sep_type", str(settings.SOW_MVSEP_STAGE2_SEP_TYPE)),
-        ("MVSEP", "max_concurrent", str(settings.SOW_MVSEP_MAX_CONCURRENT)),
-        ("Quota Waiting", "poll_interval_seconds", str(settings.SOW_QUOTA_POLL_INTERVAL_SECONDS)),
-        (
-            "YouTube",
-            "proxy",
-            (_redact_proxy_url(settings.SOW_YOUTUBE_PROXY) or "(unparseable)")
-            if settings.SOW_YOUTUBE_PROXY
-            else "(not set)",
-        ),
-        ("YouTube", "proxy_retries", str(settings.SOW_YOUTUBE_PROXY_RETRIES)),
-        ("R2", "bucket", settings.SOW_R2_BUCKET),
-        ("R2", "endpoint", settings.SOW_R2_ENDPOINT_URL or "(not set)"),
-    ]
-    col_widths = [max(len(r[i]) for r in config_rows + [headers]) for i in range(3)]
-    separator = f"+-{'-' * col_widths[0]}-+-{'-' * col_widths[1]}-+-{'-' * col_widths[2]}-+"
-    table_lines = [
-        separator,
-        f"| {headers[0]:<{col_widths[0]}} | {headers[1]:<{col_widths[1]}} | {headers[2]:<{col_widths[2]}} |",
-        separator,
-    ]
-    for row in config_rows:
-        table_lines.append(
-            f"| {row[0]:<{col_widths[0]}} | {row[1]:<{col_widths[1]}} | {row[2]:<{col_widths[2]}} |"
-        )
-    table_lines.append(separator)
-    logger.info("Startup configuration:\n%s", "\n".join(table_lines))
+    # Log startup configuration (non-sensitive values only). Rows are generated from
+    # Settings.model_fields, so a new env-derived setting can never be omitted; secret
+    # fields render as "(set)"/"(not set)".
+    logger.info("Startup configuration:\n%s", _render_startup_config_table(_startup_config_rows()))
 
     # Set job queue in routes
     set_job_queue(job_queue)
