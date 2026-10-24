@@ -424,6 +424,28 @@ class R2Client:
         self._client.download_file(self.bucket, s3_key, str(dest_path))
         return dest_path
 
+    def audio_url(self, hash_prefix: str) -> Optional[str]:
+        """Return the S3 URL of ``{hash_prefix}/audio.mp3`` when it exists in R2.
+
+        Args:
+            hash_prefix: 12-character hash prefix
+
+        Returns:
+            S3 URL of the audio file if it exists, None if not found.
+
+        Raises:
+            ClientError: On non-404 errors (permission, credential, network).
+        """
+        s3_key = f"{hash_prefix}/audio.mp3"
+        try:
+            self._client.head_object(Bucket=self.bucket, Key=s3_key)
+            return f"s3://{self.bucket}/{s3_key}"
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+
     def audio_exists(self, hash_prefix: str) -> bool:
         """Check whether an audio file exists in R2.
 
@@ -436,15 +458,7 @@ class R2Client:
         Raises:
             ClientError: On non-404 errors (permission, credential, network).
         """
-        s3_key = f"{hash_prefix}/audio.mp3"
-        try:
-            self._client.head_object(Bucket=self.bucket, Key=s3_key)
-            return True
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in ("404", "NoSuchKey"):
-                return False
-            raise
+        return self.audio_url(hash_prefix) is not None
 
     def download_file(self, s3_key: str, dest_path: Path) -> Path:
         """Download a file from R2 by its S3 key.
