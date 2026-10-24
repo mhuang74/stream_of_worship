@@ -211,6 +211,11 @@ _CATEGORY_BY_FIELD: dict[str, str] = {
 }
 _CATEGORY_RANK: dict[str, int] = {name: rank for rank, name in enumerate(_CATEGORY_FIELDS)}
 
+# Category shown for a Settings field missing from _CATEGORY_FIELDS. Never used today
+# (tests/test_startup_config_table.py asserts no row lands here); it exists so a config
+# table bug cannot take the service down at startup.
+_UNCATEGORIZED = "Other"
+
 
 def _format_setting_value(name: str, value: object) -> str:
     """Render one Settings value for the startup table.
@@ -229,19 +234,30 @@ def _format_setting_value(name: str, value: object) -> str:
     return str(value)
 
 
-def _startup_config_rows() -> list[tuple[str, str, str]]:
+def _startup_config_rows(cfg: Settings | None = None) -> list[tuple[str, str, str]]:
     """Build (category, setting, value) rows for every env-derived setting.
 
-    Covers all of Settings.model_fields plus the env-only Modal token flags. Raising
-    KeyError on an unmapped field is intentional: a new setting must not silently
-    vanish from the startup log.
+    Covers all of Settings.model_fields plus the env-only Modal token flags. ``cfg``
+    defaults to the module-level settings; tests pass their own Settings instance.
+
+    A field with no _CATEGORY_FIELDS entry renders under _UNCATEGORIZED rather than
+    raising: the table is diagnostics only, and tests/test_startup_config_table.py fails
+    on the drift instead.
     """
+    cfg = settings if cfg is None else cfg
+    uncategorized_rank = len(_CATEGORY_RANK)
+
+    def _sort_key(field: str) -> tuple[int, str]:
+        category = _CATEGORY_BY_FIELD.get(field)
+        return (_CATEGORY_RANK.get(category, uncategorized_rank), field)
+
     rows = [
-        (_CATEGORY_BY_FIELD[name], name, _format_setting_value(name, getattr(settings, name)))
-        for name in sorted(
-            Settings.model_fields,
-            key=lambda field: (_CATEGORY_RANK[_CATEGORY_BY_FIELD[field]], field),
+        (
+            _CATEGORY_BY_FIELD.get(name, _UNCATEGORIZED),
+            name,
+            _format_setting_value(name, getattr(cfg, name)),
         )
+        for name in sorted(Settings.model_fields, key=_sort_key)
     ]
     modal_token_id = os.environ.get("MODAL_TOKEN_ID")
     modal_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
