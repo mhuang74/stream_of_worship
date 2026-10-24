@@ -64,8 +64,8 @@ from stream_of_worship.admin.services.visibility import visibility_label
 logger = logging.getLogger(__name__)
 
 # Abbreviated provenance labels for ``recordings.lrc_source``, used in the
-# header subtitle where horizontal room is scarce (the status bar shows the
-# full labels via ``commands/audio.py``).
+# editor header subtitle where horizontal room is scarce. The full labels live
+# in ``commands/audio.py::_format_lrc_source`` (``audio info`` output), not here.
 LRC_SOURCE_BADGES: dict[str, str] = {
     "youtube_transcript": "YT",
     "youtube_transcript_asr_tail": "YT+tail",
