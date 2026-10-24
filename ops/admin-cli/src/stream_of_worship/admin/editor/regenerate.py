@@ -24,7 +24,7 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisServiceError,
     JobInfo,
 )
-from stream_of_worship.admin.services.lrc_jobs import resolve_lyrics_text
+from stream_of_worship.admin.services.lrc_jobs import lrc_generator_kwargs, resolve_lyrics_text
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.visibility import is_published, reprocess_blocked_reason
 
@@ -56,6 +56,7 @@ def regenerate_lrc_for_editor(
     db_lock: threading.RLock,
     song_id: str,
     hash_prefix: str,
+    generator: str = "auto",
     on_progress: Optional[Callable[[str], None]] = None,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     timeout: float = DEFAULT_TIMEOUT,
@@ -73,6 +74,10 @@ def regenerate_lrc_for_editor(
         song_id: Song id from the open session (empty falls back to the
             recording's own ``song_id``).
         hash_prefix: Recording hash prefix.
+        generator: Which generator to run: ``auto`` (YouTube → Qwen3 ASR →
+            Whisper fallback), ``youtube``, ``qwen3`` or ``whisper`` — the same
+            vocabulary as ``lyrics generate --generator``. A specific generator
+            runs only that one and never falls back.
         on_progress: Optional sink for human-readable progress lines.
         poll_interval: Seconds between job polls.
         timeout: Seconds to wait for the job before failing.
@@ -113,8 +118,7 @@ def regenerate_lrc_for_editor(
             lyrics_text=lyrics_text,
             song_title=song.title,
             force=True,
-            youtube_url=recording.youtube_url or "",
-            lrc_generator="auto",
+            **lrc_generator_kwargs(recording, generator, no_cache=False),
             tempo_bpm=recording.tempo_bpm,
             duration_seconds=recording.duration_seconds,
             song_id=target_song_id,

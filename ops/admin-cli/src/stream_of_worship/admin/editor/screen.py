@@ -52,7 +52,7 @@ from stream_of_worship.admin.services.lrc_parser import (
     format_duration,
 )
 from stream_of_worship.admin.services.playback import PlaybackService, PlaybackState
-from stream_of_worship.admin.services.r2 import R2Client
+from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.visibility import visibility_label
 
 logger = logging.getLogger(__name__)
@@ -477,6 +477,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("f", "feedback", "Feedback"),
         Binding("s", "save_upload", "Save/Upload"),
         Binding("G", "regenerate_lrc", "Regenerate LRC"),
+        Binding("L", "reload_lrc", "Reload from R2"),
         Binding("ctrl+z", "undo", "Undo"),
         Binding("ctrl+y", "redo", "Redo"),
         Binding("escape", "quit_editor", "Quit"),
@@ -513,6 +514,7 @@ class LRCEditorScreen(Screen[None]):
             "feedback",
             "save_upload",
             "regenerate_lrc",
+            "reload_lrc",
             "undo",
             "redo",
             "quit_editor",
@@ -577,6 +579,10 @@ class LRCEditorScreen(Screen[None]):
         self._regen_in_flight: bool = False
         self._regen_thread: Optional[threading.Thread] = None
         self._regen_snapshot: str = ""
+        # Hotkey L: reload the R2 LRC without regenerating.
+        self._reload_in_flight: bool = False
+        self._reload_thread: Optional[threading.Thread] = None
+        self._reload_snapshot: str = ""
         # psycopg connections are not safe for concurrent use: the upload worker
         # shares db_client.connection with the main-thread feedback paths.
         self._db_lock = threading.RLock()
@@ -1623,18 +1629,37 @@ class LRCEditorScreen(Screen[None]):
             )
             return
 
+        try:
+            with self._db_lock:
+                recording = self.db_client.get_recording_by_hash(self.hash_prefix)
+        except Exception as e:
+            self.notify(
+                f"Could not read the recording: {e}", severity="warning", timeout=5
+            )
+            return
+        if recording is None:
+            self.notify(
+                "No recording found for this session", severity="warning", timeout=5
+            )
+            return
+        has_youtube = bool((recording.youtube_url or "").strip())
+
         from textual.screen import ModalScreen
 
-        class RegenerateConfirmDialog(ModalScreen[bool]):
+        class RegenerateGeneratorDialog(ModalScreen[Optional[str]]):
             BINDINGS = [
-                Binding("y", "confirm", "Yes"),
-                Binding("n", "cancel", "No"),
-                Binding("escape", "cancel", "No"),
+                Binding("a", "auto", "Auto"),
+                Binding("y", "youtube", "YouTube"),
+                Binding("q", "qwen3", "Qwen3"),
+                Binding("w", "whisper", "Whisper"),
+                Binding("n", "cancel", "Cancel"),
+                Binding("escape", "cancel", "Cancel"),
             ]
 
-            def __init__(self, unsaved: bool):
+            def __init__(self, unsaved: bool, has_youtube: bool):
                 super().__init__()
                 self.unsaved = unsaved
+                self.has_youtube = has_youtube
 
             def compose(self) -> ComposeResult:
                 with Vertical():
@@ -1643,38 +1668,72 @@ class LRCEditorScreen(Screen[None]):
                         "Submits a new LRC generation job (force) and replaces the editor "
                         "with the freshly generated LRC when it finishes."
                     )
+                    yield Label("[bold]a[/bold] auto — YouTube → Qwen3 → Whisper (default)")
+                    if self.has_youtube:
+                        yield Label("[bold]y[/bold] youtube — transcript only")
+                    else:
+                        yield Label(
+                            "[d][bold]y[/bold] youtube — unavailable (no YouTube URL stored)[/]"
+                        )
+                    yield Label("[bold]q[/bold] qwen3 — DashScope ASR only")
+                    yield Label("[bold]w[/bold] whisper — Whisper ASR only")
                     if self.unsaved:
                         yield Label(
                             "[yellow]Unsaved edits will be discarded (autosave cleared).[/yellow]"
                         )
-                    yield Label("[d]Press [bold]y[/bold] to regenerate | [bold]n[/bold] to cancel[/]")
+                    yield Label(
+                        "[d]Pick a generator | [bold]n[/bold] or esc to cancel[/]"
+                    )
 
-            def action_confirm(self) -> None:
-                self.dismiss(True)
+            def action_auto(self) -> None:
+                self.dismiss("auto")
+
+            def action_youtube(self) -> None:
+                self.dismiss("youtube")
+
+            def action_qwen3(self) -> None:
+                self.dismiss("qwen3")
+
+            def action_whisper(self) -> None:
+                self.dismiss("whisper")
 
             def action_cancel(self) -> None:
-                self.dismiss(False)
+                self.dismiss(None)
 
-        def _handle_regenerate_confirm(should_regenerate: bool) -> None:
-            if should_regenerate:
-                self._start_regenerate()
+        def _handle_regenerate_confirm(generator: Optional[str]) -> None:
+            if generator is None:
+                return
+            if generator == "youtube" and not has_youtube:
+                self.notify(
+                    "--generator youtube requires a YouTube URL on the recording; "
+                    "none is stored.",
+                    severity="warning",
+                    timeout=5,
+                )
+                return
+            self._start_regenerate(generator)
 
         self.app.push_screen(
-            RegenerateConfirmDialog(self.state.dirty or self._has_unsaved_changes()),
+            RegenerateGeneratorDialog(
+                self.state.dirty or self._has_unsaved_changes(), has_youtube
+            ),
             _handle_regenerate_confirm,
         )
 
-    def _start_regenerate(self) -> None:
+    def _start_regenerate(self, generator: str) -> None:
         """Kick off the blocking regeneration pipeline on a daemon thread."""
         self._regen_in_flight = True
         self._regen_snapshot = self.state.serialize()
         self.query_one(StatusIndicator).set_activity("Submitting LRC job…")
         self._regen_thread = threading.Thread(
-            target=self._regenerate_worker, name="lrc-regenerate", daemon=True
+            target=self._regenerate_worker,
+            args=(generator,),
+            name="lrc-regenerate",
+            daemon=True,
         )
         self._regen_thread.start()
 
-    def _regenerate_worker(self) -> None:
+    def _regenerate_worker(self, generator: str) -> None:
         """Run the submit → poll → DB → R2-download chain off the event loop.
 
         Deliberately a plain daemon thread, not a Textual ``@work`` worker:
@@ -1689,6 +1748,7 @@ class LRCEditorScreen(Screen[None]):
                 db_lock=self._db_lock,
                 song_id=self.state.song_id,
                 hash_prefix=self.hash_prefix,
+                generator=generator,
                 on_progress=self._regen_progress,
             )
         except Exception as e:  # unexpected: never kill the TUI
@@ -1752,6 +1812,124 @@ class LRCEditorScreen(Screen[None]):
         self.sub_title = f"Visibility: {visibility_label('review')}"
         self._update_displays()
         self.notify("LRC regenerated and refreshed from R2", timeout=5)
+
+    def action_reload_lrc(self) -> None:
+        """Reload the latest R2 LRC without regenerating (hotkey L)."""
+        if self._guard_active_edit():
+            return
+        if self._guard_preview():
+            return
+        if self._save_in_flight:
+            self.notify(
+                "Save/upload in progress — try again when it finishes",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        if self._regen_in_flight:
+            self.notify(
+                "Regeneration in progress — wait for it to finish",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        if self._reload_in_flight:
+            self.notify("LRC reload already in progress", severity="warning", timeout=3)
+            return
+        self._start_reload()
+
+    def _start_reload(self) -> None:
+        """Fetch the current R2 LRC on a daemon thread (blocking S3 I/O)."""
+        self._reload_in_flight = True
+        self._reload_snapshot = self.state.serialize()
+        self.query_one(StatusIndicator).set_activity("Fetching LRC from R2…")
+        self._reload_thread = threading.Thread(
+            target=self._reload_worker, name="lrc-reload", daemon=True
+        )
+        self._reload_thread.start()
+
+    def _reload_worker(self) -> None:
+        """Download the R2 LRC + its identity off the event loop."""
+        content: Optional[str] = None
+        identity: Optional[R2ObjectIdentity] = None
+        visibility: Optional[str] = None
+        error: Optional[str] = None
+        try:
+            content = self.r2_client.download_lrc_content(self.hash_prefix)
+            if content:
+                identity = self.r2_client.get_lrc_identity(self.hash_prefix)
+                # The reload itself writes no DB state, so the header badge
+                # must come from the catalog instead of an assumption.
+                try:
+                    with self._db_lock:
+                        recording = self.db_client.get_recording_by_hash(self.hash_prefix)
+                    visibility = recording.visibility_status if recording else None
+                except Exception as e:  # badge only: never fail the reload for it
+                    logger.warning(f"Could not read visibility for {self.hash_prefix}: {e}")
+        except Exception as e:  # network/credential failure: report, don't crash
+            logger.warning(f"LRC reload failed: {e}")
+            error = f"LRC reload failed: {e}"
+        try:
+            self.app.call_from_thread(self._finish_reload, content, identity, visibility, error)
+        except Exception as e:  # app already exited (force quit)
+            logger.warning(f"Could not deliver LRC reload result: {e}")
+
+    def _finish_reload(
+        self,
+        content: Optional[str],
+        identity: Optional[R2ObjectIdentity],
+        visibility: Optional[str],
+        error: Optional[str],
+    ) -> None:
+        """Apply a reload result on the main thread."""
+        self._reload_in_flight = False
+        status = self.query_one(StatusIndicator)
+        status.set_activity("")
+
+        if error:
+            status.update(f" [red]{error}[/red]")
+            self.notify(error, severity="error", timeout=8)
+            return
+        if not content:
+            status.update(" [red]No LRC found on R2[/red]")
+            self.notify(
+                "No LRC found on R2 for this recording", severity="warning", timeout=5
+            )
+            return
+        if content == self.original_transcribed_content:
+            # Nothing newer on R2: leave the session (and unsaved edits) alone.
+            self.notify("LRC on R2 unchanged — nothing to reload", timeout=3)
+            return
+
+        # Unsaved edits would be lost by the swap: keep them in a local draft
+        # before overwriting the session (edits made before the keypress and
+        # edits made while the fetch ran both count).
+        current = self.state.serialize()
+        if self._has_unsaved_changes() or (
+            self._reload_snapshot and current != self._reload_snapshot
+        ):
+            try:
+                draft_path = save_local_draft(self.cache_dir, self.hash_prefix, current)
+                self.notify(f"Unsaved edits saved as draft: {draft_path}", timeout=6)
+            except OSError as e:
+                logger.warning(f"Could not save concurrent-edit draft: {e}")
+
+        if identity is None or not self.state.replace_content(content, identity):
+            status.update(" [red]R2 LRC has no timed lines[/red]")
+            self.notify("R2 LRC has no timed lines", severity="warning", timeout=5)
+            return
+
+        self.original_transcribed_content = content
+        clear_autosave(self.cache_dir, self.hash_prefix)
+        self._autosave_ok = False
+        self._reload_snapshot = ""
+
+        self._clear_selection_range(refresh=False)
+        self._rebuild_table()
+        if visibility is not None:
+            self.sub_title = f"Visibility: {visibility_label(visibility)}"
+        self._update_displays()
+        self.notify("LRC reloaded from R2", timeout=5)
 
     def _show_save_upload_prompt(
         self,
