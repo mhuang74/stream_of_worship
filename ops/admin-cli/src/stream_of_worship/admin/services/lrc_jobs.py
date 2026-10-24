@@ -55,6 +55,44 @@ def resolve_lyrics_text(song: Song, recording: Recording) -> str | None:
     return song.lyrics_raw
 
 
+def resolve_alignment_lyrics_text(
+    song: Optional[Song],
+    recording: Recording,
+    r2_client: Optional[R2Client],
+) -> tuple[Optional[str], str]:
+    """Pick the lyrics payload for a forced-alignment job.
+
+    Prefers the text of the existing LRC in R2 with timestamps stripped:
+    forced alignment should only retime the lyrics that are already
+    published, never rewrite the words. Falls back to ``song.lyrics_raw``
+    — plain text, so section labels cannot be aligned as lyric rows.
+
+    Print-free: callers report their own warnings.
+
+    Args:
+        song: Catalog song; ``None`` when the recording has no linked song.
+        recording: Recording whose LRC/audio is being aligned.
+        r2_client: Object-store client, or ``None`` when R2 is unconfigured.
+
+    Returns:
+        ``(lyrics_text, source)`` where ``source`` is ``"lrc"`` or
+        ``"catalog"``; ``(None, "none")`` when neither yields text.
+    """
+    if r2_client and recording.r2_lrc_url:
+        try:
+            lrc_content = r2_client.download_lrc_content(recording.hash_prefix)
+            if lrc_content:
+                lrc_file = parse_lrc(lrc_content)
+                text = "\n".join(line.text for line in lrc_file.lines)
+                if text:
+                    return text, "lrc"
+        except Exception:
+            pass  # unreadable LRC is not fatal: fall back to catalog lyrics
+    if song and song.lyrics_raw:
+        return song.lyrics_raw, "catalog"
+    return None, "none"
+
+
 # CLI --generator name -> LrcOptions.lrc_generator value (service vocabulary).
 _LRC_GENERATOR_MODES = {
     "auto": "auto",

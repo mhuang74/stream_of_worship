@@ -655,6 +655,21 @@ reload is a no-op when the R2 content is byte-identical to the loaded one, and
 any unsaved edits in the editor are preserved as a local draft before the
 session is replaced.
 
+### Align in the Editor
+
+Press `A` (Align LRC) to force-align the current recording's existing lyrics
+through the analysis service (Qwen3ForcedAligner) and reload the editor from the
+new R2 LRC — the in-editor equivalent of `sow-admin lyrics align <song_id>`.
+This only retimes the lyrics that are already published: the payload is the
+existing R2 LRC text with timestamps stripped (falling back to `songs.lyrics_raw`
+when no LRC is readable), so the words never change. `A` opens a language picker:
+`a` auto (default), `z` zh or `e` en. Recordings longer than 300 s are refused
+inline, matching the `lyrics align` limit. The job always runs forced
+(`force=True`) against the Demucs vocals stem. Status lifecycle, visibility
+(`review`), `lrc_source='forced_alignment'`, unsaved-edit draft handling and the
+force-quit confirmation match `G`; a failed job marks `lrc_status='failed'` and
+leaves the editor content untouched. Requires `SOW_ANALYSIS_API_KEY`.
+
 ## License
 
 MIT License - See project root for details.

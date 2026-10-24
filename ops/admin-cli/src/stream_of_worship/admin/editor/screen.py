@@ -29,6 +29,11 @@ from textual.widgets import (
 
 from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.db.client import DatabaseClient
+from stream_of_worship.admin.editor.align import (
+    MAX_ALIGN_DURATION_SECONDS,
+    AlignResult,
+    align_lrc_for_editor,
+)
 from stream_of_worship.admin.editor.autosave import (
     AutosaveState,
     clear_autosave,
@@ -477,6 +482,7 @@ class LRCEditorScreen(Screen[None]):
         Binding("f", "feedback", "Feedback"),
         Binding("s", "save_upload", "Save/Upload"),
         Binding("G", "regenerate_lrc", "Regenerate LRC"),
+        Binding("A", "align_lrc", "Align LRC"),
         Binding("L", "reload_lrc", "Reload from R2"),
         Binding("ctrl+z", "undo", "Undo"),
         Binding("ctrl+y", "redo", "Redo"),
@@ -514,6 +520,7 @@ class LRCEditorScreen(Screen[None]):
             "feedback",
             "save_upload",
             "regenerate_lrc",
+            "align_lrc",
             "reload_lrc",
             "undo",
             "redo",
@@ -579,6 +586,10 @@ class LRCEditorScreen(Screen[None]):
         self._regen_in_flight: bool = False
         self._regen_thread: Optional[threading.Thread] = None
         self._regen_snapshot: str = ""
+        # In-editor forced alignment (hotkey A).
+        self._align_in_flight: bool = False
+        self._align_thread: Optional[threading.Thread] = None
+        self._align_snapshot: str = ""
         # Hotkey L: reload the R2 LRC without regenerating.
         self._reload_in_flight: bool = False
         self._reload_thread: Optional[threading.Thread] = None
@@ -1484,6 +1495,13 @@ class LRCEditorScreen(Screen[None]):
                 timeout=3,
             )
             return
+        if self._align_in_flight:
+            self.notify(
+                "Alignment in progress — wait for it to finish",
+                severity="warning",
+                timeout=3,
+            )
+            return
 
         # The R2 conflict check is blocking network I/O: run it off the event loop
         # so playback/navigation keys keep responding (see _check_r2_worker).
@@ -1508,6 +1526,13 @@ class LRCEditorScreen(Screen[None]):
         if self._regen_in_flight:
             self.notify(
                 "Regeneration in progress — wait for it to finish",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        if self._align_in_flight:
+            self.notify(
+                "Alignment in progress — wait for it to finish",
                 severity="warning",
                 timeout=3,
             )
@@ -1612,6 +1637,9 @@ class LRCEditorScreen(Screen[None]):
             return
         if self._regen_in_flight:
             self.notify("Regeneration already in progress", severity="warning", timeout=3)
+            return
+        if self._align_in_flight:
+            self.notify("Alignment already in progress", severity="warning", timeout=3)
             return
         if self.analysis_client is None:
             self.notify(
@@ -1805,6 +1833,188 @@ class LRCEditorScreen(Screen[None]):
         self._update_displays()
         self.notify("LRC regenerated and refreshed from R2", timeout=5)
 
+    def action_align_lrc(self) -> None:
+        """Force-align the LRC via the analysis service (hotkey A)."""
+        if self._guard_active_edit():
+            return
+        if self._guard_preview():
+            return
+        if self._save_in_flight:
+            self.notify(
+                "Save/upload in progress — try again when it finishes",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        if self._regen_in_flight:
+            self.notify("Regeneration already in progress", severity="warning", timeout=3)
+            return
+        if self._align_in_flight:
+            self.notify("Alignment already in progress", severity="warning", timeout=3)
+            return
+        if self.analysis_client is None:
+            self.notify(
+                "Alignment disabled: analysis service not configured "
+                "(SOW_ANALYSIS_API_KEY / service.analysis_url)",
+                severity="warning",
+                timeout=5,
+            )
+            return
+        duration = self.state.audio_duration
+        if duration and duration > MAX_ALIGN_DURATION_SECONDS:
+            self.query_one(StatusIndicator).update(
+                f" [red]Recording too long ({duration:.0f}s > "
+                f"{MAX_ALIGN_DURATION_SECONDS:.0f}s limit); forced alignment not available[/red]"
+            )
+            self.notify(
+                f"Recording too long ({duration:.0f}s > "
+                f"{MAX_ALIGN_DURATION_SECONDS:.0f}s limit); forced alignment not available",
+                severity="warning",
+                timeout=8,
+            )
+            return
+
+        from textual.screen import ModalScreen
+
+        class AlignmentLanguageDialog(ModalScreen[Optional[str]]):
+            BINDINGS = [
+                Binding("a", "auto", "Auto"),
+                Binding("z", "zh", "zh"),
+                Binding("e", "en", "en"),
+                Binding("n", "cancel", "Cancel"),
+                Binding("escape", "cancel", "Cancel"),
+            ]
+
+            def __init__(self, unsaved: bool):
+                super().__init__()
+                self.unsaved = unsaved
+
+            def compose(self) -> ComposeResult:
+                with Vertical():
+                    yield Label("[bold yellow]Force-align LRC?[/bold yellow]")
+                    yield Label(
+                        "Submits a forced-alignment job (Qwen3ForcedAligner) and replaces the "
+                        "editor with the freshly aligned LRC when it finishes."
+                    )
+                    yield Label("[bold]a[/bold] auto (default)")
+                    yield Label("[bold]z[/bold] zh")
+                    yield Label("[bold]e[/bold] en")
+                    if self.unsaved:
+                        yield Label(
+                            "[yellow]Unsaved edits will be saved as a local draft "
+                            "before the refresh.[/yellow]"
+                        )
+                    yield Label("[d]Pick a language | [bold]n[/bold] or esc to cancel[/]")
+
+            def action_auto(self) -> None:
+                self.dismiss("auto")
+
+            def action_zh(self) -> None:
+                self.dismiss("zh")
+
+            def action_en(self) -> None:
+                self.dismiss("en")
+
+            def action_cancel(self) -> None:
+                self.dismiss(None)
+
+        def _handle_align_confirm(language: Optional[str]) -> None:
+            if language is None:
+                return
+            self._start_align(language)
+
+        self.app.push_screen(
+            AlignmentLanguageDialog(self.state.dirty or self._has_unsaved_changes()),
+            _handle_align_confirm,
+        )
+
+    def _start_align(self, language: str) -> None:
+        """Kick off the blocking alignment pipeline on a daemon thread."""
+        self._align_in_flight = True
+        self._align_snapshot = self.state.serialize()
+        self.query_one(StatusIndicator).set_activity("Submitting alignment job…")
+        self._align_thread = threading.Thread(
+            target=self._align_worker,
+            args=(language,),
+            name="lrc-align",
+            daemon=True,
+        )
+        self._align_thread.start()
+
+    def _align_worker(self, language: str) -> None:
+        """Run the submit → poll → DB → R2-download chain off the event loop.
+
+        A plain daemon thread for the same reason as ``_regenerate_worker``:
+        thread workers run in the default executor, which ``asyncio.run``
+        joins at app exit, so a force-quit would hang until the job timeout.
+        """
+        try:
+            result = align_lrc_for_editor(
+                analysis_client=self.analysis_client,
+                db_client=self.db_client,
+                r2_client=self.r2_client,
+                db_lock=self._db_lock,
+                hash_prefix=self.hash_prefix,
+                language=language,
+                on_progress=self._align_progress,
+            )
+        except Exception as e:  # unexpected: never kill the TUI
+            logger.warning(f"LRC alignment failed: {e}")
+            result = AlignResult(ok=False, error=f"LRC alignment failed: {e}")
+        try:
+            self.app.call_from_thread(self._finish_align, result)
+        except Exception as e:  # app already exited (force quit)
+            logger.warning(f"Could not deliver LRC alignment result: {e}")
+
+    def _align_progress(self, text: str) -> None:
+        """Report worker-thread progress on the main thread."""
+        try:
+            self.app.call_from_thread(self._set_regen_activity, text)
+        except Exception:  # app exited mid-flight
+            pass
+
+    def _finish_align(self, result: AlignResult) -> None:
+        """Apply a worker result on the main thread."""
+        self._align_in_flight = False
+        status = self.query_one(StatusIndicator)
+        status.set_activity("")
+
+        if not result.ok:
+            status.update(f" [red]LRC alignment failed: {result.error}[/red]")
+            self.notify(f"LRC alignment failed: {result.error}", severity="error", timeout=8)
+            return
+
+        # Edits made while the job ran would be lost by the refresh: keep
+        # them in a local draft before overwriting the session.
+        current = self.state.serialize()
+        if self._align_snapshot and current != self._align_snapshot:
+            try:
+                draft_path = save_local_draft(self.cache_dir, self.hash_prefix, current)
+                self.notify(f"Edits made during alignment saved as draft: {draft_path}",
+                            timeout=6)
+            except OSError as e:
+                logger.warning(f"Could not save concurrent-edit draft: {e}")
+
+        content = result.lrc_content
+        identity = result.identity
+        if not content or identity is None:
+            status.update(" [red]LRC alignment returned no LRC content[/red]")
+            return
+        if not self.state.replace_content(content, identity):
+            status.update(" [red]LRC alignment returned no timed lines[/red]")
+            return
+
+        self.original_transcribed_content = content
+        clear_autosave(self.cache_dir, self.hash_prefix)
+        self._autosave_ok = False
+        self._align_snapshot = ""
+
+        self._clear_selection_range(refresh=False)
+        self._rebuild_table()
+        self.sub_title = f"Visibility: {visibility_label('review')}"
+        self._update_displays()
+        self.notify("LRC aligned and refreshed from R2", timeout=5)
+
     def action_reload_lrc(self) -> None:
         """Reload the latest R2 LRC without regenerating (hotkey L)."""
         if self._guard_active_edit():
@@ -1821,6 +2031,13 @@ class LRCEditorScreen(Screen[None]):
         if self._regen_in_flight:
             self.notify(
                 "Regeneration in progress — wait for it to finish",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        if self._align_in_flight:
+            self.notify(
+                "Alignment in progress — wait for it to finish",
                 severity="warning",
                 timeout=3,
             )
@@ -2239,7 +2456,7 @@ class LRCEditorScreen(Screen[None]):
             )
             return
 
-        if self._regen_in_flight:
+        if self._regen_in_flight or self._align_in_flight:
             from textual.screen import ModalScreen
 
             class ForceQuitRegenDialog(ModalScreen[bool]):
@@ -2252,12 +2469,14 @@ class LRCEditorScreen(Screen[None]):
                 def compose(self) -> ComposeResult:
                     with Vertical():
                         yield Label(
-                            "[bold yellow]LRC regeneration is still running.[/bold yellow]"
+                            "[bold yellow]LRC job is still running.[/bold yellow]"
                         )
                         yield Label(
                             "Force quit? The job keeps running server-side and the "
-                            "recording stays 'processing' until you run "
-                            "'sow-admin lyrics generate <song>' (without --force) to poll it."
+                            "recording stays 'processing' until you poll it: "
+                            "'sow-admin audio status <job_id>' (the job id is in the "
+                            "status line), or run 'sow-admin lyrics generate <song>' "
+                            "without --force."
                         )
                         yield Label("[d]Press [bold]y[/bold] to force quit | [bold]n[/bold] to wait[/]")
 

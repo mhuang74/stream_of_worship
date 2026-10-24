@@ -1061,3 +1061,259 @@ async def test_reload_hotkey_reports_fetch_failure(tmp_path):
         assert editor._reload_in_flight is False
         assert [line.text for line in state.timed_lines] == ["Old A"]
         assert "LRC reload failed" in str(editor.query_one(StatusIndicator).visual)
+
+
+@pytest.mark.asyncio
+async def test_align_hotkey_asks_and_refreshes_from_r2(monkeypatch):
+    import asyncio
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+    from stream_of_worship.admin.editor.align import AlignResult
+
+    calls: list[dict] = []
+
+    def _fake_align(**kwargs) -> AlignResult:
+        calls.append(kwargs)
+        return AlignResult(
+            ok=True,
+            lrc_content="[00:01.10]Old A\n[00:02.20]Old B",
+            identity=R2ObjectIdentity(exists=True, etag="aligned"),
+            job_id="job-1",
+        )
+
+    monkeypatch.setattr(screen_module, "align_lrc_for_editor", _fake_align)
+
+    app, state = _make_app_with_lines(
+        [
+            LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]"),
+            LRCLine(time_seconds=2.0, text="Old B", raw_timestamp="[00:02.00]"),
+        ],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+    state.audio_duration = 200.0
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("A")
+        await pilot.pause()
+        assert isinstance(app.screen, ModalScreen)
+
+        await pilot.press("a")
+        await asyncio.to_thread(editor._align_thread.join, 5.0)
+        await pilot.pause()
+
+        assert calls[0]["language"] == "auto"
+        assert calls[0]["hash_prefix"] == "abc123"
+        assert [line.text for line in state.timed_lines] == ["Old A", "Old B"]
+        assert [line.time_seconds for line in state.timed_lines] == [1.1, 2.2]
+        assert state.dirty is False
+        assert state.source_mode == "r2"
+        assert state.transcribed_identity.etag == "aligned"
+        assert editor._align_in_flight is False
+
+        table = editor.query_one("#line-table", DataTable)
+        assert str(table.get_cell_at((0, 2))) == "Old A"
+        assert "Source: R2" in str(editor.query_one(StatusIndicator).visual)
+
+
+@pytest.mark.asyncio
+async def test_align_language_picker_passes_zh(monkeypatch):
+    import asyncio
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+    from stream_of_worship.admin.editor.align import AlignResult
+
+    calls: list[dict] = []
+
+    monkeypatch.setattr(
+        screen_module,
+        "align_lrc_for_editor",
+        lambda **kwargs: (
+            calls.append(kwargs)
+            or AlignResult(
+                ok=True,
+                lrc_content="[00:01.10]Old A",
+                identity=R2ObjectIdentity(exists=True, etag="aligned"),
+                job_id="job-1",
+            )
+        ),
+    )
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("A")
+        await pilot.pause()
+        assert isinstance(app.screen, ModalScreen)
+
+        await pilot.press("z")
+        await asyncio.to_thread(editor._align_thread.join, 5.0)
+        await pilot.pause()
+
+        assert calls[0]["language"] == "zh"
+        assert [line.text for line in state.timed_lines] == ["Old A"]
+
+
+@pytest.mark.asyncio
+async def test_align_cancel_keeps_editor_untouched(monkeypatch):
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        screen_module, "align_lrc_for_editor", lambda **kwargs: calls.append(kwargs)
+    )
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("A")
+        await pilot.pause()
+        assert isinstance(app.screen, ModalScreen)
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert editor._align_thread is None
+        assert editor._align_in_flight is False
+        assert calls == []
+        assert [line.text for line in state.timed_lines] == ["Old A"]
+
+
+@pytest.mark.asyncio
+async def test_align_blocked_over_300s(monkeypatch):
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        screen_module, "align_lrc_for_editor", lambda **kwargs: calls.append(kwargs)
+    )
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+    state.audio_duration = 301.0
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        messages: list[str] = []
+        editor.notify = lambda message, **kwargs: messages.append(message)
+
+        await pilot.press("A")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, ModalScreen)
+        assert editor._align_thread is None
+        assert editor._align_in_flight is False
+        assert calls == []
+        assert any("too long" in message for message in messages)
+        assert "too long" in str(editor.query_one(StatusIndicator).visual)
+
+
+@pytest.mark.asyncio
+async def test_align_hotkey_disabled_without_analysis_client():
+    from textual.screen import ModalScreen
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")]
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("A")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, ModalScreen)
+        assert editor._align_thread is None
+
+
+@pytest.mark.asyncio
+async def test_actions_blocked_while_align_in_flight():
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        editor._align_in_flight = True
+        messages: list[str] = []
+        editor.notify = lambda message, **kwargs: messages.append(message)
+        editor._has_unsaved_changes = lambda: True
+
+        await pilot.press("G")
+        await pilot.pause()
+        await pilot.press("L")
+        await pilot.pause()
+        await pilot.press("s")
+        await pilot.pause()
+
+        assert editor._regen_thread is None
+        assert editor._reload_thread is None
+        assert editor._save_in_flight is False
+        assert any("Alignment already in progress" in message for message in messages)
+        assert any("Alignment in progress" in message for message in messages)
+
+        from stream_of_worship.admin.editor.align import AlignResult
+
+        editor._finish_align(AlignResult(ok=False, error="boom"))
+        await pilot.pause()
+
+        assert editor._align_in_flight is False
+
+
+@pytest.mark.asyncio
+async def test_quit_during_alignment_requires_force_confirm():
+    from textual.screen import ModalScreen
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        editor._align_in_flight = True
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ModalScreen)
+        assert app.is_running is True
+
+        await pilot.press("y")
+        await pilot.pause()
+
+        assert app.quit_clean is False
