@@ -279,6 +279,40 @@ class TestLyricsFeedbackListCommand:
         assert "hash-dd" in result.output
         _drop_all_tables(make_test_provider)
 
+    def test_shows_visibility_badge_and_lrc_source(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """Each row shows its recording's own visibility badge and LRC provenance."""
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                """
+                UPDATE recordings
+                SET visibility_status = 'published', lrc_source = 'youtube_transcript'
+                WHERE content_hash = 'hash-aaaaaaaaaaaaaaaa'
+                """
+            )
+        provider.get_connection().commit()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0, result.output
+        assert "Vis" in result.output
+        assert "LRC Src" in result.output
+        # R1 is published → filled badge; R2-R4 stay NULL → hollow badge.
+        assert "●" in result.output
+        # Abbreviated so the column stays narrow: YT, not "YouTube transcript".
+        assert "YT" in result.output
+        assert "YouTube transcript" not in result.output
+        # The NULL-source rows stay blank rather than spraying the legacy label.
+        assert "unknown (legacy)" not in result.output
+        _drop_all_tables(make_test_provider)
+
     def test_soft_deleted_recording_feedback_excluded(
         self, make_test_provider, postgres_url, tmp_path
     ):
@@ -965,6 +999,35 @@ class TestLyricsFeedbackListJsonFormat:
         # Songless recording: song_id/title are null.
         assert by_hash["hash-dddddddddddddddd"]["song_id"] is None
         assert by_hash["hash-dddddddddddddddd"]["title"] is None
+        _drop_all_tables(make_test_provider)
+
+    def test_json_includes_visibility_status_and_lrc_source(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                """
+                UPDATE recordings
+                SET visibility_status = 'published', lrc_source = 'youtube_transcript'
+                WHERE content_hash = 'hash-aaaaaaaaaaaaaaaa'
+                """
+            )
+        provider.get_connection().commit()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--format", "json", "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+        by_hash = {r["content_hash"]: r for r in json.loads(result.stdout)["recordings"]}
+        assert by_hash["hash-aaaaaaaaaaaaaaaa"]["visibility_status"] == "published"
+        assert by_hash["hash-aaaaaaaaaaaaaaaa"]["lrc_source"] == "youtube_transcript"
+        # Songless recording was never published and has no recorded provenance.
+        assert by_hash["hash-dddddddddddddddd"]["visibility_status"] is None
+        assert by_hash["hash-dddddddddddddddd"]["lrc_source"] is None
         _drop_all_tables(make_test_provider)
 
     def test_json_empty_db(self, make_test_provider, postgres_url, tmp_path):
