@@ -41,6 +41,7 @@ from stream_of_worship.admin.services.analysis import (
 from stream_of_worship.admin.services.hasher import get_hash_prefix
 from stream_of_worship.admin.services.lrc_jobs import (
     display_lrc,
+    resolve_alignment_lyrics_text,
     submit_lrc_batch,
     submit_lrc_single,
 )
@@ -1426,20 +1427,15 @@ def _get_alignment_lyrics_text(
     only updates timestamps without changing the lyrics text.
 
     Falls back to song.lyrics_raw with a console warning if the LRC is missing
-    or cannot be parsed.
+    or cannot be parsed. See ``resolve_alignment_lyrics_text``.
     """
-    if r2_client and recording.r2_lrc_url:
-        try:
-            lrc_content = r2_client.download_lrc_content(recording.hash_prefix)
-            if lrc_content:
-                lrc_file = parse_lrc(lrc_content)
-                return "\n".join(line.text for line in lrc_file.lines)
-        except Exception as e:
-            console.print(
-                f"[yellow]Warning: Could not read existing LRC for {recording.hash_prefix} "
-                f"({e}), using nominal lyrics[/yellow]"
-            )
-    return song.lyrics_raw
+    text, source = resolve_alignment_lyrics_text(song, recording, r2_client)
+    if source == "catalog" and r2_client and recording.r2_lrc_url:
+        console.print(
+            f"[yellow]Warning: Could not read existing LRC for {recording.hash_prefix}, "
+            f"using nominal lyrics[/yellow]"
+        )
+    return text or ""
 
 
 def _submit_forced_alignment_single(
