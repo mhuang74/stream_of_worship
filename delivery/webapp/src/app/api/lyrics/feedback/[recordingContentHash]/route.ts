@@ -36,7 +36,10 @@ export async function GET(
     });
 
     return NextResponse.json<LyricsFeedbackResponse>({
-      feedback: row ? { rating: row.rating, reason: row.reason, note: row.note } : null,
+      feedback:
+        row && row.resolvedAt === null
+          ? { rating: row.rating, reason: row.reason, note: row.note }
+          : null,
     });
   } catch (error) {
     console.error("Error fetching lyrics feedback:", error);
@@ -102,6 +105,7 @@ export async function PUT(
           rating: resolvedRating,
           reason: resolvedReason,
           note: resolvedNote,
+          resolvedAt: null,
           updatedAt: new Date(),
         },
       });
