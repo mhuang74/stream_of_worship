@@ -663,8 +663,9 @@ new R2 LRC — the in-editor equivalent of `sow-admin lyrics align <song_id>`.
 This only retimes the lyrics that are already published: the payload is the
 existing R2 LRC text with timestamps stripped (falling back to `songs.lyrics_raw`
 when no LRC is readable), so the words never change. `A` opens a language picker:
-`a` auto (default), `z` zh or `e` en. Recordings longer than 300 s are refused
-inline, matching the `lyrics align` limit. The job always runs forced
+`a` auto (default), `z` zh or `e` en. Recordings longer than 900 s are refused
+inline, matching the `lyrics align` limit; 300–900 s recordings are chunked
+service-side, so the hotkey accepts them. The job always runs forced
 (`force=True`) against the Demucs vocals stem. Status lifecycle, visibility
 (`review`), `lrc_source='forced_alignment'`, unsaved-edit draft handling and the
 force-quit confirmation match `G`; a failed job marks `lrc_status='failed'` and
