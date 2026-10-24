@@ -1633,14 +1633,10 @@ class LRCEditorScreen(Screen[None]):
             with self._db_lock:
                 recording = self.db_client.get_recording_by_hash(self.hash_prefix)
         except Exception as e:
-            self.notify(
-                f"Could not read the recording: {e}", severity="warning", timeout=5
-            )
+            self.notify(f"Could not read the recording: {e}", severity="warning", timeout=5)
             return
         if recording is None:
-            self.notify(
-                "No recording found for this session", severity="warning", timeout=5
-            )
+            self.notify("No recording found for this session", severity="warning", timeout=5)
             return
         has_youtube = bool((recording.youtube_url or "").strip())
 
@@ -1681,9 +1677,7 @@ class LRCEditorScreen(Screen[None]):
                         yield Label(
                             "[yellow]Unsaved edits will be discarded (autosave cleared).[/yellow]"
                         )
-                    yield Label(
-                        "[d]Pick a generator | [bold]n[/bold] or esc to cancel[/]"
-                    )
+                    yield Label("[d]Pick a generator | [bold]n[/bold] or esc to cancel[/]")
 
             def action_auto(self) -> None:
                 self.dismiss("auto")
@@ -1714,9 +1708,7 @@ class LRCEditorScreen(Screen[None]):
             self._start_regenerate(generator)
 
         self.app.push_screen(
-            RegenerateGeneratorDialog(
-                self.state.dirty or self._has_unsaved_changes(), has_youtube
-            ),
+            RegenerateGeneratorDialog(self.state.dirty or self._has_unsaved_changes(), has_youtube),
             _handle_regenerate_confirm,
         )
 
@@ -1892,9 +1884,7 @@ class LRCEditorScreen(Screen[None]):
             return
         if not content:
             status.update(" [red]No LRC found on R2[/red]")
-            self.notify(
-                "No LRC found on R2 for this recording", severity="warning", timeout=5
-            )
+            self.notify("No LRC found on R2 for this recording", severity="warning", timeout=5)
             return
         if content == self.original_transcribed_content:
             # Nothing newer on R2: leave the session (and unsaved edits) alone.

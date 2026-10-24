@@ -77,7 +77,9 @@ def regenerate_lrc_for_editor(
         generator: Which generator to run: ``auto`` (YouTube → Qwen3 ASR →
             Whisper fallback), ``youtube``, ``qwen3`` or ``whisper`` — the same
             vocabulary as ``lyrics generate --generator``. A specific generator
-            runs only that one and never falls back.
+            runs only that one and never falls back. The LRC result cache is
+            bypassed (``force=True``) while the ASR transcription caches are
+            reused, matching ``lyrics generate --force`` without ``--no-cache``.
         on_progress: Optional sink for human-readable progress lines.
         poll_interval: Seconds between job polls.
         timeout: Seconds to wait for the job before failing.
