@@ -148,14 +148,20 @@ except ImportError:
 from .stem_separation import StemSeparationWorkerError, process_stem_separation
 
 # Forced alignment utilities (stdlib-only module; soundfile/librosa are imported
-# lazily inside validate_audio_duration)
+# lazily inside validate_audio_duration / find_chunk_boundaries / extract_chunk)
 try:
     from .forced_alignment import (
+        assign_lines_to_chunks,
+        extract_chunk,
+        find_chunk_boundaries,
         format_timestamp,
         map_segments_to_lines,
         validate_audio_duration,
     )
 except ImportError:
+    assign_lines_to_chunks = None
+    extract_chunk = None
+    find_chunk_boundaries = None
     format_timestamp = None
     map_segments_to_lines = None
     validate_audio_duration = None
@@ -2021,7 +2027,13 @@ class JobQueue:
                 logger.error(f"Failed to update job {job.id} in database: {e}")
             return
 
-        if map_segments_to_lines is None or validate_audio_duration is None:
+        if (
+            map_segments_to_lines is None
+            or validate_audio_duration is None
+            or find_chunk_boundaries is None
+            or assign_lines_to_chunks is None
+            or extract_chunk is None
+        ):
             job.status = JobStatus.FAILED
             job.error_message = "Forced alignment utilities failed to import"
             job.stage = "missing_dependencies"
@@ -2126,21 +2138,38 @@ class JobQueue:
                 )
 
                 await self._update_stage(job, "validating_duration", 0.3)
-                validate_audio_duration(resolved_audio.path, max_seconds=300.0)
-
-                await self._update_stage(job, "aligning", 0.4)
-                # Alignment runs on Modal (sow-forced-aligner); concurrency is bounded
-                # by the app's max_containers, not by the local-model semaphore.
-                raw_segments = await get_modal_forced_aligner_client().align(
-                    resolved_audio.path, request.lyrics_text, language_mapped
+                duration = validate_audio_duration(
+                    resolved_audio.path,
+                    max_seconds=settings.SOW_FORCED_ALIGN_MAX_TOTAL_SECONDS,
                 )
 
-                await self._update_stage(job, "mapping_segments", 0.6)
                 lyrics_lines = [line.rstrip() for line in request.lyrics_text.splitlines()]
                 while lyrics_lines and not lyrics_lines[-1]:
                     lyrics_lines.pop()
 
-                line_alignments = map_segments_to_lines(raw_segments, lyrics_lines)
+                if duration <= settings.SOW_FORCED_ALIGN_MAX_CHUNK_SECONDS:
+                    await self._update_stage(job, "aligning", 0.4)
+                    # Alignment runs on Modal (sow-forced-aligner); concurrency is bounded
+                    # by the app's max_containers, not by the local-model semaphore.
+                    raw_segments = await get_modal_forced_aligner_client().align(
+                        resolved_audio.path, request.lyrics_text, language_mapped
+                    )
+
+                    await self._update_stage(job, "mapping_segments", 0.6)
+                    line_alignments = map_segments_to_lines(raw_segments, lyrics_lines)
+                else:
+                    # The aligner cannot handle >5 min of audio: split at quiet points,
+                    # align each chunk, and offset-shift the per-chunk results.
+                    line_alignments = await self._align_long_recording(
+                        job,
+                        resolved_audio.path,
+                        duration,
+                        lyrics_lines,
+                        hash_prefix,
+                        language_mapped,
+                        temp_path,
+                    )
+                    await self._update_stage(job, "mapping_segments", 0.6)
 
                 lrc_lines = []
                 for start, _end, text in line_alignments:
@@ -2235,6 +2264,173 @@ class JobQueue:
 
         finally:
             job.updated_at = datetime.now(timezone.utc)
+
+    async def _fetch_lrc_line_times(
+        self, hash_prefix: str, lyrics_lines: list[str]
+    ) -> Optional[list[float]]:
+        """Per-line timestamps from the existing lyrics.lrc, positionally matched.
+
+        Existing LRC timings are the best available source for assigning lyric
+        lines to chunks. Anything unexpected (no LRC, parse failure, line-count
+        mismatch) returns ``None`` so the caller falls back to char-proportional
+        assignment — this is advisory only, never fatal.
+
+        Args:
+            hash_prefix: Recording hash prefix.
+            lyrics_lines: The submitted lyric lines, in order.
+
+        Returns:
+            One timestamp per lyric line, or ``None`` when unavailable.
+        """
+        if self.r2_client is None:
+            return None
+
+        try:
+            from .lrc_parser import parse_lrc
+
+            content = await self.r2_client.download_lrc_text(hash_prefix)
+            if not content:
+                return None
+            timed = [line.time_seconds for line in parse_lrc(content).lines if line.text.strip()]
+        except Exception as e:
+            logger.warning("Could not reuse existing LRC timestamps for chunk assignment: %s", e)
+            return None
+
+        non_empty_positions = [
+            position for position, line in enumerate(lyrics_lines) if line.strip()
+        ]
+        if len(timed) != len(non_empty_positions):
+            logger.info(
+                "Existing LRC has %d timed lines but the lyrics payload has %d non-empty "
+                "lines; assigning lines to chunks proportionally",
+                len(timed),
+                len(non_empty_positions),
+            )
+            return None
+
+        line_times: list[Optional[float]] = [None] * len(lyrics_lines)
+        for position, time_seconds in zip(non_empty_positions, timed):
+            line_times[position] = time_seconds
+
+        # Blank lines carry no timing: inherit the next timed line, else the previous.
+        upcoming: float = 0.0
+        for position in range(len(line_times) - 1, -1, -1):
+            value = line_times[position]
+            if value is None:
+                line_times[position] = upcoming
+            else:
+                upcoming = value
+        previous: float = 0.0
+        for position in range(len(line_times)):
+            value = line_times[position]
+            if value is None:
+                line_times[position] = previous
+            else:
+                previous = value
+
+        if any(value is None for value in line_times):
+            return None
+        return [float(value) for value in line_times if value is not None]
+
+    async def _align_long_recording(
+        self,
+        job: Job,
+        audio_path: Path,
+        duration: float,
+        lyrics_lines: list[str],
+        hash_prefix: str,
+        language_mapped: str,
+        temp_path: Path,
+    ) -> list[tuple[float, float, str]]:
+        """Chunk a >model-limit recording, align each chunk, and offset-merge results.
+
+        Args:
+            job: The forced alignment job (for stage/progress updates).
+            audio_path: Resolved alignment input (vocals stem or full mix).
+            duration: Recording duration in seconds.
+            lyrics_lines: The submitted lyric lines, in order.
+            hash_prefix: Recording hash prefix (existing LRC lookup).
+            language_mapped: Aligner language name ("Chinese"/"English").
+            temp_path: Job temporary directory for chunk WAVs.
+
+        Returns:
+            Per-line ``(start, end, text)`` triples in the original line order,
+            shifted into the full-recording timeline.
+
+        Raises:
+            RuntimeError: On chunk failure, prefixed with ``chunk i/n``.
+        """
+        assert find_chunk_boundaries is not None
+        assert assign_lines_to_chunks is not None
+        assert extract_chunk is not None
+        assert map_segments_to_lines is not None
+
+        line_times = await self._fetch_lrc_line_times(hash_prefix, lyrics_lines)
+
+        await self._update_stage(job, "chunking_audio", 0.35)
+        boundaries = find_chunk_boundaries(
+            audio_path,
+            duration,
+            settings.SOW_FORCED_ALIGN_MAX_CHUNK_SECONDS,
+            settings.SOW_FORCED_ALIGN_CUT_SEARCH_SECONDS,
+        )
+        chunk_slices = assign_lines_to_chunks(lyrics_lines, boundaries, duration, line_times)
+        chunk_count = len(chunk_slices)
+        logger.info(
+            "Forced alignment chunking %s: duration=%.1fs boundaries=%s "
+            "chunks=%d lines_per_chunk=%s lrc_times=%s",
+            job.id,
+            duration,
+            [round(boundary, 2) for boundary in boundaries],
+            chunk_count,
+            [len(chunk_lines) for chunk_lines in chunk_slices],
+            line_times is not None,
+        )
+
+        align_client = get_modal_forced_aligner_client()
+        line_alignments: list[tuple[float, float, str]] = []
+
+        for index, chunk_lines in enumerate(chunk_slices):
+            if not chunk_lines:
+                logger.info(
+                    "Forced alignment chunk %d/%d skipped: no lyric lines",
+                    index + 1,
+                    chunk_count,
+                )
+                continue
+
+            offset = boundaries[index]
+            chunk_end = boundaries[index + 1]
+            await self._update_stage(
+                job,
+                f"aligning_chunk_{index + 1}/{chunk_count}",
+                0.4 + 0.2 * (index + 1) / chunk_count,
+            )
+
+            chunk_path = temp_path / f"chunk_{index}.wav"
+            try:
+                extract_chunk(audio_path, offset, chunk_end, chunk_path)
+                chunk_segments = await align_client.align(
+                    chunk_path, "\n".join(chunk_lines), language_mapped
+                )
+            except Exception as e:
+                raise RuntimeError(f"chunk {index + 1}/{chunk_count}: {e}") from e
+
+            chunk_alignments = map_segments_to_lines(chunk_segments, chunk_lines)
+            line_alignments.extend(
+                (start + offset, end + offset, text) for start, end, text in chunk_alignments
+            )
+            logger.info(
+                "Forced alignment chunk %d/%d: %.1fs-%.1fs lines=%d segments=%d",
+                index + 1,
+                chunk_count,
+                offset,
+                chunk_end,
+                len(chunk_lines),
+                len(chunk_segments),
+            )
+
+        return line_alignments
 
     async def _process_stem_separation_job(self, job: Job) -> None:
         """Process a stem separation job.

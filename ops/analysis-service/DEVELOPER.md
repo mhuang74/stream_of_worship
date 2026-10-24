@@ -371,6 +371,9 @@ docker compose down -v
 | `SOW_MODAL_FORCED_ALIGNER_MAX_ATTEMPTS` | Optional | 2 | Retry budget per alignment call |
 | `SOW_MODAL_FORCED_ALIGNER_RETRY_DELAY_SECONDS` | Optional | 5.0 | Linear backoff between attempts |
 | `SOW_MODAL_FORCED_ALIGNER_MAX_AUDIO_BYTES` | Optional | 90000000 | Cap on the 16 kHz mono WAV upload |
+| `SOW_FORCED_ALIGN_MAX_CHUNK_SECONDS` | Optional | 300.0 | Max chunk length (the Qwen3ForcedAligner model limit) |
+| `SOW_FORCED_ALIGN_MAX_TOTAL_SECONDS` | Optional | 900.0 | Longest recording accepted (chunked above the chunk limit) |
+| `SOW_FORCED_ALIGN_CUT_SEARCH_SECONDS` | Optional | 30.0 | ± window for snapping chunk cuts to the quietest frame |
 | `SOW_DASHSCOPE_API_KEY` | Optional | - | DashScope API key for Qwen3 ASR |
 | `SOW_DASHSCOPE_ASR_REGION` | Optional | intl | DashScope region (intl, cn, us) |
 | `SOW_DASHSCOPE_ASR_TIMEOUT_SECONDS` | Optional | 300 | Direct ASR call timeout |

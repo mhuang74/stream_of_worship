@@ -28,9 +28,9 @@ from textual.widgets import (
 )
 
 from stream_of_worship.admin.audit import log_change
+from stream_of_worship.admin.constants import FORCED_ALIGN_MAX_DURATION_SECONDS
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.align import (
-    MAX_ALIGN_DURATION_SECONDS,
     AlignResult,
     align_lrc_for_editor,
 )
@@ -1861,17 +1861,14 @@ class LRCEditorScreen(Screen[None]):
             )
             return
         duration = self.state.audio_duration
-        if duration and duration > MAX_ALIGN_DURATION_SECONDS:
-            self.query_one(StatusIndicator).update(
-                f" [red]Recording too long ({duration:.0f}s > "
-                f"{MAX_ALIGN_DURATION_SECONDS:.0f}s limit); forced alignment not available[/red]"
-            )
-            self.notify(
+        if duration and duration > FORCED_ALIGN_MAX_DURATION_SECONDS:
+            refusal = (
                 f"Recording too long ({duration:.0f}s > "
-                f"{MAX_ALIGN_DURATION_SECONDS:.0f}s limit); forced alignment not available",
-                severity="warning",
-                timeout=8,
+                f"{FORCED_ALIGN_MAX_DURATION_SECONDS:.0f}s limit); "
+                "forced alignment not available"
             )
+            self.query_one(StatusIndicator).update(f" [red]{refusal}[/red]")
+            self.notify(refusal, severity="warning", timeout=8)
             return
 
         from textual.screen import ModalScreen

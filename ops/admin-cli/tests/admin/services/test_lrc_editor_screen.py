@@ -1201,7 +1201,43 @@ async def test_align_cancel_keeps_editor_untouched(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_align_blocked_over_300s(monkeypatch):
+async def test_align_blocked_over_900s(monkeypatch):
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        screen_module, "align_lrc_for_editor", lambda **kwargs: calls.append(kwargs)
+    )
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+    state.audio_duration = 901.0
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        messages: list[str] = []
+        editor.notify = lambda message, **kwargs: messages.append(message)
+
+        await pilot.press("A")
+        await pilot.pause()
+
+        assert not isinstance(app.screen, ModalScreen)
+        assert editor._align_thread is None
+        assert editor._align_in_flight is False
+        assert calls == []
+        assert any("too long" in message for message in messages)
+        assert "too long" in str(editor.query_one(StatusIndicator).visual)
+
+
+@pytest.mark.asyncio
+async def test_align_allowed_between_300s_and_900s(monkeypatch):
+    """A 301 s recording is chunked service-side, so the hotkey must reach the dialog."""
     from textual.screen import ModalScreen
 
     import stream_of_worship.admin.editor.screen as screen_module
@@ -1227,12 +1263,13 @@ async def test_align_blocked_over_300s(monkeypatch):
         await pilot.press("A")
         await pilot.pause()
 
-        assert not isinstance(app.screen, ModalScreen)
+        assert isinstance(app.screen, ModalScreen)
+        assert not any("too long" in message for message in messages)
         assert editor._align_thread is None
-        assert editor._align_in_flight is False
         assert calls == []
-        assert any("too long" in message for message in messages)
-        assert "too long" in str(editor.query_one(StatusIndicator).visual)
+
+        await pilot.press("escape")
+        await pilot.pause()
 
 
 @pytest.mark.asyncio

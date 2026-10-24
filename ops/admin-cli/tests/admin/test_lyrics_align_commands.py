@@ -394,3 +394,87 @@ def test_resume_polls_pending_jobs(tmp_path):
     db_client.update_recording_lrc.assert_called_once()
     assert db_client.update_recording_lrc.call_args.kwargs["lrc_source"] == "forced_alignment"
     assert json.loads(manifest_file.read_text())["jobs"][0]["outcome"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# Duration gate + wait budget (single-song path)
+# ---------------------------------------------------------------------------
+
+from stream_of_worship.admin.db.models import Recording, Song  # noqa: E402
+
+
+def _alignment_recording(**overrides) -> Recording:
+    base = dict(
+        content_hash=HASH,
+        hash_prefix=HASH[:12],
+        original_filename="song.mp3",
+        file_size_bytes=1024,
+        imported_at="2026-01-01T00:00:00+00:00",
+        song_id="song_0001",
+        r2_audio_url=f"s3://bucket/{HASH[:12]}/audio.mp3",
+        r2_lrc_url=f"s3://bucket/{HASH[:12]}/lyrics.lrc",
+        duration_seconds=240.0,
+        lrc_status="pending",
+        visibility_status="review",
+    )
+    base.update(overrides)
+    return Recording(**base)
+
+
+def _alignment_song() -> Song:
+    return Song(
+        id="song_0001",
+        title="Amazing Grace",
+        source_url="https://sop.org/song/1",
+        scraped_at="2026-01-01T00:00:00+00:00",
+        lyrics_raw="catalog one\ncatalog two",
+    )
+
+
+def _submit_single(recording: Recording, *, console: Console) -> tuple[MagicMock, MagicMock]:
+    db_client = MagicMock()
+    db_client.get_recording_by_song_id.return_value = recording
+    db_client.get_song.return_value = _alignment_song()
+    analysis_client = MagicMock()
+    analysis_client.submit_forced_alignment.return_value = JobInfo(
+        job_id="job-1", status="queued", job_type="forced_alignment"
+    )
+    analysis_client.wait_for_completion.return_value = JobInfo(
+        job_id="job-1",
+        status="completed",
+        job_type="forced_alignment",
+        result=AnalysisResult(lrc_url=f"s3://bucket/{HASH[:12]}/lyrics.lrc"),
+    )
+    with patch.object(lyrics_commands, "ensure_reprocessable"):
+        lyrics_commands._submit_forced_alignment_single(
+            "song_0001",
+            db_client,
+            analysis_client,
+            language="auto",
+            force=True,
+            use_vocals_stem=True,
+            wait=True,
+            console=console,
+        )
+    return db_client, analysis_client
+
+
+def test_align_single_allows_890s_recording_and_scales_wait():
+    """A 15-minute-class recording is chunked service-side: allow it, budget 3 chunks."""
+    recording = _alignment_recording(duration_seconds=890.0)
+
+    _db_client, analysis_client = _submit_single(recording, console=_quiet_console())
+
+    analysis_client.submit_forced_alignment.assert_called_once()
+    assert analysis_client.wait_for_completion.call_args.kwargs["timeout"] == 1440.0
+
+
+def test_align_single_refuses_recording_over_900s():
+    recording = _alignment_recording(duration_seconds=901.0)
+    console = Console(file=io.StringIO(), width=200)
+
+    with pytest.raises(typer.Exit) as excinfo:
+        _submit_single(recording, console=console)
+
+    assert excinfo.value.exit_code == 1
+    assert "900s limit" in console.file.getvalue()

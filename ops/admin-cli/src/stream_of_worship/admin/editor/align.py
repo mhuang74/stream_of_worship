@@ -25,20 +25,21 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisServiceError,
     JobInfo,
 )
-from stream_of_worship.admin.services.lrc_jobs import resolve_alignment_lyrics_text
+from stream_of_worship.admin.services.lrc_jobs import (
+    alignment_wait_timeout,
+    resolve_alignment_lyrics_text,
+)
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.visibility import is_published, reprocess_blocked_reason
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL = 5.0
-# Matches the single-song ``lyrics align`` wait budget (20 minutes).
+# Wait budget for a single-chunk (<=300 s) recording. Longer recordings get a
+# chunk-scaled budget via ``alignment_wait_timeout``.
 DEFAULT_TIMEOUT = 1200.0
 R2_RETRY_INTERVAL = 2.0
 R2_RETRY_ATTEMPTS = 30
-# The service refuses longer recordings (same limit as ``lyrics align``);
-# checking here keeps the refusal synchronous with the hotkey.
-MAX_ALIGN_DURATION_SECONDS = 300.0
 
 
 @dataclass
@@ -64,7 +65,7 @@ def align_lrc_for_editor(
     force: bool = True,
     on_progress: Optional[Callable[[str], None]] = None,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
-    timeout: float = DEFAULT_TIMEOUT,
+    timeout: Optional[float] = None,
     r2_retry_interval: float = R2_RETRY_INTERVAL,
     r2_retry_attempts: int = R2_RETRY_ATTEMPTS,
 ) -> AlignResult:
@@ -85,7 +86,8 @@ def align_lrc_for_editor(
             itself the confirmation, so this defaults to ``True``.
         on_progress: Optional sink for human-readable progress lines.
         poll_interval: Seconds between job polls.
-        timeout: Seconds to wait for the job before failing.
+        timeout: Seconds to wait for the job before failing; ``None`` derives the
+            budget from the recording duration (chunk-scaled).
         r2_retry_interval: Seconds between LRC download attempts.
         r2_retry_attempts: Download attempts; the new object may take a
             moment to become readable after the job reports completion.
@@ -97,6 +99,10 @@ def align_lrc_for_editor(
         recording = db_client.get_recording_by_hash(hash_prefix)
     if not recording:
         return AlignResult(ok=False, error=f"No recording found for {hash_prefix}.")
+
+    wait_timeout = (
+        alignment_wait_timeout(recording.duration_seconds) if timeout is None else timeout
+    )
 
     song_id = recording.song_id or ""
     if is_published(recording):
@@ -150,7 +156,7 @@ def align_lrc_for_editor(
         final_job = analysis_client.wait_for_completion(
             job.job_id,
             poll_interval=poll_interval,
-            timeout=timeout,
+            timeout=wait_timeout,
             callback=_on_job_info,
         )
     except AnalysisServiceError as e:
