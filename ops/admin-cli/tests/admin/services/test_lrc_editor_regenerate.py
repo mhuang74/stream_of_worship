@@ -3,6 +3,8 @@
 import threading
 from unittest.mock import MagicMock
 
+import pytest
+
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.editor.regenerate import regenerate_lrc_for_editor
 from stream_of_worship.admin.services.analysis import (
@@ -103,9 +105,12 @@ def test_regenerate_submits_force_and_returns_redownloaded_content():
     assert submit_kwargs["lyrics_text"] == "line one\nline two"
     assert submit_kwargs["song_title"] == "Amazing Grace"
     assert submit_kwargs["song_id"] == "song_0001"
+    assert submit_kwargs["lrc_generator"] == "auto"
+    assert submit_kwargs["use_qwen3_asr"] is True
+    assert submit_kwargs["force_whisper"] is False
+    assert submit_kwargs["force_qwen3_asr"] is False
     assert "whisper_model" not in submit_kwargs
     assert "language" not in submit_kwargs
-    assert "use_qwen3_asr" not in submit_kwargs
 
     # Status went processing -> completed (via update_recording_lrc, review).
     db_client.update_recording_status.assert_called_once_with(
@@ -117,6 +122,58 @@ def test_regenerate_submits_force_and_returns_redownloaded_content():
         visibility_status="review",
         lrc_source="qwen3_asr",
     )
+
+
+@pytest.mark.parametrize(
+    ("generator", "expected_mode", "expected_use_qwen3_asr", "expected_youtube_url"),
+    [
+        ("auto", "auto", True, "https://www.youtube.com/watch?v=xyz"),
+        ("youtube", "youtube", True, "https://www.youtube.com/watch?v=xyz"),
+        ("qwen3", "qwen3_asr", True, ""),
+        ("whisper", "whisper_asr", False, ""),
+    ],
+)
+def test_regenerate_maps_generator_to_service_kwargs(
+    generator, expected_mode, expected_use_qwen3_asr, expected_youtube_url
+):
+    db_client, r2_client, analysis_client = _clients()
+    analysis_client.submit_lrc.return_value = JobInfo(
+        job_id="job-1", status="queued", job_type="lrc"
+    )
+    analysis_client.wait_for_completion.return_value = _completed_job()
+    r2_client.download_lrc_content.return_value = "[00:01.00]A"
+    r2_client.get_lrc_identity.return_value = R2ObjectIdentity(exists=True, etag="e")
+
+    result = _run(db_client, r2_client, analysis_client, generator=generator)
+
+    assert result.ok is True
+    submit_kwargs = analysis_client.submit_lrc.call_args.kwargs
+    assert submit_kwargs["lrc_generator"] == expected_mode
+    assert submit_kwargs["use_qwen3_asr"] is expected_use_qwen3_asr
+    assert submit_kwargs["youtube_url"] == expected_youtube_url
+    assert submit_kwargs["force"] is True
+    assert submit_kwargs["force_whisper"] is False
+    assert submit_kwargs["force_qwen3_asr"] is False
+
+
+def test_regenerate_whisper_ignores_missing_youtube_url():
+    db_client, r2_client, analysis_client = _clients(
+        recording=_recording(youtube_url=None)
+    )
+    analysis_client.submit_lrc.return_value = JobInfo(
+        job_id="job-1", status="queued", job_type="lrc"
+    )
+    analysis_client.wait_for_completion.return_value = _completed_job()
+    r2_client.download_lrc_content.return_value = "[00:01.00]A"
+    r2_client.get_lrc_identity.return_value = R2ObjectIdentity(exists=True, etag="e")
+
+    result = _run(db_client, r2_client, analysis_client, generator="whisper")
+
+    assert result.ok is True
+    submit_kwargs = analysis_client.submit_lrc.call_args.kwargs
+    assert submit_kwargs["lrc_generator"] == "whisper_asr"
+    assert submit_kwargs["use_qwen3_asr"] is False
+    assert submit_kwargs["youtube_url"] == ""
 
 
 def test_regenerate_marks_failed_when_job_fails():

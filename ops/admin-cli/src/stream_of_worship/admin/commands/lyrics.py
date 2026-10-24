@@ -2420,8 +2420,14 @@ def lyrics_edit(
 
     Press `G` in the editor to force-regenerate the LRC through the
     analysis service and refresh the editor from the new R2 LRC without
-    leaving the editor (generation defaults match
-    `lyrics generate --force`).
+    leaving the editor. `G` opens a generator picker — `a` auto
+    (YouTube → Qwen3 ASR → Whisper fallback, default), `y` youtube,
+    `q` qwen3, `w` whisper — mirroring `lyrics generate --generator`.
+
+    Press `L` in the editor to reload the latest LRC from R2 without
+    regenerating (e.g. after running `lyrics generate` in another
+    terminal). Unchanged R2 content is a no-op; unsaved edits made
+    while the fetch runs are kept as a local draft.
     """
     if not song_id and not review_next_song and not review_fresh:
         console.print(

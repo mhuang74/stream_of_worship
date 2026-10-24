@@ -63,6 +63,8 @@ def _make_app_with_lines(
     lines: list[LRCLine],
     visibility_status: str | None = None,
     analysis_client=None,
+    cache_dir: Path | None = None,
+    original_transcribed_content: str | None = None,
 ) -> tuple[LRCEditorApp, EditorState]:
     state = EditorState(
         timed_lines=lines,
@@ -74,11 +76,11 @@ def _make_app_with_lines(
     app = LRCEditorApp(
         editor_state=state,
         playback_service=_PlaybackStub(),
-        cache_dir=Path("/tmp"),
+        cache_dir=cache_dir or Path("/tmp"),
         r2_client=MagicMock(),
         db_client=MagicMock(),
         hash_prefix="abc123",
-        original_transcribed_content=None,
+        original_transcribed_content=original_transcribed_content,
         visibility_status=visibility_status,
         analysis_client=analysis_client,
     )
@@ -733,16 +735,18 @@ async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
     import stream_of_worship.admin.editor.screen as screen_module
     from stream_of_worship.admin.editor.regenerate import RegenerateResult
 
-    monkeypatch.setattr(
-        screen_module,
-        "regenerate_lrc_for_editor",
-        lambda **kwargs: RegenerateResult(
+    calls: list[dict] = []
+
+    def _fake_regenerate(**kwargs) -> RegenerateResult:
+        calls.append(kwargs)
+        return RegenerateResult(
             ok=True,
             lrc_content="[00:01.00]New A\n[00:02.00]New B",
             identity=R2ObjectIdentity(exists=True, etag="new"),
             job_id="job-1",
-        ),
-    )
+        )
+
+    monkeypatch.setattr(screen_module, "regenerate_lrc_for_editor", _fake_regenerate)
 
     app, state = _make_app_with_lines(
         [
@@ -761,10 +765,11 @@ async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
         await pilot.pause()
         assert isinstance(app.screen, ModalScreen)
 
-        await pilot.press("y")
+        await pilot.press("a")
         await asyncio.to_thread(editor._regen_thread.join, 5.0)
         await pilot.pause()
 
+        assert calls[0]["generator"] == "auto"
         assert [line.text for line in state.timed_lines] == ["New A", "New B"]
         assert state.dirty is False
         assert state.source_mode == "r2"
@@ -774,6 +779,85 @@ async def test_regenerate_hotkey_asks_and_refreshes_from_r2(monkeypatch):
         table = editor.query_one("#line-table", DataTable)
         assert str(table.get_cell_at((0, 2))) == "New A"
         assert "Source: R2" in str(editor.query_one(StatusIndicator).visual)
+
+
+@pytest.mark.asyncio
+async def test_regenerate_generator_picker_passes_whisper(monkeypatch):
+    import asyncio
+    from textual.screen import ModalScreen
+
+    import stream_of_worship.admin.editor.screen as screen_module
+    from stream_of_worship.admin.editor.regenerate import RegenerateResult
+
+    calls: list[dict] = []
+
+    def _fake_regenerate(**kwargs) -> RegenerateResult:
+        calls.append(kwargs)
+        return RegenerateResult(
+            ok=True,
+            lrc_content="[00:01.00]New A",
+            identity=R2ObjectIdentity(exists=True, etag="new"),
+            job_id="job-1",
+        )
+
+    monkeypatch.setattr(screen_module, "regenerate_lrc_for_editor", _fake_regenerate)
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("G")
+        await pilot.pause()
+        assert isinstance(app.screen, ModalScreen)
+
+        await pilot.press("w")
+        await asyncio.to_thread(editor._regen_thread.join, 5.0)
+        await pilot.pause()
+
+        assert calls[0]["generator"] == "whisper"
+        assert [line.text for line in state.timed_lines] == ["New A"]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_youtube_without_url_warns_and_does_not_start(monkeypatch):
+    import stream_of_worship.admin.editor.screen as screen_module
+
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        screen_module,
+        "regenerate_lrc_for_editor",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+    )
+    state.song_id = "song_0001"
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        editor.db_client.get_recording_by_hash.return_value = SimpleNamespace(youtube_url=None)
+        messages: list[str] = []
+        editor.notify = lambda message, **kwargs: messages.append(message)
+
+        await pilot.press("G")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+
+        assert editor._regen_thread is None
+        assert editor._regen_in_flight is False
+        assert calls == []
+        assert any("requires a YouTube URL" in message for message in messages)
+        assert [line.text for line in state.timed_lines] == ["Old A"]
 
 
 @pytest.mark.asyncio
@@ -847,3 +931,139 @@ async def test_quit_during_regeneration_requires_force_confirm():
         await pilot.pause()
 
         assert app.quit_clean is False
+
+
+@pytest.mark.asyncio
+async def test_reload_hotkey_applies_changed_r2_content(tmp_path):
+    import asyncio
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        cache_dir=tmp_path,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        editor.r2_client.download_lrc_content.return_value = "[00:01.00]From R2"
+        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(
+            exists=True, etag="new"
+        )
+        editor.db_client.get_recording_by_hash.return_value = SimpleNamespace(
+            visibility_status="hold"
+        )
+
+        await pilot.press("L")
+        await asyncio.to_thread(editor._reload_thread.join, 5.0)
+        await pilot.pause()
+
+        assert [line.text for line in state.timed_lines] == ["From R2"]
+        assert state.source_mode == "r2"
+        assert state.dirty is False
+        assert state.transcribed_identity.etag == "new"
+        assert editor._reload_in_flight is False
+        assert editor.original_transcribed_content == "[00:01.00]From R2"
+        # The badge is the catalog's status, not an assumption about the reload.
+        assert editor.sub_title == "Visibility: ○ hold"
+
+        table = editor.query_one("#line-table", DataTable)
+        assert str(table.get_cell_at((0, 2))) == "From R2"
+        assert "Source: R2" in str(editor.query_one(StatusIndicator).visual)
+
+
+@pytest.mark.asyncio
+async def test_reload_hotkey_is_a_noop_when_r2_content_is_unchanged(tmp_path, monkeypatch):
+    import asyncio
+
+    import stream_of_worship.admin.editor.screen as screen_module
+
+    cleared: list[tuple] = []
+    monkeypatch.setattr(
+        screen_module, "clear_autosave", lambda *args, **kwargs: cleared.append(args)
+    )
+
+    unchanged = "[00:01.00]Old A"
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        cache_dir=tmp_path,
+        original_transcribed_content=unchanged,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        editor.r2_client.download_lrc_content.return_value = unchanged
+        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(
+            exists=True, etag="same"
+        )
+
+        await pilot.press("L")
+        await asyncio.to_thread(editor._reload_thread.join, 5.0)
+        await pilot.pause()
+
+        assert [line.text for line in state.timed_lines] == ["Old A"]
+        assert editor._reload_in_flight is False
+        assert cleared == []
+        assert not list(tmp_path.rglob("*.lrc"))
+
+
+@pytest.mark.asyncio
+async def test_reload_preserves_edits_made_during_fetch_as_draft(tmp_path):
+    import asyncio
+    import threading
+
+    gate = threading.Event()
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        cache_dir=tmp_path,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        def _download(_hash_prefix: str) -> str:
+            gate.wait(5.0)
+            return "[00:01.00]From R2"
+
+        editor.r2_client.download_lrc_content.side_effect = _download
+        editor.r2_client.get_lrc_identity.return_value = R2ObjectIdentity(
+            exists=True, etag="new"
+        )
+
+        await pilot.press("L")
+        await pilot.pause()
+
+        state.set_text(0, "Edited During Fetch")
+        gate.set()
+        await asyncio.to_thread(editor._reload_thread.join, 5.0)
+        await pilot.pause()
+
+        drafts = list((tmp_path / "abc123" / "lrc").glob("lyrics.edited.*.lrc"))
+        assert len(drafts) == 1
+        assert "Edited During Fetch" in drafts[0].read_text(encoding="utf-8")
+        assert [line.text for line in state.timed_lines] == ["From R2"]
+        assert editor._reload_in_flight is False
+
+
+@pytest.mark.asyncio
+async def test_reload_hotkey_reports_fetch_failure(tmp_path):
+    import asyncio
+
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Old A", raw_timestamp="[00:01.00]")],
+        cache_dir=tmp_path,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        editor.r2_client.download_lrc_content.side_effect = RuntimeError("boom")
+
+        await pilot.press("L")
+        await asyncio.to_thread(editor._reload_thread.join, 5.0)
+        await pilot.pause()
+
+        assert editor._reload_in_flight is False
+        assert [line.text for line in state.timed_lines] == ["Old A"]
+        assert "LRC reload failed" in str(editor.query_one(StatusIndicator).visual)
