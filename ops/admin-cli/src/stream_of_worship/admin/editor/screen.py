@@ -31,6 +31,7 @@ from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.constants import FORCED_ALIGN_MAX_DURATION_SECONDS
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.editor.align import (
+    ALIGNED_LRC_SOURCE,
     AlignResult,
     align_lrc_for_editor,
 )
@@ -61,6 +62,42 @@ from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
 from stream_of_worship.admin.services.visibility import visibility_label
 
 logger = logging.getLogger(__name__)
+
+# Abbreviated provenance labels for ``recordings.lrc_source``, used in the
+# header subtitle where horizontal room is scarce (the status bar shows the
+# full labels via ``commands/audio.py``).
+LRC_SOURCE_BADGES: dict[str, str] = {
+    "youtube_transcript": "YT",
+    "youtube_transcript_asr_tail": "YT+tail",
+    "qwen3_asr": "Qwen3",
+    "whisper_asr": "Whisper",
+    "forced_alignment": "Align",
+    "manual_upload": "Manual",
+    "llm_edit": "LLM",
+    "r2_preexisting": "R2",
+}
+LRC_SOURCE_BADGE_MAX_CHARS = 12
+
+
+def format_lrc_source_badge(lrc_source: Optional[str]) -> Optional[str]:
+    """Abbreviate recordings.lrc_source for the header; None means omit the segment."""
+    if not lrc_source:
+        return None
+    badge = LRC_SOURCE_BADGES.get(lrc_source)
+    if badge is not None:
+        return badge
+    if len(lrc_source) <= LRC_SOURCE_BADGE_MAX_CHARS:
+        return lrc_source
+    return lrc_source[:LRC_SOURCE_BADGE_MAX_CHARS] + "…"
+
+
+def format_header_subtitle(visibility_status: Optional[str], lrc_source: Optional[str]) -> str:
+    """`Visibility: <badge>` plus ` · Src: <short>` when provenance is known."""
+    parts = [f"Visibility: {visibility_label(visibility_status)}"]
+    badge = format_lrc_source_badge(lrc_source)
+    if badge:
+        parts.append(f"Src: {badge}")
+    return " · ".join(parts)
 
 
 class CurrentLyricDisplay(Static):
@@ -137,7 +174,6 @@ class StatusIndicator(Static):
         super().__init__("")
         self._dirty = False
         self._autosave_ok = False
-        self._source = ""
         self._feedback_summary = ""
         self._preview_active = False
         self._padding_offset = 0.0
@@ -162,14 +198,12 @@ class StatusIndicator(Static):
         self,
         dirty: bool,
         autosave_ok: bool,
-        source: str,
         padding_offset: float = 0.0,
         padding_quarters: int = 0,
         preview_active: bool = False,
     ) -> None:
         self._dirty = dirty
         self._autosave_ok = autosave_ok
-        self._source = source
         self._preview_active = preview_active
         self._padding_offset = padding_offset
         self._padding_quarters = padding_quarters
@@ -178,9 +212,8 @@ class StatusIndicator(Static):
     def _render_status(self) -> None:
         changed_text = "[yellow]Changed[/yellow]" if self._dirty else "[green]No Changes[/green]"
         autosave_mark = "[green]saved[/green]" if self._autosave_ok else "[dim]—[/dim]"
-        source_label = {"r2": "R2", "catalog": "Catalog"}.get(self._source, self._source)
 
-        parts = [f" {changed_text} | Autosave: {autosave_mark} | Source: {source_label}"]
+        parts = [f" {changed_text} | Autosave: {autosave_mark}"]
         if self._preview_active:
             parts.append(" | PREVIEW")
         if self._padding_quarters != 0:
@@ -542,6 +575,7 @@ class LRCEditorScreen(Screen[None]):
         feedback_user_id: Optional[int] = None,
         recording_content_hash: Optional[str] = None,
         visibility_status: Optional[str] = None,
+        lrc_source: Optional[str] = None,
         analysis_client: Optional[AnalysisClient] = None,
     ):
         super().__init__()
@@ -551,7 +585,9 @@ class LRCEditorScreen(Screen[None]):
             else f"LRC Editor — {editor_state.song_title}"
         )
         # Plain text (no Rich markup): Header.format_title renders Content.
-        self.sub_title = f"Visibility: {visibility_label(visibility_status)}"
+        self._visibility_status: Optional[str] = visibility_status
+        self._lrc_source: Optional[str] = lrc_source
+        self._refresh_header()
         self.state = editor_state
         self.playback = playback_service
         self.cache_dir = cache_dir
@@ -597,6 +633,10 @@ class LRCEditorScreen(Screen[None]):
         # psycopg connections are not safe for concurrent use: the upload worker
         # shares db_client.connection with the main-thread feedback paths.
         self._db_lock = threading.RLock()
+
+    def _refresh_header(self) -> None:
+        """Render the header subtitle: visibility badge plus abbreviated LRC provenance."""
+        self.sub_title = format_header_subtitle(self._visibility_status, self._lrc_source)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -823,7 +863,6 @@ class LRCEditorScreen(Screen[None]):
         status.update_status(
             self.state.dirty,
             self._autosave_ok,
-            self.state.source_mode,
             padding_offset=self.state.padding_offset_seconds,
             padding_quarters=self.state.padding_quarters,
             preview_active=self._preview_active,
@@ -1829,7 +1868,9 @@ class LRCEditorScreen(Screen[None]):
 
         self._clear_selection_range(refresh=False)
         self._rebuild_table()
-        self.sub_title = f"Visibility: {visibility_label('review')}"
+        self._visibility_status = "review"
+        self._lrc_source = result.lrc_source or self._lrc_source
+        self._refresh_header()
         self._update_displays()
         self.notify("LRC regenerated and refreshed from R2", timeout=5)
 
@@ -2008,7 +2049,9 @@ class LRCEditorScreen(Screen[None]):
 
         self._clear_selection_range(refresh=False)
         self._rebuild_table()
-        self.sub_title = f"Visibility: {visibility_label('review')}"
+        self._visibility_status = "review"
+        self._lrc_source = ALIGNED_LRC_SOURCE
+        self._refresh_header()
         self._update_displays()
         self.notify("LRC aligned and refreshed from R2", timeout=5)
 
@@ -2131,7 +2174,8 @@ class LRCEditorScreen(Screen[None]):
         self._clear_selection_range(refresh=False)
         self._rebuild_table()
         if visibility is not None:
-            self.sub_title = f"Visibility: {visibility_label(visibility)}"
+            self._visibility_status = visibility
+            self._refresh_header()
         self._update_displays()
         self.notify("LRC reloaded from R2", timeout=5)
 

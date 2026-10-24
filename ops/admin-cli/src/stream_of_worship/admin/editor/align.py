@@ -40,6 +40,9 @@ DEFAULT_POLL_INTERVAL = 5.0
 DEFAULT_TIMEOUT = 1200.0
 R2_RETRY_INTERVAL = 2.0
 R2_RETRY_ATTEMPTS = 30
+# recordings.lrc_source written after a successful forced alignment; the editor
+# header renders this constant so a hotkey `A` refresh needs no extra plumbing.
+ALIGNED_LRC_SOURCE = "forced_alignment"
 
 
 @dataclass
@@ -188,7 +191,7 @@ def align_lrc_for_editor(
             hash_prefix=hash_prefix,
             r2_lrc_url=lrc_url,
             visibility_status="review",
-            lrc_source="forced_alignment",
+            lrc_source=ALIGNED_LRC_SOURCE,
         )
         log_change(
             "lrc_save",

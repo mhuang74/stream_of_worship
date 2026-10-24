@@ -46,6 +46,9 @@ class RegenerateResult:
     lrc_content: Optional[str] = None
     identity: Optional[R2ObjectIdentity] = None
     job_id: Optional[str] = None
+    # Provenance mirrored from the job result; None means the DB kept its
+    # previous value (``update_recording_lrc`` COALESCEs on NULL).
+    lrc_source: Optional[str] = None
 
 
 def regenerate_lrc_for_editor(
@@ -208,7 +211,13 @@ def regenerate_lrc_for_editor(
         )
 
     identity = r2_client.get_lrc_identity(hash_prefix)
-    return RegenerateResult(ok=True, lrc_content=content, identity=identity, job_id=job.job_id)
+    return RegenerateResult(
+        ok=True,
+        lrc_content=content,
+        identity=identity,
+        job_id=job.job_id,
+        lrc_source=result.lrc_source if result else None,
+    )
 
 
 def _mark_failed(db_client: DatabaseClient, db_lock: threading.RLock, hash_prefix: str) -> None:
