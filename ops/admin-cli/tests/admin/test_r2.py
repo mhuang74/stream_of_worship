@@ -506,6 +506,53 @@ class TestAudioExists:
         assert result is False
 
 
+class TestAudioUrl:
+    """Tests for R2Client.audio_url."""
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_returns_s3_url_when_object_exists(self, mock_boto_client, r2_env):
+        """head_object succeeding yields the object's S3 URL."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.audio_url("abc123def456")
+
+        assert result == "s3://sow-audio/abc123def456/audio.mp3"
+        mock_s3.head_object.assert_called_once_with(
+            Bucket="sow-audio", Key="abc123def456/audio.mp3"
+        )
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_returns_none_when_missing(self, mock_boto_client, r2_env):
+        """A 404 from head_object means no URL."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        result = client.audio_url("abc123def456")
+
+        assert result is None
+
+    @patch("stream_of_worship.admin.services.r2.boto3.client")
+    def test_reraises_non_404_client_error(self, mock_boto_client, r2_env):
+        """Non-404 errors (e.g. permission) propagate to the caller."""
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = ClientError(
+            {"Error": {"Code": "403", "Message": "Forbidden"}},
+            "HeadObject",
+        )
+        mock_boto_client.return_value = mock_s3
+
+        client = R2Client(bucket="sow-audio", endpoint_url="https://r2.example.com")
+        with pytest.raises(ClientError):
+            client.audio_url("abc123def456")
+
+
 class TestDownloadFile:
     """Tests for R2Client.download_file (generic file download)."""
 
