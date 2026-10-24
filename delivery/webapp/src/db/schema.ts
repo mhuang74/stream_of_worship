@@ -430,10 +430,12 @@ export const lyricMarks = pgTable(
 );
 
 // lyrics_feedback: per-user Lyrics Feedback on a Recording (issue #194).
-// Advisory signal for admins curating canonical Lyrics (ADR 0007): nothing
-// but an admin action writes resolved_at. One row per user per Recording;
-// re-submitting the same rating retracts, switching overwrites. `note` is
-// optional free-text detail, only meaningful for sad rows.
+// Advisory signal for admins curating canonical Lyrics (ADR 0007). An admin
+// action sets resolved_at; a resolved row is hidden from the reporting user's
+// GET, and a fresh user submission clears it (reopening the row for triage).
+// One row per user per Recording; re-submitting the same rating retracts,
+// switching overwrites. `note` is optional free-text detail, only meaningful
+// for sad rows.
 export const lyricsFeedback = pgTable(
   "lyrics_feedback",
   {

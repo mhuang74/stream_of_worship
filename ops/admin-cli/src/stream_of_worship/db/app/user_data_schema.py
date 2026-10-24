@@ -57,7 +57,9 @@ CREATE TABLE IF NOT EXISTS songset_share (
 """
 
 # Lyrics Feedback (issue #194): per-user happy/sad signal about a Recording's
-# Lyrics. Advisory per ADR 0007 — only an admin action writes resolved_at.
+# Lyrics. Advisory per ADR 0007 — an admin action sets resolved_at (hiding the
+# row from the reporting user), and a fresh user submission clears it, which
+# reopens the row for admin triage.
 CREATE_LYRICS_FEEDBACK_TABLE = """
 CREATE TABLE IF NOT EXISTS lyrics_feedback (
     id                     TEXT PRIMARY KEY,
