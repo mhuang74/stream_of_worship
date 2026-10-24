@@ -302,7 +302,8 @@ def test_align_missing_recording_is_an_error():
         (240.0, 1200.0),  # single chunk
         (300.0, 1200.0),  # still a single chunk
         (301.0, 1320.0),  # 2 chunks: +120s
-        (890.0, 1440.0),  # 3 chunks: +240s
+        (610.0, 1440.0),  # 3 chunks: +240s
+        (890.0, 1440.0),  # still 3 chunks
     ],
 )
 def test_align_wait_budget_scales_with_chunk_count(duration_seconds, expected_timeout):

@@ -338,7 +338,8 @@ One-time setup:
    ```
 
 The client sends the resolved audio (vocal stem or original) as 16 kHz mono PCM-16 WAV —
-the input rate of the aligner — so upload is ~9.6 MB for a 5-minute song.
+the input rate of the aligner — so one upload is ~9.6 MB per 300 s of audio. Recordings
+over the model limit are uploaded as one such chunk at a time rather than whole.
 
 Tunable knobs (all optional, defaults shown):
 
