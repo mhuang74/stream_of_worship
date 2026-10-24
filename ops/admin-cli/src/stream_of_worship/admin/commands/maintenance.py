@@ -32,6 +32,7 @@ from stream_of_worship.admin.services.r2_backup import (
     BackupError,
     BackupProgress,
     BackupTracer,
+    Inventory,
     RestoreError,
     build_inventory,
     load_manifest,
@@ -709,6 +710,15 @@ def purge_r2_waste(
 BACKUP_FORMAT_VALUES = {"table", "json"}
 
 
+def _filter_lrc_inventory(inventory: Inventory) -> int:
+    """Keep only *.lrc objects in-place; return the removed count."""
+    before = inventory.object_count
+    inventory.objects = [
+        obj for obj in inventory.objects if obj.key.lower().endswith(".lrc")
+    ]
+    return before - inventory.object_count
+
+
 def _print_json_to_stdout(data: object) -> None:
     """Print JSON to stdout only (for --format json mode)."""
     print(json.dumps(data, default=str, ensure_ascii=False, indent=2))
@@ -759,6 +769,14 @@ def _configure_r2_backup_debug_logging(console: Console) -> None:
 @app.command("backup-r2")
 def backup_r2(
     output: Path = typer.Option(..., "--output", help="Output directory for backup"),
+    lrc_only: bool = typer.Option(
+        False, "--lrc-only",
+        help=(
+            "Back up only LRC lyric objects (including in-bucket backups) to "
+            "<output>__lrc-only instead of the entire bucket"
+        ),
+    ),
+
     chunk_size: str = typer.Option(
         "10GiB", "--chunk-size", help="Chunk size (e.g. 10GiB, 500MiB, raw bytes)"
     ),
@@ -787,8 +805,13 @@ def backup_r2(
         ),
     ),
 ) -> None:
-    """Backup entire R2 bucket to a local directory with chunked tar archives."""
+    """Backup the entire R2 bucket (or only LRC objects with --lrc-only) to a
+    local directory with chunked tar archives."""
     _validate_choice(format_, BACKUP_FORMAT_VALUES, "--format")
+
+    resolved_output = (
+        output.parent / (output.name + "__lrc-only") if lrc_only else output
+    )
 
     try:
         chunk_size_bytes = parse_size(chunk_size)
@@ -833,10 +856,27 @@ def backup_r2(
             objects=inventory.object_count,
             total_bytes=inventory.total_bytes,
         )
-    progress_console.print(
-        f"[green]Inventory complete: {inventory.object_count} objects, "
-        f"{_bytes_to_mb(inventory.total_bytes)} MB[/green]"
-    )
+    removed = 0
+    if lrc_only:
+        removed = _filter_lrc_inventory(inventory)
+    if lrc_only and inventory.object_count == 0:
+        console.print(
+            f"[red]No LRC objects matched --lrc-only. "
+            f"Refusing to write an empty backup to {resolved_output} "
+            f"(filter bug or wrong bucket/config).[/red]"
+        )
+        raise typer.Exit(1)
+    if lrc_only:
+        progress_console.print(
+            f"[green]Inventory complete: {inventory.object_count} objects, "
+            f"{_bytes_to_mb(inventory.total_bytes)} MB "
+            f"(lrc-only: {removed} non-LRC object(s) filtered out)[/green]"
+        )
+    else:
+        progress_console.print(
+            f"[green]Inventory complete: {inventory.object_count} objects, "
+            f"{_bytes_to_mb(inventory.total_bytes)} MB[/green]"
+        )
 
     try:
         with Progress(
@@ -877,7 +917,7 @@ def backup_r2(
 
             result = write_backup(
                 r2_client=r2_client,
-                output_dir=output,
+                output_dir=resolved_output,
                 inventory=inventory,
                 chunk_size_bytes=chunk_size_bytes,
                 concurrency=concurrency,
@@ -911,7 +951,7 @@ def backup_r2(
             }
         )
     else:
-        _print_backup_summary_table(result, output, inventory.object_count)
+        _print_backup_summary_table(result, resolved_output, inventory.object_count)
 
 
 @app.command("verify-r2-backup")
