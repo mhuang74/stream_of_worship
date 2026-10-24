@@ -3962,14 +3962,14 @@ def check_status(
                 # Download status reconciliation
                 if rec.download_status in ("pending", "processing", "failed"):
                     try:
-                        audio_url = r2_client.audio_exists(rec.hash_prefix)
+                        audio_url = r2_client.audio_url(rec.hash_prefix)
                         if audio_url:
                             db_client.update_recording_download(
                                 hash_prefix=rec.hash_prefix,
                                 download_status="completed",
                             )
                             if not rec.r2_audio_url:
-                                db_client.update_recording_status(
+                                db_client.update_recording_r2_url(
                                     hash_prefix=rec.hash_prefix,
                                     r2_audio_url=audio_url,
                                 )
