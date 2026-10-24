@@ -4,6 +4,7 @@ import io
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from rich.console import Console
 
 from stream_of_worship.admin.commands import audio
@@ -236,6 +237,62 @@ def test_status_reconcile_backfills_r2_audio_url():
         r2_audio_url="s3://bucket/abc123def456/audio.mp3",
     )
     db_client.update_recording_status.assert_not_called()
+
+
+def test_status_reconcile_leaves_download_incomplete_when_url_backfill_fails():
+    """A failed URL write must not mark the download completed.
+
+    Reconcile only queues incomplete downloads, so completing the status first would
+    strand a recording with no ``r2_audio_url`` that no later reconcile revisits.
+    """
+    db_client = MagicMock()
+    rec = _recording(
+        download_status="failed",
+        lrc_status="completed",
+        analysis_status="completed",
+        r2_audio_url=None,
+    )
+
+    def list_recordings(**kwargs):
+        if kwargs.get("download_status") == "incomplete":
+            return [rec]
+        return []
+
+    db_client.list_recordings.side_effect = list_recordings
+    db_client.update_recording_r2_url.side_effect = RuntimeError("db down")
+
+    r2_client = MagicMock()
+    r2_client.lrc_exists.return_value = None
+    r2_client.analysis_exists.return_value = None
+    r2_client.audio_url.return_value = "s3://bucket/abc123def456/audio.mp3"
+
+    config = SimpleNamespace(
+        analysis_url="http://analysis.example",
+        r2_bucket="bucket",
+        r2_endpoint_url="https://r2.example",
+        r2_region="auto",
+    )
+
+    with (
+        patch.object(audio.AdminConfig, "load", return_value=config),
+        patch.object(audio, "get_db_client", return_value=db_client),
+        patch.object(audio, "R2Client", return_value=r2_client),
+        pytest.raises(RuntimeError, match="db down"),
+    ):
+        audio.check_status(
+            job_id=None,
+            sync=False,
+            force_status=None,
+            force_url=None,
+            reconcile=True,
+            config_path=None,
+        )
+
+    db_client.update_recording_r2_url.assert_called_once_with(
+        hash_prefix="abc123def456",
+        r2_audio_url="s3://bucket/abc123def456/audio.mp3",
+    )
+    db_client.update_recording_download.assert_not_called()
 
 
 def test_status_reconcile_keeps_existing_audio_url():
