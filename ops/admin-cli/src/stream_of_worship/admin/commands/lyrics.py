@@ -682,7 +682,7 @@ def lyrics_generate(
     cache (implies --force; YouTube transcripts are never cached).
 
     By default the command waits for job completion. Single-song mode polls with
-    live progress (10-minute timeout); --stdin batch mode writes a run manifest
+    live progress (20-minute timeout); --stdin batch mode writes a run manifest
     and polls every job (Ctrl+C-safe, resumable with --resume). Use --no-wait
     to submit and exit immediately.
 
@@ -1543,7 +1543,7 @@ def _submit_forced_alignment_single(
                 final_job = analysis_client.wait_for_completion(
                     job_id,
                     poll_interval=30.0,
-                    timeout=600.0,
+                    timeout=1200.0,
                     callback=update_progress,
                 )
             except AnalysisServiceError as e:
@@ -1863,7 +1863,7 @@ def lyrics_align(
         sow-admin audio list --lrc incomplete --format ids | sow-admin lyrics align --stdin
 
     By default the command waits for job completion. Single-song mode polls
-    with live progress (10-minute timeout); --stdin batch mode writes a run
+    with live progress (20-minute timeout); --stdin batch mode writes a run
     manifest and polls every job (Ctrl+C-safe, resumable with --resume). Use
     --no-wait to submit and exit immediately.
     """

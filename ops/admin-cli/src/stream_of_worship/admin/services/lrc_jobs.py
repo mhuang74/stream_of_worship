@@ -214,7 +214,7 @@ def submit_lrc_single(
                 final_job = analysis_client.wait_for_completion(
                     job_id,
                     poll_interval=30.0,
-                    timeout=600.0,
+                    timeout=1200.0,
                     callback=update_progress,
                 )
             except AnalysisServiceError as e:
