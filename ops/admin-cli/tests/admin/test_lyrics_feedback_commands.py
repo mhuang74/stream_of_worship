@@ -279,6 +279,62 @@ class TestLyricsFeedbackListCommand:
         assert "hash-dd" in result.output
         _drop_all_tables(make_test_provider)
 
+    def test_soft_deleted_recording_feedback_excluded(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """Feedback on a soft-deleted recording must not enter the queue.
+
+        The queue is grouped by song ID, and every song-level consumer resolves
+        through `recordings.deleted_at IS NULL`, so such a row would emit a song
+        ID that `lyrics generate` can only bounce off its skipped-guard.
+        """
+        _init_schema(make_test_provider)
+        provider = _seed_data_provider(make_test_provider)
+        with provider.get_connection().cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO recordings (
+                    content_hash, hash_prefix, song_id, original_filename,
+                    file_size_bytes, imported_at, lrc_status, deleted_at
+                )
+                VALUES ('hash-eeeeeeeeeeeeeeee', 'hash-ee', 'song_001', 'five.mp3',
+                        100, '2024-01-01T00:00:00', 'completed', NOW())
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO lyrics_feedback (
+                    id, user_id, recording_content_hash, rating, reason
+                )
+                VALUES ('fb-9', 1, 'hash-eeeeeeeeeeeeeeee', 'sad', 'wrong_text')
+                """
+            )
+        provider.get_connection().commit()
+        config_path = _write_config(tmp_path, postgres_url)
+
+        result = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--format", "json", "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+        doc = json.loads(result.stdout)
+        prefixes = {r["hash_prefix"] for r in doc["recordings"]}
+        assert "hash-ee" not in prefixes
+        # The live recordings of the same song are untouched by the exclusion.
+        assert {"hash-aa", "hash-bb", "hash-cc", "hash-dd"} <= prefixes
+        # fb-9 does not inflate the open total (7 open rows are seeded).
+        assert doc["total_open"] == 7
+
+        # The deleted recording carried the only wrong_text report.
+        wrong_text = runner.invoke(
+            lyrics_app,
+            ["feedback", "list", "--reason", "wrong_text", "--config", str(config_path)],
+            env={"COLUMNS": "200"},
+        )
+        assert wrong_text.exit_code == 0, wrong_text.output
+        assert "No lyrics feedback found." in wrong_text.output
+        _drop_all_tables(make_test_provider)
+
     def test_all_flag_includes_fully_resolved_recordings(
         self, make_test_provider, postgres_url, tmp_path
     ):
