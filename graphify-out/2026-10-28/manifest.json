@@ -4602,9 +4602,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/config.py": {
-    "mtime": 1792845033.7775767,
-    "seen": 1792848987.1430664,
-    "ast_hash": "ffa5270da7475d586f9b7f963c033420",
+    "mtime": 1793138789.3208668,
+    "seen": 1793140507.2182002,
+    "ast_hash": "de9873ae125701ac64686d7c34b45daf",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/logging_config.py": {
@@ -4614,9 +4614,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/main.py": {
-    "mtime": 1792845033.7785766,
-    "seen": 1792848987.1430712,
-    "ast_hash": "88894188c46f609c41637636cf09ac31",
+    "mtime": 1793138804.6348667,
+    "seen": 1793140507.2182758,
+    "ast_hash": "ea812b54411926d18d835f4564e3b58d",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/models.py": {
@@ -4632,9 +4632,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/routes/health.py": {
-    "mtime": 1792845033.7785766,
-    "seen": 1792848987.1430812,
-    "ast_hash": "42153f9d5d9a16aa362ad73d7179678d",
+    "mtime": 1793139903.4372337,
+    "seen": 1793140507.2185376,
+    "ast_hash": "4400659c08024f1d0f0d245b7bbdfa24",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/routes/jobs.py": {
@@ -4704,21 +4704,21 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/analyzer.py": {
-    "mtime": 1792845033.7805767,
-    "seen": 1792848987.1436327,
-    "ast_hash": "98ad87fd96e5e3b57190ff005ffd37ba",
+    "mtime": 1793138912.7228856,
+    "seen": 1793140507.2198253,
+    "ast_hash": "d3279a6803789e28592a61da4e56eafc",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/classifier.py": {
-    "mtime": 1787032917.86012,
-    "seen": 1790178131.078441,
-    "ast_hash": "81d0177028ead9dad361d2de04d8e506",
+    "mtime": 1793139903.4142337,
+    "seen": 1793140507.2198281,
+    "ast_hash": "979c173c2cf93edd8cad61a2b9a5cf70",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/components.py": {
-    "mtime": 1792845033.7815769,
-    "seen": 1792848987.143723,
-    "ast_hash": "5454c3e4a4a4f76db7174ca4b433823e",
+    "mtime": 1793138795.9458666,
+    "seen": 1793140507.2198308,
+    "ast_hash": "298783ec63b26304b9af1609e3fcaa64",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/cps.py": {
@@ -4752,9 +4752,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/lrc.py": {
-    "mtime": 1792845033.7815769,
-    "seen": 1792848987.1440766,
-    "ast_hash": "a021f808b057f8d7add05daac52b7ba4",
+    "mtime": 1793139890.8982723,
+    "seen": 1793140507.2203403,
+    "ast_hash": "5b1e1bed01e358fe85e91d73909776ca",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/lrc_parser.py": {
@@ -4776,9 +4776,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/section_segmenter.py": {
-    "mtime": 1787032917.8621202,
-    "seen": 1790178131.0784616,
-    "ast_hash": "f30e62a24d438d621233d1631e0858c8",
+    "mtime": 1793139894.7362604,
+    "seen": 1793140507.220574,
+    "ast_hash": "3bf372bebbff8065649a23158a50cdf9",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/segmentation_few_shot.json": {
@@ -4824,9 +4824,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/structured_lyrics_aligner.py": {
-    "mtime": 1787032917.86312,
-    "seen": 1790178131.0784788,
-    "ast_hash": "07c0315b23bf358c4568d4701f43a772",
+    "mtime": 1793140294.9864514,
+    "seen": 1793140507.2211888,
+    "ast_hash": "8984364a62ea44e4fbae6fc27918672f",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/structured_lyrics_alignment_few_shot.json": {
@@ -4836,9 +4836,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py": {
-    "mtime": 1792845033.784577,
-    "seen": 1792848987.1448896,
-    "ast_hash": "01f48accc2f7d280671c4a29dddd8ada",
+    "mtime": 1793139890.9112723,
+    "seen": 1793140507.2212715,
+    "ast_hash": "6697512e7c7f9c315263705d0d9ca50f",
     "semantic_hash": ""
   },
   "ops/analysis-service/start-dev.sh": {
@@ -5154,9 +5154,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/DEPLOYMENT.md": {
-    "mtime": 1792845033.7765768,
-    "seen": 1792848987.149225,
-    "ast_hash": "4239fd3d6c5226526b666cae19ce6457",
+    "mtime": 1793138917.9708874,
+    "seen": 1793140507.2254753,
+    "ast_hash": "af1229d54475c0c1d164135a8569f120",
     "semantic_hash": ""
   },
   "ops/analysis-service/DEVELOPER.md": {
@@ -5166,15 +5166,15 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/README.md": {
-    "mtime": 1792845033.7765768,
-    "seen": 1792848987.1492293,
-    "ast_hash": "d2a7eb2e2edcbd2f1d78199a2a6e9c4c",
+    "mtime": 1793138902.8918827,
+    "seen": 1793140507.2255368,
+    "ast_hash": "438610e87f57885d641608b11df6f777",
     "semantic_hash": ""
   },
   "ops/analysis-service/docker-compose.yml": {
-    "mtime": 1792845033.7765768,
-    "seen": 1792848987.1492312,
-    "ast_hash": "dcffbfa03c039130517d5537e2cacb50",
+    "mtime": 1793139198.472063,
+    "seen": 1793140507.225539,
+    "ast_hash": "b7c11e42b32c550206fd358a7007ca5d",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/segmentation_prompts/V0_default.txt": {
@@ -5484,9 +5484,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/services/llm_models.py": {
-    "mtime": 1792845033.7795768,
-    "seen": 1792848987.1432638,
-    "ast_hash": "7cc788a356cc2f9c749402c1daf63cdf",
+    "mtime": 1793140452.6383002,
+    "seen": 1793140507.2188504,
+    "ast_hash": "5e3ecfb73d3b2b378e0510e106f31b11",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/audit.py": {
@@ -5556,21 +5556,33 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/modal_apps/analyzer_app.py": {
-    "mtime": 1793120373.2256804,
-    "seen": 1793120544.0080023,
-    "ast_hash": "3e1cdaf0a6fbd3cf565a2b7ec00335e9",
+    "mtime": 1793140892.0371406,
+    "seen": 1793141063.1908748,
+    "ast_hash": "ac3dddd6018ae74796bc6c7ebe517d39",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/services/modal_analyzer_client.py": {
-    "mtime": 1792845033.7795768,
-    "seen": 1792848987.1432667,
-    "ast_hash": "0b191cdd27c26ad979710e941feb710a",
+    "mtime": 1793138812.0898669,
+    "seen": 1793140507.2188528,
+    "ast_hash": "6c4bccf31aec75f83e5091b12488c69a",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/editor/align.py": {
     "mtime": 1792845033.7685764,
     "seen": 1792848987.1375673,
     "ast_hash": "b7d368ed20c0cbe719e62122e8a3ce2e",
+    "semantic_hash": ""
+  },
+  "ops/analysis-service/modal_apps/downbeats_app.py": {
+    "mtime": 1793138658.8409,
+    "seen": 1793140507.2178156,
+    "ast_hash": "9dffeb72dadce1b82e2767c611e94738",
+    "semantic_hash": ""
+  },
+  "ops/analysis-service/src/sow_analysis/services/modal_downbeats_client.py": {
+    "mtime": 1793138785.2548668,
+    "seen": 1793140507.2188556,
+    "ast_hash": "cb07f831743f67c81272ff894630a8ca",
     "semantic_hash": ""
   }
 }
