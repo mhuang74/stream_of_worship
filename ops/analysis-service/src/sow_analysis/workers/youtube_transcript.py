@@ -523,12 +523,13 @@ async def wait_for_youtube_cooldown_if_open(
 ) -> bool:
     """Block (async) until the YouTube circuit breaker closes, or until cancelled.
 
-    Sleeps in increments of ``max_heartbeat_seconds`` so the caller can emit
-    heartbeats (refresh job.updated_at) between sleeps and check cancellation.
+    Sleeps in ``max_heartbeat_seconds``-bounded steps so a single wait iteration
+    stays bounded and cancellation (heartbeat refresh of job.updated_at) is
+    observed between steps.
 
     Args:
-        max_heartbeat_seconds: Max seconds to sleep per iteration before
-            returning so the caller can heartbeat. Default 60s.
+        max_heartbeat_seconds: Max seconds to sleep per iteration, keeping each
+            hop bounded so the caller can heartbeat. Default 60s.
         is_cancelled: Optional callable returning True if the job was cancelled;
             checked between sleeps. If it returns True, this function returns
             immediately with the breaker's current state.
@@ -537,16 +538,18 @@ async def wait_for_youtube_cooldown_if_open(
         True when the breaker is closed (cooldown expired or was never open).
         The caller should re-check cancellation before retrying.
     """
-    while await _rate_limiter.is_circuit_open():
+    while True:
+        # The only success exit: _is_circuit_open() performs the lock-protected
+        # cooldown-expiry reset, so the 429 counter is always cleared before we
+        # report the breaker closed. remaining_cooldown() is a lock-free read and
+        # must never be used to decide the exit — it can observe expiry after
+        # is_circuit_open() already reported the breaker open.
+        if not await _rate_limiter.is_circuit_open():
+            return True
         if is_cancelled is not None and is_cancelled():
             return not await _rate_limiter.is_circuit_open()
         remaining = _rate_limiter.remaining_cooldown()
-        # If breaker just closed, don't sleep an extra second
-        if remaining <= 0.0:
-            return True
-        sleep_for = min(max_heartbeat_seconds, max(remaining, 0.1))
-        await asyncio.sleep(sleep_for)
-    return True
+        await asyncio.sleep(min(max_heartbeat_seconds, max(remaining, 0.1)))
 
 
 def extract_video_id(youtube_url: str) -> Optional[str]:
