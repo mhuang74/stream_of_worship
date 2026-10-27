@@ -7,6 +7,7 @@ from fastapi import APIRouter
 
 from .. import __version__
 from ..config import settings
+from ..services.llm_models import chat_model_kwargs
 from ..storage.cache import CacheManager
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ def check_llm_connection() -> dict:
         )
 
         response = client.chat.completions.create(
-            model=settings.SOW_LLM_MODEL,
+            **chat_model_kwargs(settings.SOW_LLM_MODEL),
             messages=[
                 {"role": "user", "content": "Give me a short inspirational quote (max 40 words)"},
             ],

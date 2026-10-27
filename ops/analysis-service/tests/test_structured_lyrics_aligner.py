@@ -1029,6 +1029,31 @@ class TestAlignStructuredLyricsRetry:
         assert "心中充滿盼望 盼望使眼睛明亮" in chorus.lyrics_excerpt
 
 
+# ── Model:effort parsing ───────────────────────────────────────────────────
+
+
+class TestAlignStructuredLyricsModelEffort:
+    @pytest.mark.asyncio
+    async def test_effort_suffix_parsed_from_model(self, monkeypatch):
+        monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "fake-key")
+        monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://fake.example/v1")
+        monkeypatch.setattr(settings, "SOW_LLM_MODEL", "deepseek-v4.1-flash:low")
+        monkeypatch.setattr(settings, "SOW_LLM_SEGMENTATION_MODEL", None)
+
+        aligned = json.dumps({"sections": [
+            {"label": "verse", "line_start": 1, "line_end": 2, "confidence": 0.9},
+            {"label": "chorus", "line_start": 3, "line_end": 4, "confidence": 0.95},
+        ]})
+        fake_client, p_client, p_retry = TestAlignStructuredLyricsRetry()._patch_llm([aligned])
+
+        with p_client, p_retry:
+            await align_structured_lyrics(_STRUCTURED_LYRICS_RETRY, _LRC_RETRY)
+
+        kwargs = fake_client.chat.completions.calls[0]
+        assert kwargs["model"] == "deepseek-v4.1-flash"
+        assert kwargs["reasoning_effort"] == "low"
+
+
 # ── Live LLM test (gated) ──────────────────────────────────────────────────
 
 _LIVE_TEST_SKIP = os.environ.get("SOW_LLM_LIVE_TESTS") != "1"

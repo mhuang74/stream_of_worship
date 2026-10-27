@@ -13,6 +13,9 @@ chat calls as the ``reasoning_effort`` request parameter (the provider has
 no ``:effort`` model ids). Supported efforts: none|minimal|low|medium|high|
 xhigh|max, validated per model against the provider's reported
 ``metadata.reasoning`` accepted/supported efforts.
+
+``chat_model_kwargs`` is the single entry point every chat call site uses to
+build its ``model``/``reasoning_effort`` request parameters.
 """
 
 import asyncio
@@ -48,6 +51,20 @@ def split_llm_model_effort(llm_model: str) -> tuple[str, Optional[str]]:
     if suffix in KNOWN_REASONING_EFFORTS:
         return model_id, suffix
     return llm_model, None
+
+
+def chat_model_kwargs(llm_model: str) -> dict[str, str]:
+    """Chat-create kwargs for a ``model:effort`` string.
+
+    ``{"model": model_id}``, plus ``{"reasoning_effort": effort}`` when the
+    suffix is a known reasoning effort. A model id is never passed to the
+    provider with its effort suffix attached.
+    """
+    model_id, effort = split_llm_model_effort(llm_model)
+    kwargs: dict[str, str] = {"model": model_id}
+    if effort is not None:
+        kwargs["reasoning_effort"] = effort
+    return kwargs
 
 
 def _extract_reasoning_meta(model_obj) -> Optional[dict]:

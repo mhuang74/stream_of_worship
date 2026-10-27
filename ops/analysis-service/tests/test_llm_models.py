@@ -234,3 +234,25 @@ class TestValidateLLMModelRequest:
             result = await validate_llm_model_request("m")
 
         assert result == ("m", None)
+
+
+class TestChatModelKwargs:
+    """chat_model_kwargs is the single parse->request-params entry point."""
+
+    def test_effort_suffix_split_into_reasoning_effort(self):
+        from sow_analysis.services.llm_models import chat_model_kwargs
+
+        assert chat_model_kwargs("deepseek-v4.1-flash:low") == {
+            "model": "deepseek-v4.1-flash",
+            "reasoning_effort": "low",
+        }
+
+    def test_plain_model_has_no_reasoning_effort_key(self):
+        from sow_analysis.services.llm_models import chat_model_kwargs
+
+        assert chat_model_kwargs("m") == {"model": "m"}
+
+    def test_non_effort_suffix_passes_through_verbatim(self):
+        from sow_analysis.services.llm_models import chat_model_kwargs
+
+        assert chat_model_kwargs("m:free") == {"model": "m:free"}

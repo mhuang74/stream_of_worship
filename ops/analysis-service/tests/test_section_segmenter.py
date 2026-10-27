@@ -9,7 +9,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -726,6 +726,42 @@ class TestExtractComponentsFallback:
                 )
             assert source in ("lyrics_repetition", "allin1_sections", "none")
             assert source != "llm_segmentation"
+
+
+# ── Model:effort parsing ───────────────────────────────────────────────────
+
+
+class TestSegmentSongModelEffort:
+    @pytest.mark.asyncio
+    async def test_effort_suffix_parsed_from_model(self, monkeypatch):
+        monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "fake-key")
+        monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://fake.example/v1")
+        monkeypatch.setattr(settings, "SOW_LLM_MODEL", "deepseek-v4.1-flash:low")
+        monkeypatch.setattr(settings, "SOW_LLM_SEGMENTATION_MODEL", None)
+
+        resp = MagicMock()
+        resp.usage = None
+        resp.model = "deepseek-v4.1-flash"
+        resp.id = "fake-id"
+        resp.choices[0].finish_reason = "stop"
+        resp.choices[0].message.content = json.dumps(
+            {"sections": [{"label": "verse", "line_start": 1, "line_end": 4,
+                           "confidence": 0.9}]}
+        )
+        client = MagicMock()
+        client.chat.completions.create.return_value = resp
+
+        with patch(
+            "sow_analysis.workers.section_segmenter._build_client", return_value=client
+        ), patch(
+            "sow_analysis.workers.section_segmenter.call_llm_with_retry",
+            new=AsyncMock(side_effect=lambda fn, **kwargs: fn()),
+        ):
+            await segment_song(_LRC_SIMPLE)
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["model"] == "deepseek-v4.1-flash"
+        assert kwargs["reasoning_effort"] == "low"
 
 
 # ── Live LLM test (gated) ──────────────────────────────────────────────────

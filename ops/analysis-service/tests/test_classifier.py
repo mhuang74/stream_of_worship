@@ -1,6 +1,7 @@
 """Tests for ThemeClassifier LLM theme/posture classification."""
 
 import asyncio
+import json
 import logging
 import sys
 from pathlib import Path
@@ -584,3 +585,22 @@ def test_has_cached_llm_fields_empty():
     assert has_cached_llm_fields(
         [], classify_theme=True, classify_vocal_posture=True
     )
+
+
+def test_classify_call_parses_model_effort(monkeypatch):
+    monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://test.example/v1")
+    monkeypatch.setattr(settings, "SOW_LLM_MODEL", "deepseek-v4.1-flash:low")
+    with patch("sow_analysis.workers.classifier.OpenAI") as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        clf = ThemeClassifier()
+    mock_client.chat.completions.create.return_value = _mock_response(
+        json.dumps(_parsed_result())
+    )
+
+    clf._do_classify_call(_make_component(), "prompt")
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "deepseek-v4.1-flash"
+    assert kwargs["reasoning_effort"] == "low"
