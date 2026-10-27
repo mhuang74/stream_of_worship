@@ -120,9 +120,9 @@ image = (
         "p.write_text(s)\n"
         "print('[sow-analyzer] patched allin1 dinat.py to NATTEN >=0.17.5 na*_qk/na*_av API')\n"
         "EOF",
-        # `import allin1` pulls the natten chain transitively (same GPU-at-import
-        # requirement as the pins step above).
-        gpu="L4",
+        # No gpu= here (unlike its neighbours): this step only reads and rewrites
+        # a source file — it never imports allin1 or natten, so a CPU builder is
+        # enough. Keep it GPU-free so a NATTEN import regression cannot hide here.
     )
     # Build-time import assert (also proves the patch compiles + all deps resolve).
     .run_commands(
