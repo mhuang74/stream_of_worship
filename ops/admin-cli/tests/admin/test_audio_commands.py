@@ -2886,6 +2886,7 @@ class TestEmbedCommand:
 
         assert result.exit_code == 0, result.output
         analysis_client.wait_for_completion.assert_called_once()
+        assert analysis_client.wait_for_completion.call_args.kwargs["timeout"] == 1200.0
         mock_write.assert_called_once()
         assert "Done: 1 succeeded, 0 failed" in result.output
 
@@ -4128,6 +4129,45 @@ class TestSubmitComponentAnalysisJobSkipBeatCache:
         # Verify skip_beat_cache=True was forwarded.
         call_kwargs = mock_client.submit_component_analysis.call_args.kwargs
         assert call_kwargs["skip_beat_cache"] is True
+
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
+    def test_component_wait_uses_30_minute_budget(self, mock_config_load, mock_client_cls):
+        """Component-analysis waits use the 30-minute budget, not the old 600 s."""
+        from stream_of_worship.admin.commands.audio import _submit_component_analysis_job
+
+        mock_config = MagicMock()
+        mock_config.analysis_url = "http://localhost:8000"
+        mock_config_load.return_value = mock_config
+
+        mock_client = MagicMock()
+        mock_client.get_cached_component_result.return_value = None
+        mock_client.submit_component_analysis.return_value = JobInfo(
+            job_id="job-1", status="queued", job_type="component_analysis"
+        )
+        mock_client.wait_for_completion.return_value = MagicMock(
+            status="completed",
+            result=MagicMock(components=[], component_source="none"),
+        )
+        mock_client_cls.return_value = mock_client
+
+        db_client = MagicMock()
+        console = MagicMock()
+        recording = self._make_recording()
+
+        _submit_component_analysis_job(
+            recording,
+            "song_001",
+            "http://localhost:8000",
+            db_client,
+            console,
+            config=mock_config,
+            force=True,
+            wait=True,
+            snap_to_downbeat=True,
+        )
+
+        assert mock_client.wait_for_completion.call_args.kwargs["timeout"] == 1800.0
 
     @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
     @patch("stream_of_worship.admin.commands.audio.AdminConfig.load")
