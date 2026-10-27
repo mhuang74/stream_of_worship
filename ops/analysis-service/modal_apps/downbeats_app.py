@@ -92,7 +92,9 @@ def _mono_44k_wav(audio_path: pathlib.Path, out_dir: pathlib.Path) -> pathlib.Pa
         g = math.gcd(44100, sr)
         mono = scipy.signal.resample_poly(mono, 44100 // g, sr // g).astype(np.float32)
     out = out_dir / "beat_grid_44k.wav"
-    scipy.io.wavfile.write(str(out), 44100, (mono * 32767).astype(np.int16))
+    # resample_poly rings past ±1.0 on transients; an unclamped cast wraps (32768 ->
+    # -32768), i.e. a full-scale inverse click the old ffmpeg resample clamped away.
+    scipy.io.wavfile.write(str(out), 44100, np.clip(mono * 32767, -32768, 32767).astype(np.int16))
     return out
 
 
