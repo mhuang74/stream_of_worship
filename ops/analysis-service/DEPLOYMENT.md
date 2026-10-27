@@ -93,7 +93,7 @@ Modal token and the volume handles the weights — see the Modal section in
 
 ### 2.3 Full Analyzer (no download)
 
-Full analysis (allin1 harmonix-all, Demucs `htdemucs`, madmom) runs on Modal (the
+Full analysis (allin1 harmonix-all, Demucs `htdemucs`) runs on Modal (the
 `sow-analyzer` app, `modal_apps/analyzer_app.py`). Deploy it once; the
 `sow-analyzer-models` volume caches all weights on Modal's side:
 
@@ -105,6 +105,23 @@ uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/analyzer_ap
 First cold start downloads harmonix-all (8 checkpoints) + htdemucs into the volume;
 allow up to 30 minutes of startup time (`startup_timeout=1800`).
 
+### 2.3.1 Downbeat Detection (no download)
+
+Beat/downbeat grid detection for component analysis runs on its own small app
+(`sow-downbeats`, `modal_apps/downbeats_app.py`: torch cu126 + madmom-infer's
+torch BLSTM backend, no allin1/NATTEN/Demucs). It keeps the beat-grid cache miss
+off the multi-GB `sow-analyzer` image. Deploy it alongside the analyzer:
+
+```bash
+# From ops/analysis-service/, with MODAL_TOKEN_ID/MODAL_TOKEN_SECRET exported
+uv run --no-project --with 'modal>=1.2.6,<2' modal deploy modal_apps/downbeats_app.py
+```
+
+Component analysis silently degrades to beat snapping (no `snap_to_downbeat`) when
+this app is undeployed, so deploy it before relying on downbeat snapping. First
+cold start downloads the 8 BLSTM weight files (~30 MB, sha256-verified) from
+GitHub; no volume is involved.
+
 ### 2.4 Model Storage Summary
 
 | Model | Location | Size |
@@ -112,7 +129,8 @@ allow up to 30 minutes of startup time (`startup_timeout=1800`).
 | Stem separator (MelBand Roformer + UVR-De-Echo) | Modal volume `sow-stems-models` | ~2-3 GB (Modal-side) |
 | Qwen3 Forced Aligner | Modal volume `sow-forced-aligner-models` | ~2.4 GB (Modal-side) |
 | Whisper | Modal volume `sow-whisper-models` | ~1-3 GB per model (Modal-side) |
-| Full analysis (harmonix-all + htdemucs + madmom) | Modal volume `sow-analyzer-models` | ~1.5 GB (Modal-side) |
+| Full analysis (harmonix-all + htdemucs) | Modal volume `sow-analyzer-models` | ~1.5 GB (Modal-side) |
+| Beat-grid detection (madmom BLSTM x8) | `sow-downbeats` container cache (per cold start, sha256-verified download) | ~30 MB (Modal-side) |
 | **Total (host)** | | **~0 GB** (all model weights live in Modal volumes) |
 
 ---
@@ -211,6 +229,7 @@ BPM_ALGORITHM_VERSION=v4_octave_guard
 #   modal deploy modal_apps/forced_aligner_app.py
 #   modal deploy modal_apps/stem_separator_app.py
 #   modal deploy modal_apps/analyzer_app.py
+#   modal deploy modal_apps/downbeats_app.py
 MODAL_TOKEN_ID=""
 MODAL_TOKEN_SECRET=""
 SOW_MODAL_WHISPER_ALLOWED_MODELS="tiny,base,small,medium,large-v3,large-v3-turbo,distil-large-v3"
@@ -220,6 +239,11 @@ SOW_MODAL_ANALYZER_CLASS_NAME="SongAnalyzer"
 SOW_MODAL_ANALYZER_MAX_ATTEMPTS=2
 SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS=5.0
 SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES=150000000
+SOW_MODAL_DOWNBEATS_APP_NAME="sow-downbeats"
+SOW_MODAL_DOWNBEATS_CLASS_NAME="DownbeatDetector"
+SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS=2
+SOW_MODAL_DOWNBEATS_RETRY_DELAY_SECONDS=5.0
+SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES=150000000
 SOW_ANALYSIS_CACHE_VERSION=2
 
 # =============================================================================

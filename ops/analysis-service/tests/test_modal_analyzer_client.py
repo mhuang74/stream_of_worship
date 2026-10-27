@@ -34,14 +34,6 @@ ANALYSIS_PAYLOAD = {
     "embeddings_shape": [4, 100, 24],
 }
 
-BEATS_PAYLOAD = {
-    "source": "madmom",
-    "beats": [[0.464, 1], [0.928, 2]],
-    "downbeats": [0.464],
-    "detected_at": "2026-08-12T12:34:56.789000+00:00",
-    "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
-}
-
 
 class _FakeCls:
     """Duck-typed stand-in for modal.Cls.from_name(...) result."""
@@ -60,17 +52,13 @@ class _FakeCls:
         )
 
 
-def _make_client(monkeypatch, outcomes, method="analyze", **kwargs):
+def _make_client(monkeypatch, outcomes, **kwargs):
     """Fresh client + fake handle per case (never the module singleton).
 
-    `outcomes` is wired to the given remote method; the other remote method gets
-    an AsyncMock that fails the test if awaited.
+    `outcomes` is wired to the ``analyze`` remote method.
     """
     primary = AsyncMock(side_effect=list(outcomes))
-    other = AsyncMock(side_effect=AssertionError(f"{method} unexpectedly awaited"))
-    aio_by_method = {method: primary}
-    aio_by_method["detect_beats" if method == "analyze" else "analyze"] = other
-    fake_cls = _FakeCls(aio_by_method)
+    fake_cls = _FakeCls({"analyze": primary})
     monkeypatch.setattr(modal.Cls, "from_name", staticmethod(lambda app, name: fake_cls))
     monkeypatch.setenv("MODAL_TOKEN_ID", "test-id")
     monkeypatch.setenv("MODAL_TOKEN_SECRET", "test-secret")
@@ -78,7 +66,7 @@ def _make_client(monkeypatch, outcomes, method="analyze", **kwargs):
     kwargs.setdefault("retry_delay_seconds", 0.01)
     kwargs.setdefault("max_audio_bytes", 10_000_000)
     client = ModalAnalyzerClient(**kwargs)
-    return client, primary, other
+    return client, primary
 
 
 def _write_audio(path: Path, data: bytes) -> Path:
@@ -95,7 +83,7 @@ def _write_test_wav(path: Path, duration: float, sr: int = 8000) -> Path:
 
 
 async def test_analyze_success_passthrough(monkeypatch):
-    client, aio, _ = _make_client(monkeypatch, [ANALYSIS_PAYLOAD])
+    client, aio = _make_client(monkeypatch, [ANALYSIS_PAYLOAD])
     with tempfile.TemporaryDirectory() as tmp:
         audio = _write_test_wav(Path(tmp) / "a.wav", duration=0.1)
         result = await client.analyze(audio)
@@ -104,7 +92,6 @@ async def test_analyze_success_passthrough(monkeypatch):
     assert aio.await_count == 1
     sent_kwargs = aio.await_args.kwargs
     assert sent_kwargs["include_stems"] is False
-    assert sent_kwargs["include_beat_grid"] is False
     assert sent_kwargs["filename"] == "a.wav"
     request_id = sent_kwargs["request_id"]
     assert len(request_id) == 12
@@ -113,7 +100,7 @@ async def test_analyze_success_passthrough(monkeypatch):
 
 async def test_analyze_writes_stems_and_strips_key(monkeypatch):
     payload = {**ANALYSIS_PAYLOAD, "stems": {"vocals": b"v", "bass": b"b"}}
-    client, aio, _ = _make_client(monkeypatch, [payload])
+    client, aio = _make_client(monkeypatch, [payload])
     with tempfile.TemporaryDirectory() as tmp:
         audio = _write_test_wav(Path(tmp) / "a.wav", duration=0.1)
         stems_dir = Path(tmp) / "stems"
@@ -127,32 +114,17 @@ async def test_analyze_writes_stems_and_strips_key(monkeypatch):
 
 
 async def test_analyze_missing_stems_raises(monkeypatch):
-    client, _, _ = _make_client(monkeypatch, [{**ANALYSIS_PAYLOAD}])
+    client, _ = _make_client(monkeypatch, [{**ANALYSIS_PAYLOAD}])
     with tempfile.TemporaryDirectory() as tmp:
         audio = _write_test_wav(Path(tmp) / "a.wav", duration=0.1)
         with pytest.raises(ModalAnalyzerError, match="returned no stems"):
             await client.analyze(audio, output_stems_dir=Path(tmp) / "stems")
 
 
-async def test_detect_beats_wires_madmom_method(monkeypatch):
-    client, aio, analyze_aio = _make_client(
-        monkeypatch, [BEATS_PAYLOAD], method="detect_beats"
-    )
-    with tempfile.TemporaryDirectory() as tmp:
-        audio = _write_test_wav(Path(tmp) / "a.wav", duration=0.1)
-        result = await client.detect_beats(audio)
-
-    assert result == BEATS_PAYLOAD
-    assert aio.await_count == 1
-    sent = aio.await_args.kwargs
-    assert sent["request_id"].startswith("") and len(sent["request_id"]) == 12
-    analyze_aio.assert_not_awaited()
-
-
 async def test_missing_credentials_raises_config_error(monkeypatch):
     monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
     monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
-    client, aio, _ = _make_client(monkeypatch, [ANALYSIS_PAYLOAD])
+    client, aio = _make_client(monkeypatch, [ANALYSIS_PAYLOAD])
     monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
     monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
     with tempfile.TemporaryDirectory() as tmp:
@@ -163,7 +135,7 @@ async def test_missing_credentials_raises_config_error(monkeypatch):
 
 
 async def test_empty_file_raises(monkeypatch):
-    client, aio, _ = _make_client(monkeypatch, [ANALYSIS_PAYLOAD])
+    client, aio = _make_client(monkeypatch, [ANALYSIS_PAYLOAD])
     with tempfile.TemporaryDirectory() as tmp:
         audio = _write_audio(Path(tmp) / "a.mp3", b"")
         with pytest.raises(ModalAnalyzerError, match="Audio file is empty"):
@@ -172,7 +144,7 @@ async def test_empty_file_raises(monkeypatch):
 
 
 async def test_not_found_error_is_config_error_with_deploy_command(monkeypatch):
-    client, aio, _ = _make_client(
+    client, aio = _make_client(
         monkeypatch, [modal_exception.NotFoundError("no such class")], max_attempts=3
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -183,7 +155,7 @@ async def test_not_found_error_is_config_error_with_deploy_command(monkeypatch):
 
 
 async def test_auth_error_is_config_error_without_retry(monkeypatch):
-    client, aio, _ = _make_client(
+    client, aio = _make_client(
         monkeypatch, [modal_exception.AuthError("bad token")], max_attempts=3
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -194,7 +166,7 @@ async def test_auth_error_is_config_error_without_retry(monkeypatch):
 
 
 async def test_transient_connection_error_then_success(monkeypatch, caplog):
-    client, aio, _ = _make_client(
+    client, aio = _make_client(
         monkeypatch, [modal_exception.ConnectionError("reset"), ANALYSIS_PAYLOAD]
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -213,7 +185,7 @@ async def test_transient_connection_error_then_success(monkeypatch, caplog):
 
 
 async def test_grpc_unavailable_then_success(monkeypatch):
-    client, aio, _ = _make_client(
+    client, aio = _make_client(
         monkeypatch,
         [grpclib.GRPCError(grpclib.Status.UNAVAILABLE, "unavailable"), ANALYSIS_PAYLOAD],
     )
@@ -225,7 +197,7 @@ async def test_grpc_unavailable_then_success(monkeypatch):
 
 
 async def test_grpc_invalid_argument_is_non_retryable(monkeypatch):
-    client, aio, _ = _make_client(
+    client, aio = _make_client(
         monkeypatch,
         [grpclib.GRPCError(grpclib.Status.INVALID_ARGUMENT, "bad argument")],
         max_attempts=3,
@@ -240,7 +212,7 @@ async def test_grpc_invalid_argument_is_non_retryable(monkeypatch):
 async def test_container_user_exception_is_non_retryable(monkeypatch):
     # Container exceptions re-raise as their original class: a plain RuntimeError
     # must match the catch-all, not the retryable branches.
-    client, aio, _ = _make_client(
+    client, aio = _make_client(
         monkeypatch, [RuntimeError("CUDA out of memory")], max_attempts=3
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -254,7 +226,7 @@ async def test_container_user_exception_is_non_retryable(monkeypatch):
 
 
 async def test_request_size_error_no_retry(monkeypatch):
-    client, aio, _ = _make_client(
+    client, aio = _make_client(
         monkeypatch, [modal_exception.RequestSizeError("too big")], max_attempts=3
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -267,7 +239,7 @@ async def test_request_size_error_no_retry(monkeypatch):
 async def test_incompressible_oversize_fails_before_modal(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
         wav = _write_test_wav(Path(tmp) / "big.wav", duration=2.0)
-        client, aio, _ = _make_client(monkeypatch, [ANALYSIS_PAYLOAD], max_audio_bytes=100)
+        client, aio = _make_client(monkeypatch, [ANALYSIS_PAYLOAD], max_audio_bytes=100)
         with pytest.raises(ModalAnalyzerError, match="SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES"):
             await client.analyze(wav)
     aio.assert_not_awaited()

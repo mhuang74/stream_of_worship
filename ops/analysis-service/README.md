@@ -4,7 +4,7 @@ The Analysis Service is a FastAPI-based microservice that performs CPU/GPU-inten
 
 ## Features
 
-- **Audio Analysis**: Detects tempo (BPM), musical key, mode, loudness, beats, and song sections (all allin1 + Demucs + madmom work runs on Modal, not in this container)
+- **Audio Analysis**: Detects tempo (BPM), musical key, mode, loudness, beats, and song sections (allin1 + Demucs runs on Modal; beat/downbeat grids run on the separate `sow-downbeats` Modal app, not in this container)
 - **Stem Separation (Demucs on Modal)**: Separates audio into vocals, drums, bass, and other stems
 - **Clean Vocals Generation (Vocal Separation + UVR)**: Two-stage pipeline for high-quality vocal extraction with echo/reverb removal (MVSEP cloud API, failing over to the `sow-stems` Modal app)
 - **LRC Generation**: Generates timestamped lyric files using Whisper + LLM alignment
@@ -16,7 +16,7 @@ This service is designed to run as a long-lived container with async job process
 
 - **API Layer**: FastAPI endpoints for job submission and status checking
 - **Job Queue**: In-memory queue with separate concurrency controls
-  - Analysis jobs: capped at `SOW_ANALYZE_MAX_CONCURRENT` (default 2); the GPU work (allin1 + Demucs + madmom) runs on Modal (`sow-analyzer`, max_containers=2)
+  - Analysis jobs: capped at `SOW_ANALYZE_MAX_CONCURRENT` (default 2); the GPU work (allin1 + Demucs) runs on Modal (`sow-analyzer`, max_containers=2), beat/downbeat grids on `sow-downbeats`
   - LRC jobs: Configurable concurrency (default: 2); Whisper transcription runs on Modal
 - **Workers**: Background tasks for analysis, stem separation, and LRC generation
 - **Cache**: Local filesystem cache for expensive operations
@@ -90,6 +90,12 @@ SOW_MODAL_ANALYZER_APP_NAME="sow-analyzer"
 SOW_MODAL_ANALYZER_CLASS_NAME="SongAnalyzer"
 SOW_MODAL_ANALYZER_MAX_ATTEMPTS=2
 SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES=150000000
+
+# Beat-grid detection runs on Modal (sow-downbeats — separate, much smaller app)
+SOW_MODAL_DOWNBEATS_APP_NAME="sow-downbeats"
+SOW_MODAL_DOWNBEATS_CLASS_NAME="DownbeatDetector"
+SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS=2
+SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES=150000000
 SOW_ANALYSIS_CACHE_VERSION=2
 
 # DashScope Qwen3 ASR (Optional — improves LRC transcription quality)
@@ -513,7 +519,7 @@ are **opt-in** — when none are specified, the stable v3 path runs unchanged.
 | `use_stems` | **Heavy ML (Modal).** Triggers Demucs stem separation on the Modal GPU (storage per song). |
 | `classify_theme` | **LLM cost.** One LLM call per component (12 Chinese themes). Requires `SOW_LLM_*` env vars. |
 | `classify_vocal_posture` | **LLM cost.** One LLM call per component (3 posture categories). Requires `SOW_LLM_*` env vars. |
-| `snap_to_downbeat` | **NN inference.** Runs madmom two-stage RNN downbeat detector if downbeats not cached. Falls back to beat-only on failure. |
+| `snap_to_downbeat` | **NN inference.** Runs madmom two-stage RNN downbeat detector on the `sow-downbeats` Modal app if downbeats not cached. Falls back to beat-only on failure. |
 | `energy_aware_roles` | **Compute.** Energy-based role assignment using drums stem (`0.4×rms + 0.3×drums_onset + 0.3×backbeat`). Best combined with `use_stems`. |
 
 These options are submitted by the admin CLI (`sow-admin audio components`)
@@ -635,7 +641,8 @@ ops/analysis-service/
 │   ├── whisper_app.py         # sow-whisper: faster-whisper transcription
 │   ├── forced_aligner_app.py  # sow-forced-aligner: Qwen3-ForcedAligner
 │   ├── stem_separator_app.py  # sow-stems: audio-separator (MVSEP failover)
-│   └── analyzer_app.py        # sow-analyzer: allin1 + Demucs + madmom full analysis
+│   ├── analyzer_app.py        # sow-analyzer: allin1 + Demucs full analysis
+│   └── downbeats_app.py       # sow-downbeats: madmom-infer beat/downbeat grids
 └── src/sow_analysis/
     ├── __init__.py
     ├── main.py                # FastAPI app entry point

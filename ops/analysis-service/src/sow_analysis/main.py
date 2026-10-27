@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 from .routes import debug_dumps, health, jobs
 from .routes.jobs import set_job_queue
 from .services.modal_analyzer_client import get_modal_analyzer_client
+from .services.modal_downbeats_client import get_modal_downbeats_client
 from .services.modal_stem_separator_client import get_modal_stem_separator_client
 from .workers.llm_trace import DEBUG_DUMPS_URL_PATH
 from .workers.queue import JobQueue
@@ -155,6 +156,13 @@ _CATEGORY_FIELDS: dict[str, tuple[str, ...]] = {
         "SOW_MODAL_ANALYZER_MAX_ATTEMPTS",
         "SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS",
         "SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES",
+    ),
+    "Downbeats (Modal)": (
+        "SOW_MODAL_DOWNBEATS_APP_NAME",
+        "SOW_MODAL_DOWNBEATS_CLASS_NAME",
+        "SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS",
+        "SOW_MODAL_DOWNBEATS_RETRY_DELAY_SECONDS",
+        "SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES",
     ),
     "Stem Separator (Modal)": (
         "SOW_MODAL_STEM_APP_NAME",
@@ -406,8 +414,8 @@ async def lifespan(app: FastAPI):
             "once MVSEP is unavailable (there is no in-container fallback)"
         )
 
-    # Create the Modal analyzer client (sow-analyzer): backs full ANALYZE jobs and
-    # madmom beat-grid detection misses. There is no in-container fallback.
+    # Create the Modal analyzer client (sow-analyzer): backs full ANALYZE jobs only.
+    # There is no in-container fallback.
     analyzer_client = get_modal_analyzer_client()
     job_queue.set_analyzer_client(analyzer_client)
     logger.info(
@@ -420,6 +428,21 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "MODAL_TOKEN_ID/MODAL_TOKEN_SECRET are not set: ANALYZE jobs will fail with "
             "ModalAnalyzerConfigError (there is no in-container fallback)"
+        )
+
+    # Beat-grid detection runs on the light sow-downbeats app. The worker resolves the
+    # module singleton itself, so there is no job_queue setter here.
+    downbeats_client = get_modal_downbeats_client()
+    logger.info(
+        "Modal downbeats client: app=%s class=%s configured=%s",
+        downbeats_client.app_name,
+        downbeats_client.class_name,
+        downbeats_client.is_configured,
+    )
+    if not downbeats_client.is_configured:
+        logger.warning(
+            "MODAL_TOKEN_ID/MODAL_TOKEN_SECRET are not set: beat-grid detection will fail "
+            "(component analysis degrades to beat snapping only)"
         )
 
     # Log startup configuration (non-sensitive values only). Rows are generated from
