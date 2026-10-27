@@ -4836,9 +4836,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/youtube_transcript.py": {
-    "mtime": 1793139890.9112723,
-    "seen": 1793140507.2212715,
-    "ast_hash": "6697512e7c7f9c315263705d0d9ca50f",
+    "mtime": 1793141529.849234,
+    "seen": 1793141671.688165,
+    "ast_hash": "acaaad109a00e859350ea54b75d0bdd6",
     "semantic_hash": ""
   },
   "ops/analysis-service/start-dev.sh": {
@@ -5574,9 +5574,9 @@
     "semantic_hash": ""
   },
   "ops/analysis-service/modal_apps/downbeats_app.py": {
-    "mtime": 1793138658.8409,
-    "seen": 1793140507.2178156,
-    "ast_hash": "9dffeb72dadce1b82e2767c611e94738",
+    "mtime": 1793141111.562146,
+    "seen": 1793141671.6835065,
+    "ast_hash": "7ad18125b682515e1aa2f52903394c25",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/services/modal_downbeats_client.py": {
