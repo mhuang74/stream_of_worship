@@ -35,9 +35,6 @@ from stream_of_worship.admin.services.visibility import is_published, reprocess_
 logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL = 5.0
-# Wait budget for a single-chunk (<=300 s) recording. Longer recordings get a
-# chunk-scaled budget via ``alignment_wait_timeout``.
-DEFAULT_TIMEOUT = 1200.0
 R2_RETRY_INTERVAL = 2.0
 R2_RETRY_ATTEMPTS = 30
 # recordings.lrc_source written after a successful forced alignment; the editor

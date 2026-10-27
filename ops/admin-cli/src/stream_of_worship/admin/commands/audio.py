@@ -34,6 +34,11 @@ from rich.table import Table
 from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.commands.catalog import _extract_series_sort_key, get_db_client
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
+from stream_of_worship.admin.constants import (
+    ANALYZE_JOB_WAIT_TIMEOUT_SECONDS,
+    COMPONENT_JOB_WAIT_TIMEOUT_SECONDS,
+    JOB_WAIT_TIMEOUT_SECONDS,
+)
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song, SongComponent
 from stream_of_worship.admin.db.schema import (
@@ -2283,15 +2288,16 @@ def analyze_recording(
                     final_job = client.wait_for_completion(
                         job_id,
                         poll_interval=30.0,
-                        timeout=1800.0,
+                        timeout=ANALYZE_JOB_WAIT_TIMEOUT_SECONDS,
                         callback=update_progress,
                     )
                 except AnalysisServiceError as e:
                     msg = str(e)
                     if msg.startswith("Timed out waiting for job"):
                         console.print(
-                            f"[yellow]Timed out after 30 min. The job is still "
-                            f"running server-side.[/yellow]\n"
+                            f"[yellow]Timed out after "
+                            f"{ANALYZE_JOB_WAIT_TIMEOUT_SECONDS / 60:.0f} min. "
+                            f"The job is still running server-side.[/yellow]\n"
                             f"[dim]Poll with: sow-admin audio status {job_id}[/dim]"
                         )
                         raise typer.Exit(0)
@@ -2850,7 +2856,9 @@ def _submit_component_analysis_job(
 
     # Poll for completion.
     try:
-        final_job = client.wait_for_completion(job.job_id, poll_interval=5.0, timeout=600.0)
+        final_job = client.wait_for_completion(
+            job.job_id, poll_interval=5.0, timeout=COMPONENT_JOB_WAIT_TIMEOUT_SECONDS
+        )
     except AnalysisServiceError as e:
         console.print(f"[red]{e}[/red]")
         return None
@@ -3658,7 +3666,7 @@ def embed_songs(
     Embeddings power semantic search in the webapp. Run this after scraping
     new songs or when lyrics are corrected.
 
-    By default the command polls until all jobs finish (120 s per job) and
+    By default the command polls until all jobs finish (20 minutes per job) and
     writes the embeddings.
 
     Examples:
@@ -3737,7 +3745,9 @@ def embed_songs(
     failed = 0
     for jid in job_ids:
         try:
-            result = analysis_client.wait_for_completion(jid, poll_interval=2.0, timeout=120.0)
+            result = analysis_client.wait_for_completion(
+                jid, poll_interval=2.0, timeout=JOB_WAIT_TIMEOUT_SECONDS
+            )
             if result.status == "completed":
                 _write_embedding_result(result, db_client, console)
             else:
