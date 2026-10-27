@@ -1,9 +1,13 @@
-"""Modal app hosting full-song analysis (allin1 + Demucs + madmom) for sow-analysis.
+"""Modal app hosting full-song analysis (allin1 + Demucs) for sow-analysis.
 
 This is the backend behind full ANALYZE jobs: BPM/beats/downbeats/sections/
-embeddings (harmonix-all via allin1), 4-stem separation (allin1's internal
-htdemucs demix), and madmom RNN downbeat detection — all run on a GPU container
-instead of inside the analysis service container.
+embeddings (harmonix-all via allin1) and 4-stem separation (allin1's internal
+htdemucs demix) — all run on a GPU container instead of inside the analysis
+service container.
+
+Beat-grid detection for component analysis lives on the much smaller
+`sow-downbeats` app (modal_apps/downbeats_app.py), not here: it needs none of
+this image's allin1/NATTEN/Demucs layers.
 
 Stem model note: allin1's internal demix step (allin1/demix.py) runs
 ``python -m demucs.separate --name htdemucs`` — the stem model is hard-named
@@ -260,15 +264,13 @@ class SongAnalyzer:
         filename: str,
         request_id: str,
         include_stems: bool,
-        include_beat_grid: bool,
     ) -> dict:
-        """Full analysis: allin1 (+ internal htdemucs stems) + optional madmom beat grid.
+        """Full analysis: allin1 ensemble (+ internal htdemucs stems).
 
-        Returns a JSON-safe dict mirroring the former local analyze_audio() payload:
-        duration_seconds, tempo_bpm, beats, downbeats, sections, embeddings_shape
-        and — when include_beat_grid — source/beats/downbeats/detected_at/
-        madmom_params. Stem WAV bytes ride inline under result["stems"] when
-        include_stems is set.
+        Returns a JSON-safe dict: tempo_bpm, beats, downbeats, sections,
+        embeddings_shape. duration_seconds is measured locally by the worker (it
+        owns the decoded audio). Stem WAV bytes ride inline under result["stems"]
+        when include_stems is set.
         """
         import os
         import pathlib
@@ -285,8 +287,7 @@ class SongAnalyzer:
         started = time.time()
         print(
             f"[sow-analyzer][{request_id}] analyze start: {len(audio_bytes)} bytes "
-            f"({filename}, include_stems={include_stems}, "
-            f"include_beat_grid={include_beat_grid})",
+            f"({filename}, include_stems={include_stems})",
             flush=True,
         )
         try:
@@ -342,35 +343,9 @@ class SongAnalyzer:
                         stems[stem] = (stem_dir / f"{stem}.wav").read_bytes()
                     payload["stems"] = stems
 
-                if include_beat_grid:
-                    from datetime import datetime, timezone
-
-                    from madmom.features.downbeats import (
-                        RNNDownBeatProcessor,
-                        DBNDownBeatTrackingProcessor,
-                    )
-
-                    rnn = RNNDownBeatProcessor()
-                    activations = rnn(str(input_path))
-                    dbn = DBNDownBeatTrackingProcessor(
-                        beats_per_bar=[3, 4],  # model 3/4 and 4/4 time
-                        fps=100,  # must match RNNDownBeatProcessor's internal fps
-                    )
-                    grid = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
-
-                    downbeat_times = grid[grid[:, 1] == 1][:, 0]
-                    payload["beat_grid"] = {
-                        "source": "madmom",
-                        "beats": grid.tolist(),
-                        "downbeats": sorted(downbeat_times.tolist()),
-                        "detected_at": datetime.now(timezone.utc).isoformat(),
-                        "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
-                    }
-
             print(
                 f"[sow-analyzer][{request_id}] analyze done in "
-                f"{time.time() - started:.2f}s (stems={include_stems}, "
-                f"beat_grid={include_beat_grid})",
+                f"{time.time() - started:.2f}s (stems={include_stems})",
                 flush=True,
             )
             return payload
@@ -384,65 +359,3 @@ class SongAnalyzer:
             )
             raise
 
-    @modal.method()
-    def detect_beats(self, audio_bytes: bytes, filename: str, request_id: str) -> dict:
-        """madmom-only downbeat detection (no allin1 ensemble, no demix).
-
-        Backs the beat-grid cache for snap_to_downbeat. Kept as a separate method
-        so a beat-grid miss does not pay for the full 8-fold harmonix-all pass +
-        htdemucs demix that analyze() runs.
-        """
-        import tempfile
-        import time
-        import traceback
-        from datetime import datetime, timezone
-
-        import pathlib
-
-        started = time.time()
-        print(
-            f"[sow-analyzer-beats][{request_id}] detect_beats start: {len(audio_bytes)} bytes "
-            f"({filename})",
-            flush=True,
-        )
-        try:
-            with tempfile.TemporaryDirectory() as tmp:
-                tmp_path = pathlib.Path(tmp)
-                input_path = tmp_path / f"input{pathlib.Path(filename).suffix or '.wav'}"
-                input_path.write_bytes(audio_bytes)
-
-                from madmom.features.downbeats import (
-                    RNNDownBeatProcessor,
-                    DBNDownBeatTrackingProcessor,
-                )
-
-                rnn = RNNDownBeatProcessor()
-                activations = rnn(str(input_path))
-                dbn = DBNDownBeatTrackingProcessor(
-                    beats_per_bar=[3, 4],  # model 3/4 and 4/4 time
-                    fps=100,  # must match RNNDownBeatProcessor's internal fps
-                )
-                grid = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
-
-                downbeat_times = grid[grid[:, 1] == 1][:, 0]
-                payload = {
-                    "source": "madmom",
-                    "beats": grid.tolist(),
-                    "downbeats": sorted(downbeat_times.tolist()),
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
-                    "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
-                }
-
-            print(
-                f"[sow-analyzer-beats][{request_id}] detect_beats done in "
-                f"{time.time() - started:.2f}s (downbeats={len(payload['downbeats'])})",
-                flush=True,
-            )
-            return payload
-        except Exception:
-            print(
-                f"[sow-analyzer-beats][{request_id}] detect_beats failed after "
-                f"{time.time() - started:.2f}s:\n{traceback.format_exc()}",
-                flush=True,
-            )
-            raise
