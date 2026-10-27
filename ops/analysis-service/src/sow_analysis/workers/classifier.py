@@ -11,6 +11,7 @@ from typing import Optional
 from openai import OpenAI
 
 from ..config import settings
+from ..services.llm_models import chat_model_kwargs
 from .components import ESSENTIAL_ROLES, ComponentInstance
 from .llm_rate_limit import call_llm_with_retry
 from .lrc_parser import parse_lrc
@@ -468,7 +469,7 @@ class ThemeClassifier:
         Returns the parsed JSON dict. Logs diagnostics before returning.
         """
         response = self._client.chat.completions.create(
-            model=self._model,
+            **chat_model_kwargs(self._model),
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             max_tokens=300,

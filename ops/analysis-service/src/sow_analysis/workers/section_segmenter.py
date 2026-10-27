@@ -19,6 +19,7 @@ from typing import Optional
 from openai import OpenAI
 
 from ..config import settings
+from ..services.llm_models import chat_model_kwargs
 from .components import ComponentInstance, _normalize_line, _snap_to_beat, _snap_to_downbeat, parse_lrc
 from .llm_rate_limit import call_llm_with_retry
 
@@ -571,7 +572,7 @@ async def _sanity_check_llm(
 
     def _call() -> str:
         resp = client.chat.completions.create(
-            model=model,
+            **chat_model_kwargs(model),
             messages=[
                 {"role": "system", "content": sanity_system},
                 {"role": "user", "content": prompt},
@@ -676,7 +677,7 @@ async def _corrective_segmentation_call(
 
     def _call() -> str:
         resp = client.chat.completions.create(
-            model=model,
+            **chat_model_kwargs(model),
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -766,7 +767,7 @@ async def segment_song(
 
     def _call() -> str:
         resp = client.chat.completions.create(
-            model=model,
+            **chat_model_kwargs(model),
             messages=messages,
             temperature=0,
             response_format={"type": "json_object"},

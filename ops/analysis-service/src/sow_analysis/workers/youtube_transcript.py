@@ -1155,9 +1155,9 @@ async def _llm_correct(
             "or set SOW_LLM_MODEL environment variable."
         )
 
-    from ..services.llm_models import split_llm_model_effort
+    from ..services.llm_models import chat_model_kwargs, split_llm_model_effort
 
-    model_id, reasoning_effort = split_llm_model_effort(effective_model)
+    _, reasoning_effort = split_llm_model_effort(effective_model)
 
     loop = asyncio.get_running_loop()
 
@@ -1171,14 +1171,12 @@ async def _llm_correct(
         )
 
         create_kwargs: dict = {
-            "model": model_id,
+            **chat_model_kwargs(effective_model),
             "messages": [
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.1,
         }
-        if reasoning_effort is not None:
-            create_kwargs["reasoning_effort"] = reasoning_effort
 
         response = client.chat.completions.create(**create_kwargs)
 
