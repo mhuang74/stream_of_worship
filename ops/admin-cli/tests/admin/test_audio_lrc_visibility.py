@@ -97,6 +97,7 @@ def test_submit_lrc_wait_completion_forces_review_visibility():
         lrc_source="whisper_asr",
     )
     analysis_client.submit_lrc.assert_called_once()
+    assert analysis_client.wait_for_completion.call_args.kwargs["timeout"] == 1200.0
     submit_kwargs = analysis_client.submit_lrc.call_args.kwargs
     assert submit_kwargs["song_title"] == "Test Song"
     assert submit_kwargs["language"] == "zh"

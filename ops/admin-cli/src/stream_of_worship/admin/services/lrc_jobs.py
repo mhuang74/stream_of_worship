@@ -20,7 +20,7 @@ from rich.table import Table
 
 from stream_of_worship.admin.audit import log_change
 from stream_of_worship.admin.config import AdminConfig
-
+from stream_of_worship.admin.constants import JOB_WAIT_TIMEOUT_SECONDS
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.db.models import Recording, Song
 from stream_of_worship.admin.services.analysis import (
@@ -103,7 +103,9 @@ _LRC_GENERATOR_MODES = {
 }
 
 
-def alignment_wait_timeout(duration_seconds: float | None, base: float = 1200.0) -> float:
+def alignment_wait_timeout(
+    duration_seconds: float | None, base: float = JOB_WAIT_TIMEOUT_SECONDS
+) -> float:
     """Wait budget for a forced alignment job, scaled by chunk count.
 
     The analysis service splits recordings longer than 300 s into chunks and
@@ -272,7 +274,7 @@ def submit_lrc_single(
                 final_job = analysis_client.wait_for_completion(
                     job_id,
                     poll_interval=30.0,
-                    timeout=1200.0,
+                    timeout=JOB_WAIT_TIMEOUT_SECONDS,
                     callback=update_progress,
                 )
             except AnalysisServiceError as e:

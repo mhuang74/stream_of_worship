@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 import requests
 from botocore.exceptions import ClientError
 
+from stream_of_worship.admin.constants import JOB_WAIT_TIMEOUT_SECONDS
+
 if TYPE_CHECKING:
     from stream_of_worship.admin.services.r2 import R2Client
 
@@ -847,7 +849,7 @@ class AnalysisClient:
         self,
         job_id: str,
         poll_interval: float = 3.0,
-        timeout: float = 600.0,
+        timeout: float = JOB_WAIT_TIMEOUT_SECONDS,
         callback: Optional[Callable[[JobInfo], None]] = None,
     ) -> JobInfo:
         """Poll a job until it completes or fails.
@@ -855,7 +857,7 @@ class AnalysisClient:
         Args:
             job_id: Unique job identifier
             poll_interval: Seconds between polls
-            timeout: Maximum seconds to wait
+            timeout: Maximum seconds to wait (default: ``JOB_WAIT_TIMEOUT_SECONDS``, 20 minutes)
             callback: Optional callback called with JobInfo each iteration
 
         Returns:

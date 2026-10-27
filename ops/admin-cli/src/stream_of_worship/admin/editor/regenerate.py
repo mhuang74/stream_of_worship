@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from stream_of_worship.admin.audit import log_change
+from stream_of_worship.admin.constants import JOB_WAIT_TIMEOUT_SECONDS
 from stream_of_worship.admin.db.client import DatabaseClient
 from stream_of_worship.admin.services.analysis import (
     AnalysisClient,
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL = 5.0
 # Matches the single-song ``lyrics generate`` wait budget (20 minutes).
-DEFAULT_TIMEOUT = 1200.0
+DEFAULT_TIMEOUT = JOB_WAIT_TIMEOUT_SECONDS
 R2_RETRY_INTERVAL = 2.0
 R2_RETRY_ATTEMPTS = 30
 
