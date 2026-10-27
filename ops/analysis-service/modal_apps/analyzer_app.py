@@ -72,7 +72,11 @@ image = (
         "assert torch.__version__.startswith('2.6.0'), torch.__version__\n"
         "assert natten.__version__.startswith('0.17.5'), natten.__version__\n"
         "print('[sow-analyzer] pins OK', torch.__version__, natten.__version__)\n"
-        "EOF"
+        "EOF",
+        # NATTEN 0.17.5 probes torch.cuda.get_device_capability() at import time
+        # (natten/utils/testing.py) with no CPU fallback, and Modal image build
+        # steps default to CPU-only builders -> "Found no NVIDIA driver".
+        gpu="L4",
     )
     # allin1 1.1.0's models/dinat.py imports natten1d{av,qkrpb}/natten2d{av,qkrpb} —
     # the deprecated aliases dropped in 0.17.5. Patch to na*_qk/na*_av
@@ -85,8 +89,14 @@ image = (
     #     already matches na1d_av/na2d_av — no change.
     .run_commands(
         "python - <<'EOF'\n"
-        "import pathlib, allin1\n"
-        "p = pathlib.Path(allin1.__file__).parent / 'models' / 'dinat.py'\n"
+        # Locate dinat.py WITHOUT importing allin1: `import allin1` executes
+        # models/dinat.py, whose stale natten1d* import raises before this patch
+        # can run (chicken-and-egg). find_spec reads the path only.
+        "import pathlib, importlib.util\n"
+        "spec = importlib.util.find_spec('allin1')\n"
+        "assert spec is not None and spec.submodule_search_locations, "
+        "'allin1 not installed'\n"
+        "p = pathlib.Path(list(spec.submodule_search_locations)[0]) / 'models' / 'dinat.py'\n"
         "s = p.read_text()\n"
         "s = s.replace(\n"
         "    'from natten.functional import natten1dav, natten1dqkrpb, natten2dav, natten2dqkrpb',\n"
@@ -109,12 +119,16 @@ image = (
         "    'dinat assignments not patched'\n"
         "p.write_text(s)\n"
         "print('[sow-analyzer] patched allin1 dinat.py to NATTEN >=0.17.5 na*_qk/na*_av API')\n"
-        "EOF"
+        "EOF",
+        # `import allin1` pulls the natten chain transitively (same GPU-at-import
+        # requirement as the pins step above).
+        gpu="L4",
     )
     # Build-time import assert (also proves the patch compiles + all deps resolve).
     .run_commands(
         "python -c 'import allin1; import demucs; import madmom; import natten; "
-        "print(\"[sow-analyzer] imports OK\", natten.__version__)'"
+        "print(\"[sow-analyzer] imports OK\", natten.__version__)'",
+        gpu="L4",
     )
     # Silence NATTEN C++ runtime logs at inference (useless noise in a GPU container).
     # TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1: torch 2.6 defaults torch.load to
@@ -167,7 +181,7 @@ class SongAnalyzer:
         os.environ["HF_HOME"] = str(hf_dir)
         os.environ["TORCH_HOME"] = str(hub_dir)
 
-        # 1-second silence clip: enough to drive one full pass of every model.
+        # 1-second warm-up clip: enough to drive one full pass of every model.
         import numpy as np
         import soundfile as sf
 
@@ -182,8 +196,22 @@ class SongAnalyzer:
         started = time.time()
 
         tmp = tempfile.mkdtemp(prefix="analyzer-entry-")
-        silent_path = pathlib.Path(tmp) / "silence.wav"
-        sf.write(str(silent_path), np.zeros((44100, 2), dtype=np.float32), 44100)
+        # Warm-up clip: NOT silence. demucs/separate.py:162 normalizes with
+        # `(wav - ref.mean()) / ref.std()`, so an all-zero clip yields std 0 -> a
+        # NaN mix, and hdemucs.py:39 asserts the reflect-padded signal round-trips
+        # (NaN == NaN is False) -> AssertionError inside the internal demix.
+        # Different frequency per channel keeps each channel's std nonzero and the
+        # signal deterministic (low amplitude so nothing clips anywhere downstream).
+        warmup_path = pathlib.Path(tmp) / "warmup.wav"
+        t = np.arange(44100, dtype=np.float32) / 44100.0
+        warmup = np.stack(
+            [
+                0.10 * np.sin(2 * np.pi * 440.0 * t),
+                0.10 * np.sin(2 * np.pi * 523.25 * t),
+            ],
+            axis=1,
+        ).astype(np.float32)
+        sf.write(str(warmup_path), warmup, 44100)
 
         if not marker_harmonix.exists() or not marker_htdemucs.exists():
             # One allin1.analyze call downloads harmonix-all (HF cache under
@@ -193,7 +221,7 @@ class SongAnalyzer:
             import allin1
 
             allin1.analyze(
-                str(silent_path),
+                str(warmup_path),
                 out_dir=pathlib.Path(tmp) / "out",
                 visualize=False,
                 sonify=False,
@@ -210,7 +238,7 @@ class SongAnalyzer:
             )
 
             rnn = RNNDownBeatProcessor()
-            activations = rnn(str(silent_path))
+            activations = rnn(str(warmup_path))
             dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], fps=100)
             dbn(activations)
             marker_madmom.touch()
