@@ -5,6 +5,7 @@ metadata via ``psycopg``.
 """
 
 import logging
+import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -107,20 +108,58 @@ class DatabaseClient:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
 
+    def _enter_transaction(
+        self,
+    ) -> tuple[psycopg.Connection, psycopg.Transaction]:
+        """Enter a psycopg transaction, reconnecting once on BEGIN failure.
+
+        A connection that idled longer than the server tolerates (Neon
+        suspend, NAT idle timeout) leaves a half-dead socket that is not
+        reported as ``closed``, so the provider hands it back and ``BEGIN``
+        raises ``OperationalError``. Invalidate, reconnect and enter once
+        more; a second failure propagates.
+
+        Returns:
+            Tuple of ``(connection, transaction)`` where the transaction is
+            already entered (BEGIN sent). The connection is the one the
+            transaction belongs to — a reconnected one if the first was stale.
+        """
+        conn = self.connection
+        try:
+            txn = conn.transaction()
+            txn.__enter__()
+            return conn, txn
+        except psycopg.OperationalError:
+            logger.warning("BEGIN failed on stale connection; reconnecting and retrying once")
+            self.connection_provider.invalidate()
+            conn = self.connection
+            txn = conn.transaction()
+            txn.__enter__()
+            return conn, txn
+
     @contextmanager
     def transaction(self) -> Generator[psycopg.Connection, None, None]:
         """Context manager for database transactions.
 
+        Resilient to stale connections: if BEGIN fails because the socket
+        died during a long idle wait (e.g. a 20-30 minute analysis-service
+        poll), the provider reconnects and the transaction is retried once.
+        That retry happens before the caller's body runs, so no work can be
+        replayed. Failures after entry (mid-body or commit) are never
+        retried — partial work cannot be replayed safely.
+
         Yields:
             psycopg connection with an active transaction.
         """
-        conn = self.connection
+        conn, txn = self._enter_transaction()
         try:
-            with conn.transaction():
-                yield conn
-            conn.commit()
-        except Exception:
+            yield conn
+        except BaseException:
+            txn.__exit__(*sys.exc_info())
             raise
+        else:
+            txn.__exit__(None, None, None)
+            conn.commit()
 
     def initialize_schema(self, wipe_songsets: bool = False) -> None:
         """Initialize the full database schema (catalog + auth + app + per-user).
