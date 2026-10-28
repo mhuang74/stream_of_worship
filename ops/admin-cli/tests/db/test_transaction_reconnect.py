@@ -29,10 +29,14 @@ def _transaction_mock(enter_error: Exception | None = None) -> MagicMock:
     return txn
 
 
-def _connection_mock(txn: MagicMock) -> MagicMock:
+def _connection_mock(
+    txn: MagicMock,
+    status: psycopg.pq.TransactionStatus = psycopg.pq.TransactionStatus.IDLE,
+) -> MagicMock:
     """Build a connection stand-in that is never reported as ``closed``."""
     conn = MagicMock()
     conn.closed = False
+    conn.info.transaction_status = status
     conn.transaction.return_value = txn
     return conn
 
@@ -197,3 +201,34 @@ class TestTransactionReconnect:
         inner_txn.__exit__.assert_called_once_with(None, None, None)
         # Only the outermost transaction commits on the connection.
         assert conn.commit.call_count == 2
+
+    def test_nested_begin_failure_is_not_retried(self):
+        """A savepoint BEGIN failure inside an open transaction must not reconnect.
+
+        Reconnecting there would abandon the outer transaction on the dead
+        socket and commit the inner block on its own (silent partial commit),
+        so the error has to surface to the caller instead.
+        """
+        outer_txn = _transaction_mock()
+        failing_inner_txn = _transaction_mock(psycopg.OperationalError(STALE_ERROR))
+        conn = _connection_mock(outer_txn, psycopg.pq.TransactionStatus.INTRANS)
+        conn.transaction.side_effect = [outer_txn, failing_inner_txn]
+        nested_bodies: list[bool] = []
+
+        with patch(
+            "stream_of_worship.db.connection.psycopg.connect", return_value=conn
+        ) as mock_connect:
+            provider = ConnectionProvider("postgresql://user:pass@localhost/db")
+            client = DatabaseClient(provider)
+            with (
+                patch.object(provider, "invalidate", wraps=provider.invalidate) as invalidate,
+                client.transaction(),
+            ):
+                with pytest.raises(psycopg.OperationalError, match=STALE_ERROR):
+                    with client.transaction():
+                        nested_bodies.append(True)
+
+        assert nested_bodies == []
+        assert mock_connect.call_count == 1
+        invalidate.assert_not_called()
+        outer_txn.__exit__.assert_called_once_with(None, None, None)

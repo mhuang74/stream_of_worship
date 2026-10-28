@@ -119,17 +119,26 @@ class DatabaseClient:
         raises ``OperationalError``. Invalidate, reconnect and enter once
         more; a second failure propagates.
 
+        The retry is limited to an outermost BEGIN (connection status IDLE
+        before the attempt). Reconnecting while an outer transaction is open
+        would abandon that work on the dead socket and turn the inner block
+        into its own transaction that commits alone — a silent partial
+        commit — so nested entry failures are re-raised instead.
+
         Returns:
             Tuple of ``(connection, transaction)`` where the transaction is
             already entered (BEGIN sent). The connection is the one the
             transaction belongs to — a reconnected one if the first was stale.
         """
         conn = self.connection
+        outermost = conn.info.transaction_status == psycopg.pq.TransactionStatus.IDLE
         try:
             txn = conn.transaction()
             txn.__enter__()
             return conn, txn
         except psycopg.OperationalError:
+            if not outermost:
+                raise
             logger.warning("BEGIN failed on stale connection; reconnecting and retrying once")
             self.connection_provider.invalidate()
             conn = self.connection
