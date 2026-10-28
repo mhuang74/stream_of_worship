@@ -2085,8 +2085,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/db/client.py": {
-    "mtime": 1793149447.523126,
-    "ast_hash": "83ede1e76e43e1a4b3620364e8a7ba72",
+    "mtime": 1793201819.5804818,
+    "ast_hash": "1546102a77f40886b181a615be81fd86",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/db/models.py": {
