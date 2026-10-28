@@ -104,6 +104,7 @@ KEY_REVIEW_CAVEAT = (
 )
 
 COMPONENTS_FORMAT_VALUES = {"table", "json"}
+COMPONENTS_FILTER_VALUES = {"missing", "unclassified", "complete"}
 SEGMENTATION_MODE_VALUES = {"llm", "repetition", "allin1", "structured_lyrics"}
 
 
@@ -397,7 +398,9 @@ def _read_albums_from_file(path: Path) -> list[str]:
     return albums
 
 
-def _list_column_caps(width: int, extra_col: bool = False) -> tuple[int, int, Optional[int], int]:
+def _list_column_caps(
+    width: int, extra_col: bool = False, components_col: bool = False
+) -> tuple[int, int, Optional[int], int]:
     """Compute column caps for the audio list table so no column collapses or wraps.
 
     All list-table columns render ``no_wrap=True`` and every column is capped,
@@ -414,7 +417,14 @@ def _list_column_caps(width: int, extra_col: bool = False) -> tuple[int, int, Op
     Returns ``(text_cap, song_id_cap, updated_cap, filename_cap_or_None)``.
     ``updated_cap`` is the Updated column max width (only used when
     ``extra_col``); the caller passes it to the Updated column's max_width.
+    When ``components_col`` is True the fixed Comp-column reserve is subtracted
+    from ``width`` before the ladder is applied, so the returned caps stay
+    within the real table width.
     """
+    # A Comp column costs a fixed 8 cells (max_width 4 + Rich padding + slack);
+    # reserve them by running the measured ladder against the reduced width.
+    if components_col:
+        width = max(width - 8, 60)
     TEXT_MAX = 18  # fits CJK title 主啊，我要跟隨祢 (16) + ellipsis headroom
     ID_MAX, ID_MIN = 36, 12
     # Updated column max width (sort=updated only): 12 cells below 120 cols,
@@ -1613,6 +1623,15 @@ def list_recordings(
             "r2_preexisting|none where none = unknown/legacy)"
         ),
     ),
+    components: Optional[str] = typer.Option(
+        None,
+        "--components",
+        help=(
+            "Filter by component-analysis state: missing (no song_components rows "
+            "for this recording's audio), unclassified (rows exist but essential "
+            "rows lack theme/vocal_posture), complete (essential rows classified)"
+        ),
+    ),
     sort: str = typer.Option(
         "album",
         "--sort",
@@ -1629,6 +1648,9 @@ def list_recordings(
     Use ``--sort`` to change sort order (default: album). Use ``--sort series``
     to sort by album series number (e.g. 敬拜讚美15 → 15). Use ``--album`` to
     filter by album name. Use ``--format ids`` for one song ID per line (pipeable).
+    Use ``--components`` to filter by component-analysis state
+    (missing|unclassified|complete); combine with ``--format ids`` to feed
+    ``sow-admin audio components --stdin``.
     """
     try:
         config = AdminConfig.load(config_path)
@@ -1673,6 +1695,15 @@ def list_recordings(
             )
             raise typer.Exit(1)
 
+    # Validate components filter
+    if components:
+        if components not in COMPONENTS_FILTER_VALUES:
+            console.print(
+                f"[red]Invalid components state: {components}. "
+                f"Must be one of: {', '.join(sorted(COMPONENTS_FILTER_VALUES))}[/red]"
+            )
+            raise typer.Exit(1)
+
     # Validate theme filter
     if theme:
         valid_themes = set(SONG_COMPONENT_THEMES) | {"none"}
@@ -1700,6 +1731,7 @@ def list_recordings(
         album=album,
         theme=theme,
         lrc_source=lrc_source,
+        components=components,
         sort_by=sort,
         limit=limit,
     )
@@ -1720,6 +1752,12 @@ def list_recordings(
         enriched.sort(key=lambda t: t[1] or "")
     # "imported" — already sorted by imported_at DESC from DB
 
+    component_counts: dict[tuple[str, str], int] = {}
+    if components and format != "ids":
+        component_counts = db_client.count_song_components_by_content_hash(
+            [(rec.song_id, rec.content_hash) for rec, _t, _a, _s in enriched if rec.song_id]
+        )
+
     if format == "ids":
         for rec, _title, _album, _series in enriched:
             console.print(rec.song_id if rec.song_id else rec.hash_prefix)
@@ -1738,11 +1776,13 @@ def list_recordings(
             filter_parts.append(f"lrc_source={lrc_source}")
         if theme:
             filter_parts.append(f"theme={theme}")
+        if components:
+            filter_parts.append(f"components={components}")
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
         # Caps keep the flexible text columns from collapsing: Rich gives
         # no_wrap columns their max content width first, starving Album/Title.
         text_cap, id_cap, updated_cap, filename_cap = _list_column_caps(
-            console.width, sort == "updated"
+            console.width, sort == "updated", bool(components)
         )
         table = Table(title=f"Recordings ({len(enriched)} total){filter_str}")
         table.add_column(
@@ -1770,6 +1810,10 @@ def list_recordings(
                 max_width=filename_cap,
                 overflow="ellipsis",
             )
+        # Comp follows Filename: rows are built append-only in this same order,
+        # so column order and value order cannot drift.
+        if components:
+            table.add_column("Comp", style="cyan", justify="right", no_wrap=True, max_width=4)
         table.add_column("Hash Prefix", style="dim", no_wrap=True)
         if sort == "updated":
             table.add_column(
@@ -1798,6 +1842,12 @@ def list_recordings(
             # BPM rounded to nearest integer
             bpm_str = str(round(rec.tempo_bpm)) if rec.tempo_bpm is not None else "--"
 
+            comp_str = (
+                str(component_counts.get((rec.song_id, rec.content_hash), 0))
+                if component_counts.get((rec.song_id, rec.content_hash))
+                else "-"
+            )
+
             row_vals = [
                 album_name or "-",
                 song_title or "-",
@@ -1806,15 +1856,23 @@ def list_recordings(
                 key_str,
                 bpm_str,
                 song_id,
-                rec.hash_prefix,
             ]
             if filename_cap is not None:
-                row_vals.insert(7, rec.original_filename or "-")
+                row_vals.append(rec.original_filename or "-")
+            if components:
+                row_vals.append(comp_str)
+            row_vals.append(rec.hash_prefix)
             if sort == "updated":
                 row_vals.append(rec.updated_at[:16] if rec.updated_at else "")
             table.add_row(*row_vals)
 
         console.print(table)
+        if components in ("missing", "unclassified"):
+            console.print(
+                f"[dim]Pipe to components analysis: "
+                f"sow-admin audio list --components {components} --format ids "
+                f"| sow-admin audio components --stdin[/dim]"
+            )
         console.print("[dim]● published   ◐ review   ○ hold   · none[/dim]")
 
 
