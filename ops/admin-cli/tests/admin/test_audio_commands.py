@@ -10,7 +10,7 @@ import typer
 from typer.testing import CliRunner
 
 from stream_of_worship.admin.db.client import DatabaseClient
-from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.models import Recording, Song, SongComponent
 from stream_of_worship.admin.main import app
 from stream_of_worship.admin.services.analysis import AnalysisServiceError, JobInfo
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
@@ -1361,6 +1361,330 @@ class TestAudioListCommand:
         assert "第一首歌" in result.output
         assert "第二首歌" in result.output
         assert "Album" in result.output
+
+        _drop_all_tables(make_test_provider)
+
+    def _seed_component_states(self, client):
+        """song_comp_a=complete, song_comp_b=unclassified, song_comp_c=missing."""
+        for sid in ("song_comp_a", "song_comp_b", "song_comp_c"):
+            client.insert_song(
+                Song(
+                    id=sid,
+                    title=f"Title {sid}",
+                    source_url=f"https://example.com/{sid}",
+                    scraped_at="2024-01-01T00:00:00",
+                )
+            )
+        for idx, sid in enumerate(("song_comp_a", "song_comp_b", "song_comp_c")):
+            letter = "abc"[idx]
+            client.insert_recording(
+                Recording(
+                    content_hash=letter * 64,
+                    hash_prefix=letter * 12,
+                    song_id=sid,
+                    original_filename=f"{sid}.mp3",
+                    file_size_bytes=1024000,
+                    imported_at=f"2024-01-1{idx}T10:30:00",
+                )
+            )
+
+        client.upsert_song_components(
+            "song_comp_a",
+            "a" * 64,
+            [
+                SongComponent(
+                    component_type="chorus",
+                    occurrence_index=1,
+                    role="entry",
+                    theme="讚美",
+                    vocal_posture="To God",
+                ),
+                SongComponent(
+                    component_type="chorus",
+                    occurrence_index=1,
+                    role="exit",
+                    theme="敬拜",
+                    vocal_posture="About God",
+                ),
+            ],
+        )
+        client.upsert_song_components(
+            "song_comp_b",
+            "b" * 64,
+            [
+                SongComponent(component_type="chorus", occurrence_index=1, role="entry"),
+                SongComponent(component_type="chorus", occurrence_index=1, role="exit"),
+            ],
+        )
+
+    @pytest.mark.integration
+    def test_list_components_missing_filter(self, make_test_provider, postgres_url, tmp_path):
+        """--components missing selects only recordings with no component rows."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_component_states(client)
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--components",
+                "missing",
+            ],
+        )
+
+        assert result.exit_code == 0
+        ids = [line for line in result.output.split() if line]
+        assert ids == ["song_comp_c"]
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_components_unclassified_filter(self, make_test_provider, postgres_url, tmp_path):
+        """--components unclassified selects rows whose essential rows lack LLM fields."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_component_states(client)
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--components",
+                "unclassified",
+            ],
+        )
+
+        assert result.exit_code == 0
+        ids = [line for line in result.output.split() if line]
+        assert ids == ["song_comp_b"]
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_components_complete_filter(self, make_test_provider, postgres_url, tmp_path):
+        """--components complete selects only fully classified recordings."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_component_states(client)
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--components",
+                "complete",
+            ],
+        )
+
+        assert result.exit_code == 0
+        ids = [line for line in result.output.split() if line]
+        assert ids == ["song_comp_a"]
+
+        _drop_all_tables(make_test_provider)
+
+    def test_list_rejects_invalid_components(self, tmp_path, monkeypatch):
+        """--components rejects values outside the three supported states."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("[database]\n")
+
+        result = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--components", "bogus"],
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid components state" in result.output
+        assert "complete, missing, unclassified" in result.output
+
+        _drop_all_tables(monkeypatch)
+
+    @pytest.mark.integration
+    def test_list_components_column_only_with_filter(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """Comp column and the pipe hint appear only with --components."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_component_states(client)
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        plain = runner.invoke(
+            app, ["audio", "list", "--config", str(config_path)], env=WIDE_ENV
+        )
+        assert plain.exit_code == 0
+        assert "Comp" not in plain.output
+        assert "Pipe to components analysis:" not in plain.output
+
+        complete = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--components", "complete"],
+            env=WIDE_ENV,
+        )
+        assert complete.exit_code == 0
+        assert "Comp" in complete.output
+        assert "2" in complete.output
+
+        # Filename and Comp columns both render at 200 cols; assert the values
+        # land in their own columns (append-only row order must match columns).
+        row_line = next(
+            line for line in complete.output.splitlines() if "song_comp_a.mp3" in line
+        )
+        cells = [cell.strip() for cell in row_line.split("│") if cell.strip()]
+        assert cells[-3:] == ["song_comp_a.mp3", "2", "a" * 12]
+
+        missing = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--components", "missing"],
+            env=WIDE_ENV,
+        )
+        assert missing.exit_code == 0
+        assert "Pipe to components analysis:" in missing.output
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_components_ignores_stale_hash_rows(
+        self, make_test_provider, postgres_url, tmp_path
+    ):
+        """Rows left behind by a replaced recording (older content_hash) do not count."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_component_states(client)
+
+        client.insert_song(
+            Song(
+                id="song_stale",
+                title="Title song_stale",
+                source_url="https://example.com/song_stale",
+                scraped_at="2024-01-01T00:00:00",
+            )
+        )
+        client.insert_recording(
+            Recording(
+                content_hash="d" * 64,
+                hash_prefix="d" * 12,
+                song_id="song_stale",
+                original_filename="song_stale_old.mp3",
+                file_size_bytes=1024000,
+                imported_at="2024-01-10T10:30:00",
+            )
+        )
+        client.upsert_song_components(
+            "song_stale",
+            "d" * 64,
+            [
+                SongComponent(
+                    component_type="chorus",
+                    occurrence_index=1,
+                    role="entry",
+                    theme="讚美",
+                    vocal_posture="To God",
+                ),
+                SongComponent(
+                    component_type="chorus",
+                    occurrence_index=1,
+                    role="exit",
+                    theme="敬拜",
+                    vocal_posture="About God",
+                ),
+            ],
+        )
+        client.insert_recording(
+            Recording(
+                content_hash="e" * 64,
+                hash_prefix="e" * 12,
+                song_id="song_stale",
+                original_filename="song_stale_new.mp3",
+                file_size_bytes=1024000,
+                imported_at="2024-01-20T10:30:00",
+            )
+        )
+        client.delete_recording("d" * 12)
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        missing = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--components",
+                "missing",
+            ],
+        )
+        assert missing.exit_code == 0
+        missing_ids = [line for line in missing.output.split() if line]
+        assert missing_ids == ["song_comp_c", "song_stale"]
+
+        complete = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--components",
+                "complete",
+            ],
+        )
+        assert complete.exit_code == 0
+        assert "song_stale" not in complete.output
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_list_components_narrow_width(
+        self, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """The Comp column reserve keeps headers intact at 120 columns."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_component_states(client)
+
+        config_path = _write_config(tmp_path, postgres_url)
+
+        monkeypatch.setenv("COLUMNS", "120")
+        result = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--components", "complete"],
+        )
+
+        assert result.exit_code == 0
+        for header in ("Album", "Song Title", "Comp", "Hash Prefix"):
+            assert header in result.output
 
         _drop_all_tables(make_test_provider)
 

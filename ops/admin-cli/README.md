@@ -349,9 +349,21 @@ sow-admin audio list --analysis completed --format ids \
   | sow-admin audio components --stdin \
     --use-stems --snap-to-downbeat --energy-roles --classify-theme --classify-posture
 
+# Only the recordings still needing components analysis (new or re-downloaded audio)
+sow-admin audio list --components missing --format ids \
+  | sow-admin audio components --stdin
+
 # View persisted results
 sow-admin audio show song_0001
 ```
+
+`audio list --components` takes three mutually exclusive states that partition
+every active recording: `missing` (no component rows for that recording's
+current audio), `unclassified` (rows exist but the essential entry/exit/
+loop_target/bridge rows lack `theme` or `vocal_posture`, so the components step
+would classify them again), and `complete`. The filter is scoped per
+`(song_id, content_hash)`, so rows left behind by a replaced download do not
+count as analysed.
 
 #### Lyrics Generate LLM Trace Dump
 
