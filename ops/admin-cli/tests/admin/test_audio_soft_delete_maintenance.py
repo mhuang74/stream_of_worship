@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
+from psycopg.pq import TransactionStatus
 from typer.testing import CliRunner
 
 from stream_of_worship.admin.commands.audio import import_youtube_audio_for_song
@@ -736,6 +737,9 @@ class FakeCursor:
 class FakeConnection:
     def __init__(self, cursor):
         self._cursor = cursor
+        # DatabaseClient.transaction() only retries BEGIN when the connection
+        # is idle, so the double must expose psycopg's transaction status.
+        self.info = SimpleNamespace(transaction_status=TransactionStatus.IDLE)
 
     def cursor(self):
         return self._cursor
