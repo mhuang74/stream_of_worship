@@ -2050,8 +2050,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py": {
-    "mtime": 1793137837.865242,
-    "ast_hash": "5630a9fe25a3702ef60a9da93af090df",
+    "mtime": 1793149520.2499452,
+    "ast_hash": "715af486829194d8be6b1dcef706e36f",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/catalog.py": {
@@ -2085,8 +2085,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/db/client.py": {
-    "mtime": 1792845149.780437,
-    "ast_hash": "dc6a47bbf04b40f84df84be202e324f2",
+    "mtime": 1793149447.523126,
+    "ast_hash": "83ede1e76e43e1a4b3620364e8a7ba72",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/db/models.py": {
@@ -2095,8 +2095,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/db/schema.py": {
-    "mtime": 1790120557.531568,
-    "ast_hash": "7c2b4414389adb536b08e89c399b571c",
+    "mtime": 1793149447.5240738,
+    "ast_hash": "7a644aa2d95a671d7846581477fa1434",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/editor/__init__.py": {
@@ -3530,8 +3530,8 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/README.md": {
-    "mtime": 1792856426.3684258,
-    "ast_hash": "4656704d5f962da22d273678d5d81baa",
+    "mtime": 1793149646.873729,
+    "ast_hash": "c14d888e620c096e638d49ed20762c96",
     "semantic_hash": ""
   },
   "ops/analysis-service/src/sow_analysis/workers/llm_rate_limit.py": {
