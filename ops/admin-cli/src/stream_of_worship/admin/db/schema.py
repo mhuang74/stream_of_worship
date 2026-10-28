@@ -352,6 +352,15 @@ SONG_COMPONENT_COLUMNS_SELECT = """
 # v9: 27 (v5) + 2 (line_start/line_end) = 29 columns.
 SONG_COMPONENT_COLUMN_COUNT = 29
 
+# SQL predicate (alias ``c`` = song_components) selecting the component rows
+# whose LLM classification decides whether a recording's component analysis is
+# complete: essential roles plus the first bridge occurrence. Mirrors
+# commands/audio.py::_db_components_have_llm_fields — update both together.
+SONG_COMPONENT_ESSENTIAL_SQL = (
+    "(c.role IN ('entry', 'exit', 'loop_target', 'entry_exit')"
+    " OR (c.component_type = 'bridge' AND c.occurrence_index = 1))"
+)
+
 
 # SQL to get table statistics (Postgres-compatible)
 TABLE_STATS_QUERY = """

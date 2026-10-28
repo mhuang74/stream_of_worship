@@ -32,6 +32,7 @@ from stream_of_worship.admin.db.schema import (
     SONG_COLUMNS_FOR_JOIN,
     SONG_COLUMNS_SELECT,
     SONG_COMPONENT_COLUMNS_SELECT,
+    SONG_COMPONENT_ESSENTIAL_SQL,
     SONG_COMPONENT_THEMES,
     SONG_COMPONENT_VOCAL_POSTURES,
 )
@@ -1307,6 +1308,7 @@ class DatabaseClient:
         album: Optional[str] = None,
         theme: Optional[str] = None,
         lrc_source: Optional[str] = None,
+        components: Optional[str] = None,
         sort_by: str = "imported",
         limit: Optional[int] = None,
         include_deleted: bool = False,
@@ -1323,6 +1325,12 @@ class DatabaseClient:
             theme: Filter by recording-level theme. Pass "none" to match recordings with NULL theme.
             lrc_source: Filter by LRC generation provenance. Pass "none" to match
                 recordings with NULL lrc_source.
+            components: Filter by component-analysis state — ``missing`` (no
+                song_components rows for this recording's content_hash),
+                ``unclassified`` (rows exist but essential rows lack theme or
+                vocal_posture), or ``complete``. Scoped per
+                (song_id, content_hash) so a replaced recording's stale rows
+                do not count.
             sort_by: Sort order (``album``, ``series``, ``title``, ``imported``).
             limit: Maximum number of results.
             include_deleted: Whether to include soft-deleted recordings.
@@ -1383,6 +1391,32 @@ class DatabaseClient:
             else:
                 query += " AND r.lrc_source = %s"
                 params.append(lrc_source)
+
+        if components:
+            rows_exist = (
+                "EXISTS (SELECT 1 FROM song_components c"
+                " WHERE c.song_id = r.song_id AND c.content_hash = r.content_hash)"
+            )
+            candidates_exist = (
+                "EXISTS (SELECT 1 FROM song_components c"
+                " WHERE c.song_id = r.song_id AND c.content_hash = r.content_hash"
+                f" AND {SONG_COMPONENT_ESSENTIAL_SQL})"
+            )
+            candidate_lacking = (
+                "EXISTS (SELECT 1 FROM song_components c"
+                " WHERE c.song_id = r.song_id AND c.content_hash = r.content_hash"
+                f" AND {SONG_COMPONENT_ESSENTIAL_SQL}"
+                " AND (c.theme IS NULL OR c.vocal_posture IS NULL))"
+            )
+            if components == "missing":
+                query += f" AND NOT {rows_exist}"
+            elif components == "complete":
+                query += f" AND {candidates_exist} AND NOT {candidate_lacking}"
+            elif components == "unclassified":
+                query += (
+                    f" AND {rows_exist}"
+                    f" AND NOT ({candidates_exist} AND NOT {candidate_lacking})"
+                )
 
         order_map = {
             "album": "s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",
@@ -2730,6 +2764,36 @@ class DatabaseClient:
             (song_id, component_type),
         )
         return [SongComponent.from_row(tuple(row)) for row in cursor.fetchall()]
+
+    def count_song_components_by_content_hash(
+        self, pairs: list[tuple[str, str]]
+    ) -> dict[tuple[str, str], int]:
+        """Count component rows per (song_id, content_hash) recording pair.
+
+        Hash-scoped so a replaced recording's stale rows — persisted under an
+        older content_hash — are not counted.
+
+        Args:
+            pairs: (song_id, content_hash) pairs. Empty list short-circuits.
+
+        Returns:
+            {(song_id, content_hash): row_count}; absent keys mean zero rows.
+        """
+        if not pairs:
+            return {}
+        placeholders = ", ".join("(%s, %s)" for _ in pairs)
+        params: list = [value for pair in pairs for value in pair]
+        cursor = self.connection.cursor()
+        cursor.execute(
+            f"""
+                SELECT song_id, content_hash, COUNT(*)
+                FROM song_components
+                WHERE (song_id, content_hash) IN ({placeholders})
+                GROUP BY song_id, content_hash
+            """,
+            params,
+        )
+        return {(row[0], row[1]): row[2] for row in cursor.fetchall()}
 
     def get_song_components_entry_exit(
         self, song_id: str
