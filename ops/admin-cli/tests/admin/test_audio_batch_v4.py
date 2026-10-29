@@ -1290,3 +1290,47 @@ class TestBackfillSkipIfPresentV3:
         m_bf.assert_not_called()
 
 
+class TestBackfillForceRefetch:
+    """--force makes batch backfill refetch records that already have sections."""
+
+    def _run(self, *, force: bool, outcome: str) -> tuple[MagicMock, str]:
+        import io
+
+        rec = _make_recording(
+            "song_1",
+            structured_lyrics='{"sections":[{"type":"verse"}]}',
+        )
+        mock_db = MagicMock()
+        mock_db.get_recording_by_song_id.return_value = rec
+        buf = io.StringIO()
+
+        with (
+            patch("sys.stdin", io.StringIO("song_1\n")),
+            patch.object(audio_mod, "_backfill_lyrics_for_song", return_value=outcome) as m_bf,
+        ):
+            audio_mod._backfill_lyrics_batch(
+                db_client=mock_db,
+                console=Console(file=buf, width=200),
+                skip_confirm=True,
+                force=force,
+            )
+
+        return m_bf, buf.getvalue()
+
+    def test_force_refetches_present_lyrics(self):
+        """force=True refetches a record whose structured lyrics are already present."""
+        m_bf, output = self._run(force=True, outcome="written")
+
+        assert m_bf.call_count == 1
+        assert m_bf.call_args.kwargs.get("song_id") == "song_1"
+        assert "Skipped (already has structured lyrics)" not in output
+        assert "1 backfilled" in output
+
+    def test_force_counts_kept(self):
+        """A forced refetch that finds no sections is counted as kept, not backfilled."""
+        _, output = self._run(force=True, outcome="kept")
+
+        assert "1 kept (no sections found)" in output
+        assert "0 backfilled" in output
+
+

@@ -5141,6 +5141,48 @@ class TestLlmLyricsFlags:
         mock_single.assert_called_once()
         assert mock_single.call_args.kwargs.get("use_llm") is True
 
+    def test_backfill_keeps_existing_when_fetch_has_no_sections(self):
+        """A no-sections refetch leaves existing parsed JSON untouched (returns 'kept')."""
+        import io
+
+        from rich.console import Console
+
+        from stream_of_worship.admin.commands import audio as audio_mod
+
+        rec = Recording(
+            content_hash="a" * 64,
+            hash_prefix="abcdef123456",
+            original_filename="song_001.mp3",
+            file_size_bytes=1000,
+            imported_at="2024-01-01T00:00:00",
+            song_id="song_001",
+            structured_lyrics='{"sections":[{"label":"verse","lines":["x"]}]}',
+            youtube_url="https://youtu.be/abc",
+        )
+        mock_db = MagicMock()
+        mock_db.get_recording_by_song_id.return_value = rec
+        mock_db.get_song.return_value = Song(
+            id="song_001",
+            title="T",
+            source_url="https://example.com",
+            scraped_at="2024-01-01T00:00:00",
+        )
+        buf = io.StringIO()
+
+        with patch(
+            "stream_of_worship.admin.commands.audio.fetch_structured_lyrics",
+            return_value=("raw text", None, "youtube"),
+        ):
+            outcome = audio_mod._backfill_lyrics_for_song(
+                song_id="song_001",
+                db_client=mock_db,
+                console=Console(file=buf, width=200),
+            )
+
+        assert outcome == "kept"
+        assert "Kept existing structured lyrics" in buf.getvalue()
+        mock_db.update_recording_structured_lyrics.assert_not_called()
+
     def test_download_no_llm_passes_use_llm_false_to_import(self):
         """audio download --no-llm forwards use_llm=False to import_youtube_audio_for_song."""
         fake_config = MagicMock()
