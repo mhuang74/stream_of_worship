@@ -325,6 +325,27 @@ sow-admin audio components SONG_ID [v5 options]
 sow-admin audio status [JOB_ID]
 ```
 
+#### Structured Lyrics Backfill
+
+`audio download --backfill-lyrics` refetches structured (section-tagged)
+lyrics for an existing recording without touching audio, R2, LRC, or
+visibility. With `--stdin` it is fill-missing by default; add `--force` to
+refetch and overwrite every listed song:
+
+```bash
+# Fill in only the recordings that have no structured lyrics yet
+sow-admin audio list --format ids | sow-admin audio download --stdin --backfill-lyrics --yes
+
+# Rebuild structured lyrics for every listed recording
+sow-admin audio download --stdin --backfill-lyrics --force --yes < ids.txt
+```
+
+A refetch that finds no section tags never blanks good lyrics: the existing
+`structured_lyrics` JSON is kept and the song is counted as `kept` in the
+summary. Published recordings are always skipped (`--force` does not bypass
+the publish guard). `--structured-lyrics-source zanmei` switches the source
+from YouTube descriptions to zanmei.ai.
+
 #### Audio Components
 
 Extracts and displays chorus/verse component metadata for a song: component type,

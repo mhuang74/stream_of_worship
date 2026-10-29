@@ -528,6 +528,17 @@ def _submit_analysis_job(
         return None
 
 
+def _structured_lyrics_has_sections(raw: Optional[str]) -> bool:
+    """True when ``raw`` is JSON holding a dict with a non-empty ``sections`` list."""
+    if not raw:
+        return False
+    try:
+        existing = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(existing, dict) and bool(existing.get("sections"))
+
+
 def _backfill_lyrics_for_song(
     *,
     song_id: str,
@@ -536,7 +547,7 @@ def _backfill_lyrics_for_song(
     url: Optional[str] = None,
     use_llm: bool = True,
     structured_lyrics_source: str = "auto",
-) -> bool:
+) -> str:
     """Backfill structured lyrics for an existing recording.
 
     Fetches structured lyrics per ``structured_lyrics_source`` (youtube /
@@ -553,7 +564,9 @@ def _backfill_lyrics_for_song(
         structured_lyrics_source: 'youtube' | 'zanmei' | 'auto'.
 
     Returns:
-        True if structured lyrics were persisted, False on error/skip.
+        ``"written"`` when the fetched structured lyrics were persisted;
+        ``"kept"`` when the fetch produced no sections and the recording
+        already had parsed sections, so the existing row was left untouched.
     """
     recording = db_client.get_recording_by_song_id(song_id)
     if not recording:
@@ -592,6 +605,20 @@ def _backfill_lyrics_for_song(
         console=console,
     )
 
+    if not structured_json_str and _structured_lyrics_has_sections(recording.structured_lyrics):
+        console.print(
+            f"[yellow]Kept existing structured lyrics — no sections found from "
+            f"{source_used}.[/yellow]"
+        )
+        log_change(
+            "structured_lyrics_keep",
+            song_id=song_id,
+            hash_prefix=recording.hash_prefix,
+            via="audio_fetch",
+            source=source_used,
+        )
+        return "kept"
+
     db_client.update_recording_structured_lyrics(
         hash_prefix=recording.hash_prefix,
         structured_lyrics_raw=structured_raw,
@@ -628,7 +655,7 @@ def _backfill_lyrics_for_song(
         f"[dim]Run 'sow-admin audio show {song_id}' to verify or "
         f"'sow-admin lyrics generate {song_id}' to re-generate LRC.[/dim]"
     )
-    return True
+    return "written"
 
 
 def import_youtube_audio_for_song(
@@ -934,6 +961,7 @@ def _backfill_lyrics_batch(
     skip_confirm: bool = False,
     use_llm: bool = True,
     structured_lyrics_source: str = "auto",
+    force: bool = False,
 ) -> None:
     """Backfill structured lyrics for multiple songs from stdin.
 
@@ -941,6 +969,10 @@ def _backfill_lyrics_batch(
     existing recording and fetches structured lyrics per
     ``structured_lyrics_source``. Per-song failures are reported but do not
     abort the batch.
+
+    Records that already have parsed sections are skipped unless ``force``
+    is set; ``force`` refetches every ID. A forced refetch that finds no
+    sections keeps the existing structured JSON instead of wiping it.
     """
     song_ids = read_song_ids_from_stdin()
 
@@ -958,6 +990,7 @@ def _backfill_lyrics_batch(
             raise typer.Exit(0)
 
     success = 0
+    kept = 0
     skipped = 0
     failed = 0
     for idx, sid in enumerate(song_ids, 1):
@@ -971,20 +1004,16 @@ def _backfill_lyrics_batch(
                 )
                 skipped += 1
                 continue
-            # Skip-if-present: batch backfill is fill-missing regardless of
-            # force; the explicit single-song call stays always-refetch.
-            if recording and recording.structured_lyrics:
-                try:
-                    existing = json.loads(recording.structured_lyrics)
-                except (json.JSONDecodeError, TypeError):
-                    existing = None
-                if existing and existing.get("sections"):
-                    console.print(
-                        f"[yellow]~ Skipped (already has structured lyrics): {sid}[/yellow]"
-                    )
-                    skipped += 1
-                    continue
-            ok = _backfill_lyrics_for_song(
+            # Skip-if-present unless --force; --force refetches every ID.
+            if not force and recording and _structured_lyrics_has_sections(
+                recording.structured_lyrics
+            ):
+                console.print(
+                    f"[yellow]~ Skipped (already has structured lyrics): {sid}[/yellow]"
+                )
+                skipped += 1
+                continue
+            outcome = _backfill_lyrics_for_song(
                 song_id=sid,
                 db_client=db_client,
                 console=console,
@@ -992,7 +1021,9 @@ def _backfill_lyrics_batch(
                 use_llm=use_llm,
                 structured_lyrics_source=structured_lyrics_source,
             )
-            if ok:
+            if outcome == "kept":
+                kept += 1
+            else:
                 success += 1
         except typer.Exit as e:
             if e.exit_code == 0:
@@ -1004,7 +1035,10 @@ def _backfill_lyrics_batch(
             console.print(f"[red]✗ Failed: {sid}: {e}[/red]")
 
     console.print()
-    console.print(f"[bold]Summary:[/bold] {success} backfilled, {skipped} skipped, {failed} failed")
+    console.print(
+        f"[bold]Summary:[/bold] {success} backfilled, {kept} kept (no sections found), "
+        f"{skipped} skipped, {failed} failed"
+    )
 
 
 def _download_audio_batch(
@@ -1196,7 +1230,13 @@ def download_audio(
     url: Optional[str] = typer.Option(None, "--url", "-u", help="Direct YouTube URL (skip search)"),
     skip_confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
     force: bool = typer.Option(
-        False, "--force", "-f", help="Replace existing recording if it exists"
+        False,
+        "--force",
+        "-f",
+        help=(
+            "Replace existing recording if it exists; with --backfill-lyrics, "
+            "refetch and overwrite existing structured lyrics"
+        ),
     ),
     analyze: bool = typer.Option(
         False, "--analyze", "-a", help="Submit for analysis after download"
@@ -1310,6 +1350,7 @@ def download_audio(
                 skip_confirm=skip_confirm,
                 use_llm=use_llm,
                 structured_lyrics_source=structured_lyrics_source,
+                force=force,
             )
             return
 
@@ -5507,17 +5548,12 @@ def batch(
                 continue
             # Skip-if-present is UNCONDITIONAL — --force does NOT override it.
             # --force is scoped to the components step only (resolved Q2).
-            if recording.structured_lyrics:
-                try:
-                    existing = json.loads(recording.structured_lyrics)
-                except (json.JSONDecodeError, TypeError):
-                    existing = None
-                if existing and existing.get("sections"):
-                    console.print(
-                        f"  [yellow]→ {sid} (skipped: structured lyrics already present)[/yellow]"
-                    )
-                    backfill_results[sid]["backfill_lyrics"] = "skipped"
-                    continue
+            if _structured_lyrics_has_sections(recording.structured_lyrics):
+                console.print(
+                    f"  [yellow]→ {sid} (skipped: structured lyrics already present)[/yellow]"
+                )
+                backfill_results[sid]["backfill_lyrics"] = "skipped"
+                continue
             try:
                 _backfill_lyrics_for_song(
                     song_id=sid,
