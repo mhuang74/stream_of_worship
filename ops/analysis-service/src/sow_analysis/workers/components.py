@@ -25,7 +25,7 @@ import numpy as np
 import zhconv
 
 from ..config import settings
-from ..services.modal_analyzer_client import get_modal_analyzer_client
+from ..services.modal_downbeats_client import get_modal_downbeats_client
 from ..storage.cache import BEAT_GRID_SCHEMA_VERSION, COMPONENT_SCHEMA_VERSION, CacheManager
 from ..storage.r2 import R2Client
 from .lrc_parser import parse_lrc
@@ -48,7 +48,7 @@ async def get_or_detect_beat_grid(
       1. Local cache ({hash32}_beat_grid.json)
       2. R2 ({hash12}/beat_grid.json) — on hit, backfill local cache
 
-    On miss: run madmom downbeat detection on the sow-analyzer Modal app
+    On miss: run madmom downbeat detection on the sow-downbeats Modal app
     (client.detect_beats), stamp identity fields, persist local (atomic) + R2
     (best-effort; failure logs a warning). Returns the payload dict or None if
     detection fails.
@@ -78,11 +78,11 @@ async def get_or_detect_beat_grid(
                 return r2_cached
 
     # On miss, replacing the former run_in_executor(None, _detect_downbeats_madmom, ...)
-    # hop: madmom runs on the sow-analyzer Modal app (one more @modal.method()), and
+    # hop: madmom runs on the sow-downbeats Modal app (one more @modal.method()), and
     # an async client call cannot go through the executor (it would hand back a
     # coroutine).
     try:
-        detected = await get_modal_analyzer_client().detect_beats(audio_path)
+        detected = await get_modal_downbeats_client().detect_beats(audio_path)
     except Exception as e:
         logger.warning(f"Modal madmom downbeat detection failed: {e}")
         return None

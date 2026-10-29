@@ -289,7 +289,7 @@ async def analyze_audio(
             return cached
 
     # Run Modal analysis (the client is async; retry ladder lives there).
-    logger.info("Starting full analysis on Modal (allin1 + htdemucs + madmom-capable)")
+    logger.info("Starting full analysis on Modal (allin1 + htdemucs)")
     modal_start = time.time()
     client = get_modal_analyzer_client()
     modal_result = await client.analyze(audio_path, output_stems_dir=output_stems_dir)

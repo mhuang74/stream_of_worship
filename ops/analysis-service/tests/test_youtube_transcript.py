@@ -1861,6 +1861,19 @@ class TestTryYoutubeTranscriptLrcReRaises:
         assert result is None
 
 
+class _FakeClock:
+    """Controllable stand-in for the `time` module inside youtube_transcript."""
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self.now = start
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def time(self) -> float:
+        return self.now
+
+
 class TestWaitForYoutubeCooldownIfOpen:
     """Tests for the wait_for_youtube_cooldown_if_open helper."""
 
@@ -1881,29 +1894,71 @@ class TestWaitForYoutubeCooldownIfOpen:
         """When breaker is open, waits until cooldown expires, then returns True."""
         from unittest.mock import patch
 
+        from sow_analysis.workers import youtube_transcript as yt_module
         from sow_analysis.workers.youtube_transcript import wait_for_youtube_cooldown_if_open
+
+        clock = _FakeClock()
+        sleep_calls: list = []
+
+        async def fake_sleep(duration):
+            sleep_calls.append(duration)
+            clock.now += duration
 
         _rate_limiter._ensure_initialized()
         _rate_limiter._consecutive_429_count = 5
-        _rate_limiter._circuit_open_until = time.monotonic() + 0.2
+        _rate_limiter._circuit_open_until = clock.now + 0.25
 
-        sleep_calls = []
-        original_sleep = asyncio.sleep
-
-        async def mock_sleep(duration):
-            sleep_calls.append(duration)
-            await original_sleep(0)
-
-        with patch(
-            "sow_analysis.workers.youtube_transcript.asyncio.sleep",
-            side_effect=mock_sleep,
+        with (
+            patch.object(yt_module, "time", clock),
+            patch.object(yt_module.asyncio, "sleep", fake_sleep),
         ):
             result = await wait_for_youtube_cooldown_if_open(max_heartbeat_seconds=0.1)
 
         assert result is True
-        assert len(sleep_calls) > 0
-        # After cooldown expiry, count should be reset
+        assert sleep_calls == [0.1, 0.1, 0.1]
+        # The expiry reset ran under the state lock: count cleared, breaker closed.
         assert _rate_limiter._consecutive_429_count == 0
+        assert _rate_limiter._circuit_open_until == 0.0
+
+    @pytest.mark.asyncio
+    async def test_expired_cooldown_read_does_not_bypass_breaker_reset(self):
+        """A zero remaining_cooldown() reading must not exit before the expiry reset.
+
+        Reproduces the interleaving where is_circuit_open() still sees the breaker
+        open, but the immediately following remaining_cooldown() read already sees
+        the cooldown expired. The helper must loop back through
+        is_circuit_open() so the lock-protected reset runs, instead of returning
+        early with the 429 count still at threshold.
+        """
+        from unittest.mock import patch
+
+        from sow_analysis.workers import youtube_transcript as yt_module
+        from sow_analysis.workers.youtube_transcript import wait_for_youtube_cooldown_if_open
+
+        clock = _FakeClock()
+        sleep_calls: list = []
+
+        async def fake_sleep(duration):
+            sleep_calls.append(duration)
+            clock.now += duration
+
+        _rate_limiter._ensure_initialized()
+        _rate_limiter._consecutive_429_count = 5
+        _rate_limiter._circuit_open_until = clock.now + 0.45
+
+        with (
+            patch.object(yt_module, "time", clock),
+            patch.object(_rate_limiter, "remaining_cooldown", lambda: 0.0),
+            patch.object(yt_module.asyncio, "sleep", fake_sleep),
+        ):
+            result = await wait_for_youtube_cooldown_if_open(max_heartbeat_seconds=0.1)
+
+        assert result is True
+        # It slept through the whole cooldown in heartbeat-sized steps instead of
+        # returning on the first zero reading.
+        assert sleep_calls == [0.1] * 5
+        assert _rate_limiter._consecutive_429_count == 0
+        assert _rate_limiter._circuit_open_until == 0.0
 
     @pytest.mark.asyncio
     async def test_cancellation_returns_early(self):

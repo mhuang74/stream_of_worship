@@ -1,9 +1,13 @@
-"""Modal app hosting full-song analysis (allin1 + Demucs + madmom) for sow-analysis.
+"""Modal app hosting full-song analysis (allin1 + Demucs) for sow-analysis.
 
 This is the backend behind full ANALYZE jobs: BPM/beats/downbeats/sections/
-embeddings (harmonix-all via allin1), 4-stem separation (allin1's internal
-htdemucs demix), and madmom RNN downbeat detection — all run on a GPU container
-instead of inside the analysis service container.
+embeddings (harmonix-all via allin1) and 4-stem separation (allin1's internal
+htdemucs demix) — all run on a GPU container instead of inside the analysis
+service container.
+
+Beat-grid detection for component analysis lives on the much smaller
+`sow-downbeats` app (modal_apps/downbeats_app.py), not here: it needs none of
+this image's allin1/NATTEN/Demucs layers.
 
 Stem model note: allin1's internal demix step (allin1/demix.py) runs
 ``python -m demucs.separate --name htdemucs`` — the stem model is hard-named
@@ -72,7 +76,11 @@ image = (
         "assert torch.__version__.startswith('2.6.0'), torch.__version__\n"
         "assert natten.__version__.startswith('0.17.5'), natten.__version__\n"
         "print('[sow-analyzer] pins OK', torch.__version__, natten.__version__)\n"
-        "EOF"
+        "EOF",
+        # NATTEN 0.17.5 probes torch.cuda.get_device_capability() at import time
+        # (natten/utils/testing.py) with no CPU fallback, and Modal image build
+        # steps default to CPU-only builders -> "Found no NVIDIA driver".
+        gpu="L4",
     )
     # allin1 1.1.0's models/dinat.py imports natten1d{av,qkrpb}/natten2d{av,qkrpb} —
     # the deprecated aliases dropped in 0.17.5. Patch to na*_qk/na*_av
@@ -85,8 +93,14 @@ image = (
     #     already matches na1d_av/na2d_av — no change.
     .run_commands(
         "python - <<'EOF'\n"
-        "import pathlib, allin1\n"
-        "p = pathlib.Path(allin1.__file__).parent / 'models' / 'dinat.py'\n"
+        # Locate dinat.py WITHOUT importing allin1: `import allin1` executes
+        # models/dinat.py, whose stale natten1d* import raises before this patch
+        # can run (chicken-and-egg). find_spec reads the path only.
+        "import pathlib, importlib.util\n"
+        "spec = importlib.util.find_spec('allin1')\n"
+        "assert spec is not None and spec.submodule_search_locations, "
+        "'allin1 not installed'\n"
+        "p = pathlib.Path(list(spec.submodule_search_locations)[0]) / 'models' / 'dinat.py'\n"
         "s = p.read_text()\n"
         "s = s.replace(\n"
         "    'from natten.functional import natten1dav, natten1dqkrpb, natten2dav, natten2dqkrpb',\n"
@@ -109,12 +123,16 @@ image = (
         "    'dinat assignments not patched'\n"
         "p.write_text(s)\n"
         "print('[sow-analyzer] patched allin1 dinat.py to NATTEN >=0.17.5 na*_qk/na*_av API')\n"
-        "EOF"
+        "EOF",
+        # No gpu= here (unlike its neighbours): this step only reads and rewrites
+        # a source file — it never imports allin1 or natten, so a CPU builder is
+        # enough. Keep it GPU-free so a NATTEN import regression cannot hide here.
     )
     # Build-time import assert (also proves the patch compiles + all deps resolve).
     .run_commands(
         "python -c 'import allin1; import demucs; import madmom; import natten; "
-        "print(\"[sow-analyzer] imports OK\", natten.__version__)'"
+        "print(\"[sow-analyzer] imports OK\", natten.__version__)'",
+        gpu="L4",
     )
     # Silence NATTEN C++ runtime logs at inference (useless noise in a GPU container).
     # TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1: torch 2.6 defaults torch.load to
@@ -167,7 +185,7 @@ class SongAnalyzer:
         os.environ["HF_HOME"] = str(hf_dir)
         os.environ["TORCH_HOME"] = str(hub_dir)
 
-        # 1-second silence clip: enough to drive one full pass of every model.
+        # 1-second warm-up clip: enough to drive one full pass of every model.
         import numpy as np
         import soundfile as sf
 
@@ -182,8 +200,22 @@ class SongAnalyzer:
         started = time.time()
 
         tmp = tempfile.mkdtemp(prefix="analyzer-entry-")
-        silent_path = pathlib.Path(tmp) / "silence.wav"
-        sf.write(str(silent_path), np.zeros((44100, 2), dtype=np.float32), 44100)
+        # Warm-up clip: NOT silence. demucs/separate.py:162 normalizes with
+        # `(wav - ref.mean()) / ref.std()`, so an all-zero clip yields std 0 -> a
+        # NaN mix, and hdemucs.py:39 asserts the reflect-padded signal round-trips
+        # (NaN == NaN is False) -> AssertionError inside the internal demix.
+        # Different frequency per channel keeps each channel's std nonzero and the
+        # signal deterministic (low amplitude so nothing clips anywhere downstream).
+        warmup_path = pathlib.Path(tmp) / "warmup.wav"
+        t = np.arange(44100, dtype=np.float32) / 44100.0
+        warmup = np.stack(
+            [
+                0.10 * np.sin(2 * np.pi * 440.0 * t),
+                0.10 * np.sin(2 * np.pi * 523.25 * t),
+            ],
+            axis=1,
+        ).astype(np.float32)
+        sf.write(str(warmup_path), warmup, 44100)
 
         if not marker_harmonix.exists() or not marker_htdemucs.exists():
             # One allin1.analyze call downloads harmonix-all (HF cache under
@@ -193,7 +225,7 @@ class SongAnalyzer:
             import allin1
 
             allin1.analyze(
-                str(silent_path),
+                str(warmup_path),
                 out_dir=pathlib.Path(tmp) / "out",
                 visualize=False,
                 sonify=False,
@@ -210,7 +242,7 @@ class SongAnalyzer:
             )
 
             rnn = RNNDownBeatProcessor()
-            activations = rnn(str(silent_path))
+            activations = rnn(str(warmup_path))
             dbn = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], fps=100)
             dbn(activations)
             marker_madmom.touch()
@@ -232,15 +264,13 @@ class SongAnalyzer:
         filename: str,
         request_id: str,
         include_stems: bool,
-        include_beat_grid: bool,
     ) -> dict:
-        """Full analysis: allin1 (+ internal htdemucs stems) + optional madmom beat grid.
+        """Full analysis: allin1 ensemble (+ internal htdemucs stems).
 
-        Returns a JSON-safe dict mirroring the former local analyze_audio() payload:
-        duration_seconds, tempo_bpm, beats, downbeats, sections, embeddings_shape
-        and — when include_beat_grid — source/beats/downbeats/detected_at/
-        madmom_params. Stem WAV bytes ride inline under result["stems"] when
-        include_stems is set.
+        Returns a JSON-safe dict: tempo_bpm, beats, downbeats, sections,
+        embeddings_shape. duration_seconds is measured locally by the worker (it
+        owns the decoded audio). Stem WAV bytes ride inline under result["stems"]
+        when include_stems is set.
         """
         import os
         import pathlib
@@ -257,8 +287,7 @@ class SongAnalyzer:
         started = time.time()
         print(
             f"[sow-analyzer][{request_id}] analyze start: {len(audio_bytes)} bytes "
-            f"({filename}, include_stems={include_stems}, "
-            f"include_beat_grid={include_beat_grid})",
+            f"({filename}, include_stems={include_stems})",
             flush=True,
         )
         try:
@@ -314,35 +343,9 @@ class SongAnalyzer:
                         stems[stem] = (stem_dir / f"{stem}.wav").read_bytes()
                     payload["stems"] = stems
 
-                if include_beat_grid:
-                    from datetime import datetime, timezone
-
-                    from madmom.features.downbeats import (
-                        RNNDownBeatProcessor,
-                        DBNDownBeatTrackingProcessor,
-                    )
-
-                    rnn = RNNDownBeatProcessor()
-                    activations = rnn(str(input_path))
-                    dbn = DBNDownBeatTrackingProcessor(
-                        beats_per_bar=[3, 4],  # model 3/4 and 4/4 time
-                        fps=100,  # must match RNNDownBeatProcessor's internal fps
-                    )
-                    grid = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
-
-                    downbeat_times = grid[grid[:, 1] == 1][:, 0]
-                    payload["beat_grid"] = {
-                        "source": "madmom",
-                        "beats": grid.tolist(),
-                        "downbeats": sorted(downbeat_times.tolist()),
-                        "detected_at": datetime.now(timezone.utc).isoformat(),
-                        "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
-                    }
-
             print(
                 f"[sow-analyzer][{request_id}] analyze done in "
-                f"{time.time() - started:.2f}s (stems={include_stems}, "
-                f"beat_grid={include_beat_grid})",
+                f"{time.time() - started:.2f}s (stems={include_stems})",
                 flush=True,
             )
             return payload
@@ -356,65 +359,3 @@ class SongAnalyzer:
             )
             raise
 
-    @modal.method()
-    def detect_beats(self, audio_bytes: bytes, filename: str, request_id: str) -> dict:
-        """madmom-only downbeat detection (no allin1 ensemble, no demix).
-
-        Backs the beat-grid cache for snap_to_downbeat. Kept as a separate method
-        so a beat-grid miss does not pay for the full 8-fold harmonix-all pass +
-        htdemucs demix that analyze() runs.
-        """
-        import tempfile
-        import time
-        import traceback
-        from datetime import datetime, timezone
-
-        import pathlib
-
-        started = time.time()
-        print(
-            f"[sow-analyzer-beats][{request_id}] detect_beats start: {len(audio_bytes)} bytes "
-            f"({filename})",
-            flush=True,
-        )
-        try:
-            with tempfile.TemporaryDirectory() as tmp:
-                tmp_path = pathlib.Path(tmp)
-                input_path = tmp_path / f"input{pathlib.Path(filename).suffix or '.wav'}"
-                input_path.write_bytes(audio_bytes)
-
-                from madmom.features.downbeats import (
-                    RNNDownBeatProcessor,
-                    DBNDownBeatTrackingProcessor,
-                )
-
-                rnn = RNNDownBeatProcessor()
-                activations = rnn(str(input_path))
-                dbn = DBNDownBeatTrackingProcessor(
-                    beats_per_bar=[3, 4],  # model 3/4 and 4/4 time
-                    fps=100,  # must match RNNDownBeatProcessor's internal fps
-                )
-                grid = dbn(activations)  # shape (num_beats, 2): [time, beat_in_bar]
-
-                downbeat_times = grid[grid[:, 1] == 1][:, 0]
-                payload = {
-                    "source": "madmom",
-                    "beats": grid.tolist(),
-                    "downbeats": sorted(downbeat_times.tolist()),
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
-                    "madmom_params": {"beats_per_bar": [3, 4], "fps": 100},
-                }
-
-            print(
-                f"[sow-analyzer-beats][{request_id}] detect_beats done in "
-                f"{time.time() - started:.2f}s (downbeats={len(payload['downbeats'])})",
-                flush=True,
-            )
-            return payload
-        except Exception:
-            print(
-                f"[sow-analyzer-beats][{request_id}] detect_beats failed after "
-                f"{time.time() - started:.2f}s:\n{traceback.format_exc()}",
-                flush=True,
-            )
-            raise

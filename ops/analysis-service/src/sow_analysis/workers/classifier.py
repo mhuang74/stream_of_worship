@@ -11,11 +11,22 @@ from typing import Optional
 from openai import OpenAI
 
 from ..config import settings
+from ..services.llm_models import chat_model_kwargs
 from .components import ESSENTIAL_ROLES, ComponentInstance
 from .llm_rate_limit import call_llm_with_retry
 from .lrc_parser import parse_lrc
 
 logger = logging.getLogger(__name__)
+
+
+class LLMTruncationError(RuntimeError):
+    """Raised when the provider stops on the token ceiling before emitting content.
+
+    A reasoning-capable model can spend the whole completion budget on hidden
+    reasoning, leaving ``message.content`` empty with ``finish_reason="length"``.
+    Parsing that as ``{}`` used to persist ``theme=None`` with no warning.
+    """
+
 
 # IMPORT the existing 12-theme system from songset_constructor rules.
 # These are the ONLY valid values for theme classification.
@@ -227,10 +238,18 @@ class ThemeClassifier:
             raise ValueError(
                 "SOW_LLM_BASE_URL environment variable not set."
             )
-        if not settings.SOW_LLM_MODEL:
+        self._model = settings.SOW_LLM_CLASSIFICATION_MODEL or settings.SOW_LLM_MODEL
+        if not self._model:
             raise ValueError(
-                "SOW_LLM_MODEL environment variable not set."
+                "No classification model configured: set SOW_LLM_CLASSIFICATION_MODEL "
+                "or SOW_LLM_MODEL."
             )
+        self._model_source = (
+            "SOW_LLM_CLASSIFICATION_MODEL"
+            if settings.SOW_LLM_CLASSIFICATION_MODEL
+            else "SOW_LLM_MODEL"
+        )
+        logger.info(f"LLM classification: model={self._model} (from {self._model_source})")
         # Reuse the same OpenAI client pattern as workers/lrc.py.
         self._client = OpenAI(
             api_key=settings.SOW_LLM_API_KEY,
@@ -238,7 +257,6 @@ class ThemeClassifier:
             timeout=settings.SOW_LLM_CLASSIFICATION_TIMEOUT_SECONDS,
             max_retries=0,  # retries handled by call_llm_with_retry
         )
-        self._model = settings.SOW_LLM_MODEL
 
     async def classify_components(
         self,
@@ -468,12 +486,23 @@ class ThemeClassifier:
         Returns the parsed JSON dict. Logs diagnostics before returning.
         """
         response = self._client.chat.completions.create(
-            model=self._model,
+            **chat_model_kwargs(self._model),
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
-            max_tokens=300,
+            max_tokens=settings.SOW_LLM_CLASSIFICATION_MAX_TOKENS,
         )
         self._log_llm_diagnostics(response, component)
+        if response.choices[0].finish_reason == "length":
+            usage = getattr(response, "usage", None)
+            details = getattr(usage, "completion_tokens_details", None)
+            reasoning_tokens = getattr(details, "reasoning_tokens", None)
+            raise LLMTruncationError(
+                f"LLM response truncated at max_tokens="
+                f"{settings.SOW_LLM_CLASSIFICATION_MAX_TOKENS} "
+                f"(occurrence={component.occurrence_index}, "
+                f"reasoning_tokens={reasoning_tokens}, model={self._model}); "
+                f"raise SOW_LLM_CLASSIFICATION_MAX_TOKENS or lower reasoning_effort"
+            )
         result = response.choices[0].message.content
         return self._parse_llm_json(result)
 
@@ -490,7 +519,9 @@ class ThemeClassifier:
         the canonical enum is dropped to ``None`` (with a warning) so the row
         still persists with a NULL theme rather than violating the
         ``song_components_theme_check`` DB constraint at INSERT time. The
-        reasoning/confidence fields are preserved for diagnostics.
+        reasoning fields are preserved for diagnostics, but confidence is
+        ``None`` whenever the corresponding label is dropped — a failed or
+        truncated call must never be mistaken for a confident classification.
         """
         raw_theme = parsed.get("theme")
         if raw_theme in THEME_CATEGORIES:
@@ -502,7 +533,7 @@ class ThemeClassifier:
                     f"occurrence={component.occurrence_index}; dropping to None"
                 )
             component.theme = None
-        component.theme_confidence = parsed.get("theme_confidence", 0.7)
+        component.theme_confidence = parsed.get("theme_confidence") if component.theme else None
         component.theme_reasoning = parsed.get("theme_reasoning", "")
 
         raw_posture = parsed.get("vocal_posture")
@@ -515,8 +546,8 @@ class ThemeClassifier:
                     f"occurrence={component.occurrence_index}; dropping to None"
                 )
             component.vocal_posture = None
-        component.vocal_posture_confidence = parsed.get(
-            "vocal_posture_confidence", 0.7
+        component.vocal_posture_confidence = (
+            parsed.get("vocal_posture_confidence") if component.vocal_posture else None
         )
         component.posture_reasoning = parsed.get("posture_reasoning", "")
 

@@ -131,6 +131,12 @@ class Settings(BaseSettings):
     SOW_LLM_BASE_URL: str = ""  # e.g., "https://openrouter.ai/api/v1"
     SOW_LLM_MODEL: str = ""  # e.g., "openai/gpt-4o-mini" for OpenRouter
 
+    SOW_LLM_CLASSIFICATION_MODEL: Optional[str] = None
+    # Optional model override for ThemeClassifier (component theme + vocal posture).
+    # Falls back to SOW_LLM_MODEL when None/empty. Point this at a cheaper or
+    # reasoning-free model to keep classification off the LRC alignment model.
+    # Accepts the same "model:effort" suffix form as SOW_LLM_MODEL.
+
     # LRC Gap Placeholder Insertion (YouTube transcript path)
     SOW_LRC_GAP_THRESHOLD_BEATS: float = 12.0
     # Minimum silent gap (beats) between the end of one lyric line and the start
@@ -204,6 +210,14 @@ class Settings(BaseSettings):
     # call_llm_with_retry() budget (SOW_LLM_RATE_LIMIT_TIMEOUT_SECONDS=1200s)
     # is the overall wall-clock ceiling across all retries.
 
+    SOW_LLM_CLASSIFICATION_MAX_TOKENS: int = 2048
+    # Completion-token ceiling for the ThemeClassifier chat call. The budget is
+    # shared with hidden reasoning tokens when the classification model carries
+    # an :effort suffix, so it must cover reasoning + the JSON answer; 300 was
+    # consumed entirely by reasoning at effort >= minimal and returned empty
+    # content with finish_reason="length". 2048 leaves ~2x headroom over the
+    # worst observed reasoning usage (1009 tokens) for 2000-char lyric payloads.
+
     SOW_LLM_MODEL_VALIDATION_TIMEOUT_SECONDS: float = 30.0
     # Per-request SDK-level HTTP timeout for the job-start /models validation call
     # in services/llm_models.py.
@@ -249,6 +263,13 @@ class Settings(BaseSettings):
     @field_validator("SOW_LLM_SEGMENTATION_MODEL", mode="before")
     @classmethod
     def _empty_str_to_none_segmentation(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @field_validator("SOW_LLM_CLASSIFICATION_MODEL", mode="before")
+    @classmethod
+    def _empty_str_to_none_classification(cls, v):
         if isinstance(v, str) and not v.strip():
             return None
         return v
@@ -301,6 +322,14 @@ class Settings(BaseSettings):
     SOW_MODAL_ANALYZER_MAX_ATTEMPTS: int = 2
     SOW_MODAL_ANALYZER_RETRY_DELAY_SECONDS: float = 5.0
     SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES: int = 150_000_000
+    # Beat/downbeat grid detection runs on the light sow-downbeats Modal app
+    # (modal_apps/downbeats_app.py: madmom-infer torch backend, no allin1), not in this
+    # container and not on sow-analyzer.
+    SOW_MODAL_DOWNBEATS_APP_NAME: str = "sow-downbeats"
+    SOW_MODAL_DOWNBEATS_CLASS_NAME: str = "DownbeatDetector"
+    SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS: int = 2
+    SOW_MODAL_DOWNBEATS_RETRY_DELAY_SECONDS: float = 5.0
+    SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES: int = 150_000_000
     SOW_ANALYSIS_CACHE_VERSION: int = 2  # bump: local allin1 CPU -> Modal GPU may shift BPM/beats/embedding values
     # Keeps ANALYZE jobs from all piling up client-side while Modal
     # max_containers=2 handles the GPU-side queue.

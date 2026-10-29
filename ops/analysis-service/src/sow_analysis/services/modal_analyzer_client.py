@@ -1,4 +1,7 @@
-"""Modal analyzer client — full-song analysis (allin1 + Demucs + madmom) on Modal.
+"""Modal analyzer client — full-song analysis (allin1 + Demucs) on Modal.
+
+Backs full ANALYZE jobs only; beat-grid detection for component analysis lives on
+the `sow-downbeats` app (services/modal_downbeats_client.py).
 
 Mirrors services/modal_forced_aligner_client.py: typed error classes, bounded
 retries with backoff, actionable messages, and a module-level singleton getter.
@@ -131,10 +134,7 @@ class ModalAnalyzerClient:
             filename=audio_path.name,
             request_id=request_id,
             log_prefix="[sow-analyzer]",
-            payload_kwargs={
-                "include_stems": output_stems_dir is not None,
-                "include_beat_grid": False,
-            },
+            payload_kwargs={"include_stems": output_stems_dir is not None},
         )
 
         stems = result.pop("stems", None)
@@ -148,44 +148,6 @@ class ModalAnalyzerClient:
             for stem_name, stem_bytes in stems.items():
                 (output_stems_dir / f"{stem_name}.wav").write_bytes(stem_bytes)
         return result
-
-    async def detect_beats(self, audio_path: Path) -> dict:
-        """Run madmom downbeat detection on Modal (no stems, no allin1 pass).
-
-        Returns the same payload shape the former in-container
-        _detect_downbeats_madmom produced (source/beats/downbeats/detected_at/
-        madmom_params).
-        """
-        if not self.is_configured:
-            raise ModalAnalyzerConfigError(
-                "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET must be set for downbeat detection"
-            )
-        if audio_path.stat().st_size == 0:
-            raise ModalAnalyzerError(f"Audio file is empty: {audio_path}")
-
-        prep_started = time.time()
-        audio_bytes = await asyncio.to_thread(transcode_to_wav_fullrate, audio_path)
-        logger.info(
-            "Beat-grid audio prepared for Modal in %.2fs (%d bytes, native-rate WAV)",
-            time.time() - prep_started,
-            len(audio_bytes),
-        )
-        if len(audio_bytes) > self.max_audio_bytes:
-            raise ModalAnalyzerError(
-                f"Audio too large for Modal blob upload "
-                f"({len(audio_bytes)} bytes > {self.max_audio_bytes}); "
-                "raise SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES"
-            )
-
-        request_id = uuid.uuid4().hex[:12]
-        return await self._invoke(
-            remote_method="detect_beats",
-            audio_bytes=audio_bytes,
-            filename=audio_path.name,
-            request_id=request_id,
-            log_prefix="[sow-analyzer-beats]",
-            payload_kwargs={},
-        )
 
     async def _invoke(
         self,

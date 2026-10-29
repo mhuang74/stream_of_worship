@@ -21,6 +21,7 @@ from typing import Optional
 from openai import OpenAI
 
 from ..config import settings
+from ..services.llm_models import chat_model_kwargs
 from .components import (
     ComponentInstance,
     _lines_match,
@@ -601,7 +602,7 @@ async def align_structured_lyrics(
 
     def _call() -> str:
         resp = client.chat.completions.create(
-            model=model,
+            **chat_model_kwargs(model),
             messages=messages,
             temperature=0,
             response_format={"type": "json_object"},

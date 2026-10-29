@@ -1,6 +1,7 @@
 """Tests for ThemeClassifier LLM theme/posture classification."""
 
 import asyncio
+import json
 import logging
 import sys
 from pathlib import Path
@@ -10,8 +11,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
 
-from sow_analysis.config import settings
-from sow_analysis.workers.classifier import ThemeClassifier, _lyric_hash, has_cached_llm_fields
+from sow_analysis.config import Settings, settings
+from sow_analysis.workers.classifier import (
+    LLMTruncationError,
+    ThemeClassifier,
+    _lyric_hash,
+    has_cached_llm_fields,
+)
 from sow_analysis.workers.components import ComponentInstance
 
 
@@ -23,6 +29,11 @@ def _make_component(occurrence=1, ctype="chorus", start=0.0, end=10.0, role="non
         start_time=start,
         end_time=end,
     )
+
+
+@pytest.fixture(autouse=True)
+def _unset_classification_model_override(monkeypatch):
+    monkeypatch.setattr(settings, "SOW_LLM_CLASSIFICATION_MODEL", None)
 
 
 @pytest.fixture
@@ -584,3 +595,137 @@ def test_has_cached_llm_fields_empty():
     assert has_cached_llm_fields(
         [], classify_theme=True, classify_vocal_posture=True
     )
+
+
+def test_classify_call_parses_model_effort(monkeypatch):
+    monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://test.example/v1")
+    monkeypatch.setattr(settings, "SOW_LLM_MODEL", "deepseek-v4.1-flash:low")
+    monkeypatch.setattr(settings, "SOW_LLM_CLASSIFICATION_MAX_TOKENS", 2048)
+    with patch("sow_analysis.workers.classifier.OpenAI") as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        clf = ThemeClassifier()
+    mock_client.chat.completions.create.return_value = _mock_response(
+        json.dumps(_parsed_result())
+    )
+
+    clf._do_classify_call(_make_component(), "prompt")
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "deepseek-v4.1-flash"
+    assert kwargs["reasoning_effort"] == "low"
+    assert kwargs["max_tokens"] == 2048
+
+
+def test_classification_model_override(monkeypatch):
+    """SOW_LLM_CLASSIFICATION_MODEL wins over SOW_LLM_MODEL on the wire."""
+    monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://test.example/v1")
+    monkeypatch.setattr(settings, "SOW_LLM_MODEL", "align-model")
+    monkeypatch.setattr(
+        settings, "SOW_LLM_CLASSIFICATION_MODEL", "classify-model:high"
+    )
+    with patch("sow_analysis.workers.classifier.OpenAI") as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        clf = ThemeClassifier()
+    mock_client.chat.completions.create.return_value = _mock_response(
+        json.dumps(_parsed_result())
+    )
+
+    clf._do_classify_call(_make_component(), "prompt")
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "classify-model"
+    assert kwargs["reasoning_effort"] == "high"
+
+
+def test_classification_model_empty_string_falls_back(monkeypatch):
+    """A blank SOW_LLM_CLASSIFICATION_MODEL behaves as unset."""
+    assert (
+        Settings(SOW_LLM_CLASSIFICATION_MODEL="   ").SOW_LLM_CLASSIFICATION_MODEL
+        is None
+    )
+
+    monkeypatch.setattr(settings, "SOW_LLM_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "SOW_LLM_BASE_URL", "https://test.example/v1")
+    monkeypatch.setattr(settings, "SOW_LLM_MODEL", "align-model")
+    monkeypatch.setattr(settings, "SOW_LLM_CLASSIFICATION_MODEL", "")
+    with patch("sow_analysis.workers.classifier.OpenAI") as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        clf = ThemeClassifier()
+    mock_client.chat.completions.create.return_value = _mock_response(
+        json.dumps(_parsed_result())
+    )
+
+    assert clf._model == "align-model"
+
+    clf._do_classify_call(_make_component(), "prompt")
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "align-model"
+    assert "reasoning_effort" not in kwargs
+
+
+def test_do_classify_call_raises_on_length_finish(classifier):
+    """finish_reason='length' and empty content is a loud error, not a NULL theme."""
+    classifier._client.chat.completions.create.return_value = _mock_response(
+        "", finish="length"
+    )
+
+    with pytest.raises(LLMTruncationError):
+        classifier._do_classify_call(_make_component(), "prompt")
+
+
+def test_truncation_skips_retry_and_warns(classifier, caplog):
+    """Truncation is non-retryable: one call, then a WARNING."""
+    caplog.set_level(logging.WARNING, logger="sow_analysis.workers.classifier")
+    calls = []
+
+    async def fake_call(sync_fn, *, description, loop=None):
+        calls.append(description)
+        raise LLMTruncationError("truncated at max_tokens=300")
+
+    with patch(
+        "sow_analysis.workers.classifier.call_llm_with_retry", new=fake_call
+    ):
+        asyncio.run(classifier._classify_component_llm(_make_component(), "lyrics"))
+
+    assert len(calls) == 1
+    assert any(
+        r.levelno == logging.WARNING and "LLM classification failed" in r.message
+        for r in caplog.records
+    )
+
+
+def test_apply_llm_result_none_confidence_when_label_dropped(classifier):
+    """A response with no labels must not fabricate 0.7 confidence."""
+    component = _make_component(occurrence=1, role="entry")
+    parsed = {
+        "theme": None,
+        "vocal_posture": None,
+        "theme_confidence": 0.7,
+        "vocal_posture_confidence": 0.7,
+    }
+
+    classifier._apply_llm_result(component, parsed, heuristic_posture=None)
+
+    assert component.theme is None
+    assert component.vocal_posture is None
+    assert component.theme_confidence is None
+    assert component.vocal_posture_confidence is None
+
+
+def test_apply_llm_result_keeps_confidence_for_canonical_label(classifier):
+    """Canonical labels keep the LLM-reported confidence."""
+    component = _make_component(occurrence=1, role="entry")
+    parsed = _parsed_result(theme="十字架", posture="To God")
+
+    classifier._apply_llm_result(component, parsed, heuristic_posture=None)
+
+    assert component.theme == "十字架"
+    assert component.vocal_posture == "To God"
+    assert component.theme_confidence == 0.9
+    assert component.vocal_posture_confidence == 0.9

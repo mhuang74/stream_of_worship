@@ -24,6 +24,11 @@ class TestSettings:
             assert settings.CACHE_DIR == Path("/cache")
             assert settings.SOW_MODAL_ANALYZER_APP_NAME == "sow-analyzer"
             assert settings.SOW_MODAL_ANALYZER_CLASS_NAME == "SongAnalyzer"
+            assert settings.SOW_MODAL_DOWNBEATS_APP_NAME == "sow-downbeats"
+            assert settings.SOW_MODAL_DOWNBEATS_CLASS_NAME == "DownbeatDetector"
+            assert settings.SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS == 2
+            assert settings.SOW_MODAL_DOWNBEATS_RETRY_DELAY_SECONDS == 5.0
+            assert settings.SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES == 150_000_000
             assert settings.SOW_ANALYSIS_CACHE_VERSION == 2
             assert settings.SOW_ANALYZE_MAX_CONCURRENT == 2
             assert settings.SOW_EMBEDDING_API_KEY == ""
@@ -40,6 +45,7 @@ class TestSettings:
             "SOW_ANALYSIS_API_KEY": "api-key",
             "CACHE_DIR": "/custom/cache",
             "SOW_MODAL_ANALYZER_APP_NAME": "sow-analyzer-test",
+            "SOW_MODAL_DOWNBEATS_APP_NAME": "sow-downbeats-test",
             "SOW_ANALYZE_MAX_CONCURRENT": "4",
         }
 
@@ -53,6 +59,7 @@ class TestSettings:
             assert settings.SOW_ANALYSIS_API_KEY == "api-key"
             assert settings.CACHE_DIR == Path("/custom/cache")
             assert settings.SOW_MODAL_ANALYZER_APP_NAME == "sow-analyzer-test"
+            assert settings.SOW_MODAL_DOWNBEATS_APP_NAME == "sow-downbeats-test"
             assert settings.SOW_ANALYZE_MAX_CONCURRENT == 4
 
     def test_embedding_values_from_env(self):

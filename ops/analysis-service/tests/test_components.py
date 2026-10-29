@@ -1152,7 +1152,7 @@ class TestGetOrDetectBeatGrid:
 
     @staticmethod
     def _patch_client(payload, side_effect=None):
-        """Patch get_modal_analyzer_client to return a client whose
+        """Patch get_modal_downbeats_client to return a client whose
         detect_beats is an AsyncMock resolving to payload."""
         from unittest.mock import MagicMock
         from unittest.mock import AsyncMock as _AM
@@ -1162,7 +1162,7 @@ class TestGetOrDetectBeatGrid:
             _AM(side_effect=side_effect) if side_effect else _AM(return_value=payload)
         )
         return patch(
-            "sow_analysis.workers.components.get_modal_analyzer_client",
+            "sow_analysis.workers.components.get_modal_downbeats_client",
             return_value=client,
         )
 
