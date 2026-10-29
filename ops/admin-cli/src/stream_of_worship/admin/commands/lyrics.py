@@ -27,6 +27,7 @@ from rich.rule import Rule
 from rich.table import Table
 
 from stream_of_worship.admin.audit import log_change
+from stream_of_worship.admin.commands.audio import _format_lrc_source_short
 from stream_of_worship.admin.commands.catalog import get_db_client
 from stream_of_worship.admin.config import AdminConfig, get_cache_dir
 from stream_of_worship.admin.constants import FORCED_ALIGN_MAX_DURATION_SECONDS
@@ -68,6 +69,7 @@ from stream_of_worship.admin.services.structured_lyrics import (
 )
 from stream_of_worship.admin.services.visibility import (
     ensure_reprocessable,
+    format_visibility,
     is_published,
     visibility_alternatives,
     visibility_badge,
@@ -204,6 +206,8 @@ def feedback_list(
                 r.hash_prefix,
                 s.id AS song_id,
                 s.title,
+                r.visibility_status,
+                r.lrc_source,
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL) AS open_count,
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL AND f.rating = 'happy') AS open_happy,
                 COUNT(*) FILTER (WHERE f.resolved_at IS NULL AND f.rating = 'sad' AND f.reason = 'missing') AS open_missing,
@@ -216,7 +220,8 @@ def feedback_list(
             LEFT JOIN recordings r ON r.content_hash = f.recording_content_hash
             LEFT JOIN songs s ON s.id = r.song_id
             WHERE {where}
-            GROUP BY r.content_hash, r.hash_prefix, s.id, s.title
+            GROUP BY r.content_hash, r.hash_prefix, s.id, s.title,
+                     r.visibility_status, r.lrc_source
             {having}
             ORDER BY MAX(f.created_at) FILTER (WHERE f.resolved_at IS NULL) DESC NULLS LAST,
                       r.hash_prefix
@@ -263,6 +268,8 @@ def feedback_list(
                 hash_prefix,
                 song_id,
                 title,
+                visibility_status,
+                lrc_source,
                 open_count,
                 open_happy,
                 open_missing,
@@ -278,6 +285,8 @@ def feedback_list(
                     "hash_prefix": hash_prefix,
                     "song_id": song_id,
                     "title": title,
+                    "visibility_status": visibility_status,
+                    "lrc_source": lrc_source,
                     "open_count": open_count,
                     "open_happy": open_happy,
                     "reasons": {
@@ -333,6 +342,8 @@ def feedback_list(
 
     table = Table(title="Lyrics Feedback Queue")
     table.add_column("Song", style="cyan")
+    table.add_column("Vis", justify="center", no_wrap=True)
+    table.add_column("LRC Src", no_wrap=True, overflow="ellipsis")
     table.add_column("Song ID", style="magenta")
     table.add_column("Like", justify="center")
     table.add_column("Open", justify="right")
@@ -346,6 +357,8 @@ def feedback_list(
             hash_prefix,
             song_id,
             title,
+            visibility_status,
+            lrc_source,
             open_count,
             open_happy,
             open_missing,
@@ -363,6 +376,8 @@ def feedback_list(
         }
         table.add_row(
             _truncate(title),
+            format_visibility(visibility_status),
+            _format_lrc_source_short(lrc_source),
             song_id if song_id else hash_prefix,
             "👍" if open_happy == open_count else "👎",
             str(open_count),
@@ -371,6 +386,7 @@ def feedback_list(
             latest_report.strftime("%Y-%m-%d") if latest_report else "",
         )
     console.print(table)
+    console.print("[dim]● published   ◐ review   ○ hold   · none[/dim]")
 
 
 def _resolve_target(conn, target: str) -> Optional[tuple[str, Optional[str]]]:

@@ -345,6 +345,30 @@ def _format_lrc_source(lrc_source: Optional[str]) -> str:
     return mapping.get(lrc_source, lrc_source)
 
 
+# Compact labels for narrow table columns (e.g. the feedback queue).
+_LRC_SOURCE_ABBREVIATIONS = {
+    "youtube_transcript": "YT",
+    "youtube_transcript_asr_tail": "YT+tail",
+    "qwen3_asr": "Qwen3",
+    "whisper_asr": "Whisper",
+    "forced_alignment": "Align",
+    "manual_upload": "Manual",
+    "llm_edit": "LLM",
+    "r2_preexisting": "R2",
+}
+
+
+def _format_lrc_source_short(lrc_source: Optional[str]) -> str:
+    """Abbreviated provenance label; blank for NULL (legacy) rows.
+
+    Unknown values pass through verbatim so a new provenance string is still
+    visible (the column ellipsizes) rather than silently dropped.
+    """
+    if lrc_source is None:
+        return ""
+    return _LRC_SOURCE_ABBREVIATIONS.get(lrc_source, lrc_source)
+
+
 def _read_albums_from_file(path: Path) -> list[str]:
     """Read album name filters from a file, one per line.
 

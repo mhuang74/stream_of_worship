@@ -119,6 +119,80 @@ class TestBackupR2Command:
         assert (output / "manifest.json").exists()
         assert (output / "chunk-000000.tar").exists()
 
+    def test_backup_lrc_only_filters_non_lrc(self, tmp_path):
+        """backup-r2 --lrc-only keeps only *.lrc keys and appends __lrc-only to the output name."""
+        import tarfile
+
+        lrc_keys = {
+            "abc123def456/lyrics.lrc",
+            "abc123def456/lyrics.backup.1700000000000.lrc",
+            "abc123def456/backups/lyrics.20250101T000000Z.lrc",
+        }
+        objects = [
+            {"key": "abc123def456/lyrics.lrc", "size": 5, "data": b"lyric"},
+            {
+                "key": "abc123def456/lyrics.backup.1700000000000.lrc",
+                "size": 6,
+                "data": b"lyric2",
+            },
+            {
+                "key": "abc123def456/backups/lyrics.20250101T000000Z.lrc",
+                "size": 6,
+                "data": b"lyric3",
+            },
+            {"key": "abc123def456/audio.mp3", "size": 4, "data": b"mp3!"},
+            {"key": "abc123def456/stems/bass.wav", "size": 4, "data": b"wav!"},
+        ]
+        r2 = _make_r2_mock(objects)
+        config = AdminConfig(database_url="postgresql://example", r2_endpoint_url="https://r2.example.com")
+        output = tmp_path / "backup"
+        expected = tmp_path / "backup__lrc-only"
+
+        with (
+            patch("stream_of_worship.admin.commands.maintenance.AdminConfig.load", return_value=config),
+            patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=MagicMock()),
+            patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+        ):
+            result = runner.invoke(
+                app,
+                ["maintenance", "backup-r2", "--output", str(output), "--lrc-only"],
+            )
+
+        assert result.exit_code == 0
+        assert expected.exists()
+        assert not output.exists()
+
+        manifest = json.loads((expected / "manifest.json").read_text())
+        assert {obj["key"] for obj in manifest["objects"]} == lrc_keys
+        assert manifest["object_count"] == 3
+
+        with tarfile.open(expected / "chunk-000000.tar") as archive:
+            assert len(archive.getmembers()) == 3
+
+    def test_backup_lrc_only_zero_matches_fails(self, tmp_path):
+        """backup-r2 --lrc-only exits 1 without writing when no LRC objects exist."""
+        objects = [
+            {"key": "abc123def456/audio.mp3", "size": 4, "data": b"mp3!"},
+        ]
+        r2 = _make_r2_mock(objects)
+        config = AdminConfig(database_url="postgresql://example", r2_endpoint_url="https://r2.example.com")
+        output = tmp_path / "backup"
+
+        with (
+            patch("stream_of_worship.admin.commands.maintenance.AdminConfig.load", return_value=config),
+            patch("stream_of_worship.admin.commands.maintenance.get_db_client", return_value=MagicMock()),
+            patch("stream_of_worship.admin.commands.maintenance.R2Client", return_value=r2),
+        ):
+            result = runner.invoke(
+                app,
+                ["maintenance", "backup-r2", "--output", str(output), "--lrc-only"],
+            )
+
+        assert result.exit_code == 1
+        assert "No LRC objects matched" in result.output
+        assert not output.exists()
+        assert not (tmp_path / "backup__lrc-only").exists()
+
     def test_backup_refuses_existing_output(self, tmp_path):
         """backup-r2 refuses if --output already exists."""
         output = tmp_path / "existing"
