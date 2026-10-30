@@ -1,16 +1,16 @@
 # Graph Report - stream_of_worship  (2026-10-30)
 
 ## Corpus Check
-- 939 files · ~827,686 words
+- 939 files · ~827,736 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 11107 nodes · 22683 edges · 497 communities (396 shown, 101 thin omitted)
+- 11107 nodes · 22683 edges · 495 communities (394 shown, 101 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 1021 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `189d43e8`
+- Built from commit: `4327ffba`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -74,7 +74,7 @@
 - createSowPlayerView
 - SongsetProposal
 - looks_like_oversize_payload
-- auth.ts
+- .action_preview_continuous
 - LRCEditorScreen
 - chapters.ts
 - SettingsViewModel
@@ -87,7 +87,7 @@
 - CatalogService
 - PlayerController
 - ParametersPanel
-- settings/route.ts
+- auth.ts
 - HistoryScreen
 - devDependencies
 - VideoEngine
@@ -166,7 +166,7 @@
 - SadFeedbackDialog
 - EditorState
 - .__init__
-- ._selected_editor_role
+- zod
 - PlaybackService
 - Analysis Service - Developer Guide
 - forced_alignment.py
@@ -246,7 +246,6 @@
 - songset_constructor/cache.py
 - convert
 - dump_index
-- .on_input_submitted
 - TransitionBuilderApp
 - Workflow
 - BackupProgress
@@ -383,7 +382,6 @@
 - parse-env.md
 - sdk.md
 - @aws-sdk/client-sqs
-- better-auth
 - SowApiClientTest
 - marketing/eslint.config.mjs
 - .load
@@ -520,7 +518,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (497 total, 101 thin omitted)
+## Communities (495 total, 101 thin omitted)
 
 ### Community 0 - "renderWithLocale"
 Cohesion: 0.03
@@ -579,8 +577,8 @@ Cohesion: 0.06
 Nodes (39): PlayerLyricsPanel(), PlayerLyricsPanelProps, buildLrc(), lrcTimestampToSeconds(), LyricsTimingEditor(), LyricsTimingEditorProps, secondsToLrcTimestamp(), CURSOR_COLORS (+31 more)
 
 ### Community 14 - "dashboard.ts"
-Cohesion: 0.13
-Nodes (18): GET(), loadPage(), FavoritesPage(), RootLayout(), HomePage(), userFavorites, getCommunityFavoriteSample(), getDashboardStats() (+10 more)
+Cohesion: 0.10
+Nodes (24): GET(), addFavoriteSchema, GET(), POST(), loadPage(), FavoritesPage(), RootLayout(), ListenPage() (+16 more)
 
 ### Community 15 - "AudioPlayerContext.tsx"
 Cohesion: 0.05
@@ -639,8 +637,8 @@ Cohesion: 0.18
 Nodes (10): CoroutineScope, RenderFormConfig, RenderJob, SongsetDetail, StateFlow, ViewModel, RenderUiState, RenderViewModel (+2 more)
 
 ### Community 29 - "r2/client.ts"
-Cohesion: 0.05
-Nodes (40): GET(), LyricsResponse, ALLOWED_FILES, CONTENT_TYPES, FILE_TYPES, GET(), GET(), POST() (+32 more)
+Cohesion: 0.04
+Nodes (46): GET(), LyricsResponse, ALLOWED_FILES, CONTENT_TYPES, FILE_TYPES, GET(), GET(), GET() (+38 more)
 
 ### Community 30 - "analyzer.py"
 Cohesion: 0.10
@@ -696,7 +694,7 @@ Nodes (66): formatTime(), LyricsReviewSheet(), LyricsReviewSheetProps, TABS, Tab
 
 ### Community 43 - "ExportService"
 Cohesion: 0.04
-Nodes (43): AppConfig, Initialize the application. Args: config: Application configuration, ExportProgressScreen, AppState, Pressed, Screen, Update UI with progress (called from main thread). Args: progress: Current…, Handle button presses. (+35 more)
+Nodes (41): ExportProgressScreen, AppState, Pressed, Screen, Update UI with progress (called from main thread). Args: progress: Current…, Handle button presses., Screen for showing export progress., Initialize the screen. Args: state: Application state export_service: Export… (+33 more)
 
 ### Community 44 - "GenerationScreen"
 Cohesion: 0.06
@@ -712,7 +710,7 @@ Nodes (27): SongsetDetail, SongsetItem, SongsetItemRecording, SongsetItemSong, S
 
 ### Community 47 - "PlaybackService"
 Cohesion: 0.06
-Nodes (23): PlaybackService, Path, Get current playback state., Check if currently playing., Get currently loaded file., Get duration of current file in seconds., Get current position in seconds., Get current playback position information. Returns: PlaybackPosition with… (+15 more)
+Nodes (25): AppConfig, Initialize the application. Args: config: Application configuration, PlaybackService, Path, Get current playback state., Check if currently playing., Get currently loaded file., Get duration of current file in seconds. (+17 more)
 
 ### Community 48 - "Qwen3AsrClient"
 Cohesion: 0.08
@@ -758,13 +756,9 @@ Nodes (59): main(), _draft_to_proposal(), LangGraph state schema., DraftItem, Ju
 Cohesion: 0.09
 Nodes (23): BaseException, Path, Audio transcoding helpers shared by the Modal clients., Transcode a local audio file to 16 kHz mono PCM-16 WAV bytes. Blocking (librosa…, Decode a local audio file to native-rate stereo PCM-16 WAV bytes (no resample).…, transcode_to_16k_mono_wav(), transcode_to_wav_fullrate(), ModalForcedAlignerClient (+15 more)
 
-### Community 59 - "auth.ts"
-Cohesion: 0.08
-Nodes (28): { GET, POST }, addFavoriteSchema, GET(), POST(), DELETE(), GET(), GET(), GET() (+20 more)
-
 ### Community 60 - "LRCEditorScreen"
-Cohesion: 0.07
-Nodes (13): LRCEditorScreen, Path, PlaybackState, Resize, Apply a FeedbackDialog result; never crash the editor on errors., Kick off the blocking regeneration pipeline on a daemon thread., Report worker-thread progress on the main thread., Kick off the blocking alignment pipeline on a daemon thread. (+5 more)
+Cohesion: 0.06
+Nodes (14): LRCEditorScreen, DataTable, Path, PlaybackState, Resize, Parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds., Apply a FeedbackDialog result; never crash the editor on errors., Kick off the blocking regeneration pipeline on a daemon thread. (+6 more)
 
 ### Community 61 - "chapters.ts"
 Cohesion: 0.07
@@ -810,9 +804,9 @@ Nodes (10): Error, IsPlayingChanged, PlaybackErrorKind, Decoder, Generic, Player
 Cohesion: 0.11
 Nodes (14): ParametersPanel, Blurred, Changed, ComposeResult, Input, Submitted, Panel for configuring transition parameters., Create child widgets. (+6 more)
 
-### Community 72 - "settings/route.ts"
-Cohesion: 0.07
-Nodes (26): DEFAULTS, GET(), PUT(), VALID_FONT_PRESETS, VALID_FONTS, VALID_RESOLUTIONS, VALID_TEMPLATES, userSettings (+18 more)
+### Community 72 - "auth.ts"
+Cohesion: 0.05
+Nodes (42): { GET, POST }, DELETE(), DEFAULTS, GET(), PUT(), VALID_FONT_PRESETS, VALID_FONTS, VALID_RESOLUTIONS (+34 more)
 
 ### Community 73 - "HistoryScreen"
 Cohesion: 0.05
@@ -880,7 +874,7 @@ Nodes (16): Cookie, AppConfig, T, SowApiClient, SowApiClientFactory, AndroidSecu
 
 ### Community 89 - "dependencies"
 Cohesion: 0.06
-Nodes (33): @aws-sdk/client-s3, @aws-sdk/s3-request-presigner, @base-ui/react, dependencies, @aws-sdk/client-s3, @aws-sdk/s3-request-presigner, @base-ui/react, class-variance-authority (+25 more)
+Nodes (33): @aws-sdk/client-s3, @aws-sdk/s3-request-presigner, @base-ui/react, better-auth, dependencies, @aws-sdk/client-s3, @aws-sdk/s3-request-presigner, @base-ui/react (+25 more)
 
 ### Community 90 - "CacheManager"
 Cohesion: 0.07
@@ -923,8 +917,8 @@ Cohesion: 0.12
 Nodes (12): TUI models for Stream of Worship., Format seconds as MM:SS., Format section for display: 'Chorus (1:23-2:10, 47s)'., Represents a section within a song., Section, Initialize default values., Return unique identifier for song., Return formatted display name with BPM and key. (+4 more)
 
 ### Community 100 - "ComponentEditorScreen"
-Cohesion: 0.11
-Nodes (8): ComponentEditorScreen, Any, Path, Resize, Merge dirty edits into R2 components.json and upload., Replace session components with refreshed SongComponent objects reflecting the…, Main interactive Component Metadata editor screen (v4). Provides: - Song…, Return the field key for the current cursor column (retained for autosave…
+Cohesion: 0.07
+Nodes (15): CellHighlighted, CellSelected, ComponentEditorScreen, Any, Resize, RowHighlighted, Play or pause the song, anchored to the highlighted component. - If playing:…, Merge dirty edits into R2 components.json and upload. (+7 more)
 
 ### Community 101 - "FakeMediaPlayerFacade"
 Cohesion: 0.11
@@ -955,8 +949,8 @@ Cohesion: 0.02
 Nodes (187): _format_lrc_source_short(), Abbreviated provenance label; blank for NULL (legacy) rows. Unknown values pass…, _build_fresh_editor_state(), _confirm_llm_trace_dump(), _confirm_open_editor(), _current_visibility(), EditorSessionOutcome, feedback_list() (+179 more)
 
 ### Community 108 - "._refresh_hero"
-Cohesion: 0.20
-Nodes (6): CellHighlighted, CellSelected, RowHighlighted, Submitted, v4 NEW. Re-renders the ComponentHeroPanel against the current state., v6. Re-renders the ComponentDetailPanel against the current state. Skips if…
+Cohesion: 0.22
+Nodes (4): Path, Submitted, v4 NEW. Re-renders the ComponentHeroPanel against the current state., v6. Re-renders the ComponentDetailPanel against the current state. Skips if…
 
 ### Community 109 - ".load"
 Cohesion: 0.03
@@ -1031,8 +1025,8 @@ Cohesion: 0.12
 Nodes (25): main(), circular_pc_distance(), _circular_pc_set_within(), _parse_freeform_range(), _parse_note_to_pc(), Parse a free-form range string like 'A2 to G4' or 'G2-E4'. Returns…, Resolve a user-provided voice description to comfortable tonic PCs. Accepts: -…, Chromatic distance between two pitch classes on the circle. (+17 more)
 
 ### Community 127 - "._guard_active_edit"
-Cohesion: 0.12
-Nodes (8): LyricLineTable, Open the lyrics feedback dialog (hotkey f)., Force-regenerate the LRC via the analysis service (hotkey G)., Force-align the LRC via the analysis service (hotkey A)., Reload the latest R2 LRC without regenerating (hotkey L)., Fetch the current R2 LRC on a daemon thread (blocking S3 I/O)., Lyrics table with preview-aware row navigation., Paste
+Cohesion: 0.13
+Nodes (7): LyricLineTable, Open the lyrics feedback dialog (hotkey f)., Force-regenerate the LRC via the analysis service (hotkey G)., Force-align the LRC via the analysis service (hotkey A)., Reload the latest R2 LRC without regenerating (hotkey L)., Lyrics table with preview-aware row navigation., Paste
 
 ### Community 128 - "migrate_song_library.py"
 Cohesion: 0.15
@@ -1125,10 +1119,6 @@ Nodes (38): LRCLine, EditorState, LRCLine, Set the timestamp for a lyric line. R
 ### Community 150 - ".__init__"
 Cohesion: 0.08
 Nodes (23): Initialize the application. Args: config_path: Path to config.json, Load the song catalog from JSON., Handle play button press., Transition generation service for TUI. Handles generation of audio transitions…, Initialize transition generation service. Args: output_dir: Directory for…, get_error_logger(), get_session_logger(), init_error_logger() (+15 more)
-
-### Community 151 - "._selected_editor_role"
-Cohesion: 0.15
-Nodes (5): Play or pause the song, anchored to the highlighted component. - If playing:…, Pause playback if the position has reached the selected component's end_time.…, v6. Update the lyrics panel's current-line highlight based on playback…, Return the editor-level role key for the currently highlighted table row., Return True (and bell) if the selected role has no component row.
 
 ### Community 152 - "PlaybackService"
 Cohesion: 0.11
