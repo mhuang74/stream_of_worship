@@ -31,12 +31,13 @@ details > summary { cursor: pointer; font-weight: 600; margin: .6rem 0; }
 </head>
 <body>
 <h1>Structured Lyric Rebuild — Review Corpus</h1>
-<p>Corpus: <code>visibility_status = &#x27;review&#x27; AND deleted_at IS NULL</code> — <strong>340</strong> recordings, queried 2026-10-30T07:41:03+00:00. The headline partition below is <strong>provable</strong>: it compares a per-song md5 snapshot taken before the rebuild against the stored value now. The material / non-material / verbatim split is a <strong>proxy</strong> that compares each new parse against the stale <code>lyrics.lrc</code> object, which holds YouTube ASR text rather than the pre-rebuild structured lyrics.</p>
+<p>Corpus: <code>visibility_status = &#x27;review&#x27; AND deleted_at IS NULL</code> — <strong>340</strong> recordings, queried 2026-10-30T07:44:44+00:00. The headline partition below is <strong>provable</strong>: it compares a per-song md5 snapshot taken before the rebuild against the stored value now. The material / non-material / verbatim split is a <strong>proxy</strong> that compares each new parse against the stale <code>lyrics.lrc</code> object, which holds YouTube ASR text rather than the pre-rebuild structured lyrics.</p>
 <h2>Headline (provable from the pre-run md5 snapshot)</h2>
 <table>
 <tr><th>Bucket</th><th class="num">Count</th><th>Meaning</th></tr>
 <tr><td>created</td><td class="num">128</td><td>no structured lyrics before the rebuild</td></tr>
 <tr><td>rebuilt</td><td class="num">212</td><td>had structured lyrics; the stored JSON provably differs now</td></tr>
+<tr><td>byte_identical</td><td class="num">0</td><td>stored JSON unchanged</td></tr>
 <tr><th>Total</th><th class="num">340</th><th></th></tr>
 </table>
 <p class="note">The reconstructed column is stored as <code>json.dumps(structured, ensure_ascii=False)</code>, so md5 equality is exactly parse equality.</p>
@@ -440,6 +441,6 @@ details > summary { cursor: pointer; font-weight: 600; margin: .6rem 0; }
 <pre>set -a; . /opt/sow/.env; set +a
 uv run --project ops/admin-cli --extra admin \
     python ops/admin-cli/scripts/report_structured_lyrics_rebuild.py</pre>
-<p class="note">Pre-run md5 snapshot: <code>/tmp/sow-review-pre.csv</code> (rows <code>song_id|md5(coalesce(structured_lyrics,''))</code>). Generated 2026-10-30T07:41:03+00:00.</p>
+<p class="note">Pre-run md5 snapshot: <code>/tmp/sow-review-pre.csv</code> (rows <code>song_id|md5(coalesce(structured_lyrics,''))</code>). Generated 2026-10-30T07:44:44+00:00.</p>
 </body>
 </html>
