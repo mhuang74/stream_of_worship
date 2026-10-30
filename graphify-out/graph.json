@@ -8168,58 +8168,6 @@
       "source_location": "L39"
     },
     {
-      "id": "delivery_webapp_src_app_api_songs_id_route_routeparams",
-      "label": "RouteParams",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "routeparams",
-      "source_file": "delivery/webapp/src/app/api/songs/[id]/route.ts",
-      "source_location": "L5"
-    },
-    {
-      "id": "delivery_webapp_src_lib_auth_user",
-      "label": "User",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "user",
-      "source_file": "delivery/webapp/src/lib/auth.ts",
-      "source_location": "L63"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client_emailsendargs",
-      "label": "EmailSendArgs",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "emailsendargs",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L8"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client_sendemailparams",
-      "label": "SendEmailParams",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "sendemailparams",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L26"
-    },
-    {
       "id": "lab_poc_scripts_score_lrc_quality_linescore",
       "label": "LineScore",
       "_callable": true,
@@ -8961,17 +8909,69 @@
       "source_location": "L165"
     },
     {
+      "id": "delivery_webapp_src_app_api_songs_id_route_routeparams",
+      "label": "RouteParams",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "routeparams",
+      "source_file": "delivery/webapp/src/app/api/songs/[id]/route.ts",
+      "source_location": "L5"
+    },
+    {
       "id": "delivery_webapp_src_lib_auth_session",
       "label": "Session",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "session",
       "source_file": "delivery/webapp/src/lib/auth.ts",
       "source_location": "L62"
+    },
+    {
+      "id": "delivery_webapp_src_lib_auth_user",
+      "label": "User",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "user",
+      "source_file": "delivery/webapp/src/lib/auth.ts",
+      "source_location": "L63"
+    },
+    {
+      "id": "delivery_webapp_src_lib_email_client_emailsendargs",
+      "label": "EmailSendArgs",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "emailsendargs",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L8"
+    },
+    {
+      "id": "delivery_webapp_src_lib_email_client_sendemailparams",
+      "label": "SendEmailParams",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "sendemailparams",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L26"
     },
     {
       "id": "lab_poc_scripts_transition_builder_v2_app_screens_history_historyscreen",
@@ -12394,6 +12394,30 @@
       "source_location": "L40"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_edit_numeric",
+      "label": ".action_edit_numeric()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": ".action_edit_numeric()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L1347"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_jump_to_component",
+      "label": ".action_jump_to_component()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": ".action_jump_to_component()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L1269"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_quit_editor",
       "label": ".action_quit_editor()",
       "_callable": true,
@@ -12416,6 +12440,18 @@
       "norm_label": ".action_show_keymap()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L1527"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_toggle_playback_for_component",
+      "label": ".action_toggle_playback_for_component()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": ".action_toggle_playback_for_component()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L1236"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_cancel_row_edit",
@@ -12442,6 +12478,18 @@
       "source_location": "L558"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_check_component_playback_end",
+      "label": "._check_component_playback_end()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._check_component_playback_end()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L743"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_format_cell_value",
       "label": "._format_cell_value()",
       "_callable": true,
@@ -12452,6 +12500,18 @@
       "norm_label": "._format_cell_value()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L566"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_guard_no_component",
+      "label": "._guard_no_component()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._guard_no_component()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L868"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_hide_row_edit_input",
@@ -12478,28 +12538,64 @@
       "source_location": "L859"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_load_audio_for_current_song",
-      "label": "._load_audio_for_current_song()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_data_table_cell_highlighted",
+      "label": ".on_data_table_cell_highlighted()",
       "_callable": true,
       "_origin": "ast",
       "community": 100,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._load_audio_for_current_song()",
+      "norm_label": ".on_data_table_cell_highlighted()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L727"
+      "source_location": "L843"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_mount",
-      "label": ".on_mount()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_data_table_cell_selected",
+      "label": ".on_data_table_cell_selected()",
       "_callable": true,
       "_origin": "ast",
       "community": 100,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": ".on_mount()",
+      "norm_label": ".on_data_table_cell_selected()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L517"
+      "source_location": "L851"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_data_table_row_highlighted",
+      "label": ".on_data_table_row_highlighted()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": ".on_data_table_row_highlighted()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L837"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_finished",
+      "label": "._on_playback_finished()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._on_playback_finished()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L799"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_position",
+      "label": "._on_playback_position()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._on_playback_position()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L770"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_resize",
@@ -12562,6 +12658,18 @@
       "source_location": "L1457"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_selected_editor_role",
+      "label": "._selected_editor_role()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._selected_editor_role()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L804"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_selected_field_key",
       "label": "._selected_field_key()",
       "_callable": true,
@@ -12574,40 +12682,64 @@
       "source_location": "L812"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_setup_table",
-      "label": "._setup_table()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_show_value_edit_input",
+      "label": "._show_value_edit_input()",
       "_callable": true,
       "_origin": "ast",
       "community": 100,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._setup_table()",
+      "norm_label": "._show_value_edit_input()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L551"
+      "source_location": "L898"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_start_position_updates",
-      "label": "._start_position_updates()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_sync_selection_from_table_cursor",
+      "label": "._sync_selection_from_table_cursor()",
       "_callable": true,
       "_origin": "ast",
       "community": 100,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._start_position_updates()",
+      "norm_label": "._sync_selection_from_table_cursor()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L733"
+      "source_location": "L819"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_breadcrumb",
-      "label": "._update_breadcrumb()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_lyrics_highlight",
+      "label": "._update_lyrics_highlight()",
       "_callable": true,
       "_origin": "ast",
       "community": 100,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._update_breadcrumb()",
+      "norm_label": "._update_lyrics_highlight()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L612"
+      "source_location": "L775"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_playback_bar",
+      "label": "._update_playback_bar()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._update_playback_bar()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L761"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_validate_numeric_field",
+      "label": "._validate_numeric_field()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._validate_numeric_field()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L931"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_player_playbackwakelock_androidwakelockhandle_acquire",
@@ -14650,6 +14782,18 @@
       "source_location": "L1020"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_load_audio_for_current_song",
+      "label": "._load_audio_for_current_song()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 108,
+      "community_name": "._refresh_hero",
+      "file_type": "code",
+      "norm_label": "._load_audio_for_current_song()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L727"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_maybe_apply_autosave",
       "label": "._maybe_apply_autosave()",
       "_callable": true,
@@ -14674,42 +14818,6 @@
       "source_location": "L1607"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_data_table_cell_highlighted",
-      "label": ".on_data_table_cell_highlighted()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 108,
-      "community_name": "._refresh_hero",
-      "file_type": "code",
-      "norm_label": ".on_data_table_cell_highlighted()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L843"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_data_table_cell_selected",
-      "label": ".on_data_table_cell_selected()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 108,
-      "community_name": "._refresh_hero",
-      "file_type": "code",
-      "norm_label": ".on_data_table_cell_selected()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L851"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_data_table_row_highlighted",
-      "label": ".on_data_table_row_highlighted()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 108,
-      "community_name": "._refresh_hero",
-      "file_type": "code",
-      "norm_label": ".on_data_table_row_highlighted()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L837"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_input_submitted",
       "label": ".on_input_submitted()",
       "_callable": true,
@@ -14720,6 +14828,18 @@
       "norm_label": ".on_input_submitted()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L962"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_mount",
+      "label": ".on_mount()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 108,
+      "community_name": "._refresh_hero",
+      "file_type": "code",
+      "norm_label": ".on_mount()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L517"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_refresh_detail_panel",
@@ -14758,6 +14878,30 @@
       "source_location": "L575"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_setup_table",
+      "label": "._setup_table()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 108,
+      "community_name": "._refresh_hero",
+      "file_type": "code",
+      "norm_label": "._setup_table()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L551"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_start_position_updates",
+      "label": "._start_position_updates()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 108,
+      "community_name": "._refresh_hero",
+      "file_type": "code",
+      "norm_label": "._start_position_updates()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L733"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_switch_song",
       "label": "._switch_song()",
       "_callable": true,
@@ -14770,16 +14914,16 @@
       "source_location": "L1074"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_sync_selection_from_table_cursor",
-      "label": "._sync_selection_from_table_cursor()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_breadcrumb",
+      "label": "._update_breadcrumb()",
       "_callable": true,
       "_origin": "ast",
       "community": 108,
       "community_name": "._refresh_hero",
       "file_type": "code",
-      "norm_label": "._sync_selection_from_table_cursor()",
+      "norm_label": "._update_breadcrumb()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L819"
+      "source_location": "L612"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_status",
@@ -18898,18 +19042,6 @@
       "source_location": "L1116"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_start_reload",
-      "label": "._start_reload()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 127,
-      "community_name": "._guard_active_edit",
-      "file_type": "code",
-      "norm_label": "._start_reload()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L2090"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lyriclinetable_action_cursor_down",
       "label": ".action_cursor_down()",
       "_callable": true,
@@ -20926,6 +21058,30 @@
       "source_location": "L8"
     },
     {
+      "id": "delivery_webapp_src_app_api_favorites_route_get",
+      "label": "GET()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "get()",
+      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
+      "source_location": "L13"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_favorites_route_post",
+      "label": "POST()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "post()",
+      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
+      "source_location": "L27"
+    },
+    {
       "id": "delivery_webapp_src_app_favorites_favoritesclient_favoritesclient_loadpage",
       "label": "loadPage()",
       "_callable": true,
@@ -20960,6 +21116,18 @@
       "norm_label": "rootlayout()",
       "source_file": "delivery/webapp/src/app/layout.tsx",
       "source_location": "L33"
+    },
+    {
+      "id": "delivery_webapp_src_app_listen_page_listenpage",
+      "label": "ListenPage()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "listenpage()",
+      "source_file": "delivery/webapp/src/app/listen/page.tsx",
+      "source_location": "L7"
     },
     {
       "id": "delivery_webapp_src_app_page_homepage",
@@ -21034,6 +21202,30 @@
       "source_location": "L44"
     },
     {
+      "id": "delivery_webapp_src_lib_db_favorites_addfavorite",
+      "label": "addFavorite()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "addfavorite()",
+      "source_file": "delivery/webapp/src/lib/db/favorites.ts",
+      "source_location": "L22"
+    },
+    {
+      "id": "delivery_webapp_src_lib_db_favorites_getfavoritesongids",
+      "label": "getFavoriteSongIds()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "getfavoritesongids()",
+      "source_file": "delivery/webapp/src/lib/db/favorites.ts",
+      "source_location": "L12"
+    },
+    {
       "id": "delivery_webapp_src_lib_i18n_server_resolveuserlocale",
       "label": "resolveUserLocale()",
       "_callable": true,
@@ -21080,6 +21272,18 @@
       "norm_label": "makesong()",
       "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
       "source_location": "L31"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_favorites_route_test_mockrequest",
+      "label": "mockRequest()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "mockrequest()",
+      "source_file": "delivery/webapp/src/test/api/favorites/route.test.ts",
+      "source_location": "L18"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_services_modal_stem_separator_client_modalstemseparatorclient_get_instance",
@@ -23744,150 +23948,6 @@
       "norm_label": "._write_log()",
       "source_file": "lab/legacy-cli-tui/src/sow_legacy_cli_tui/tui/utils/logger.py",
       "source_location": "L323"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_edit_numeric",
-      "label": ".action_edit_numeric()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": ".action_edit_numeric()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L1347"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_jump_to_component",
-      "label": ".action_jump_to_component()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": ".action_jump_to_component()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L1269"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_toggle_playback_for_component",
-      "label": ".action_toggle_playback_for_component()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": ".action_toggle_playback_for_component()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L1236"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_check_component_playback_end",
-      "label": "._check_component_playback_end()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._check_component_playback_end()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L743"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_guard_no_component",
-      "label": "._guard_no_component()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._guard_no_component()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L868"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_finished",
-      "label": "._on_playback_finished()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._on_playback_finished()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L799"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_position",
-      "label": "._on_playback_position()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._on_playback_position()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L770"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_selected_editor_role",
-      "label": "._selected_editor_role()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._selected_editor_role()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L804"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_show_value_edit_input",
-      "label": "._show_value_edit_input()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._show_value_edit_input()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L898"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_lyrics_highlight",
-      "label": "._update_lyrics_highlight()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._update_lyrics_highlight()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L775"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_playback_bar",
-      "label": "._update_playback_bar()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._update_playback_bar()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L761"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_validate_numeric_field",
-      "label": "._validate_numeric_field()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "code",
-      "norm_label": "._validate_numeric_field()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L931"
     },
     {
       "id": "lab_poc_scripts_transition_builder_v2_app_services_playback_playbackservice_del",
@@ -36082,78 +36142,6 @@
       "source_location": "L41"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_cancel_row_edit",
-      "label": "._cancel_row_edit()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "code",
-      "norm_label": "._cancel_row_edit()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1010"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_cell_screen_region",
-      "label": "._cell_screen_region()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "code",
-      "norm_label": "._cell_screen_region()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1014"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_hide_row_edit_input",
-      "label": "._hide_row_edit_input()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "code",
-      "norm_label": "._hide_row_edit_input()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L999"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_input_submitted",
-      "label": ".on_input_submitted()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "code",
-      "norm_label": ".on_input_submitted()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1349"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_parse_timestamp_input",
-      "label": "._parse_timestamp_input()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "code",
-      "norm_label": "._parse_timestamp_input()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1375"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_refresh_row_edit_input_position",
-      "label": "._refresh_row_edit_input_position()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "code",
-      "norm_label": "._refresh_row_edit_input_position()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1070"
-    },
-    {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition_transitionrecord_format_list_display",
       "label": ".format_list_display()",
       "_callable": true,
@@ -39442,6 +39430,18 @@
       "source_location": "L21"
     },
     {
+      "id": "delivery_webapp_src_app_api_render_jobs_id_artifact_sizes_route_get",
+      "label": "GET()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "get()",
+      "source_file": "delivery/webapp/src/app/api/render-jobs/[id]/artifact-sizes/route.ts",
+      "source_location": "L13"
+    },
+    {
       "id": "delivery_webapp_src_app_api_signed_url_route_get",
       "label": "GET()",
       "_callable": true,
@@ -39536,6 +39536,30 @@
       "norm_label": "selectchain()",
       "source_file": "delivery/webapp/src/test/api/lyrics/recordingContentHash.test.ts",
       "source_location": "L43"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_makeparams",
+      "label": "makeParams()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "makeparams()",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L34"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_makerequest",
+      "label": "makeRequest()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "makerequest()",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L29"
     },
     {
       "id": "delivery_webapp_src_test_api_signed_url_route_test_collectleafvalues",
@@ -47782,18 +47806,6 @@
       "source_location": "L97"
     },
     {
-      "id": "lab_sow_app_src_sow_lab_app_app_sowapp_init",
-      "label": ".__init__()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "ExportService",
-      "file_type": "code",
-      "norm_label": ".__init__()",
-      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
-      "source_location": "L47"
-    },
-    {
       "id": "lab_sow_app_src_sow_lab_app_screens_export_progress_exportprogressscreen_action_back",
       "label": ".action_back()",
       "_callable": true,
@@ -49076,6 +49088,18 @@
       "norm_label": "item()",
       "source_file": "delivery/android/app/src/test/java/org/streamofworship/android/feature/songsets/SongsetsViewModelTest.kt",
       "source_location": "L318"
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_app_sowapp_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 47,
+      "community_name": "PlaybackService",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
+      "source_location": "L47"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_playback_playbackservice_current_file",
@@ -53494,268 +53518,88 @@
       "source_location": "L27"
     },
     {
-      "id": "delivery_webapp_src_app_api_favorites_route_get",
-      "label": "GET()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_action_preview_continuous",
+      "label": ".action_preview_continuous()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
+      "community_name": ".action_preview_continuous",
       "file_type": "code",
-      "norm_label": "get()",
-      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
-      "source_location": "L13"
+      "norm_label": ".action_preview_continuous()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1315"
     },
     {
-      "id": "delivery_webapp_src_app_api_favorites_route_post",
-      "label": "POST()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_action_preview_single",
+      "label": ".action_preview_single()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
+      "community_name": ".action_preview_continuous",
       "file_type": "code",
-      "norm_label": "post()",
-      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
-      "source_location": "L27"
+      "norm_label": ".action_preview_single()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1279"
     },
     {
-      "id": "delivery_webapp_src_app_api_favorites_songid_route_delete",
-      "label": "DELETE()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_find_line_at_position",
+      "label": "._find_line_at_position()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
+      "community_name": ".action_preview_continuous",
       "file_type": "code",
-      "norm_label": "delete()",
-      "source_file": "delivery/webapp/src/app/api/favorites/[songId]/route.ts",
-      "source_location": "L9"
+      "norm_label": "._find_line_at_position()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L961"
     },
     {
-      "id": "delivery_webapp_src_app_api_render_jobs_id_artifact_sizes_route_get",
-      "label": "GET()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_playback_position",
+      "label": "._on_playback_position()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
+      "community_name": ".action_preview_continuous",
       "file_type": "code",
-      "norm_label": "get()",
-      "source_file": "delivery/webapp/src/app/api/render-jobs/[id]/artifact-sizes/route.ts",
-      "source_location": "L13"
+      "norm_label": "._on_playback_position()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L902"
     },
     {
-      "id": "delivery_webapp_src_app_api_songs_albums_route_get",
-      "label": "GET()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_set_preview_display_index",
+      "label": "._set_preview_display_index()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
+      "community_name": ".action_preview_continuous",
       "file_type": "code",
-      "norm_label": "get()",
-      "source_file": "delivery/webapp/src/app/api/songs/albums/route.ts",
-      "source_location": "L5"
+      "norm_label": "._set_preview_display_index()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L871"
     },
     {
-      "id": "delivery_webapp_src_app_api_songs_id_route_get",
-      "label": "GET()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_stop_preview",
+      "label": "._stop_preview()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
+      "community_name": ".action_preview_continuous",
       "file_type": "code",
-      "norm_label": "get()",
-      "source_file": "delivery/webapp/src/app/api/songs/[id]/route.ts",
-      "source_location": "L9"
+      "norm_label": "._stop_preview()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L970"
     },
     {
-      "id": "delivery_webapp_src_app_listen_page_listenpage",
-      "label": "ListenPage()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_sync_selection_from_table_cursor",
+      "label": "._sync_selection_from_table_cursor()",
       "_callable": true,
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
+      "community_name": ".action_preview_continuous",
       "file_type": "code",
-      "norm_label": "listenpage()",
-      "source_file": "delivery/webapp/src/app/listen/page.tsx",
-      "source_location": "L7"
-    },
-    {
-      "id": "delivery_webapp_src_app_worship_page_worshippage",
-      "label": "WorshipPage()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "worshippage()",
-      "source_file": "delivery/webapp/src/app/worship/page.tsx",
-      "source_location": "L12"
-    },
-    {
-      "id": "delivery_webapp_src_lib_db_favorites_addfavorite",
-      "label": "addFavorite()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "addfavorite()",
-      "source_file": "delivery/webapp/src/lib/db/favorites.ts",
-      "source_location": "L22"
-    },
-    {
-      "id": "delivery_webapp_src_lib_db_favorites_getfavoritesongids",
-      "label": "getFavoriteSongIds()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "getfavoritesongids()",
-      "source_file": "delivery/webapp/src/lib/db/favorites.ts",
-      "source_location": "L12"
-    },
-    {
-      "id": "delivery_webapp_src_lib_db_favorites_removefavorite",
-      "label": "removeFavorite()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "removefavorite()",
-      "source_file": "delivery/webapp/src/lib/db/favorites.ts",
-      "source_location": "L31"
-    },
-    {
-      "id": "delivery_webapp_src_lib_db_songs_getalbums",
-      "label": "getAlbums()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "getalbums()",
-      "source_file": "delivery/webapp/src/lib/db/songs.ts",
-      "source_location": "L529"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client_fromaddress",
-      "label": "fromAddress()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "fromaddress()",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L19"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client_getresend",
-      "label": "getResend()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "getresend()",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L13"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client_sendemail",
-      "label": "sendEmail()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "sendemail()",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L34"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client_sendpasswordresetemail",
-      "label": "sendPasswordResetEmail()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "sendpasswordresetemail()",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L78"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client_sendverificationemail",
-      "label": "sendVerificationEmail()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "sendverificationemail()",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L60"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_favorites_route_test_mockrequest",
-      "label": "mockRequest()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "mockrequest()",
-      "source_file": "delivery/webapp/src/test/api/favorites/route.test.ts",
-      "source_location": "L18"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_favorites_songid_test_mockrequest",
-      "label": "mockRequest()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "mockrequest()",
-      "source_file": "delivery/webapp/src/test/api/favorites/[songId].test.ts",
-      "source_location": "L17"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_makeparams",
-      "label": "makeParams()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "makeparams()",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L34"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_makerequest",
-      "label": "makeRequest()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "makerequest()",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L29"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_songs_id_test_createmockrequest",
-      "label": "createMockRequest()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "createmockrequest()",
-      "source_file": "delivery/webapp/src/test/api/songs/[id].test.ts",
-      "source_location": "L21"
+      "norm_label": "._sync_selection_from_table_cursor()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L831"
     },
     {
       "id": "lab_poc_scripts_score_lrc_quality_check_mlx_audio",
@@ -54130,30 +53974,6 @@
       "source_location": "L1344"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_action_preview_continuous",
-      "label": ".action_preview_continuous()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "code",
-      "norm_label": ".action_preview_continuous()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1315"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_action_preview_single",
-      "label": ".action_preview_single()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "code",
-      "norm_label": ".action_preview_single()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1279"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_align_progress",
       "label": "._align_progress()",
       "_callable": true,
@@ -54166,6 +53986,30 @@
       "source_location": "L2007"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_cancel_row_edit",
+      "label": "._cancel_row_edit()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "._cancel_row_edit()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1010"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_cell_screen_region",
+      "label": "._cell_screen_region()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "._cell_screen_region()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1014"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_copy_selection_range",
       "label": "._copy_selection_range()",
       "_callable": true,
@@ -54176,18 +54020,6 @@
       "norm_label": "._copy_selection_range()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L759"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_find_line_at_position",
-      "label": "._find_line_at_position()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "code",
-      "norm_label": "._find_line_at_position()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L961"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_format_copied_rows",
@@ -54214,6 +54046,30 @@
       "source_location": "L1601"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_hide_row_edit_input",
+      "label": "._hide_row_edit_input()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "._hide_row_edit_input()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L999"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_input_submitted",
+      "label": ".on_input_submitted()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": ".on_input_submitted()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1349"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_mount",
       "label": ".on_mount()",
       "_callable": true,
@@ -54236,18 +54092,6 @@
       "norm_label": "._on_playback_finished()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L927"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_playback_position",
-      "label": "._on_playback_position()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "code",
-      "norm_label": "._on_playback_position()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L902"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_playback_state",
@@ -54298,6 +54142,30 @@
       "source_location": "L783"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_parse_timestamp_input",
+      "label": "._parse_timestamp_input()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "._parse_timestamp_input()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1375"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_refresh_row_edit_input_position",
+      "label": "._refresh_row_edit_input_position()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "._refresh_row_edit_input_position()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1070"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_regen_progress",
       "label": "._regen_progress()",
       "_callable": true,
@@ -54320,18 +54188,6 @@
       "norm_label": "._reload_worker()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L2100"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_set_preview_display_index",
-      "label": "._set_preview_display_index()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "code",
-      "norm_label": "._set_preview_display_index()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L871"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_set_regen_activity",
@@ -54406,28 +54262,16 @@
       "source_location": "L1782"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_stop_preview",
-      "label": "._stop_preview()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_start_reload",
+      "label": "._start_reload()",
       "_callable": true,
       "_origin": "ast",
       "community": 60,
       "community_name": "LRCEditorScreen",
       "file_type": "code",
-      "norm_label": "._stop_preview()",
+      "norm_label": "._start_reload()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L970"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_sync_selection_from_table_cursor",
-      "label": "._sync_selection_from_table_cursor()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "code",
-      "norm_label": "._sync_selection_from_table_cursor()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L831"
+      "source_location": "L2090"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_update_playback_bar",
@@ -55531,7 +55375,7 @@
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "ops/admin-cli/scripts/report_structured_lyrics_rebuild.py",
-      "source_location": "L618"
+      "source_location": "L626"
     },
     {
       "id": "ops_admin_cli_scripts_report_structured_lyrics_rebuild_n1",
@@ -57094,12 +56938,24 @@
       "source_location": "L335"
     },
     {
+      "id": "delivery_webapp_src_app_api_favorites_songid_route_delete",
+      "label": "DELETE()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "delete()",
+      "source_file": "delivery/webapp/src/app/api/favorites/[songId]/route.ts",
+      "source_location": "L9"
+    },
+    {
       "id": "delivery_webapp_src_app_api_settings_route_get",
       "label": "GET()",
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "get()",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
@@ -57111,11 +56967,131 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "put()",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
       "source_location": "L75"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_songs_albums_route_get",
+      "label": "GET()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "get()",
+      "source_file": "delivery/webapp/src/app/api/songs/albums/route.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_songs_id_route_get",
+      "label": "GET()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "get()",
+      "source_file": "delivery/webapp/src/app/api/songs/[id]/route.ts",
+      "source_location": "L9"
+    },
+    {
+      "id": "delivery_webapp_src_app_worship_page_worshippage",
+      "label": "WorshipPage()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "worshippage()",
+      "source_file": "delivery/webapp/src/app/worship/page.tsx",
+      "source_location": "L12"
+    },
+    {
+      "id": "delivery_webapp_src_lib_db_favorites_removefavorite",
+      "label": "removeFavorite()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "removefavorite()",
+      "source_file": "delivery/webapp/src/lib/db/favorites.ts",
+      "source_location": "L31"
+    },
+    {
+      "id": "delivery_webapp_src_lib_db_songs_getalbums",
+      "label": "getAlbums()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "getalbums()",
+      "source_file": "delivery/webapp/src/lib/db/songs.ts",
+      "source_location": "L529"
+    },
+    {
+      "id": "delivery_webapp_src_lib_email_client_fromaddress",
+      "label": "fromAddress()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "fromaddress()",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L19"
+    },
+    {
+      "id": "delivery_webapp_src_lib_email_client_getresend",
+      "label": "getResend()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "getresend()",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L13"
+    },
+    {
+      "id": "delivery_webapp_src_lib_email_client_sendemail",
+      "label": "sendEmail()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "sendemail()",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L34"
+    },
+    {
+      "id": "delivery_webapp_src_lib_email_client_sendpasswordresetemail",
+      "label": "sendPasswordResetEmail()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "sendpasswordresetemail()",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L78"
+    },
+    {
+      "id": "delivery_webapp_src_lib_email_client_sendverificationemail",
+      "label": "sendVerificationEmail()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "sendverificationemail()",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L60"
     },
     {
       "id": "delivery_webapp_src_lib_i18n_accept_language_parseacceptlanguage",
@@ -57123,7 +57099,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "parseacceptlanguage()",
       "source_file": "delivery/webapp/src/lib/i18n/accept-language.ts",
@@ -57135,7 +57111,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "islocale()",
       "source_file": "delivery/webapp/src/lib/i18n/messages.ts",
@@ -57147,7 +57123,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "hassessioncookie()",
       "source_file": "delivery/webapp/src/proxy.ts",
@@ -57159,7 +57135,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "ispublicpath()",
       "source_file": "delivery/webapp/src/proxy.ts",
@@ -57171,7 +57147,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "proxy()",
       "source_file": "delivery/webapp/src/proxy.ts",
@@ -57183,11 +57159,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "withautolocalecookie()",
       "source_file": "delivery/webapp/src/proxy.ts",
       "source_location": "L52"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_favorites_songid_test_mockrequest",
+      "label": "mockRequest()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "mockrequest()",
+      "source_file": "delivery/webapp/src/test/api/favorites/[songId].test.ts",
+      "source_location": "L17"
     },
     {
       "id": "delivery_webapp_src_test_api_settings_route_test_makerequest",
@@ -57195,7 +57183,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "makerequest()",
       "source_file": "delivery/webapp/src/test/api/settings/route.test.ts",
@@ -57207,11 +57195,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockupsert()",
       "source_file": "delivery/webapp/src/test/api/settings/route.test.ts",
       "source_location": "L133"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_songs_id_test_createmockrequest",
+      "label": "createMockRequest()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "createmockrequest()",
+      "source_file": "delivery/webapp/src/test/api/songs/[id].test.ts",
+      "source_location": "L21"
     },
     {
       "id": "delivery_webapp_src_test_lib_i18n_server_test_mockcookie",
@@ -57219,7 +57219,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockcookie()",
       "source_file": "delivery/webapp/src/test/lib/i18n/server.test.ts",
@@ -57231,7 +57231,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockselectresult()",
       "source_file": "delivery/webapp/src/test/lib/i18n/server.test.ts",
@@ -57243,7 +57243,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "req()",
       "source_file": "delivery/webapp/src/test/proxy.test.ts",
@@ -64748,6 +64748,28 @@
       "source_location": "L866"
     },
     {
+      "id": "cellhighlighted",
+      "label": "CellHighlighted",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "cellhighlighted",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "cellselected",
+      "label": "CellSelected",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "cellselected",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_any",
       "label": "Any",
       "_origin": "ast",
@@ -64755,17 +64777,6 @@
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
       "norm_label": "any",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_path",
-      "label": "Path",
-      "_origin": "ast",
-      "community": 100,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "code",
-      "norm_label": "path",
       "source_file": "",
       "source_location": ""
     },
@@ -64779,6 +64790,28 @@
       "norm_label": "resize",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_rowhighlighted",
+      "label": "RowHighlighted",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "rowhighlighted",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_1237",
+      "label": "Play or pause the song, anchored to the highlighted component. - If playing:\u2026",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "play or pause the song, anchored to the highlighted component. - if playing:...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L1237"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_1460",
@@ -64814,6 +64847,39 @@
       "source_location": "L344"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_744",
+      "label": "Pause playback if the position has reached the selected component's end_time.\u2026",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "pause playback if the position has reached the selected component's end_time....",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L744"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_776",
+      "label": "v6. Update the lyrics panel's current-line highlight based on playback\u2026",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "v6. update the lyrics panel's current-line highlight based on playback...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L776"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_805",
+      "label": "Return the editor-level role key for the currently highlighted table row.",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "return the editor-level role key for the currently highlighted table row.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L805"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_813",
       "label": "Return the field key for the current cursor column (retained for autosave\u2026",
       "_origin": "ast",
@@ -64823,6 +64889,17 @@
       "norm_label": "return the field key for the current cursor column (retained for autosave...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L813"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_869",
+      "label": "Return True (and bell) if the selected role has no component row.",
+      "_origin": "ast",
+      "community": 100,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "return true (and bell) if the selected role has no component row.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L869"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_player_playbackwakelock",
@@ -67245,35 +67322,13 @@
       "source_location": "L84"
     },
     {
-      "id": "cellhighlighted",
-      "label": "CellHighlighted",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_path",
+      "label": "Path",
       "_origin": "ast",
       "community": 108,
       "community_name": "._refresh_hero",
       "file_type": "code",
-      "norm_label": "cellhighlighted",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "cellselected",
-      "label": "CellSelected",
-      "_origin": "ast",
-      "community": 108,
-      "community_name": "._refresh_hero",
-      "file_type": "code",
-      "norm_label": "cellselected",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_rowhighlighted",
-      "label": "RowHighlighted",
-      "_origin": "ast",
-      "community": 108,
-      "community_name": "._refresh_hero",
-      "file_type": "code",
-      "norm_label": "rowhighlighted",
+      "norm_label": "path",
       "source_file": "",
       "source_location": ""
     },
@@ -71826,17 +71881,6 @@
       "source_location": "L2059"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_2091",
-      "label": "Fetch the current R2 LRC on a daemon thread (blocking S3 I/O).",
-      "_origin": "ast",
-      "community": 127,
-      "community_name": "._guard_active_edit",
-      "file_type": "rationale",
-      "norm_label": "fetch the current r2 lrc on a daemon thread (blocking s3 i/o).",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L2091"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_424",
       "label": "Lyrics table with preview-aware row navigation.",
       "_origin": "ast",
@@ -74711,6 +74755,28 @@
       "source_location": "L1"
     },
     {
+      "id": "delivery_webapp_src_app_api_favorites_route",
+      "label": "favorites/route.ts",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "favorites/route.ts",
+      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_favorites_route_addfavoriteschema",
+      "label": "addFavoriteSchema",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "addfavoriteschema",
+      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
+      "source_location": "L6"
+    },
+    {
       "id": "delivery_webapp_src_app_favorites_page",
       "label": "favorites/page.tsx",
       "_origin": "ast",
@@ -74719,6 +74785,17 @@
       "file_type": "code",
       "norm_label": "favorites/page.tsx",
       "source_file": "delivery/webapp/src/app/favorites/page.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_app_listen_page",
+      "label": "listen/page.tsx",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "listen/page.tsx",
+      "source_file": "delivery/webapp/src/app/listen/page.tsx",
       "source_location": "L1"
     },
     {
@@ -74785,6 +74862,17 @@
       "file_type": "code",
       "norm_label": "discovery/route.test.ts",
       "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_favorites_route_test",
+      "label": "favorites/route.test.ts",
+      "_origin": "ast",
+      "community": 14,
+      "community_name": "dashboard.ts",
+      "file_type": "code",
+      "norm_label": "favorites/route.test.ts",
+      "source_file": "delivery/webapp/src/test/api/favorites/route.test.ts",
       "source_location": "L1"
     },
     {
@@ -78320,59 +78408,26 @@
       "source_location": "L353"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_1237",
-      "label": "Play or pause the song, anchored to the highlighted component. - If playing:\u2026",
+      "id": "delivery_webapp_package_dependencies_zod",
+      "label": "zod",
       "_origin": "ast",
       "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "rationale",
-      "norm_label": "play or pause the song, anchored to the highlighted component. - if playing:...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L1237"
+      "community_name": "zod",
+      "file_type": "code",
+      "norm_label": "zod",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L49"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_744",
-      "label": "Pause playback if the position has reached the selected component's end_time.\u2026",
+      "id": "zod",
+      "label": "zod",
       "_origin": "ast",
       "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "rationale",
-      "norm_label": "pause playback if the position has reached the selected component's end_time....",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L744"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_776",
-      "label": "v6. Update the lyrics panel's current-line highlight based on playback\u2026",
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "rationale",
-      "norm_label": "v6. update the lyrics panel's current-line highlight based on playback...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L776"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_805",
-      "label": "Return the editor-level role key for the currently highlighted table row.",
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "rationale",
-      "norm_label": "return the editor-level role key for the currently highlighted table row.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L805"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_869",
-      "label": "Return True (and bell) if the selected role has no component row.",
-      "_origin": "ast",
-      "community": 151,
-      "community_name": "._selected_editor_role",
-      "file_type": "rationale",
-      "norm_label": "return true (and bell) if the selected role has no component row.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L869"
+      "community_name": "zod",
+      "file_type": "concept",
+      "norm_label": "zod",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L49"
     },
     {
       "id": "lab_poc_scripts_transition_builder_v2_app_services_playback_py_exception",
@@ -93441,28 +93496,6 @@
       "source_location": "L73"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_datatable",
-      "label": "DataTable",
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "code",
-      "norm_label": "datatable",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_1376",
-      "label": "Parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds.",
-      "_origin": "ast",
-      "community": 231,
-      "community_name": ".on_input_submitted",
-      "file_type": "rationale",
-      "norm_label": "parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1376"
-    },
-    {
       "id": "lab_legacy_cli_tui_src_sow_legacy_cli_tui_tui_models_transition",
       "label": "tui/models/transition.py",
       "_origin": "ast",
@@ -100815,6 +100848,72 @@
       "norm_label": "sessionuser",
       "source_file": "delivery/webapp/src/test/api/lyrics/recordingContentHash.test.ts",
       "source_location": "L32"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test",
+      "label": "artifact-sizes.test.ts",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "artifact-sizes.test.ts",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_completedjob",
+      "label": "completedJob",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "completedjob",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L40"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_mockcreater2client",
+      "label": "mockCreateR2Client",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "mockcreater2client",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L23"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_mockfindfirst",
+      "label": "mockFindFirst",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "mockfindfirst",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L12"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_mockgetobjectsize",
+      "label": "mockGetObjectSize",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "mockgetobjectsize",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L22"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_sessionuser",
+      "label": "sessionUser",
+      "_origin": "ast",
+      "community": 29,
+      "community_name": "r2/client.ts",
+      "file_type": "code",
+      "norm_label": "sessionuser",
+      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
+      "source_location": "L38"
     },
     {
       "id": "delivery_webapp_src_test_api_signed_url_route_test",
@@ -110192,28 +110291,6 @@
       "source_location": "L22"
     },
     {
-      "id": "delivery_webapp_package_dependencies_better_auth",
-      "label": "better-auth",
-      "_origin": "ast",
-      "community": 371,
-      "community_name": "better-auth",
-      "file_type": "code",
-      "norm_label": "better-auth",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L33"
-    },
-    {
-      "id": "better_auth",
-      "label": "better-auth",
-      "_origin": "ast",
-      "community": 371,
-      "community_name": "better-auth",
-      "file_type": "concept",
-      "norm_label": "better-auth",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L33"
-    },
-    {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_core_config_appconfig",
       "label": "AppConfig.kt",
       "_origin": "ast",
@@ -113816,17 +113893,6 @@
       "source_location": "L1"
     },
     {
-      "id": "lab_sow_app_src_sow_lab_app_app_py_appconfig",
-      "label": "AppConfig",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "ExportService",
-      "file_type": "code",
-      "norm_label": "appconfig",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "lab_sow_app_src_sow_lab_app_screens_export_progress_py_appstate",
       "label": "AppState",
       "_origin": "ast",
@@ -113946,17 +114012,6 @@
       "norm_label": "videotemplate",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "lab_sow_app_src_sow_lab_app_app_rationale_48",
-      "label": "Initialize the application. Args: config: Application configuration",
-      "_origin": "ast",
-      "community": 43,
-      "community_name": "ExportService",
-      "file_type": "rationale",
-      "norm_label": "initialize the application. args: config: application configuration",
-      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
-      "source_location": "L48"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_screens_export_progress_rationale_103",
@@ -115872,6 +115927,17 @@
       "source_location": "L1"
     },
     {
+      "id": "lab_sow_app_src_sow_lab_app_app_py_appconfig",
+      "label": "AppConfig",
+      "_origin": "ast",
+      "community": 47,
+      "community_name": "PlaybackService",
+      "file_type": "code",
+      "norm_label": "appconfig",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "lab_sow_app_src_sow_lab_app_services_playback_py_path",
       "label": "Path",
       "_origin": "ast",
@@ -115881,6 +115947,17 @@
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "lab_sow_app_src_sow_lab_app_app_rationale_48",
+      "label": "Initialize the application. Args: config: Application configuration",
+      "_origin": "ast",
+      "community": 47,
+      "community_name": "PlaybackService",
+      "file_type": "rationale",
+      "norm_label": "initialize the application. args: config: application configuration",
+      "source_file": "lab/sow-app/src/sow_lab_app/app.py",
+      "source_location": "L48"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_playback_rationale_107",
@@ -119450,246 +119527,26 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_app_api_auth_all_route",
-      "label": "[...all]/route.ts",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_872",
+      "label": "Update the lyric banner for preview, where -1 means blank before line 1.",
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "[...all]/route.ts",
-      "source_file": "delivery/webapp/src/app/api/auth/[...all]/route.ts",
-      "source_location": "L1"
+      "community_name": ".action_preview_continuous",
+      "file_type": "rationale",
+      "norm_label": "update the lyric banner for preview, where -1 means blank before line 1.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L872"
     },
     {
-      "id": "delivery_webapp_src_app_api_auth_all_route_get_post",
-      "label": "{ GET, POST }",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_962",
+      "label": "Find the lyric line index for the current playback position.",
       "_origin": "ast",
       "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "{ get, post }",
-      "source_file": "delivery/webapp/src/app/api/auth/[...all]/route.ts",
-      "source_location": "L4"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_favorites_route",
-      "label": "favorites/route.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "favorites/route.ts",
-      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_favorites_route_addfavoriteschema",
-      "label": "addFavoriteSchema",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "addfavoriteschema",
-      "source_file": "delivery/webapp/src/app/api/favorites/route.ts",
-      "source_location": "L6"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_favorites_songid_route",
-      "label": "[songId]/route.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "[songid]/route.ts",
-      "source_file": "delivery/webapp/src/app/api/favorites/[songId]/route.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_songs_albums_route",
-      "label": "albums/route.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "albums/route.ts",
-      "source_file": "delivery/webapp/src/app/api/songs/albums/route.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_songs_id_route",
-      "label": "songs/[id]/route.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "songs/[id]/route.ts",
-      "source_file": "delivery/webapp/src/app/api/songs/[id]/route.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_app_listen_page",
-      "label": "listen/page.tsx",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "listen/page.tsx",
-      "source_file": "delivery/webapp/src/app/listen/page.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_app_worship_page",
-      "label": "worship/page.tsx",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "worship/page.tsx",
-      "source_file": "delivery/webapp/src/app/worship/page.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_lib_auth",
-      "label": "auth.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "auth.ts",
-      "source_file": "delivery/webapp/src/lib/auth.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_lib_auth_auth",
-      "label": "auth",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "auth",
-      "source_file": "delivery/webapp/src/lib/auth.ts",
-      "source_location": "L8"
-    },
-    {
-      "id": "delivery_webapp_src_lib_email_client",
-      "label": "email/client.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "email/client.ts",
-      "source_file": "delivery/webapp/src/lib/email/client.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_favorites_route_test",
-      "label": "favorites/route.test.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "favorites/route.test.ts",
-      "source_file": "delivery/webapp/src/test/api/favorites/route.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_favorites_songid_test",
-      "label": "[songId].test.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "[songid].test.ts",
-      "source_file": "delivery/webapp/src/test/api/favorites/[songId].test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test",
-      "label": "artifact-sizes.test.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "artifact-sizes.test.ts",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_completedjob",
-      "label": "completedJob",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "completedjob",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L40"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_mockcreater2client",
-      "label": "mockCreateR2Client",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "mockcreater2client",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L23"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_mockfindfirst",
-      "label": "mockFindFirst",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "mockfindfirst",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L12"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_mockgetobjectsize",
-      "label": "mockGetObjectSize",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "mockgetobjectsize",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L22"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_render_jobs_artifact_sizes_test_sessionuser",
-      "label": "sessionUser",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "sessionuser",
-      "source_file": "delivery/webapp/src/test/api/render-jobs/artifact-sizes.test.ts",
-      "source_location": "L38"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_songs_albums_test",
-      "label": "albums.test.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "albums.test.ts",
-      "source_file": "delivery/webapp/src/test/api/songs/albums.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_songs_id_test",
-      "label": "songs/[id].test.ts",
-      "_origin": "ast",
-      "community": 59,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "songs/[id].test.ts",
-      "source_file": "delivery/webapp/src/test/api/songs/[id].test.ts",
-      "source_location": "L1"
+      "community_name": ".action_preview_continuous",
+      "file_type": "rationale",
+      "norm_label": "find the lyric line index for the current playback position.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L962"
     },
     {
       "id": "lab_poc_scripts_score_lrc_quality",
@@ -120066,6 +119923,17 @@
       "source_location": "L848"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_datatable",
+      "label": "DataTable",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "datatable",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_path",
       "label": "Path",
       "_origin": "ast",
@@ -120097,6 +119965,17 @@
       "norm_label": "resize",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_1376",
+      "label": "Parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds.",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "parse a timestamp input like [mm:ss.xx] or mm:ss.xx or seconds.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1376"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_1602",
@@ -120154,6 +120033,17 @@
       "source_location": "L2008"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_2091",
+      "label": "Fetch the current R2 LRC on a daemon thread (blocking S3 I/O).",
+      "_origin": "ast",
+      "community": 60,
+      "community_name": "LRCEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "fetch the current r2 lrc on a daemon thread (blocking s3 i/o).",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L2091"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_2101",
       "label": "Download the R2 LRC + its identity off the event loop.",
       "_origin": "ast",
@@ -120174,28 +120064,6 @@
       "norm_label": "main interactive lrc editor screen. provides: - main lyrics preview area...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L464"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_872",
-      "label": "Update the lyric banner for preview, where -1 means blank before line 1.",
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "rationale",
-      "norm_label": "update the lyric banner for preview, where -1 means blank before line 1.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L872"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_962",
-      "label": "Find the lyric line index for the current playback position.",
-      "_origin": "ast",
-      "community": 60,
-      "community_name": "LRCEditorScreen",
-      "file_type": "rationale",
-      "norm_label": "find the lyric line index for the current playback position.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L962"
     },
     {
       "id": "context_catalog",
@@ -122724,11 +122592,44 @@
       "source_location": "L398"
     },
     {
+      "id": "delivery_webapp_src_app_api_auth_all_route",
+      "label": "[...all]/route.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "[...all]/route.ts",
+      "source_file": "delivery/webapp/src/app/api/auth/[...all]/route.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_auth_all_route_get_post",
+      "label": "{ GET, POST }",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "{ get, post }",
+      "source_file": "delivery/webapp/src/app/api/auth/[...all]/route.ts",
+      "source_location": "L4"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_favorites_songid_route",
+      "label": "[songId]/route.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "[songid]/route.ts",
+      "source_file": "delivery/webapp/src/app/api/favorites/[songId]/route.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_app_api_settings_route",
       "label": "settings/route.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "settings/route.ts",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
@@ -122739,7 +122640,7 @@
       "label": "DEFAULTS",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "defaults",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
@@ -122750,7 +122651,7 @@
       "label": "VALID_FONT_PRESETS",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "valid_font_presets",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
@@ -122761,7 +122662,7 @@
       "label": "VALID_FONTS",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "valid_fonts",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
@@ -122772,7 +122673,7 @@
       "label": "VALID_RESOLUTIONS",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "valid_resolutions",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
@@ -122783,40 +122684,106 @@
       "label": "VALID_TEMPLATES",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "valid_templates",
       "source_file": "delivery/webapp/src/app/api/settings/route.ts",
       "source_location": "L22"
     },
     {
+      "id": "delivery_webapp_src_app_api_songs_albums_route",
+      "label": "albums/route.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "albums/route.ts",
+      "source_file": "delivery/webapp/src/app/api/songs/albums/route.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_songs_id_route",
+      "label": "songs/[id]/route.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "songs/[id]/route.ts",
+      "source_file": "delivery/webapp/src/app/api/songs/[id]/route.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_app_worship_page",
+      "label": "worship/page.tsx",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "worship/page.tsx",
+      "source_file": "delivery/webapp/src/app/worship/page.tsx",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_db_schema_usersettings",
       "label": "userSettings",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "usersettings",
       "source_file": "delivery/webapp/src/db/schema.ts",
       "source_location": "L361"
     },
     {
+      "id": "delivery_webapp_src_lib_auth",
+      "label": "auth.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "auth.ts",
+      "source_file": "delivery/webapp/src/lib/auth.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_lib_auth_auth",
+      "label": "auth",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "auth",
+      "source_file": "delivery/webapp/src/lib/auth.ts",
+      "source_location": "L8"
+    },
+    {
       "id": "delivery_webapp_src_lib_constants_valid_font_families",
       "label": "VALID_FONT_FAMILIES",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "valid_font_families",
       "source_file": "delivery/webapp/src/lib/constants.ts",
       "source_location": "L31"
     },
     {
+      "id": "delivery_webapp_src_lib_email_client",
+      "label": "email/client.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "email/client.ts",
+      "source_file": "delivery/webapp/src/lib/email/client.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_lib_i18n_accept_language",
       "label": "accept-language.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "accept-language.ts",
       "source_file": "delivery/webapp/src/lib/i18n/accept-language.ts",
@@ -122827,7 +122794,7 @@
       "label": "server.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "server.ts",
       "source_file": "delivery/webapp/src/lib/i18n/server.ts",
@@ -122838,7 +122805,7 @@
       "label": "proxy.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "proxy.ts",
       "source_file": "delivery/webapp/src/proxy.ts",
@@ -122849,7 +122816,7 @@
       "label": "config",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "config",
       "source_file": "delivery/webapp/src/proxy.ts",
@@ -122860,7 +122827,7 @@
       "label": "PUBLIC_PATHS",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "public_paths",
       "source_file": "delivery/webapp/src/proxy.ts",
@@ -122871,18 +122838,29 @@
       "label": "SESSION_COOKIE_NAMES",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "session_cookie_names",
       "source_file": "delivery/webapp/src/proxy.ts",
       "source_location": "L35"
     },
     {
+      "id": "delivery_webapp_src_test_api_favorites_songid_test",
+      "label": "[songId].test.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "[songid].test.ts",
+      "source_file": "delivery/webapp/src/test/api/favorites/[songId].test.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_test_api_settings_route_test",
       "label": "settings/route.test.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "settings/route.test.ts",
       "source_file": "delivery/webapp/src/test/api/settings/route.test.ts",
@@ -122893,7 +122871,7 @@
       "label": "mockInsert",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockinsert",
       "source_file": "delivery/webapp/src/test/api/settings/route.test.ts",
@@ -122904,7 +122882,7 @@
       "label": "mockSelect",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockselect",
       "source_file": "delivery/webapp/src/test/api/settings/route.test.ts",
@@ -122915,7 +122893,7 @@
       "label": "sessionUser",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "sessionuser",
       "source_file": "delivery/webapp/src/test/api/settings/route.test.ts",
@@ -122926,18 +122904,40 @@
       "label": "storedSettings",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "storedsettings",
       "source_file": "delivery/webapp/src/test/api/settings/route.test.ts",
       "source_location": "L24"
     },
     {
+      "id": "delivery_webapp_src_test_api_songs_albums_test",
+      "label": "albums.test.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "albums.test.ts",
+      "source_file": "delivery/webapp/src/test/api/songs/albums.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_songs_id_test",
+      "label": "songs/[id].test.ts",
+      "_origin": "ast",
+      "community": 72,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "songs/[id].test.ts",
+      "source_file": "delivery/webapp/src/test/api/songs/[id].test.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_test_lib_i18n_accept_language_test",
       "label": "accept-language.test.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "accept-language.test.ts",
       "source_file": "delivery/webapp/src/test/lib/i18n/accept-language.test.ts",
@@ -122948,7 +122948,7 @@
       "label": "server.test.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "server.test.ts",
       "source_file": "delivery/webapp/src/test/lib/i18n/server.test.ts",
@@ -122959,7 +122959,7 @@
       "label": "mockFrom",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockfrom",
       "source_file": "delivery/webapp/src/test/lib/i18n/server.test.ts",
@@ -122970,7 +122970,7 @@
       "label": "mockSelect",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockselect",
       "source_file": "delivery/webapp/src/test/lib/i18n/server.test.ts",
@@ -122981,7 +122981,7 @@
       "label": "mockWhere",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "mockwhere",
       "source_file": "delivery/webapp/src/test/lib/i18n/server.test.ts",
@@ -122992,7 +122992,7 @@
       "label": "proxy.test.ts",
       "_origin": "ast",
       "community": 72,
-      "community_name": "settings/route.ts",
+      "community_name": "auth.ts",
       "file_type": "code",
       "norm_label": "proxy.test.ts",
       "source_file": "delivery/webapp/src/test/proxy.test.ts",
@@ -127219,6 +127219,17 @@
       "source_location": "L24"
     },
     {
+      "id": "delivery_webapp_package_dependencies_better_auth",
+      "label": "better-auth",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "better-auth",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L33"
+    },
+    {
       "id": "delivery_webapp_package_dependencies_class_variance_authority",
       "label": "class-variance-authority",
       "_origin": "ast",
@@ -127351,17 +127362,6 @@
       "source_location": "L32"
     },
     {
-      "id": "delivery_webapp_package_dependencies_zod",
-      "label": "zod",
-      "_origin": "ast",
-      "community": 89,
-      "community_name": "dependencies",
-      "file_type": "code",
-      "norm_label": "zod",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L49"
-    },
-    {
       "id": "aws_sdk_client_s3",
       "label": "@aws-sdk/client-s3",
       "_origin": "ast",
@@ -127393,6 +127393,17 @@
       "norm_label": "@base-ui/react",
       "source_file": "delivery/webapp/package.json",
       "source_location": "L24"
+    },
+    {
+      "id": "better_auth",
+      "label": "better-auth",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "dependencies",
+      "file_type": "concept",
+      "norm_label": "better-auth",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L33"
     },
     {
       "id": "delivery_webapp_package_json_class_variance_authority",
@@ -127525,17 +127536,6 @@
       "norm_label": "@vercel/speed-insights",
       "source_file": "delivery/webapp/package.json",
       "source_location": "L32"
-    },
-    {
-      "id": "zod",
-      "label": "zod",
-      "_origin": "ast",
-      "community": 89,
-      "community_name": "dependencies",
-      "file_type": "concept",
-      "norm_label": "zod",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L49"
     },
     {
       "id": "delivery_webapp_src_app_listen_listenclient",
@@ -162157,7 +162157,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/scripts/report_structured_lyrics_rebuild.py",
-      "source_location": "L619",
+      "source_location": "L627",
       "weight": 1.0
     },
     {
@@ -162169,7 +162169,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/scripts/report_structured_lyrics_rebuild.py",
-      "source_location": "L621",
+      "source_location": "L629",
       "weight": 1.0
     },
     {
@@ -162193,7 +162193,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/scripts/report_structured_lyrics_rebuild.py",
-      "source_location": "L366",
+      "source_location": "L371",
       "weight": 1.0
     },
     {
@@ -162205,7 +162205,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "ops/admin-cli/scripts/report_structured_lyrics_rebuild.py",
-      "source_location": "L476",
+      "source_location": "L484",
       "weight": 1.0
     },
     {
@@ -313893,7 +313893,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "ops/admin-cli/scripts/report_structured_lyrics_rebuild.py",
-      "source_location": "L618",
+      "source_location": "L626",
       "weight": 1.0
     },
     {
@@ -392430,5 +392430,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "189d43e8a18a42c872beb392efd4b27439df9c96"
+  "built_at_commit": "4327ffba9b5d0ae22c65f9ddc8451d22efaec531"
 }

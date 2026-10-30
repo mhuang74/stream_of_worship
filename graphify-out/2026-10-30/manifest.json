@@ -5584,5 +5584,11 @@
     "seen": 1793260958.0799654,
     "ast_hash": "cb07f831743f67c81272ff894630a8ca",
     "semantic_hash": ""
+  },
+  "ops/admin-cli/scripts/report_structured_lyrics_rebuild.py": {
+    "mtime": 1793346109.2715232,
+    "seen": 1793346162.717242,
+    "ast_hash": "03fc10aafb19c3a37414635b13054879",
+    "semantic_hash": ""
   }
 }
