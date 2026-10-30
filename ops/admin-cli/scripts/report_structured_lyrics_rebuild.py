@@ -339,7 +339,12 @@ def render(rows: list[dict], generated_at: str) -> str:
     sims = sorted(r["similarity"] for r in rows if r["similarity"] is not None)
     short_lrc = sum(1 for r in rows if r["similarity"] is not None and r["lrc_lines"] <= 2)
 
-    provable_rows = [b for b in PROVABLE_ORDER if provable_counts[b]]
+    # The three provable buckets always render, even at zero: "0 byte-identical" is the
+    # proof that every parse changed, not something the reader should infer from 128 + 212.
+    always_provable = ("created", "rebuilt", "byte_identical")
+    provable_rows = [
+        b for b in PROVABLE_ORDER if b in always_provable or provable_counts[b]
+    ]
     col_sum = total if not provable_rows else sum(provable_counts[b] for b in provable_rows)
     reported_sum = verbatim + non_material + material + unknown
     if col_sum != total or reported_sum != total:
@@ -430,7 +435,10 @@ def render(rows: list[dict], generated_at: str) -> str:
     # 4. Ladder detail
     add("<h2>Ladder detail</h2>")
     add("<table>")
-    add('<tr><th>Level</th><th class="num">Count</th><th>Normalisation that made it match</th></tr>')
+    add(
+        '<tr><th>Level</th><th class="num">Count</th>'
+        '<th>Normalisation that made it match</th></tr>'
+    )
     for level in LEVEL_ORDER:
         add(
             f"<tr><td>{esc(level)}</td>"
@@ -445,7 +453,7 @@ def render(rows: list[dict], generated_at: str) -> str:
         add("<table>")
         header = "".join(f'<th class="num">{esc(b)}</th>' for b in LRC_ORDER)
         add(f'<tr><th>provable \\ proxy</th>{header}<th class="num">Total</th></tr>')
-        for bucket in provable_rows:
+        for bucket in [b for b in provable_rows if provable_counts[b]]:
             cells = "".join(
                 f'<td class="num">'
                 f'{sum(1 for r in rows if r["provable"] == bucket and r["lrc_bucket"] == b)}</td>'
