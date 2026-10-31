@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from functools import lru_cache
@@ -35,6 +36,15 @@ _BLANK_PREVIEW_ALPHA = 128
 _BLANK_PREVIEW_FADE_SECONDS = 0.5
 _BLANK_PREVIOUS_HOLD_SECONDS = 2.0
 _BLANK_PREVIOUS_FADE_SECONDS = 4.0
+
+_LYRIC_MAX_LINE_EM = 10
+_LYRIC_LINE_SPACING = 1.3
+_LYRIC_PREVIEW_GAP_EM = 0.7
+_LYRIC_TOP_FRACTION = 0.33
+_LYRIC_MIN_TOP_FRACTION = 0.15
+_LYRIC_BLOCK_MARGIN_EM = 1.0
+_WHITESPACE_RUN_RE = re.compile(r"\s+")
+_PUNCTUATION_BREAK_RE = re.compile(r"(?<=[，、。！？；：,.!?;:])")
 
 
 def _get_bool_env(name: str, default: bool) -> bool:
@@ -207,6 +217,88 @@ def _load_font(
         return font
 
 
+def _normalize_lyric_text(text: str) -> str:
+    """Collapse every whitespace run (spaces, tabs, NBSP, U+3000) to one ASCII space."""
+    return _WHITESPACE_RUN_RE.sub(" ", text).strip()
+
+
+def _has_lyric_content(text: object) -> bool:
+    """True when text is a str with at least one non-whitespace character."""
+    return isinstance(text, str) and bool(_WHITESPACE_RUN_RE.sub("", text))
+
+
+@lru_cache(maxsize=1024)
+def _wrap_lyric_text(
+    text: str,
+    font_size: int,
+    target_width_px: int,
+    max_width_px: int,
+    font_family: str,
+) -> tuple[str, ...]:
+    """Wrap one lyric line into rendered lines at space boundaries.
+
+    Phrases are packed greedily while the measured width stays within ``target_width_px``. A single
+    phrase wider than the target keeps its own line as long as it is within ``max_width_px``; only a
+    phrase wider than the frame is hard-split (punctuation first, then balanced chunks).
+    """
+    normalized = _normalize_lyric_text(text)
+    if not normalized:
+        return ()
+    font = _load_font(font_size, font_family)
+    lines: list[str] = []
+    current = ""
+    for phrase in normalized.split(" "):
+        if not phrase:
+            continue
+        candidate = f"{current} {phrase}" if current else phrase
+        if font.getlength(candidate) <= target_width_px:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+            current = ""
+        if font.getlength(phrase) <= max_width_px:
+            current = phrase
+            continue
+        pieces = _split_lyric_phrase(phrase, font_size, max_width_px, font_family)
+        lines.extend(pieces[:-1])
+        current = pieces[-1]
+    if current:
+        lines.append(current)
+    return tuple(lines)
+
+
+@lru_cache(maxsize=1024)
+def _split_lyric_phrase(
+    phrase: str,
+    font_size: int,
+    max_width_px: int,
+    font_family: str,
+) -> tuple[str, ...]:
+    """Split a phrase wider than the frame: after CJK punctuation, then into balanced chunks."""
+    font = _load_font(font_size, font_family)
+    pieces: list[str] = []
+    for segment in _PUNCTUATION_BREAK_RE.split(phrase):
+        if segment:
+            pieces.extend(_split_segment_balanced(segment, font, max_width_px))
+    return tuple(pieces)
+
+
+def _split_segment_balanced(
+    segment: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    max_width_px: int,
+) -> list[str]:
+    if len(segment) <= 1 or font.getlength(segment) <= max_width_px:
+        return [segment]
+    parts = max(2, math.ceil(font.getlength(segment) / max_width_px))
+    size = math.ceil(len(segment) / parts)
+    chunks = [segment[i : i + size] for i in range(0, len(segment), size)]
+    return [
+        piece for chunk in chunks for piece in _split_segment_balanced(chunk, font, max_width_px)
+    ]
+
+
 class FrameRenderer:
     def __init__(
         self,
@@ -220,6 +312,16 @@ class FrameRenderer:
         self.resolution = resolution or template.resolution
         self.base_font_size = FONT_SIZE_PRESETS[font_size_preset]
         self.font_family = font_family
+
+        self._lyric_font_size = self._compute_lyric_font_size(self.resolution[0])
+        (
+            self._lyric_target_width_px,
+            self._lyric_max_width_px,
+        ) = self._line_width_limits(self._lyric_font_size)
+        (
+            self._preview_target_width_px,
+            self._preview_max_width_px,
+        ) = self._line_width_limits(self.base_font_size)
 
         self._cache_enabled = _get_bool_env("SOW_FRAME_CACHE_ENABLED", _DEFAULT_CACHE_ENABLED)
         self._fade_alpha_steps = min(
@@ -235,7 +337,8 @@ class FrameRenderer:
 
         logger.info(
             "FrameRenderer init: template=%s, font_size=%s, resolution=%dx%d, font_family=%s, "
-            "cache_enabled=%s, fade_alpha_steps=%d, max_entries=%d",
+            "cache_enabled=%s, fade_alpha_steps=%d, max_entries=%d, "
+            "lyric_font_size=%d, lyric_target_px=%d, lyric_max_px=%d",
             self.template.name,
             self.font_size_preset,
             self.resolution[0],
@@ -244,10 +347,29 @@ class FrameRenderer:
             self._cache_enabled,
             self._fade_alpha_steps,
             self._max_cache_entries,
+            self._lyric_font_size,
+            self._lyric_target_width_px,
+            self._lyric_max_width_px,
         )
 
     def get_base_font_size(self) -> int:
         return self.base_font_size
+
+    def _line_width_limits(self, font_size: int) -> tuple[int, int]:
+        """Return (readability target width, hard width limit) in pixels for a font size."""
+        margin = math.ceil(_load_font(font_size, self.font_family).getlength("中"))
+        return _LYRIC_MAX_LINE_EM * font_size, self.resolution[0] - 2 * margin
+
+    def _compute_lyric_font_size(self, width: int) -> int:
+        """One lyric font size per video: as large as the preset asks, capped so 10 em fit."""
+        size = min(self.base_font_size * 2, width // (_LYRIC_MAX_LINE_EM + 2))
+        size = max(size, self.base_font_size)
+        while size > self.base_font_size:
+            margin = math.ceil(_load_font(size, self.font_family).getlength("中"))
+            if width - 2 * margin >= _LYRIC_MAX_LINE_EM * size:
+                break
+            size -= 1
+        return size
 
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         return _load_font(size, self.font_family)
@@ -304,6 +426,64 @@ class FrameRenderer:
             int(background + (channel - background) * clamped_alpha / 255)
             for channel, background in zip(foreground, self.template.background_color)
         )
+
+    def _wrapped_lyric_lines(self, text: str) -> tuple[str, ...]:
+        return _wrap_lyric_text(
+            text,
+            self._lyric_font_size,
+            self._lyric_target_width_px,
+            self._lyric_max_width_px,
+            self.font_family,
+        )
+
+    def _wrapped_preview_lines(self, text: str) -> tuple[str, ...]:
+        return _wrap_lyric_text(
+            text,
+            self.base_font_size,
+            self._preview_target_width_px,
+            self._preview_max_width_px,
+            self.font_family,
+        )
+
+    def _lyric_line_height(self) -> int:
+        return int(round(self._lyric_font_size * _LYRIC_LINE_SPACING))
+
+    def _preview_line_height(self) -> int:
+        return int(round(self.base_font_size * _LYRIC_LINE_SPACING))
+
+    def _lyric_block_top(self, height: int, block_height: int) -> int:
+        """Top of the lyric block: 0.33*height, shifted up when the block would overflow."""
+        top = int(height * _LYRIC_TOP_FRACTION)
+        bottom_limit = height - int(self._lyric_font_size * _LYRIC_BLOCK_MARGIN_EM)
+        if top + block_height > bottom_limit:
+            top = bottom_limit - block_height
+        return max(int(height * _LYRIC_MIN_TOP_FRACTION), top)
+
+    def _render_lyric_lines(
+        self,
+        text: str,
+        alpha: int,
+        color: tuple[int, int, int],
+        draw: ImageDraw.ImageDraw,
+        width: int,
+        top_y: int,
+    ) -> int:
+        """Draw a wrapped lyric block; return the y coordinate just past its last line."""
+        lines = self._wrapped_lyric_lines(text)
+        if not lines:
+            return top_y
+        font = self._get_font(self._lyric_font_size)
+        fill_color = self._composite_over_background(color, alpha)
+        line_height = self._lyric_line_height()
+        for index, line in enumerate(lines):
+            draw.text(
+                (width // 2, top_y + index * line_height),
+                line,
+                fill=fill_color,
+                font=font,
+                anchor="mt",
+            )
+        return top_y + len(lines) * line_height
 
     def _compute_intro_alpha(
         self,
@@ -369,7 +549,7 @@ class FrameRenderer:
         current_index: int,
     ) -> int:
         for i in range(current_index - 1, -1, -1):
-            if song_lyrics[i].text.strip():
+            if _has_lyric_content(song_lyrics[i].text):
                 return i
         return -1
 
@@ -379,7 +559,7 @@ class FrameRenderer:
         current_index: int,
     ) -> int:
         for i in range(current_index + 1, len(song_lyrics)):
-            if song_lyrics[i].text.strip():
+            if _has_lyric_content(song_lyrics[i].text):
                 return i
         return -1
 
@@ -389,7 +569,7 @@ class FrameRenderer:
         current_index: int,
     ) -> int:
         for i in range(current_index - 1, -1, -1):
-            if song_lyrics[i].text.strip():
+            if _has_lyric_content(song_lyrics[i].text):
                 return i + 1
         return 0
 
@@ -401,7 +581,7 @@ class FrameRenderer:
     ) -> int:
         if current_index < 0 or current_index >= len(song_lyrics):
             return 0
-        if song_lyrics[current_index].text.strip():
+        if _has_lyric_content(song_lyrics[current_index].text):
             return 0
         if self._find_previous_non_blank_index(song_lyrics, current_index) < 0:
             return 0
@@ -427,7 +607,7 @@ class FrameRenderer:
     ) -> int:
         if current_index < 0 or current_index >= len(song_lyrics):
             return 0
-        if song_lyrics[current_index].text.strip():
+        if _has_lyric_content(song_lyrics[current_index].text):
             return 0
 
         next_index = self._find_next_non_blank_index(song_lyrics, current_index)
@@ -491,7 +671,7 @@ class FrameRenderer:
 
             if current_lyric_index >= 0:
                 current_line = current_song_lyrics[current_lyric_index]
-                if current_line.text.strip():
+                if _has_lyric_content(current_line.text):
                     is_last = current_lyric_index == len(current_song_lyrics) - 1
                     if is_last:
                         fade_alpha = self._compute_last_lyric_fade_alpha(
@@ -729,42 +909,48 @@ class FrameRenderer:
         current_line = song_lyrics[current_index]
         is_last_lyric = current_index == len(song_lyrics) - 1
 
-        current_font_size_target = self.base_font_size * 2
-        margin = self.get_margin(draw, current_font_size_target)
-
-        if not current_line.text.strip():
+        if not _has_lyric_content(current_line.text):
             previous_index = self._find_previous_non_blank_index(song_lyrics, current_index)
             previous_alpha = self._compute_blank_previous_fade_alpha(
                 song_lyrics, current_time, current_index
             )
-            if previous_index >= 0 and previous_alpha > 0:
-                previous_line = song_lyrics[previous_index]
-                previous_font_size = self.fit_text(
-                    draw, previous_line.text, current_font_size_target, width - margin * 2
-                )
-                previous_font = self._get_font(previous_font_size)
-                previous_fill_color = self._composite_over_background(
-                    self.template.highlight_color, previous_alpha
-                )
-                draw.text(
-                    (width // 2, int(height * 0.33)),
-                    previous_line.text,
-                    fill=previous_fill_color,
-                    font=previous_font,
-                    anchor="mt",
-                )
-
             preview_alpha = self._compute_blank_preview_alpha(
                 song_lyrics, current_time, current_index, tempo_bpm
             )
             next_index = self._find_next_non_blank_index(song_lyrics, current_index)
-            if next_index >= 0 and preview_alpha > 0:
-                self._render_next_lyric_preview(
-                    song_lyrics[next_index],
-                    preview_alpha,
+
+            preview_lines = (
+                self._wrapped_preview_lines(song_lyrics[next_index].text)
+                if next_index >= 0 and preview_alpha > 0
+                else ()
+            )
+            previous_lines = (
+                self._wrapped_lyric_lines(song_lyrics[previous_index].text)
+                if previous_index >= 0 and previous_alpha > 0
+                else ()
+            )
+
+            gap = int(round(_LYRIC_PREVIEW_GAP_EM * self._lyric_font_size)) if preview_lines else 0
+            block_height = (
+                len(previous_lines) * self._lyric_line_height()
+                + gap
+                + len(preview_lines) * self._preview_line_height()
+            )
+            top_y = self._lyric_block_top(height, block_height)
+
+            next_top = top_y
+            if previous_lines:
+                next_top = self._render_lyric_lines(
+                    song_lyrics[previous_index].text,
+                    previous_alpha,
+                    self.template.highlight_color,
                     draw,
                     width,
-                    height,
+                    top_y,
+                )
+            if preview_lines:
+                self._render_next_lyric_preview(
+                    song_lyrics[next_index], preview_alpha, draw, width, next_top + gap
                 )
             return
 
@@ -774,31 +960,38 @@ class FrameRenderer:
         if is_last_lyric_faded:
             return
 
-        current_font_size = self.fit_text(
-            draw, current_line.text, current_font_size_target, width - margin * 2
+        next_line = song_lyrics[current_index + 1] if current_index + 1 < len(song_lyrics) else None
+
+        next_alpha = 128
+        if is_last_lyric and fade_alpha < 255:
+            fade_progress = 1.0 - fade_alpha / 255.0
+            next_alpha = math.floor(128 * (1 - fade_progress))
+
+        preview_lines = (
+            self._wrapped_preview_lines(next_line.text)
+            if next_line is not None and next_alpha > 0 and _has_lyric_content(next_line.text)
+            else ()
         )
-        font = self._get_font(current_font_size)
-        fill_color = self._composite_over_background(self.template.highlight_color, fade_alpha)
-        y = int(height * 0.33)
-        draw.text(
-            (width // 2, y),
+        current_lines = self._wrapped_lyric_lines(current_line.text)
+
+        gap = int(round(_LYRIC_PREVIEW_GAP_EM * self._lyric_font_size)) if preview_lines else 0
+        block_height = (
+            len(current_lines) * self._lyric_line_height()
+            + gap
+            + len(preview_lines) * self._preview_line_height()
+        )
+        top_y = self._lyric_block_top(height, block_height)
+
+        next_top = self._render_lyric_lines(
             current_line.text,
-            fill=fill_color,
-            font=font,
-            anchor="mt",
+            fade_alpha,
+            self.template.highlight_color,
+            draw,
+            width,
+            top_y,
         )
-
-        if not is_last_lyric_faded:
-            next_index = current_index + 1
-            if next_index < len(song_lyrics):
-                next_line = song_lyrics[next_index]
-
-                next_alpha = 128
-                if is_last_lyric and fade_alpha < 255:
-                    fade_progress = 1.0 - fade_alpha / 255.0
-                    next_alpha = math.floor(128 * (1 - fade_progress))
-
-                self._render_next_lyric_preview(next_line, next_alpha, draw, width, height)
+        if preview_lines:
+            self._render_next_lyric_preview(next_line, next_alpha, draw, width, next_top + gap)
 
     def _render_next_lyric_preview(
         self,
@@ -806,29 +999,25 @@ class FrameRenderer:
         next_alpha: int,
         draw: ImageDraw.ImageDraw,
         width: int,
-        height: int,
+        top_y: int,
     ) -> None:
-        if next_alpha <= 0 or not isinstance(next_line.text, str) or not next_line.text.strip():
+        if next_alpha <= 0 or not _has_lyric_content(next_line.text):
             return
 
-        next_font_size_target = self.base_font_size
-        next_margin = self.get_margin(draw, next_font_size_target)
-        next_font_size = self.fit_text(
-            draw,
-            next_line.text,
-            next_font_size_target,
-            width - next_margin * 2,
-        )
-        next_font = self._get_font(next_font_size)
-        next_fill_color = self._composite_over_background(self.template.text_color, next_alpha)
-        next_y = int(height * 0.33 + 200)
-        draw.text(
-            (width // 2, next_y),
-            next_line.text,
-            fill=next_fill_color,
-            font=next_font,
-            anchor="mt",
-        )
+        lines = self._wrapped_preview_lines(next_line.text)
+        if not lines:
+            return
+        font = self._get_font(self.base_font_size)
+        fill_color = self._composite_over_background(self.template.text_color, next_alpha)
+        line_height = self._preview_line_height()
+        for index, line in enumerate(lines):
+            draw.text(
+                (width // 2, top_y + index * line_height),
+                line,
+                fill=fill_color,
+                font=font,
+                anchor="mt",
+            )
 
     def render_title_card(self, config: TitleCardConfig) -> Image.Image:
         width, height = self.resolution
