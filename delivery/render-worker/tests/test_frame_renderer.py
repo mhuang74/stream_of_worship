@@ -20,7 +20,10 @@ from sow_render_worker.frame_renderer import (
     _DEFAULT_MAX_CACHE_ENTRIES,
     _get_bool_env,
     _get_int_env,
+    _has_lyric_content,
     _load_font,
+    _normalize_lyric_text,
+    _split_lyric_phrase,
 )
 from sow_render_worker.lrc_parser import GlobalLRCLine
 
@@ -300,6 +303,89 @@ class TestGetMargin:
         margin_small = renderer.get_margin(draw, 32)
         margin_large = renderer.get_margin(draw, 64)
         assert margin_large > margin_small
+
+
+class TestNormalizeLyricText:
+    def test_collapses_repeated_spaces(self):
+        assert (
+            _normalize_lyric_text("祢的話在我心  使我腳步不偏離") == "祢的話在我心 使我腳步不偏離"
+        )
+
+    def test_collapses_tabs_nbsp_and_ideographic_space(self):
+        assert _normalize_lyric_text("\t主啊\u3000\u00a0 我要跟隨祢 ") == "主啊 我要跟隨祢"
+
+    def test_blank_inputs_normalize_to_empty(self):
+        assert _normalize_lyric_text("") == ""
+        assert _normalize_lyric_text("   ") == ""
+        assert _normalize_lyric_text("\u3000\t") == ""
+
+
+class TestHasLyricContent:
+    def test_non_str_and_blank_return_false(self):
+        assert not _has_lyric_content(None)
+        assert not _has_lyric_content(123)
+        assert not _has_lyric_content("   ")
+        assert not _has_lyric_content("\u3000")
+        assert _has_lyric_content(" 主 ")
+
+
+class TestWrapLyricText:
+    def test_two_phrases_split_into_two_lines(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert renderer._wrapped_lyric_lines("祢的話在我心  使我腳步不偏離") == (
+            "祢的話在我心",
+            "使我腳步不偏離",
+        )
+
+    def test_short_phrases_pack_onto_one_line(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert renderer._wrapped_lyric_lines("喔耶穌 喔耶穌") == ("喔耶穌 喔耶穌",)
+
+    def test_space_free_phrase_over_target_keeps_its_own_line(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert renderer._wrapped_lyric_lines("和散那歸於至高神主耶穌") == (
+            "和散那歸於至高神主耶穌",
+        )
+
+    def test_phrase_wider_than_frame_splits_into_balanced_chunks(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        target, _ = renderer._line_width_limits(renderer._lyric_font_size)
+        assert _split_lyric_phrase(
+            "和散那歸於至高神主耶穌",
+            renderer._lyric_font_size,
+            target,
+            renderer.font_family,
+        ) == (
+            "和散那歸於至",
+            "高神主耶穌",
+        )
+
+    def test_punctuation_is_preferred_break_point(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert _split_lyric_phrase(
+            "因祢捨命，我回到父神面前",
+            renderer._lyric_font_size,
+            8 * renderer._lyric_font_size,
+            renderer.font_family,
+        ) == (
+            "因祢捨命，",
+            "我回到父神面前",
+        )
+
+    def test_blank_text_returns_empty_tuple(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        assert renderer._wrapped_lyric_lines("   ") == ()
+
+    def test_lyric_font_size_is_fixed_per_renderer(self):
+        assert FrameRenderer(template=VIDEO_TEMPLATES["dark"])._lyric_font_size == 96
+        assert (
+            FrameRenderer(
+                template=VIDEO_TEMPLATES["dark"],
+                font_size_preset="XL",
+                resolution=(1280, 720),
+            )._lyric_font_size
+            == 106
+        )
 
 
 class TestRenderFrame:
@@ -641,6 +727,7 @@ class TestRenderLyrics:
             ("World", 0),
             ("", 128),
             ("   ", 128),
+            ("\u3000", 128),
             (None, 128),
             (123, 128),
         ],
@@ -658,11 +745,64 @@ class TestRenderLyrics:
             title="Song",
         )
 
-        with patch.object(renderer, "fit_text") as fit_text:
-            renderer._render_next_lyric_preview(line, alpha, draw, 1920, 1080)
+        renderer._render_next_lyric_preview(line, alpha, draw, 1920, 300)
 
-        fit_text.assert_not_called()
         draw_text.assert_not_called()
+
+
+class TestRenderLyricsMultiLine:
+    @staticmethod
+    def _glyph_rows(img, bg):
+        return [
+            y
+            for y in range(img.height)
+            if any(img.getpixel((x, y)) != bg for x in range(0, 1920, 4))
+        ]
+
+    @staticmethod
+    def _band_heights(rows):
+        bands: list[list[int]] = []
+        for y in rows:
+            if bands and y - bands[-1][-1] == 1:
+                bands[-1].append(y)
+            else:
+                bands.append([y])
+        return [len(band) for band in bands]
+
+    def test_long_line_renders_two_rows_at_lyric_size(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        lyrics = _make_lyrics([(0.0, "祢的話在我心  使我腳步不偏離")])
+        img = Image.new("RGB", (1920, 1080), bg)
+        renderer.render_lyrics(lyrics, 1.0, "Song", ImageDraw.Draw(img), 1920, 1080)
+
+        rows = self._glyph_rows(img, bg)
+        assert rows, "no pixels drawn"
+        drawn = set(rows)
+        gaps = [y for y in range(rows[0], rows[-1]) if y not in drawn]
+        assert gaps, "expected a blank gap between the two wrapped lines"
+        assert len(self._band_heights(rows)) == 2
+
+    def test_short_and_long_lines_use_the_same_glyph_height(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        bg = VIDEO_TEMPLATES["dark"].background_color
+        font = renderer._get_font(renderer._lyric_font_size)
+        bbox = font.getbbox("中")
+        expected_height = bbox[3] - bbox[1]
+
+        def band_heights(text):
+            img = Image.new("RGB", (1920, 1080), bg)
+            renderer.render_lyrics(
+                _make_lyrics([(0.0, text)]), 1.0, "Song", ImageDraw.Draw(img), 1920, 1080
+            )
+            return self._band_heights(self._glyph_rows(img, bg))
+
+        # 2, 11 and 20 (wide enough that per-line shrinking would be visible) characters
+        for text in ("主啊", "和散那歸於至高神主耶穌", "哈利路亞讚美祢名直到永遠哈利路亞讚美祢"):
+            heights = band_heights(text)
+            assert heights, f"no pixels drawn for {text!r}"
+            for height in heights:
+                assert abs(height - expected_height) <= 4, (text, heights, expected_height)
 
 
 class TestRenderTitleCard:
