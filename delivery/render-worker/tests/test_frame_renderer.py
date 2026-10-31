@@ -1270,6 +1270,14 @@ class TestFontFamily:
         font = _load_font(48, "noto_serif_tc")
         assert font is not None
 
+    def test_default_font_family_renders_cjk_at_one_em(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        font = _load_font(renderer._lyric_font_size, renderer.font_family)
+        assert font.getlength("中") == pytest.approx(renderer._lyric_font_size), (
+            "lyric wrap metrics assume 1em per CJK glyph; "
+            "vendored fonts are missing or not reachable from FONT_FAMILY_PATHS"
+        )
+
     def test_load_font_with_each_family(self):
         for family in FONT_FAMILY_PATHS:
             font = _load_font(48, family)

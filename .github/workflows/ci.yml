@@ -91,4 +91,10 @@ jobs:
 
       - run: pip install --no-cache-dir -r requirements.txt pytest pytest-mock pytest-asyncio
 
+      - name: Install vendored CJK fonts
+        run: |
+          sudo mkdir -p /usr/share/fonts/truetype/vendor
+          sudo cp fonts/*.ttf /usr/share/fonts/truetype/vendor/
+          ls -l /usr/share/fonts/truetype/vendor/
+
       - run: PYTHONPATH=src pytest tests/ -v
