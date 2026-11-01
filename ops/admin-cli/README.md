@@ -58,7 +58,7 @@ Configuration is stored in a TOML file at:
 - **macOS/Linux**: `~/.config/stream-of-worship-admin/config.toml`
 - **Windows**: `%APPDATA%\stream-of-worship-admin\config.toml`
 
-Cache directory is always at `~/.cache/stream-of-worship-admin/` (not configurable).
+Cache directory defaults to `~/.cache/stream-of-worship-admin/` and is not configurable through `config.toml`; it follows `XDG_CACHE_HOME` on Linux/macOS and `LOCALAPPDATA` on Windows (see [Environment Variables](#networking-logging-and-paths)).
 
 ### View Configuration
 
@@ -106,27 +106,70 @@ url = "postgresql://sow_admin_rw@ep-xxx-pooler.us-east-1.aws.neon.tech/sow"
 feedback_email = "you@example.com"
 ```
 
-Note: Cache directory is always at `~/.cache/stream-of-worship-admin/` and is not configurable.
+Note: The cache directory is not configurable via `config.toml` — it defaults to `~/.cache/stream-of-worship-admin/` and follows `XDG_CACHE_HOME` (Linux/macOS) or `LOCALAPPDATA` (Windows).
 
 Note: The database URL for Neon should include `sslmode=require` in the query string for production use. The application uses `sslmode=prefer` by default, which attempts SSL first but allows fallback for testing environments.
 
 ### Environment Variables
 
-Sensitive credentials should be set via environment variables:
+Sensitive credentials are read from the process environment; non-sensitive settings
+(`database.url`, `r2.bucket`, `r2.endpoint_url`, `service.analysis_url`) belong in the
+config file. This is the complete set of variables the CLI reads.
+
+**No `.env` file is loaded automatically, with one exception:** `songset construct` calls
+`load_dotenv("/opt/sow/.env", override=False)` as its first statement
+(`src/stream_of_worship/admin/commands/songset.py:478`), so that one command picks up
+`/opt/sow/.env` with already-exported shell variables winning. Every other command sees
+only the exported environment. To give all commands the same values:
 
 ```bash
-# Database password (required for Neon connection)
-export SOW_DATABASE_PASSWORD="your-password"
-
-# R2 Credentials (sensitive - never commit these)
-export SOW_R2_ACCESS_KEY_ID="your-access-key"
-export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
-
-# Analysis service API key
-export SOW_ANALYSIS_API_KEY="your-api-key"
+set -a; . /opt/sow/.env; set +a
 ```
 
-**Note:** Non-sensitive settings like `database.url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
+#### Credentials and service access
+
+| Variable | Used by | Required | Behavior when unset |
+|----------|---------|----------|---------------------|
+| `SOW_DATABASE_PASSWORD` | every DB-touching command (`db`, `catalog`, `audio`, `lyrics`, `songset`, both editors) | yes, unless `[database].url` already embeds a password | injected into the DSN by `AdminConfig.get_connection_url()` (`config.py:60-77`); without it the URL is used as-is and Postgres auth fails |
+| `SOW_DATABASE_URL` | same | no | when set it **overrides** `[database].url` from the config file (`config.py:65`), so a `--config` pointing at another database is silently ignored; `songset construct` loads it from `/opt/sow/.env`, so it can target a different database than other commands |
+| `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY` | R2 reads/writes: `audio download/analyze/components/cache/review-components/playback/batch/probe/probe-batch`, `audio status --reconcile`, `lyrics upload/edit`, and `maintenance --with-r2/list-r2-waste/purge-r2-waste/backup-r2/verify-r2-backup/restore-r2/purge-soft-deletes` | required for those | `services/r2.py:134-141` raises `R2 credentials not set. Set SOW_R2_ACCESS_KEY_ID and SOW_R2_SECRET_ACCESS_KEY environment variables.`; most commands catch it and exit 1 with `R2 configuration error: …` (`commands/lyrics.py:2144,2478`, `commands/audio.py:4737`); it escapes uncaught in `audio components` (`commands/audio.py:3479`) and in the LRC display path used by `lyrics align`/`audio show` (`services/lrc_jobs.py:654`); only `lyrics generate` (stdin batch and `--resume`) degrades: `R2 not configured (…); skipping R2 fallback checks` (`commands/lyrics.py:1381,1417`) |
+| `SOW_ANALYSIS_API_KEY` | every analysis-service call (`audio analyze`, `audio components`, `audio embed`, `audio status`, `lyrics generate`, `lyrics align`, editor `G`/`A` hotkeys) | yes for those | `ValueError: SOW_ANALYSIS_API_KEY environment variable is not set. …` when the client is constructed (`services/analysis.py:210-215`); the editor disables `G`/`A` with a warning instead |
+| `SOW_ADMIN_API_KEY` | admin-only endpoints — job cancellation (`audio cancel`) | yes for those | `ValueError: SOW_ADMIN_API_KEY environment variable is not set. …` (`services/analysis.py:234-241`) |
+
+#### LLM (structured-lyrics cleanup and songset construction)
+
+These are the only LLM credentials the CLI itself uses. Model flags forwarded to the
+analysis service (`lyrics generate --llm-model`) and its own LLM settings
+(`SOW_LLM_CLASSIFICATION_MODEL`, `SOW_EMBEDDING_*`, `SOW_DASHSCOPE_API_KEY`, `SOW_MVSEP_*`)
+are configured **on the service**, not here.
+
+| Variable | Used by | Required | Behavior when unset |
+|----------|---------|----------|---------------------|
+| `SOW_LLM_API_KEY` | structured-lyrics cleanup in `audio download` and `audio batch` (on by default, disable with `--no-llm`); `songset construct --llm` / `--llm-judge` | when LLM is enabled | lyrics path raises `RuntimeError: LLM lyrics extraction is enabled but SOW_LLM_API_KEY / SOW_LLM_MODEL are not set. Either set them or pass --no-llm.` (`services/structured_lyrics.py:160-166`); `construct` fails fast with `Agentic mode requires LLM configuration: …` (`songset_constructor/config.py:120-131`) |
+| `SOW_LLM_MODEL` | same | when LLM is enabled | no hardcoded default; `songset construct` accepts `--llm-model` as an override (`config.py:77`) |
+| `SOW_LLM_BASE_URL` | same | no | falls back to the provider's default endpoint; set it for an OpenAI-compatible gateway (`services/structured_lyrics.py:173`, `songset_constructor/graph/llm.py:22`) |
+
+#### Networking, logging, and paths
+
+| Variable | Used by | Required | Behavior when unset |
+|----------|---------|----------|---------------------|
+| `SOW_YOUTUBE_PROXY` | yt-dlp operations only: metadata preview, search/match scan, and audio downloads (`services/youtube.py:75-81`) | no | no `proxy` option is passed to yt-dlp, which then honors the system `HTTPS_PROXY`; accepts a port-range pool (see [Notation](#notation-proxy-port-ranges-and-model-effort-suffixes)) |
+| `SOW_YOUTUBE_PROXY_RETRIES` | proxy rotation budget per operation | no | default `10`, `"0"` clamps to `1` (`services/proxy.py:100-110`) |
+| `SOW_ADMIN_LOG_LEVEL` | session log verbosity (`~/.cache/stream-of-worship-admin/logs/sow-admin.log`) | no | default `INFO`; unknown names fall back to `INFO` (`logging_config.py:90-93`) |
+| `SOW_DEFAULT_USER` | default `--user` identity for `songset create` (`construct` requires `--user`) | no | command exits 1: "No user specified. Pass --user or set SOW_DEFAULT_USER env var." (`commands/songset.py:729-735`) |
+| `SOW_BATCH_MANIFEST_DIR` | batch manifest root used by `audio batch` and `lyrics … --stdin --resume` | no | `~/.local/share/sow-admin/batch` (`commands/lyrics.py:917-924`, `commands/audio.py:6111`) |
+| `EDITOR` | external review document in `catalog insert` / `catalog edit` (`commands/catalog.py:327,413`) | no | falls back to `nano`, then `vi`; none found raises `RuntimeError` (`services/catalog_edit.py:220-222`) |
+| `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` | cache/log directory and config directory on Linux/macOS | no | `~/.cache/stream-of-worship-admin`, `~/.config/stream-of-worship-admin` (`config.py:226-262`) |
+| `APPDATA`, `LOCALAPPDATA` | config directory / cache directory on Windows | no | `%APPDATA%\stream-of-worship-admin`, `%LOCALAPPDATA%\stream-of-worship-admin\cache` (`config.py:237-241,257-261`) |
+
+```bash
+# Minimal set for a command that touches DB + R2 + analysis service
+export SOW_DATABASE_PASSWORD="your-password"
+export SOW_R2_ACCESS_KEY_ID="your-access-key"
+export SOW_R2_SECRET_ACCESS_KEY="your-secret-key"
+export SOW_ANALYSIS_API_KEY="your-api-key"
+export SOW_ADMIN_API_KEY="your-admin-api-key"   # only for audio cancel
+```
 
 #### Notation: proxy port ranges and model effort suffixes
 
@@ -610,16 +653,13 @@ Without it, a clear `RuntimeError` with install instructions is raised.
 
 `construct` runs beam search deterministically by default. LLM-based planning is
 enabled with `--llm` (and `--llm-judge` for the LLM judge). When LLM mode is
-enabled, the following environment variables are used:
+enabled it needs `SOW_LLM_API_KEY`, `SOW_LLM_MODEL` (or `--llm-model`), and
+optionally `SOW_LLM_BASE_URL` — the semantics and failure messages are in
+[Environment Variables](#llm-structured-lyrics-cleanup-and-songset-construction).
 
-| Variable | Purpose |
-|----------|---------|
-| `SOW_LLM_API_KEY` | API key for the OpenAI-compatible chat provider (required when `--llm`) |
-| `SOW_LLM_MODEL` | Chat model name (required when `--llm`; no hardcoded default — set via env or `--llm-model`) |
-| `SOW_LLM_BASE_URL` | Optional base URL for an OpenAI-compatible gateway |
-
-The CLI auto-loads `/opt/sow/.env` (already-exported shell variables take
-precedence). The chat model is built with `temperature=0.2` and `max_retries=2`.
+`construct` is the one command that auto-loads `/opt/sow/.env`
+(`override=False`, so exported values still win). The chat model is built with
+`temperature=0.2` and `max_retries=2`.
 `SOW_LLM_MODEL` / `--llm-model` accepts a `model:effort` suffix
 (e.g. `deepseek-v4.1-flash:low`) which is split off and sent as the
 `reasoning_effort` request parameter instead of the model id — see
