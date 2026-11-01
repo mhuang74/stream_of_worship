@@ -153,8 +153,8 @@ are configured **on the service**, not here.
 
 | Variable | Used by | Required | Behavior when unset |
 |----------|---------|----------|---------------------|
-| `SOW_YOUTUBE_PROXY` | yt-dlp operations only: metadata preview, search/match scan, and audio downloads (`services/youtube.py:75-81`) | no | no `proxy` option is passed to yt-dlp, which then honors the system `HTTPS_PROXY`; accepts a port-range pool (see [Notation](#notation-proxy-port-ranges-and-model-effort-suffixes)) |
-| `SOW_YOUTUBE_PROXY_RETRIES` | proxy rotation budget per operation | no | default `10`, `"0"` clamps to `1` (`services/proxy.py:100-110`) |
+| `SOW_YOUTUBE_PROXY` | every yt-dlp operation (metadata preview, search/match scan, audio downloads) and the transcript draft fetched by `catalog insert` (`commands/catalog.py:316` → `services/youtube.py:375-380`, `RotatingProxyConfig`) | no | no `proxy` option is passed to yt-dlp, which then honors the system `HTTPS_PROXY`; accepts a port-range pool (see [Notation](#notation-proxy-port-ranges-and-model-effort-suffixes)) |
+| `SOW_YOUTUBE_PROXY_RETRIES` | rotation budget for both proxied paths: yt-dlp retries per operation and the transcript's `retries_when_blocked` (`services/youtube.py:79,378-380`) | no | default `10`, `"0"` clamps to `1` (`services/proxy.py:100-110`); with no pool there is one attempt |
 | `SOW_ADMIN_LOG_LEVEL` | session log verbosity (`~/.cache/stream-of-worship-admin/logs/sow-admin.log`) | no | default `INFO`; unknown names fall back to `INFO` (`logging_config.py:90-93`) |
 | `SOW_DEFAULT_USER` | default `--user` identity for `songset create` (`construct` requires `--user`) | no | command exits 1: "No user specified. Pass --user or set SOW_DEFAULT_USER env var." (`commands/songset.py:729-735`) |
 | `SOW_BATCH_MANIFEST_DIR` | batch manifest root used by `audio batch` and `lyrics … --stdin --resume` | no | `~/.local/share/sow-admin/batch` (`commands/lyrics.py:917-924`, `commands/audio.py:6111`) |
@@ -180,9 +180,9 @@ Two notations are shared verbatim with the Analysis Service, so the same
   expands to one proxy URL per port (inclusive), and each operation picks a member at
   random. A URL without a range is used as-is.
   An inverted range (`10010-10001`) or one wider than 64 ports fails fast with a
-  redacted error before any network call. On the admin CLI the pool covers the yt-dlp
-  operations only (metadata preview, search/match scan, downloads); the Analysis
-  Service additionally routes its transcript fetches through it.
+  redacted error before any network call. On the admin CLI the pool covers every yt-dlp
+  operation and the transcript-draft fetch used by `catalog insert`; the Analysis
+  Service routes its transcript fetches through it as well.
 - `SOW_YOUTUBE_PROXY_RETRIES` is the **rotation attempt budget** per operation
   (default `10`, minimum `1`) — it is no longer forwarded to yt-dlp's own
   `retries` option. Without a proxy pool there is exactly one attempt.
