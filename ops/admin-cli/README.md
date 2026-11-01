@@ -128,6 +128,27 @@ export SOW_ANALYSIS_API_KEY="your-api-key"
 
 **Note:** Non-sensitive settings like `database.url`, `r2.bucket`, and `r2.endpoint_url` should be configured in the config file. Only sensitive credentials use environment variables for security.
 
+#### Notation: proxy port ranges and model effort suffixes
+
+Two notations are shared verbatim with the Analysis Service, so the same
+`/opt/sow/.env` drives both (see `docs/adr/0011-notation-parsers-duplicated-per-package.md`):
+
+- `SOW_YOUTUBE_PROXY` may carry a **port range**: `http://user:pass@host:10001-10010`
+  expands to one proxy URL per port (inclusive), and every yt-dlp operation and
+  transcript fetch picks a member at random. A URL without a range is used as-is.
+  An inverted range (`10010-10001`) or one wider than 64 ports fails fast with a
+  redacted error before any network call.
+- `SOW_YOUTUBE_PROXY_RETRIES` is the **rotation attempt budget** per operation
+  (default `10`, minimum `1`) — it is no longer forwarded to yt-dlp's own
+  `retries` option. Without a proxy pool there is exactly one attempt.
+- `SOW_LLM_MODEL` / `--llm-model` may carry a **reasoning-effort suffix**:
+  `deepseek-v4.1-flash:low` sends model id `deepseek-v4.1-flash` with
+  `reasoning_effort=low`. Only `none|minimal|low|medium|high|xhigh|max`
+  (case-sensitive) are recognized; any other suffix (`some/provider:free`) is
+  left in the model id untouched. The suffix is stripped locally only when the
+  admin CLI builds its own chat client; model ids forwarded to the Analysis
+  Service keep the suffix, which the service splits itself.
+
 ### Session Logging
 
 Every `sow-admin` run appends to a rotating log file (5 MB per file, 3 backups) under the
@@ -599,6 +620,11 @@ enabled, the following environment variables are used:
 
 The CLI auto-loads `/opt/sow/.env` (already-exported shell variables take
 precedence). The chat model is built with `temperature=0.2` and `max_retries=2`.
+`SOW_LLM_MODEL` / `--llm-model` accepts a `model:effort` suffix
+(e.g. `deepseek-v4.1-flash:low`) which is split off and sent as the
+`reasoning_effort` request parameter instead of the model id — see
+[Notation](#notation-proxy-port-ranges-and-model-effort-suffixes). The manifest
+records the raw configured string, suffix included.
 If `--llm` is set and `SOW_LLM_API_KEY` or `SOW_LLM_MODEL` is missing, the
 command fails fast with a clear configuration error.
 

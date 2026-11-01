@@ -4,15 +4,24 @@ Provides search-based audio downloading from YouTube using song metadata
 (title, composer, album) assembled into a search query.
 """
 
-import os
 import re
 import tempfile
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 
 import yt_dlp
+
+from stream_of_worship.admin.services.proxy import (
+    RotatingProxyConfig,
+    choose_proxy,
+    get_proxy_pool,
+    get_proxy_retries,
+)
+
+_T = TypeVar("_T")
 
 # Constants for search and duration filtering
 OFFICIAL_LYRICS_SUFFIX = "官方歌詞版MV (Official Lyrics MV) - 讚美之泉敬拜讚美"
@@ -47,21 +56,33 @@ class TranscriptDraft:
     lines: list[str]
 
 
-def _youtube_proxy_opts() -> dict[str, Any]:
-    """Read SOW_YOUTUBE_PROXY / SOW_YOUTUBE_PROXY_RETRIES env vars.
+def _run_with_proxy_rotation(call: Callable[[dict[str, Any]], _T]) -> _T:
+    """Run one whole yt-dlp operation, re-picking a pool member per attempt.
 
-    Returns ydl_opts keys: ``proxy`` (only if set, non-empty) and optionally
-    ``retries``. Returns an empty dict if neither is set, letting yt-dlp
-    fall back to its own defaults (or system ``HTTPS_PROXY`` env var).
+    yt-dlp accepts exactly one proxy per ``YoutubeDL`` instance, so rotation
+    happens across whole-operation attempts rather than inside a single one.
+
+    ``call`` receives only the proxy opts to merge into its ``ydl_opts``.
+
+    Attempts = ``SOW_YOUTUBE_PROXY_RETRIES`` (default 10) when a proxy pool is
+    configured, otherwise 1. Only ``yt_dlp.utils.DownloadError`` is retried;
+    the last error is re-raised so the caller's existing wrapping applies.
+
+    Raises:
+        ProxyConfigError: when ``SOW_YOUTUBE_PROXY`` is malformed — raised
+            before any network call.
     """
-    opts: dict[str, Any] = {}
-    proxy = os.environ.get("SOW_YOUTUBE_PROXY", "").strip()
-    if proxy:
-        opts["proxy"] = proxy
-    retries_env = os.environ.get("SOW_YOUTUBE_PROXY_RETRIES", "").strip()
-    if retries_env.isdigit():
-        opts["retries"] = int(retries_env)
-    return opts
+    pool = get_proxy_pool()
+    attempts = get_proxy_retries() if pool else 1
+    last_error: yt_dlp.utils.DownloadError | None = None
+    for _ in range(attempts):
+        proxy_opts: dict[str, Any] = {"proxy": choose_proxy(pool)} if pool else {}
+        try:
+            return call(proxy_opts)
+        except yt_dlp.utils.DownloadError as e:
+            last_error = e
+    assert last_error is not None
+    raise last_error
 
 
 def _extract_chinese_title_from_youtube(video_title: Optional[str]) -> Optional[str]:
@@ -234,17 +255,19 @@ def extract_video_id(url: str) -> str | None:
 
 def extract_video_metadata(url: str) -> YouTubeVideoMetadata:
     """Extract video metadata for a direct YouTube URL."""
-    ydl_opts = {
+    base_opts: dict[str, Any] = {
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "remote_components": ["ejs:github"],
-        **_youtube_proxy_opts(),
     }
 
+    def call(proxy_opts: dict[str, Any]) -> dict[str, Any] | None:
+        with yt_dlp.YoutubeDL({**base_opts, **proxy_opts}) as ydl:
+            return ydl.extract_info(url, download=False)
+
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = _run_with_proxy_rotation(call)
     except yt_dlp.utils.DownloadError as e:
         raise RuntimeError(f"Failed to extract video metadata: {e}") from e
 
@@ -348,18 +371,26 @@ def _fetch_transcript_draft(
 
     requested_languages = languages or DEFAULT_TRANSCRIPT_LANGUAGES
 
+    # Resolved before the try blocks so a malformed SOW_YOUTUBE_PROXY raises
+    # ProxyConfigError instead of being masked as a transcript fetch failure.
+    pool = get_proxy_pool()
+    proxy_config = (
+        RotatingProxyConfig(urls=pool, retries_when_blocked=get_proxy_retries()) if pool else None
+    )
+
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
     except ImportError as e:
         raise RuntimeError("youtube-transcript-api is not installed") from e
 
+    api = YouTubeTranscriptApi(proxy_config=proxy_config)
+
     try:
-        api = YouTubeTranscriptApi()
         transcript = api.fetch(video_id, languages=requested_languages)
         source = f"YouTube transcript ({','.join(requested_languages)})"
     except Exception:
         try:
-            transcript_list = YouTubeTranscriptApi().list(video_id)
+            transcript_list = api.list(video_id)
             best = _find_best_transcript(transcript_list)
             if best is None:
                 raise RuntimeError("No suitable transcript available")
@@ -471,7 +502,6 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "remote_components": ["ejs:github"],
-            **_youtube_proxy_opts(),
         }
 
         is_url = query.startswith(("http://", "https://", "www.", "youtube.com", "youtu.be"))
@@ -479,8 +509,8 @@ class YouTubeDownloader:
             song_title is not None and max_results > 1 and not is_url
         )
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        def call(proxy_opts: dict[str, Any]) -> Optional[dict[str, Any]]:
+            with yt_dlp.YoutubeDL({**ydl_opts, **proxy_opts}) as ydl:
                 if is_url:
                     info = ydl.extract_info(query, download=False)
                 elif use_multi_candidate:
@@ -515,6 +545,9 @@ class YouTubeDownloader:
                     "duration": video_info.get("duration"),
                     "webpage_url": video_info.get("webpage_url"),
                 }
+
+        try:
+            return _run_with_proxy_rotation(call)
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Failed to preview video: {e}") from e
 
@@ -544,31 +577,33 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "remote_components": ["ejs:github"],
-            **_youtube_proxy_opts(),
         }
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        def call(proxy_opts: dict[str, Any]) -> Path:
+            with yt_dlp.YoutubeDL({**ydl_opts, **proxy_opts}) as ydl:
                 ydl.download([url])
 
-                # After download, find the actual output file
-                mp3_files = list(self.output_dir.glob("*.mp3"))
-                if mp3_files:
-                    return mp3_files[0]
+            # After download, find the actual output file
+            mp3_files = list(self.output_dir.glob("*.mp3"))
+            if mp3_files:
+                return mp3_files[0]
 
-                # Fallback: check for any audio file
-                audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
-                for ext in audio_exts:
-                    files = list(self.output_dir.glob(f"*{ext}"))
-                    if files:
-                        return files[0]
+            # Fallback: check for any audio file
+            audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
+            for ext in audio_exts:
+                files = list(self.output_dir.glob(f"*{ext}"))
+                if files:
+                    return files[0]
 
-                # Debug: list all files in output directory
-                existing_files = list(self.output_dir.iterdir())
-                raise RuntimeError(
-                    f"Downloaded file not found. "
-                    f"Files in directory: {[f.name for f in existing_files]}"
-                )
+            # Debug: list all files in output directory
+            existing_files = list(self.output_dir.iterdir())
+            raise RuntimeError(
+                f"Downloaded file not found. "
+                f"Files in directory: {[f.name for f in existing_files]}"
+            )
+
+        try:
+            return _run_with_proxy_rotation(call)
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e
 
@@ -621,34 +656,36 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "remote_components": ["ejs:github"],
-            **_youtube_proxy_opts(),
         }
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        def call(proxy_opts: dict[str, Any]) -> Path:
+            with yt_dlp.YoutubeDL({**ydl_opts, **proxy_opts}) as ydl:
                 info = ydl.extract_info(f"ytsearch1:{query}", download=True)
-                if info is None:
-                    raise RuntimeError(f"No results found for query: {query}")
+            if info is None:
+                raise RuntimeError(f"No results found for query: {query}")
 
-                # After download, find the actual output file
-                # prepare_filename() may not match actual filename when using ytsearch
-                mp3_files = list(self.output_dir.glob("*.mp3"))
-                if mp3_files:
-                    return mp3_files[0]
+            # After download, find the actual output file
+            # prepare_filename() may not match actual filename when using ytsearch
+            mp3_files = list(self.output_dir.glob("*.mp3"))
+            if mp3_files:
+                return mp3_files[0]
 
-                # Fallback: check for any audio file
-                audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
-                for ext in audio_exts:
-                    files = list(self.output_dir.glob(f"*{ext}"))
-                    if files:
-                        return files[0]
+            # Fallback: check for any audio file
+            audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
+            for ext in audio_exts:
+                files = list(self.output_dir.glob(f"*{ext}"))
+                if files:
+                    return files[0]
 
-                # Debug: list all files in output directory
-                existing_files = list(self.output_dir.iterdir())
-                raise RuntimeError(
-                    f"Downloaded file not found. "
-                    f"Files in directory: {[f.name for f in existing_files]}"
-                )
+            # Debug: list all files in output directory
+            existing_files = list(self.output_dir.iterdir())
+            raise RuntimeError(
+                f"Downloaded file not found. "
+                f"Files in directory: {[f.name for f in existing_files]}"
+            )
+
+        try:
+            return _run_with_proxy_rotation(call)
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e
 
@@ -700,40 +737,42 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "remote_components": ["ejs:github"],
-            **_youtube_proxy_opts(),
         }
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        def call(proxy_opts: dict[str, Any]) -> tuple[Path, str | None, str | None]:
+            with yt_dlp.YoutubeDL({**ydl_opts, **proxy_opts}) as ydl:
                 info = ydl.extract_info(f"ytsearch1:{query}", download=True)
-                if info is None:
-                    raise RuntimeError(f"No results found for query: {query}")
+            if info is None:
+                raise RuntimeError(f"No results found for query: {query}")
 
-                webpage_url: Optional[str] = None
-                video_title: Optional[str] = None
-                if "entries" in info and info["entries"]:
-                    video_info = info["entries"][0]
-                    webpage_url = video_info.get("webpage_url")
-                    video_title = video_info.get("title")
-                else:
-                    webpage_url = info.get("webpage_url")
-                    video_title = info.get("title")
+            webpage_url: str | None = None
+            video_title: str | None = None
+            if "entries" in info and info["entries"]:
+                video_info = info["entries"][0]
+                webpage_url = video_info.get("webpage_url")
+                video_title = video_info.get("title")
+            else:
+                webpage_url = info.get("webpage_url")
+                video_title = info.get("title")
 
-                mp3_files = list(self.output_dir.glob("*.mp3"))
-                if mp3_files:
-                    return mp3_files[0], webpage_url, video_title
+            mp3_files = list(self.output_dir.glob("*.mp3"))
+            if mp3_files:
+                return mp3_files[0], webpage_url, video_title
 
-                audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
-                for ext in audio_exts:
-                    files = list(self.output_dir.glob(f"*{ext}"))
-                    if files:
-                        return files[0], webpage_url, video_title
+            audio_exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg"]
+            for ext in audio_exts:
+                files = list(self.output_dir.glob(f"*{ext}"))
+                if files:
+                    return files[0], webpage_url, video_title
 
-                existing_files = list(self.output_dir.iterdir())
-                raise RuntimeError(
-                    f"Downloaded file not found. "
-                    f"Files in directory: {[f.name for f in existing_files]}"
-                )
+            existing_files = list(self.output_dir.iterdir())
+            raise RuntimeError(
+                f"Downloaded file not found. "
+                f"Files in directory: {[f.name for f in existing_files]}"
+            )
+
+        try:
+            return _run_with_proxy_rotation(call)
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Download failed: {e}") from e
 
@@ -766,14 +805,14 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "remote_components": ["ejs:github"],
-            **_youtube_proxy_opts(),
         }
 
+        def call(proxy_opts: dict[str, Any]) -> dict[str, Any] | None:
+            with yt_dlp.YoutubeDL({**ydl_opts, **proxy_opts}) as ydl:
+                return ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(
-                    f"ytsearch{max_results}:{query}", download=False
-                )
+            info = _run_with_proxy_rotation(call)
         except yt_dlp.utils.DownloadError as e:
             raise RuntimeError(f"Failed to scan search results: {e}") from e
 
