@@ -200,6 +200,16 @@ When a new johnvansickle release is available:
 3. Run the full test suite
 4. Commit and deploy
 
+## Deploying to Lambda
+
+`.github/workflows/deploy.yml`, job *Deploy Render Worker to Lambda*, runs on every push to `main` that touches `delivery/render-worker/**`. It builds the image, pushes it to the private ECR repo `sow-render-worker` tagged with the commit SHA, then calls `aws lambda update-function-code --publish`. There is no manual step; `deploy/deploy.sh` (the `:latest` path) is for local experiments and skips the R2-FFmpeg gate.
+
+Two properties of the base image and the registry path are load-bearing — both have already broken a deploy:
+
+**Dependencies must have a wheel the Lambda base image accepts.** `public.ecr.aws/lambda/python:3.11` is glibc 2.26 and has no compiler, so a package whose wheels are `manylinux_2_28`+ resolves to its sdist and the build dies with `No such file or directory: 'gcc'`. Both Dockerfiles pass `--only-binary=:all:`, which turns that into an immediate resolution error naming the package. This is why `requirements.txt` pins `Pillow==12.2.0` (last release with a `manylinux2014` cp311 wheel) instead of `Pillow>=10.0.0`.
+
+**The pushed image must be a Docker schema2 manifest.** `UpdateFunctionCode` rejects OCI image indexes and provenance attestations with `The image manifest, config or layer media type for the source image ... is not supported`. Docker 29 with the containerd image store emits an OCI index plus an attestation manifest by default, so the build runs through buildx with `--platform linux/amd64 --provenance=false --sbom=false` and pushes inside the build via `--output type=image,…,push=true,oci-mediatypes=false`. Compare `aws ecr describe-images --query 'imageDetails[*].imageManifestMediaType'` (`application/vnd.docker.distribution.manifest.v2+json`) when a deploy fails this way.
+
 ## Local Development
 
 ### Run Tests
