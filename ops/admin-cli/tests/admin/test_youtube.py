@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yt_dlp
 
+from stream_of_worship.admin.services.proxy import ProxyConfigError, RotatingProxyConfig
 from stream_of_worship.admin.services.youtube import (
     YouTubeDownloader,
     _extract_bracket_content,
@@ -201,7 +202,7 @@ class TestDownload:
 
     @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
     def test_download_passes_proxy_opts_when_env_set(self, mock_ydl_class, tmp_path, monkeypatch):
-        """YoutubeDL is constructed with proxy/retries when SOW_YOUTUBE_PROXY env vars are set."""
+        """YoutubeDL is constructed with the proxy when SOW_YOUTUBE_PROXY is set."""
         mp3_file = tmp_path / "Song.mp3"
         mp3_file.write_bytes(b"data")
 
@@ -219,7 +220,9 @@ class TestDownload:
 
         opts = mock_ydl_class.call_args[0][0]
         assert opts["proxy"] == "http://user:pass@host:10003"
-        assert opts["retries"] == 3
+        # SOW_YOUTUBE_PROXY_RETRIES is the rotation attempt budget, not a
+        # yt-dlp option (10 attempts x 10 internal retries = 100 requests).
+        assert "retries" not in opts
 
     @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
     def test_download_omits_proxy_opts_when_env_unset(self, mock_ydl_class, tmp_path, monkeypatch):
@@ -242,6 +245,81 @@ class TestDownload:
         opts = mock_ydl_class.call_args[0][0]
         assert "proxy" not in opts
         assert "retries" not in opts
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_rotates_proxy_across_attempts(self, mock_ydl_class, tmp_path, monkeypatch):
+        """A port-range pool fails over to another port after a DownloadError."""
+        mp3_file = tmp_path / "Song.mp3"
+        mp3_file.write_bytes(b"data")
+
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://user:pass@host:10001-10002")
+        monkeypatch.delenv("SOW_YOUTUBE_PROXY_RETRIES", raising=False)
+
+        constructions = []
+
+        class FakeYDL:
+            def __init__(self, opts):
+                constructions.append(opts)
+
+            def __enter__(self):
+                if len(constructions) == 1:
+                    raise yt_dlp.utils.DownloadError("HTTP Error 429")
+                ydl = MagicMock()
+                ydl.extract_info.return_value = {"title": "Song", "ext": "webm"}
+                return ydl
+
+            def __exit__(self, *exc):
+                return False
+
+        mock_ydl_class.side_effect = FakeYDL
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        result = downloader.download("query")
+
+        assert result == mp3_file
+        assert len(constructions) == 2
+        for opts in constructions:
+            assert opts["proxy"] in {
+                "http://user:pass@host:10001",
+                "http://user:pass@host:10002",
+            }
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_stops_after_retry_budget(self, mock_ydl_class, tmp_path, monkeypatch):
+        """SOW_YOUTUBE_PROXY_RETRIES bounds the number of whole-call attempts."""
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://user:pass@host:10001-10002")
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY_RETRIES", "3")
+
+        constructions = []
+
+        class FakeYDL:
+            def __init__(self, opts):
+                constructions.append(opts)
+
+            def __enter__(self):
+                raise yt_dlp.utils.DownloadError("HTTP Error 429")
+
+            def __exit__(self, *exc):
+                return False
+
+        mock_ydl_class.side_effect = FakeYDL
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        with pytest.raises(RuntimeError, match="Download failed"):
+            downloader.download("query")
+
+        assert len(constructions) == 3
+
+    @patch("stream_of_worship.admin.services.youtube.yt_dlp.YoutubeDL")
+    def test_download_rejects_inverted_proxy_range(self, mock_ydl_class, tmp_path, monkeypatch):
+        """A malformed port range fails fast, before any yt-dlp construction."""
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://user:pass@host:10010-10001")
+
+        downloader = YouTubeDownloader(output_dir=tmp_path)
+        with pytest.raises(RuntimeError, match="Invalid proxy port range"):
+            downloader.download("query")
+
+        mock_ydl_class.assert_not_called()
 
 
 class TestBuildSearchQueryWithSuffix:
@@ -510,6 +588,9 @@ class TestMetadataHelpers:
 class TestTranscriptDrafts:
     def test_fetch_transcript_lines_cleans_cues_and_whitespace(self, monkeypatch):
         class FakeApi:
+            def __init__(self, **kwargs):
+                pass
+
             def fetch(self, video_id, languages):
                 return [
                     {"text": "[Music]"},
@@ -545,6 +626,9 @@ class TestTranscriptDrafts:
         )
 
         class FakeApi:
+            def __init__(self, **kwargs):
+                pass
+
             def fetch(self, video_id, languages):
                 raise RuntimeError("preferred transcript unavailable")
 
@@ -557,6 +641,68 @@ class TestTranscriptDrafts:
         lines = fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
 
         assert lines == ["Grace upon grace"]
+
+    def test_fetch_transcript_passes_rotating_proxy_config(self, monkeypatch):
+        """SOW_YOUTUBE_PROXY reaches YouTubeTranscriptApi as a rotating pool."""
+        captured = {}
+
+        class FakeApi:
+            def __init__(self, **kwargs):
+                captured["proxy_config"] = kwargs.get("proxy_config")
+
+            def fetch(self, video_id, languages):
+                return [{"text": "Here I bow"}]
+
+        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
+        monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://user:pass@host:10001-10002")
+
+        fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
+
+        proxy_config = captured["proxy_config"]
+        assert isinstance(proxy_config, RotatingProxyConfig)
+        assert proxy_config.retries_when_blocked == 10
+        chosen = proxy_config.to_requests_dict()
+        assert chosen["http"] in {
+            "http://user:pass@host:10001",
+            "http://user:pass@host:10002",
+        }
+        assert chosen["https"] == chosen["http"]
+
+    def test_fetch_transcript_passes_no_proxy_config_when_unset(self, monkeypatch):
+        captured = {}
+
+        class FakeApi:
+            def __init__(self, **kwargs):
+                captured["proxy_config"] = kwargs.get("proxy_config")
+
+            def fetch(self, video_id, languages):
+                return [{"text": "Here I bow"}]
+
+        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
+        monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
+        monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+
+        fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
+
+        assert captured["proxy_config"] is None
+
+    def test_fetch_transcript_rejects_inverted_proxy_range(self, monkeypatch):
+        """A malformed range surfaces as ProxyConfigError, not a wrapped fetch failure."""
+
+        class FakeApi:
+            def __init__(self, **kwargs):
+                pass
+
+            def fetch(self, video_id, languages):
+                return [{"text": "unused"}]
+
+        fake_module = types.SimpleNamespace(YouTubeTranscriptApi=FakeApi)
+        monkeypatch.setitem(sys.modules, "youtube_transcript_api", fake_module)
+        monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://user:pass@host:10010-10001")
+
+        with pytest.raises(ProxyConfigError, match="Invalid proxy port range"):
+            fetch_transcript_lines("https://www.youtube.com/watch?v=test123")
 
 
 class TestExtractChineseTitle:

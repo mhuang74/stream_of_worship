@@ -153,6 +153,8 @@ def build_chat_model_for_lyrics():
     """Build an OpenAI-compatible chat model for lyrics cleanup.
 
     Reads SOW_LLM_API_KEY / SOW_LLM_BASE_URL / SOW_LLM_MODEL from env.
+    A ``model:effort`` suffix on SOW_LLM_MODEL is split off and sent as the
+    ``reasoning_effort`` request parameter instead of the model id.
     Raises RuntimeError if LLM env is not configured.
     """
     api_key = os.environ.get("SOW_LLM_API_KEY")
@@ -164,12 +166,14 @@ def build_chat_model_for_lyrics():
         )
     from langchain_openai import ChatOpenAI
 
+    from stream_of_worship.admin.services.llm_models import chat_model_kwargs
+
     return ChatOpenAI(
-        model=model,
         api_key=api_key,
         base_url=os.environ.get("SOW_LLM_BASE_URL"),
         temperature=0.0,
         max_retries=2,
+        **chat_model_kwargs(model),
     )
 
 

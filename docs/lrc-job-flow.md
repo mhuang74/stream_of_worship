@@ -304,8 +304,9 @@ The `stage` field tracks progress through the pipeline:
 | `SOW_LLM_API_KEY` | For LLM steps | — | OpenRouter/OpenAI API key |
 | `SOW_LLM_BASE_URL` | For LLM steps | — | e.g., `https://openrouter.ai/api/v1` |
 | `SOW_LLM_MODEL` | For LLM steps | — | e.g., `openai/gpt-4o-mini` |
-| `SOW_YOUTUBE_PROXY` | No | — | Proxy for YouTube transcript requests |
-| `SOW_YOUTUBE_PROXY_RETRIES` | No | `3` | Retries on HTTP 429 for proxy |
+| `SOW_YOUTUBE_PROXY` | No | — | Proxy for YouTube transcript requests. May carry a port range for rotating residential proxies: `http://user:pass@host:10001-10010` expands to one URL per port (inclusive, max 64) and each request picks one at random. The same notation is parsed by the admin CLI (`stream_of_worship.admin.services.proxy`). |
+| `SOW_YOUTUBE_PROXY_RETRIES` | No | `10` | Retries on HTTP 429 / rotation attempts, defaulting to `10` in both the Analysis Service (`sow_analysis.config`) and the admin CLI, where it bounds the per-operation yt-dlp rotation attempt budget. |
+| `SOW_LLM_MODEL` effort suffix | No | — | `model:effort` (e.g. `deepseek-v4.1-flash:low`) sends `reasoning_effort=effort` with model id `model`. Recognized efforts: `none|minimal|low|medium|high|xhigh|max` (case-sensitive); any other suffix stays part of the model id. The admin CLI splits it locally for its own chat clients; ids forwarded to the Analysis Service keep the suffix. |
 
 ## Model Roles Summary
 

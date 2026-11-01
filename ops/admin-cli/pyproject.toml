@@ -36,7 +36,7 @@ admin = [
     # 2026.6.9 broke with HTTP 403 on media fetch (metadata still worked);
     # 2026.8.19 verified downloading successfully (RA4PX7-VezA, 2026-10-14).
     "yt-dlp>=2026.8.19",
-    "youtube-transcript-api>=0.6.0",
+    "youtube-transcript-api>=1.0.0",
     "boto3>=1.34.0",
     "miniaudio>=1.59",
     "textual>=0.44.0",
