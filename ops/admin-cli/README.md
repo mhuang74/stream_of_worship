@@ -177,10 +177,12 @@ Two notations are shared verbatim with the Analysis Service, so the same
 `/opt/sow/.env` drives both (see `docs/adr/0011-notation-parsers-duplicated-per-package.md`):
 
 - `SOW_YOUTUBE_PROXY` may carry a **port range**: `http://user:pass@host:10001-10010`
-  expands to one proxy URL per port (inclusive), and every yt-dlp operation and
-  transcript fetch picks a member at random. A URL without a range is used as-is.
+  expands to one proxy URL per port (inclusive), and each operation picks a member at
+  random. A URL without a range is used as-is.
   An inverted range (`10010-10001`) or one wider than 64 ports fails fast with a
-  redacted error before any network call.
+  redacted error before any network call. On the admin CLI the pool covers the yt-dlp
+  operations only (metadata preview, search/match scan, downloads); the Analysis
+  Service additionally routes its transcript fetches through it.
 - `SOW_YOUTUBE_PROXY_RETRIES` is the **rotation attempt budget** per operation
   (default `10`, minimum `1`) — it is no longer forwarded to yt-dlp's own
   `retries` option. Without a proxy pool there is exactly one attempt.
