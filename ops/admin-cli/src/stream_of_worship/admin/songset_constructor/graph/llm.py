@@ -15,12 +15,14 @@ def build_chat_model(config: RunConfig):
         return None
     from langchain_openai import ChatOpenAI
 
+    from stream_of_worship.admin.services.llm_models import chat_model_kwargs
+
     return ChatOpenAI(
-        model=config.llm_model,
         api_key=os.environ["SOW_LLM_API_KEY"],
         base_url=os.environ.get("SOW_LLM_BASE_URL"),
         temperature=0.2,
         max_retries=2,
+        **chat_model_kwargs(config.llm_model or ""),
     )
 
 

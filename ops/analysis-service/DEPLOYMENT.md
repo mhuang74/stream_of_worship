@@ -184,7 +184,16 @@ SOW_ADMIN_API_KEY=""    # Different from SOW_ANALYSIS_API_KEY
 
 SOW_LLM_API_KEY=""
 SOW_LLM_BASE_URL=""     # e.g., https://openrouter.ai/api/v1
-SOW_LLM_MODEL=""        # e.g., openai/gpt-4o-mini
+SOW_LLM_MODEL=""        # e.g., openai/gpt-4o-mini, or "deepseek-v4.1-flash:low" (model:effort suffix)
+
+# =============================================================================
+# YOUTUBE PROXY (OPTIONAL — rotating residential proxy for transcript fetches)
+# =============================================================================
+# A port range expands to one proxy URL per port (inclusive, max 64 ports);
+# each request picks one at random. A URL without a range is used as-is.
+
+SOW_YOUTUBE_PROXY=""            # e.g., http://user:pass@host:10001-10010
+SOW_YOUTUBE_PROXY_RETRIES=10    # Retries on HTTP 429 (default 10); each retry rotates the port
 
 # =============================================================================
 # EMBEDDING CONFIGURATION (REQUIRED for embedding generation)
@@ -293,7 +302,7 @@ vim ~/sow-deployment/.env
 | `SOW_ADMIN_API_KEY` | Admin API key | `openssl rand -base64 32` (different from above) |
 | `SOW_LLM_API_KEY` | LLM API key | OpenRouter, OpenAI, etc. |
 | `SOW_LLM_BASE_URL` | LLM endpoint | e.g., `https://openrouter.ai/api/v1` |
-| `SOW_LLM_MODEL` | LLM model | e.g., `openai/gpt-4o-mini` |
+| `SOW_LLM_MODEL` | LLM model | e.g., `openai/gpt-4o-mini`; a `model:effort` suffix (`deepseek-v4.1-flash:low`) is sent as `reasoning_effort` instead of the model id |
 | `SOW_EMBEDDING_API_KEY` | Embedding API key | OpenAI-compatible embedding provider |
 | `SOW_EMBEDDING_BASE_URL` | Embedding endpoint | e.g., `https://api.openai.com/v1` |
 | `SOW_EMBEDDING_MODEL` | Embedding model | default `text-embedding-3-small` |

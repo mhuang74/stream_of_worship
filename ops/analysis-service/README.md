@@ -56,7 +56,7 @@ SOW_ADMIN_API_KEY="your-secure-admin-key"  # Optional but recommended
 # LLM Configuration (for LRC generation)
 SOW_LLM_API_KEY="sk-or-v1-..."  # OpenRouter, OpenAI, etc.
 SOW_LLM_BASE_URL="https://openrouter.ai/api/v1"
-SOW_LLM_MODEL="openai/gpt-4o-mini"
+SOW_LLM_MODEL="openai/gpt-4o-mini"  # may carry a reasoning-effort suffix: "deepseek-v4.1-flash:low"
 
 # Embedding Configuration (for song/line embedding generation)
 SOW_EMBEDDING_API_KEY="sk-..."  # OpenAI-compatible embedding provider
@@ -101,7 +101,29 @@ SOW_ANALYSIS_CACHE_VERSION=2
 # DashScope Qwen3 ASR (Optional — improves LRC transcription quality)
 SOW_DASHSCOPE_API_KEY=""  # DashScope API key; leave empty to skip Qwen3 ASR (uses Whisper only)
 SOW_DASHSCOPE_ASR_REGION="intl"  # Region: intl, cn, or us
+
+# YouTube transcript fetching (Optional — rotating residential proxy)
+SOW_YOUTUBE_PROXY=""           # e.g. "http://user:pass@host:10001-10010" (port range expands to a pool)
+SOW_YOUTUBE_PROXY_RETRIES=10   # Retries on HTTP 429 (default 10); each retry rotates the proxy port
 ```
+
+**Notation shared with the admin CLI.** Two env-var notations are parsed
+identically by this service and by `sow-admin`
+(`ops/admin-cli/src/stream_of_worship/admin/services/proxy.py` and
+`llm_models.py`), so the same `/opt/sow/.env` drives both:
+
+- `SOW_YOUTUBE_PROXY` port ranges — `host:10001-10010` expands to one proxy URL
+  per port (inclusive; ranges wider than 64 ports are rejected), and each
+  request picks one at random.
+- `SOW_LLM_MODEL` effort suffixes — `model:effort` (e.g.
+  `deepseek-v4.1-flash:low`) is sent as `reasoning_effort=effort` with the model
+  id `model`. Only `none|minimal|low|medium|high|xhigh|max` are recognized
+  (case-sensitive); any other suffix stays part of the model id.
+
+The parsers are deliberately duplicated per package (separate uv projects, no
+shared config distribution) — see
+`docs/adr/0011-notation-parsers-duplicated-per-package.md`. Change one, mirror
+the other.
 
 ## Quick Start
 
