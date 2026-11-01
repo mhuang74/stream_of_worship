@@ -21,7 +21,7 @@ RUN chmod +x /tmp/download-ffmpeg.sh \
     && rm -f /tmp/download-ffmpeg.sh
 
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/
-RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+RUN pip install --no-cache-dir --only-binary=:all: -r ${LAMBDA_TASK_ROOT}/requirements.txt
 
 COPY src/sow_render_worker/ ${LAMBDA_TASK_ROOT}/sow_render_worker/
 
