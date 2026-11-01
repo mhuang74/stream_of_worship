@@ -109,6 +109,9 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
@@ -132,7 +135,17 @@ jobs:
           # --progress=plain is load-bearing: BuildKit only streams RUN stdout
           # (our 'Downloaded ffmpeg from R2' marker) in plain mode; the
           # progress-bar mode buffers/discards it, which would break the grep.
-          docker build \
+          #
+          # Push inside the build with oci-mediatypes=false + no attestations:
+          # the runner's Docker (29.x, containerd image store) otherwise emits
+          # an OCI image index with an attestation manifest, and Lambda rejects
+          # it with "The image manifest, config or layer media type for the
+          # source image ... is not supported" (it needs
+          # application/vnd.docker.distribution.manifest.v2+json).
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
             --progress=plain \
             --build-arg FFMPEG_VERSION="$FFMPEG_VERSION" \
             --build-arg R2_BUCKET="$R2_BUCKET" \
@@ -140,7 +153,8 @@ jobs:
             --build-arg R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
             --build-arg R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
             --build-arg REQUIRE_R2_FFMPEG=true \
-            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" . 2>&1 | tee "$BUILD_LOG"
+            --output type=image,name="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG",push=true,oci-mediatypes=false \
+            . 2>&1 | tee "$BUILD_LOG"
 
           if ! grep -q "Downloaded ffmpeg from R2" "$BUILD_LOG"; then
             echo "::error::FFmpeg was NOT fetched from R2 - build fell back to johnvansickle.com. Aborting deploy to surface the issue (see log for 'R2 download failed:' cause)."
@@ -148,7 +162,6 @@ jobs:
           fi
           echo "Verified: FFmpeg sourced from R2."
 
-          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Update Lambda function
