@@ -844,10 +844,32 @@ class TestParseProxyPool:
             "http://proxy.example.com:20002",
         ]
 
+    @pytest.mark.parametrize("high", [65, 10**20])
+    def test_oversized_range_rejected_before_expansion(self, monkeypatch, high):
+        def unexpected_expansion(*args):
+            pytest.fail("Oversized proxy range must be rejected before expansion")
+
+        monkeypatch.setattr(
+            "sow_analysis.workers.youtube_transcript.range",
+            unexpected_expansion,
+            raising=False,
+        )
+        with pytest.raises(ValueError) as exc:
+            _parse_proxy_pool(f"http://user:pass@h:1-{high}")
+
+        assert str(exc.value) == (
+            f"Proxy port range too large ({high} ports, max 64): http://***@h:1-{high}"
+        )
+
     def test_inverted_range_raises(self):
         """Inverted port range raises ValueError with redacted URL."""
         with pytest.raises(ValueError, match="http://\\*\\*\\*@h:10010-10001"):
             _parse_proxy_pool("http://secret-user:secret-pass@h:10010-10001")
+
+    def test_range_at_cap_is_accepted(self):
+        assert _parse_proxy_pool("http://user:pass@h:1-64") == [
+            f"http://user:pass@h:{port}" for port in range(1, 65)
+        ]
 
     def test_oversized_range_raises(self):
         """Ranges producing >64 URLs raise ValueError."""

@@ -47,6 +47,23 @@ class TestParseProxyPool:
 
         assert pool == ["socks5://user:pass@host:9000", "socks5://user:pass@host:9001"]
 
+    @pytest.mark.parametrize("high", [65, 10**20])
+    def test_oversized_range_rejected_before_expansion(self, monkeypatch, high):
+        def unexpected_expansion(*args):
+            pytest.fail("Oversized proxy range must be rejected before expansion")
+
+        monkeypatch.setattr(
+            "stream_of_worship.admin.services.proxy.range",
+            unexpected_expansion,
+            raising=False,
+        )
+        with pytest.raises(ProxyConfigError) as exc:
+            parse_proxy_pool(f"http://user:pass@h:1-{high}")
+
+        assert str(exc.value) == (
+            f"Proxy port range too large ({high} ports, max 64): http://***@h:1-{high}"
+        )
+
     def test_inverted_range_raises_redacted_error(self):
         with pytest.raises(ProxyConfigError) as exc:
             parse_proxy_pool("http://user:pass@h:10010-10001")
@@ -60,7 +77,9 @@ class TestParseProxyPool:
         assert str(exc.value) == "Proxy port range too large (65 ports, max 64): http://***@h:1-65"
 
     def test_range_at_cap_is_accepted(self):
-        assert len(parse_proxy_pool("http://user:pass@h:1-64")) == 64
+        assert parse_proxy_pool("http://user:pass@h:1-64") == [
+            f"http://user:pass@h:{port}" for port in range(1, 65)
+        ]
 
     def test_proxy_config_error_is_runtime_error(self):
         """Command handlers catch RuntimeError; the error must not escape as-is."""
