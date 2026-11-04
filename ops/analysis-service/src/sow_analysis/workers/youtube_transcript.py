@@ -92,12 +92,12 @@ def _parse_proxy_pool(proxy_url: str) -> list[str]:
     low, high = int(match.group(1)), int(match.group(2))
     if low > high:
         raise ValueError(f"Invalid proxy port range (low > high): {redacted}")
-    urls = [f"{prefix}{host}:{port}" for port in range(low, high + 1)]
-    if len(urls) > _MAX_PROXY_POOL_SIZE:
+    pool_size = high - low + 1
+    if pool_size > _MAX_PROXY_POOL_SIZE:
         raise ValueError(
-            f"Proxy port range too large ({len(urls)} ports, max {_MAX_PROXY_POOL_SIZE}): {redacted}"
+            f"Proxy port range too large ({pool_size} ports, max {_MAX_PROXY_POOL_SIZE}): {redacted}"
         )
-    return urls
+    return [f"{prefix}{host}:{port}" for port in range(low, high + 1)]
 
 
 def _redact_proxy_url(proxy_url: str) -> str | None:
