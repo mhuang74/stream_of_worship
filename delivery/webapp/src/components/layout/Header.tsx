@@ -126,6 +126,21 @@ export function Header() {
                 <DropdownMenuSeparator />
                 {canReviewLyrics(user) && (
                   <DropdownMenuItem onClick={() => router.push("/admin/lyrics-review")}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-4 mr-2"
+                      aria-hidden="true"
+                    >
+                      <circle cx="10.5" cy="10.5" r="7.5" />
+                      <path d="m16 16 5 5M10 13V6l4 2" />
+                      <circle cx="8" cy="13" r="2" />
+                    </svg>
                     {t("review.title")}
                   </DropdownMenuItem>
                 )}
