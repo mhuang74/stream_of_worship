@@ -32,10 +32,18 @@ reviewer can open Lyrics Review from the avatar menu after signing in.
   display Saved with an explicit Next action. Saving does not interrupt playback
   or immediately navigate away; the reviewer may finish listening or revise
   feedback before advancing.
-- Hide Recordings with this reviewer's active feedback from the default queue.
-  Offer Show reviewed to revisit them; search includes them regardless of the
-  reviewer's feedback. Resolved or retracted feedback makes a Recording eligible
-  for the default queue again, provided its publication state remains Review.
+- Prioritize unseen Songs in the default queue: exclude a Song if any user has
+  Good or Poor Lyrics Feedback on any of its non-deleted Recordings, including
+  resolved feedback and feedback on Published or Hold Recordings. Ignore feedback
+  attached only to soft-deleted Recordings.
+- Search and Show reviewed include reviewed Songs, with a song-level reviewed
+  badge using that same rule. Keep the existing Review-only Recording selection
+  and ranking; filter reviewed Songs before pagination without switching the
+  selected Recording. No schema migration is needed.
+- Saving feedback refreshes the queue while keeping the selected Recording and
+  playback open until Next. Resolving feedback does not restore eligibility;
+  retracting the last feedback row across non-deleted Recordings does, provided
+  an eligible Review Recording remains. Personal feedback controls are unchanged.
 - Highlight the current Lyrics line and follow playback automatically. Manual
   scrolling pauses following; a Follow playback button resumes it. Tapping a
   timestamped line seeks to that time.
@@ -65,9 +73,20 @@ The screen uses native audio controls plus a timestamped progress slider and
 Lyrics list. It stops the global player on entry so two recordings cannot play
 at once. UI labels support English and Traditional Chinese.
 
-Automated coverage checks account restrictions, Review-only access, canonical
+Postgres regression coverage checks song-level feedback exclusion across users,
+ratings, resolution states and Recording visibility; soft deletion; inclusive
+search and Show reviewed; deduplication, selection, ranking and pagination; and
+eligibility after saving or retracting feedback. UI coverage checks that saving
+refreshes the queue without interrupting playback or navigating until Next.
+
+Automated coverage also checks account restrictions, Review-only access, canonical
 fetch failures, Gap Placeholders, feedback validation and retraction, seeking,
 manual Next (including pagination), and follow behavior. The live catalog query
 and canonical R2 load were also checked with read-only calls. The configured test
 account is not allowlisted; it was correctly denied the API and page. Mobile and
 desktop layout checks use fixture data rather than that account's admin access.
+
+Read-only acceptance on 2026-11-07 confirmed that 主我敬拜祢
+(`zhu_wo_jing_bai_mi_6c3718ae`) has feedback on a non-deleted Recording, is absent
+from all 330 default queue entries, and appears in search and Show reviewed with
+`reviewed: true`.

@@ -84,7 +84,7 @@ it.each([
 });
 it("forwards search and reviewed filters; rejects bad pagination", async () => {
   await GET(request("GET", undefined, "?q=grace&reviewed=1&offset=50"));
-  expect(mocks.queue).toHaveBeenCalledWith(42, "grace", true, 50);
+  expect(mocks.queue).toHaveBeenCalledWith("grace", true, 50);
   expect((await GET(request("GET", undefined, "?offset=-1"))).status).toBe(400);
 });
 it("rejects Good when canonical timed lyrics are absent", async () => {

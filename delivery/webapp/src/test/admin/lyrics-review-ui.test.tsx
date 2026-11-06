@@ -136,6 +136,55 @@ it("saves Good without navigating, permits retraction, and advances only on Next
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   await screen.findByRole("heading", { name: "第二首" });
 });
+it("refreshes the default queue after saving while preserving playback until Next", async () => {
+  const defaultFetch = fetcher.getMockImplementation()!;
+  let saved = false;
+  fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (init?.method === "PUT") saved = true;
+    if (saved && !init?.method && !url.includes("recording=")) {
+      return new Response(JSON.stringify({ recordings: [second], hasMore: false }));
+    }
+    return defaultFetch(url, init);
+  });
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  Object.defineProperty(audio, "paused", { configurable: true, value: false });
+  audio.currentTime = 37;
+  fireEvent.loadedMetadata(audio);
+  fireEvent.timeUpdate(audio);
+  const pausesBeforeSave = vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length;
+
+  fireEvent.click(screen.getByRole("button", { name: "Good" }));
+  await screen.findByText("Saved");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
+  expect(fetcher).toHaveBeenLastCalledWith(
+    "/api/admin/lyrics-review?q=&reviewed=0&offset=0", expect.any(Object),
+  );
+  expect(screen.getByRole("heading", { name: "第一首" })).toBeInTheDocument();
+  expect(document.querySelector("audio")).toBe(audio);
+  expect(audio.currentTime).toBe(37);
+  expect(audio.paused).toBe(false);
+  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(pausesBeforeSave);
+  expect(fetcher.mock.calls.filter(([url]) => url.includes("recording=")).length).toBe(2);
+
+  fireEvent.click(screen.getByRole("button", { name: "Back to queue" }));
+  expect(screen.queryByText("第一首")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("第二首"));
+  await screen.findByRole("heading", { name: "第二首" });
+});
+
+it("advances from a saved song absent from the refreshed queue only on Next", async () => {
+  await openFirst();
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ feedback: { rating: "happy", reason: null, note: null } })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ recordings: [second], hasMore: false })));
+  fireEvent.click(screen.getByRole("button", { name: "Good" }));
+  await screen.findByText("Saved");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
+  expect(screen.getByRole("heading", { name: "第一首" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByRole("heading", { name: "第二首" });
+});
 it("saves Poor reason and note", async () => {
   await openFirst();
   fireEvent.click(screen.getByRole("button", { name: "Poor" }));

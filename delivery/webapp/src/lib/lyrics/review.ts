@@ -11,10 +11,10 @@ export interface ReviewCandidate {
   reviewed: boolean;
 }
 
-export async function reviewQueue(userId: number, query: string, showReviewed: boolean, offset: number) {
+export async function reviewQueue(query: string, showReviewed: boolean, offset: number) {
   // Same priority cascade and per-song recording selection as the CLI. Filter
-  // personal feedback after choosing the target, so rating it cannot switch the
-  // song silently to a different recording.
+  // feedback at song level after choosing the target: any feedback on an active
+  // recording counts, including resolved feedback and other users' ratings.
   const result = await db.execute(sql`
     WITH pool AS (
       SELECT r.content_hash, r.song_id, s.title, s.album_name,
@@ -30,27 +30,34 @@ export async function reviewQueue(userId: number, query: string, showReviewed: b
       ) fb ON TRUE
       WHERE r.visibility_status = 'review' AND r.deleted_at IS NULL
         AND s.deleted_at IS NULL AND r.r2_audio_url IS NOT NULL
+    ), candidates AS (
+      SELECT pool.*, EXISTS (
+        SELECT 1 FROM recordings reviewed_recording
+        JOIN lyrics_feedback feedback
+          ON feedback.recording_content_hash = reviewed_recording.content_hash
+        WHERE reviewed_recording.song_id = pool.song_id
+          AND reviewed_recording.deleted_at IS NULL
+      ) AS reviewed
+      FROM pool WHERE rec_rank = 1
     )
     SELECT p.content_hash AS "contentHash", p.title, p.album_name AS album,
-      (mine.id IS NOT NULL) AS reviewed
-    FROM pool p
-    LEFT JOIN lyrics_feedback mine ON mine.recording_content_hash = p.content_hash
-      AND mine.user_id = ${userId} AND mine.resolved_at IS NULL
+      p.reviewed
+    FROM candidates p
     LEFT JOIN (SELECT song_id, COUNT(*) n FROM songset_items GROUP BY song_id) si ON si.song_id = p.song_id
     LEFT JOIN (SELECT song_id, COUNT(*) n FROM user_favorite_songs GROUP BY song_id) fav ON fav.song_id = p.song_id
     LEFT JOIN (SELECT album_name, album_series, MAX(created_at) newest FROM songs
       GROUP BY album_name, album_series) al
       ON al.album_name IS NOT DISTINCT FROM p.album_name
       AND al.album_series IS NOT DISTINCT FROM p.album_series
-    WHERE p.rec_rank = 1
-      AND (${query} = '' OR strpos(lower(p.title), lower(${query})) > 0
+    WHERE (${query} = '' OR strpos(lower(p.title), lower(${query})) > 0
         OR strpos(lower(coalesce(p.album_name, '')), lower(${query})) > 0)
-      AND (${query !== '' || showReviewed} OR mine.id IS NULL)
+      AND (${query !== '' || showReviewed} OR NOT p.reviewed)
     ORDER BY p.latest_sad_at DESC NULLS LAST, coalesce(si.n, 0) DESC,
       coalesce(fav.n, 0) DESC, al.newest DESC NULLS LAST, p.song_id ASC
     LIMIT 51 OFFSET ${offset}
   `);
-  const rows = result.rows as unknown as ReviewCandidate[];
+  // Neon HTTP returns { rows }; the TCP Postgres test driver returns an array.
+  const rows = (Array.isArray(result) ? result : result.rows) as unknown as ReviewCandidate[];
   return { recordings: rows.slice(0, 50), hasMore: rows.length > 50 };
 }
 

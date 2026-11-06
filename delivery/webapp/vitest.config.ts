@@ -10,7 +10,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     exclude: [
       ...configDefaults.exclude,
-      "src/test/integration/postgres-hot-pages.smoke.test.ts",
+      "src/test/integration/*.smoke.test.ts",
     ],
   },
   resolve: {
