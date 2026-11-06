@@ -90,6 +90,10 @@ _Avoid_: LRC, official LRC, synced lyrics
 A per-user signal about a Recording's Lyrics: positive (the user verifies the lyrics serve them) or negative with a reason from a fixed vocabulary — lyrics missing, timing wrong, text wrong, or other. One feedback per user per Recording; retractable and switchable by the user, resolvable by admins. Advisory input for curating the canonical Lyrics — it never changes pipeline state directly.
 _Avoid_: report, complaint, vote, LRC feedback
 
+**Lyrics Review**:
+An admin's assessment of a Recording's canonical Lyrics against its audio, expressed through Lyrics Feedback. Reviewing does not edit the Lyrics or change the Recording's publication state.
+_Avoid_: lyrics editing, approval, publication
+
 **Gap Placeholder**:
 An intentionally blank, timestamped Lyrics line marking a long instrumental passage (gap > 12 beats); rendered as a blank screen moment rather than lingering lyrics. Inserted deterministically after LLM correction (see ADR-0008) — the LLM never emits them.
 _Avoid_: empty line, spacer
