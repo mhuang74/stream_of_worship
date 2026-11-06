@@ -87,6 +87,17 @@ it("forwards search and reviewed filters; rejects bad pagination", async () => {
   expect(mocks.queue).toHaveBeenCalledWith("grace", true, 50);
   expect((await GET(request("GET", undefined, "?offset=-1"))).status).toBe(400);
 });
+it("includes all queue feedback in the private list response", async () => {
+  const queue = { recordings: [{ contentHash: "hash", title: "Song", album: null, reviewed: true, feedback: [
+    { id: "poor", rating: "sad", reason: "wrong_text", note: "Second verse" },
+    { id: "good", rating: "happy", reason: null, note: null },
+  ] }], hasMore: false };
+  mocks.queue.mockResolvedValue(queue);
+  const response = await GET(request("GET", undefined, "?reviewed=1"));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(await response.json()).toEqual(queue);
+});
 it("rejects Good when canonical timed lyrics are absent", async () => {
   mocks.lyrics.mockResolvedValue({ synced: false, lines: [] });
   expect((await PUT(request("PUT", { rating: "happy" }))).status).toBe(400);
