@@ -1,10 +1,13 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LyricsReviewClient } from "@/app/admin/lyrics-review/LyricsReviewClient";
 import { messages } from "@/lib/i18n/messages";
-vi.mock("@/hooks/useLocale", () => ({ useLocale: () => ({ t: (key: keyof typeof messages.en) => messages.en[key] }) }));
-const first = { contentHash: "first", title: "第一首", album: "專輯", reviewed: false };
-const second = { contentHash: "second", title: "第二首", album: "專輯", reviewed: false };
+import type { ReviewCandidate, ReviewFeedback } from "@/lib/lyrics/review";
+let locale: "en" | "zh-Hant" = "en";
+vi.mock("@/hooks/useLocale", () => ({ useLocale: () => ({ t: (key: keyof typeof messages.en) => messages[locale][key] }) }));
+const first: ReviewCandidate = { contentHash: "first", title: "第一首", album: "專輯", reviewed: false, feedback: [] };
+const second: ReviewCandidate = { contentHash: "second", title: "第二首", album: "專輯", reviewed: false, feedback: [] };
+let queueRows: ReviewCandidate[];
 let synced = true;
 let more = false;
 type Feedback = { rating: "happy" | "sad"; reason: "timing" | "missing" | null; note: null };
@@ -12,6 +15,7 @@ let initialFeedback: Feedback | null = null;
 let fetcher: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   synced = true; more = false; initialFeedback = null;
+  locale = "en"; queueRows = [first, second];
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   Element.prototype.scrollTo = vi.fn();
   fetcher = vi.fn(async (url: string, init?: RequestInit) => {
@@ -20,7 +24,7 @@ beforeEach(() => {
       recording: url.includes("second") ? second : first, synced, audioUrl: "https://audio.example/song.mp3",
       lines: synced ? [{ timeSeconds: 1, text: "第一行" }, { timeSeconds: 5, text: "" }, { timeSeconds: 12.5, text: "第二行" }] : [], feedback: initialFeedback,
     }));
-    return new Response(JSON.stringify({ recordings: url.includes("offset=2") ? [{ ...first, contentHash: "third", title: "第三首" }] : [first, second], hasMore: more && !url.includes("offset=2") }));
+    return new Response(JSON.stringify({ recordings: url.includes("offset=2") ? [{ ...first, contentHash: "third", title: "第三首" }] : queueRows, hasMore: more && !url.includes("offset=2") }));
   });
   vi.stubGlobal("fetch", fetcher);
 });
@@ -38,6 +42,80 @@ function expectRating(rating: Feedback["rating"] | null) {
     expect(button).toHaveAttribute("aria-pressed", String(selected));
   }
 }
+
+it("shows every saved rating only while Show reviewed is checked, including during search", async () => {
+  queueRows = [{ ...first, reviewed: true, feedback: [
+    { id: "good", rating: "happy", reason: null, note: null },
+    { id: "poor", rating: "sad", reason: "timing", note: "Second line is late" },
+    { id: "poor-no-note", rating: "sad", reason: "other", note: null },
+  ] }, second];
+  render(<LyricsReviewClient />);
+  await screen.findByText("第一首");
+  fireEvent.change(screen.getByRole("textbox", { name: "Search title or album" }), { target: { value: "第一" } });
+  await waitFor(() => expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining("q=%E7%AC%AC%E4%B8%80&reviewed=0"), expect.any(Object)));
+  expect(screen.queryByRole("list", { name: "Lyrics Feedback" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Show reviewed" }));
+  const list = await screen.findByRole("list", { name: "Lyrics Feedback" });
+  expect(within(list).getAllByRole("listitem").map(item => item.textContent)).toEqual([
+    "Good", "Poor · Timing wrongSecond line is late", "Poor · Other",
+  ]);
+  expect(screen.getAllByRole("list", { name: "Lyrics Feedback" })).toHaveLength(1);
+  expect(within(screen.getByRole("button", { name: /第二首/ })).queryByRole("list")).not.toBeInTheDocument();
+  await waitFor(() => expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining("reviewed=1"), expect.any(Object)));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Show reviewed" }));
+  expect(screen.queryByText("Good")).not.toBeInTheDocument();
+  expect(screen.queryByText("Second line is late")).not.toBeInTheDocument();
+});
+
+it.each((["en", "zh-Hant"] as const).flatMap(language =>
+  (["missing", "timing", "wrong_text", "other"] as const).map(reason => ({ language, reason })),
+))("translates Poor and $reason in $language and displays a wrapping note", async ({ language, reason }) => {
+  locale = language;
+  const note = `First line\n${"長".repeat(300)}`;
+  queueRows = [{ ...first, reviewed: true, feedback: [
+    { id: "poor", rating: "sad", reason, note },
+    { id: "good", rating: "happy", reason: null, note: null },
+  ] }];
+  render(<LyricsReviewClient />);
+  await screen.findByText("第一首");
+  fireEvent.click(screen.getByRole("checkbox", { name: messages[language]["review.reviewed"] }));
+  const list = await screen.findByRole("list", { name: messages[language]["review.feedback"] });
+  const [poor, good] = within(list).getAllByRole("listitem");
+  expect(poor).toHaveTextContent(messages[language]["review.poor"]);
+  expect(poor).toHaveTextContent(messages[language][`review.${reason}Reason`]);
+  expect(poor.textContent).toContain(note);
+  expect(poor).toHaveClass("whitespace-pre-wrap", "break-words", "[overflow-wrap:anywhere]");
+  expect(good).toHaveTextContent(messages[language]["review.good"]);
+});
+
+it("refreshes the displayed feedback after saving and retracting with Show reviewed checked", async () => {
+  const defaultFetch = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (init?.method) {
+      initialFeedback = init.method === "DELETE" ? null : JSON.parse(init.body as string);
+      const feedback: ReviewFeedback[] = initialFeedback ? [{ id: "saved", ...initialFeedback }] : [];
+      queueRows = [{ ...first, reviewed: feedback.length > 0, feedback }, second];
+    }
+    return defaultFetch(url, init);
+  });
+  render(<LyricsReviewClient />);
+  await screen.findByText("第一首");
+  fireEvent.click(screen.getByRole("checkbox", { name: "Show reviewed" }));
+  await waitFor(() => expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining("reviewed=1"), expect.any(Object)));
+  fireEvent.click(screen.getByText("第一首"));
+  await screen.findByText("第一行");
+  fireEvent.click(screen.getByRole("button", { name: "Good" }));
+  await screen.findByText("Saved");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Back to queue" }));
+  expect(within(screen.getByRole("list", { name: "Lyrics Feedback" })).getByText("Good")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("第一首"));
+  fireEvent.click(await screen.findByRole("button", { name: "Retract feedback" }));
+  await screen.findByText("Feedback retracted");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Back to queue" }));
+  expect(screen.queryByRole("list", { name: "Lyrics Feedback" })).not.toBeInTheDocument();
+});
 it.each<Feedback | null>([
   null,
   { rating: "happy", reason: null, note: null },

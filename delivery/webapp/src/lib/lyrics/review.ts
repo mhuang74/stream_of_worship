@@ -3,12 +3,21 @@ import { sql, and, eq, isNull } from "drizzle-orm";
 import { recordings, songs } from "@/db/schema";
 import { createR2ClientFromEnv } from "@/lib/r2/client";
 import { parseLRC } from "@/lib/render/lrc-parser";
+import type { FeedbackRating, FeedbackReason } from "@/lib/lyrics/situation";
+
+export interface ReviewFeedback {
+  id: string;
+  rating: FeedbackRating;
+  reason: FeedbackReason | null;
+  note: string | null;
+}
 
 export interface ReviewCandidate {
   contentHash: string;
   title: string;
   album: string | null;
   reviewed: boolean;
+  feedback: ReviewFeedback[];
 }
 
 export async function reviewQueue(query: string, showReviewed: boolean, offset: number) {
@@ -41,7 +50,17 @@ export async function reviewQueue(query: string, showReviewed: boolean, offset: 
       FROM pool WHERE rec_rank = 1
     )
     SELECT p.content_hash AS "contentHash", p.title, p.album_name AS album,
-      p.reviewed
+      p.reviewed, (
+        SELECT coalesce(jsonb_agg(jsonb_build_object(
+          'id', feedback.id, 'rating', feedback.rating,
+          'reason', feedback.reason, 'note', feedback.note
+        ) ORDER BY feedback.updated_at DESC, feedback.id DESC), '[]'::jsonb)
+        FROM recordings reviewed_recording
+        JOIN lyrics_feedback feedback
+          ON feedback.recording_content_hash = reviewed_recording.content_hash
+        WHERE reviewed_recording.song_id = p.song_id
+          AND reviewed_recording.deleted_at IS NULL
+      ) AS feedback
     FROM candidates p
     LEFT JOIN (SELECT song_id, COUNT(*) n FROM songset_items GROUP BY song_id) si ON si.song_id = p.song_id
     LEFT JOIN (SELECT song_id, COUNT(*) n FROM user_favorite_songs GROUP BY song_id) fav ON fav.song_id = p.song_id

@@ -10,7 +10,7 @@ import type { FeedbackReason } from "@/lib/lyrics/situation";
 
 interface Feedback { rating: "happy" | "sad"; reason: FeedbackReason | null; note: string | null }
 interface Detail {
-  recording: ReviewCandidate;
+  recording: Pick<ReviewCandidate, "contentHash" | "title" | "album">;
   lines: LRCLine[];
   synced: boolean;
   audioUrl: string;
@@ -148,6 +148,15 @@ export function LyricsReviewClient() {
         <div className="divide-y rounded-lg border">{rows.map(row => <button key={row.contentHash} className="block min-h-16 w-full p-3 text-left hover:bg-muted" onClick={() => void open(row.contentHash)}>
           <span className="block font-medium">{row.title}</span><span className="block text-sm text-muted-foreground">{row.album}</span>
           {row.reviewed && <span className="text-xs">{t("review.reviewed")}</span>}
+          {showReviewed && row.feedback.length > 0 && <span className="mt-2 block space-y-2 text-sm" role="list" aria-label={t("review.feedback")}>
+            {row.feedback.map(feedback => <span key={feedback.id} role="listitem" className="block whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+              <span className="font-medium">{t(feedback.rating === "happy" ? "review.good" : "review.poor")}</span>
+              {feedback.rating === "sad" && <>
+                {feedback.reason && <span> · {t(`review.${feedback.reason}Reason`)}</span>}
+                {feedback.note && <span className="block text-muted-foreground">{feedback.note}</span>}
+              </>}
+            </span>)}
+          </span>}
         </button>)}</div>
         {listLoading && <p role="status">{t("review.loading")}</p>}
         {hasMore && <Button disabled={listLoading} onClick={() => void loadList(rows.length)}>{t("review.more")}</Button>}

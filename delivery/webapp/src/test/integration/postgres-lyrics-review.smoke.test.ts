@@ -96,7 +96,9 @@ it.each(["review", "visible", "hold", null])(
 
     expect((await reviewQueue("", false, 0)).recordings).toEqual([]);
     expect((await reviewQueue("", true, 0)).recordings).toEqual([
-      expect.objectContaining({ contentHash: target, reviewed: true }),
+      expect.objectContaining({ contentHash: target, reviewed: true, feedback: [
+        { id: `${sibling}-${otherUserId}`, rating: "happy", reason: null, note: null },
+      ] }),
     ]);
   },
 );
@@ -109,8 +111,37 @@ it("ignores feedback attached only to soft-deleted recordings", async () => {
 
   for (const [query, showReviewed] of [["", false], ["", true], ["deleted-feedback", false]] as const) {
     expect((await reviewQueue(query, showReviewed, 0)).recordings).toEqual([
-      expect.objectContaining({ contentHash: target, reviewed: false }),
+      expect.objectContaining({ contentHash: target, reviewed: false, feedback: [] }),
     ]);
+  }
+});
+
+it("returns all active-recording feedback newest first with stable ID ties and no reviewer identities", async () => {
+  const target = await addSong("feedback");
+  const sibling = await addRecording("lyrics-smoke-feedback", "sibling", {
+    visibilityStatus: "visible", r2AudioUrl: null,
+  });
+  const deleted = await addRecording("lyrics-smoke-feedback", "deleted", { deletedAt: createdAt });
+  const recent = new Date("2025-03-01");
+  // Insert tied IDs out of order to verify the explicit tie-breaker.
+  await addFeedback(target, { id: "feedback-a", updatedAt: recent, rating: "sad", reason: "timing", note: "Late" });
+  await addFeedback(sibling, { id: "feedback-newest", updatedAt: new Date("2025-04-01"), resolvedAt: recent });
+  await addFeedback(target, { id: "feedback-z", userId: otherUserId, updatedAt: recent, resolvedAt: recent });
+  await addFeedback(sibling, { id: "feedback-oldest", userId: otherUserId, updatedAt: createdAt, rating: "sad", reason: "missing", note: "No lyrics", resolvedAt: recent });
+  await addFeedback(deleted, { id: "feedback-deleted", updatedAt: new Date("2025-05-01") });
+
+  const expected = [
+    { id: "feedback-newest", rating: "happy", reason: null, note: null },
+    { id: "feedback-z", rating: "happy", reason: null, note: null },
+    { id: "feedback-a", rating: "sad", reason: "timing", note: "Late" },
+    { id: "feedback-oldest", rating: "sad", reason: "missing", note: "No lyrics" },
+  ];
+  for (const [query, showReviewed] of [["", true], ["Lyrics Smoke", false]] as const) {
+    const result = await reviewQueue(query, showReviewed, 0);
+    expect(result.recordings).toHaveLength(1);
+    expect(result.recordings[0]).toMatchObject({ contentHash: target, reviewed: true });
+    expect(result.recordings[0].feedback).toEqual(expected);
+    expect(result.hasMore).toBe(false);
   }
 });
 
@@ -163,6 +194,20 @@ it("filters reviewed songs before pagination and keeps one recording per song", 
   expect(second.hasMore).toBe(false);
   expect(second.recordings.map(row => row.contentHash)).toEqual(expected.slice(50));
   expect((await reviewQueue("", false, 51)).recordings).toEqual([]);
+
+  const withReviewed = await reviewQueue("", true, 0);
+  const remaining = await reviewQueue("", true, 50);
+  expect(withReviewed.hasMore).toBe(true);
+  expect(remaining.hasMore).toBe(false);
+  expect(withReviewed.recordings).toHaveLength(50);
+  expect(remaining.recordings).toHaveLength(3);
+  const allRows = [...withReviewed.recordings, ...remaining.recordings];
+  expect(allRows.map(row => row.contentHash)).toEqual(
+    Array.from({ length: 53 }, (_, i) => `lyrics-smoke-page-${String(i).padStart(2, "0")}-target`),
+  );
+  expect(allRows.filter(row => row.reviewed)).toHaveLength(2);
+  expect(allRows.filter(row => row.reviewed).every(row => row.feedback.length === 2)).toBe(true);
+  expect(allRows.filter(row => !row.reviewed).every(row => row.feedback.length === 0)).toBe(true);
 });
 
 it("removes a newly rated song and restores it only after the last active-recording feedback is retracted", async () => {
