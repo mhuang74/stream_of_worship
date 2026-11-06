@@ -73,7 +73,10 @@ import { themesBundle } from "./messages/themes";
 import { shareBundle } from "./messages/share";
 import { listenBundle } from "./messages/listen";
 
+import { reviewBundle } from "./messages/review";
+
 export const messages = mergeMessages(
+  reviewBundle,
   core,
   offlineBundle,
   songsetsBundle,

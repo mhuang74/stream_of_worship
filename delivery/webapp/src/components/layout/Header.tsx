@@ -1,5 +1,6 @@
 "use client";
 
+import { canReviewLyrics } from "@/lib/lyrics/review-access";
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -123,6 +124,11 @@ export function Header() {
                   {user.name}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                {canReviewLyrics(user) && (
+                  <DropdownMenuItem onClick={() => router.push("/admin/lyrics-review")}>
+                    {t("review.title")}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => router.push("/settings")}>
                   <Settings className="size-4 mr-2" />
                   {t("nav.settings")}
