@@ -189,8 +189,10 @@ export function LyricsReviewClient() {
           <section className="space-y-3 rounded-lg border p-3" aria-label={t("review.feedback")}>
             {detail.feedback && <p>{t(detail.feedback.rating === "happy" ? "review.ratedGood" : "review.ratedPoor")}</p>}
             {message && <p role="status">{t(message === "saved" ? "review.saved" : "review.removed")}</p>}
-            <div className="flex flex-wrap gap-2"><Button disabled={saving || !detail.synced} onClick={() => void save("happy")}>{t("review.good")}</Button>
-              <Button variant="outline" disabled={saving} onClick={() => setPoorOpen(value => !value)}>{t("review.poor")}</Button>
+            <div className="flex flex-wrap gap-2"><Button variant={detail.feedback?.rating === "happy" ? "default" : "outline"}
+              aria-pressed={detail.feedback?.rating === "happy"} disabled={saving || !detail.synced} onClick={() => void save("happy")}>{t("review.good")}</Button>
+              <Button variant={detail.feedback?.rating === "sad" ? "default" : "outline"}
+                aria-pressed={detail.feedback?.rating === "sad"} disabled={saving} onClick={() => setPoorOpen(value => !value)}>{t("review.poor")}</Button>
               {detail.feedback && <Button variant="ghost" disabled={saving} onClick={() => void save(null)}>{t("review.retract")}</Button>}</div>
             {poorOpen && <form className="space-y-3" onSubmit={event => { event.preventDefault(); void save("sad"); }}>
               <label className="block space-y-1"><span>{t("review.reason")}</span><select className="block min-h-11 w-full rounded border bg-background px-2" value={reason} onChange={event => setReason(event.target.value as FeedbackReason)}>

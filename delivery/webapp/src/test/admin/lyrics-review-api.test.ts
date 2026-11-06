@@ -72,6 +72,16 @@ it("fetches canonical lyrics and returns private, uncached responses", async () 
   expect((await response.json()).synced).toBe(true);
   expect(mocks.lyrics).toHaveBeenCalledWith("prefix");
 });
+it.each([
+  { rating: "happy", reason: null },
+  { rating: "sad", reason: "timing" },
+])("returns the reviewer's unresolved $rating feedback and hides it once resolved", async ({ rating, reason }) => {
+  const feedback = { rating, reason, note: null };
+  mocks.find.mockResolvedValueOnce({ ...feedback, resolvedAt: null });
+  expect(await (await GET(request())).json()).toMatchObject({ feedback });
+  mocks.find.mockResolvedValueOnce({ ...feedback, resolvedAt: new Date() });
+  expect(await (await GET(request())).json()).toMatchObject({ feedback: null });
+});
 it("forwards search and reviewed filters; rejects bad pagination", async () => {
   await GET(request("GET", undefined, "?q=grace&reviewed=1&offset=50"));
   expect(mocks.queue).toHaveBeenCalledWith(42, "grace", true, 50);
