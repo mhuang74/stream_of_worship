@@ -36,6 +36,13 @@ try {
 
 workbox.setConfig({ debug: false });
 
+// Admin review always rechecks the authenticated account at the server. Never
+// serve its HTML, RSC payload, or API responses from a previous session's cache.
+workbox.routing.registerRoute(
+  ({ url }) => url.pathname.startsWith("/admin/") || url.pathname.startsWith("/api/admin/"),
+  new workbox.strategies.NetworkOnly()
+);
+
 // Reachability probe (issue #211): the client's Connectivity check must
 // always reflect a genuine round trip — no strategy may ever cache or
 // time out around the health endpoint.

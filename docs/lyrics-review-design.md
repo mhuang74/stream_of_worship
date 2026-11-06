@@ -1,6 +1,7 @@
 # Mobile Lyrics Review
 
-Status: design interview complete; awaiting confirmation before implementation.
+Status: confirmed and implemented at `/admin/lyrics-review`. The allowlisted
+reviewer can open Lyrics Review from the avatar menu after signing in.
 
 ## Settled decisions
 
@@ -53,7 +54,20 @@ Status: design interview complete; awaiting confirmation before implementation.
   Recording has no feedback rows of any kind, including resolved feedback;
   it does not mean the current reviewer has never reviewed it.
 
-## Confirmation
+## Implementation and validation
 
-All design questions are settled. Confirm the design above before implementing
-the screen, access restrictions, canonical read path, queue, and feedback flow.
+The review API rechecks the verified account and Recording visibility on each
+request. Canonical Lyrics are fetched without the personal-override cache;
+upstream failures return a retryable error. Feedback writes require a same-origin
+request. The service worker uses NetworkOnly for admin pages and APIs.
+
+The screen uses native audio controls plus a timestamped progress slider and
+Lyrics list. It stops the global player on entry so two recordings cannot play
+at once. UI labels support English and Traditional Chinese.
+
+Automated coverage checks account restrictions, Review-only access, canonical
+fetch failures, Gap Placeholders, feedback validation and retraction, seeking,
+manual Next (including pagination), and follow behavior. The live catalog query
+and canonical R2 load were also checked with read-only calls. The configured test
+account is not allowlisted; it was correctly denied the API and page. Mobile and
+desktop layout checks use fixture data rather than that account's admin access.

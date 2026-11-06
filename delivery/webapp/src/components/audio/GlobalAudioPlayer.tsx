@@ -23,7 +23,7 @@ function PlaybarRouteGuard({ isControllerPage }: { isControllerPage: boolean }) 
 
 export function GlobalAudioPlayer({ children }: GlobalAudioPlayerProps) {
   const pathname = usePathname();
-  const isControllerPage = pathname.includes("/play/controller");
+  const isControllerPage = pathname.includes("/play/controller") || pathname === "/admin/lyrics-review";
 
   return (
     <AudioPlayerProvider>
