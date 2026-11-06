@@ -1,7 +1,6 @@
 # Mobile Lyrics Review
 
-Status: design interview in progress. The settled decisions below describe the
-requested behavior; implementation awaits confirmation of the complete design.
+Status: design interview complete; awaiting confirmation before implementation.
 
 ## Settled decisions
 
@@ -10,9 +9,8 @@ requested behavior; implementation awaits confirmation of the complete design.
 - Use the existing webapp password login. Restrict the screen and its APIs to the
   verified account `mhuang74@yahoo.com`; show its navigation entry only to that
   account. A separate editor password is unnecessary.
-- Review the Recording's canonical Lyrics rather than a personal override.
-  Although canonical corrections were initially selected, the subsequent scope
-  is review only: this screen has no Lyrics editing or canonical write operation.
+- Review the Recording's canonical Lyrics rather than a personal override. This
+  screen has no Lyrics editing or canonical write operation.
 - Support audio playback, visible Lyrics and timecodes, tapping a Lyrics line to
   seek to its timestamp, and dragging the playback progress bar to seek anywhere
   in the Recording.
@@ -29,6 +27,17 @@ requested behavior; implementation awaits confirmation of the complete design.
   failures from missing Lyrics and offer Retry for failures.
 - Keep review separate from Lyrics editing, regeneration, forced alignment,
   publication changes, and feedback resolution.
+- After feedback is successfully saved, keep the current Recording open and
+  display Saved with an explicit Next action. Saving does not interrupt playback
+  or immediately navigate away; the reviewer may finish listening or revise
+  feedback before advancing.
+- Hide Recordings with this reviewer's active feedback from the default queue.
+  Offer Show reviewed to revisit them; search includes them regardless of the
+  reviewer's feedback. Resolved or retracted feedback makes a Recording eligible
+  for the default queue again, provided its publication state remains Review.
+- Highlight the current Lyrics line and follow playback automatically. Manual
+  scrolling pauses following; a Follow playback button resumes it. Tapping a
+  timestamped line seeks to that time.
 
 ## Existing behavior that informs the design
 
@@ -44,14 +53,7 @@ requested behavior; implementation awaits confirmation of the complete design.
   Recording has no feedback rows of any kind, including resolved feedback;
   it does not mean the current reviewer has never reviewed it.
 
-## Open decisions
+## Confirmation
 
-- Whether successful feedback advances immediately or leaves the current
-  Recording open with an explicit Next action.
-- Whether the default queue hides Recordings with this reviewer's active
-  feedback, and how previously rated Recordings remain accessible.
-- Whether Lyrics follow playback automatically and how manual scrolling
-  suspends and resumes that behavior.
-
-Record additional decisions here as the interview settles them. Add an ADR only
-if a decision meets the repository's architectural-decision criteria.
+All design questions are settled. Confirm the design above before implementing
+the screen, access restrictions, canonical read path, queue, and feedback flow.
