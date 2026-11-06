@@ -22,13 +22,12 @@ it("treats only 404 as missing and propagates upstream failures", async () => {
 });
 it("binds search text as data and limits the Review-only queue", async () => {
   mocks.execute.mockResolvedValue({ rows: Array.from({ length: 51 }, (_, i) => ({ contentHash: String(i) })) });
-  const result = await reviewQueue(42, "' OR true --", false, 0);
+  const result = await reviewQueue("' OR true --", false, 0);
   expect(result.recordings).toHaveLength(50);
   expect(result.hasMore).toBe(true);
   const query = new PgDialect().sqlToQuery(mocks.execute.mock.calls[0][0]);
   expect(query.sql).toContain("r.visibility_status = 'review'");
   expect(query.sql).not.toContain("' OR true --");
   expect(query.params).toContain("' OR true --");
-  expect(query.sql).toContain("mine.resolved_at IS NULL");
   expect(query.sql).toContain("p.latest_sad_at DESC NULLS LAST");
 });

@@ -4,7 +4,7 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/test/integration/postgres-hot-pages.smoke.test.ts"],
+    include: ["src/test/integration/*.smoke.test.ts"],
     pool: "forks",
     fileParallelism: false,
   },

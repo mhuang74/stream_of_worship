@@ -25,7 +25,7 @@ async function handle(request: NextRequest) {
   if (!hash && request.method === "GET") {
     const offset = Number(request.nextUrl.searchParams.get("offset") ?? 0);
     if (!Number.isSafeInteger(offset) || offset < 0) return json({ error: "Invalid offset" }, 400);
-    return json(await reviewQueue(userId,
+    return json(await reviewQueue(
       (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 200),
       request.nextUrl.searchParams.get("reviewed") === "1", offset));
   }
