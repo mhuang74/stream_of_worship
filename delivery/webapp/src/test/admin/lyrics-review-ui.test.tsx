@@ -7,7 +7,8 @@ const first = { contentHash: "first", title: "第一首", album: "專輯", revie
 const second = { contentHash: "second", title: "第二首", album: "專輯", reviewed: false };
 let synced = true;
 let more = false;
-let initialFeedback: { rating: string; reason: string; note: null } | null = null;
+type Feedback = { rating: "happy" | "sad"; reason: "timing" | "missing" | null; note: null };
+let initialFeedback: Feedback | null = null;
 let fetcher: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   synced = true; more = false; initialFeedback = null;
@@ -28,6 +29,87 @@ async function openFirst() {
   fireEvent.click(await screen.findByText("第一首"));
   await screen.findByText("第一行");
 }
+function expectRating(rating: Feedback["rating"] | null) {
+  for (const [name, value] of [["Good", "happy"], ["Poor", "sad"]] as const) {
+    const button = screen.getByRole("button", { name });
+    const selected = rating === value;
+    expect(button).toHaveClass(...(selected ? ["bg-primary", "text-primary-foreground"] : ["border-border", "bg-background"]));
+    if (!selected) expect(button).not.toHaveClass("bg-primary");
+    expect(button).toHaveAttribute("aria-pressed", String(selected));
+  }
+}
+it.each<Feedback | null>([
+  null,
+  { rating: "happy", reason: null, note: null },
+  { rating: "sad", reason: "timing", note: null },
+])("highlights only the saved rating: %j", async (feedback) => {
+  initialFeedback = feedback;
+  await openFirst();
+  expectRating(feedback?.rating ?? null);
+  if (feedback) expect(screen.getByText(`Your feedback: ${feedback.rating === "happy" ? "Good" : "Poor"}`)).toBeInTheDocument();
+});
+it("keeps Good highlighted while editing and saving Poor, then highlights the saved Poor rating", async () => {
+  initialFeedback = { rating: "happy", reason: null, note: null };
+  await openFirst();
+  fireEvent.click(screen.getByRole("button", { name: "Poor" }));
+  expectRating("happy");
+  expect(screen.getByRole("combobox", { name: "Reason" })).toHaveValue("timing");
+  let finishSave!: (response: Response) => void;
+  fetcher.mockImplementationOnce(() => new Promise<Response>(resolve => { finishSave = resolve; }));
+  fireEvent.click(screen.getByRole("button", { name: "Save Poor feedback" }));
+  expectRating("happy");
+  expect(screen.getByRole("button", { name: "Good" })).toBeDisabled();
+  finishSave(new Response(JSON.stringify({ feedback: { rating: "sad", reason: "timing", note: null } })));
+  await screen.findByText("Saved");
+  expectRating("sad");
+  expect(screen.getByText("Your feedback: Poor")).toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("recording=first"), expect.objectContaining({
+    method: "PUT", body: JSON.stringify({ rating: "sad", reason: "timing", note: "" }),
+  }));
+});
+it("replaces Poor with Good and clears both highlights after retraction", async () => {
+  initialFeedback = { rating: "sad", reason: "timing", note: null };
+  await openFirst();
+  expectRating("sad");
+  fireEvent.click(screen.getByRole("button", { name: "Good" }));
+  await screen.findByText("Saved");
+  expectRating("happy");
+  expect(screen.getByText("Your feedback: Good")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retract feedback" }));
+  await screen.findByText("Feedback retracted");
+  expectRating(null);
+  expect(screen.queryByText(/Your feedback:/)).not.toBeInTheDocument();
+});
+it.each([
+  { saved: "happy", action: "Save Poor feedback", method: "PUT" },
+  { saved: "sad", action: "Good", method: "PUT" },
+  { saved: "sad", action: "Retract feedback", method: "DELETE" },
+] as const)("preserves $saved when $action fails", async ({ saved, action, method }) => {
+  initialFeedback = { rating: saved, reason: saved === "sad" ? "timing" : null, note: null };
+  await openFirst();
+  if (action === "Save Poor feedback") fireEvent.click(screen.getByRole("button", { name: "Poor" }));
+  fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
+  fireEvent.click(screen.getByRole("button", { name: action }));
+  await screen.findByRole("alert");
+  expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining("recording=first"), expect.objectContaining({ method }));
+  expectRating(saved);
+  expect(screen.getByText(`Your feedback: ${saved === "happy" ? "Good" : "Poor"}`)).toBeInTheDocument();
+  expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+});
+it("loads the saved selection for each recording when navigating", async () => {
+  initialFeedback = { rating: "sad", reason: "timing", note: null };
+  await openFirst();
+  expectRating("sad");
+  initialFeedback = { rating: "happy", reason: null, note: null };
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  await screen.findByRole("heading", { name: "第二首" });
+  expectRating("happy");
+  fireEvent.click(screen.getByRole("button", { name: "Back to queue" }));
+  initialFeedback = null;
+  fireEvent.click(await screen.findByText("第一首"));
+  await screen.findByRole("heading", { name: "第一首" });
+  expectRating(null);
+});
 it("seeks by lyric timestamp and progress slider, preserving blank gap rows", async () => {
   await openFirst();
   const audio = document.querySelector("audio")!;
