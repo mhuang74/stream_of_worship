@@ -17,6 +17,16 @@ requested behavior; implementation awaits confirmation of the complete design.
   seek to its timestamp, and dragging the playback progress bar to seek anywhere
   in the Recording.
 - Collect Good/Poor Lyrics Feedback, with reasons for Poor feedback.
+- Offer song search and a ranked review queue based on the CLI's prioritization,
+  with recent unresolved Poor feedback taking precedence.
+- Both search and the queue include only Recordings whose publication state is
+  Review. Published and Hold Recordings are excluded from this review workflow.
+- Reuse existing Lyrics Feedback: Good/Poor map to positive/negative, Poor takes
+  exactly one reason (Lyrics missing, Timing wrong, Text wrong, Other) plus an
+  optional note, and feedback can be changed or retracted.
+- Allow Good only when canonical timed Lyrics exist. When they are absent, show
+  that timed Lyrics are missing and allow Poor feedback. Distinguish loading
+  failures from missing Lyrics and offer Retry for failures.
 - Keep review separate from Lyrics editing, regeneration, forced alignment,
   publication changes, and feedback resolution.
 
@@ -36,11 +46,12 @@ requested behavior; implementation awaits confirmation of the complete design.
 
 ## Open decisions
 
-- How to select the next Recording: search, review queues, or both; which
-  publication states are included.
-- Whether to reuse the existing per-user Lyrics Feedback semantics unchanged,
-  including its fixed reasons and retraction behavior.
-- Queue advancement and return behavior after feedback is saved.
+- Whether successful feedback advances immediately or leaves the current
+  Recording open with an explicit Next action.
+- Whether the default queue hides Recordings with this reviewer's active
+  feedback, and how previously rated Recordings remain accessible.
+- Whether Lyrics follow playback automatically and how manual scrolling
+  suspends and resumes that behavior.
 
 Record additional decisions here as the interview settles them. Add an ADR only
 if a decision meets the repository's architectural-decision criteria.
