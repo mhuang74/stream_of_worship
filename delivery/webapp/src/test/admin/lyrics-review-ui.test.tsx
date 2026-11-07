@@ -197,6 +197,7 @@ it("loads the saved selection for each recording when navigating", async () => {
 });
 it("seeks by lyric timestamp and progress slider, preserving blank gap rows", async () => {
   await openFirst();
+  expect(screen.getByText("00:12")).toBeInTheDocument();
   const audio = document.querySelector("audio")!;
   Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
   fireEvent.loadedMetadata(audio);
@@ -206,7 +207,9 @@ it("seeks by lyric timestamp and progress slider, preserving blank gap rows", as
   fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
   fireEvent.change(screen.getByRole("slider", { name: "Playback position" }), { target: { value: "45.25" } });
   expect(audio.currentTime).toBe(45.25);
-  expect(screen.getByText("Instrumental / blank Lyrics")).toBeInTheDocument();
+  // A timestamped line with no text stays empty: no placeholder text.
+  expect(screen.queryByText("Instrumental / blank Lyrics")).not.toBeInTheDocument();
+  expect(screen.getByText("00:05").closest("button")).toHaveTextContent(/^00:05$/);
   fireEvent.wheel(screen.getByText("第一行").parentElement!.parentElement!);
   expect(screen.queryByRole("button", { name: "Follow playback" })).not.toBeInTheDocument();
 });
@@ -260,7 +263,13 @@ it("enters Full Screen with one playing audio element and leaves it on the secon
   // One scrubber and one timecode: the native audio chrome is gone in Full Screen.
   expect(screen.getAllByRole("slider")).toHaveLength(1);
   expect(audio).not.toHaveAttribute("controls");
-  expect(screen.getByText("00:00.00 / 02:00.00")).toBeInTheDocument();
+  expect(screen.getByText("00:00 / 02:00")).toBeInTheDocument();
+  // Integer seconds everywhere: 19.56 truncates to 00:19, both in the bar and
+  // in the slider's human-readable value.
+  audio.currentTime = 19.56;
+  fireEvent.timeUpdate(audio);
+  expect(screen.getByText("00:19 / 02:00")).toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuetext", "00:19");
   // The bar's play button drives the one audio element and follows its events.
   fireEvent.click(screen.getByRole("button", { name: "Play" }));
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
@@ -283,7 +292,7 @@ it("shows only native audio controls in the normal view", async () => {
   Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
   fireEvent.loadedMetadata(audio);
   expect(audio).toHaveAttribute("controls");
-  expect(screen.queryByText("00:00.00 / 02:00.00")).not.toBeInTheDocument();
+  expect(screen.queryByText("00:00 / 02:00")).not.toBeInTheDocument();
   // The custom slider stays in the DOM (hidden) so its node survives the
   // Full Screen toggle; role queries skip display:none, so query by id.
   expect(screen.queryByRole("slider")).not.toBeInTheDocument();
