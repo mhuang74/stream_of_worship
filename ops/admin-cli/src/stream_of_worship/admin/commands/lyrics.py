@@ -697,7 +697,8 @@ def review_set_add(
 
     config = _load_connection_provider(config_path)
     with get_db_client(config) as db:
-        missing = [song_id for song_id in song_ids if db.get_song(song_id) is None]
+        songs = {song_id: db.get_song(song_id) for song_id in song_ids}
+        missing = [song_id for song_id, song in songs.items() if song is None]
         if missing:
             console.print(
                 f"[red]Error: {len(missing)} unknown or deleted song id(s); "
@@ -726,7 +727,7 @@ def review_set_add(
             f"in the queue once a review-visibility recording with audio exists:[/yellow]"
         )
         for song_id in outside:
-            console.print(f"  [yellow]· {song_id}[/yellow]")
+            console.print(f"  [yellow]· {songs[song_id].title} ({song_id})[/yellow]")
 
 
 @review_set_app.command("list")

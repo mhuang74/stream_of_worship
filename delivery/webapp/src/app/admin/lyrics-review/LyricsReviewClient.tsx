@@ -95,6 +95,9 @@ export function LyricsReviewClient() {
     try {
       const data = await api<{ sets: ReviewSetSummary[] }>(`${endpoint}/sets`);
       setSets(data.sets);
+      // Sets are deleted from the CLI, so a selected set can vanish under an open
+      // screen: drop the filter instead of leaving the queue pointed at a dead id.
+      setSetId(current => current && !data.sets.some(set => set.id === current) ? null : current);
     } catch {
       // A missing set list must not break the queue: the picker just stays empty.
     }
@@ -251,7 +254,7 @@ export function LyricsReviewClient() {
           <span className="min-w-0 truncate text-sm font-medium" role="status">
             {`${activeSet.name} — ${activeSet.done}/${activeSet.total} ${t("review.setProgress")}`}
           </span>
-          <Button size="sm" variant="outline" aria-label={t("review.clearSet")} onClick={() => setSetId(null)}>✕</Button>
+          <Button size="icon" variant="outline" className="size-11" aria-label={t("review.clearSet")} onClick={() => setSetId(null)}>✕</Button>
         </div>}
         {listError && <div role="alert">{t("review.error")} <Button onClick={() => void loadList()}>{t("review.retry")}</Button></div>}
         {!listLoading && !listError && rows.length === 0 && <p>{t("review.empty")}</p>}

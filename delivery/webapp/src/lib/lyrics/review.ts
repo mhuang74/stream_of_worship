@@ -105,16 +105,19 @@ export interface ReviewSetSummary {
 export async function reviewSets(): Promise<ReviewSetSummary[]> {
   const result = await db.execute(sql`
     SELECT s.id, s.name,
-      COUNT(m.song_id)::int AS total,
-      (COUNT(m.song_id) FILTER (WHERE EXISTS (
+      COUNT(song.id)::int AS total,
+      (COUNT(song.id) FILTER (WHERE EXISTS (
         SELECT 1 FROM recordings reviewed_recording
         JOIN lyrics_feedback feedback
           ON feedback.recording_content_hash = reviewed_recording.content_hash
-        WHERE reviewed_recording.song_id = m.song_id
+        WHERE reviewed_recording.song_id = song.id
           AND reviewed_recording.deleted_at IS NULL
       )))::int AS done
     FROM lyrics_review_sets s
     LEFT JOIN lyrics_review_set_songs m ON m.set_id = s.id
+    -- Membership outlives a soft-deleted Song, but the queue pool excludes it,
+    -- so it must not inflate total/done either.
+    LEFT JOIN songs song ON song.id = m.song_id AND song.deleted_at IS NULL
     GROUP BY s.id
     ORDER BY s.created_at DESC, s.name ASC
   `);

@@ -821,7 +821,9 @@ user-facing worship `songsets` (tables `lyrics_review_sets` /
 queue to its Songs without touching the fixed review cascade, and shows
 `name — done/total reviewed` progress. "Reviewed" is the queue's derived rule:
 any Lyrics Feedback on any non-deleted recording of the Song, so a completed
-set stays in the picker with a ✓ marker.
+set stays in the picker with a ✓ marker. `total` counts only members whose Song
+is not soft-deleted — the same pool the queue draws from — so deleting a Song
+shrinks the denominator instead of leaving progress short of 100% forever.
 
 `add` validates every id first — one unknown or soft-deleted id fails the whole
 command and nothing is written. Ids that cannot appear in the queue yet (no

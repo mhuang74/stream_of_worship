@@ -58,6 +58,24 @@ describe("review access", () => {
     expect((await PUT(req)).status).toBe(403);
     expect(mocks.insert).not.toHaveBeenCalled();
   });
+  it("accepts writes when only the server bind address differs from the request host", async () => {
+    // `next dev -H 0.0.0.0` reports nextUrl.origin as http://0.0.0.0:8080 while the
+    // browser sends Origin http://localhost:8080; the addressed host is authoritative.
+    const req = request("PUT", { rating: "happy" });
+    req.headers.set("host", "localhost:8080");
+    req.headers.set("origin", "http://localhost:8080");
+    expect((await PUT(req)).status).toBe(200);
+    expect(mocks.insert).toHaveBeenCalled();
+  });
+  it("rejects writes without a usable Origin", async () => {
+    const missing = request("PUT", { rating: "happy" });
+    missing.headers.delete("origin");
+    expect((await PUT(missing)).status).toBe(403);
+    const malformed = request("PUT", { rating: "happy" });
+    malformed.headers.set("origin", "null");
+    expect((await PUT(malformed)).status).toBe(403);
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
   it("cannot open or rate a non-Review recording", async () => {
     mocks.recording.mockResolvedValue(undefined);
     expect((await GET(request())).status).toBe(404);
