@@ -470,6 +470,26 @@ it("subsets the queue to the picked review set and clears back to the full queue
   await screen.findByText("第一首");
 });
 
+it("drops the filter when the selected set is deleted from the CLI", async () => {
+  setRows = [{ id: "set-1", name: "march-batch", total: 2, done: 0 }];
+  render(<LyricsReviewClient />);
+  await screen.findByText("第一首");
+  const picker = screen.getByRole("combobox", { name: "Review set" });
+  await waitFor(() => expect(within(picker).getByRole("option", { name: "march-batch · 0/2" })).toBeInTheDocument());
+  fireEvent.change(picker, { target: { value: "set-1" } });
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("march-batch — 0/2 reviewed"));
+
+  // The CLI deleted the set; the next refresh must not leave the queue pointing at it.
+  setRows = [];
+  fireEvent.change(screen.getByRole("textbox", { name: "Search title or album" }), { target: { value: "第一" } });
+  await waitFor(() => expect(picker).toHaveValue(""));
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  await waitFor(() => {
+    const last = queueUrls().at(-1) ?? "";
+    expect(new URLSearchParams(last.split("?")[1] ?? "").get("set")).toBeNull();
+  });
+});
+
 it("refreshes the set progress banner after feedback is saved", async () => {
   setRows = [{ id: "set-1", name: "march-batch", total: 2, done: 0 }];
   render(<LyricsReviewClient />);

@@ -1243,17 +1243,20 @@ class DatabaseClient:
             cursor.execute(
                 """
                 SELECT s.name,
-                       COUNT(m.song_id) AS total,
-                       COUNT(m.song_id) FILTER (WHERE EXISTS (
+                       COUNT(song.id) AS total,
+                       COUNT(song.id) FILTER (WHERE EXISTS (
                            SELECT 1 FROM recordings r
                            JOIN lyrics_feedback lf
                              ON lf.recording_content_hash = r.content_hash
-                           WHERE r.song_id = m.song_id
+                           WHERE r.song_id = song.id
                              AND r.deleted_at IS NULL
                        )) AS done,
                        s.created_at
                 FROM lyrics_review_sets s
                 LEFT JOIN lyrics_review_set_songs m ON m.set_id = s.id
+                -- Membership outlives a soft-deleted Song, but the webapp queue
+                -- pool excludes it, so it must not inflate total/done either.
+                LEFT JOIN songs song ON song.id = m.song_id AND song.deleted_at IS NULL
                 GROUP BY s.id, s.name, s.created_at
                 ORDER BY s.created_at DESC, s.name ASC
                 """
