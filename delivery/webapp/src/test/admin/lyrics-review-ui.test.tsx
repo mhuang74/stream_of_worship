@@ -197,7 +197,7 @@ it("loads the saved selection for each recording when navigating", async () => {
 });
 it("seeks by lyric timestamp and progress slider, preserving blank gap rows", async () => {
   await openFirst();
-  expect(screen.getByText("00:12")).toBeInTheDocument();
+  expect(screen.getByText("00:12.50")).toBeInTheDocument();
   const audio = document.querySelector("audio")!;
   Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
   fireEvent.loadedMetadata(audio);
@@ -209,7 +209,7 @@ it("seeks by lyric timestamp and progress slider, preserving blank gap rows", as
   expect(audio.currentTime).toBe(45.25);
   // A timestamped line with no text stays empty: no placeholder text.
   expect(screen.queryByText("Instrumental / blank Lyrics")).not.toBeInTheDocument();
-  expect(screen.getByText("00:05").closest("button")).toHaveTextContent(/^00:05$/);
+  expect(screen.getByText("00:05.00").closest("button")).toHaveTextContent(/^00:05\.00$/);
   fireEvent.wheel(screen.getByText("第一行").parentElement!.parentElement!);
   expect(screen.queryByRole("button", { name: "Follow playback" })).not.toBeInTheDocument();
 });
@@ -264,8 +264,8 @@ it("enters Full Screen with one playing audio element and leaves it on the secon
   expect(screen.getAllByRole("slider")).toHaveLength(1);
   expect(audio).not.toHaveAttribute("controls");
   expect(screen.getByText("00:00 / 02:00")).toBeInTheDocument();
-  // Integer seconds everywhere: 19.56 truncates to 00:19, both in the bar and
-  // in the slider's human-readable value.
+  // Integer seconds in the playback bar and the slider's human-readable value;
+  // only the lyric rows carry hundredths.
   audio.currentTime = 19.56;
   fireEvent.timeUpdate(audio);
   expect(screen.getByText("00:19 / 02:00")).toBeInTheDocument();
