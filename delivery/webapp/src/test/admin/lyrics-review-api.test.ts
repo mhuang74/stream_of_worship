@@ -35,6 +35,7 @@ beforeEach(() => {
 describe("review access", () => {
   it("requires the verified, allowlisted account", () => {
     expect(canReviewLyrics(owner)).toBe(true);
+    expect(canReviewLyrics({ ...owner, email: "Tester@StreamOfWorship.com" })).toBe(true);
     expect(canReviewLyrics({ ...owner, emailVerified: false })).toBe(false);
     expect(canReviewLyrics({ ...owner, email: "someone@example.com" })).toBe(false);
     expect(canReviewLyrics(null)).toBe(false);

@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LyricsReviewClient } from "@/app/admin/lyrics-review/LyricsReviewClient";
 import { messages } from "@/lib/i18n/messages";
 import type { ReviewCandidate, ReviewFeedback } from "@/lib/lyrics/review";
@@ -17,6 +17,7 @@ beforeEach(() => {
   synced = true; more = false; initialFeedback = null;
   locale = "en"; queueRows = [first, second];
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   Element.prototype.scrollTo = vi.fn();
   fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method) return new Response(JSON.stringify({ feedback: init.method === "DELETE" ? null : JSON.parse(init.body as string) }));
@@ -195,13 +196,109 @@ it("seeks by lyric timestamp and progress slider, preserving blank gap rows", as
   fireEvent.loadedMetadata(audio);
   fireEvent.click(screen.getByText("第二行"));
   expect(audio.currentTime).toBe(12.5);
+  // The custom slider only shows in Full Screen; the normal view uses native chrome.
+  fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
   fireEvent.change(screen.getByRole("slider", { name: "Playback position" }), { target: { value: "45.25" } });
   expect(audio.currentTime).toBe(45.25);
   expect(screen.getByText("Instrumental / blank Lyrics")).toBeInTheDocument();
   fireEvent.wheel(screen.getByText("第一行").parentElement!.parentElement!);
-  expect(screen.getByRole("button", { name: "Follow playback" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Follow playback" }));
   expect(screen.queryByRole("button", { name: "Follow playback" })).not.toBeInTheDocument();
+});
+it("resumes auto-scrolling on its own after a manual scroll", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  const container = screen.getByText("第一行").parentElement!.parentElement!;
+  const scrollTo = vi.mocked(Element.prototype.scrollTo);
+  vi.useFakeTimers();
+  try {
+    scrollTo.mockClear();
+    fireEvent.wheel(container);
+    // Playback moves on while follow is suspended: the view must not chase it.
+    audio.currentTime = 12.5;
+    fireEvent.timeUpdate(audio);
+    expect(scrollTo).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "smooth" }));
+  } finally { vi.useRealTimers(); }
+});
+it("resumes auto-scrolling immediately when a lyric line is tapped", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  const scrollTo = vi.mocked(Element.prototype.scrollTo);
+  vi.useFakeTimers();
+  try {
+    fireEvent.wheel(screen.getByText("第一行").parentElement!.parentElement!);
+    scrollTo.mockClear();
+    fireEvent.click(screen.getByText("第二行"));
+    expect(audio.currentTime).toBe(12.5);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "smooth" }));
+  } finally { vi.useRealTimers(); }
+});
+it("enters Full Screen with one playing audio element and leaves it on the second tap", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+  const slider = screen.getByRole("slider", { name: "Playback position" });
+  expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Full screen" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+  // Same nodes, so playback never restarts when the layout swaps.
+  expect(document.querySelector("audio")).toBe(audio);
+  expect(screen.getByRole("slider", { name: "Playback position" })).toBe(slider);
+  // One scrubber and one timecode: the native audio chrome is gone in Full Screen.
+  expect(screen.getAllByRole("slider")).toHaveLength(1);
+  expect(audio).not.toHaveAttribute("controls");
+  expect(screen.getByText("00:00.00 / 02:00.00")).toBeInTheDocument();
+  // The bar's play button drives the one audio element and follows its events.
+  fireEvent.click(screen.getByRole("button", { name: "Play" }));
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+  fireEvent.play(audio);
+  expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+  fireEvent.pause(audio);
+  expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+  // First tap only arms the exit.
+  fireEvent.click(screen.getByRole("button", { name: "Exit full screen" }));
+  expect(screen.getByRole("button", { name: "Confirm exit" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm exit" }));
+  expect(screen.queryByRole("button", { name: "Confirm exit" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Good" })).toBeInTheDocument();
+  expect(document.querySelector("audio")).toBe(audio);
+  expect(audio).toHaveAttribute("controls");
+});
+it("shows only native audio controls in the normal view", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  expect(audio).toHaveAttribute("controls");
+  expect(screen.queryByText("00:00.00 / 02:00.00")).not.toBeInTheDocument();
+  // The custom slider stays in the DOM (hidden) so its node survives the
+  // Full Screen toggle; role queries skip display:none, so query by id.
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  expect(document.querySelector("#review-position")).not.toBeVisible();
+});
+it("seeks from Full Screen and disarms an exit that is never confirmed", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+  fireEvent.click(screen.getByText("第二行"));
+  expect(audio.currentTime).toBe(12.5);
+  vi.useFakeTimers();
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Exit full screen" }));
+    expect(screen.getByRole("button", { name: "Confirm exit" })).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(3000));
+    expect(screen.getByRole("button", { name: "Exit full screen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
 });
 it("saves Good without navigating, permits retraction, and advances only on Next", async () => {
   await openFirst();
@@ -288,6 +385,32 @@ it("keeps failures distinct from missing lyrics", async () => {
   fireEvent.click(await screen.findByText("第一首"));
   await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   expect(screen.queryByText("Timed Lyrics missing")).not.toBeInTheDocument();
+});
+
+it("keeps Full Screen disabled until the recording details arrive", async () => {
+  const pending = Promise.withResolvers<Response>();
+  const defaultFetch = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation((url: string, init?: RequestInit) => url.includes("recording=") ? pending.promise : defaultFetch(url, init));
+  render(<LyricsReviewClient />);
+  fireEvent.click(await screen.findByText("第一首"));
+  expect(screen.getByRole("button", { name: "Full screen" })).toBeDisabled();
+  pending.resolve(new Response(JSON.stringify({
+    recording: first, synced: true, audioUrl: "https://audio.example/song.mp3",
+    lines: [{ timeSeconds: 1, text: "第一行" }], feedback: null,
+  })));
+  await screen.findByText("第一行");
+  expect(screen.getByRole("button", { name: "Full screen" })).toBeEnabled();
+});
+
+it("keeps the reviewer out of Full Screen when the recording fails to load", async () => {
+  fetcher.mockImplementation(async (url: string) => url.includes("recording=")
+    ? new Response(null, { status: 503 })
+    : new Response(JSON.stringify({ recordings: [first], hasMore: false })));
+  render(<LyricsReviewClient />);
+  fireEvent.click(await screen.findByText("第一首"));
+  await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+  expect(screen.getByRole("button", { name: "Full screen" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Back to queue" })).toBeEnabled();
 });
 
 it("loads another page when Next reaches the end of the loaded queue", async () => {
