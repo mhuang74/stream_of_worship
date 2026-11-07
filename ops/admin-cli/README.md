@@ -719,7 +719,33 @@ Same review-visibility pool as the review queue; ranked by songset
 appearances, favorites, and newest album (no feedback tier). A song
 whose recordings all carry feedback drops out of the sweep entirely.
 
-### Feedback in the Editor (both modes)
+### Read-only Review of a Song List
+
+```bash
+sow-admin lyrics review --songids-file ~/tmp/song_ids.txt
+```
+
+Walks a file of song IDs (one per line, blank lines and duplicates
+ignored, file order preserved) and opens the player + line table for each
+song **without any ability to change the product**: lyric text, timecodes,
+padding shifts, insert/paste/delete, save/upload, `L` reload,
+`G` regenerate and `A` align are all blocked at key dispatch and omitted
+from the footer and `?` keymap. The only write is a `lyrics_feedback` row
+from the `f` hotkey; no LRC is uploaded and no autosave file is written
+(so a co-editing session's recovery file is never touched).
+
+Skips are reported inline and never stop the walk:
+
+- `→ skipped-songless <id>` — the id has no recording.
+- `→ skipped-feedback <id>` — the song still carries unresolved feedback
+  (👍 happy or 👎 sad, open rows only). Those belong to
+  `lyrics edit --review-next-song` or `lyrics feedback resolve`.
+
+Published recordings are reviewed normally. `Enter` opens a song's editor;
+any other reply aborts the whole run. Quitting an editor advances to the
+next id with no further prompt.
+
+### Feedback in the Editor (edit and review modes)
 
 The editor status row shows a one-line feedback summary (rating counts,
 open count, latest note) and the `f` hotkey opens the feedback dialog:

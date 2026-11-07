@@ -66,6 +66,10 @@ def _make_app_with_lines(
     cache_dir: Path | None = None,
     original_transcribed_content: str | None = None,
     lrc_source: str | None = None,
+    read_only: bool = False,
+    dirty: bool = False,
+    recording_content_hash: str | None = None,
+    feedback_user_id: int | None = None,
 ) -> tuple[LRCEditorApp, EditorState]:
     state = EditorState(
         timed_lines=lines,
@@ -73,6 +77,7 @@ def _make_app_with_lines(
         original_serialized="",
         original_preserved_lines=[],
         transcribed_identity=R2ObjectIdentity(exists=False),
+        dirty=dirty,
     )
     app = LRCEditorApp(
         editor_state=state,
@@ -85,6 +90,9 @@ def _make_app_with_lines(
         visibility_status=visibility_status,
         lrc_source=lrc_source,
         analysis_client=analysis_client,
+        read_only=read_only,
+        recording_content_hash=recording_content_hash,
+        feedback_user_id=feedback_user_id,
     )
     return app, state
 
@@ -1397,3 +1405,178 @@ async def test_quit_during_alignment_requires_force_confirm():
         await pilot.pause()
 
         assert app.quit_clean is False
+
+
+# --- Read-only review mode (lyrics review) ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_read_only_blocks_lyric_and_timecode_edits(tmp_path: Path):
+    app, state = _make_app_with_lines(
+        [
+            LRCLine(time_seconds=1.0, text="Line 1", raw_timestamp="[00:01.00]"),
+            LRCLine(time_seconds=2.0, text="Line 2", raw_timestamp="[00:02.00]"),
+            LRCLine(time_seconds=3.0, text="Line 3", raw_timestamp="[00:03.00]"),
+        ],
+        cache_dir=tmp_path,
+        read_only=True,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+        snapshot = [(line.time_seconds, line.text) for line in state.timed_lines]
+
+        # edit_text / insert_after / insert_canonical / delete_line /
+        # edit_timestamp / stamp_and_advance
+        await pilot.press("e", "i", "I", "d", "t", "tab")
+        await pilot.pause()
+
+        # A bracketed paste is a DOM event, not an action: guard it too.
+        app.screen.on_paste(events.Paste("[00:30.00]Injected"))
+        await pilot.pause()
+
+        assert [(line.time_seconds, line.text) for line in state.timed_lines] == snapshot
+        assert editor._edit_mode is None
+        assert (tmp_path / "abc123" / "lrc" / "lyrics.autosave.json").exists() is False
+
+
+@pytest.mark.asyncio
+async def test_read_only_blocks_save_regeneration_and_reload(tmp_path: Path):
+    app, _ = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Line 1", raw_timestamp="[00:01.00]")],
+        analysis_client=MagicMock(),
+        cache_dir=tmp_path,
+        read_only=True,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("s", "G", "A", "L")
+        await pilot.pause()
+
+        from textual.screen import ModalScreen
+
+        assert editor._save_in_flight is False
+        assert editor._regen_in_flight is False
+        assert editor._align_in_flight is False
+        assert editor._reload_in_flight is False
+        assert app.upload_attempted is False
+        assert not isinstance(app.screen, ModalScreen)
+        # L would save a local draft + clear the autosave: nothing written.
+        assert list(tmp_path.rglob("*")) == []
+
+
+@pytest.mark.asyncio
+async def test_read_only_footer_and_keymap_omit_edit_keys():
+    app, _ = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Line 1", raw_timestamp="[00:01.00]")],
+        read_only=True,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        footer = app.screen.query_one(GroupedFooter)
+        rendered = "\n".join(
+            child.render().plain for child in footer.query("*") if hasattr(child, "render")
+        )
+
+        for gone in (
+            "Edit Text",
+            "Save/Upload",
+            "Edit Time",
+            "Delete",
+            "Reload from R2",
+        ):
+            assert gone not in rendered, rendered
+        assert "Feedback" in rendered, rendered
+        assert "Quit" in rendered, rendered
+
+        app.screen.action_show_keymap()
+        await pilot.pause()
+
+        from textual.screen import ModalScreen
+
+        assert isinstance(app.screen, ModalScreen)
+        labels = [
+            label.render().plain
+            for label in app.screen.query_one("#keymap-container").query("Label")
+        ]
+        keymap_rendered = "\n".join(labels)
+        for gone in (
+            "Edit Text",
+            "Save/Upload",
+            "Edit Time",
+            "Delete",
+            "Reload from R2",
+        ):
+            assert gone not in keymap_rendered, keymap_rendered
+        assert "Feedback" in keymap_rendered
+        assert "Timecode" not in keymap_rendered
+
+
+@pytest.mark.asyncio
+async def test_read_only_feedback_hotkey_opens_dialog():
+    app, _ = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Line 1", raw_timestamp="[00:01.00]")],
+        read_only=True,
+        recording_content_hash="hash-full-review",
+        feedback_user_id=7,
+    )
+    app.db_client.get_recording_feedback_rows.return_value = []
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+
+        await pilot.press("f")
+        await pilot.pause()
+
+        from stream_of_worship.admin.editor.screen import FeedbackDialog
+
+        assert isinstance(app.screen, FeedbackDialog)
+        text = "\n".join(label.render().plain for label in app.screen.query("Label"))
+        assert "Lyrics Feedback" in text
+        assert "Happy" in text
+        assert "Sad" in text
+
+        # The one write review mode keeps: happy feedback upsert.
+        await pilot.press("h")
+        await pilot.pause()
+
+        app.db_client.upsert_recording_feedback.assert_called_once_with(
+            "hash-full-review", 7, "happy", None, None
+        )
+
+
+@pytest.mark.asyncio
+async def test_read_only_quit_does_not_write_autosave(tmp_path: Path):
+    app, state = _make_app_with_lines(
+        [LRCLine(time_seconds=1.0, text="Line 1", raw_timestamp="[00:01.00]")],
+        cache_dir=tmp_path,
+        read_only=True,
+        dirty=True,
+    )
+
+    async with app.run_test(size=(80, 12)) as pilot:
+        await pilot.pause()
+        editor = app.screen
+
+        await pilot.press("q")
+        await pilot.pause()
+
+        from textual.screen import ModalScreen
+
+        assert isinstance(app.screen, ModalScreen)
+        dialog_text = "\n".join(label.render().plain for label in app.screen.query("Label"))
+        # dirty state must not claim unsaved edits in review mode
+        assert "Unsaved changes" not in dialog_text
+        assert "Quit the editor?" in dialog_text
+
+        await pilot.press("y")
+        await pilot.pause()
+
+        assert editor.state.dirty is True  # state untouched, just no autosave
+        assert (tmp_path / "abc123" / "lrc" / "lyrics.autosave.json").exists() is False

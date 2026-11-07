@@ -283,6 +283,38 @@ def _format_feedback_row(row) -> str:
     return f"{icon} {row.email}{reason}{note}{status} · {date}"
 
 
+# Actions that mutate the LRC (text, timecodes, padding), persist it (local
+# draft, R2 upload), replace it on R2 (regenerate, align), or belong to the
+# editing history. Read-only review mode hides and blocks all of them; the
+# only write left is the feedback hotkey.
+_READ_ONLY_DISABLED_ACTIONS: frozenset[str] = frozenset(
+    {
+        # lyric text
+        "paste_after",
+        "insert_after",
+        "insert_canonical",
+        "delete_line",
+        "edit_text",
+        # timecode (stamp, padding shift, direct edit)
+        "stamp_and_advance",
+        "show_earlier",
+        "show_later",
+        "edit_timestamp",
+        # persistence
+        "save_upload",
+        # LRC replacement on R2
+        "regenerate_lrc",
+        "align_lrc",
+        # Reload (L) also writes: it saves a local draft for unsaved edits and
+        # clears the autosave recovery file, which a review must not touch.
+        "reload_lrc",
+        # history belongs to editing
+        "undo",
+        "redo",
+    }
+)
+
+
 class FeedbackDialog(ModalScreen):
     """Lyrics feedback dialog: view rows, add Happy/Sad, retract, resolve.
 
@@ -577,12 +609,31 @@ class LRCEditorScreen(Screen[None]):
         visibility_status: Optional[str] = None,
         lrc_source: Optional[str] = None,
         analysis_client: Optional[AnalysisClient] = None,
+        read_only: bool = False,
     ):
         super().__init__()
+        self.read_only = read_only
+        if read_only:
+            # Display only: GroupedFooter and the keymap dialog read these
+            # attributes directly, so an instance-level filtered list hides
+            # the disabled keys. Dispatch blocking lives in check_action.
+            self.BINDINGS = [
+                b for b in self.BINDINGS if b.action not in _READ_ONLY_DISABLED_ACTIONS
+            ]
+            self.BINDING_GROUPS = {
+                group: [a for a in actions if a not in _READ_ONLY_DISABLED_ACTIONS]
+                for group, actions in self.BINDING_GROUPS.items()
+            }
+            # Drop groups that lost every key (e.g. Timecode in review mode)
+            # instead of rendering a dangling label.
+            self.BINDING_GROUPS = {
+                group: actions for group, actions in self.BINDING_GROUPS.items() if actions
+            }
+        mode_label = "LRC Review" if read_only else "LRC Editor"
         self.title = (
-            f"LRC Editor — {editor_state.song_title} ({editor_state.song_id})"
+            f"{mode_label} — {editor_state.song_title} ({editor_state.song_id})"
             if editor_state.song_id
-            else f"LRC Editor — {editor_state.song_title}"
+            else f"{mode_label} — {editor_state.song_title}"
         )
         # Plain text (no Rich markup): Header.format_title renders Content.
         self._visibility_status: Optional[str] = visibility_status
@@ -939,6 +990,10 @@ class LRCEditorScreen(Screen[None]):
         self._update_displays()
 
     def _do_autosave(self) -> None:
+        # Review mode never persists: no autosave file, so a later editing
+        # session cannot find (or resurrect) a review session's state.
+        if self.read_only:
+            return
         try:
             autosave_state = AutosaveState(
                 timed_lines=self.state.timed_lines,
@@ -989,6 +1044,12 @@ class LRCEditorScreen(Screen[None]):
 
     def _is_edit_active(self) -> bool:
         return self._edit_mode is not None
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Hide and block editing/persistence actions in read-only review mode."""
+        if self.read_only and action in _READ_ONLY_DISABLED_ACTIONS:
+            return False
+        return super().check_action(action, parameters)
 
     def _guard_active_edit(self) -> bool:
         if self._is_edit_active():
@@ -1114,6 +1175,11 @@ class LRCEditorScreen(Screen[None]):
         self.call_after_refresh(self._refresh_row_edit_input_position)
 
     def on_paste(self, event: events.Paste) -> None:
+        # Review mode blocks lyric insertion. A paste is a DOM event, not an
+        # action, so check_action never sees it — guard here.
+        if self.read_only:
+            event.stop()
+            return
         if self._guard_active_edit():
             event.stop()
             return
@@ -2569,7 +2635,10 @@ class LRCEditorScreen(Screen[None]):
                 self.app.quit_clean = not self._has_unsaved_changes()
                 self.app.exit()
 
-        if self.state.dirty:
+        if self.state.dirty and not self.read_only:
             self._do_autosave()
 
-        self.app.push_screen(QuitConfirmDialog(self.state.dirty), _handle_quit_confirm)
+        self.app.push_screen(
+            QuitConfirmDialog(self.state.dirty and not self.read_only),
+            _handle_quit_confirm,
+        )

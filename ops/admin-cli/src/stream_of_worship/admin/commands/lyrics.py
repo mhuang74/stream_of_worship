@@ -60,6 +60,7 @@ from stream_of_worship.admin.services.prompts import (
     prompt_choice_or_none,
     prompt_enter_or_no,
     prompt_typed_yes,
+    read_song_ids_from_file,
     read_song_ids_from_stdin,
 )
 from stream_of_worship.admin.services.r2 import R2Client, R2ObjectIdentity
@@ -2549,6 +2550,85 @@ def lyrics_edit(
         _run_single_mode_offers(db_client, outcome.upload_result, recording)
 
 
+@app.command("review")
+def lyrics_review(
+    songids_file: Path = typer.Option(
+        ...,
+        "--songids-file",
+        exists=True,
+        dir_okay=False,
+        help="File of song IDs to review, one per line",
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Review LRC for a list of songs and record lyrics feedback, without editing.
+
+    Read-only counterpart of `lyrics edit`: opens the player and line table
+    for each song ID in the file (one per line, file order). Lyric text,
+    timecodes, padding, save/upload, LRC reload/regeneration/alignment and
+    visibility changes are all disabled; the only writes are lyrics feedback
+    rows added with the editor's `f` hotkey (`h` happy, `s` sad, `r` retract
+    your row, `x` resolve all open).
+
+    Ids with no recording are reported as skipped-songless. Songs that still
+    have unresolved feedback (happy or poor) are reported as skipped-feedback
+    and left alone — resolve them with `sow-admin lyrics feedback resolve`
+    or rework them via `sow-admin lyrics edit --review-next-song`. Published
+    recordings are reviewed normally (review writes no LRC).
+
+    Enter opens the editor for a song; any other reply aborts the run.
+    Quitting the editor advances to the next song automatically.
+    """
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    # Read the target list first: a bad path or an empty file fails fast,
+    # before any DB/R2 connection is opened.
+    try:
+        song_ids = read_song_ids_from_file(songids_file)
+    except OSError as e:
+        console.print(f"[red]Failed to read {songids_file}: {e}[/red]")
+        raise typer.Exit(1)
+    if not song_ids:
+        console.print(f"[yellow]No song IDs found in {songids_file}[/yellow]")
+        raise typer.Exit(0)
+
+    db_client = get_db_client(config)
+    cache_dir = get_cache_dir()
+
+    try:
+        r2_client = R2Client(
+            bucket=config.r2_bucket,
+            endpoint_url=config.r2_endpoint_url,
+            region=config.r2_region,
+        )
+    except ValueError as e:
+        console.print(f"[red]R2 configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # None (with a warning) when admin.feedback_email is unset: the review
+    # still opens, but the `f` hotkey can only display existing rows.
+    feedback_user_id = _resolve_feedback_user_id(config)
+
+    # Open-feedback skip needs the same provider-based join _preflight_guard
+    # uses; the caller owns it.
+    provider = ConnectionProvider(config.get_connection_url())
+    try:
+        _run_review_only_session(
+            db_client,
+            cache_dir,
+            r2_client,
+            feedback_user_id,
+            song_ids,
+            provider=provider,
+        )
+    finally:
+        provider.close()
+
+
 def plan_post_upload_offers(
     upload_ok: bool,
     open_sad_count: int,
@@ -2801,6 +2881,71 @@ def _run_fresh_review_session(
                 return
 
 
+def _run_review_only_session(
+    db_client,
+    cache_dir,
+    r2_client,
+    feedback_user_id: Optional[int],
+    song_ids: list[str],
+    provider: ConnectionProvider,
+) -> None:
+    """Run the `lyrics review` loop: read-only sessions in file order.
+
+    No lyric/timecode edits, no save/upload, no regeneration/alignment, and
+    no visibility changes (the editor runs with ``read_only=True``); the only
+    writes are feedback rows from the editor's ``f`` hotkey. Skips ids with
+    no recording and songs that still carry unresolved feedback.
+    """
+    total = len(song_ids)
+    for index, song_id in enumerate(song_ids, 1):
+        console.print()
+        console.print(Rule(style="dim"))
+        recording = db_client.get_recording_by_song_id(song_id)
+        song = db_client.get_song(song_id)
+        if recording is None or song is None:
+            console.print(
+                f"[yellow]→ skipped-songless {song_id}: no recording found "
+                f"for this song id[/yellow]"
+            )
+            continue
+
+        open_feedback = _fetch_open_feedback_hashes(provider, song_id)
+        if open_feedback:
+            happy = len(open_feedback.get("happy", []))
+            sad = len(open_feedback.get("sad", []))
+            console.print(
+                f"[yellow]→ skipped-feedback {song_id}: {happy + sad} unresolved "
+                f"feedback row(s) (👍{happy} 👎{sad}); resolve with "
+                f"'sow-admin lyrics feedback resolve {song_id}'[/yellow]"
+            )
+            continue
+
+        console.print(
+            f"[bold]Review song {index}/{total}:[/bold] {song.title} "
+            f"[dim]({song_id}, recording {recording.hash_prefix})[/dim]"
+        )
+        if not _confirm_open_editor():
+            console.print("[dim]Aborted; remaining songs in the file were not processed.[/dim]")
+            return
+
+        outcome = _run_editor_session(
+            db_client,
+            cache_dir,
+            r2_client,
+            song,
+            recording,
+            feedback_user_id,
+            analysis_client=None,
+            read_only=True,
+        )
+        if outcome.no_audio:
+            console.print(
+                f"[yellow]Skipping {song_id} ({song.title}): no audio "
+                f"available in object storage.[/yellow]"
+            )
+            continue
+
+
 def _confirm_open_editor() -> bool:
     """Pause gate before launching the editor.
 
@@ -2929,6 +3074,7 @@ def _run_editor_session(
     recording,
     feedback_user_id: Optional[int],
     analysis_client: Optional[AnalysisClient] = None,
+    read_only: bool = False,
 ):
     """Prepare caches + editor state and run one editor session.
 
@@ -2941,6 +3087,10 @@ def _run_editor_session(
 
     ``analysis_client`` enables the editor's force-regenerate hotkey
     (``G``); ``None`` disables it.
+
+    ``read_only`` runs the screen as an LRC review: no edits, no autosave
+    recovery (a prior editing session's autosave is neither resumed,
+    discarded, nor cleared), no save/upload.
     """
     song_title = song.title if song else "Unknown"
 
@@ -3002,7 +3152,7 @@ def _run_editor_session(
         load_autosave,
     )
 
-    if autosave_exists(cache_dir, recording.hash_prefix):
+    if not read_only and autosave_exists(cache_dir, recording.hash_prefix):
         console.print("[yellow]Autosave recovery file found![/yellow]")
         console.print("[dim]Resume previous editing session, discard it, or save it aside?[/dim]")
         choice = prompt_choice("Choose:", ["Resume", "Discard", "Save aside and start fresh"])
@@ -3091,7 +3241,9 @@ def _run_editor_session(
             source_mode,
         )
 
-    console.print(f"[cyan]Launching LRC editor for: {song_title}[/cyan]")
+    console.print(
+        f"[cyan]Launching {'LRC review' if read_only else 'LRC editor'} for: {song_title}[/cyan]"
+    )
     console.print("[dim]Press Ctrl+C in the editor to quit.[/dim]")
 
     from stream_of_worship.admin.logging_config import get_log_path
@@ -3115,6 +3267,7 @@ def _run_editor_session(
         visibility_status=recording.visibility_status,
         lrc_source=recording.lrc_source,
         analysis_client=analysis_client,
+        read_only=read_only,
     )
     app.run()
 

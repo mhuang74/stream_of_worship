@@ -5,6 +5,7 @@ multiple command modules.
 """
 
 import sys
+from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
@@ -22,6 +23,23 @@ def read_song_ids_from_stdin() -> list[str]:
     for line in sys.stdin:
         line = line.strip()
         if line:
+            song_ids.append(line)
+    return song_ids
+
+
+def read_song_ids_from_file(path: Path) -> list[str]:
+    """Read song IDs from a file, one per line (blank lines ignored).
+
+    Returns:
+        Non-empty stripped song IDs in file order, duplicates dropped
+        (first occurrence wins) so one run never reviews a song twice.
+    """
+    seen: set[str] = set()
+    song_ids: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and line not in seen:
+            seen.add(line)
             song_ids.append(line)
     return song_ids
 
