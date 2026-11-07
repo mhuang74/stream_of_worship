@@ -635,6 +635,193 @@ def feedback_unresolve(
         raise typer.Exit(1)
 
 
+# --- Lyrics review sets -----------------------------------------------------
+# Curated batches of Songs for the mobile-first review flow: the webapp's
+# /admin/lyrics-review screen offers a set picker that subsets the fixed review
+# cascade. Sets are CLI-owned; the webapp only reads them. Ids come from a file
+# or stdin so a batch can be pasted from a sheet, a chat message, or the output
+# of another sow-admin command.
+
+review_set_app = typer.Typer(help="Curated Lyrics review sets (review batches)")
+app.add_typer(review_set_app, name="review-set")
+
+
+def _read_review_set_ids(path: Optional[Path], stdin: bool) -> list[str]:
+    """Read song ids from exactly one of ``--file`` / ``--stdin``.
+
+    Args:
+        path: Value of ``--file``, if given.
+        stdin: Whether ``--stdin`` was passed.
+
+    Returns:
+        Non-empty stripped lines, in input order (duplicates preserved).
+    """
+    if path and stdin:
+        console.print("[red]Error: Cannot use both --file and --stdin[/red]")
+        raise typer.Exit(2)
+    if stdin:
+        return read_song_ids_from_stdin()
+    if path is None:
+        console.print("[red]Error: Provide --file PATH or --stdin[/red]")
+        raise typer.Exit(2)
+    if not path.exists():
+        console.print(f"[red]Error: File not found: {path}[/red]")
+        raise typer.Exit(2)
+    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+@review_set_app.command("add")
+def review_set_add(
+    name: str = typer.Argument(..., help="Set name (created on first use)"),
+    file: Optional[Path] = typer.Option(
+        None, "--file", "-f", help="Text file of song ids, one per line"
+    ),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song ids from stdin, one per line"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Add Songs to a review set, creating the set if it does not exist.
+
+    Every id is validated before anything is written: one unknown (or
+    soft-deleted) id fails the whole command, so a typo cannot silently
+    produce a half-populated batch.
+
+    Examples:
+        sow-admin lyrics review-set add march-batch --file ids.txt
+        cat ids.txt | sow-admin lyrics review-set add march-batch --stdin
+    """
+    song_ids = _read_review_set_ids(file, stdin)
+    if not song_ids:
+        raise typer.BadParameter("No song ids provided")
+    # Preserve input order; a repeated id is a no-op membership insert.
+    song_ids = list(dict.fromkeys(song_ids))
+
+    config = _load_connection_provider(config_path)
+    with get_db_client(config) as db:
+        songs = {song_id: db.get_song(song_id) for song_id in song_ids}
+        missing = [song_id for song_id, song in songs.items() if song is None]
+        if missing:
+            console.print(
+                f"[red]Error: {len(missing)} unknown or deleted song id(s); "
+                f"nothing written:[/red]"
+            )
+            for song_id in missing:
+                console.print(f"  [red]✗ {song_id}[/red]")
+            raise typer.Exit(2)
+
+        set_id = db.lyrics_review_set_ensure(name)
+        added = db.lyrics_review_set_add_songs(set_id, song_ids)
+        total = next(
+            (row["total"] for row in db.lyrics_review_set_list() if row["name"] == name),
+            len(song_ids),
+        )
+        pool = db.review_pool_song_ids()
+
+    console.print(
+        f"[green]Set ‘{name}’: {added} added, {len(song_ids) - added} already present, "
+        f"{total} song(s) total.[/green]"
+    )
+    outside = [song_id for song_id in song_ids if song_id not in pool]
+    if outside:
+        console.print(
+            f"[yellow]{len(outside)} song(s) are not in the review pool yet; they appear "
+            f"in the queue once a review-visibility recording with audio exists:[/yellow]"
+        )
+        for song_id in outside:
+            console.print(f"  [yellow]· {songs[song_id].title} ({song_id})[/yellow]")
+
+
+@review_set_app.command("list")
+def review_set_list(
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """List review sets with reviewed progress.
+
+    "Reviewed" is the same derived rule the webapp queue uses: any Lyrics
+    Feedback on any non-deleted recording of the Song.
+    """
+    config = _load_connection_provider(config_path)
+    with get_db_client(config) as db:
+        rows = db.lyrics_review_set_list()
+
+    if not rows:
+        console.print("[yellow]No review sets yet.[/yellow]")
+        console.print(
+            "[dim]Create one: sow-admin lyrics review-set add <name> --file ids.txt[/dim]"
+        )
+        return
+
+    table = Table(title="Lyrics review sets")
+    table.add_column("Name")
+    table.add_column("Reviewed", justify="right")
+    table.add_column("Songs", justify="right")
+    table.add_column("Created")
+    for row in rows:
+        table.add_row(
+            row["name"],
+            f"{row['done']}/{row['total']}",
+            str(row["total"]),
+            (row["created_at"] or "")[:19].replace("T", " "),
+        )
+    console.print(table)
+
+
+@review_set_app.command("remove")
+def review_set_remove(
+    name: str = typer.Argument(..., help="Set name"),
+    file: Optional[Path] = typer.Option(
+        None, "--file", "-f", help="Text file of song ids to remove, one per line"
+    ),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song ids from stdin, one per line"),
+    delete_all: bool = typer.Option(
+        False, "--all", help="Delete the whole set (memberships included)"
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Remove Songs from a review set, or delete the set with ``--all``.
+
+    Examples:
+        sow-admin lyrics review-set remove march-batch --stdin < ids.txt
+        sow-admin lyrics review-set remove march-batch --all
+    """
+    if delete_all and (file or stdin):
+        console.print("[red]Error: --all cannot be combined with --file or --stdin[/red]")
+        raise typer.Exit(2)
+    song_ids: list[str] = []
+    if not delete_all:
+        if not file and not stdin:
+            console.print("[red]Error: Provide --file PATH, --stdin, or --all[/red]")
+            raise typer.Exit(2)
+        song_ids = list(dict.fromkeys(_read_review_set_ids(file, stdin)))
+        if not song_ids:
+            raise typer.BadParameter("No song ids provided")
+
+    config = _load_connection_provider(config_path)
+    with get_db_client(config) as db:
+        if db.lyrics_review_set_id(name) is None:
+            console.print(f"[red]Error: No review set named ‘{name}’.[/red]")
+            raise typer.Exit(2)
+        if delete_all:
+            # read_song_ids_from_stdin() may have drained a pipe, so only ask on
+            # an interactive terminal (same rule as the LLM trace dump).
+            if sys.stdin.isatty() and not typer.confirm(
+                f"Delete review set ‘{name}’ and all its memberships?", default=False
+            ):
+                console.print("[yellow]Aborted.[/yellow]")
+                raise typer.Exit(0)
+            db.lyrics_review_set_delete(name)
+            console.print(f"[green]Deleted review set ‘{name}’.[/green]")
+            return
+        removed = db.lyrics_review_set_remove_songs(name, song_ids)
+        total = next(
+            (row["total"] for row in db.lyrics_review_set_list() if row["name"] == name), 0
+        )
+
+    console.print(
+        f"[green]Set ‘{name}’: {removed} removed, "
+        f"{len(song_ids) - removed} not a member, {total} song(s) left.[/green]"
+    )
+
+
 @app.command("generate")
 def lyrics_generate(
     song_id: Optional[str] = typer.Argument(None, help="Song ID to generate LRC for"),

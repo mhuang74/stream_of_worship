@@ -94,6 +94,27 @@ CREATE TABLE IF NOT EXISTS user_favorite_songs (
 );
 """
 
+# Lyrics review sets: named, CLI-curated batches of Songs for the admin
+# Lyrics Review queue (delivery/webapp/drizzle/0026_true_inhumans.sql; distinct
+# from the user-facing worship ``songsets``). The webapp only reads them to
+# filter the review cascade, so membership is written by the admin CLI alone.
+CREATE_LYRICS_REVIEW_SETS_TABLE = """
+CREATE TABLE IF NOT EXISTS lyrics_review_sets (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+CREATE_LYRICS_REVIEW_SET_SONGS_TABLE = """
+CREATE TABLE IF NOT EXISTS lyrics_review_set_songs (
+    set_id   TEXT NOT NULL REFERENCES lyrics_review_sets(id) ON DELETE CASCADE,
+    song_id  TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (set_id, song_id)
+);
+"""
+
 CREATE_LYRICS_FEEDBACK_UPDATE_TRIGGER = """
 DROP TRIGGER IF EXISTS trg_lyrics_feedback_updated_at ON lyrics_feedback;
 CREATE TRIGGER trg_lyrics_feedback_updated_at
@@ -115,6 +136,8 @@ CREATE_USER_DATA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_songset_share_songset ON songset_share(songset_id);",
     "CREATE INDEX IF NOT EXISTS idx_songset_share_creator "
     "ON songset_share(created_by_user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_lyrics_review_set_songs_song "
+    "ON lyrics_review_set_songs(song_id);",
 ]
 
 CREATE_USER_SETTINGS_UPDATE_TRIGGER = """
@@ -141,6 +164,8 @@ ALL_USER_DATA_SCHEMA_STATEMENTS = [
     CREATE_LYRICS_FEEDBACK_NOTE_COLUMN,
     CREATE_USER_FAVORITES_TABLE,
     CREATE_SONGSET_SHARE_TABLE,
+    CREATE_LYRICS_REVIEW_SETS_TABLE,
+    CREATE_LYRICS_REVIEW_SET_SONGS_TABLE,
     *CREATE_USER_DATA_INDEXES,
     CREATE_USER_SETTINGS_UPDATE_TRIGGER,
     CREATE_USER_LRC_OVERRIDE_UPDATE_TRIGGER,

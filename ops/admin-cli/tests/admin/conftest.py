@@ -51,6 +51,8 @@ def setup_db(make_test_provider, postgres_url):
         with cleanup_provider.get_connection().cursor() as cur:
             cur.execute("""
                 DROP TABLE IF EXISTS songset_share CASCADE;
+                DROP TABLE IF EXISTS lyrics_review_set_songs CASCADE;
+                DROP TABLE IF EXISTS lyrics_review_sets CASCADE;
                 DROP TABLE IF EXISTS lyrics_feedback CASCADE;
                 DROP TABLE IF EXISTS user_favorite_songs CASCADE;
                 DROP TABLE IF EXISTS lyric_mark CASCADE;

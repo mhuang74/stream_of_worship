@@ -10,6 +10,7 @@ import {
   timestamp,
   index,
   unique,
+  primaryKey,
   vector,
   customType,
 } from "drizzle-orm/pg-core";
@@ -459,6 +460,33 @@ export const lyricsFeedback = pgTable(
       t.recordingContentHash,
       t.resolvedAt
     ),
+  ]
+);
+
+// lyrics_review_sets: named, curated batches of Songs for the admin Lyrics
+// Review queue (distinct from the user-facing worship `songsets`). Membership
+// is curated by the admin CLI; the webapp only reads sets to offer an explicit
+// picker in front of the fixed review cascade.
+export const lyricsReviewSets = pgTable("lyrics_review_sets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const lyricsReviewSetSongs = pgTable(
+  "lyrics_review_set_songs",
+  {
+    setId: text("set_id")
+      .notNull()
+      .references(() => lyricsReviewSets.id, { onDelete: "cascade" }),
+    songId: text("song_id")
+      .notNull()
+      .references(() => songs.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.setId, t.songId] }),
+    index("idx_lyrics_review_set_songs_song").on(t.songId),
   ]
 );
 

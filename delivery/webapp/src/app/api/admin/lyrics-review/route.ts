@@ -13,11 +13,28 @@ const json = (data: unknown, status = 200) => NextResponse.json(data, {
   status, headers: { "Cache-Control": "private, no-store" },
 });
 
+/**
+ * Same-origin check for writes. Compare the `Origin` host against the host the
+ * request was addressed to, not `nextUrl.origin`: the latter carries the server's
+ * bind address (e.g. `http://0.0.0.0:8080` under `next dev -H 0.0.0.0`) or a
+ * rewritten internal URL, so every real browser write looked cross-origin.
+ */
+function isSameOrigin(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+  if (!origin || !host) return false;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 async function handle(request: NextRequest) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return json({ error: "Unauthorized" }, 401);
   if (!canReviewLyrics(session.user)) return json({ error: "Forbidden" }, 403);
-  if (request.method !== "GET" && request.headers.get("origin") !== request.nextUrl.origin) {
+  if (request.method !== "GET" && !isSameOrigin(request)) {
     return json({ error: "Invalid origin" }, 403);
   }
   const userId = Number(session.user.id);
@@ -27,7 +44,8 @@ async function handle(request: NextRequest) {
     if (!Number.isSafeInteger(offset) || offset < 0) return json({ error: "Invalid offset" }, 400);
     return json(await reviewQueue(
       (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 200),
-      request.nextUrl.searchParams.get("reviewed") === "1", offset));
+      request.nextUrl.searchParams.get("reviewed") === "1", offset,
+      request.nextUrl.searchParams.get("set")?.trim() || null));
   }
   if (!hash) return json({ error: "Recording required" }, 400);
   const recording = await reviewRecording(hash);

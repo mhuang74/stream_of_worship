@@ -20,10 +20,20 @@ export interface ReviewCandidate {
   feedback: ReviewFeedback[];
 }
 
-export async function reviewQueue(query: string, showReviewed: boolean, offset: number) {
+export async function reviewQueue(
+  query: string,
+  showReviewed: boolean,
+  offset: number,
+  setId: string | null = null
+) {
   // Same priority cascade and per-song recording selection as the CLI. Filter
   // feedback at song level after choosing the target: any feedback on an active
   // recording counts, including resolved feedback and other users' ratings.
+  // A set only subsets the pool; the cascade order is untouched.
+  const setFilter = setId
+    ? sql`AND EXISTS (SELECT 1 FROM lyrics_review_set_songs lrs
+        WHERE lrs.set_id = ${setId} AND lrs.song_id = s.id)`
+    : sql``;
   const result = await db.execute(sql`
     WITH pool AS (
       SELECT r.content_hash, r.song_id, s.title, s.album_name,
@@ -38,7 +48,7 @@ export async function reviewQueue(query: string, showReviewed: boolean, offset: 
           AND rating = 'sad' AND resolved_at IS NULL
       ) fb ON TRUE
       WHERE r.visibility_status = 'review' AND r.deleted_at IS NULL
-        AND s.deleted_at IS NULL AND r.r2_audio_url IS NOT NULL
+        AND s.deleted_at IS NULL AND r.r2_audio_url IS NOT NULL ${setFilter}
     ), candidates AS (
       SELECT pool.*, EXISTS (
         SELECT 1 FROM recordings reviewed_recording
@@ -78,6 +88,41 @@ export async function reviewQueue(query: string, showReviewed: boolean, offset: 
   // Neon HTTP returns { rows }; the TCP Postgres test driver returns an array.
   const rows = (Array.isArray(result) ? result : result.rows) as unknown as ReviewCandidate[];
   return { recordings: rows.slice(0, 50), hasMore: rows.length > 50 };
+}
+
+export interface ReviewSetSummary {
+  id: string;
+  name: string;
+  total: number;
+  done: number;
+}
+
+/**
+ * Review sets with progress. `done` uses the queue's derived reviewed rule:
+ * any Lyrics Feedback on any non-deleted recording of the Song. Completed
+ * sets stay in the list — the client marks them, nothing prunes them.
+ */
+export async function reviewSets(): Promise<ReviewSetSummary[]> {
+  const result = await db.execute(sql`
+    SELECT s.id, s.name,
+      COUNT(song.id)::int AS total,
+      (COUNT(song.id) FILTER (WHERE EXISTS (
+        SELECT 1 FROM recordings reviewed_recording
+        JOIN lyrics_feedback feedback
+          ON feedback.recording_content_hash = reviewed_recording.content_hash
+        WHERE reviewed_recording.song_id = song.id
+          AND reviewed_recording.deleted_at IS NULL
+      )))::int AS done
+    FROM lyrics_review_sets s
+    LEFT JOIN lyrics_review_set_songs m ON m.set_id = s.id
+    -- Membership outlives a soft-deleted Song, but the queue pool excludes it,
+    -- so it must not inflate total/done either.
+    LEFT JOIN songs song ON song.id = m.song_id AND song.deleted_at IS NULL
+    GROUP BY s.id
+    ORDER BY s.created_at DESC, s.name ASC
+  `);
+  // Neon HTTP returns { rows }; the TCP Postgres test driver returns an array.
+  return (Array.isArray(result) ? result : result.rows) as unknown as ReviewSetSummary[];
 }
 
 export async function reviewRecording(contentHash: string) {

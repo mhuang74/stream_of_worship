@@ -28,7 +28,6 @@ export const reviewBundle = bundle({
     "review.error": "Unable to load or save. Please retry.",
     "review.audioError": "Audio could not play. Retry to refresh playback.",
     "review.seek": "Playback position",
-    "review.gap": "Instrumental / blank Lyrics",
     "review.missingReason": "Lyrics missing",
     "review.timingReason": "Timing wrong",
     "review.wrong_textReason": "Text wrong",
@@ -36,7 +35,11 @@ export const reviewBundle = bundle({
     "review.ratedGood": "Your feedback: Good",
     "review.ratedPoor": "Your feedback: Poor",
     "review.canonical": "Canonical Lyrics · Review recordings",
-    "review.feedback": "Lyrics Feedback"
+    "review.feedback": "Lyrics Feedback",
+    "review.set": "Review set",
+    "review.allSets": "No set · full queue",
+    "review.setProgress": "reviewed",
+    "review.clearSet": "Clear set filter"
   },
   "zh-Hant": {
     "review.title": "歌詞審核",
@@ -65,7 +68,6 @@ export const reviewBundle = bundle({
     "review.error": "無法載入或儲存，請重試。",
     "review.audioError": "音訊無法播放，請重試以重新載入。",
     "review.seek": "播放位置",
-    "review.gap": "間奏／空白歌詞",
     "review.missingReason": "缺少歌詞",
     "review.timingReason": "時間不正確",
     "review.wrong_textReason": "文字不正確",
@@ -73,6 +75,10 @@ export const reviewBundle = bundle({
     "review.ratedGood": "你的回饋：良好",
     "review.ratedPoor": "你的回饋：不佳",
     "review.canonical": "正式歌詞 · 待審核錄音",
-    "review.feedback": "歌詞回饋"
+    "review.feedback": "歌詞回饋",
+    "review.set": "審核批次",
+    "review.allSets": "不篩選 · 完整清單",
+    "review.setProgress": "已審核",
+    "review.clearSet": "清除批次篩選"
   }
 });

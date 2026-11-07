@@ -5,7 +5,7 @@ import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocale } from "@/hooks/useLocale";
-import type { ReviewCandidate } from "@/lib/lyrics/review";
+import type { ReviewCandidate, ReviewSetSummary } from "@/lib/lyrics/review";
 import type { LRCLine } from "@/lib/render/lrc-parser";
 import type { FeedbackReason } from "@/lib/lyrics/situation";
 
@@ -23,8 +23,14 @@ const FOLLOW_RESUME_MS = 5000;
 /** Exit full screen reverts to a single tap after this long. */
 const EXIT_ARM_MS = 3000;
 const timecode = (seconds: number) => {
-  const centiseconds = Math.floor(Math.max(0, seconds) * 100);
-  return `${String(Math.floor(centiseconds / 6000)).padStart(2, "0")}:${String(Math.floor(centiseconds / 100) % 60).padStart(2, "0")}.${String(centiseconds % 100).padStart(2, "0")}`;
+  const whole = Math.floor(Math.max(0, seconds));
+  return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
+};
+/** Lyric rows keep LRC hundredths. Rounding to milliseconds first keeps binary
+    float error (1.2 % 1 → 0.19999…) from eating a hundredth, then truncates. */
+const lyricTimecode = (seconds: number) => {
+  const hundredths = Math.floor(Math.round(Math.max(0, seconds) * 1000) / 10);
+  return `${String(Math.floor(hundredths / 6000)).padStart(2, "0")}:${String(Math.floor(hundredths / 100) % 60).padStart(2, "0")}.${String(hundredths % 100).padStart(2, "0")}`;
 };
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init });
@@ -36,6 +42,8 @@ export function LyricsReviewClient() {
   const { t } = useLocale();
   const [query, setQuery] = useState("");
   const [showReviewed, setShowReviewed] = useState(false);
+  const [sets, setSets] = useState<ReviewSetSummary[]>([]);
+  const [setId, setSetId] = useState<string | null>(null);
   const [rows, setRows] = useState<ReviewCandidate[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [listLoading, setListLoading] = useState(true);
@@ -89,20 +97,36 @@ export function LyricsReviewClient() {
     clearTimeout(exitTimer.current ?? undefined);
   }, []);
 
+  const loadSets = useCallback(async () => {
+    try {
+      const data = await api<{ sets: ReviewSetSummary[] }>(`${endpoint}/sets`);
+      setSets(data.sets);
+      // Sets are deleted from the CLI, so a selected set can vanish under an open
+      // screen: drop the filter instead of leaving the queue pointed at a dead id.
+      setSetId(current => current && !data.sets.some(set => set.id === current) ? null : current);
+    } catch {
+      // A missing set list must not break the queue: the picker just stays empty.
+    }
+  }, []);
+
   const loadList = useCallback(async (offset = 0) => {
     const requestId = ++listRequest.current;
     setListLoading(true);
     setListError(false);
     const params = new URLSearchParams({ q: query.trim(), reviewed: showReviewed ? "1" : "0", offset: String(offset) });
+    if (setId) params.set("set", setId);
     try {
       const data = await api<{ recordings: ReviewCandidate[]; hasMore: boolean }>(`${endpoint}?${params}`);
       if (requestId !== listRequest.current) return;
       setRows(old => offset ? [...old, ...data.recordings.filter(row => !old.some(item => item.contentHash === row.contentHash))] : data.recordings);
       setHasMore(data.hasMore);
+      // Progress moves with every feedback write, so the banner refresh rides on
+      // the list load that already follows a save.
+      void loadSets();
       return data;
     } catch { if (requestId === listRequest.current) setListError(true); }
     finally { if (requestId === listRequest.current) setListLoading(false); }
-  }, [query, showReviewed]);
+  }, [query, showReviewed, setId, loadSets]);
 
   useEffect(() => {
     const timer = setTimeout(() => { void loadList(); }, 250);
@@ -211,6 +235,7 @@ export function LyricsReviewClient() {
   const index = rows.findIndex(row => row.contentHash === selected);
   const next = index >= 0 ? rows[index + 1] : rows[0];
   const reasons: FeedbackReason[] = detail?.synced ? ["timing", "wrong_text", "other"] : ["missing", "wrong_text", "other"];
+  const activeSet = sets.find(set => set.id === setId) ?? null;
 
   return (
     <div className="mx-auto w-full max-w-2xl p-4 space-y-4">
@@ -219,6 +244,24 @@ export function LyricsReviewClient() {
       {!selected ? <>
         <Input aria-label={t("review.search")} placeholder={t("review.search")} value={query} onChange={event => setQuery(event.target.value)} />
         <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={showReviewed} onChange={event => setShowReviewed(event.target.checked)} />{t("review.reviewed")}</label>
+        <label className="block space-y-1">
+          <span className="text-sm text-muted-foreground">{t("review.set")}</span>
+          {/* Native select: the mobile sheet picker is the most reliable touch
+              control, and sets are few enough that a list is fine. */}
+          <select aria-label={t("review.set")} className="block min-h-11 w-full rounded border bg-background px-2"
+            value={setId ?? ""} onChange={event => setSetId(event.target.value || null)}>
+            <option value="">{t("review.allSets")}</option>
+            {sets.map(set => <option key={set.id} value={set.id}>
+              {`${set.name} · ${set.done}/${set.total}${set.total > 0 && set.done === set.total ? " ✓" : ""}`}
+            </option>)}
+          </select>
+        </label>
+        {activeSet && <div className="flex min-h-11 items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+          <span className="min-w-0 truncate text-sm font-medium" role="status">
+            {`${activeSet.name} — ${activeSet.done}/${activeSet.total} ${t("review.setProgress")}`}
+          </span>
+          <Button size="icon" variant="outline" className="size-11" aria-label={t("review.clearSet")} onClick={() => setSetId(null)}>✕</Button>
+        </div>}
         {listError && <div role="alert">{t("review.error")} <Button onClick={() => void loadList()}>{t("review.retry")}</Button></div>}
         {!listLoading && !listError && rows.length === 0 && <p>{t("review.empty")}</p>}
         <div className="divide-y rounded-lg border">{rows.map(row => <button key={row.contentHash} className="block min-h-16 w-full p-3 text-left hover:bg-muted" onClick={() => void open(row.contentHash)}>
@@ -276,6 +319,7 @@ export function LyricsReviewClient() {
             {/* Kept mounted in both layouts so the node survives the Full Screen toggle. */}
             <label className="sr-only" htmlFor="review-position">{t("review.seek")}</label>
             <input id="review-position" type="range" className={fullscreen ? "mt-1 h-4 w-full accent-primary" : ""} hidden={!fullscreen} min={0} max={duration || 0} step={0.01}
+              aria-valuetext={timecode(position)}
               value={Math.min(position, duration || 0)} disabled={!duration} onChange={event => seek(Number(event.target.value))} />
           </div>
           {audioError && <div role="alert">{t("review.audioError")} <Button onClick={() => void open(selected)}>{t("review.retry")}</Button></div>}
@@ -289,8 +333,8 @@ export function LyricsReviewClient() {
             {detail.lines.map((line, i) => <button key={i} aria-current={i === active ? "true" : undefined}
               className={`flex min-h-12 w-full items-start gap-3 px-3 py-3 text-left ${i === active ? "bg-primary/15 font-semibold" : "hover:bg-muted"}`}
               onClick={() => seek(line.timeSeconds)}>
-              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{timecode(line.timeSeconds)}</span>
-              <span>{line.text || t("review.gap")}</span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{lyricTimecode(line.timeSeconds)}</span>
+              <span>{line.text}</span>
             </button>)}
           </div>
           {!fullscreen && <section className="space-y-3 rounded-lg border p-3" aria-label={t("review.feedback")}>

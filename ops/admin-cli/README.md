@@ -804,6 +804,34 @@ service-side, so the hotkey accepts them. The job always runs forced
 force-quit confirmation match `G`; a failed job marks `lrc_status='failed'` and
 leaves the editor content untouched. Requires `SOW_ANALYSIS_API_KEY`.
 
+### Review Sets (mobile batches)
+
+```bash
+sow-admin lyrics review-set add march-batch --file ids.txt
+cat ids.txt | sow-admin lyrics review-set add march-batch --stdin
+sow-admin lyrics review-set list
+sow-admin lyrics review-set remove march-batch --stdin < ids.txt
+sow-admin lyrics review-set remove march-batch --all
+```
+
+A review set is a named, CLI-curated batch of Songs — separate from the
+user-facing worship `songsets` (tables `lyrics_review_sets` /
+`lyrics_review_set_songs`). Sets give the webapp's
+`/admin/lyrics-review` screen an explicit picker: choosing a set subsets the
+queue to its Songs without touching the fixed review cascade, and shows
+`name — done/total reviewed` progress. "Reviewed" is the queue's derived rule:
+any Lyrics Feedback on any non-deleted recording of the Song, so a completed
+set stays in the picker with a ✓ marker. `total` counts only members whose Song
+is not soft-deleted — the same pool the queue draws from — so deleting a Song
+shrinks the denominator instead of leaving progress short of 100% forever.
+
+`add` validates every id first — one unknown or soft-deleted id fails the whole
+command and nothing is written. Ids that cannot appear in the queue yet (no
+review-visibility recording with uploaded audio) are added with a warning and
+show up once they enter the pool. `add` is idempotent: re-running it on an
+existing set appends only new members. Sets are written by the CLI only; the
+webapp is read-only for them.
+
 ## License
 
 MIT License - See project root for details.
