@@ -23,8 +23,8 @@ const FOLLOW_RESUME_MS = 5000;
 /** Exit full screen reverts to a single tap after this long. */
 const EXIT_ARM_MS = 3000;
 const timecode = (seconds: number) => {
-  const centiseconds = Math.floor(Math.max(0, seconds) * 100);
-  return `${String(Math.floor(centiseconds / 6000)).padStart(2, "0")}:${String(Math.floor(centiseconds / 100) % 60).padStart(2, "0")}.${String(centiseconds % 100).padStart(2, "0")}`;
+  const whole = Math.floor(Math.max(0, seconds));
+  return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
 };
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init });
@@ -313,6 +313,7 @@ export function LyricsReviewClient() {
             {/* Kept mounted in both layouts so the node survives the Full Screen toggle. */}
             <label className="sr-only" htmlFor="review-position">{t("review.seek")}</label>
             <input id="review-position" type="range" className={fullscreen ? "mt-1 h-4 w-full accent-primary" : ""} hidden={!fullscreen} min={0} max={duration || 0} step={0.01}
+              aria-valuetext={timecode(position)}
               value={Math.min(position, duration || 0)} disabled={!duration} onChange={event => seek(Number(event.target.value))} />
           </div>
           {audioError && <div role="alert">{t("review.audioError")} <Button onClick={() => void open(selected)}>{t("review.retry")}</Button></div>}
@@ -327,7 +328,7 @@ export function LyricsReviewClient() {
               className={`flex min-h-12 w-full items-start gap-3 px-3 py-3 text-left ${i === active ? "bg-primary/15 font-semibold" : "hover:bg-muted"}`}
               onClick={() => seek(line.timeSeconds)}>
               <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{timecode(line.timeSeconds)}</span>
-              <span>{line.text || t("review.gap")}</span>
+              <span>{line.text}</span>
             </button>)}
           </div>
           {!fullscreen && <section className="space-y-3 rounded-lg border p-3" aria-label={t("review.feedback")}>
