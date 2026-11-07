@@ -83,9 +83,11 @@ it.each([
   mocks.find.mockResolvedValueOnce({ ...feedback, resolvedAt: new Date() });
   expect(await (await GET(request())).json()).toMatchObject({ feedback: null });
 });
-it("forwards search and reviewed filters; rejects bad pagination", async () => {
+it("forwards search, reviewed, and set filters; rejects bad pagination", async () => {
   await GET(request("GET", undefined, "?q=grace&reviewed=1&offset=50"));
-  expect(mocks.queue).toHaveBeenCalledWith("grace", true, 50);
+  expect(mocks.queue).toHaveBeenCalledWith("grace", true, 50, null);
+  await GET(request("GET", undefined, "?set=set-1"));
+  expect(mocks.queue).toHaveBeenLastCalledWith("", false, 0, "set-1");
   expect((await GET(request("GET", undefined, "?offset=-1"))).status).toBe(400);
 });
 it("includes all queue feedback in the private list response", async () => {

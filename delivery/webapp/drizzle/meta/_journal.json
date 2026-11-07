@@ -183,6 +183,13 @@
       "when": 1792192430655,
       "tag": "0025_flawless_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794064697223,
+      "tag": "0026_true_inhumans",
+      "breakpoints": true
     }
   ]
 }

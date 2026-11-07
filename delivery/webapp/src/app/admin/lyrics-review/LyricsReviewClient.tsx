@@ -5,7 +5,7 @@ import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocale } from "@/hooks/useLocale";
-import type { ReviewCandidate } from "@/lib/lyrics/review";
+import type { ReviewCandidate, ReviewSetSummary } from "@/lib/lyrics/review";
 import type { LRCLine } from "@/lib/render/lrc-parser";
 import type { FeedbackReason } from "@/lib/lyrics/situation";
 
@@ -36,6 +36,8 @@ export function LyricsReviewClient() {
   const { t } = useLocale();
   const [query, setQuery] = useState("");
   const [showReviewed, setShowReviewed] = useState(false);
+  const [sets, setSets] = useState<ReviewSetSummary[]>([]);
+  const [setId, setSetId] = useState<string | null>(null);
   const [rows, setRows] = useState<ReviewCandidate[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [listLoading, setListLoading] = useState(true);
@@ -89,20 +91,33 @@ export function LyricsReviewClient() {
     clearTimeout(exitTimer.current ?? undefined);
   }, []);
 
+  const loadSets = useCallback(async () => {
+    try {
+      const data = await api<{ sets: ReviewSetSummary[] }>(`${endpoint}/sets`);
+      setSets(data.sets);
+    } catch {
+      // A missing set list must not break the queue: the picker just stays empty.
+    }
+  }, []);
+
   const loadList = useCallback(async (offset = 0) => {
     const requestId = ++listRequest.current;
     setListLoading(true);
     setListError(false);
     const params = new URLSearchParams({ q: query.trim(), reviewed: showReviewed ? "1" : "0", offset: String(offset) });
+    if (setId) params.set("set", setId);
     try {
       const data = await api<{ recordings: ReviewCandidate[]; hasMore: boolean }>(`${endpoint}?${params}`);
       if (requestId !== listRequest.current) return;
       setRows(old => offset ? [...old, ...data.recordings.filter(row => !old.some(item => item.contentHash === row.contentHash))] : data.recordings);
       setHasMore(data.hasMore);
+      // Progress moves with every feedback write, so the banner refresh rides on
+      // the list load that already follows a save.
+      void loadSets();
       return data;
     } catch { if (requestId === listRequest.current) setListError(true); }
     finally { if (requestId === listRequest.current) setListLoading(false); }
-  }, [query, showReviewed]);
+  }, [query, showReviewed, setId, loadSets]);
 
   useEffect(() => {
     const timer = setTimeout(() => { void loadList(); }, 250);
@@ -211,6 +226,7 @@ export function LyricsReviewClient() {
   const index = rows.findIndex(row => row.contentHash === selected);
   const next = index >= 0 ? rows[index + 1] : rows[0];
   const reasons: FeedbackReason[] = detail?.synced ? ["timing", "wrong_text", "other"] : ["missing", "wrong_text", "other"];
+  const activeSet = sets.find(set => set.id === setId) ?? null;
 
   return (
     <div className="mx-auto w-full max-w-2xl p-4 space-y-4">
@@ -219,6 +235,24 @@ export function LyricsReviewClient() {
       {!selected ? <>
         <Input aria-label={t("review.search")} placeholder={t("review.search")} value={query} onChange={event => setQuery(event.target.value)} />
         <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={showReviewed} onChange={event => setShowReviewed(event.target.checked)} />{t("review.reviewed")}</label>
+        <label className="block space-y-1">
+          <span className="text-sm text-muted-foreground">{t("review.set")}</span>
+          {/* Native select: the mobile sheet picker is the most reliable touch
+              control, and sets are few enough that a list is fine. */}
+          <select aria-label={t("review.set")} className="block min-h-11 w-full rounded border bg-background px-2"
+            value={setId ?? ""} onChange={event => setSetId(event.target.value || null)}>
+            <option value="">{t("review.allSets")}</option>
+            {sets.map(set => <option key={set.id} value={set.id}>
+              {`${set.name} · ${set.done}/${set.total}${set.total > 0 && set.done === set.total ? " ✓" : ""}`}
+            </option>)}
+          </select>
+        </label>
+        {activeSet && <div className="flex min-h-11 items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+          <span className="min-w-0 truncate text-sm font-medium" role="status">
+            {`${activeSet.name} — ${activeSet.done}/${activeSet.total} ${t("review.setProgress")}`}
+          </span>
+          <Button size="sm" variant="outline" aria-label={t("review.clearSet")} onClick={() => setSetId(null)}>✕</Button>
+        </div>}
         {listError && <div role="alert">{t("review.error")} <Button onClick={() => void loadList()}>{t("review.retry")}</Button></div>}
         {!listLoading && !listError && rows.length === 0 && <p>{t("review.empty")}</p>}
         <div className="divide-y rounded-lg border">{rows.map(row => <button key={row.contentHash} className="block min-h-16 w-full p-3 text-left hover:bg-muted" onClick={() => void open(row.contentHash)}>

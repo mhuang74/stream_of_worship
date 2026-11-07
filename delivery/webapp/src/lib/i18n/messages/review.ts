@@ -36,7 +36,11 @@ export const reviewBundle = bundle({
     "review.ratedGood": "Your feedback: Good",
     "review.ratedPoor": "Your feedback: Poor",
     "review.canonical": "Canonical Lyrics · Review recordings",
-    "review.feedback": "Lyrics Feedback"
+    "review.feedback": "Lyrics Feedback",
+    "review.set": "Review set",
+    "review.allSets": "No set · full queue",
+    "review.setProgress": "reviewed",
+    "review.clearSet": "Clear set filter"
   },
   "zh-Hant": {
     "review.title": "歌詞審核",
@@ -73,6 +77,10 @@ export const reviewBundle = bundle({
     "review.ratedGood": "你的回饋：良好",
     "review.ratedPoor": "你的回饋：不佳",
     "review.canonical": "正式歌詞 · 待審核錄音",
-    "review.feedback": "歌詞回饋"
+    "review.feedback": "歌詞回饋",
+    "review.set": "審核批次",
+    "review.allSets": "不篩選 · 完整清單",
+    "review.setProgress": "已審核",
+    "review.clearSet": "清除批次篩選"
   }
 });
