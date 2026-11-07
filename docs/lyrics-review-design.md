@@ -51,11 +51,13 @@ reviewer can open Lyrics Review from the avatar menu after signing in.
   five seconds after the last manual scroll, or immediately when the reviewer
   seeks — by tapping a timestamped line or dragging the progress bar. There is no
   Follow playback button.
-- Full Screen renders the Lyrics plus a minimal bar (title, audio, progress,
-  timecode, Exit) in a fixed overlay, so it works on iOS Safari where the
-  Fullscreen Element API does not. Leaving requires two taps: the first arms the
-  Exit button (label Confirm exit) for three seconds, which guards against
-  accidental taps. Feedback controls stay in the normal view.
+- Full Screen hides native `<audio>` chrome and renders one line (title,
+  play/pause, `current / total` time, two-tap Exit) with a slim seek bar on the
+  row below it, in a fixed overlay, so it works on iOS Safari where the
+  Fullscreen Element API does not. The normal view uses only the native
+  `<audio controls>` element — no custom slider or timecode. Leaving requires two
+  taps: the first arms the Exit button (label Confirm exit) for three seconds,
+  which guards against accidental taps. Feedback controls stay in the normal view.
 
 ## Existing behavior that informs the design
 

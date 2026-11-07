@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocale } from "@/hooks/useLocale";
@@ -51,6 +52,7 @@ export function LyricsReviewClient() {
   const [note, setNote] = useState("");
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const [following, setFollowing] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [exitArmed, setExitArmed] = useState(false);
@@ -117,7 +119,7 @@ export function LyricsReviewClient() {
     audio.current?.pause();
     setSelected(hash); setDetail(null); setLoading(true); setError(false);
     setAudioError(false); setMessage(null); setPoorOpen(false);
-    setPosition(0); setDuration(0); setFollowing(true);
+    setPosition(0); setDuration(0); setPlaying(false); setFollowing(true);
     clearResumeTimer(); clearExitTimer();
     setFullscreen(false); setExitArmed(false);
     try {
@@ -173,6 +175,13 @@ export function LyricsReviewClient() {
     // Seeking and tapping a line both mean "show me this part", so follow resumes immediately.
     clearResumeTimer();
     setFollowing(true);
+  };
+  /** Full Screen hides native chrome, so its bar drives playback itself. */
+  const togglePlay = () => {
+    const el = audio.current;
+    if (!el) return;
+    if (el.paused) void el.play();
+    else el.pause();
   };
   const close = () => {
     ++detailRequest.current; audio.current?.pause(); setSelected(null); setDetail(null);
@@ -243,20 +252,28 @@ export function LyricsReviewClient() {
         {detail && <div className={fullscreen
           ? "fixed inset-0 z-[60] flex flex-col bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           : "space-y-4"}>
-          <div className={fullscreen ? "flex items-center justify-between gap-2 border-b p-2" : ""}>
-            <h2 className={fullscreen ? "min-w-0 truncate text-sm font-medium" : "text-xl font-medium"}>{detail.recording.title}</h2>
-            {fullscreen && <Button size="sm" variant="outline" onClick={toggleExit}>
-              {exitArmed ? t("review.confirmExitFullscreen") : t("review.exitFullscreen")}</Button>}
+          <div className={fullscreen ? "flex items-center gap-2 border-b px-2 py-1" : ""}>
+            <h2 className={fullscreen ? "min-w-0 flex-1 truncate text-sm font-medium" : "text-xl font-medium"}>{detail.recording.title}</h2>
+            {fullscreen && <>
+              <Button size="icon" variant="ghost" aria-label={t(playing ? "review.pause" : "review.play")} onClick={togglePlay}>
+                {playing ? <Pause className="size-5" /> : <Play className="size-5" />}
+              </Button>
+              <span className="shrink-0 font-mono text-xs tabular-nums">{timecode(position)} / {timecode(duration)}</span>
+              <Button size="sm" variant="outline" onClick={toggleExit}>
+                {exitArmed ? t("review.confirmExitFullscreen") : t("review.exitFullscreen")}</Button>
+            </>}
           </div>
-          <div className={fullscreen ? "space-y-2 border-b p-2" : "sticky top-14 z-10 space-y-2 bg-background py-2"}>
-            <audio key={selected} ref={audio} controls preload="metadata" className="w-full" src={detail.audioUrl}
+          <div className={fullscreen ? "border-b px-2 pt-1 pb-1" : "sticky top-14 z-10 bg-background py-2"}>
+            <audio key={selected} ref={audio} controls={fullscreen ? undefined : true} preload="metadata" className="w-full" src={detail.audioUrl}
               onTimeUpdate={event => setPosition(event.currentTarget.currentTime)}
               onLoadedMetadata={event => setDuration(event.currentTarget.duration)}
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
               onError={() => setAudioError(true)} />
+            {/* Kept mounted in both layouts so the node survives the Full Screen toggle. */}
             <label className="sr-only" htmlFor="review-position">{t("review.seek")}</label>
-            <input id="review-position" type="range" className="h-8 w-full" min={0} max={duration || 0} step={0.01}
+            <input id="review-position" type="range" className={fullscreen ? "mt-1 h-4 w-full accent-primary" : ""} hidden={!fullscreen} min={0} max={duration || 0} step={0.01}
               value={Math.min(position, duration || 0)} disabled={!duration} onChange={event => seek(Number(event.target.value))} />
-            <div className="text-sm font-mono tabular-nums">{timecode(position)} / {timecode(duration)}</div>
           </div>
           {audioError && <div role="alert">{t("review.audioError")} <Button onClick={() => void open(selected)}>{t("review.retry")}</Button></div>}
           {!detail.synced && <p role="status">{t("review.missing")}</p>}

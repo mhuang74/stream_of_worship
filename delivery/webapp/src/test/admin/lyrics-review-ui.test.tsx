@@ -17,6 +17,7 @@ beforeEach(() => {
   synced = true; more = false; initialFeedback = null;
   locale = "en"; queueRows = [first, second];
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   Element.prototype.scrollTo = vi.fn();
   fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method) return new Response(JSON.stringify({ feedback: init.method === "DELETE" ? null : JSON.parse(init.body as string) }));
@@ -195,6 +196,8 @@ it("seeks by lyric timestamp and progress slider, preserving blank gap rows", as
   fireEvent.loadedMetadata(audio);
   fireEvent.click(screen.getByText("第二行"));
   expect(audio.currentTime).toBe(12.5);
+  // The custom slider only shows in Full Screen; the normal view uses native chrome.
+  fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
   fireEvent.change(screen.getByRole("slider", { name: "Playback position" }), { target: { value: "45.25" } });
   expect(audio.currentTime).toBe(45.25);
   expect(screen.getByText("Instrumental / blank Lyrics")).toBeInTheDocument();
@@ -240,14 +243,25 @@ it("enters Full Screen with one playing audio element and leaves it on the secon
   const audio = document.querySelector("audio")!;
   Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
   fireEvent.loadedMetadata(audio);
-  const slider = screen.getByRole("slider", { name: "Playback position" });
   fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+  const slider = screen.getByRole("slider", { name: "Playback position" });
   expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Full screen" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
   // Same nodes, so playback never restarts when the layout swaps.
   expect(document.querySelector("audio")).toBe(audio);
   expect(screen.getByRole("slider", { name: "Playback position" })).toBe(slider);
+  // One scrubber and one timecode: the native audio chrome is gone in Full Screen.
+  expect(screen.getAllByRole("slider")).toHaveLength(1);
+  expect(audio).not.toHaveAttribute("controls");
+  expect(screen.getByText("00:00.00 / 02:00.00")).toBeInTheDocument();
+  // The bar's play button drives the one audio element and follows its events.
+  fireEvent.click(screen.getByRole("button", { name: "Play" }));
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+  fireEvent.play(audio);
+  expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+  fireEvent.pause(audio);
+  expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
   // First tap only arms the exit.
   fireEvent.click(screen.getByRole("button", { name: "Exit full screen" }));
   expect(screen.getByRole("button", { name: "Confirm exit" })).toBeInTheDocument();
@@ -255,6 +269,19 @@ it("enters Full Screen with one playing audio element and leaves it on the secon
   expect(screen.queryByRole("button", { name: "Confirm exit" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Good" })).toBeInTheDocument();
   expect(document.querySelector("audio")).toBe(audio);
+  expect(audio).toHaveAttribute("controls");
+});
+it("shows only native audio controls in the normal view", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  expect(audio).toHaveAttribute("controls");
+  expect(screen.queryByText("00:00.00 / 02:00.00")).not.toBeInTheDocument();
+  // The custom slider stays in the DOM (hidden) so its node survives the
+  // Full Screen toggle; role queries skip display:none, so query by id.
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  expect(document.querySelector("#review-position")).not.toBeVisible();
 });
 it("seeks from Full Screen and disarms an exit that is never confirmed", async () => {
   await openFirst();
