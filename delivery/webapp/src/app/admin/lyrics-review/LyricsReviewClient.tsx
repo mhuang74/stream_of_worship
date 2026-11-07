@@ -156,7 +156,11 @@ export function LyricsReviewClient() {
     const container = lyrics.current;
     const line = container?.querySelector<HTMLElement>('[aria-current="true"]');
     if (following && container && line) {
-      container.scrollTo({ top: line.offsetTop - container.offsetTop - container.clientHeight / 3, behavior: "smooth" });
+      // Rect-based offset: `offsetTop` arithmetic breaks as soon as the line and
+      // the container resolve different `offsetParent`s (the container itself is
+      // `relative` here), which used to scroll hundreds of pixels too far up.
+      const top = line.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+      container.scrollTo({ top: top - container.clientHeight / 3, behavior: "smooth" });
     }
     // `fullscreen` is a dependency because entering or leaving it swaps the
     // scroll container: the new one must be positioned on the active line.
