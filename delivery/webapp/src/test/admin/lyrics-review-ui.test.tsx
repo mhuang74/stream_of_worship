@@ -12,15 +12,17 @@ let synced = true;
 let more = false;
 type Feedback = { rating: "happy" | "sad"; reason: "timing" | "missing" | null; note: null };
 let initialFeedback: Feedback | null = null;
+let setRows: { id: string; name: string; total: number; done: number }[] = [];
 let fetcher: ReturnType<typeof vi.fn>;
 beforeEach(() => {
-  synced = true; more = false; initialFeedback = null;
+  synced = true; more = false; initialFeedback = null; setRows = [];
   locale = "en"; queueRows = [first, second];
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   Element.prototype.scrollTo = vi.fn();
   fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method) return new Response(JSON.stringify({ feedback: init.method === "DELETE" ? null : JSON.parse(init.body as string) }));
+    if (url.endsWith("/sets")) return new Response(JSON.stringify({ sets: setRows }));
     if (url.includes("recording=")) return new Response(JSON.stringify({
       recording: url.includes("second") ? second : first, synced, audioUrl: "https://audio.example/song.mp3",
       lines: synced ? [{ timeSeconds: 1, text: "第一行" }, { timeSeconds: 5, text: "" }, { timeSeconds: 12.5, text: "第二行" }] : [], feedback: initialFeedback,
@@ -34,6 +36,10 @@ async function openFirst() {
   fireEvent.click(await screen.findByText("第一首"));
   await screen.findByText("第一行");
 }
+/** Queue requests only: the set-picker refresh shares the same fetcher. */
+const queueUrls = () => fetcher.mock.calls
+  .map(([url]) => url as string)
+  .filter(url => url.startsWith("/api/admin/lyrics-review?"));
 function expectRating(rating: Feedback["rating"] | null) {
   for (const [name, value] of [["Good", "happy"], ["Poor", "sad"]] as const) {
     const button = screen.getByRole("button", { name });
@@ -53,7 +59,7 @@ it("shows every saved rating only while Show reviewed is checked, including duri
   render(<LyricsReviewClient />);
   await screen.findByText("第一首");
   fireEvent.change(screen.getByRole("textbox", { name: "Search title or album" }), { target: { value: "第一" } });
-  await waitFor(() => expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining("q=%E7%AC%AC%E4%B8%80&reviewed=0"), expect.any(Object)));
+  await waitFor(() => expect(queueUrls().at(-1)).toContain("q=%E7%AC%AC%E4%B8%80&reviewed=0"));
   expect(screen.queryByRole("list", { name: "Lyrics Feedback" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("checkbox", { name: "Show reviewed" }));
   const list = await screen.findByRole("list", { name: "Lyrics Feedback" });
@@ -62,7 +68,7 @@ it("shows every saved rating only while Show reviewed is checked, including duri
   ]);
   expect(screen.getAllByRole("list", { name: "Lyrics Feedback" })).toHaveLength(1);
   expect(within(screen.getByRole("button", { name: /第二首/ })).queryByRole("list")).not.toBeInTheDocument();
-  await waitFor(() => expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining("reviewed=1"), expect.any(Object)));
+  await waitFor(() => expect(queueUrls().at(-1)).toContain("reviewed=1"));
   fireEvent.click(screen.getByRole("checkbox", { name: "Show reviewed" }));
   expect(screen.queryByText("Good")).not.toBeInTheDocument();
   expect(screen.queryByText("Second line is late")).not.toBeInTheDocument();
@@ -102,7 +108,7 @@ it("refreshes the displayed feedback after saving and retracting with Show revie
   render(<LyricsReviewClient />);
   await screen.findByText("第一首");
   fireEvent.click(screen.getByRole("checkbox", { name: "Show reviewed" }));
-  await waitFor(() => expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining("reviewed=1"), expect.any(Object)));
+  await waitFor(() => expect(queueUrls().at(-1)).toContain("reviewed=1"));
   fireEvent.click(screen.getByText("第一首"));
   await screen.findByText("第一行");
   fireEvent.click(screen.getByRole("button", { name: "Good" }));
@@ -316,6 +322,7 @@ it("refreshes the default queue after saving while preserving playback until Nex
   let saved = false;
   fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === "PUT") saved = true;
+    if (url.endsWith("/sets")) return new Response(JSON.stringify({ sets: setRows }));
     if (saved && !init?.method && !url.includes("recording=")) {
       return new Response(JSON.stringify({ recordings: [second], hasMore: false }));
     }
@@ -333,7 +340,7 @@ it("refreshes the default queue after saving while preserving playback until Nex
   fireEvent.click(screen.getByRole("button", { name: "Good" }));
   await screen.findByText("Saved");
   await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
-  expect(fetcher).toHaveBeenLastCalledWith(
+  expect(fetcher).toHaveBeenCalledWith(
     "/api/admin/lyrics-review?q=&reviewed=0&offset=0", expect.any(Object),
   );
   expect(screen.getByRole("heading", { name: "第一首" })).toBeInTheDocument();
@@ -380,7 +387,10 @@ it("requires timed lyrics for Good and offers missing feedback instead", async (
   expect(screen.queryByRole("option", { name: "Timing wrong" })).not.toBeInTheDocument();
 });
 it("keeps failures distinct from missing lyrics", async () => {
-  fetcher.mockImplementation(async (url: string) => url.includes("recording=") ? new Response(null, { status: 503 }) : new Response(JSON.stringify({ recordings: [first], hasMore: false })));
+  fetcher.mockImplementation(async (url: string) =>
+    url.includes("recording=") ? new Response(null, { status: 503 })
+      : url.endsWith("/sets") ? new Response(JSON.stringify({ sets: setRows }))
+        : new Response(JSON.stringify({ recordings: [first], hasMore: false })));
   render(<LyricsReviewClient />);
   fireEvent.click(await screen.findByText("第一首"));
   await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
@@ -405,7 +415,8 @@ it("keeps Full Screen disabled until the recording details arrive", async () => 
 it("keeps the reviewer out of Full Screen when the recording fails to load", async () => {
   fetcher.mockImplementation(async (url: string) => url.includes("recording=")
     ? new Response(null, { status: 503 })
-    : new Response(JSON.stringify({ recordings: [first], hasMore: false })));
+    : url.endsWith("/sets") ? new Response(JSON.stringify({ sets: setRows }))
+      : new Response(JSON.stringify({ recordings: [first], hasMore: false })));
   render(<LyricsReviewClient />);
   fireEvent.click(await screen.findByText("第一首"));
   await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
@@ -428,4 +439,51 @@ it("uses a valid reason when old missing feedback predates regenerated timed lyr
   await openFirst();
   fireEvent.click(screen.getByRole("button", { name: "Poor" }));
   expect(screen.getByRole("combobox", { name: "Reason" })).toHaveValue("timing");
+});
+
+it("subsets the queue to the picked review set and clears back to the full queue", async () => {
+  setRows = [
+    { id: "set-1", name: "march-batch", total: 2, done: 1 },
+    { id: "set-2", name: "finished", total: 3, done: 3 },
+  ];
+  // The server subsets the pool: a set-filtered request returns only its Songs.
+  const defaultFetch = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async (url: string, init?: RequestInit) => url.includes("set=set-1")
+    ? new Response(JSON.stringify({ recordings: [second], hasMore: false }))
+    : defaultFetch(url, init));
+  render(<LyricsReviewClient />);
+  await screen.findByText("第一首");
+  const picker = screen.getByRole("combobox", { name: "Review set" });
+  await waitFor(() => expect(within(picker).getByRole("option", { name: "march-batch · 1/2" })).toBeInTheDocument());
+  // A completed set stays selectable and marked; nothing prunes it.
+  expect(within(picker).getByRole("option", { name: "finished · 3/3 ✓" })).toBeInTheDocument();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+  fireEvent.change(picker, { target: { value: "set-1" } });
+  await waitFor(() => expect(screen.queryByText("第一首")).not.toBeInTheDocument());
+  expect(screen.getByText("第二首")).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("march-batch — 1/2 reviewed");
+
+  fireEvent.click(screen.getByRole("button", { name: "Clear set filter" }));
+  expect(picker).toHaveValue("");
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  await screen.findByText("第一首");
+});
+
+it("refreshes the set progress banner after feedback is saved", async () => {
+  setRows = [{ id: "set-1", name: "march-batch", total: 2, done: 0 }];
+  render(<LyricsReviewClient />);
+  await screen.findByText("第一首");
+  fireEvent.change(screen.getByRole("combobox", { name: "Review set" }), { target: { value: "set-1" } });
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("march-batch — 0/2 reviewed"));
+
+  await waitFor(() => expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("set=set-1"), expect.any(Object)));
+  fireEvent.click(screen.getByText("第一首"));
+  await screen.findByText("第一行");
+  setRows = [{ id: "set-1", name: "march-batch", total: 2, done: 1 }];
+  fireEvent.click(screen.getByRole("button", { name: "Good" }));
+  await screen.findByText("Saved");
+  fireEvent.click(screen.getByRole("button", { name: "Back to queue" }));
+
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("march-batch — 1/2 reviewed"));
 });

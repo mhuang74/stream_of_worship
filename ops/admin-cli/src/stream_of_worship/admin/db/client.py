@@ -10,6 +10,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Generator, Optional
+from uuid import uuid4
 
 import psycopg
 import psycopg.errors
@@ -1115,6 +1116,187 @@ class DatabaseClient:
                 (content_hash, user_id),
             )
             return cursor.rowcount > 0
+
+    def lyrics_review_set_ensure(self, name: str) -> str:
+        """Return the id of the named Lyrics review set, creating it if absent.
+
+        Idempotent so re-running ``review-set add`` against an existing set
+        appends membership instead of failing on the unique name.
+
+        Args:
+            name: Human-readable set name (unique).
+
+        Returns:
+            The set id.
+        """
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO lyrics_review_sets (id, name)
+                VALUES (%s, %s)
+                ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                RETURNING id
+                """,
+                (f"rvs_{uuid4().hex}", name),
+            )
+            return cursor.fetchone()[0]
+
+        return self._execute_with_retry(_query)
+
+    def lyrics_review_set_id(self, name: str) -> Optional[str]:
+        """Return the id of the named Lyrics review set, or ``None``."""
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM lyrics_review_sets WHERE name = %s", (name,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+        return self._execute_with_retry(_query)
+
+    def lyrics_review_set_add_songs(self, set_id: str, song_ids: list[str]) -> int:
+        """Add Songs to a Lyrics review set, skipping existing members.
+
+        One statement so a partial batch cannot land: either every new
+        membership is inserted or the call raises.
+
+        Args:
+            set_id: Lyrics review set id.
+            song_ids: Song ids to add.
+
+        Returns:
+            Number of memberships newly inserted (0 for a no-op re-run).
+        """
+        if not song_ids:
+            return 0
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO lyrics_review_set_songs (set_id, song_id)
+                SELECT %s, song_id FROM unnest(%s::text[]) AS song_id
+                ON CONFLICT (set_id, song_id) DO NOTHING
+                """,
+                (set_id, list(song_ids)),
+            )
+            return cursor.rowcount
+
+        return self._execute_with_retry(_query)
+
+    def lyrics_review_set_remove_songs(self, name: str, song_ids: list[str]) -> int:
+        """Remove Song memberships from the named set.
+
+        Args:
+            name: Lyrics review set name.
+            song_ids: Song ids to remove.
+
+        Returns:
+            Number of memberships removed.
+        """
+        if not song_ids:
+            return 0
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM lyrics_review_set_songs
+                WHERE set_id = (SELECT id FROM lyrics_review_sets WHERE name = %s)
+                  AND song_id = ANY(%s::text[])
+                """,
+                (name, list(song_ids)),
+            )
+            return cursor.rowcount
+
+        return self._execute_with_retry(_query)
+
+    def lyrics_review_set_delete(self, name: str) -> bool:
+        """Delete the named set; its memberships cascade.
+
+        Returns:
+            ``True`` if the set existed, ``False`` otherwise.
+        """
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM lyrics_review_sets WHERE name = %s", (name,))
+            return cursor.rowcount > 0
+
+        return self._execute_with_retry(_query)
+
+    def lyrics_review_set_list(self) -> list[dict]:
+        """List Lyrics review sets with membership and reviewed progress.
+
+        ``done`` reuses the webapp queue's derived reviewed rule: a Song counts
+        as reviewed once any non-deleted recording of it carries any
+        ``lyrics_feedback`` row (any user, any rating, resolved or not).
+
+        Returns:
+            One dict per set: ``name``, ``total``, ``done``, ``created_at``.
+        """
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT s.name,
+                       COUNT(m.song_id) AS total,
+                       COUNT(m.song_id) FILTER (WHERE EXISTS (
+                           SELECT 1 FROM recordings r
+                           JOIN lyrics_feedback lf
+                             ON lf.recording_content_hash = r.content_hash
+                           WHERE r.song_id = m.song_id
+                             AND r.deleted_at IS NULL
+                       )) AS done,
+                       s.created_at
+                FROM lyrics_review_sets s
+                LEFT JOIN lyrics_review_set_songs m ON m.set_id = s.id
+                GROUP BY s.id, s.name, s.created_at
+                ORDER BY s.created_at DESC, s.name ASC
+                """
+            )
+            return [
+                {
+                    "name": name,
+                    "total": total,
+                    "done": done,
+                    "created_at": to_str(created_at),
+                }
+                for name, total, done, created_at in cursor.fetchall()
+            ]
+
+        return self._execute_with_retry(_query)
+
+    def review_pool_song_ids(self) -> set[str]:
+        """Song ids that currently qualify for the Lyrics review queue.
+
+        Mirrors the webapp pool filter (``visibility_status = 'review'``, not
+        deleted, audio uploaded) so the CLI can warn about set members that
+        cannot appear yet.
+
+        Returns:
+            Set of eligible song ids.
+        """
+
+        def _query(conn):
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT DISTINCT r.song_id
+                FROM recordings r
+                JOIN songs s ON s.id = r.song_id
+                WHERE r.visibility_status = 'review'
+                  AND r.deleted_at IS NULL
+                  AND s.deleted_at IS NULL
+                  AND r.r2_audio_url IS NOT NULL
+                """
+            )
+            return {row[0] for row in cursor.fetchall()}
+
+        return self._execute_with_retry(_query)
 
     def get_fresh_review_queue(self) -> list[ReviewQueueCandidate]:
         """Get the ranked never-reviewed LRC sweep queue.
