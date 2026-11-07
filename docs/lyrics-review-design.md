@@ -8,8 +8,10 @@ reviewer can open Lyrics Review from the avatar menu after signing in.
 - Add a focused Lyrics Review screen to `delivery/webapp`, drawing on the Admin
   CLI review workflow.
 - Use the existing webapp password login. Restrict the screen and its APIs to the
-  verified account `mhuang74@yahoo.com`; show its navigation entry only to that
-  account. A separate editor password is unnecessary.
+  verified accounts `mhuang74@yahoo.com` and the shared test account
+  `tester@streamofworship.com` (the latter for manual QA and screenshots); show
+  its navigation entry only to those accounts. A separate editor password is
+  unnecessary.
 - Review the Recording's canonical Lyrics rather than a personal override. This
   screen has no Lyrics editing or canonical write operation.
 - Support audio playback, visible Lyrics and timecodes, tapping a Lyrics line to
@@ -44,9 +46,16 @@ reviewer can open Lyrics Review from the avatar menu after signing in.
   playback open until Next. Resolving feedback does not restore eligibility;
   retracting the last feedback row across non-deleted Recordings does, provided
   an eligible Review Recording remains. Personal feedback controls are unchanged.
-- Highlight the current Lyrics line and follow playback automatically. Manual
-  scrolling pauses following; a Follow playback button resumes it. Tapping a
-  timestamped line seeks to that time.
+- Highlight the current Lyrics line and always follow playback. Manual scrolling
+  (wheel, touch, paging keys) suspends following, which resumes on its own about
+  five seconds after the last manual scroll, or immediately when the reviewer
+  seeks — by tapping a timestamped line or dragging the progress bar. There is no
+  Follow playback button.
+- Full Screen renders the Lyrics plus a minimal bar (title, audio, progress,
+  timecode, Exit) in a fixed overlay, so it works on iOS Safari where the
+  Fullscreen Element API does not. Leaving requires two taps: the first arms the
+  Exit button (label Confirm exit) for three seconds, which guards against
+  accidental taps. Feedback controls stay in the normal view.
 
 ## Existing behavior that informs the design
 

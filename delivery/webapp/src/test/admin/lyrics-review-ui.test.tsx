@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LyricsReviewClient } from "@/app/admin/lyrics-review/LyricsReviewClient";
 import { messages } from "@/lib/i18n/messages";
 import type { ReviewCandidate, ReviewFeedback } from "@/lib/lyrics/review";
@@ -199,9 +199,79 @@ it("seeks by lyric timestamp and progress slider, preserving blank gap rows", as
   expect(audio.currentTime).toBe(45.25);
   expect(screen.getByText("Instrumental / blank Lyrics")).toBeInTheDocument();
   fireEvent.wheel(screen.getByText("第一行").parentElement!.parentElement!);
-  expect(screen.getByRole("button", { name: "Follow playback" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Follow playback" }));
   expect(screen.queryByRole("button", { name: "Follow playback" })).not.toBeInTheDocument();
+});
+it("resumes auto-scrolling on its own after a manual scroll", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  const container = screen.getByText("第一行").parentElement!.parentElement!;
+  const scrollTo = vi.mocked(Element.prototype.scrollTo);
+  vi.useFakeTimers();
+  try {
+    scrollTo.mockClear();
+    fireEvent.wheel(container);
+    // Playback moves on while follow is suspended: the view must not chase it.
+    audio.currentTime = 12.5;
+    fireEvent.timeUpdate(audio);
+    expect(scrollTo).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "smooth" }));
+  } finally { vi.useRealTimers(); }
+});
+it("resumes auto-scrolling immediately when a lyric line is tapped", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  const scrollTo = vi.mocked(Element.prototype.scrollTo);
+  vi.useFakeTimers();
+  try {
+    fireEvent.wheel(screen.getByText("第一行").parentElement!.parentElement!);
+    scrollTo.mockClear();
+    fireEvent.click(screen.getByText("第二行"));
+    expect(audio.currentTime).toBe(12.5);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "smooth" }));
+  } finally { vi.useRealTimers(); }
+});
+it("enters Full Screen with one playing audio element and leaves it on the second tap", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  const slider = screen.getByRole("slider", { name: "Playback position" });
+  fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+  expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Full screen" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+  // Same nodes, so playback never restarts when the layout swaps.
+  expect(document.querySelector("audio")).toBe(audio);
+  expect(screen.getByRole("slider", { name: "Playback position" })).toBe(slider);
+  // First tap only arms the exit.
+  fireEvent.click(screen.getByRole("button", { name: "Exit full screen" }));
+  expect(screen.getByRole("button", { name: "Confirm exit" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm exit" }));
+  expect(screen.queryByRole("button", { name: "Confirm exit" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Good" })).toBeInTheDocument();
+  expect(document.querySelector("audio")).toBe(audio);
+});
+it("seeks from Full Screen and disarms an exit that is never confirmed", async () => {
+  await openFirst();
+  const audio = document.querySelector("audio")!;
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  fireEvent.loadedMetadata(audio);
+  fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+  fireEvent.click(screen.getByText("第二行"));
+  expect(audio.currentTime).toBe(12.5);
+  vi.useFakeTimers();
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Exit full screen" }));
+    expect(screen.getByRole("button", { name: "Confirm exit" })).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(3000));
+    expect(screen.getByRole("button", { name: "Exit full screen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Good" })).not.toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
 });
 it("saves Good without navigating, permits retraction, and advances only on Next", async () => {
   await openFirst();
