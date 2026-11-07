@@ -387,6 +387,32 @@ it("keeps failures distinct from missing lyrics", async () => {
   expect(screen.queryByText("Timed Lyrics missing")).not.toBeInTheDocument();
 });
 
+it("keeps Full Screen disabled until the recording details arrive", async () => {
+  const pending = Promise.withResolvers<Response>();
+  const defaultFetch = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation((url: string, init?: RequestInit) => url.includes("recording=") ? pending.promise : defaultFetch(url, init));
+  render(<LyricsReviewClient />);
+  fireEvent.click(await screen.findByText("第一首"));
+  expect(screen.getByRole("button", { name: "Full screen" })).toBeDisabled();
+  pending.resolve(new Response(JSON.stringify({
+    recording: first, synced: true, audioUrl: "https://audio.example/song.mp3",
+    lines: [{ timeSeconds: 1, text: "第一行" }], feedback: null,
+  })));
+  await screen.findByText("第一行");
+  expect(screen.getByRole("button", { name: "Full screen" })).toBeEnabled();
+});
+
+it("keeps the reviewer out of Full Screen when the recording fails to load", async () => {
+  fetcher.mockImplementation(async (url: string) => url.includes("recording=")
+    ? new Response(null, { status: 503 })
+    : new Response(JSON.stringify({ recordings: [first], hasMore: false })));
+  render(<LyricsReviewClient />);
+  fireEvent.click(await screen.findByText("第一首"));
+  await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+  expect(screen.getByRole("button", { name: "Full screen" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Back to queue" })).toBeEnabled();
+});
+
 it("loads another page when Next reaches the end of the loaded queue", async () => {
   more = true;
   await openFirst();

@@ -187,6 +187,9 @@ export function LyricsReviewClient() {
     ++detailRequest.current; audio.current?.pause(); setSelected(null); setDetail(null);
   };
   const enterFullscreen = () => {
+    // Full Screen's only exit control lives inside the `detail` subtree, so
+    // entering before details exist would strand the reviewer with no toolbar.
+    if (!detail) return;
     clearResumeTimer();
     setFollowing(true);
     clearExitTimer();
@@ -236,7 +239,7 @@ export function LyricsReviewClient() {
       </> : <>
         {!fullscreen && <div className="flex justify-between gap-2"><Button variant="outline" disabled={saving} onClick={close}>{t("review.back")}</Button>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={enterFullscreen}>{t("review.fullscreen")}</Button>
+            <Button size="sm" variant="outline" disabled={!detail} onClick={enterFullscreen}>{t("review.fullscreen")}</Button>
             <Button disabled={saving || listLoading || (!next && !hasMore)} onClick={() => {
               if (next) void open(next.contentHash);
               else void loadList(rows.length).then(data => {
