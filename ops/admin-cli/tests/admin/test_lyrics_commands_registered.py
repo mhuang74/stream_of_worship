@@ -13,10 +13,10 @@ runner = CliRunner()
 
 
 def test_lyrics_help_lists_lifecycle_commands():
-    """lyrics --help shows generate/align/view/upload/edit plus feedback."""
+    """lyrics --help shows generate/align/view/upload/edit/review plus feedback."""
     result = runner.invoke(app, ["lyrics", "--help"])
     assert result.exit_code == 0
-    for command in ("generate", "align", "view", "upload", "edit", "feedback"):
+    for command in ("generate", "align", "view", "upload", "edit", "review", "feedback"):
         assert command in result.output
 
 

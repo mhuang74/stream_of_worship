@@ -38,6 +38,7 @@ class LRCEditorApp(App[None]):
         visibility_status=None,
         lrc_source=None,
         analysis_client=None,
+        read_only: bool = False,
     ):
         super().__init__()
         self.editor_state = editor_state
@@ -75,6 +76,9 @@ class LRCEditorApp(App[None]):
         # True when the session ended via the quit dialog with no unsaved
         # changes; read by the command layer to offer a visibility change.
         self.quit_clean = False
+        # Review mode: the screen blocks every LRC-editing/persistence action
+        # and never autosaves (`lyrics review`). Only feedback is written.
+        self.read_only = read_only
 
     def on_mount(self) -> None:
         self.push_screen(LRCEditorScreen(
@@ -91,6 +95,7 @@ class LRCEditorApp(App[None]):
             visibility_status=self.visibility_status,
             lrc_source=self.lrc_source,
             analysis_client=self.analysis_client,
+            read_only=self.read_only,
         ))
 
     def _on_upload_result(self, result: UploadResult) -> None:
