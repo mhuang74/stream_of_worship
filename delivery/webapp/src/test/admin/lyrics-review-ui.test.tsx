@@ -25,7 +25,7 @@ beforeEach(() => {
     if (url.endsWith("/sets")) return new Response(JSON.stringify({ sets: setRows }));
     if (url.includes("recording=")) return new Response(JSON.stringify({
       recording: url.includes("second") ? second : first, synced, audioUrl: "https://audio.example/song.mp3",
-      lines: synced ? [{ timeSeconds: 1, text: "第一行" }, { timeSeconds: 5, text: "" }, { timeSeconds: 12.5, text: "第二行" }] : [], feedback: initialFeedback,
+      lines: synced ? [{ timeSeconds: 1, text: "第一行" }, { timeSeconds: 1.2, text: "预备" }, { timeSeconds: 5, text: "" }, { timeSeconds: 12.5, text: "第二行" }] : [], feedback: initialFeedback,
     }));
     return new Response(JSON.stringify({ recordings: url.includes("offset=2") ? [{ ...first, contentHash: "third", title: "第三首" }] : queueRows, hasMore: more && !url.includes("offset=2") }));
   });
@@ -198,6 +198,8 @@ it("loads the saved selection for each recording when navigating", async () => {
 it("seeks by lyric timestamp and progress slider, preserving blank gap rows", async () => {
   await openFirst();
   expect(screen.getByText("00:12.50")).toBeInTheDocument();
+  // 1.2 % 1 is 0.19999…, so a naive hundredths extraction would print 00:01.19.
+  expect(screen.getByText("00:01.20")).toBeInTheDocument();
   const audio = document.querySelector("audio")!;
   Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
   fireEvent.loadedMetadata(audio);
