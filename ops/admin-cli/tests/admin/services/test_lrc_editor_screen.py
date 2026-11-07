@@ -1465,8 +1465,11 @@ async def test_read_only_blocks_save_regeneration_and_reload(tmp_path: Path):
         assert editor._reload_in_flight is False
         assert app.upload_attempted is False
         assert not isinstance(app.screen, ModalScreen)
-        # L would save a local draft + clear the autosave: nothing written.
-        assert list(tmp_path.rglob("*")) == []
+        # L would save a local draft + clear the autosave; G/A would write an
+        # LRC cache file. Assert no write artefacts, not an empty cache dir.
+        assert not list(tmp_path.rglob("lyrics.autosave.json"))
+        assert not list(tmp_path.rglob("*.draft*"))
+        assert not list(tmp_path.rglob("lyrics.lrc"))
 
 
 @pytest.mark.asyncio
