@@ -26,6 +26,12 @@ const timecode = (seconds: number) => {
   const whole = Math.floor(Math.max(0, seconds));
   return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
 };
+/** Lyric rows keep LRC hundredths. Rounding to milliseconds first keeps binary
+    float error (1.2 % 1 → 0.19999…) from eating a hundredth, then truncates. */
+const lyricTimecode = (seconds: number) => {
+  const hundredths = Math.floor(Math.round(Math.max(0, seconds) * 1000) / 10);
+  return `${String(Math.floor(hundredths / 6000)).padStart(2, "0")}:${String(Math.floor(hundredths / 100) % 60).padStart(2, "0")}.${String(hundredths % 100).padStart(2, "0")}`;
+};
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init });
   if (!response.ok) throw new Error("Review request failed");
@@ -327,7 +333,7 @@ export function LyricsReviewClient() {
             {detail.lines.map((line, i) => <button key={i} aria-current={i === active ? "true" : undefined}
               className={`flex min-h-12 w-full items-start gap-3 px-3 py-3 text-left ${i === active ? "bg-primary/15 font-semibold" : "hover:bg-muted"}`}
               onClick={() => seek(line.timeSeconds)}>
-              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{timecode(line.timeSeconds)}</span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{lyricTimecode(line.timeSeconds)}</span>
               <span>{line.text}</span>
             </button>)}
           </div>
