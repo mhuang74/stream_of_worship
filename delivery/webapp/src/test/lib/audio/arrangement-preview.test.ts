@@ -56,7 +56,7 @@ interface FakeAudio {
   removedAttributes: string[];
   loadCalls: () => number;
   pauseCalls: () => number;
-  setPlayMode: (mode: "resolve" | "reject" | "defer") => void;
+  setPlayMode: (mode: "resolve" | "reject" | "defer" | "throw") => void;
   resolvePlays: () => void;
   dispatch: (type: string) => void;
 }
@@ -68,7 +68,7 @@ function makeFakeAudio(src: string): FakeAudio {
   let preload = "";
   let pauseCount = 0;
   let loadCount = 0;
-  let playMode: "resolve" | "reject" | "defer" = "resolve";
+  let playMode: "resolve" | "reject" | "defer" | "throw" = "resolve";
   const pendingPlays: Array<() => void> = [];
   const playCalls: PlayCall[] = [];
   const currentTimeSets: number[] = [];
@@ -99,6 +99,10 @@ function makeFakeAudio(src: string): FakeAudio {
     ),
     play: vi.fn(() => {
       playCalls.push({ muted, currentTime });
+      if (playMode === "throw") {
+        // Synchronous throw: not every element returns a promise.
+        throw new Error("play threw");
+      }
       if (playMode === "reject") {
         return Promise.reject(new Error("play blocked"));
       }
@@ -487,7 +491,34 @@ describe("createArrangementPreviewSession", () => {
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(0.025, 6);
   });
 
-  it("pause during the startup hold pauses elements and does not start the clock", async () => {
+  it("pause during the startup hold keeps the pre-start position and does not start the clock", async () => {
+    const { session, created, context } = makeSession([
+      source({ itemId: "a", recordingDurationSeconds: 10 }),
+    ]);
+    await session.play();
+    context.currentTime = 3;
+    session.pause();
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(3, 6);
+
+    // Resume from 3 with cold media: the clock stays held at 3, not 9.
+    created[0].setPlayMode("defer");
+    const playPromise = session.play();
+    context.currentTime = 9;
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(3, 6);
+
+    session.pause();
+    expect(session.isPlaying()).toBe(false);
+    expect(created[0].element.paused).toBe(true);
+
+    created[0].resolvePlays();
+    await playPromise;
+    // The held play() must not anchor a clock after the pause, and the pause
+    // must not snap back to a stale origin (0) instead of the resume position.
+    expect(session.isPlaying()).toBe(false);
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(3, 6);
+  });
+
+  it("reports a synchronous element play throw as playback-failed without starting the clock", async () => {
     const created: FakeAudio[] = [];
     const fake = makeFakeContext();
     const session = createArrangementPreviewSession(
@@ -496,7 +527,7 @@ describe("createArrangementPreviewSession", () => {
         createAudioContext: () => fake.context as unknown as AudioContext,
         createAudioElement: (src) => {
           const audio = makeFakeAudio(src);
-          audio.setPlayMode("defer");
+          audio.setPlayMode("throw");
           created.push(audio);
           return audio.element;
         },
@@ -505,17 +536,15 @@ describe("createArrangementPreviewSession", () => {
       },
     );
 
-    const playPromise = session.play();
-    fake.context.currentTime = 3;
-    session.pause();
+    await session.play();
+    expect(session.getError()).toMatchObject({
+      kind: "playback-failed",
+      itemId: "a",
+    });
+    // failPlayback runs synchronously inside applyElementsAt: the hold must
+    // already be set so the play() tail aborts instead of anchoring a clock.
     expect(session.isPlaying()).toBe(false);
     expect(created[0].element.paused).toBe(true);
-
-    created[0].resolvePlays();
-    await playPromise;
-    // The held play() must not anchor a clock after the pause.
-    expect(session.isPlaying()).toBe(false);
-    expect(session.getTimelinePositionSeconds()).toBeCloseTo(0, 6);
   });
 
   it("EOF at a clip boundary advances to the next clip instead of failing", async () => {
