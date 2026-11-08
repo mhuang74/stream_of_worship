@@ -214,6 +214,11 @@ export const songsetItems = pgTable("songset_items", {
   keyShiftSemitones: integer("key_shift_semitones").default(0),
   tempoRatio: real("tempo_ratio").default(1.0),
 
+  // Persisted SongArrangement JSON (spec §2.2); NULL means the original full
+  // Recording. #282's parseSongArrangement distinguishes NULL from malformed
+  // JSON, which is kept verbatim for diagnostics and duplication.
+  arrangementSteps: text("arrangement_steps"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [

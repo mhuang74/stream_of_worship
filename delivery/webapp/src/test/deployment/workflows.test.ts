@@ -155,11 +155,17 @@ describe("Deploy workflow", () => {
     expect(jobs["detect-changes"]).toBeDefined();
   });
 
-  it("deploy jobs depend on detect-changes", () => {
+  it("migrates before either deployable and never skips worker-only pushes", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
     expect(jobs["migrate-db"].needs).toBe("detect-changes");
-    expect(jobs["deploy-render-worker"].needs).toBe("detect-changes");
+    expect(jobs["migrate-db"].if).toBe(
+      "needs.detect-changes.outputs.webapp == 'true' || needs.detect-changes.outputs.render-worker == 'true'",
+    );
+    expect(jobs["deploy-render-worker"].needs).toEqual(["detect-changes", "migrate-db"]);
+    expect(jobs["deploy-render-worker"].if).toBe(
+      "needs.detect-changes.outputs.render-worker == 'true' && needs.migrate-db.result == 'success'",
+    );
   });
 
   it("uses paths filter for delivery/webapp and render-worker", () => {
