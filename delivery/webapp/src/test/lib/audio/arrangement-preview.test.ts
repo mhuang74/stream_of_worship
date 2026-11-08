@@ -162,6 +162,8 @@ function makeFakeAudio(src: string): FakeAudio {
       for (const resolve of pendingPlays.splice(0)) resolve();
     },
     dispatch: (type) => {
+      // A real element leaves the playing state when it reaches its EOF.
+      if (type === "ended") paused = true;
       for (const handler of [...(listeners.get(type) ?? [])]) handler();
     },
   };
@@ -514,6 +516,51 @@ describe("createArrangementPreviewSession", () => {
     // The held play() must not anchor a clock after the pause.
     expect(session.isPlaying()).toBe(false);
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(0, 6);
+  });
+
+  it("EOF at a clip boundary advances to the next clip instead of failing", async () => {
+    // Outro (90→100) then a repeated verse (0→10): the element reaches the
+    // recording's EOF at arranged position 10, mid-item, which is expected.
+    const { session, created, context } = makeSession([
+      source({
+        itemId: "a",
+        recordingDurationSeconds: 100,
+        arrangementSteps: stepsJson([
+          { label: "outro", start: 90, end: 100 },
+          { label: "verse", start: 0, end: 10 },
+        ]),
+      }),
+    ]);
+    await session.play();
+    expect(session.totalSeconds).toBeCloseTo(20, 6);
+    context.currentTime = 9.9;
+    vi.advanceTimersByTime(25);
+    expect(created[0].element.paused).toBe(false);
+
+    created[0].dispatch("ended");
+    expect(session.getError()).toBeNull();
+
+    context.currentTime = 10.05;
+    vi.advanceTimersByTime(25);
+    // Verse clip covers [10,20) from source 0 → 0 + (10.05 − 10).
+    expect(last(created[0].currentTimeSets)).toBeCloseTo(0.05, 6);
+    expect(created[0].element.paused).toBe(false);
+    expect(session.getError()).toBeNull();
+  });
+
+  it("premature EOF before the active clip end still fails", async () => {
+    const { session, created, context } = makeSession([
+      source({ itemId: "a", recordingDurationSeconds: 100 }),
+    ]);
+    await session.play();
+    context.currentTime = 5;
+    vi.advanceTimersByTime(25);
+    created[0].dispatch("ended");
+    expect(session.getError()).toMatchObject({
+      kind: "playback-failed",
+      itemId: "a",
+    });
+    expect(session.isPlaying()).toBe(false);
   });
 
   it("crosses step boundaries by reassigning currentTime into the repeated clip", async () => {

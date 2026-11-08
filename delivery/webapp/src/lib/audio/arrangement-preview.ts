@@ -575,10 +575,14 @@ export function createArrangementPreviewSession(
   function handleEnded(record: ElementRecord): void {
     if (stopped || !playing) return;
     const position = getTimelinePositionSeconds();
-    const itemEnd = record.item.startSeconds + record.item.durationSeconds;
-    // Natural end at the item boundary is the scheduler's job; an early end
-    // means the file does not match the analysis.
-    if (position < itemEnd - ENDED_TOLERANCE_SECONDS) {
+    const clip = record.currentClip;
+    // Natural end at the active clip boundary is expected: the scheduler
+    // advances (next clip or next item) at its next tick. An early end —
+    // before the clip ends — means the file does not match the analysis.
+    const clipEnd = clip
+      ? clip.startSeconds + (clip.sourceEndSeconds - clip.sourceStartSeconds)
+      : record.item.startSeconds + record.item.durationSeconds;
+    if (position < clipEnd - ENDED_TOLERANCE_SECONDS) {
       failPlayback(record.item.itemId);
     }
   }
