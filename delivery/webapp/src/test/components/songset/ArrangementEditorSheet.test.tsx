@@ -265,6 +265,29 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
   });
 
+  it("explains when analysis exists but every section collapses during snapping", () => {
+    const item = makeItem({
+      recording: {
+        contentHash: "abc123",
+        hashPrefix: "ab",
+        durationSeconds: 30,
+        tempoBpm: 120,
+        musicalKey: "G",
+        sections: [{ label: "Intro", start: 0.17, end: 0.3 }],
+        beats: [0, 10],
+      },
+      arrangementSteps: null,
+    });
+    renderSheet({ item, items: [item] });
+
+    expect(screen.queryAllByTestId("arrangement-draft-step")).toHaveLength(0);
+    expect(
+      screen.getByText(/analysis is unavailable, so a new arrangement cannot be created/i)
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("arrangement-save")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+  });
+
   it("keeps a malformed saved arrangement open for explanation and reset", () => {
     const item = makeItem({
       arrangementSteps: "not-json",
