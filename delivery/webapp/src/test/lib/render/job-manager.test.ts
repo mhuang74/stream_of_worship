@@ -12,6 +12,10 @@ import {
 } from "@/lib/render/job-manager";
 import { db } from "@/db";
 import { songsets } from "@/db/schema";
+import {
+  SongsetRenderValidationError,
+  getSongsetRenderMetrics,
+} from "@/lib/db/songsets";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,9 +27,6 @@ vi.mock("@/db", () => {
   };
   const dbMock = {
     query: {
-      songsets: {
-        findFirst: vi.fn(),
-      },
       renderJobs: {
         findFirst: vi.fn(),
       },
@@ -45,16 +46,22 @@ vi.mock("nanoid", () => ({
   nanoid: vi.fn(() => "mock-job-id"),
 }));
 
-const mockSongset = {
-  id: "songset-1",
-  userId: 1,
-  name: "Test Songset",
-  description: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  latestRenderJobId: null,
-  lastFailedRenderJobId: null,
-  lastCompletedRenderJobId: null,
+// createRenderJob now reads items/duration through the shared render-metrics
+// seam; mock the seam (keeping the real typed error class) and assert that
+// seed values are what the job stores.
+vi.mock("@/lib/db/songsets", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/db/songsets")>();
+  return {
+    ...actual,
+    getSongsetRenderMetrics: vi.fn(),
+  };
+});
+
+const mockGetMetrics = vi.mocked(getSongsetRenderMetrics);
+const defaultMetrics = {
+  items: [{ id: "item-1" }, { id: "item-2" }],
+  songCount: 2,
+  songsetDurationSeconds: 380.4,
 };
 
 const mockRenderJob = {
@@ -105,7 +112,7 @@ describe("createRenderJob", () => {
   });
 
   it("creates job with default values", async () => {
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(mockSongset);
+    mockGetMetrics.mockResolvedValue(defaultMetrics);
     
     const mockInsert = vi.fn().mockReturnValue({
       values: vi.fn().mockReturnValue({
@@ -139,7 +146,7 @@ describe("createRenderJob", () => {
   });
 
   it("creates job with custom options", async () => {
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(mockSongset);
+    mockGetMetrics.mockResolvedValue(defaultMetrics);
     
     const customJob = {
       ...mockRenderJob,
@@ -181,15 +188,55 @@ describe("createRenderJob", () => {
   });
 
   it("throws error when songset not found", async () => {
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(null);
+    mockGetMetrics.mockRejectedValue(
+      new SongsetRenderValidationError("SONGSET_NOT_FOUND", "Songset not found or access denied")
+    );
 
     await expect(
       createRenderJob(1, { songsetId: "nonexistent" })
     ).rejects.toThrow("Songset not found or access denied");
   });
 
+  it("stores the arranged duration and item count from the shared metrics", async () => {
+    mockGetMetrics.mockResolvedValue({
+      items: [{ id: "item-1" }, { id: "item-2" }, { id: "item-3" }],
+      songCount: 3,
+      songsetDurationSeconds: 380.4,
+    });
+
+    const valuesFn = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([mockRenderJob]),
+    });
+    const mockInsert = vi.fn().mockReturnValue({ values: valuesFn });
+    vi.mocked(db.insert).mockImplementation(mockInsert as any);
+
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    await createRenderJob(1, { songsetId: "songset-1" });
+
+    expect(mockGetMetrics).toHaveBeenCalledWith("songset-1", 1);
+    const inserted = valuesFn.mock.calls[0][0];
+    expect(inserted.songCount).toBe(3);
+    expect(inserted.songsetDurationSeconds).toBe(380);
+  });
+
+  it("throws typed analysis errors from the shared metrics", async () => {
+    mockGetMetrics.mockRejectedValue(
+      new SongsetRenderValidationError("ARRANGEMENT_STALE")
+    );
+
+    await expect(
+      createRenderJob(1, { songsetId: "songset-1" })
+    ).rejects.toBeInstanceOf(SongsetRenderValidationError);
+  });
+
   it("updates songset with latest render job id", async () => {
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(mockSongset);
+    mockGetMetrics.mockResolvedValue(defaultMetrics);
     
     const mockInsert = vi.fn().mockReturnValue({
       values: vi.fn().mockReturnValue({

@@ -70,6 +70,7 @@ export interface SongsetEditorProps {
   onUpdateItems: (items: SongListItem[]) => void;
   onRemoveItem: (itemId: string) => Promise<void>;
   onUpdateTransition: (itemId: string, settings: TransitionSettings) => Promise<void>;
+  onEditArrangement?: (itemId: string) => void;
   onRender: () => void;
   onPlay: () => void;
   onRetry: () => void;
@@ -96,6 +97,7 @@ export function SongsetEditor({
   onUpdateItems,
   onRemoveItem,
   onUpdateTransition,
+  onEditArrangement,
   onRender,
   onPlay,
   onUpdateDescription,
@@ -149,11 +151,16 @@ export function SongsetEditor({
 
   // Calculate total marked lines across all songs
   const totalMarkedLines = items.reduce((sum, item) => sum + (item.markedLineCount ?? 0), 0);
+  // Duration checks use arranged durations only. A stored-but-invalid
+  // arrangement yields null and must never fall back to the original
+  // Recording duration: Render is blocked with the analysis message instead.
+  const hasUnknownDuration = items.some((item) => item.arrangedDurationSeconds == null);
   const totalDurationSeconds = items.reduce(
-    (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
+    (sum, item) => sum + (item.arrangedDurationSeconds ?? 0),
     0
   );
-  const isDurationOverLimit = totalDurationSeconds > SONGSET_MAX_DURATION_SECONDS;
+  const isDurationOverLimit =
+    !hasUnknownDuration && totalDurationSeconds > SONGSET_MAX_DURATION_SECONDS;
   const themes = [...new Set(items.map((i) => i.recording?.theme).filter(Boolean))] as string[];
 
   // Handle back navigation
@@ -319,6 +326,11 @@ export function SongsetEditor({
                   {t("songsets.overDurationLimit")}
                 </Badge>
               )}
+              {hasUnknownDuration && (
+                <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500/50 text-xs">
+                  {t("arrangement.duration.unavailable")}
+                </Badge>
+              )}
             </p>
           </div>
 
@@ -337,7 +349,7 @@ export function SongsetEditor({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={onRender}>
+              <DropdownMenuItem onClick={onRender} disabled={hasUnknownDuration}>
                 <RefreshCw className="size-4 mr-2" />
                 {t("songsets.action.render")}
               </DropdownMenuItem>
@@ -414,7 +426,7 @@ export function SongsetEditor({
             )}
           </AlertDescription>
           <AlertAction>
-            <Button size="sm" variant="outline" onClick={onRender}>
+            <Button size="sm" variant="outline" onClick={onRender} disabled={hasUnknownDuration}>
               {t("songsets.action.renderAgain")}
             </Button>
           </AlertAction>
@@ -429,7 +441,7 @@ export function SongsetEditor({
           <AlertDescription className="flex items-center gap-2 flex-wrap">
             <span>{t("songsets.alert.staleDescription")}</span>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={onRender}>
+              <Button size="sm" variant="outline" onClick={onRender} disabled={hasUnknownDuration}>
                 {t("songsets.action.reRender")}
               </Button>
               <Button size="sm" variant="ghost" onClick={onPlay}>
@@ -445,6 +457,17 @@ export function SongsetEditor({
               </Button>
             </div>
           </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Arrangement analysis unavailable/broken: Render is blocked and the
+          stored arrangement must be repaired or reset, never silently replaced
+          by the original Recording. */}
+      {hasUnknownDuration && (
+        <Alert variant="destructive" className="rounded-none border-x-0">
+          <AlertTriangle className="size-4" />
+          <AlertTitle>{t("arrangement.error.unavailableTitle")}</AlertTitle>
+          <AlertDescription>{t("arrangement.error.unavailableOrStale")}</AlertDescription>
         </Alert>
       )}
 
@@ -481,6 +504,7 @@ export function SongsetEditor({
           onReorder={handleReorder}
           onRemove={handleRemove}
           onEditTransition={handleEditTransition}
+          onEditArrangement={onEditArrangement}
           isRemoving={isRemoving}
           songsetId={songset.id}
           highlightSongId={highlightSongId}

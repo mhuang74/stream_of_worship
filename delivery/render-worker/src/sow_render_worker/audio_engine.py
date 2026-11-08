@@ -6,7 +6,10 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Protocol
+
+if TYPE_CHECKING:
+    from sow_render_worker.arrangements import ArrangementStep
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,25 @@ class SongsetItem:
     duration_seconds: float | None = None
     recording_content_hash: str | None = None
     deleted_at: datetime | None = None
+    arrangement_steps: tuple[ArrangementStep, ...] | None = None
+
+
+@dataclass(frozen=True)
+class AudioClipInfo:
+    """One use of a source range on the item timeline.
+
+    ``start_time_seconds`` is the clip's absolute start on the whole-songset
+    timeline (not the item-relative offset).
+    """
+
+    audio_path: str
+    source_start_seconds: float
+    source_end_seconds: float
+    start_time_seconds: float
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.source_end_seconds - self.source_start_seconds
 
 
 @dataclass(frozen=True)
@@ -37,6 +59,7 @@ class AudioSegmentInfo:
     start_time_seconds: float
     duration_seconds: float
     gap_before_seconds: float
+    clips: tuple[AudioClipInfo, ...]
 
 
 @dataclass(frozen=True)
@@ -117,17 +140,77 @@ def get_audio_info(file_path: str) -> dict[str, Any] | None:
         return None
 
 
+def _ordered_distinct_paths(audio_files: list[dict[str, Any]]) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for audio_file in audio_files:
+        for clip in audio_file["clips"]:
+            path = clip["path"]
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+    return paths
+
+
 def build_ffmpeg_filter_complex(
     audio_files: list[dict[str, Any]],
     normalize: bool,
     target_lufs: float = -14.0,
 ) -> str:
-    filter_parts: list[str] = []
-    output_labels: list[str] = []
+    input_paths = _ordered_distinct_paths(audio_files)
+    input_index = {path: i for i, path in enumerate(input_paths)}
 
+    uses_per_input = {path: 0 for path in input_paths}
+    for audio_file in audio_files:
+        for clip in audio_file["clips"]:
+            uses_per_input[clip["path"]] += 1
+
+    filter_parts: list[str] = []
+
+    # One input per distinct Recording file: split it into one independent
+    # branch per clip occurrence instead of adding a decoder per clip.
+    branches: dict[str, list[str]] = {path: [] for path in input_paths}
+    for path in input_paths:
+        index = input_index[path]
+        uses = uses_per_input[path]
+        if uses == 1:
+            branches[path].append(f"[{index}:a]")
+        else:
+            labels = [f"[s{index}_{k}]" for k in range(uses)]
+            filter_parts.append(f"[{index}:a]asplit={uses}{''.join(labels)}")
+            branches[path].extend(labels)
+
+    # Trim every clip branch to its source range and reset timestamps so trims
+    # are bit-identical to independently decoded inputs.
+    clip_index = 0
+    clip_labels: list[list[str]] = []
+    for audio_file in audio_files:
+        item_labels: list[str] = []
+        for clip in audio_file["clips"]:
+            branch = branches[clip["path"]].pop(0)
+            label = f"[c{clip_index}]"
+            filter_parts.append(
+                f"{branch}atrim=start={clip['source_start_seconds']:.6f}"
+                f":end={clip['source_end_seconds']:.6f},"
+                f"asetpts=PTS-STARTPTS{label}"
+            )
+            item_labels.append(label)
+            clip_index += 1
+        clip_labels.append(item_labels)
+
+    output_labels: list[str] = []
     for i, audio_file in enumerate(audio_files):
+        labels = clip_labels[i]
+        if len(labels) == 1:
+            item_label = labels[0]
+        else:
+            item_label = f"[i{i}]"
+            filter_parts.append(
+                f"{''.join(labels)}concat=n={len(labels)}:v=0:a=1{item_label}"
+            )
+
         next_crossfade_ms = audio_files[i + 1]["crossfade_ms"] if i + 1 < len(audio_files) else 0
-        filters = [f"[{i}:a]asetpts=PTS-STARTPTS"]
+        filters: list[str] = []
 
         if audio_file["crossfade_ms"] > 0:
             fade_in_dur = audio_file["crossfade_ms"] / 1000
@@ -143,7 +226,7 @@ def build_ffmpeg_filter_complex(
             filters.append(f"adelay={delay}|{delay}")
 
         output_label = f"a{i}"
-        filter_parts.append(f"{','.join(filters)}[{output_label}]")
+        filter_parts.append(f"{item_label}{','.join(filters) or 'anull'}[{output_label}]")
         output_labels.append(f"[{output_label}]")
 
     amix_out_label = "[amix_out]" if normalize else "[outa]"
@@ -173,8 +256,8 @@ def concatenate_audio_files(
     filter_complex = build_ffmpeg_filter_complex(audio_files, normalize, target_lufs)
 
     cmd: list[str] = ["ffmpeg", "-y"]
-    for audio_file in audio_files:
-        cmd.extend(["-i", audio_file["path"]])
+    for path in _ordered_distinct_paths(audio_files):
+        cmd.extend(["-i", path])
     cmd.extend(["-filter_complex", filter_complex, "-map", "[outa]"])
     cmd.extend(["-c:a", "libmp3lame", "-b:a", output_bitrate])
     cmd.extend(["-ar", str(sample_rate), "-ac", str(channels)])
@@ -183,6 +266,14 @@ def concatenate_audio_files(
     logger.info("[%s] FFmpeg audio concat: starting (timeout=1800s)", job_id or "unknown")
     subprocess.run(cmd, check=True, capture_output=True, timeout=1800)
     logger.info("[%s] FFmpeg audio concat: complete", job_id or "unknown")
+
+
+def _arranged_duration_ms(item: SongsetItem) -> int | None:
+    """Arranged duration in ms, or None for an untouched (full Recording) item."""
+    steps = item.arrangement_steps
+    if not steps:
+        return None
+    return round(sum(step.duration_seconds for step in steps) * 1000)
 
 
 def generate_songset_audio(
@@ -225,7 +316,16 @@ def generate_songset_audio(
         if not audio_path:
             raise ValueError(f"Could not get audio for recording {item.recording_hash_prefix}")
 
-        if item.duration_seconds is not None:
+        arrangement_steps = item.arrangement_steps
+        arranged_duration_ms = _arranged_duration_ms(item)
+        if arranged_duration_ms is not None:
+            duration_ms = arranged_duration_ms
+            logger.info(
+                "[%s] Audio: song %d arranged duration - steps=%d duration=%.1fs",
+                job_id or "unknown", i + 1, len(arrangement_steps or ()),
+                duration_ms / 1000.0,
+            )
+        elif item.duration_seconds is not None:
             duration_ms = round(item.duration_seconds * 1000)
             logger.info(
                 "[%s] Audio: song %d duration from DB - duration=%.1fs",
@@ -254,12 +354,38 @@ def generate_songset_audio(
 
         start_time_ms = 0 if i == 0 else max(0, current_time_ms + gap_ms - crossfade_ms)
 
+        # Clips join directly inside an item: each clip starts where the
+        # previous one ended, with no gap or fade.
+        clips: list[AudioClipInfo] = []
+        clip_target_seconds = start_time_ms / 1000.0
+        if arrangement_steps:
+            for step in arrangement_steps:
+                clips.append(
+                    AudioClipInfo(
+                        audio_path=audio_path,
+                        source_start_seconds=step.start_seconds,
+                        source_end_seconds=step.end_seconds,
+                        start_time_seconds=clip_target_seconds,
+                    )
+                )
+                clip_target_seconds += step.duration_seconds
+        else:
+            clips.append(
+                AudioClipInfo(
+                    audio_path=audio_path,
+                    source_start_seconds=0.0,
+                    source_end_seconds=duration_ms / 1000.0,
+                    start_time_seconds=start_time_ms / 1000.0,
+                )
+            )
+
         segment_info = AudioSegmentInfo(
             item=item,
             audio_path=audio_path,
             start_time_seconds=start_time_ms / 1000.0,
             duration_seconds=duration_ms / 1000.0,
             gap_before_seconds=gap_ms / 1000.0,
+            clips=tuple(clips),
         )
         segments.append(segment_info)
 
@@ -272,6 +398,15 @@ def generate_songset_audio(
                 "crossfade_ms": crossfade_ms,
                 "duration_ms": duration_ms,
                 "start_ms": start_time_ms,
+                "clips": [
+                    {
+                        "path": clip.audio_path,
+                        "source_start_seconds": clip.source_start_seconds,
+                        "source_end_seconds": clip.source_end_seconds,
+                        "start_time_seconds": clip.start_time_seconds,
+                    }
+                    for clip in clips
+                ],
             }
         )
 
@@ -283,8 +418,9 @@ def generate_songset_audio(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(
-        "[%s] Audio: starting FFmpeg concatenation of %d files -> %s",
-        job_id or "unknown", len(audio_files), output_path,
+        "[%s] Audio: starting FFmpeg concatenation of %d items on %d inputs -> %s",
+        job_id or "unknown", len(audio_files),
+        len(_ordered_distinct_paths(audio_files)), output_path,
     )
 
     concatenate_audio_files(
@@ -319,21 +455,44 @@ def calculate_total_duration(
     items: list[SongsetItem],
     asset_fetcher: AssetFetcherProtocol,
 ) -> float:
-    total_ms = 0
+    """Total mix duration: the last item's end on the arranged timeline.
+
+    This mirrors ``generate_songset_audio`` exactly: an item starts at
+    ``max(0, previous_end + gap - crossfade)`` with the crossfade clamped to the
+    incoming item's arranged duration. The old gap-add/crossfade-subtract sum
+    diverged from the mix whenever the crossfade exceeded the incoming
+    duration, so the total is taken from the end point the mix actually
+    reaches.
+    """
+    previous_end_ms = 0
+    max_end_ms: float = 0
 
     for i, item in enumerate(items):
-        if i > 0:
-            gap_ms = calculate_gap_ms(item, item.tempo_bpm)
-            total_ms += gap_ms
-            total_ms -= get_crossfade_ms(item)
-
-        if item.duration_seconds is not None:
-            total_ms += item.duration_seconds * 1000
+        arranged_duration_ms = _arranged_duration_ms(item)
+        if arranged_duration_ms is not None:
+            duration_ms: int = arranged_duration_ms
+        elif item.duration_seconds is not None:
+            duration_ms = round(item.duration_seconds * 1000)
         elif item.recording_hash_prefix:
             audio_path = asset_fetcher.download_audio(item.recording_hash_prefix)
-            if audio_path:
-                info = get_audio_info(audio_path)
-                if info:
-                    total_ms += info["duration_ms"]
+            if not audio_path:
+                continue
+            info = get_audio_info(audio_path)
+            if not info:
+                continue
+            duration_ms = info["duration_ms"]
+        else:
+            continue
 
-    return total_ms / 1000.0
+        if i == 0:
+            start_ms = 0
+        else:
+            gap_ms = calculate_gap_ms(item, item.tempo_bpm)
+            crossfade_ms = min(get_crossfade_ms(item), duration_ms)
+            start_ms = max(0, previous_end_ms + gap_ms - crossfade_ms)
+
+        end_ms = start_ms + duration_ms
+        previous_end_ms = end_ms
+        max_end_ms = max(max_end_ms, end_ms)
+
+    return max_end_ms / 1000.0

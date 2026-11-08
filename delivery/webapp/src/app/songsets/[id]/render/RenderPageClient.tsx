@@ -152,6 +152,14 @@ export function RenderPageClient({
               if (data.config?.audioEnabled) configSummary.push(t("render.toast.config.audio"))
               if (data.config?.videoEnabled) configSummary.push(t("render.toast.config.video"))
               toast.info(`${t("render.toast.alreadyInProgress")} (${configSummary.join(" + ")})`)
+            } else if (
+              data.code === "ARRANGEMENT_ANALYSIS_UNAVAILABLE" ||
+              data.code === "ARRANGEMENT_STALE" ||
+              data.code === "ARRANGEMENT_INVALID"
+            ) {
+              // Saved arrangement no longer matches analysis: repair or reset
+              // from the editor (translated in both locales).
+              toast.error(t("render.error.arrangementRepairOrReset"))
             } else {
               toast.error(data.error || t("render.toast.alreadyInProgress"))
             }

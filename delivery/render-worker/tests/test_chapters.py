@@ -4,6 +4,7 @@ from dataclasses import dataclass, fields as dc_fields
 
 import pytest
 
+from sow_render_worker.audio_engine import AudioClipInfo
 from sow_render_worker.chapters import (
     Chapter,
     ChapterLine,
@@ -32,6 +33,18 @@ class FakeSegment:
     item: FakeItem
     start_time_seconds: float
     duration_seconds: float
+    clips: tuple[AudioClipInfo, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.clips:
+            self.clips = (
+                AudioClipInfo(
+                    audio_path="/tmp/audio.mp3",
+                    source_start_seconds=0.0,
+                    source_end_seconds=self.duration_seconds,
+                    start_time_seconds=self.start_time_seconds,
+                ),
+            )
 
 
 def _make_chapter_line(text: str, start: float) -> ChapterLine:
@@ -132,8 +145,8 @@ class TestBuildChaptersFromSegments:
             FakeSegment(FakeItem("Song B", "id2", "hash2"), 30.0, 45.0),
         ]
 
-        def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
-            return [ChapterLine(text="Line 1", start_seconds=start_seconds + 5.0)]
+        def get_lyrics(hash_prefix: str, segment: FakeSegment) -> list[ChapterLine]:
+            return [ChapterLine(text="Line 1", start_seconds=segment.start_time_seconds + 5.0)]
 
         chapters = build_chapters_from_segments(segments, get_lyrics)
         assert len(chapters) == 2
@@ -151,7 +164,7 @@ class TestBuildChaptersFromSegments:
             FakeSegment(FakeItem("Song A", "id1", None), 0.0, 30.0),
         ]
 
-        def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
+        def get_lyrics(hash_prefix: str, segment: FakeSegment) -> list[ChapterLine]:
             return [ChapterLine(text="Should not appear", start_seconds=0.0)]
 
         chapters = build_chapters_from_segments(segments, get_lyrics)
@@ -163,8 +176,8 @@ class TestBuildChaptersFromSegments:
             FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
         ]
 
-        def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
-            return [ChapterLine(text="Async line", start_seconds=start_seconds + 3.0)]
+        def get_lyrics(hash_prefix: str, segment: FakeSegment) -> list[ChapterLine]:
+            return [ChapterLine(text="Async line", start_seconds=segment.start_time_seconds + 3.0)]
 
         chapters = build_chapters_from_segments(segments, get_lyrics)
         assert len(chapters[0].lines) == 1
@@ -175,7 +188,7 @@ class TestBuildChaptersFromSegments:
             FakeSegment(FakeItem(None, "my-song-id", "hash1"), 0.0, 30.0),
         ]
 
-        def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
+        def get_lyrics(hash_prefix: str, segment: FakeSegment) -> list[ChapterLine]:
             return []
 
         chapters = build_chapters_from_segments(segments, get_lyrics)
@@ -186,7 +199,7 @@ class TestBuildChaptersFromSegments:
             FakeSegment(FakeItem(None, "", "hash1"), 0.0, 30.0),
         ]
 
-        def get_lyrics(hash_prefix: str, start_seconds: float) -> list[ChapterLine]:
+        def get_lyrics(hash_prefix: str, segment: FakeSegment) -> list[ChapterLine]:
             return []
 
         chapters = build_chapters_from_segments(segments, get_lyrics)
@@ -224,6 +237,83 @@ class TestGenerateChaptersManifest:
         assert len(manifest.chapters[1].lines) == 1
         assert manifest.chapters[1].lines[0].text == "Line 3"
         assert manifest.chapters[1].lines[0].start_seconds == 33.0
+
+    def test_repeated_step_duplicates_only_in_range_lines_at_second_target(self):
+        clips = (
+            AudioClipInfo("/tmp/a.mp3", 10.0, 20.0, 0.0),
+            AudioClipInfo("/tmp/a.mp3", 0.0, 10.0, 10.0),
+            AudioClipInfo("/tmp/a.mp3", 10.0, 20.0, 20.0),
+        )
+        segments = [
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0, clips=clips),
+        ]
+        lrc = "[00:01.00]line at 1\n[00:11.00]line at 11\n[00:21.00]line at 21"
+
+        manifest = generate_chapters_manifest(segments, lambda hash_prefix: lrc, 30.0)
+
+        chapter = manifest.chapters[0]
+        assert [(line.text, line.start_seconds) for line in chapter.lines] == [
+            ("line at 11", 1.0),
+            ("line at 1", 11.0),
+            ("line at 11", 21.0),
+        ]
+        # Chapter spans the first clip's target start to the last clip's end.
+        assert chapter.start_seconds == 0.0
+        assert chapter.end_seconds == 30.0
+
+    def test_omitted_section_contributes_no_lines(self):
+        segments = [
+            FakeSegment(
+                FakeItem("Song A", "id1", "hash1"),
+                0.0,
+                10.0,
+                clips=(AudioClipInfo("/tmp/a.mp3", 0.0, 10.0, 0.0),),
+            ),
+        ]
+        lrc = "[00:01.00]kept\n[00:15.00]omitted"
+
+        manifest = generate_chapters_manifest(segments, lambda hash_prefix: lrc, 10.0)
+
+        assert [line.text for line in manifest.chapters[0].lines] == ["kept"]
+
+    def test_boundary_timestamp_belongs_to_next_clip(self):
+        segments = [
+            FakeSegment(
+                FakeItem("Song A", "id1", "hash1"),
+                0.0,
+                10.0,
+                clips=(
+                    AudioClipInfo("/tmp/a.mp3", 0.0, 5.0, 0.0),
+                    AudioClipInfo("/tmp/a.mp3", 5.0, 10.0, 5.0),
+                ),
+            ),
+        ]
+        lrc = "[00:05.00]boundary"
+
+        manifest = generate_chapters_manifest(segments, lambda hash_prefix: lrc, 10.0)
+
+        lines = manifest.chapters[0].lines
+        assert len(lines) == 1
+        assert lines[0].text == "boundary"
+        assert lines[0].start_seconds == 5.0
+
+    def test_chapter_bounds_follow_first_and_last_clip_targets(self):
+        segments = [
+            FakeSegment(
+                FakeItem("Song A", "id1", "hash1"),
+                0.0,
+                25.0,
+                clips=(
+                    AudioClipInfo("/tmp/a.mp3", 10.0, 20.0, 0.0),
+                    AudioClipInfo("/tmp/a.mp3", 0.0, 5.0, 10.0),
+                ),
+            ),
+        ]
+
+        manifest = generate_chapters_manifest(segments, lambda hash_prefix: None, 15.0)
+
+        assert manifest.chapters[0].start_seconds == 0.0
+        assert manifest.chapters[0].end_seconds == 15.0
 
     def test_async_download_lrc(self):
         segments = [

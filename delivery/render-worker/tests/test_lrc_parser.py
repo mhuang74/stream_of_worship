@@ -1,13 +1,14 @@
+from sow_render_worker.audio_engine import AudioClipInfo
 from sow_render_worker.lrc_parser import (
     GlobalLRCLine,
     LRCLine,
-    convert_to_global_timeline,
     estimate_last_lyric_duration,
     find_current_lyric_index,
     get_lyrics_time_range,
     group_lyrics_by_song,
     is_valid_lrc,
     parse_lrc,
+    remap_lrc_to_clips,
 )
 
 
@@ -98,41 +99,104 @@ class TestParseLRC:
         assert result[0].text == "Only line"
 
 
-class TestConvertToGlobalTimeline:
-    def test_basic_conversion(self):
+def _clip(
+    source_start: float,
+    source_end: float,
+    target_start: float,
+) -> AudioClipInfo:
+    return AudioClipInfo(
+        audio_path="/tmp/song.mp3",
+        source_start_seconds=source_start,
+        source_end_seconds=source_end,
+        start_time_seconds=target_start,
+    )
+
+
+class TestRemapLrcToClips:
+    def test_full_file_clip_maps_every_line(self):
         local_lines = [
             LRCLine(time_seconds=5.0, text="Hello"),
             LRCLine(time_seconds=10.0, text="World"),
         ]
-        result = convert_to_global_timeline(local_lines, 30.0, "Test Song")
-        assert len(result) == 2
-        assert result[0] == GlobalLRCLine(
-            text="Hello",
-            local_time_seconds=5.0,
-            global_time_seconds=35.0,
-            title="Test Song",
-        )
-        assert result[1] == GlobalLRCLine(
-            text="World",
-            local_time_seconds=10.0,
-            global_time_seconds=40.0,
-            title="Test Song",
-        )
+        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 30.0, 0.0),), "Test Song")
+        assert result == [
+            GlobalLRCLine(
+                text="Hello",
+                local_time_seconds=5.0,
+                global_time_seconds=5.0,
+                title="Test Song",
+            ),
+            GlobalLRCLine(
+                text="World",
+                local_time_seconds=10.0,
+                global_time_seconds=10.0,
+                title="Test Song",
+            ),
+        ]
 
-    def test_zero_offset(self):
-        local_lines = [LRCLine(time_seconds=3.0, text="Start")]
-        result = convert_to_global_timeline(local_lines, 0.0, "Song A")
-        assert result[0].global_time_seconds == 3.0
-        assert result[0].local_time_seconds == 3.0
+    def test_reordered_and_repeated_clips_remap_each_range(self):
+        local_lines = [
+            LRCLine(time_seconds=1.0, text="line at 1"),
+            LRCLine(time_seconds=11.0, text="line at 11"),
+            LRCLine(time_seconds=21.0, text="line at 21"),
+        ]
+        clips = (
+            _clip(10.0, 20.0, 0.0),
+            _clip(0.0, 10.0, 10.0),
+            _clip(10.0, 20.0, 20.0),
+        )
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert [(line.text, line.global_time_seconds) for line in result] == [
+            ("line at 11", 1.0),
+            ("line at 1", 11.0),
+            ("line at 11", 21.0),
+        ]
 
-    def test_empty_lines(self):
-        result = convert_to_global_timeline([], 10.0, "Empty")
-        assert result == []
+    def test_omitted_range_contributes_no_lines(self):
+        local_lines = [
+            LRCLine(time_seconds=1.0, text="kept"),
+            LRCLine(time_seconds=15.0, text="omitted"),
+        ]
+        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 10.0, 0.0),), "Song")
+        assert [line.text for line in result] == ["kept"]
+
+    def test_boundary_at_end_belongs_to_next_clip(self):
+        local_lines = [LRCLine(time_seconds=5.0, text="boundary")]
+        clips = (_clip(0.0, 5.0, 0.0), _clip(5.0, 10.0, 5.0))
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert len(result) == 1
+        assert result[0].global_time_seconds == 5.0
+
+    def test_target_start_offsets_line(self):
+        local_lines = [LRCLine(time_seconds=7.0, text="mid")]
+        result = remap_lrc_to_clips(local_lines, (_clip(5.0, 10.0, 30.0),), "Song")
+        assert result[0].global_time_seconds == 32.0
+        assert result[0].local_time_seconds == 7.0
+
+    def test_blank_gap_placeholder_retained(self):
+        local_lines = [LRCLine(time_seconds=2.0, text=""), LRCLine(time_seconds=3.0, text="text")]
+        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 5.0, 10.0),), "Song")
+        assert [(line.text, line.global_time_seconds) for line in result] == [
+            ("", 12.0),
+            ("text", 13.0),
+        ]
+
+    def test_no_clips_returns_empty(self):
+        assert remap_lrc_to_clips([LRCLine(time_seconds=1.0, text="x")], (), "Song") == []
+
+    def test_empty_lines_returns_empty(self):
+        assert remap_lrc_to_clips([], (_clip(0.0, 10.0, 0.0),), "Song") == []
 
     def test_title_preserved(self):
         local_lines = [LRCLine(time_seconds=1.0, text="Hi")]
-        result = convert_to_global_timeline(local_lines, 0.0, "My Song Title")
+        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 10.0, 0.0),), "My Song Title")
         assert result[0].title == "My Song Title"
+
+    def test_stable_sort_by_global_time(self):
+        local_lines = [LRCLine(time_seconds=2.0, text="a")]
+        clips = (_clip(0.0, 5.0, 20.0), _clip(0.0, 5.0, 0.0))
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert [line.global_time_seconds for line in result] == [2.0, 22.0]
 
 
 class TestEstimateLastLyricDuration:

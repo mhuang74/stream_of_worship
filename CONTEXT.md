@@ -64,6 +64,13 @@ _Avoid_: energy curve, dB arc
 A fixed 12-value vocabulary classifying a song's worship theme: 讚美, 感恩, 敬拜, 奉獻, 認罪, 差遣, 信心, 祈禱, 復興, 聖靈, 十字架, 跟隨. Each theme maps to a Worship Arc phase; a ThemeAnchor is the reference embedding used to classify a song's themes by cosine similarity. At the recording level, the theme is aggregated from component-level classifications (most frequent, with chorus-preference tie-breaking) and persisted as `recordings.theme`.
 _Avoid_: tag, category, label
 
+**Song Arrangement**:
+A Songset Item's ordered, repeatable sequence of Arrangement Steps. An untouched item has no custom Song Arrangement; resetting restores the full Recording without creating a catalog Recording or reusable song variant.
+_Avoid_: song version, section sequence
+
+**Arrangement Step**:
+One use of a detected Recording section in a Song Arrangement. Repeating a section creates another Step without increasing the Songset's song count.
+
 **Worship Arc**:
 The fixed five-phase liturgy every Songset is constructed against: 讚美 (Call) → 感恩 (Thanksgiving) → 敬拜 (Worship) → 奉獻 (Response) → 差遣 (Commission). A Songset's songs are chosen to follow this arc. The arc is invariant; per-song-count templates select which phases appear (2 songs: Call→Response; 3: Call→Worship→Commission; 4: Call→Worship→Response→Commission; 5: full arc). Currently defined for 2-5 song sets.
 _Avoid_: set list, service order, liturgy

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sow_render_worker.audio_engine import AudioClipInfo
 
 
 @dataclass(frozen=True)
@@ -39,20 +43,42 @@ def parse_lrc(lrc_content: str) -> list[LRCLine]:
     return lines
 
 
-def convert_to_global_timeline(
+def remap_lrc_to_clips(
     local_lines: list[LRCLine],
-    segment_start_seconds: float,
+    clips: tuple[AudioClipInfo, ...],
     title: str,
 ) -> list[GlobalLRCLine]:
-    return [
-        GlobalLRCLine(
-            text=line.text,
-            local_time_seconds=line.time_seconds,
-            global_time_seconds=segment_start_seconds + line.time_seconds,
-            title=title,
-        )
-        for line in local_lines
-    ]
+    """
+    Remap local LRC lines through arranged clips onto the item timeline.
+
+    For every clip, include each LRC line whose local timestamp falls inside the
+    clip's source range (source_start <= time < source_end). A line's global
+    timestamp is the clip's target start plus its offset into the source range.
+    Repeated steps repeat their lyrics at new target times; lines from omitted
+    source ranges never appear. Blank Gap Placeholder lines inside a clip's
+    range are retained.
+
+    Lines are stably sorted by global timestamp (per-clip output is already
+    ordered, and clips are processed in arrangement order).
+    """
+    remapped: list[GlobalLRCLine] = []
+    for clip in clips:
+        for line in local_lines:
+            if clip.source_start_seconds <= line.time_seconds < clip.source_end_seconds:
+                remapped.append(
+                    GlobalLRCLine(
+                        text=line.text,
+                        local_time_seconds=line.time_seconds,
+                        global_time_seconds=(
+                            clip.start_time_seconds
+                            + line.time_seconds
+                            - clip.source_start_seconds
+                        ),
+                        title=title,
+                    )
+                )
+    remapped.sort(key=lambda line: line.global_time_seconds)
+    return remapped
 
 
 def estimate_last_lyric_duration(

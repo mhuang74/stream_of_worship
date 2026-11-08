@@ -51,6 +51,7 @@ export default async function SongsetEditorPage({
           keyShiftSemitones: item.keyShiftSemitones ?? 0,
           tempoRatio: item.tempoRatio ?? 1,
           markedLineCount: item.markedLineCount,
+          arrangementSteps: item.arrangementSteps,
           song: item.song,
           recording: item.recording
             ? {
@@ -59,6 +60,8 @@ export default async function SongsetEditorPage({
                 tempoBpm: item.recording.tempoBpm,
                 musicalKey: item.recording.musicalKey,
                 theme: item.recording.theme,
+                sections: item.recording.sections,
+                beats: item.recording.beats,
               }
             : null,
         })),

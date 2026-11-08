@@ -21,10 +21,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, Trash2, Music, Clock, ChevronRight, Play, Pause, Loader2 } from "lucide-react";
+import { GripVertical, Trash2, Music, Clock, ChevronRight, Play, Pause, Loader2, ListMusic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { useLocale } from "@/hooks/useLocale";
+import type { RecordingSection } from "@/lib/arrangements";
 import { FavoriteButton } from "./FavoriteButton";
 import { ThemeLabel, toSongTheme } from "./ThemeLabel";
 
@@ -63,12 +64,23 @@ export interface SongListItem {
     effectiveKeyStartPitchClass?: number | null;
     effectiveKeyEndPitchClass?: number | null;
     theme?: string | null;
+    /** Parsed sections (recordings.sections); absent/NULL means analysis unavailable. */
+    sections?: RecordingSection[] | null;
+    /** Parsed beats (recordings.beats); empty means analysis unavailable. */
+    beats?: number[];
   } | null;
   gapBeats: number;
   crossfadeEnabled: number;
+  crossfadeDurationSeconds?: number | null;
   keyShiftSemitones: number;
   tempoRatio: number;
   markedLineCount?: number;
+  /** Raw persisted arrangement JSON, verbatim from the API (NULL = untouched). */
+  arrangementSteps: string | null;
+  /** Arranged duration via getItemDurationSeconds; null when the present arrangement is invalid/unmeasurable. */
+  arrangedDurationSeconds: number | null;
+  /** Client-computed availability of sections+beats analysis for this item. */
+  arrangementAnalysisAvailable: boolean;
 }
 
 interface SongListProps {
@@ -76,6 +88,7 @@ interface SongListProps {
   onReorder: (items: SongListItem[]) => void;
   onRemove: (itemId: string) => void;
   onEditTransition?: (itemId: string) => void;
+  onEditArrangement?: (itemId: string) => void;
   readOnly?: boolean;
   className?: string;
   isRemoving?: boolean;
@@ -91,6 +104,7 @@ interface SortableSongItemProps {
   index: number;
   onRemove: (itemId: string) => void;
   onEditTransition?: (itemId: string) => void;
+  onEditArrangement?: (itemId: string) => void;
   readOnly?: boolean;
   isPlaying?: boolean;
   isPreviewLoading?: boolean;
@@ -109,6 +123,7 @@ function SortableSongItem({
   index,
   onRemove,
   onEditTransition,
+  onEditArrangement,
   readOnly = false,
   isPlaying = false,
   isPreviewLoading = false,
@@ -151,6 +166,13 @@ function SortableSongItem({
   };
 
   const hasMarkedLines = (item.markedLineCount ?? 0) > 0;
+
+  // Analysis is usable only when sections and beats are both present; a saved
+  // arrangement stays editable even when analysis is unavailable/stale so the
+  // user can open the explanation and Reset it.
+  const hasArrangement = item.arrangementSteps != null;
+  const isArrangeDisabled = !hasArrangement && !item.arrangementAnalysisAvailable;
+  const arrangeDisabledReason = t("arrangement.disabled.noAnalysis");
 
   const itemTheme = item.recording?.theme ? toSongTheme(item.recording.theme) : null;
 
@@ -225,6 +247,11 @@ function SortableSongItem({
                     {item.markedLineCount} {t("browse.marked")}
                   </Badge>
                 )}
+                {hasArrangement && (
+                  <Badge variant="outline" className="text-xs shrink-0 text-primary border-primary/40">
+                    {t("arrangement.badge.arranged")}
+                  </Badge>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
                 <span className="flex items-center gap-1">
@@ -232,9 +259,29 @@ function SortableSongItem({
                   {item.song?.composer || item.song?.lyricist || t("browse.unknownArtist")}
                 </span>
                 {item.recording?.durationSeconds && (
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1" data-testid="original-duration">
                     <Clock className="size-3" />
                     {formatDuration(item.recording.durationSeconds)}
+                  </span>
+                )}
+                {hasArrangement && item.arrangedDurationSeconds != null && (
+                  <span
+                    className="flex items-center gap-1 text-primary"
+                    data-testid="arranged-duration"
+                    title={t("arrangement.duration.arrangedLabel")}
+                  >
+                    <ListMusic className="size-3" />
+                    {formatDuration(item.arrangedDurationSeconds)}
+                  </span>
+                )}
+                {hasArrangement && item.arrangedDurationSeconds == null && (
+                  <span
+                    className="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+                    data-testid="arranged-invalid"
+                    title={t("arrangement.error.unavailableOrStale")}
+                  >
+                    <ListMusic className="size-3" />
+                    {t("arrangement.duration.unavailable")}
                   </span>
                 )}
                 {(item.song?.effectiveKey ?? item.song?.musicalKey) && (
@@ -268,6 +315,24 @@ function SortableSongItem({
                 {t("browse.transition.gapLabel")}{item.gapBeats} {t("browse.unit.beats")}
                 {item.crossfadeEnabled ? t("browse.transition.crossfadeSuffix") : ""}
                 <ChevronRight className="size-3 ml-1" />
+              </Button>
+            )}
+
+            {/* Arrange button — always visible (including mobile), unlike the
+                desktop-only transition indicator. */}
+            {!readOnly && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-xs text-muted-foreground"
+                onClick={() => onEditArrangement?.(item.id)}
+                disabled={isArrangeDisabled}
+                title={isArrangeDisabled ? arrangeDisabledReason : t("arrangement.action.edit")}
+                aria-label={`${t("arrangement.action.edit")} ${item.song?.title || t("browse.song")}${isArrangeDisabled ? ` — ${arrangeDisabledReason}` : ""}`}
+                data-testid={`arrange-button-${item.id}`}
+              >
+                <ListMusic className="size-4 md:mr-1" />
+                <span className="hidden md:inline">{t("arrangement.action.edit")}</span>
               </Button>
             )}
 
@@ -311,6 +376,7 @@ export function SongList({
   onReorder,
   onRemove,
   onEditTransition,
+  onEditArrangement,
   readOnly = false,
   className,
   isRemoving = false,
@@ -474,6 +540,7 @@ export function SongList({
               index={index}
               onRemove={onRemove}
               onEditTransition={onEditTransition}
+              onEditArrangement={onEditArrangement}
               readOnly={readOnly}
               isPlaying={playingSongId === item.songId}
               isPreviewLoading={previewLoadingSongId === item.songId}

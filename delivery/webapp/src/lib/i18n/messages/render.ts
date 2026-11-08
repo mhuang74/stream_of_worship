@@ -136,6 +136,12 @@ export const renderBundle = bundle({
     "render.badge.fresh": "Rendered",
     "render.badge.stale": "Needs re-render",
     "render.badge.failed": "Render failed",
+
+    // Render admission — a saved Song arrangement no longer matches the
+    // Recording's analysis (render-jobs 409 / failed render tooltip). Mirrors
+    // arrangements.ts ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE.
+    "render.error.arrangementRepairOrReset":
+      "Song arrangement is unavailable or stale; repair the Recording analysis or reset the arrangement",
   },
   "zh-Hant": {
     // Render page (RenderPageClient)
@@ -259,5 +265,9 @@ export const renderBundle = bundle({
     "render.badge.fresh": "已渲染",
     "render.badge.stale": "建議重新渲染",
     "render.badge.failed": "渲染失敗",
+
+    // Render admission — saved arrangement no longer matches analysis
+    "render.error.arrangementRepairOrReset":
+      "歌曲編排已無法使用或已過期；請修復錄音的歌曲分析，或重設編排",
   },
 });

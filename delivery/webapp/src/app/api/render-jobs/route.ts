@@ -3,8 +3,14 @@ import { auth } from "@/lib/auth";
 import { createRenderJob, failRenderJob } from "@/lib/render/job-manager";
 import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
 import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS, VALID_FONT_FAMILIES } from "@/lib/constants";
+import { ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE } from "@/lib/arrangements";
+import {
+  getSongsetRenderMetrics,
+  SongsetRenderValidationError,
+  type SongsetRenderMetrics,
+} from "@/lib/db/songsets";
 import { db } from "@/db";
-import { songsetItems, renderJobs } from "@/db/schema";
+import { renderJobs } from "@/db/schema";
 import { eq, and, or, gte } from "drizzle-orm";
 import { z } from "zod";
 
@@ -41,23 +47,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const items = await db.query.songsetItems.findMany({
-      where: eq(songsetItems.songsetId, parsed.data.songsetId),
-      with: { recording: { columns: { durationSeconds: true } } },
-    });
+    // Owner-scoped admission read (spec §2.7): arranged durations plus full
+    // analysis validation for every saved arrangement.
+    let metrics: SongsetRenderMetrics;
+    try {
+      metrics = await getSongsetRenderMetrics(
+        parsed.data.songsetId,
+        Number(session.user.id)
+      );
+    } catch (error) {
+      if (error instanceof SongsetRenderValidationError) {
+        if (error.code !== "SONGSET_NOT_FOUND") {
+          // Analysis/staleness failure: the stored arrangement must be
+          // repaired or reset. Existing concurrent-job 409s are separate.
+          return NextResponse.json(
+            { error: ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE, code: error.code },
+            { status: 409 }
+          );
+        }
+      }
+      // SONGSET_NOT_FOUND keeps its existing "Songset not found" 404 mapping
+      // in the catch below.
+      throw error;
+    }
 
-    if (items.length > SONGSET_MAX_SONGS) {
+    if (metrics.songCount > SONGSET_MAX_SONGS) {
       return NextResponse.json(
         { error: `Songset exceeds maximum of ${SONGSET_MAX_SONGS} songs` },
         { status: 400 }
       );
     }
 
-    const totalDuration = items.reduce(
-      (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
-      0
-    );
-    if (totalDuration > SONGSET_MAX_DURATION_SECONDS) {
+    if (
+      metrics.songsetDurationSeconds != null &&
+      metrics.songsetDurationSeconds > SONGSET_MAX_DURATION_SECONDS
+    ) {
       return NextResponse.json(
         { error: `Songset exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes` },
         { status: 400 }

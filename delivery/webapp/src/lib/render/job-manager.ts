@@ -1,8 +1,9 @@
 import { db } from "@/db";
-import { renderJobs, songsets, songsetItems, recordings } from "@/db/schema";
+import { renderJobs, songsets } from "@/db/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { normalizeFontFamily } from "@/lib/constants";
+import { getSongsetRenderMetrics } from "@/lib/db/songsets";
 
 export type RenderPhase =
   | "preparing"
@@ -132,26 +133,16 @@ export async function createRenderJob(
 ): Promise<RenderJob> {
   await recoverOrphanedJobs();
 
-  const songset = await db.query.songsets.findFirst({
-    where: and(eq(songsets.id, input.songsetId), eq(songsets.userId, userId)),
-  });
+  // Owner-scoped items + arranged selected-audio duration, with full analysis
+  // validation for every non-NULL arrangement (spec §2.7). Missing Songsets
+  // throw the same "Songset not found or access denied" message as before.
+  const metrics = await getSongsetRenderMetrics(input.songsetId, userId);
 
-  if (!songset) {
-    throw new Error("Songset not found or access denied");
-  }
-
-  const items = await db
-    .select({
-      durationSeconds: recordings.durationSeconds,
-    })
-    .from(songsetItems)
-    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
-    .where(eq(songsetItems.songsetId, input.songsetId));
-
-  const songCount = items.length;
-  const songsetDurationSeconds = Math.round(
-    items.reduce((sum, item) => sum + (item.durationSeconds ?? 0), 0)
-  ) || null;
+  const songCount = metrics.songCount;
+  const songsetDurationSeconds =
+    metrics.songsetDurationSeconds == null
+      ? null
+      : Math.round(metrics.songsetDurationSeconds) || null;
 
   const id = nanoid();
   const now = new Date();

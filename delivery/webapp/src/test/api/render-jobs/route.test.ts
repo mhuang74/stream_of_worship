@@ -27,12 +27,6 @@ vi.mock("@/lib/render/dispatcher", () => ({
 vi.mock("@/db", () => ({
   db: {
     query: {
-      songsetItems: {
-        findMany: vi.fn().mockResolvedValue([
-          { recording: { durationSeconds: 180 } },
-          { recording: { durationSeconds: 200 } },
-        ]),
-      },
       renderJobs: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
@@ -40,12 +34,34 @@ vi.mock("@/db", () => ({
   },
 }));
 
+// Admission now reads items/durations through the shared render-metrics seam;
+// mock the seam (keeping the real typed error class) and exercise the route's
+// status mapping of its codes.
+vi.mock("@/lib/db/songsets", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/db/songsets")>();
+  return {
+    ...actual,
+    getSongsetRenderMetrics: vi.fn(),
+  };
+});
+
 import { dispatchToRenderWorker } from "@/lib/render/dispatcher";
 import { db } from "@/db";
+import {
+  SongsetRenderValidationError,
+  getSongsetRenderMetrics,
+} from "@/lib/db/songsets";
+import { ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE } from "@/lib/arrangements";
 
 const mockDispatchToRenderWorker = vi.mocked(dispatchToRenderWorker);
-const mockFindMany = vi.mocked(db.query.songsetItems.findMany);
 const mockFindFirst = vi.mocked(db.query.renderJobs.findFirst);
+const mockGetMetrics = vi.mocked(getSongsetRenderMetrics);
+
+const defaultMetrics = {
+  items: [{ id: "item-1" }, { id: "item-2" }],
+  songCount: 2,
+  songsetDurationSeconds: 380,
+};
 
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
   const request = new Request(url, options) as unknown as NextRequest;
@@ -60,6 +76,7 @@ function createMockRequest(url: string, options?: RequestInit): NextRequest {
 describe("POST /api/render-jobs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetMetrics.mockResolvedValue(defaultMetrics);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -468,9 +485,11 @@ describe("POST /api/render-jobs", () => {
       user: { id: 1 },
     } as any);
 
-    mockFindMany.mockResolvedValueOnce(
-      Array.from({ length: 6 }, () => ({ recording: { durationSeconds: 180 } }))
-    );
+    mockGetMetrics.mockResolvedValueOnce({
+      items: Array.from({ length: 6 }, (_, i) => ({ id: `item-${i}` })),
+      songCount: 6,
+      songsetDurationSeconds: 1080,
+    });
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs", {
       method: "POST",
@@ -481,6 +500,103 @@ describe("POST /api/render-jobs", () => {
     expect(response.status).toBe(400);
     const data = await response.json();
     expect(data.error).toContain("maximum of 5 songs");
+  });
+
+  it("passes song count validation with six songs' worth of steps across five items", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    // Five items, each with a repeated-Step arrangement totalling more than a
+    // full recording would suggest: item count is the admission dimension.
+    mockGetMetrics.mockResolvedValueOnce({
+      items: Array.from({ length: 5 }, (_, i) => ({ id: `item-${i}` })),
+      songCount: 5,
+      songsetDurationSeconds: 1400,
+    });
+    vi.mocked(createRenderJob).mockResolvedValue({
+      id: "job-1",
+      songsetId: "songset-1",
+      userId: 1,
+      status: "queued",
+      phase: "preparing",
+      phaseIndex: 0,
+      totalPhases: 5,
+      elapsedSeconds: 0,
+      errorMessage: null,
+      estimatedTotalSeconds: null,
+      totalDurationSeconds: null,
+      startedAt: null,
+      template: "dark",
+      resolution: "720p",
+      audioEnabled: true,
+      videoEnabled: true,
+      fontSizePreset: "M",
+      fontFamily: "noto_serif_tc",
+      includeTitleCard: false,
+      titleCardDurationSeconds: null,
+      titleCardLines: null,
+      songCount: 5,
+      songsetDurationSeconds: 1400,
+      mp3R2Key: null,
+      mp4R2Key: null,
+      chaptersR2Key: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      completedAt: null,
+    } as unknown as Awaited<ReturnType<typeof createRenderJob>>);
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    expect(mockGetMetrics).toHaveBeenCalledWith("songset-1", 1);
+  });
+
+  it("returns 409 ARRANGEMENT_ANALYSIS_UNAVAILABLE when analysis is missing", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    mockGetMetrics.mockRejectedValueOnce(
+      new SongsetRenderValidationError("ARRANGEMENT_ANALYSIS_UNAVAILABLE")
+    );
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data.error).toBe(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE);
+    expect(data.code).toBe("ARRANGEMENT_ANALYSIS_UNAVAILABLE");
+    expect(createRenderJob).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 ARRANGEMENT_STALE when the saved arrangement no longer matches", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    mockGetMetrics.mockRejectedValueOnce(
+      new SongsetRenderValidationError("ARRANGEMENT_STALE")
+    );
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data.code).toBe("ARRANGEMENT_STALE");
+    expect(data.error).toBe(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE);
   });
 
   it("returns 409 when active job already exists", async () => {
@@ -535,16 +651,16 @@ describe("POST /api/render-jobs", () => {
     expect(mockDispatchToRenderWorker).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when songset exceeds maximum duration", async () => {
+  it("returns 400 when the arranged songset exceeds maximum duration", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
     } as any);
 
-    mockFindMany.mockResolvedValueOnce([
-      { recording: { durationSeconds: 500 } },
-      { recording: { durationSeconds: 500 } },
-      { recording: { durationSeconds: 600 } },
-    ]);
+    mockGetMetrics.mockResolvedValueOnce({
+      items: [{ id: "item-1" }, { id: "item-2" }, { id: "item-3" }],
+      songCount: 3,
+      songsetDurationSeconds: 1600,
+    });
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs", {
       method: "POST",
@@ -555,5 +671,6 @@ describe("POST /api/render-jobs", () => {
     expect(response.status).toBe(400);
     const data = await response.json();
     expect(data.error).toContain("maximum duration");
+    expect(createRenderJob).not.toHaveBeenCalled();
   });
 });

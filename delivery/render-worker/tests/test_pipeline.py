@@ -1,10 +1,12 @@
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sow_render_worker.audio_engine import AudioSegmentInfo, ExportResult, SongsetItem
+from sow_render_worker.arrangements import ArrangementStep
+from sow_render_worker.audio_engine import AudioClipInfo, AudioSegmentInfo, ExportResult, SongsetItem
 from sow_render_worker.chapters import ChaptersManifest, Chapter
 from sow_render_worker.db import RenderJob, RenderProgress
 from sow_render_worker.pipeline import (
@@ -40,9 +42,19 @@ def _make_songset_item(**overrides) -> SongsetItem:
         "duration_seconds": 180.0,
         "recording_content_hash": "abc123def456",
         "deleted_at": None,
+        "arrangement_steps": None,
     }
     defaults.update(overrides)
     return SongsetItem(**defaults)
+
+
+def _make_step(start: float, end: float, section_index: int = 0) -> ArrangementStep:
+    return ArrangementStep(
+        section_index=section_index,
+        label=f"section-{section_index}",
+        start_seconds=start,
+        end_seconds=end,
+    )
 
 
 def _make_render_job(**overrides) -> RenderJob:
@@ -70,7 +82,11 @@ def _make_mock_conn(fetchone_result=None, fetchall_result=None):
     conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
     conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
     cursor.fetchone.return_value = fetchone_result
-    cursor.fetchall.return_value = fetchall_result or []
+    # Rows must carry the arrangement/analysis columns the real SELECT returns.
+    cursor.fetchall.return_value = [
+        {"arrangement_steps": None, "sections": None, "beats": None, **row}
+        for row in (fetchall_result or [])
+    ]
     return conn, cursor
 
 
@@ -85,6 +101,14 @@ def _make_audio_result(items):
                 start_time_seconds=0.0,
                 duration_seconds=item.duration_seconds or 180.0,
                 gap_before_seconds=0.0,
+                clips=(
+                    AudioClipInfo(
+                        audio_path=f"/tmp/test/{item.recording_hash_prefix}.mp3",
+                        source_start_seconds=0.0,
+                        source_end_seconds=item.duration_seconds or 180.0,
+                        start_time_seconds=0.0,
+                    ),
+                ),
             )
             for item in items
         ),
@@ -351,6 +375,91 @@ class TestFetchSongsetItems:
         assert items[0].recording_hash_prefix is None
         assert items[0].song_title is None
         assert items[0].tempo_bpm is None
+
+    def test_query_selects_arrangement_and_analysis_columns(self):
+        conn, cursor = _make_mock_conn(fetchall_result=[])
+        _, _ = fetch_songset_items(conn, "ss_001")
+        sql = cursor.execute.call_args[0][0]
+        assert "si.arrangement_steps" in sql
+        assert "r.sections" in sql
+        assert "r.beats" in sql
+
+    def _arranged_row(self) -> dict:
+        return {
+            "id": "item_1",
+            "songset_id": "ss_001",
+            "song_id": "song_1",
+            "recording_hash_prefix": "abc123",
+            "position": 0,
+            "gap_beats": 2.0,
+            "crossfade_enabled": 0,
+            "crossfade_duration_seconds": None,
+            "key_shift_semitones": 0,
+            "tempo_ratio": 1.0,
+            "tempo_bpm": 120.0,
+            "duration_seconds": 30.0,
+            "recording_content_hash": "abc123def456",
+            "deleted_at": None,
+            "song_title": "Arranged Song",
+            "sections": json.dumps([
+                {"label": "intro", "start": 0.0, "end": 10.0},
+                {"label": "verse", "start": 10.0, "end": 20.0},
+                {"label": "chorus", "start": 20.0, "end": 30.0},
+            ]),
+            "beats": json.dumps([0.0, 10.0, 20.0, 30.0]),
+            "arrangement_steps": json.dumps({
+                "version": 1,
+                "steps": [
+                    {"sectionIndex": 2, "label": "chorus", "startSeconds": 20.0, "endSeconds": 30.0},
+                    {"sectionIndex": 0, "label": "intro", "startSeconds": 0.0, "endSeconds": 10.0},
+                ],
+            }),
+        }
+
+    def test_null_arrangement_keeps_full_recording_duration(self):
+        row = self._arranged_row()
+        row["arrangement_steps"] = None
+        conn, _ = _make_mock_conn(fetchall_result=[row])
+        _, items = fetch_songset_items(conn, "ss_001")
+        assert items[0].arrangement_steps is None
+        assert items[0].duration_seconds == 30.0
+
+    def test_valid_arrangement_sets_arranged_duration(self):
+        conn, _ = _make_mock_conn(fetchall_result=[self._arranged_row()])
+        _, items = fetch_songset_items(conn, "ss_001")
+        steps = items[0].arrangement_steps
+        assert steps is not None
+        assert [
+            (step.section_index, step.label, step.start_seconds, step.end_seconds)
+            for step in steps
+        ] == [
+            (2, "chorus", 20.0, 30.0),
+            (0, "intro", 0.0, 10.0),
+        ]
+        assert items[0].duration_seconds == 20.0
+
+    def test_stale_arrangement_raises_repair_or_reset(self):
+        row = self._arranged_row()
+        row["arrangement_steps"] = json.dumps({
+            "version": 1,
+            "steps": [
+                {"sectionIndex": 2, "label": "wrong label", "startSeconds": 20.0, "endSeconds": 30.0},
+            ],
+        })
+        conn, _ = _make_mock_conn(fetchall_result=[row])
+        with pytest.raises(
+            ValueError, match="repair the Recording analysis or reset the arrangement"
+        ):
+            fetch_songset_items(conn, "ss_001")
+
+    def test_malformed_arrangement_raises_repair_or_reset(self):
+        row = self._arranged_row()
+        row["arrangement_steps"] = "{not valid json"
+        conn, _ = _make_mock_conn(fetchall_result=[row])
+        with pytest.raises(
+            ValueError, match="repair the Recording analysis or reset the arrangement"
+        ):
+            fetch_songset_items(conn, "ss_001")
 
 
 class TestPipelineCancelledError:
@@ -1014,6 +1123,65 @@ class TestExecuteRenderPipeline:
             assert mixing_audio_call is not None
             assert mixing_audio_call.estimated_total_seconds == 180.0 * 0.8
             assert mixing_audio_call.total_duration_seconds == 180.0
+
+    def test_arranged_duration_enforces_1500_second_limit(self):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+        rows = [
+            {
+                "id": "item_1",
+                "songset_id": "ss_001",
+                "song_id": "song_1",
+                "recording_hash_prefix": "abc123",
+                "position": 0,
+                "gap_beats": 2.0,
+                "crossfade_enabled": 0,
+                "crossfade_duration_seconds": None,
+                "key_shift_semitones": 0,
+                "tempo_ratio": 1.0,
+                "tempo_bpm": 120.0,
+                "duration_seconds": 1600.0,
+                "recording_content_hash": "abc123def456",
+                "deleted_at": None,
+                "song_title": "Long Song",
+                "sections": json.dumps([
+                    {"label": "a", "start": 0.0, "end": 800.0},
+                    {"label": "b", "start": 800.0, "end": 1600.0},
+                ]),
+                "beats": json.dumps([0.0, 800.0, 1600.0]),
+                "arrangement_steps": json.dumps({
+                    "version": 1,
+                    "steps": [
+                        {"sectionIndex": 0, "label": "a", "startSeconds": 0.0, "endSeconds": 800.0},
+                        {"sectionIndex": 1, "label": "b", "startSeconds": 800.0, "endSeconds": 1600.0},
+                    ],
+                }),
+            },
+        ]
+        fetch_conn, _ = _make_mock_conn(fetchall_result=rows)
+        _, items = fetch_songset_items(fetch_conn, "ss_001")
+        assert items[0].duration_seconds == 1600.0
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio") as mock_audio:
+
+            with pytest.raises(ValueError, match="Songset exceeds limit"):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+            mock_audio.assert_not_called()
+            mock_fail.assert_called_once()
+            assert "Songset exceeds limit" in mock_fail.call_args[0][3]
 
     def test_pipeline_skips_when_job_already_claimed(self):
         job = _make_render_job()
