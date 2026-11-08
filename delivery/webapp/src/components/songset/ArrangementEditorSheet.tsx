@@ -537,13 +537,15 @@ export function ArrangementEditorSheet({
                 {t("arrangement.note.snap")}
               </p>
 
-              {(initProblem === "invalid" || initProblem === "stale") && (
+              {initProblem !== null && (
                 <Alert variant="destructive">
                   <AlertTriangle className="size-4" />
                   <AlertDescription>
                     {initProblem === "invalid"
                       ? t("arrangement.error.invalidArrangement")
-                      : t("arrangement.error.unavailableOrStale")}
+                      : initProblem === "stale"
+                        ? t("arrangement.error.unavailableOrStale")
+                        : t("arrangement.disabled.noAnalysis")}
                   </AlertDescription>
                 </Alert>
               )}

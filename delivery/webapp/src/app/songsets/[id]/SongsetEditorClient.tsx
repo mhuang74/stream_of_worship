@@ -7,7 +7,11 @@ import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
 import type { SongArrangement, RecordingSection, ArrangementItemInput } from "@/lib/arrangements";
-import { getItemDurationSeconds, getSongsetDurationSeconds } from "@/lib/arrangements";
+import {
+  buildSnappedSteps,
+  getItemDurationSeconds,
+  getSongsetDurationSeconds,
+} from "@/lib/arrangements";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
@@ -132,10 +136,13 @@ function toArrangementInput(item: SongListItem): ArrangementItemInput {
 }
 
 function hasRecordingAnalysis(recording: SongListItem["recording"]): boolean {
-  return (
-    (recording?.sections?.length ?? 0) > 0 &&
-    (recording?.beats?.length ?? 0) > 0
-  );
+  const sections = recording?.sections ?? null;
+  const beats = recording?.beats ?? [];
+  const duration = recording?.durationSeconds ?? null;
+  if (!sections?.length || beats.length === 0 || duration == null) return false;
+  // The sheet drafts from snapped sections, so a collapsed snap means no
+  // arrangement can be created even though raw analysis fields exist.
+  return buildSnappedSteps(sections, beats, duration) !== null;
 }
 
 function toSongListItem(item: ApiSongsetItem): SongListItem {
