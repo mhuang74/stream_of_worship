@@ -40,7 +40,7 @@ jobs:
   migrate-db:
     name: Run DB Migrations + Deploy
     needs: detect-changes
-    if: needs.detect-changes.outputs.webapp == 'true'
+    if: needs.detect-changes.outputs.webapp == 'true' || needs.detect-changes.outputs.render-worker == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: migrate-db-${{ github.ref }}
@@ -85,8 +85,8 @@ jobs:
 
   deploy-render-worker:
     name: Deploy Render Worker to Lambda
-    needs: detect-changes
-    if: needs.detect-changes.outputs.render-worker == 'true'
+    needs: [detect-changes, migrate-db]
+    if: needs.detect-changes.outputs.render-worker == 'true' && needs.migrate-db.result == 'success'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-render-worker-${{ github.ref }}

@@ -1,0 +1,1 @@
+ALTER TABLE "songset_items" ADD COLUMN "arrangement_steps" text;
