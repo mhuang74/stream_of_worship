@@ -111,11 +111,16 @@ describe("SongList", () => {
         durationSeconds: 180,
         tempoBpm: 120,
         musicalKey: "G",
+        sections: [{ label: "Verse", start: 0, end: 30 }],
+        beats: [0, 30],
       },
       gapBeats: 2,
       crossfadeEnabled: 0,
       keyShiftSemitones: 0,
       tempoRatio: 1.0,
+      arrangementSteps: null,
+      arrangedDurationSeconds: 180,
+      arrangementAnalysisAvailable: true,
     },
     {
       id: "item-2",
@@ -135,12 +140,17 @@ describe("SongList", () => {
         durationSeconds: 240,
         tempoBpm: 100,
         musicalKey: "A",
+        sections: [{ label: "Verse", start: 0, end: 30 }],
+        beats: [0, 30],
       },
       gapBeats: 2,
       crossfadeEnabled: 1,
       keyShiftSemitones: 0,
       tempoRatio: 1.0,
       markedLineCount: 3,
+      arrangementSteps: null,
+      arrangedDurationSeconds: 240,
+      arrangementAnalysisAvailable: true,
     },
   ];
 
@@ -149,6 +159,7 @@ describe("SongList", () => {
     onReorder: vi.fn(),
     onRemove: vi.fn(),
     onEditTransition: vi.fn(),
+    onEditArrangement: vi.fn(),
   };
 
   const renderList = (props = {}) => {
@@ -226,6 +237,80 @@ describe("SongList", () => {
       await waitFor(() => {
         expect(onEditTransition).toHaveBeenCalledWith("item-2");
       });
+    });
+
+    it("renders an always-visible Arrange action on every row", () => {
+      renderList();
+      expect(screen.getByTestId("arrange-button-item-1")).toBeInTheDocument();
+      expect(screen.getByTestId("arrange-button-item-2")).toBeInTheDocument();
+    });
+
+    it("calls onEditArrangement when the Arrange action is clicked", () => {
+      const onEditArrangement = vi.fn();
+      renderList({ onEditArrangement });
+
+      fireEvent.click(screen.getByTestId("arrange-button-item-1"));
+
+      expect(onEditArrangement).toHaveBeenCalledWith("item-1");
+    });
+
+    it("disables Arrange when analysis is unavailable and no arrangement is saved", () => {
+      const item = {
+        ...mockItems[0],
+        recording: mockItems[0].recording
+          ? { ...mockItems[0].recording, sections: null, beats: [] }
+          : null,
+        arrangementSteps: null,
+        arrangementAnalysisAvailable: false,
+      };
+      renderList({ items: [item] });
+
+      expect(screen.getByTestId("arrange-button-item-1")).toBeDisabled();
+    });
+
+    it("keeps Arrange enabled for a saved arrangement even when analysis is unavailable", () => {
+      const item = {
+        ...mockItems[0],
+        recording: mockItems[0].recording
+          ? { ...mockItems[0].recording, sections: null, beats: [] }
+          : null,
+        arrangementSteps:
+          '{"version":1,"steps":[{"sectionIndex":0,"label":"Verse","startSeconds":0,"endSeconds":10}]}',
+        arrangedDurationSeconds: 10,
+        arrangementAnalysisAvailable: false,
+      };
+      renderList({ items: [item] });
+
+      expect(screen.getByTestId("arrange-button-item-1")).not.toBeDisabled();
+    });
+
+    it("shows the Arranged badge and arranged duration", () => {
+      const item = {
+        ...mockItems[0],
+        arrangementSteps:
+          '{"version":1,"steps":[{"sectionIndex":0,"label":"Verse","startSeconds":0,"endSeconds":120}]}',
+        arrangedDurationSeconds: 120,
+        arrangementAnalysisAvailable: true,
+      };
+      renderList({ items: [item] });
+
+      expect(screen.getByText("Arranged")).toBeInTheDocument();
+      expect(screen.getByTestId("arranged-duration")).toHaveTextContent("2:00");
+      expect(screen.getByTestId("original-duration")).toHaveTextContent("3:00");
+    });
+
+    it("marks an invalid arrangement's duration as unavailable", () => {
+      const item = {
+        ...mockItems[0],
+        arrangementSteps: "not-json",
+        arrangedDurationSeconds: null,
+        arrangementAnalysisAvailable: true,
+      };
+      renderList({ items: [item] });
+
+      expect(screen.getByTestId("arranged-invalid")).toHaveTextContent(
+        "Duration unavailable"
+      );
     });
   });
 

@@ -11,7 +11,20 @@ import {
 } from "@/db/schema";
 import { eq, and, desc, gt, sql, asc, ilike, or, inArray, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { SONGSET_MAX_SONGS } from "@/lib/constants";
+import { SONGSET_MAX_DURATION_SECONDS, SONGSET_MAX_SONGS } from "@/lib/constants";
+import {
+  ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE,
+  getItemDurationSeconds,
+  getSongsetDurationSeconds,
+  parseRecordingBeats,
+  parseRecordingSections,
+  parseSongArrangement,
+  validateSongArrangement,
+  type ArrangementItemInput,
+  type ArrangementValidationCode,
+  type RecordingSection,
+  type SongArrangement,
+} from "@/lib/arrangements";
 import { sanitizeRenderErrorMessage } from "@/lib/render/error-message";
 import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
 
@@ -76,8 +89,14 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
       lyricist: songs.lyricist,
       albumName: songs.albumName,
       songMusicalKey: songs.musicalKey,
+      arrangementSteps: songsetItems.arrangementSteps,
+      gapBeats: songsetItems.gapBeats,
+      crossfadeEnabled: songsetItems.crossfadeEnabled,
+      crossfadeDurationSeconds: songsetItems.crossfadeDurationSeconds,
       durationSeconds: recordings.durationSeconds,
       tempoBpm: recordings.tempoBpm,
+      recordingSections: recordings.sections,
+      recordingBeats: recordings.beats,
       recordingMusicalKey: recordings.musicalKey,
       recordingMusicalMode: recordings.musicalMode,
       keyConfidence: recordings.keyConfidence,
@@ -92,27 +111,27 @@ export async function getSongsetPublicView(songsetId: string): Promise<SongsetPu
     .where(eq(songsetItems.songsetId, songsetId))
     .orderBy(songsetItems.position);
 
-  const publicItems: PublicSongsetItem[] = items
-    .filter((item) => !item.recordingDeletedAt)
-    .map((item) => ({
-      id: item.id,
-      position: item.position,
-      songTitle: item.songTitle,
-      composer: item.composer,
-      lyricist: item.lyricist,
-      albumName: item.albumName,
-      songMusicalKey: item.songMusicalKey,
-      durationSeconds: item.durationSeconds,
-      tempoBpm: item.tempoBpm,
-      recordingMusicalKey: item.recordingMusicalKey,
-      ...effectiveKeyFields(item),
-      theme: item.recordingTheme,
-    }));
+  // Soft-deleted recordings are invisible everywhere, including the total
+  // (pre-existing bug fixed here: the reduce used to run over `items`).
+  const visibleItems = items.filter((item) => !item.recordingDeletedAt);
 
-  const totalDurationSeconds = items.reduce(
-    (sum, item) => sum + (item.durationSeconds ?? 0),
-    0
-  ) || null;
+  const publicItems: PublicSongsetItem[] = visibleItems.map((item) => ({
+    id: item.id,
+    position: item.position,
+    songTitle: item.songTitle,
+    composer: item.composer,
+    lyricist: item.lyricist,
+    albumName: item.albumName,
+    songMusicalKey: item.songMusicalKey,
+    durationSeconds: getItemDurationSeconds(toArrangementInput(item)),
+    tempoBpm: item.tempoBpm,
+    recordingMusicalKey: item.recordingMusicalKey,
+    ...effectiveKeyFields(item),
+    theme: item.recordingTheme,
+  }));
+
+  const totalDurationSeconds =
+    getSongsetDurationSeconds(visibleItems.map(toArrangementInput)) || null;
 
   const renderState = await computeRenderState(songsetId);
 
@@ -255,6 +274,10 @@ export interface SongsetItemRecording {
   effectiveKeyEndPitchClass: number | null;
   r2AudioUrl: string | null;
   theme: string | null;
+  /** Parsed analysis; NULL means the Recording has no readable sections. */
+  sections: RecordingSection[] | null;
+  /** Parsed beats; empty means analysis is unavailable (spec §1.2). */
+  beats: number[];
 }
 
 export interface SongsetItemDetail {
@@ -267,6 +290,15 @@ export interface SongsetItemDetail {
   crossfadeDurationSeconds: number | null;
   keyShiftSemitones: number | null;
   tempoRatio: number | null;
+  /**
+   * Raw persisted arrangement JSON. Kept verbatim even when malformed so
+   * diagnostics and duplication never lose data (spec §2.2).
+   */
+  arrangementSteps: string | null;
+  /** Parsed arrangement; NULL when absent or structurally invalid. */
+  arrangement: SongArrangement | null;
+  /** True when `arrangementSteps` is present but not the persisted schema. */
+  arrangementInvalid: boolean;
   markedLineCount: number;
   song: {
     id: string;
@@ -361,6 +393,112 @@ function effectiveKeyFields(input: {
   };
 }
 
+/**
+ * Raw persisted arrangement JSON plus its parsed form (spec §2.2). SQL NULL
+ * means "original full Recording"; malformed JSON stays verbatim so it can be
+ * repaired or duplicated, never silently dropped.
+ */
+function arrangementFieldsFromRaw(
+  raw: string | null | undefined
+): Pick<SongsetItemDetail, "arrangementSteps" | "arrangement" | "arrangementInvalid"> {
+  const arrangementSteps = raw ?? null;
+  const parsed = parseSongArrangement(arrangementSteps);
+  if (!parsed.present) {
+    return { arrangementSteps: null, arrangement: null, arrangementInvalid: false };
+  }
+  if ("invalid" in parsed) {
+    return { arrangementSteps, arrangement: null, arrangementInvalid: true };
+  }
+  return { arrangementSteps, arrangement: parsed.arrangement, arrangementInvalid: false };
+}
+
+/** Recording analysis exposed through the editor detail shape. */
+function recordingAnalysisFields(
+  sectionsRaw: string | null | undefined,
+  beatsRaw: string | null | undefined
+): Pick<SongsetItemRecording, "sections" | "beats"> {
+  return {
+    sections: parseRecordingSections(sectionsRaw ?? null),
+    beats: parseRecordingBeats(beatsRaw ?? null),
+  };
+}
+
+/** Row shape shared by the three relational `songsetItems` queries. */
+type RelationalSongsetItem = typeof songsetItems.$inferSelect & {
+  song: typeof songs.$inferSelect | null;
+  recording:
+    | (typeof recordings.$inferSelect & { lyricMarks: { id: string }[] })
+    | null;
+};
+
+/** Map a relational item row to the editor detail shape. */
+function mapRelationalSongsetItem(item: RelationalSongsetItem): SongsetItemDetail {
+  const keyFields = effectiveKeyFields({
+    songMusicalKey: item.song?.musicalKey,
+    recordingMusicalKey: item.recording?.musicalKey,
+    recordingMusicalMode: item.recording?.musicalMode,
+    keyConfidence: item.recording?.keyConfidence,
+    keyScoreMargin: item.recording?.keyScoreMargin,
+    keyWindowAgreement: item.recording?.keyWindowAgreement,
+  });
+
+  return {
+    id: item.id,
+    songId: item.songId,
+    recordingHashPrefix: item.recordingHashPrefix,
+    position: item.position,
+    gapBeats: item.gapBeats ?? null,
+    crossfadeEnabled: item.crossfadeEnabled ?? null,
+    crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
+    keyShiftSemitones: item.keyShiftSemitones ?? null,
+    tempoRatio: item.tempoRatio ?? null,
+    ...arrangementFieldsFromRaw(item.arrangementSteps),
+    markedLineCount: item.recording?.lyricMarks.length ?? 0,
+    song: item.song
+      ? {
+          id: item.song.id,
+          title: item.song.title,
+          composer: item.song.composer,
+          lyricist: item.song.lyricist,
+          albumName: item.song.albumName,
+          musicalKey: item.song.musicalKey,
+          ...keyFields,
+        }
+      : null,
+    recording: item.recording
+      ? {
+          contentHash: item.recording.contentHash,
+          durationSeconds: item.recording.durationSeconds,
+          tempoBpm: item.recording.tempoBpm,
+          musicalKey: item.recording.musicalKey,
+          ...keyFields,
+          r2AudioUrl: item.recording.r2AudioUrl,
+          theme: item.recording.theme,
+          ...recordingAnalysisFields(item.recording.sections, item.recording.beats),
+        }
+      : null,
+  };
+}
+
+/** Duration-bearing view of an item for the canonical duration helpers. */
+function toArrangementInput(item: {
+  arrangementSteps: string | null;
+  gapBeats: number | null;
+  crossfadeEnabled: number | null;
+  crossfadeDurationSeconds: number | null;
+  tempoBpm?: number | null;
+  durationSeconds?: number | null;
+}): ArrangementItemInput {
+  return {
+    arrangementSteps: item.arrangementSteps,
+    gapBeats: item.gapBeats,
+    crossfadeEnabled: item.crossfadeEnabled,
+    crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+    tempoBpm: item.tempoBpm ?? null,
+    recordingDurationSeconds: item.durationSeconds ?? null,
+  };
+}
+
 async function timePageLoad<T>(label: string, fn: () => Promise<T>): Promise<T> {
   if (process.env.SOW_WEBAPP_TIMING !== "1") return fn();
   const startedAt = performance.now();
@@ -443,6 +581,16 @@ function mapRenderJobSummary(row: typeof renderJobs.$inferSelect | null | undefi
   };
 }
 
+/** One visible item's duration inputs inside the summaries JSON aggregate. */
+interface SummaryItemDurationInput {
+  arrangementSteps: string | null;
+  durationSeconds: number | null;
+  gapBeats: number | null;
+  crossfadeEnabled: number | null;
+  crossfadeDurationSeconds: number | null;
+  tempoBpm: number | null;
+}
+
 export async function listSongsetSummaries(
   userId: number,
   limit = 50,
@@ -490,7 +638,20 @@ export async function listSongsetSummaries(
         lastFailedRenderJobId: songsets.lastFailedRenderJobId,
         lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
         itemCount: sql<number>`count(${songsetItems.id}) filter (where ${recordings.deletedAt} is null)::int`,
-        durationSeconds: sql<number | null>`nullif(sum(coalesce(${recordings.durationSeconds}, 0)) filter (where ${recordings.deletedAt} is null), 0)`,
+        // Per-visible-item duration inputs aggregated as JSON, then totaled in
+        // TypeScript (spec §2.6): arrangement_steps stays a JSON *string*
+        // inside json_build_object, so malformed data can never break the list
+        // query, and a structurally invalid arrangement yields null.
+        itemDurationInputs: sql<SummaryItemDurationInput[] | null>`json_agg(
+          json_build_object(
+            'arrangementSteps', ${songsetItems.arrangementSteps},
+            'durationSeconds', ${recordings.durationSeconds},
+            'gapBeats', ${songsetItems.gapBeats},
+            'crossfadeEnabled', ${songsetItems.crossfadeEnabled},
+            'crossfadeDurationSeconds', ${songsetItems.crossfadeDurationSeconds},
+            'tempoBpm', ${recordings.tempoBpm}
+          ) order by ${songsetItems.position}
+        ) filter (where ${recordings.deletedAt} is null)`,
         latestItemUpdatedAt: sql<Date | null>`max(${songsetItems.updatedAt}) filter (where ${recordings.deletedAt} is null)`,
         latestJobStatus: renderJobs.status,
         latestJobCompletedAt: renderJobs.completedAt,
@@ -548,7 +709,11 @@ export async function listSongsetSummaries(
           lastFailedRenderJobId: row.lastFailedRenderJobId,
           lastCompletedRenderJobId: row.lastCompletedRenderJobId,
           itemCount: Number(row.itemCount ?? 0),
-          durationSeconds: row.durationSeconds == null ? null : Number(row.durationSeconds),
+          durationSeconds: row.itemDurationInputs
+            ? getSongsetDurationSeconds(
+                row.itemDurationInputs.map(toArrangementInput)
+              ) || null
+            : null,
           renderState,
           renderErrorMessage:
             renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
@@ -600,6 +765,7 @@ export async function getSongsetEditorData(
         crossfadeDurationSeconds: songsetItems.crossfadeDurationSeconds,
         keyShiftSemitones: songsetItems.keyShiftSemitones,
         tempoRatio: songsetItems.tempoRatio,
+        arrangementSteps: songsetItems.arrangementSteps,
         updatedAt: songsetItems.updatedAt,
         songTitle: songs.title,
         composer: songs.composer,
@@ -609,6 +775,8 @@ export async function getSongsetEditorData(
         recordingContentHash: recordings.contentHash,
         durationSeconds: recordings.durationSeconds,
         tempoBpm: recordings.tempoBpm,
+        recordingSections: recordings.sections,
+        recordingBeats: recordings.beats,
         recordingMusicalKey: recordings.musicalKey,
         recordingMusicalMode: recordings.musicalMode,
         keyConfidence: recordings.keyConfidence,
@@ -640,6 +808,7 @@ export async function getSongsetEditorData(
         songsetItems.crossfadeDurationSeconds,
         songsetItems.keyShiftSemitones,
         songsetItems.tempoRatio,
+        songsetItems.arrangementSteps,
         songsetItems.updatedAt,
         songs.id,
         songs.title,
@@ -650,6 +819,8 @@ export async function getSongsetEditorData(
         recordings.contentHash,
         recordings.durationSeconds,
         recordings.tempoBpm,
+        recordings.sections,
+        recordings.beats,
         recordings.musicalKey,
         recordings.musicalMode,
         recordings.keyConfidence,
@@ -677,6 +848,7 @@ export async function getSongsetEditorData(
       crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
       keyShiftSemitones: item.keyShiftSemitones ?? null,
       tempoRatio: item.tempoRatio ?? null,
+      ...arrangementFieldsFromRaw(item.arrangementSteps),
       markedLineCount: Number(item.markedLineCount ?? 0),
       song: item.songTitle
         ? {
@@ -698,6 +870,7 @@ export async function getSongsetEditorData(
             ...effectiveKeyFields(item),
             r2AudioUrl: item.r2AudioUrl,
             theme: item.recordingTheme,
+            ...recordingAnalysisFields(item.recordingSections, item.recordingBeats),
           }
         : null,
     }));
@@ -722,7 +895,18 @@ export async function getSongsetEditorData(
       lastCompletedRenderJobId: row.lastCompletedRenderJobId,
       itemCount: items.length,
       durationSeconds:
-        items.reduce((sum, item) => sum + (item.recording?.durationSeconds ?? 0), 0) || null,
+        getSongsetDurationSeconds(
+          items.map((item) =>
+            toArrangementInput({
+              arrangementSteps: item.arrangementSteps,
+              gapBeats: item.gapBeats,
+              crossfadeEnabled: item.crossfadeEnabled,
+              crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+              tempoBpm: item.recording?.tempoBpm ?? null,
+              durationSeconds: item.recording?.durationSeconds ?? null,
+            })
+          )
+        ) || null,
       renderState,
       renderErrorMessage:
         renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
@@ -763,6 +947,13 @@ export async function getRenderPageData(
         markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
         recordingDeletedAt: recordings.deletedAt,
         recordingDurationSeconds: recordings.durationSeconds,
+        arrangementSteps: songsetItems.arrangementSteps,
+        gapBeats: songsetItems.gapBeats,
+        crossfadeEnabled: songsetItems.crossfadeEnabled,
+        crossfadeDurationSeconds: songsetItems.crossfadeDurationSeconds,
+        recordingSections: recordings.sections,
+        recordingBeats: recordings.beats,
+        tempoBpm: recordings.tempoBpm,
         updatedAt: songsetItems.updatedAt,
       })
       .from(songsetItems)
@@ -781,6 +972,13 @@ export async function getRenderPageData(
         songs.title,
         recordings.deletedAt,
         recordings.durationSeconds,
+        songsetItems.arrangementSteps,
+        songsetItems.gapBeats,
+        songsetItems.crossfadeEnabled,
+        songsetItems.crossfadeDurationSeconds,
+        recordings.sections,
+        recordings.beats,
+        recordings.tempoBpm,
         songsetItems.updatedAt
       )
       .orderBy(asc(songsetItems.position));
@@ -831,9 +1029,17 @@ export async function getRenderPageData(
         songTitles: visibleItems.map((item) => item.songTitle ?? "Unknown Song"),
         lastCompletedRenderJobId: row.lastCompletedRenderJobId,
         durationSeconds:
-          visibleItems.reduce(
-            (sum, item) => sum + (item.recordingDurationSeconds ?? 0),
-            0
+          getSongsetDurationSeconds(
+            visibleItems.map((item) =>
+              toArrangementInput({
+                arrangementSteps: item.arrangementSteps,
+                gapBeats: item.gapBeats,
+                crossfadeEnabled: item.crossfadeEnabled,
+                crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+                tempoBpm: item.tempoBpm,
+                durationSeconds: item.recordingDurationSeconds,
+              })
+            )
           ) || null,
       },
       userSettings: settingsRow
@@ -927,50 +1133,7 @@ export async function getSongset(
 
   const items: SongsetItemDetail[] = sortedItems
     .filter((item) => !item.recording?.deletedAt)
-    .map((item) => {
-      const keyFields = effectiveKeyFields({
-        songMusicalKey: item.song?.musicalKey,
-        recordingMusicalKey: item.recording?.musicalKey,
-        recordingMusicalMode: item.recording?.musicalMode,
-        keyConfidence: item.recording?.keyConfidence,
-        keyScoreMargin: item.recording?.keyScoreMargin,
-        keyWindowAgreement: item.recording?.keyWindowAgreement,
-      });
-      return {
-        id: item.id,
-        songId: item.songId,
-        recordingHashPrefix: item.recordingHashPrefix,
-        position: item.position,
-        gapBeats: item.gapBeats ?? null,
-        crossfadeEnabled: item.crossfadeEnabled ?? null,
-        crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
-        keyShiftSemitones: item.keyShiftSemitones ?? null,
-        tempoRatio: item.tempoRatio ?? null,
-        markedLineCount: item.recording?.lyricMarks.length ?? 0,
-        song: item.song
-          ? {
-              id: item.song.id,
-              title: item.song.title,
-              composer: item.song.composer,
-              lyricist: item.song.lyricist,
-              albumName: item.song.albumName,
-              musicalKey: item.song.musicalKey,
-              ...keyFields,
-            }
-          : null,
-        recording: item.recording
-          ? {
-              contentHash: item.recording.contentHash,
-              durationSeconds: item.recording.durationSeconds,
-              tempoBpm: item.recording.tempoBpm,
-              musicalKey: item.recording.musicalKey,
-              ...keyFields,
-              r2AudioUrl: item.recording.r2AudioUrl,
-              theme: item.recording.theme,
-            }
-          : null,
-      };
-    });
+    .map(mapRelationalSongsetItem);
 
   const renderState = await computeRenderState(id);
 
@@ -984,10 +1147,19 @@ export async function getSongset(
     lastFailedRenderJobId: row.lastFailedRenderJobId,
     lastCompletedRenderJobId: row.lastCompletedRenderJobId,
     itemCount: items.length,
-    durationSeconds: items.reduce(
-      (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
-      0
-    ) || null,
+    durationSeconds:
+      getSongsetDurationSeconds(
+        items.map((item) =>
+          toArrangementInput({
+            arrangementSteps: item.arrangementSteps,
+            gapBeats: item.gapBeats,
+            crossfadeEnabled: item.crossfadeEnabled,
+            crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+            tempoBpm: item.recording?.tempoBpm ?? null,
+            durationSeconds: item.recording?.durationSeconds ?? null,
+          })
+        )
+      ) || null,
     renderState,
     renderErrorMessage: null,
     failedAt: null,
@@ -1130,9 +1302,17 @@ export async function updateSongset(
     where: and(eq(songsets.id, id), eq(songsets.userId, userId)),
     with: {
       items: {
-        columns: { id: true },
+        columns: {
+          id: true,
+          arrangementSteps: true,
+          gapBeats: true,
+          crossfadeEnabled: true,
+          crossfadeDurationSeconds: true,
+        },
         with: {
-          recording: { columns: { durationSeconds: true, deletedAt: true } },
+          recording: {
+            columns: { durationSeconds: true, tempoBpm: true, deletedAt: true },
+          },
         },
       },
     },
@@ -1140,6 +1320,7 @@ export async function updateSongset(
 
   if (!updated) return null;
 
+  const visibleItems = updated.items.filter((item) => !item.recording?.deletedAt);
   const renderState = await computeRenderState(id);
 
   return {
@@ -1151,13 +1332,19 @@ export async function updateSongset(
     latestRenderJobId: updated.latestRenderJobId,
     lastFailedRenderJobId: updated.lastFailedRenderJobId,
     lastCompletedRenderJobId: updated.lastCompletedRenderJobId,
-    itemCount: updated.items.filter((item) => !item.recording?.deletedAt).length,
-    durationSeconds: updated.items
-      .filter((item) => !item.recording?.deletedAt)
-      .reduce(
-        (sum, item) => sum + (item.recording?.durationSeconds ?? 0),
-        0
-      ) || null,
+    itemCount: visibleItems.length,
+    durationSeconds: getSongsetDurationSeconds(
+      visibleItems.map((item) =>
+        toArrangementInput({
+          arrangementSteps: item.arrangementSteps,
+          gapBeats: item.gapBeats,
+          crossfadeEnabled: item.crossfadeEnabled,
+          crossfadeDurationSeconds: item.crossfadeDurationSeconds,
+          durationSeconds: item.recording?.durationSeconds ?? null,
+          tempoBpm: item.recording?.tempoBpm ?? null,
+        })
+      )
+    ) || null,
     renderState,
     renderErrorMessage: null,
     failedAt: null,
@@ -1225,49 +1412,7 @@ export async function addSongsetItem(
 
   if (!item) return null;
 
-  const keyFields = effectiveKeyFields({
-    songMusicalKey: item.song?.musicalKey,
-    recordingMusicalKey: item.recording?.musicalKey,
-    recordingMusicalMode: item.recording?.musicalMode,
-    keyConfidence: item.recording?.keyConfidence,
-    keyScoreMargin: item.recording?.keyScoreMargin,
-    keyWindowAgreement: item.recording?.keyWindowAgreement,
-  });
-
-  return {
-    id: item.id,
-    songId: item.songId,
-    recordingHashPrefix: item.recordingHashPrefix,
-    position: item.position,
-    gapBeats: item.gapBeats ?? null,
-    crossfadeEnabled: item.crossfadeEnabled ?? null,
-    crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
-    keyShiftSemitones: item.keyShiftSemitones ?? null,
-    tempoRatio: item.tempoRatio ?? null,
-    markedLineCount: item.recording?.lyricMarks.length ?? 0,
-    song: item.song
-      ? {
-          id: item.song.id,
-          title: item.song.title,
-          composer: item.song.composer,
-          lyricist: item.song.lyricist,
-          albumName: item.song.albumName,
-          musicalKey: item.song.musicalKey,
-          ...keyFields,
-        }
-      : null,
-    recording: item.recording
-      ? {
-          contentHash: item.recording.contentHash,
-          durationSeconds: item.recording.durationSeconds,
-          tempoBpm: item.recording.tempoBpm,
-          musicalKey: item.recording.musicalKey,
-          ...keyFields,
-          r2AudioUrl: item.recording.r2AudioUrl,
-          theme: item.recording.theme,
-        }
-      : null,
-  };
+  return mapRelationalSongsetItem(item);
 }
 
 export async function updateSongsetItem(
@@ -1291,9 +1436,39 @@ export async function updateSongsetItem(
 
   if (!item || item.songsetId !== songsetId || item.songset.userId !== userId) return null;
 
-  await db.update(songsetItems).set(patch).where(eq(songsetItems.id, itemId)).returning();
+  const now = new Date();
+  const {
+    position,
+    recordingHashPrefix,
+    gapBeats,
+    crossfadeEnabled,
+    crossfadeDurationSeconds,
+    keyShiftSemitones,
+    tempoRatio,
+  } = patch;
+  // Always bump the item timestamp: render staleness compares
+  // songset_items.updated_at to the job's completion, so transition-only and
+  // recording changes must invalidate a fresh render too (pre-existing gap).
+  // Built field by field so a route payload's extra keys never reach SQL.
+  const updateSet: Partial<typeof songsetItems.$inferInsert> = {
+    position,
+    recordingHashPrefix,
+    gapBeats,
+    crossfadeEnabled,
+    crossfadeDurationSeconds,
+    keyShiftSemitones,
+    tempoRatio,
+    updatedAt: now,
+  };
+  // A changed Recording invalidates the saved arrangement (spec §2.5); the
+  // generic transition PATCH never writes arrangement data otherwise.
+  if (recordingHashPrefix !== undefined && recordingHashPrefix !== item.recordingHashPrefix) {
+    updateSet.arrangementSteps = null;
+  }
 
-  await db.update(songsets).set({ updatedAt: new Date() }).where(eq(songsets.id, songsetId));
+  await db.update(songsetItems).set(updateSet).where(eq(songsetItems.id, itemId)).returning();
+
+  await db.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
 
   const updated = await db.query.songsetItems.findFirst({
     where: eq(songsetItems.id, itemId),
@@ -1312,49 +1487,7 @@ export async function updateSongsetItem(
 
   if (!updated) return null;
 
-  const keyFields = effectiveKeyFields({
-    songMusicalKey: updated.song?.musicalKey,
-    recordingMusicalKey: updated.recording?.musicalKey,
-    recordingMusicalMode: updated.recording?.musicalMode,
-    keyConfidence: updated.recording?.keyConfidence,
-    keyScoreMargin: updated.recording?.keyScoreMargin,
-    keyWindowAgreement: updated.recording?.keyWindowAgreement,
-  });
-
-  return {
-    id: updated.id,
-    songId: updated.songId,
-    recordingHashPrefix: updated.recordingHashPrefix,
-    position: updated.position,
-    gapBeats: updated.gapBeats ?? null,
-    crossfadeEnabled: updated.crossfadeEnabled ?? null,
-    crossfadeDurationSeconds: updated.crossfadeDurationSeconds ?? null,
-    keyShiftSemitones: updated.keyShiftSemitones ?? null,
-    tempoRatio: updated.tempoRatio ?? null,
-    markedLineCount: updated.recording?.lyricMarks.length ?? 0,
-    song: updated.song
-      ? {
-          id: updated.song.id,
-          title: updated.song.title,
-          composer: updated.song.composer,
-          lyricist: updated.song.lyricist,
-          albumName: updated.song.albumName,
-          musicalKey: updated.song.musicalKey,
-          ...keyFields,
-        }
-      : null,
-    recording: updated.recording
-      ? {
-          contentHash: updated.recording.contentHash,
-          durationSeconds: updated.recording.durationSeconds,
-          tempoBpm: updated.recording.tempoBpm,
-          musicalKey: updated.recording.musicalKey,
-          ...keyFields,
-          r2AudioUrl: updated.recording.r2AudioUrl,
-          theme: updated.recording.theme,
-        }
-      : null,
-  };
+  return mapRelationalSongsetItem(updated);
 }
 
 export async function deleteSongsetItem(
@@ -1373,6 +1506,213 @@ export async function deleteSongsetItem(
   await db.update(songsets).set({ updatedAt: new Date() }).where(eq(songsets.id, songsetId));
 
   return true;
+}
+
+export type SongsetRenderValidationCode =
+  | "SONGSET_NOT_FOUND"
+  | "SONGSET_TOO_LONG"
+  | "ARRANGEMENT_ANALYSIS_UNAVAILABLE"
+  | "ARRANGEMENT_STALE"
+  | "ARRANGEMENT_INVALID";
+
+/**
+ * Typed admission/write failure shared by `updateSongArrangement` and the
+ * render entry points. Analysis failures all carry the canonical
+ * repair-or-reset message (spec §2.3/§2.7).
+ */
+export class SongsetRenderValidationError extends Error {
+  constructor(
+    readonly code: SongsetRenderValidationCode,
+    message: string = ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE
+  ) {
+    super(message);
+    this.name = "SongsetRenderValidationError";
+  }
+}
+
+/** Map a `validateSongArrangement` failure code to the render/route vocabulary. */
+function analysisValidationError(code: ArrangementValidationCode): SongsetRenderValidationError {
+  if (code === "ANALYSIS_UNAVAILABLE") {
+    return new SongsetRenderValidationError("ARRANGEMENT_ANALYSIS_UNAVAILABLE");
+  }
+  return new SongsetRenderValidationError(code);
+}
+
+/** Item columns every arrangement/duration computation reads. */
+const arrangementItemColumns = {
+  id: songsetItems.id,
+  arrangementSteps: songsetItems.arrangementSteps,
+  gapBeats: songsetItems.gapBeats,
+  crossfadeEnabled: songsetItems.crossfadeEnabled,
+  crossfadeDurationSeconds: songsetItems.crossfadeDurationSeconds,
+  durationSeconds: recordings.durationSeconds,
+  tempoBpm: recordings.tempoBpm,
+  recordingSections: recordings.sections,
+  recordingBeats: recordings.beats,
+  recordingDeletedAt: recordings.deletedAt,
+};
+
+/**
+ * Save (`arrangement`) or reset (`null`) one item's arrangement (spec §2.3).
+ * NULL is always valid, even without analysis. Non-NULL data must match the
+ * item's current analysis and the prospective whole-Songset total must stay
+ * within the selected-audio limit. Both the item and the Songset timestamps
+ * bump so `mapRenderStateFromSnapshot` reports "stale" after any change.
+ */
+export async function updateSongArrangement(
+  itemId: string,
+  songsetId: string,
+  userId: number,
+  arrangement: SongArrangement | null
+): Promise<SongsetItemDetail | null> {
+  const item = await db.query.songsetItems.findFirst({
+    where: eq(songsetItems.id, itemId),
+    with: { songset: true },
+  });
+
+  if (!item || item.songsetId !== songsetId || item.songset.userId !== userId) return null;
+
+  let serialized: string | null = arrangement === null ? null : JSON.stringify(arrangement);
+
+  const siblingRows = await db
+    .select(arrangementItemColumns)
+    .from(songsetItems)
+    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+    .where(eq(songsetItems.songsetId, songsetId))
+    .orderBy(asc(songsetItems.position));
+
+  if (serialized !== null) {
+    const row = siblingRows.find((sibling) => sibling.id === itemId);
+    if (!row || row.recordingDeletedAt || row.durationSeconds == null) {
+      throw new SongsetRenderValidationError("ARRANGEMENT_ANALYSIS_UNAVAILABLE");
+    }
+    const validated = validateSongArrangement(
+      serialized,
+      parseRecordingSections(row.recordingSections),
+      parseRecordingBeats(row.recordingBeats),
+      row.durationSeconds
+    );
+    if (!validated.ok) {
+      throw analysisValidationError(validated.code);
+    }
+    if (validated.arrangement === null) {
+      // Unreachable for a non-NULL input; never write the string "null".
+      throw new SongsetRenderValidationError("ARRANGEMENT_INVALID");
+    }
+    // Canonical wire form (exact schema fields only).
+    serialized = JSON.stringify(validated.arrangement);
+
+    const prospectiveTotalSeconds = getSongsetDurationSeconds(
+      siblingRows
+        .filter((sibling) => !sibling.recordingDeletedAt)
+        .map((sibling) =>
+          toArrangementInput({
+            arrangementSteps: sibling.id === itemId ? serialized : sibling.arrangementSteps,
+            gapBeats: sibling.gapBeats,
+            crossfadeEnabled: sibling.crossfadeEnabled,
+            crossfadeDurationSeconds: sibling.crossfadeDurationSeconds,
+            tempoBpm: sibling.tempoBpm,
+            durationSeconds: sibling.durationSeconds,
+          })
+        )
+    );
+    if (
+      prospectiveTotalSeconds != null &&
+      prospectiveTotalSeconds > SONGSET_MAX_DURATION_SECONDS
+    ) {
+      throw new SongsetRenderValidationError(
+        "SONGSET_TOO_LONG",
+        `Songset exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes`
+      );
+    }
+  }
+
+  const now = new Date();
+  await db
+    .update(songsetItems)
+    .set({ arrangementSteps: serialized, updatedAt: now })
+    .where(eq(songsetItems.id, itemId));
+  await db.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+
+  const updated = await db.query.songsetItems.findFirst({
+    where: eq(songsetItems.id, itemId),
+    with: {
+      song: true,
+      recording: {
+        with: {
+          lyricMarks: {
+            columns: { id: true },
+            where: eq(lyricMarks.userId, userId),
+          },
+        },
+      },
+    },
+  });
+
+  if (!updated) return null;
+
+  return mapRelationalSongsetItem(updated);
+}
+
+export interface SongsetRenderMetrics {
+  /** Owned, visible items in play order. */
+  items: { id: string }[];
+  songCount: number;
+  /** Arranged selected-audio total (last item's end); null when unknown. */
+  songsetDurationSeconds: number | null;
+}
+
+/**
+ * Shared render admission read (spec §2.7): owner-scoped visible items plus
+ * the arranged selected-audio duration, with full analysis validation for
+ * every non-NULL arrangement. Throws typed errors the render entry points map
+ * to 409 (analysis) / 400 (over-limit is compared by the caller).
+ */
+export async function getSongsetRenderMetrics(
+  songsetId: string,
+  userId: number
+): Promise<SongsetRenderMetrics> {
+  const songset = await db.query.songsets.findFirst({
+    where: and(eq(songsets.id, songsetId), eq(songsets.userId, userId)),
+  });
+
+  if (!songset) {
+    throw new SongsetRenderValidationError(
+      "SONGSET_NOT_FOUND",
+      "Songset not found or access denied"
+    );
+  }
+
+  const rows = await db
+    .select(arrangementItemColumns)
+    .from(songsetItems)
+    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+    .where(eq(songsetItems.songsetId, songsetId))
+    .orderBy(asc(songsetItems.position));
+
+  const items = rows.filter((row) => !row.recordingDeletedAt);
+
+  for (const row of items) {
+    if (row.arrangementSteps == null) continue;
+    if (row.durationSeconds == null) {
+      throw new SongsetRenderValidationError("ARRANGEMENT_ANALYSIS_UNAVAILABLE");
+    }
+    const validated = validateSongArrangement(
+      row.arrangementSteps,
+      parseRecordingSections(row.recordingSections),
+      parseRecordingBeats(row.recordingBeats),
+      row.durationSeconds
+    );
+    if (!validated.ok) {
+      throw analysisValidationError(validated.code);
+    }
+  }
+
+  return {
+    items: items.map((row) => ({ id: row.id })),
+    songCount: items.length,
+    songsetDurationSeconds: getSongsetDurationSeconds(items.map(toArrangementInput)),
+  };
 }
 
 export async function duplicateSongset(
@@ -1402,6 +1742,8 @@ export async function duplicateSongset(
       crossfadeDurationSeconds: item.crossfadeDurationSeconds,
       keyShiftSemitones: item.keyShiftSemitones,
       tempoRatio: item.tempoRatio,
+      // Verbatim, even malformed: duplication must not drop or rewrite it.
+      arrangementSteps: item.arrangementSteps,
     }));
 
     await db.insert(songsetItems).values(itemsToInsert);

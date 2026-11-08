@@ -66,11 +66,16 @@ describe("SongsetEditor", () => {
         durationSeconds: 180,
         tempoBpm: 120,
         musicalKey: "G",
+        sections: [{ label: "Verse", start: 0, end: 30 }],
+        beats: [0, 30],
       },
       gapBeats: 2,
       crossfadeEnabled: 0,
       keyShiftSemitones: 0,
       tempoRatio: 1.0,
+      arrangementSteps: null,
+      arrangedDurationSeconds: 180,
+      arrangementAnalysisAvailable: true,
     },
     {
       id: "item-2",
@@ -90,12 +95,17 @@ describe("SongsetEditor", () => {
         durationSeconds: 240,
         tempoBpm: 100,
         musicalKey: "A",
+        sections: [{ label: "Verse", start: 0, end: 30 }],
+        beats: [0, 30],
       },
       gapBeats: 2,
       crossfadeEnabled: 1,
       keyShiftSemitones: 0,
       tempoRatio: 1.0,
       markedLineCount: 2,
+      arrangementSteps: null,
+      arrangedDurationSeconds: 240,
+      arrangementAnalysisAvailable: true,
     },
   ];
 
@@ -105,6 +115,7 @@ describe("SongsetEditor", () => {
     onUpdateItems: vi.fn().mockResolvedValue(undefined),
     onRemoveItem: vi.fn().mockResolvedValue(undefined),
     onUpdateTransition: vi.fn().mockResolvedValue(undefined),
+    onEditArrangement: vi.fn(),
     onRender: vi.fn(),
     onPlay: vi.fn(),
     onRetry: vi.fn(),
@@ -206,6 +217,32 @@ describe("SongsetEditor", () => {
       });
 
       expect(onPlay).toHaveBeenCalled();
+    });
+
+    it("calls onEditArrangement when a row Arrange action is clicked", () => {
+      const onEditArrangement = vi.fn();
+      renderEditor({ onEditArrangement });
+
+      fireEvent.click(screen.getByTestId("arrange-button-item-1"));
+
+      expect(onEditArrangement).toHaveBeenCalledWith("item-1");
+    });
+
+    it("blocks Render and explains when an arrangement leaves duration unknown", async () => {
+      const onRender = vi.fn();
+      const items = mockItems.map((item, index) =>
+        index === 0 ? { ...item, arrangedDurationSeconds: null } : item
+      );
+      renderEditor({ onRender, items });
+
+      expect(screen.getByText("Arrangement unavailable")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^render$/i }));
+      });
+
+      expect(onRender).not.toHaveBeenCalled();
     });
 
     it("opens edit description dialog when clicked", async () => {

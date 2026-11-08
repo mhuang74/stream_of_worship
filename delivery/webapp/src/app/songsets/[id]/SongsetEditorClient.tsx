@@ -6,6 +6,8 @@ import dynamic from "next/dynamic";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
+import type { SongArrangement, RecordingSection, ArrangementItemInput } from "@/lib/arrangements";
+import { getItemDurationSeconds, getSongsetDurationSeconds } from "@/lib/arrangements";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { toast } from "sonner";
@@ -33,6 +35,14 @@ const BrowseSheet = dynamic(
 
 const ShareDialog = dynamic(
   () => import("@/components/share/ShareDialog").then((m) => ({ default: m.ShareDialog })),
+  { ssr: false }
+);
+
+const ArrangementEditorSheet = dynamic(
+  () =>
+    import("@/components/songset/ArrangementEditorSheet").then((m) => ({
+      default: m.ArrangementEditorSheet,
+    })),
   { ssr: false }
 );
 
@@ -77,8 +87,13 @@ interface ApiSongsetItem {
     tempoBpm: number | null;
     musicalKey: string | null;
     theme?: string | null;
+    /** #283 exposes parsed analysis; older responses omit it. */
+    sections?: RecordingSection[] | null;
+    beats?: number[];
   } | null;
   markedLineCount?: number;
+  /** Raw persisted arrangement JSON; undefined when the API predates #283. */
+  arrangementSteps?: string | null;
 }
 
 interface ApiResponse {
@@ -104,25 +119,155 @@ interface SongsetEditorClientProps {
   initialData: ApiResponse;
 }
 
-function transformItems(items: ApiSongsetItem[]): SongListItem[] {
-  return items.map((item) => ({
+/** Arrangement input shape shared with the canonical duration helpers. */
+function toArrangementInput(item: SongListItem): ArrangementItemInput {
+  return {
+    arrangementSteps: item.arrangementSteps,
+    gapBeats: item.gapBeats,
+    crossfadeEnabled: item.crossfadeEnabled,
+    crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
+    tempoBpm: item.recording?.tempoBpm ?? null,
+    recording: { durationSeconds: item.recording?.durationSeconds ?? null },
+  };
+}
+
+function hasRecordingAnalysis(recording: SongListItem["recording"]): boolean {
+  return (
+    (recording?.sections?.length ?? 0) > 0 &&
+    (recording?.beats?.length ?? 0) > 0
+  );
+}
+
+function toSongListItem(item: ApiSongsetItem): SongListItem {
+  const arrangementSteps = item.arrangementSteps ?? null;
+  const recording = item.recording
+    ? {
+        ...item.recording,
+        hashPrefix: item.recordingHashPrefix ?? "",
+        sections: item.recording.sections ?? null,
+        beats: item.recording.beats ?? [],
+      }
+    : null;
+  return {
     id: item.id,
     songId: item.songId,
     position: item.position,
     song: item.song,
-    recording: item.recording
-      ? {
-          ...item.recording,
-          hashPrefix: item.recordingHashPrefix ?? "",
-        }
-      : null,
+    recording,
     gapBeats: item.gapBeats,
     crossfadeEnabled: item.crossfadeEnabled,
     crossfadeDurationSeconds: item.crossfadeDurationSeconds,
     keyShiftSemitones: item.keyShiftSemitones,
     tempoRatio: item.tempoRatio,
     markedLineCount: item.markedLineCount,
-  }));
+    arrangementSteps,
+    arrangedDurationSeconds: getItemDurationSeconds({
+      arrangementSteps,
+      recording: { durationSeconds: recording?.durationSeconds ?? null },
+    }),
+    arrangementAnalysisAvailable: hasRecordingAnalysis(recording),
+  };
+}
+
+/** Narrow subset of a saved item detail returned by the arrangement PUT. */
+interface ArrangementDetailFields {
+  arrangementSteps?: string | null;
+  recording?: {
+    durationSeconds?: number | null;
+    sections?: RecordingSection[] | null;
+    beats?: number[];
+  } | null;
+}
+
+function readSections(value: unknown): RecordingSection[] | null {
+  if (!Array.isArray(value)) return null;
+  const sections: RecordingSection[] = [];
+  for (const entry of value) {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !("label" in entry) ||
+      !("start" in entry) ||
+      !("end" in entry) ||
+      typeof entry.label !== "string" ||
+      typeof entry.start !== "number" ||
+      typeof entry.end !== "number"
+    ) {
+      return null;
+    }
+    sections.push({ label: entry.label, start: entry.start, end: entry.end });
+  }
+  return sections;
+}
+
+function readBeats(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const beats: number[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "number" || !Number.isFinite(entry)) return [];
+    beats.push(entry);
+  }
+  return beats;
+}
+
+/** Boundary-read the PUT response detail; unknown shapes yield no fields. */
+function readArrangementDetail(value: unknown): ArrangementDetailFields | null {
+  if (typeof value !== "object" || value === null) return null;
+  const detail: ArrangementDetailFields = {};
+  if ("arrangementSteps" in value) {
+    const steps = value.arrangementSteps;
+    if (steps === null || typeof steps === "string") {
+      detail.arrangementSteps = steps;
+    }
+  }
+  if ("recording" in value) {
+    const recording = value.recording;
+    if (recording === null) {
+      detail.recording = null;
+    } else if (typeof recording === "object" && recording !== null) {
+      const fields: NonNullable<ArrangementDetailFields["recording"]> = {
+        durationSeconds:
+          "durationSeconds" in recording && typeof recording.durationSeconds === "number"
+            ? recording.durationSeconds
+            : null,
+        sections: "sections" in recording ? readSections(recording.sections) : null,
+      };
+      if ("beats" in recording) {
+        fields.beats = readBeats(recording.beats);
+      }
+      detail.recording = fields;
+    }
+  }
+  return detail;
+}
+
+/** Merge a saved arrangement (and any detail returned by the PUT) back onto
+ * one item without touching sibling items. */
+function applySavedArrangement(
+  item: SongListItem,
+  arrangementSteps: string | null,
+  detail: ArrangementDetailFields | null
+): SongListItem {
+  const recordingDurationSeconds =
+    detail?.recording?.durationSeconds ?? item.recording?.durationSeconds ?? null;
+  const recording = item.recording
+    ? {
+        ...item.recording,
+        durationSeconds: recordingDurationSeconds,
+        sections: detail?.recording?.sections ?? item.recording.sections ?? null,
+        beats: detail?.recording?.beats ?? item.recording.beats ?? [],
+      }
+    : null;
+  return {
+    ...item,
+    recording,
+    arrangementSteps,
+    arrangedDurationSeconds: getItemDurationSeconds({
+      arrangementSteps,
+      recording: { durationSeconds: recordingDurationSeconds },
+    }),
+    arrangementAnalysisAvailable: hasRecordingAnalysis(recording),
+  };
 }
 
 export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorClientProps) {
@@ -154,7 +299,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     failedAt: initialData.failedAt,
     isArtifactsStale: initialData.isArtifactsStale,
   }));
-  const [items, setItems] = useState<SongListItem[]>(() => transformItems(initialData.items));
+  const [items, setItems] = useState<SongListItem[]>(() => initialData.items.map(toSongListItem));
   // Offline index record (client-only): cached ⇒ offline-copy play entry.
   const [isOfflineAvailable, setIsOfflineAvailable] = useState(false);
   useEffect(() => {
@@ -167,6 +312,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     };
   }, [songsetId]);
   const [isBrowseSheetOpen, setIsBrowseSheetOpen] = useState(false);
+  // Item whose arrangement draft the bottom sheet owns (null = sheet closed).
+  const [editingArrangementItemId, setEditingArrangementItemId] = useState<string | null>(null);
   // Render job R2 keys for the offline download control (moved from the
   // deleted Play screen, issue #211 follow-up Q16). Fetched once when the
   // songset has a completed render.
@@ -381,6 +528,81 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     [songsetId, markStale, t]
   );
 
+  // Save the sheet's draft as this item's arrangement (one PUT; no autosave,
+  // no render enqueue). Throws a translated error so the sheet stays open.
+  const handleSaveArrangement = useCallback(
+    async (arrangement: SongArrangement | null) => {
+      if (!editingArrangementItemId) return;
+
+      const response = await fetch(
+        `/api/songsets/${songsetId}/items/${editingArrangementItemId}/arrangement`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ arrangement }),
+        }
+      );
+
+      if (!response.ok) {
+        let code: string | null = null;
+        try {
+          const data = await response.json();
+          code = typeof data?.code === "string" ? data.code : null;
+        } catch {
+          // Non-JSON error bodies fall through to the generic message.
+        }
+        throw new Error(
+          code === "SONGSET_TOO_LONG"
+            ? t("arrangement.error.tooLong")
+            : code === "ARRANGEMENT_ANALYSIS_UNAVAILABLE" ||
+                code === "ARRANGEMENT_STALE"
+              ? t("arrangement.error.unavailableOrStale")
+              : response.status === 401
+                ? t("arrangement.error.unauthenticated")
+                : t("arrangement.error.saveFailed")
+        );
+      }
+
+      // #283 responses are the editor detail shape; accept it under `item` or
+      // at the top level, and fall back to the draft we just saved.
+      let detail: ArrangementDetailFields | null = null;
+      try {
+        const data: unknown = await response.json();
+        const candidate =
+          typeof data === "object" && data !== null && "item" in data
+            ? data.item
+            : data;
+        detail = readArrangementDetail(candidate);
+      } catch {
+        // A 200 without a body still saved the arrangement.
+      }
+
+      const savedSteps =
+        detail && detail.arrangementSteps !== undefined
+          ? detail.arrangementSteps
+          : arrangement === null
+            ? null
+            : JSON.stringify(arrangement);
+      const nextItems = items.map((item) =>
+        item.id === editingArrangementItemId
+          ? applySavedArrangement(item, savedSteps, detail)
+          : item
+      );
+      setItems(nextItems);
+      setSongset((prev) =>
+        prev
+          ? {
+              ...prev,
+              durationSeconds: getSongsetDurationSeconds(nextItems.map(toArrangementInput)),
+            }
+          : prev
+      );
+      markStale();
+      toast.success(t("arrangement.toast.saved"));
+    },
+    [editingArrangementItemId, songsetId, items, markStale, t]
+  );
+
   // Handle render
   const handleRender = useCallback(() => {
     router.push(`/songsets/${songsetId}/render`);
@@ -557,27 +779,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
 
       const item: ApiSongsetItem = await response.json();
 
-      setItems((prev) => [
-        ...prev,
-        {
-          id: item.id,
-          songId: item.songId,
-          position: item.position,
-          song: item.song,
-          recording: item.recording
-            ? {
-                ...item.recording,
-                hashPrefix: item.recordingHashPrefix ?? "",
-              }
-            : null,
-          gapBeats: item.gapBeats,
-          crossfadeEnabled: item.crossfadeEnabled,
-          crossfadeDurationSeconds: item.crossfadeDurationSeconds,
-          keyShiftSemitones: item.keyShiftSemitones,
-          tempoRatio: item.tempoRatio,
-          markedLineCount: item.markedLineCount,
-        },
-      ]);
+      setItems((prev) => [...prev, toSongListItem(item)]);
 
       setSongset((prev) =>
         prev
@@ -594,6 +796,10 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     },
     [items.length, songsetId, t]
   );
+
+  const editingArrangementItem = editingArrangementItemId
+    ? items.find((item) => item.id === editingArrangementItemId) ?? null
+    : null;
 
   if (isLoading) {
     return (
@@ -624,6 +830,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         onUpdateItems={handleUpdateItems}
         onRemoveItem={handleRemoveItem}
         onUpdateTransition={handleUpdateTransition}
+        onEditArrangement={setEditingArrangementItemId}
         onRender={handleRender}
         onPlay={handlePlay}
         onRetry={handleRetry}
@@ -660,6 +867,18 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         existingSongIds={items.map((item) => item.songId)}
         itemCount={items.length}
       />
+      {editingArrangementItem && (
+        <ArrangementEditorSheet
+          key={editingArrangementItem.id}
+          isOpen
+          onOpenChange={(open) => {
+            if (!open) setEditingArrangementItemId(null);
+          }}
+          item={editingArrangementItem}
+          items={items}
+          onSave={handleSaveArrangement}
+        />
+      )}
       <ShareDialog
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}

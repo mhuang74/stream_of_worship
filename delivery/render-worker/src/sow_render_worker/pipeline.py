@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import signal
 import time
@@ -9,6 +10,7 @@ from typing import Any
 import psycopg2
 import psycopg2.extras
 
+from sow_render_worker.arrangements import validate_arrangement
 from sow_render_worker.asset_fetcher import AssetFetcher
 from sow_render_worker.audio_engine import SongsetItem, generate_songset_audio
 from sow_render_worker.chapters import generate_chapters_manifest
@@ -127,8 +129,11 @@ def fetch_songset_items(
             "  si.crossfade_duration_seconds, "
             "  si.key_shift_semitones, "
             "  si.tempo_ratio, "
+            "  si.arrangement_steps, "
             "  r.tempo_bpm, "
             "  r.duration_seconds, "
+            "  r.sections, "
+            "  r.beats, "
             "  r.content_hash AS recording_content_hash, "
             "  r.deleted_at, "
             "  s.title AS song_title "
@@ -184,6 +189,28 @@ def fetch_songset_items(
         raise ValueError(
             f"Songset contains {len(deleted_items)} soft-deleted recording(s): {hashes}. "
             f"Run 'sow-admin maintenance repair-songsets' to fix stale references."
+        )
+
+    # Re-validate every saved arrangement against the Recording's current
+    # analysis. A stale or malformed arrangement must fail the render with the
+    # repair-or-reset error instead of silently rendering the full Recording.
+    # An item without a Recording is left alone: the audio engine already fails
+    # such a render with "Item <id> has no recording".
+    for i, (item, row) in enumerate(zip(items, rows)):
+        if not item.recording_hash_prefix:
+            continue
+        steps = validate_arrangement(
+            row["arrangement_steps"],
+            row["sections"],
+            row["beats"],
+            row["duration_seconds"],
+        )
+        if steps is None:
+            continue
+        items[i] = dataclasses.replace(
+            item,
+            arrangement_steps=steps,
+            duration_seconds=sum(step.duration_seconds for step in steps),
         )
 
     return songset_name, items

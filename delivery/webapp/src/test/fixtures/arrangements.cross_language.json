@@ -1,0 +1,90 @@
+{
+  "description": "Shared numeric fixture for issue #282: the webapp (src/lib/arrangements.ts) and render-worker (arrangements.py) test suites both build snapped steps from these sections/beats and assert the expected bounds match to 1e-9. Beats are deliberately unsorted, contain a duplicate, an out-of-duration value, and two values whose 6th-decimal rounding is a half-up boundary (2.0000005 -> 2.000001, 22.0000004 -> 22.0).",
+  "durationSeconds": 120.0,
+  "sections": [
+    { "label": "intro", "start": 0.4, "end": 4.3 },
+    { "label": "verse", "start": 4.6, "end": 30.1 },
+    { "label": "chorus", "start": 30.5, "end": 59.8 },
+    { "label": "bridge", "start": 60.0, "end": 90.25 },
+    { "label": "tag", "start": 2.0, "end": 22.0 },
+    { "label": "outro", "start": 95.0, "end": 119.99 }
+  ],
+  "beats": [
+    130.0,
+    4.5,
+    0.0,
+    2.0000005,
+    4.0,
+    4.5,
+    8.0,
+    16.0,
+    12.0,
+    20.0,
+    22.0000004,
+    24.0,
+    28.0,
+    30.0,
+    31.0,
+    32.0,
+    36.0,
+    40.0,
+    44.0,
+    48.0,
+    52.0,
+    56.0,
+    60.0,
+    64.0,
+    68.0,
+    72.0,
+    76.0,
+    80.0,
+    84.0,
+    88.0,
+    92.0,
+    96.0,
+    100.0,
+    104.0,
+    108.0,
+    112.0,
+    116.0,
+    120.0
+  ],
+  "expectedSteps": [
+    {
+      "sectionIndex": 0,
+      "label": "intro",
+      "startSeconds": 0.0,
+      "endSeconds": 4.5
+    },
+    {
+      "sectionIndex": 1,
+      "label": "verse",
+      "startSeconds": 4.5,
+      "endSeconds": 30.0
+    },
+    {
+      "sectionIndex": 2,
+      "label": "chorus",
+      "startSeconds": 30.0,
+      "endSeconds": 60.0
+    },
+    {
+      "sectionIndex": 3,
+      "label": "bridge",
+      "startSeconds": 60.0,
+      "endSeconds": 92.0
+    },
+    {
+      "sectionIndex": 4,
+      "label": "tag",
+      "startSeconds": 2.000001,
+      "endSeconds": 22.0
+    },
+    {
+      "sectionIndex": 5,
+      "label": "outro",
+      "startSeconds": 96.0,
+      "endSeconds": 120.0
+    }
+  ]
+}

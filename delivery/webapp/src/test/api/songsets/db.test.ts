@@ -221,7 +221,11 @@ describe("listSongsetSummaries", () => {
         lastFailedRenderJobId: null,
         lastCompletedRenderJobId: null,
         itemCount: 3,
-        durationSeconds: 120,
+        itemDurationInputs: [
+          { arrangementSteps: null, durationSeconds: 40, gapBeats: 2, crossfadeEnabled: 0, crossfadeDurationSeconds: null, tempoBpm: 120 },
+          { arrangementSteps: null, durationSeconds: 40, gapBeats: 2, crossfadeEnabled: 0, crossfadeDurationSeconds: null, tempoBpm: 120 },
+          { arrangementSteps: null, durationSeconds: 40, gapBeats: 2, crossfadeEnabled: 0, crossfadeDurationSeconds: null, tempoBpm: 120 },
+        ],
         latestItemUpdatedAt: null,
         latestJobStatus: null,
         latestJobCompletedAt: null,
@@ -240,8 +244,67 @@ describe("listSongsetSummaries", () => {
 
     expect(result.songsets).toHaveLength(1);
     expect(result.songsets[0].itemCount).toBe(3);
-    expect(result.songsets[0].durationSeconds).toBe(120);
+    // Arranged total is computed in TypeScript from the JSON aggregate:
+    // 40 + 1s gap + 40 + 1s gap + 40 at 120 BPM (2 beats = 1s).
+    expect(result.songsets[0].durationSeconds).toBeCloseTo(122);
     expect(result.songsets[0].renderState).toBe("unrendered");
+  });
+
+  it("sums repeated arrangement Steps and returns null for invalid JSON", async () => {
+    const arrangedSteps = JSON.stringify({
+      version: 1,
+      steps: [
+        { sectionIndex: 0, label: "intro", startSeconds: 0, endSeconds: 5 },
+        { sectionIndex: 0, label: "intro", startSeconds: 0, endSeconds: 5 },
+      ],
+    });
+    const mockRows = [
+      {
+        id: "ss-arranged",
+        name: "Arranged",
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        latestRenderJobId: null,
+        lastFailedRenderJobId: null,
+        lastCompletedRenderJobId: null,
+        itemCount: 1,
+        itemDurationInputs: [
+          { arrangementSteps: arrangedSteps, durationSeconds: 300, gapBeats: 2, crossfadeEnabled: 0, crossfadeDurationSeconds: null, tempoBpm: 120 },
+        ],
+        latestItemUpdatedAt: null,
+        latestJobStatus: null,
+        latestJobCompletedAt: null,
+      },
+      {
+        id: "ss-invalid",
+        name: "Invalid",
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        latestRenderJobId: null,
+        lastFailedRenderJobId: null,
+        lastCompletedRenderJobId: null,
+        itemCount: 1,
+        itemDurationInputs: [
+          { arrangementSteps: "{not json", durationSeconds: 300, gapBeats: 2, crossfadeEnabled: 0, crossfadeDurationSeconds: null, tempoBpm: 120 },
+        ],
+        latestItemUpdatedAt: null,
+        latestJobStatus: null,
+        latestJobCompletedAt: null,
+      },
+    ];
+
+    const chain = createSelectChain(mockRows);
+    const countChain = createSelectChain([{ count: 2 }]);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(chain as any)
+      .mockReturnValueOnce(countChain as any);
+
+    const result = await listSongsetSummaries(1, 50, 0);
+
+    expect(result.songsets[0].durationSeconds).toBe(10);
+    expect(result.songsets[1].durationSeconds).toBeNull();
   });
 
   it("returns total count from separate count query", async () => {

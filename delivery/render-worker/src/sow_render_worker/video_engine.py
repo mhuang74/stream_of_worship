@@ -22,7 +22,7 @@ from sow_render_worker.frame_renderer import (
     TitleCardConfig,
     VideoTemplateName,
 )
-from sow_render_worker.lrc_parser import GlobalLRCLine, convert_to_global_timeline, parse_lrc
+from sow_render_worker.lrc_parser import GlobalLRCLine, parse_lrc, remap_lrc_to_clips
 
 logger = logging.getLogger(__name__)
 
@@ -191,10 +191,8 @@ class VideoEngine:
             title = segment.item.song_title or (
                 str(segment.item.song_id) if segment.item.song_id else f"song-{i}"
             )
-            global_lyrics = convert_to_global_timeline(
-                local_lyrics, segment.start_time_seconds, title
-            )
-            all_lyrics.extend(global_lyrics)
+            remapped_lyrics = remap_lrc_to_clips(local_lyrics, segment.clips, title)
+            all_lyrics.extend(remapped_lyrics)
 
             segment_end = segment.start_time_seconds + segment.duration_seconds
             chapters.append(
@@ -209,9 +207,9 @@ class VideoEngine:
                     lines=tuple(
                         {
                             "text": line.text,
-                            "startSeconds": segment.start_time_seconds + line.time_seconds,
+                            "startSeconds": line.global_time_seconds,
                         }
-                        for line in local_lyrics
+                        for line in remapped_lyrics
                     ),
                 )
             )

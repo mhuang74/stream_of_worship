@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
 
-from sow_render_worker.audio_engine import AudioSegmentInfo, SongsetItem
-from sow_render_worker.chapters import Chapter, ChaptersManifest
+from sow_render_worker.audio_engine import AudioClipInfo, AudioSegmentInfo, SongsetItem
+from sow_render_worker.chapters import Chapter, ChaptersManifest, generate_chapters_manifest
 from sow_render_worker.frame_renderer import (
     FONT_SIZE_PRESETS,
     VIDEO_TEMPLATES,
@@ -46,6 +46,7 @@ def _make_item(**overrides) -> SongsetItem:
         tempo_ratio=None,
         tempo_bpm=None,
         duration_seconds=None,
+        arrangement_steps=None,
     )
     defaults.update(overrides)
     return SongsetItem(**defaults)
@@ -53,12 +54,22 @@ def _make_item(**overrides) -> SongsetItem:
 
 def _make_segment(**overrides) -> AudioSegmentInfo:
     item = overrides.pop("item", _make_item())
+    start_time_seconds = overrides.get("start_time_seconds", 0.0)
+    duration_seconds = overrides.get("duration_seconds", 180.0)
     defaults = dict(
         item=item,
         audio_path="/tmp/audio.mp3",
-        start_time_seconds=0.0,
-        duration_seconds=180.0,
+        start_time_seconds=start_time_seconds,
+        duration_seconds=duration_seconds,
         gap_before_seconds=0.0,
+        clips=(
+            AudioClipInfo(
+                audio_path="/tmp/audio.mp3",
+                source_start_seconds=0.0,
+                source_end_seconds=duration_seconds,
+                start_time_seconds=start_time_seconds,
+            ),
+        ),
     )
     defaults.update(overrides)
     return AudioSegmentInfo(**defaults)
@@ -722,6 +733,114 @@ class TestGenerateVideo:
         assert result.width == 1920
         assert result.height == 1080
         assert result.fps == 24
+
+    def test_arranged_clips_remap_and_repeat_lyrics(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        lrc = "[00:01.00]line at 1\n[00:11.00]line at 11\n[00:21.00]line at 21"
+        fetcher = MockAssetFetcher(lrc_content=lrc)
+        engine = VideoEngine(fetcher, include_title_card=False)
+
+        clips = (
+            AudioClipInfo("/tmp/audio.mp3", 10.0, 20.0, 0.0),
+            AudioClipInfo("/tmp/audio.mp3", 0.0, 10.0, 10.0),
+            AudioClipInfo("/tmp/audio.mp3", 10.0, 20.0, 20.0),
+        )
+        segment = _make_segment(
+            start_time_seconds=0.0, duration_seconds=30.0, clips=clips
+        )
+        audio_info = {
+            "duration_seconds": 30.0,
+            "duration_ms": 30000,
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+            patch.object(engine, "generate_blank_video") as mock_blank,
+        ):
+            engine.generate_video(
+                "/tmp/audio.mp3", [segment], output_path, job_id="test-job"
+            )
+
+        mock_blank.assert_not_called()
+        lyrics = mock_encode.call_args[0][4]
+        assert [(line.text, line.global_time_seconds) for line in lyrics] == [
+            ("line at 11", 1.0),
+            ("line at 1", 11.0),
+            ("line at 11", 21.0),
+        ]
+
+        # The same segment through real chapter generation yields identical
+        # remapped lyrics (chapters.json and MP4 frames agree).
+        manifest = generate_chapters_manifest([segment], lambda hash_prefix: lrc, 30.0)
+        assert [
+            (line.text, line.start_seconds) for line in manifest.chapters[0].lines
+        ] == [(line.text, line.global_time_seconds) for line in lyrics]
+
+    def test_omitted_section_contributes_no_lyrics(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher(
+            lrc_content="[00:01.00]kept\n[00:15.00]omitted"
+        )
+        engine = VideoEngine(fetcher, include_title_card=False)
+
+        segment = _make_segment(
+            start_time_seconds=0.0,
+            duration_seconds=10.0,
+            clips=(AudioClipInfo("/tmp/audio.mp3", 0.0, 10.0, 0.0),),
+        )
+        audio_info = {
+            "duration_seconds": 10.0,
+            "duration_ms": 10000,
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+        ):
+            engine.generate_video(
+                "/tmp/audio.mp3", [segment], output_path, job_id="test-job"
+            )
+
+        lyrics = mock_encode.call_args[0][4]
+        assert [line.text for line in lyrics] == ["kept"]
+
+    def test_boundary_timestamp_belongs_to_next_clip(self, tmp_path):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher(lrc_content="[00:05.00]boundary")
+        engine = VideoEngine(fetcher, include_title_card=False)
+
+        segment = _make_segment(
+            start_time_seconds=0.0,
+            duration_seconds=10.0,
+            clips=(
+                AudioClipInfo("/tmp/audio.mp3", 0.0, 5.0, 0.0),
+                AudioClipInfo("/tmp/audio.mp3", 5.0, 10.0, 5.0),
+            ),
+        )
+        audio_info = {
+            "duration_seconds": 10.0,
+            "duration_ms": 10000,
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+        ):
+            engine.generate_video(
+                "/tmp/audio.mp3", [segment], output_path, job_id="test-job"
+            )
+
+        lyrics = mock_encode.call_args[0][4]
+        assert [(line.text, line.global_time_seconds) for line in lyrics] == [
+            ("boundary", 5.0),
+        ]
 
     def test_blank_timing_lines_mixed_with_lyrics_encode_video(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")

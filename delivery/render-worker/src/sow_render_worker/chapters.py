@@ -64,6 +64,7 @@ class SegmentInfo(Protocol):
     item: object
     start_time_seconds: float
     duration_seconds: float
+    clips: tuple[Any, ...]
 
 
 class LrcDownloadCallback(Protocol):
@@ -71,21 +72,26 @@ class LrcDownloadCallback(Protocol):
 
 
 class LyricsCallback(Protocol):
-    async def __call__(self, hash_prefix: str, start_seconds: float) -> list[ChapterLine]: ...
+    async def __call__(self, hash_prefix: str, segment: SegmentInfo) -> list[ChapterLine]: ...
 
 
 def build_chapters_from_segments(
     segments: list[SegmentInfo],
-    get_lyrics: Callable[[str, float], list[ChapterLine] | object],
+    get_lyrics: Callable[[str, SegmentInfo], list[ChapterLine] | object],
 ) -> list[Chapter]:
     def _build_chapter(i: int, segment: SegmentInfo) -> Chapter:
-        start_seconds = segment.start_time_seconds
-        end_seconds = start_seconds + segment.duration_seconds
+        clips = segment.clips
+        if clips:
+            start_seconds = clips[0].start_time_seconds
+            end_seconds = clips[-1].start_time_seconds + clips[-1].duration_seconds
+        else:
+            start_seconds = segment.start_time_seconds
+            end_seconds = start_seconds + segment.duration_seconds
         item = segment.item
         song_title = getattr(item, "song_title", None) or getattr(item, "song_id", None) or f"Song {i + 1}"
         hash_prefix = getattr(item, "recording_hash_prefix", None)
         if hash_prefix:
-            result = get_lyrics(hash_prefix, start_seconds)
+            result = get_lyrics(hash_prefix, segment)
             lines = result
         else:
             lines = []
@@ -106,21 +112,27 @@ def generate_chapters_manifest(
     download_lrc: Callable[[str], str | None | object],
     total_duration_seconds: float,
 ) -> ChaptersManifest:
-    from .lrc_parser import parse_lrc
+    from .lrc_parser import parse_lrc, remap_lrc_to_clips
 
     def get_lyrics(
-        hash_prefix: str, start_seconds: float
+        hash_prefix: str, segment: SegmentInfo
     ) -> list[ChapterLine]:
         try:
             lrc_content = download_lrc(hash_prefix)
             if lrc_content:
                 local_lyrics = parse_lrc(lrc_content)
+                item = segment.item
+                title = (
+                    getattr(item, "song_title", None)
+                    or getattr(item, "song_id", None)
+                    or hash_prefix
+                )
                 return [
                     ChapterLine(
                         text=line.text,
-                        start_seconds=start_seconds + line.time_seconds,
+                        start_seconds=line.global_time_seconds,
                     )
-                    for line in local_lyrics
+                    for line in remap_lrc_to_clips(local_lyrics, segment.clips, title)
                 ]
         except Exception:
             logger.warning("Failed to parse LRC for hash_prefix %s", hash_prefix, exc_info=True)
