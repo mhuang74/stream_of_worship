@@ -712,8 +712,11 @@ export function createArrangementPreviewSession(
     // Gesture unlock must run before ANY timer-driven play (iOS autoplay).
     unlockElements();
     const position = clampToRange(pausedPositionSeconds, totalSeconds);
-    const playPromises = applyElementsAt(position, true);
+    // Set the hold BEFORE starting anything: a synchronous play() throw routes
+    // through safePlay → failPlayback, which clears the hold, and the tail must
+    // then abort instead of anchoring a clock over a reported failure.
     startupPending = true;
+    const playPromises = applyElementsAt(position, true);
     notify();
     // Resolve once every newly-started element is audible (metadata + play),
     // THEN anchor the clock: context time must not advance while media buffers.
