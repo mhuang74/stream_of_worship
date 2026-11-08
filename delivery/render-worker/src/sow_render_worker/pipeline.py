@@ -12,7 +12,11 @@ import psycopg2.extras
 
 from sow_render_worker.arrangements import validate_arrangement
 from sow_render_worker.asset_fetcher import AssetFetcher
-from sow_render_worker.audio_engine import SongsetItem, generate_songset_audio
+from sow_render_worker.audio_engine import (
+    SongsetItem,
+    calculate_total_duration,
+    generate_songset_audio,
+)
 from sow_render_worker.chapters import generate_chapters_manifest
 from sow_render_worker.db import (
     RenderProgress,
@@ -329,7 +333,13 @@ def execute_render_pipeline(
         if not items:
             raise ValueError("Songset has no items")
 
-        total_duration = sum(item.duration_seconds or 0 for item in items)
+        # Admission uses the arranged timeline (crossfade overlap shortens it),
+        # matching both the mix and the webapp's own admission check. A layout
+        # of 0 means no item had a known duration — fall back to the raw sum as
+        # a rough upper bound.
+        total_duration = calculate_total_duration(items, asset_fetcher)
+        if total_duration <= 0:
+            total_duration = sum(item.duration_seconds or 0 for item in items)
         if len(items) > MAX_SONGSET_ITEMS or total_duration > MAX_SONGSET_DURATION_SECONDS:
             raise ValueError(
                 f"Songset exceeds limit: {len(items)} songs / {total_duration:.0f}s "

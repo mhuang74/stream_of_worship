@@ -1183,6 +1183,90 @@ class TestExecuteRenderPipeline:
             mock_fail.assert_called_once()
             assert "Songset exceeds limit" in mock_fail.call_args[0][3]
 
+    def test_crossfade_overlap_admitted_below_1500s_limit(self):
+        # 751 + 751 raw-sums to 1502 (old check rejected); the 5s crossfade
+        # overlap lays the set out at 1497s on the arranged timeline, which is
+        # what the mix and the webapp admission both see.
+        job = _make_render_job()
+        items = [
+            _make_songset_item(id="item_1", position=0, duration_seconds=751.0),
+            _make_songset_item(
+                id="item_2",
+                song_id="song_2",
+                position=1,
+                duration_seconds=751.0,
+                crossfade_enabled=1,
+                crossfade_duration_seconds=5.0,
+                tempo_bpm=120.0,
+            ),
+        ]
+        audio_result = _make_audio_result(items)
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result) as mock_audio, \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve_class.return_value = MagicMock()
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+            mock_audio.assert_called_once()
+            mock_fail.assert_not_called()
+
+    def test_crossfade_overlap_over_1500s_limit_still_raises(self):
+        # 755 + (755 - 5) = 1505s on the arranged timeline — still over the cap.
+        job = _make_render_job()
+        items = [
+            _make_songset_item(id="item_1", position=0, duration_seconds=755.0),
+            _make_songset_item(
+                id="item_2",
+                song_id="song_2",
+                position=1,
+                duration_seconds=755.0,
+                crossfade_enabled=1,
+                crossfade_duration_seconds=5.0,
+                tempo_bpm=120.0,
+            ),
+        ]
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio") as mock_audio:
+
+            with pytest.raises(ValueError, match="Songset exceeds limit"):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+            mock_audio.assert_not_called()
+            mock_fail.assert_called_once()
+            assert "Songset exceeds limit" in mock_fail.call_args[0][3]
+
     def test_pipeline_skips_when_job_already_claimed(self):
         job = _make_render_job()
         mock_conn = MagicMock()
