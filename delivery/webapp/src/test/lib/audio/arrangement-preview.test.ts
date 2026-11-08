@@ -56,7 +56,8 @@ interface FakeAudio {
   removedAttributes: string[];
   loadCalls: () => number;
   pauseCalls: () => number;
-  setPlayMode: (mode: "resolve" | "reject") => void;
+  setPlayMode: (mode: "resolve" | "reject" | "defer") => void;
+  resolvePlays: () => void;
   dispatch: (type: string) => void;
 }
 
@@ -67,7 +68,8 @@ function makeFakeAudio(src: string): FakeAudio {
   let preload = "";
   let pauseCount = 0;
   let loadCount = 0;
-  let playMode: "resolve" | "reject" = "resolve";
+  let playMode: "resolve" | "reject" | "defer" = "resolve";
+  const pendingPlays: Array<() => void> = [];
   const playCalls: PlayCall[] = [];
   const currentTimeSets: number[] = [];
   const removedListeners: string[] = [];
@@ -99,6 +101,16 @@ function makeFakeAudio(src: string): FakeAudio {
       playCalls.push({ muted, currentTime });
       if (playMode === "reject") {
         return Promise.reject(new Error("play blocked"));
+      }
+      if (playMode === "defer") {
+        // Cold audio request: the media is not audible until the promise
+        // resolves (metadata fetch + buffer fill).
+        const { promise, resolve } = Promise.withResolvers<void>();
+        pendingPlays.push(() => {
+          paused = false;
+          resolve();
+        });
+        return promise;
       }
       paused = false;
       return Promise.resolve();
@@ -145,6 +157,9 @@ function makeFakeAudio(src: string): FakeAudio {
     pauseCalls: () => pauseCount,
     setPlayMode: (mode) => {
       playMode = mode;
+    },
+    resolvePlays: () => {
+      for (const resolve of pendingPlays.splice(0)) resolve();
     },
     dispatch: (type) => {
       for (const handler of [...(listeners.get(type) ?? [])]) handler();
@@ -434,6 +449,71 @@ describe("createArrangementPreviewSession", () => {
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(4, 6);
     context.currentTime = 999;
     expect(session.getTimelinePositionSeconds()).toBe(10);
+  });
+
+  it("starts the transport clock only after element play promises resolve", async () => {
+    const created: FakeAudio[] = [];
+    const fake = makeFakeContext();
+    const session = createArrangementPreviewSession(
+      [source({ itemId: "a", recordingDurationSeconds: 10 })],
+      {
+        createAudioContext: () => fake.context as unknown as AudioContext,
+        createAudioElement: (src) => {
+          const audio = makeFakeAudio(src);
+          audio.setPlayMode("defer");
+          created.push(audio);
+          return audio.element;
+        },
+        schedulerIntervalMs: 25,
+        rmsCheckDelayMs: 1000,
+      },
+    );
+
+    const playPromise = session.play();
+    // Still buffering: the transport clock must not advance.
+    expect(session.isPlaying()).toBe(false);
+    fake.context.currentTime = 3;
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(0, 6);
+    expect(created[0].element.paused).toBe(true);
+
+    created[0].resolvePlays();
+    await playPromise;
+    expect(session.isPlaying()).toBe(true);
+    // Anchor at context time 3 → no drift from the buffering window.
+    fake.context.currentTime = 3.025;
+    vi.advanceTimersByTime(25);
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(0.025, 6);
+  });
+
+  it("pause during the startup hold pauses elements and does not start the clock", async () => {
+    const created: FakeAudio[] = [];
+    const fake = makeFakeContext();
+    const session = createArrangementPreviewSession(
+      [source({ itemId: "a", recordingDurationSeconds: 10 })],
+      {
+        createAudioContext: () => fake.context as unknown as AudioContext,
+        createAudioElement: (src) => {
+          const audio = makeFakeAudio(src);
+          audio.setPlayMode("defer");
+          created.push(audio);
+          return audio.element;
+        },
+        schedulerIntervalMs: 25,
+        rmsCheckDelayMs: 1000,
+      },
+    );
+
+    const playPromise = session.play();
+    fake.context.currentTime = 3;
+    session.pause();
+    expect(session.isPlaying()).toBe(false);
+    expect(created[0].element.paused).toBe(true);
+
+    created[0].resolvePlays();
+    await playPromise;
+    // The held play() must not anchor a clock after the pause.
+    expect(session.isPlaying()).toBe(false);
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(0, 6);
   });
 
   it("crosses step boundaries by reassigning currentTime into the repeated clip", async () => {

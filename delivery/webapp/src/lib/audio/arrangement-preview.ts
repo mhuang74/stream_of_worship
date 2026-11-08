@@ -231,6 +231,9 @@ export function createArrangementPreviewSession(
   let audioContext: AudioContext | null = null;
   let contextClosed = false;
   let playing = false;
+  // play() is holding the transport origin until the initial elements' play()
+  // promises settle; elements are running while the clock is not.
+  let startupPending = false;
   let stopped = false;
   let fallbackMode = false;
   let rmsChecked = false;
@@ -562,6 +565,7 @@ export function createArrangementPreviewSession(
       message: `Playback failed for item ${itemId}`,
     };
     playing = false;
+    startupPending = false;
     stopTicker();
     cancelRmsCheck();
     pauseAllElements();
@@ -688,7 +692,7 @@ export function createArrangementPreviewSession(
   // ---------------------------------------------------------------------------
 
   async function play(): Promise<void> {
-    if (stopped || playing) return;
+    if (stopped || playing || startupPending) return;
     ensureElements();
     const context = ensureContext();
     // Crossfade items only; each element gets its source node exactly once.
@@ -704,21 +708,30 @@ export function createArrangementPreviewSession(
     // Gesture unlock must run before ANY timer-driven play (iOS autoplay).
     unlockElements();
     const position = clampToRange(pausedPositionSeconds, totalSeconds);
-    startTransportAt(position);
     const playPromises = applyElementsAt(position, true);
+    startupPending = true;
+    notify();
+    // Resolve once every newly-started element is audible (metadata + play),
+    // THEN anchor the clock: context time must not advance while media buffers.
+    await Promise.all(playPromises.map((p) => p.catch(() => {})));
+    if (stopped || !startupPending) {
+      startupPending = false;
+      return;
+    }
+    startupPending = false;
+    startTransportAt(position);
     scheduleGains(playStartedAtContextTime, position);
     armRmsCheck();
     notify();
-    // Resolve once every newly-started element is audible (metadata + play).
-    await Promise.all(playPromises.map((p) => p.catch(() => {})));
-    if (!stopped) {
-      notify();
-    }
   }
 
   function pause(): void {
-    if (stopped || !playing) return;
+    if (stopped || (!playing && !startupPending)) return;
+    // During the startup hold the clock never started, so
+    // getTimelinePositionSeconds() returns the position play() was about to
+    // begin at.
     pausedPositionSeconds = getTimelinePositionSeconds();
+    startupPending = false;
     playing = false;
     stopTicker();
     cancelRmsCheck();
@@ -738,9 +751,12 @@ export function createArrangementPreviewSession(
       notify();
       return;
     }
-    if (playing) {
+    if (playing || startupPending) {
       // Seek recompute: rebuild origin, active clips, offsets, and gain
-      // automation relative to the new context origin.
+      // automation relative to the new context origin. A seek during the
+      // startup hold anchors immediately, so the awaited play() tail aborts
+      // instead of re-anchoring a second time.
+      startupPending = false;
       pausedPositionSeconds = target;
       startTransportAt(target);
       applyElementsAt(target, true, true);
@@ -763,6 +779,7 @@ export function createArrangementPreviewSession(
     if (stopped) return;
     stopped = true;
     playing = false;
+    startupPending = false;
     stopTicker();
     cancelRmsCheck();
     for (const record of records) {
