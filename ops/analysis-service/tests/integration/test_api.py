@@ -333,6 +333,43 @@ class TestJobsEndpoints:
         assert job_type == JobType.COMPONENT_ANALYSIS
         assert request.options.all_components is True
 
+    def test_submit_beat_grid_job(self, client, mock_job_queue):
+        """Test submitting a beat-grid job (madmom only, no components)."""
+        captured_requests = []
+
+        original_submit = mock_job_queue.submit
+
+        async def capturing_submit(job_type, request):
+            captured_requests.append((job_type, request))
+            return await original_submit(job_type, request)
+
+        mock_job_queue.submit = capturing_submit
+
+        response = client.post(
+            "/api/v1/jobs/beat-grid",
+            json={"audio_url": "s3://bucket/a.mp3", "content_hash": "abc"},
+            headers={"Authorization": "Bearer test-api-key"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "job_abc123"
+        assert data["status"] == "queued"
+        assert len(captured_requests) == 1
+        job_type, request = captured_requests[0]
+        assert job_type == JobType.BEAT_GRID
+        assert request.content_hash == "abc"
+        assert request.skip_beat_cache is False
+
+    def test_submit_beat_grid_job_no_auth(self, client):
+        """Test submitting a beat-grid job without auth fails."""
+        response = client.post(
+            "/api/v1/jobs/beat-grid",
+            json={"audio_url": "s3://bucket/a.mp3", "content_hash": "abc"},
+        )
+
+        assert response.status_code == 401
+
     def test_get_job_status_includes_segmentation_mode_resolved(
         self, client, mock_job_queue
     ):

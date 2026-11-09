@@ -60,6 +60,7 @@ def _compute_lrc_cache_key(content_hash: str, lyrics_text: str, language: str = 
 
 from ..models import (
     AnalyzeJobRequest,
+    BeatGridJobRequest,
     ComponentAnalysisJobRequest,
     ComponentResult,
     EmbeddingJobRequest,
@@ -209,6 +210,10 @@ class JobQueue:
         # Separate semaphore for component analysis (librosa feature extraction, CPU/memory heavy).
         # Distinct from _fast_analyze_semaphore so backfill does not starve live fast_analyze traffic.
         self._component_semaphore = asyncio.Semaphore(settings.SOW_COMPONENT_MAX_CONCURRENT)
+        # Separate semaphore for beat-grid detection jobs (one Modal call each).
+        # Sized independently so a grid backfill does not queue behind component
+        # analysis; nothing CPU-heavy runs in this container.
+        self._beat_grid_semaphore = asyncio.Semaphore(settings.SOW_BEAT_GRID_MAX_CONCURRENT)
         # Caps concurrently *executing* LRC jobs (task-level), independent of the
         # YouTube-request rate limiter inside each job. Bounds restart-recovery
         # fan-out when many queued LRC jobs are requeued at once.
@@ -358,6 +363,7 @@ class JobQueue:
             ForcedAlignmentJobRequest,
             FastAnalyzeJobRequest,
             ComponentAnalysisJobRequest,
+            BeatGridJobRequest,
         ],
     ) -> Job:
         """Submit a new job to the queue.
@@ -527,6 +533,13 @@ class JobQueue:
                 if latest.status == JobStatus.CANCELLED:
                     return
                 await self._process_component_analysis_job(job)
+        elif job.type == JobType.BEAT_GRID:
+            # Detection is one remote Modal call; nothing runs in this container.
+            async with self._beat_grid_semaphore:
+                latest = self._jobs.get(job.id, job)
+                if latest.status == JobStatus.CANCELLED:
+                    return
+                await self._process_beat_grid_job(job)
 
         # Schedule cleanup for finished jobs (to prevent unbounded memory growth)
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
@@ -835,6 +848,150 @@ class JobQueue:
             job.error_message = str(e)
             job.stage = "error"
             logger.error(f"Fast analysis job failed: {e}")
+
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", stage="error", error_message=str(e)
+                )
+            except Exception as db_err:
+                logger.error(f"Failed to update job {job.id} in database: {db_err}")
+
+        finally:
+            job.updated_at = datetime.now(timezone.utc)
+
+    async def _process_beat_grid_job(self, job: Job) -> None:
+        """Process a beat-grid detection job.
+
+        Downloads audio from R2 and resolves the beat grid through the shared
+        cache path (:func:`get_or_detect_beat_grid`), which checks the local
+        cache, then R2 (``{hash12}/beat_grid.json``), then runs madmom on the
+        sow-downbeats Modal app and uploads the result. No components are
+        extracted and no LLM is called, so this is the cheap way to make a
+        recording arrangeable.
+
+        Args:
+            job: Job to process.
+        """
+        set_job_id(job.id)
+        job_start_time = time.time()
+        logger.info(f"Starting beat-grid job for audio: {job.request.audio_url}")
+
+        job.status = JobStatus.PROCESSING
+        job.updated_at = datetime.now(timezone.utc)
+        job.stage = "downloading"
+        job.progress = 0.1
+
+        try:
+            await self.job_store.update_job(
+                job.id, status="processing", stage="downloading", progress=0.1
+            )
+        except Exception as e:
+            logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        request = job.request
+        if not isinstance(request, BeatGridJobRequest):
+            job.status = JobStatus.FAILED
+            job.error_message = "Invalid request type for beat-grid job"
+            job.updated_at = datetime.now(timezone.utc)
+            try:
+                await self.job_store.update_job(
+                    job.id, status="failed", error_message="Invalid request type"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update job {job.id} in database: {e}")
+            return
+
+        try:
+            if not self.r2_client and settings.SOW_R2_ENDPOINT_URL:
+                self.initialize_r2(settings.SOW_R2_BUCKET, settings.SOW_R2_ENDPOINT_URL)
+
+            if not self.r2_client:
+                raise RuntimeError("R2 client not configured; cannot download audio for beat-grid job")
+
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                audio_path = temp_path / "audio.mp3"
+
+                with step_timer("Audio download from R2", logger):
+                    await self.r2_client.download_audio(request.audio_url, audio_path)
+
+                if not audio_path.exists() or audio_path.stat().st_size == 0:
+                    raise RuntimeError("Downloaded audio file is missing or empty")
+
+                job.stage = "detecting_beats"
+                job.progress = 0.4
+                try:
+                    await self.job_store.update_job(
+                        job.id, stage="detecting_beats", progress=0.4
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update job {job.id} in database: {e}")
+
+                with step_timer("Beat grid lookup / madmom detection", logger):
+                    grid = await get_or_detect_beat_grid(
+                        audio_path=audio_path,
+                        content_hash=request.content_hash,
+                        cache_manager=self.cache_manager,
+                        r2_client=self.r2_client,
+                        skip_beat_cache=request.skip_beat_cache,
+                    )
+
+                if grid is None:
+                    job.status = JobStatus.FAILED
+                    job.error_message = "madmom beat detection failed (see sow-downbeats logs)"
+                    job.stage = "failed"
+                    logger.error(f"Beat-grid job {job.id} failed: madmom returned no grid")
+                    try:
+                        await self.job_store.update_job(
+                            job.id,
+                            status="failed",
+                            stage="failed",
+                            error_message=job.error_message,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update job {job.id} in database: {e}")
+                    return
+
+                # madmom returns [[beat_time, beat_number], ...]; JobResult.beats is
+                # List[float], so keep the timestamps only. The full pair grid stays
+                # in beat_grid.json for callers that need the position (the admin CLI
+                # normalizes either shape).
+                raw_beats = grid.get("beats") or []
+                beats = [
+                    float(b[0]) if isinstance(b, (list, tuple)) else float(b) for b in raw_beats
+                ]
+                downbeats = grid.get("downbeats")
+                job.result = JobResult(beats=beats, downbeats=downbeats)
+
+                job.status = JobStatus.COMPLETED
+                job.progress = 1.0
+                job.stage = "complete"
+
+                total_elapsed = time.time() - job_start_time
+                logger.info(
+                    f"Beat-grid job completed in {total_elapsed:.2f}s "
+                    f"({len(beats or [])} beats, {len(downbeats or [])} downbeats)"
+                )
+
+                with step_timer("DB job update (complete)", logger):
+                    try:
+                        await self.job_store.update_job(
+                            job.id,
+                            status="completed",
+                            progress=1.0,
+                            stage="complete",
+                            result_json=job.result.model_dump_json(),
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update job {job.id} in database: {e}")
+
+        except Exception as e:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.stage = "error"
+            logger.error(f"Beat-grid job failed: {e}")
 
             try:
                 await self.job_store.update_job(

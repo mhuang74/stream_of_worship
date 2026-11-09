@@ -550,6 +550,29 @@ and passed through in the job payload `options` dict. See the
 and `reports/chorus_component_metadata_v5_impl_summary.md` for implementation
 details.
 
+## Beat-Grid Jobs (`POST /api/v1/jobs/beat-grid`)
+
+A `beat_grid` job resolves one recording's beat grid and caches it: it downloads
+the audio, calls `get_or_detect_beat_grid` (local cache → R2
+`{hash12}/beat_grid.json` → madmom on the `sow-downbeats` Modal app, then
+upload), and returns the beats/downbeats in `job.result`. No components are
+extracted and no LLM is called, so it is the cheap way to make a recording
+arrangeable in the webapp (which needs non-empty `sections` + `beats`).
+
+```json
+{"audio_url": "s3://bucket/<hash12>/audio.mp3",
+ "content_hash": "<sha256>",
+ "skip_beat_cache": false}
+```
+
+- Concurrency is capped by `SOW_BEAT_GRID_MAX_CONCURRENT` (default `0` =
+  cgroup-aware auto-detect capped at 4). Each job makes one Modal call; nothing
+  runs in this container.
+- Failures report `madmom beat detection failed (see sow-downbeats logs)`; the
+  Modal-side traceback is only in `modal app logs sow-downbeats`.
+- The admin CLI drives it end-to-end: `sow-admin audio beat-grid --stdin`, then
+  `sow-admin audio write-structure --stdin`. See the admin CLI README.
+
 ## Stopping the Service
 
 ```bash

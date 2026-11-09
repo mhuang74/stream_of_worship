@@ -28,7 +28,7 @@ class TestSettings:
             assert settings.SOW_MODAL_DOWNBEATS_CLASS_NAME == "DownbeatDetector"
             assert settings.SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS == 2
             assert settings.SOW_MODAL_DOWNBEATS_RETRY_DELAY_SECONDS == 5.0
-            assert settings.SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES == 150_000_000
+            assert settings.SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES == 200_000_000
             assert settings.SOW_ANALYSIS_CACHE_VERSION == 2
             assert settings.SOW_ANALYZE_MAX_CONCURRENT == 2
             assert settings.SOW_EMBEDDING_API_KEY == ""

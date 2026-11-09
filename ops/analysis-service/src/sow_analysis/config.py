@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # A value <= 0 means auto-detect (cgroup-aware on Linux, 1 elsewhere), capped at 4.
     SOW_COMPONENT_MAX_CONCURRENT: int = 0
 
+    # Beat-grid detection (madmom on the sow-downbeats Modal app) concurrency.
+    # Each job downloads the audio and makes one Modal call; nothing runs in this
+    # container. A value <= 0 means auto-detect (cgroup-aware on Linux), capped at 4.
+    SOW_BEAT_GRID_MAX_CONCURRENT: int = 0
+
     # Caps concurrently *executing* LRC (generate-lyrics) jobs at the task level,
     # independent of the YouTube-request rate limiter inside each job. Without
     # this, a restart that requeues many LRC jobs fans them all out at once and
@@ -87,6 +92,22 @@ class Settings(BaseSettings):
     @field_validator("SOW_COMPONENT_MAX_CONCURRENT")
     @classmethod
     def _validate_component_max_concurrent(cls, v: int) -> int:
+        """Compute cgroup-aware default when not explicitly configured (<=0).
+
+        Same pattern as SOW_FAST_ANALYZE_MAX_CONCURRENT.
+        """
+        if v > 0:
+            return v
+        import os
+
+        try:
+            return min(4, max(1, len(os.sched_getaffinity(0)) // 2))
+        except (AttributeError, OSError):  # macOS / unsupported
+            return 1
+
+    @field_validator("SOW_BEAT_GRID_MAX_CONCURRENT")
+    @classmethod
+    def _validate_beat_grid_max_concurrent(cls, v: int) -> int:
         """Compute cgroup-aware default when not explicitly configured (<=0).
 
         Same pattern as SOW_FAST_ANALYZE_MAX_CONCURRENT.
@@ -329,7 +350,7 @@ class Settings(BaseSettings):
     SOW_MODAL_DOWNBEATS_CLASS_NAME: str = "DownbeatDetector"
     SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS: int = 2
     SOW_MODAL_DOWNBEATS_RETRY_DELAY_SECONDS: float = 5.0
-    SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES: int = 150_000_000
+    SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES: int = 200_000_000
     SOW_ANALYSIS_CACHE_VERSION: int = 2  # bump: local allin1 CPU -> Modal GPU may shift BPM/beats/embedding values
     # Keeps ANALYZE jobs from all piling up client-side while Modal
     # max_containers=2 handles the GPU-side queue.
