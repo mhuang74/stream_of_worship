@@ -1,8 +1,9 @@
-# Song Arrangement Editor — file map
+# Song Arrangement Editor — dev guide
 
 Inventory of the source files behind the Song Arrangement Editor (issue #254, spec
-`specs/song_arrangement_editor.md`). Line counts were captured 2026-11-09 and drift as files
-change — treat them as size hints only.
+`specs/song_arrangement_editor.md`), the analysis data a Recording needs before it can be arranged,
+and the Recordings currently verified usable. Line counts were captured 2026-11-09 and drift as
+files change — treat them as size hints only.
 
 ## What the feature is
 
@@ -11,6 +12,38 @@ ordered Steps. It persists as JSON in `songset_items.arrangement_steps` (SQL NUL
 original full Recording), previews in the browser as a song-scoped window (this song plus an
 adjustable lead-in from the preceding item), and renders on that new timeline in the render worker.
 TypeScript and Python implement the same parse/validate/snap contract, pinned by a shared fixture.
+
+## Analysis data prerequisites
+
+A Songset item is arranges-able only when its Recording carries timed structure plus a beat grid.
+Columns live on `recordings` (`delivery/webapp/src/db/schema.ts:97-99`):
+
+| Column | Shape | Role |
+|---|---|---|
+| `sections` | JSON array of `{label, start, end}` (seconds) | one component block per section; `label` becomes the Step label |
+| `beats` | JSON array of numbers (seconds) | snapping for every section bound; `downbeats` is stored but never read by the arrangement code |
+| `duration_seconds` | number | clamping, snapping, arranged-duration math |
+| `r2_lrc_url`, `lrc_status` | URL / status | per-Step lyric lines in the sheet |
+
+`songs.sections` (`schema.ts:56`) is *structured lyrics* (labels + lines), not timings — the
+arrangement code never reads it.
+
+Availability rule, identical on both sides: `sections` non-empty AND `beats` non-empty AND
+`duration_seconds > 0` AND `buildSnappedSteps(sections, beats, duration) !== null`
+(`hasRecordingAnalysis`, `SongsetEditorClient.tsx:138-146`; `buildSnappedSteps`,
+`lib/arrangements.ts:219-247`). Snapping rounds each bound to the nearest beat (ties to the earlier
+beat) and returns `null` for the **whole Recording** as soon as one section's snapped `start` is no
+longer `< end` (`arrangements.ts:242`; Python mirror `arrangements.py:210-211`). No per-section
+skip, no UI repair path: one collapsed section disables Arrange for that Recording.
+
+Sections are otherwise dropped individually, without failing the Recording, when the raw bounds are
+outside `[0, duration_seconds]` (`arrangements.ts:233-234`) — e.g. the published fixture
+`e2e348684622` stores a trailing `outro` of `232.42–244.78 s` against `duration_seconds = 244.77869`,
+so that section is skipped and the sheet shows 9 Steps for 10 stored sections.
+
+Data path to the sheet: `lib/db/songsets.ts:422-423` parses `sections`/`beats` into the item detail;
+`updateSongArrangement` re-validates on PUT (`songsets.ts:1634-1641`) and
+`getSongsetRenderMetrics` re-validates at render admission (`songsets.ts:1755-1760`).
 
 ## Webapp files
 
