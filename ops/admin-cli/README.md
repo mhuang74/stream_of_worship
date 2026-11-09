@@ -575,12 +575,16 @@ complement.
 - Songs whose LRC stops before the lyrics do cannot be fixed — step 2 reports
   them as `no_structure`, and they stay unarrangeable by design.
 - Step 1 refuses audio whose native-rate WAV exceeds
-  `SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES` (default 200 MB, which covers roughly
-  19 minutes at 48 kHz stereo). The job fails with `madmom beat detection
-  failed (see sow-downbeats logs)` while the worker log carries the real
-  reason (`Audio too large for Modal blob upload ...`). Raise the cap in
-  `ops/analysis-service/docker-compose.yml` and recreate `analysis-dev`
-  before re-running the song.
+  `SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES` (default 150 MB, roughly 14 minutes at
+  48 kHz stereo). The check is client-side, before the Modal call, but the job
+  still surfaces as `madmom beat detection failed (see sow-downbeats logs)`;
+  the worker log carries the real reason (`Audio too large for Modal blob
+  upload ...`). Only raise it for a legitimate long recording: set
+  `SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES` in `ops/analysis-service/.env` and
+  recreate `analysis-dev`. Measured: a 155 MB / 13.5-minute file detects
+  correctly on the raised cap (437s including the upload and a cold L4
+  start), but expect that song to need a larger
+  `SOW_MODAL_ANALYZER_MAX_AUDIO_BYTES` too when it goes through full analysis.
 
 #### Lyrics Generate LLM Trace Dump
 
