@@ -21,6 +21,10 @@ function source(
     crossfadeEnabled: 0,
     crossfadeDurationSeconds: null,
     tempoBpm: null,
+    // Default: no analysis available. A saved arrangement without matching
+    // sections/beats is stale and must be rejected by the validator.
+    recordingSections: null,
+    recordingBeats: [],
     ...overrides,
   };
 }
@@ -333,6 +337,9 @@ describe("validateArrangementPreviewSources", () => {
       source({
         itemId: "a",
         arrangementSteps: stepsJson([{ label: "Verse 1", start: 0, end: 0.5 }]),
+        // Snapping is identity here, so the saved 0 → 0.5 step validates.
+        recordingSections: [{ label: "Verse 1", start: 0, end: 0.5 }],
+        recordingBeats: [0, 0.5],
       }),
       source({
         itemId: "b",
@@ -341,6 +348,57 @@ describe("validateArrangementPreviewSources", () => {
       }),
     ]);
     expect(error).toBeNull();
+  });
+
+  it("rejects a sibling arrangement that no longer matches its current analysis", () => {
+    const error = validateArrangementPreviewSources([
+      source({ itemId: "a" }),
+      source({
+        itemId: "b",
+        recordingDurationSeconds: 100,
+        arrangementSteps: stepsJson([{ label: "Verse", start: 0, end: 5 }]),
+        // Current analysis snaps the section end to beat 10, not 5.
+        recordingSections: [{ label: "Verse", start: 0, end: 10 }],
+        recordingBeats: [0, 5, 10],
+      }),
+    ]);
+    expect(error).toMatchObject({
+      kind: "invalid-arrangement",
+      itemId: "b",
+    });
+  });
+
+  it("rejects a sibling arrangement when its analysis is missing", () => {
+    const error = validateArrangementPreviewSources([
+      source({ itemId: "a" }),
+      source({
+        itemId: "b",
+        arrangementSteps: stepsJson([{ label: "Verse", start: 0, end: 10 }]),
+        // No sections/beats: the saved steps cannot be validated at all.
+        recordingSections: null,
+        recordingBeats: [],
+      }),
+    ]);
+    expect(error).toMatchObject({
+      kind: "invalid-arrangement",
+      itemId: "b",
+    });
+  });
+
+  it("rejects a saved arrangement when the recording duration is unknown", () => {
+    const error = validateArrangementPreviewSources([
+      source({
+        itemId: "a",
+        recordingDurationSeconds: null,
+        arrangementSteps: stepsJson([{ label: "Verse", start: 0, end: 10 }]),
+        recordingSections: [{ label: "Verse", start: 0, end: 10 }],
+        recordingBeats: [0, 10],
+      }),
+    ]);
+    expect(error).toMatchObject({
+      kind: "invalid-arrangement",
+      itemId: "a",
+    });
   });
 });
 
@@ -431,29 +489,72 @@ describe("createArrangementPreviewSession", () => {
     // a starts at 0 (dur 10); b overlaps by 3s → starts at 7, total 17.
     expect(session.totalSeconds).toBeCloseTo(17, 6);
     expect(sources).toHaveLength(2);
-    expect(gains).toHaveLength(2);
+    // Two gain nodes in series per routed item: [aIn, aOut, bIn, bOut].
+    expect(gains).toHaveLength(4);
     // Each graph-routed item carries its own RMS tap so the sample follows the
     // item that is actually sounding.
     expect(analysers).toHaveLength(2);
 
-    const [gainA, gainB] = gains;
+    const [gainAIn, gainAOut, gainBIn, gainBOut] = gains;
+    // a has no incoming crossfade: its incoming node is unity from the start.
+    expect(gainAIn.gain.events).toContainEqual({ type: "set", value: 1, time: 0 });
     // Outgoing fade on the predecessor is owned by the successor's 3s fade:
     // 1 until itemEnd − 3 = 7, then 1 → 0 across [7, 10] of item a.
-    expect(gainA.gain.events).toContainEqual({ type: "set", value: 1, time: 0 });
-    expect(gainA.gain.events).toContainEqual({ type: "set", value: 1, time: 7 });
-    expect(gainA.gain.events).toContainEqual({
+    expect(gainAOut.gain.events).toContainEqual({ type: "set", value: 1, time: 0 });
+    expect(gainAOut.gain.events).toContainEqual({ type: "set", value: 1, time: 7 });
+    expect(gainAOut.gain.events).toContainEqual({
       type: "ramp",
       value: 0,
       time: 10,
     });
     // Incoming fade on b: silent until its start at 7, then 0 → 1 by 10.
-    expect(gainB.gain.events).toContainEqual({ type: "set", value: 0, time: 7 });
-    expect(gainB.gain.events).toContainEqual({
+    expect(gainBIn.gain.events).toContainEqual({ type: "set", value: 0, time: 7 });
+    expect(gainBIn.gain.events).toContainEqual({
       type: "ramp",
       value: 1,
       time: 10,
     });
+    // b is the last item: no successor, so its outgoing node stays at unity.
+    expect(gainBOut.gain.events).toContainEqual({ type: "set", value: 1, time: 0 });
     expect(context.createMediaElementSource).toHaveBeenCalledTimes(2);
+  });
+
+  it("composes overlapping incoming and outgoing fade envelopes on separate gain nodes", async () => {
+    const { session, gains } = makeSession([
+      source({ itemId: "a", recordingDurationSeconds: 10 }),
+      // 4 s item with 3 s in and 3 s out: windows [7,10] and [8,11] overlap.
+      source({
+        itemId: "b",
+        recordingDurationSeconds: 4,
+        crossfadeEnabled: 1,
+        crossfadeDurationSeconds: 3,
+      }),
+      source({
+        itemId: "c",
+        recordingDurationSeconds: 10,
+        crossfadeEnabled: 1,
+        crossfadeDurationSeconds: 3,
+      }),
+    ]);
+    await session.play();
+    // a:0–10, b:7–11, c:8–18.
+    expect(session.totalSeconds).toBeCloseTo(18, 6);
+    expect(gains).toHaveLength(6);
+    const [, , bIn, bOut] = gains;
+    // Incoming envelope stays a single 0 → 1 ramp: no full-gain event is
+    // inserted inside it even though the outgoing window opens at t=8.
+    expect(bIn.gain.events).toEqual([
+      { type: "cancel", time: 0 },
+      { type: "set", value: 0, time: 7 },
+      { type: "ramp", value: 1, time: 10 },
+    ]);
+    // Outgoing envelope runs independently: 1 until t=8, then 1 → 0 by t=11.
+    expect(bOut.gain.events).toEqual([
+      { type: "cancel", time: 0 },
+      { type: "set", value: 1, time: 0 },
+      { type: "set", value: 1, time: 8 },
+      { type: "ramp", value: 0, time: 11 },
+    ]);
   });
 
   it("advances monotonically on context time and clamps to total", async () => {
@@ -568,6 +669,11 @@ describe("createArrangementPreviewSession", () => {
           { label: "outro", start: 90, end: 100 },
           { label: "verse", start: 0, end: 10 },
         ]),
+        recordingSections: [
+          { label: "outro", start: 90, end: 100 },
+          { label: "verse", start: 0, end: 10 },
+        ],
+        recordingBeats: [0, 10, 90, 100],
       }),
     ]);
     await session.play();
@@ -613,6 +719,13 @@ describe("createArrangementPreviewSession", () => {
           { label: "Chorus", start: 30, end: 40 },
           { label: "Verse", start: 10, end: 20 },
         ]),
+        // Three sections so sectionIndex 2 is not stale.
+        recordingSections: [
+          { label: "Verse", start: 10, end: 20 },
+          { label: "Chorus", start: 30, end: 40 },
+          { label: "Verse", start: 10, end: 20 },
+        ],
+        recordingBeats: [10, 20, 30, 40],
       }),
     ]);
     await session.play();
@@ -635,6 +748,13 @@ describe("createArrangementPreviewSession", () => {
           { label: "Chorus", start: 30, end: 40 },
           { label: "Verse", start: 10, end: 20 },
         ]),
+        // Three sections so sectionIndex 2 is not stale.
+        recordingSections: [
+          { label: "Verse", start: 10, end: 20 },
+          { label: "Chorus", start: 30, end: 40 },
+          { label: "Verse", start: 10, end: 20 },
+        ],
+        recordingBeats: [10, 20, 30, 40],
       }),
     ]);
     await session.play();
@@ -956,25 +1076,25 @@ describe("createArrangementPreviewSession", () => {
     await session.play();
     context.currentTime = 8;
     session.seek(8);
-    const [gainA, gainB] = gains;
+    const [, gainAOut, gainBIn] = gains;
     // b is 1s into its 3s fade: gain 1/3 at ctx 8, ramping to 1 by ctx 10.
-    expect(gainB.gain.events).toContainEqual({
+    expect(gainBIn.gain.events).toContainEqual({
       type: "set",
       value: 1 / 3,
       time: 8,
     });
-    expect(gainB.gain.events).toContainEqual({
+    expect(gainBIn.gain.events).toContainEqual({
       type: "ramp",
       value: 1,
       time: 10,
     });
     // a is 1s into the successor-owned 3s fade-out: 2/3 → 0 by ctx 10.
-    expect(gainA.gain.events).toContainEqual({
+    expect(gainAOut.gain.events).toContainEqual({
       type: "set",
       value: 2 / 3,
       time: 8,
     });
-    expect(gainA.gain.events).toContainEqual({
+    expect(gainAOut.gain.events).toContainEqual({
       type: "ramp",
       value: 0,
       time: 10,

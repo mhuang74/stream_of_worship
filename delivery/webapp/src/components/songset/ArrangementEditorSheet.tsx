@@ -520,6 +520,9 @@ export function ArrangementEditorSheet({
 
   // The selected item previews the draft; siblings keep their saved values.
   // The previous sibling is the lead-in source, so it must stay in the input.
+  // Sibling analysis rides along so the transport can validate every saved
+  // arrangement against its current sections/beats: a stale sibling blocks
+  // preview instead of auditioning an unrenderable mix.
   const previewItems = useMemo<TimelineItemSource[]>(() => {
     const draftArrangement = isDraftValid ? JSON.stringify(draftToArrangement(draft)) : null;
     return items.map((entry) => ({
@@ -532,6 +535,8 @@ export function ArrangementEditorSheet({
       crossfadeDurationSeconds: entry.crossfadeDurationSeconds ?? null,
       tempoBpm: entry.recording?.tempoBpm ?? null,
       recordingDurationSeconds: entry.recording?.durationSeconds ?? null,
+      recordingSections: entry.recording?.sections ?? null,
+      recordingBeats: entry.recording?.beats ?? [],
     }));
   }, [items, item.id, draft, isDraftValid]);
 

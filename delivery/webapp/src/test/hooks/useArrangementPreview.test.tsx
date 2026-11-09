@@ -221,6 +221,57 @@ describe("useArrangementPreview", () => {
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
 
+  it("rejects a saved sibling arrangement that no longer matches its analysis", async () => {
+    // Structurally valid JSON, but the recording's current sections/beats snap
+    // that section to 0 → 10, so the saved 0 → 5 step is stale. Mirrors
+    // getSongsetRenderMetrics and the render worker (repair-or-reset).
+    const staleItems = [
+      item({ itemId: "a" }),
+      item({
+        itemId: "b",
+        arrangementSteps: JSON.stringify({
+          version: 1,
+          steps: [
+            { sectionIndex: 0, label: "Verse", startSeconds: 0, endSeconds: 5 },
+          ],
+        }),
+        recordingSections: [{ label: "Verse", start: 0, end: 10 }],
+        recordingBeats: [0, 5, 10],
+      }),
+    ];
+    const { result, onPreviewError } = renderPreview({ items: staleItems });
+    await runPlay(result);
+    expect(onPreviewError).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "invalid-arrangement", itemId: "b" }),
+    );
+    expect(result.current.status).toBe("error");
+    expect(result.current.errorMessage).not.toBeNull();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(mocks.playerStop).not.toHaveBeenCalled();
+  });
+
+  it("starts playback for a saved sibling arrangement that matches its analysis", async () => {
+    const validItems = [
+      item({ itemId: "a" }),
+      item({
+        itemId: "b",
+        arrangementSteps: JSON.stringify({
+          version: 1,
+          steps: [
+            { sectionIndex: 0, label: "Verse", startSeconds: 0, endSeconds: 10 },
+          ],
+        }),
+        recordingSections: [{ label: "Verse", start: 0, end: 10 }],
+        recordingBeats: [0, 10],
+      }),
+    ];
+    const { result, onPreviewError } = renderPreview({ items: validItems });
+    await runPlay(result);
+    expect(onPreviewError).not.toHaveBeenCalled();
+    expect(mocks.createSession).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe("playing");
+  });
+
   it("pauses and reports the paused position", async () => {
     const { result } = renderPreview();
     await runPlay(result);

@@ -22,6 +22,11 @@
  * - Crossfade ownership: the INCOMING item owns its fade-in
  *   (crossfadeSeconds); the outgoing fade of the predecessor must be derived
  *   from the SUCCESSOR's crossfadeSeconds, never the predecessor's own.
+ * - Overlapping fade windows are composed by TWO series GainNodes per item
+ *   (worker parity: the render worker applies two sequential afade filters,
+ *   so the envelopes multiply). Never insert a full-gain event inside a
+ *   running ramp: an item shorter than its own in+out windows would step to
+ *   full volume mid-fade.
  * - Transport is monotonic on context time:
  *   timelinePosition = context.currentTime − playStartedAtContextTime
  *                    + playStartedAtTimelineSeconds (clamped to total).
@@ -35,6 +40,7 @@
 import {
   buildArrangementTimeline,
   parseSongArrangement,
+  validateSongArrangement,
   type ArrangementTimeline,
   type ArrangementTimelineItem,
   type TimelineClip,
@@ -91,10 +97,24 @@ const DEFAULT_AUDIO_URL_FOR = (hashPrefix: string) =>
 /** Element-driven time drift beyond this against an ended element is a failure. */
 const ENDED_TOLERANCE_SECONDS = 0.25;
 
+/** Flat duration wins; SongsetItemDetail nests it under `recording`. */
+function itemRecordingDurationSeconds(item: TimelineItemSource): number | null {
+  const flat = item.recordingDurationSeconds;
+  const value = typeof flat === "number" ? flat : item.recording?.durationSeconds;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
 /**
  * Pre-playback rejection (issue: "Reject missing recording/invalid siblings
  * before playback, never substitute original audio"). Pure: creates no
  * elements, no AudioContext, performs no network activity.
+ *
+ * Every item carrying a saved arrangement is validated against that item's
+ * CURRENT analysis, so a sibling whose steps no longer match its
+ * sections/beats (or whose analysis is missing) blocks the preview instead of
+ * auditioning source ranges the render metrics and the worker would reject.
  */
 export function validateArrangementPreviewSources(
   items: TimelineItemSource[],
@@ -116,30 +136,37 @@ export function validateArrangementPreviewSources(
         message: `Item ${item.itemId} has no Recording; preview is unavailable`,
       };
     }
+    const duration = itemRecordingDurationSeconds(item);
     const parsed = parseSongArrangement(item.arrangementSteps ?? null);
-    if (parsed.present && "invalid" in parsed) {
-      return {
-        kind: "invalid-arrangement",
-        itemId: item.itemId,
-        message: `Arrangement for item ${item.itemId} is invalid or unavailable; repair the analysis or reset the arrangement`,
-      };
-    }
-    // No arrangement → the timeline needs the Recording duration for the
-    // full-recording clip; without it the clip would be zero-length.
     if (!parsed.present) {
-      const duration: number | null | undefined =
-        item.recordingDurationSeconds ?? item.recording?.durationSeconds ?? null;
-      if (
-        typeof duration !== "number" ||
-        !Number.isFinite(duration) ||
-        duration <= 0
-      ) {
+      // No arrangement → the timeline needs the Recording duration for the
+      // full-recording clip; without it the clip would be zero-length.
+      if (duration === null) {
         return {
           kind: "no-recording",
           itemId: item.itemId,
           message: `Recording duration for item ${item.itemId} is unavailable; preview is unavailable`,
         };
       }
+      continue;
+    }
+    // A present arrangement must still match the Recording's CURRENT analysis,
+    // exactly as getSongsetRenderMetrics and the render worker enforce: stale
+    // steps or missing analysis = repair-or-reset, never a stale audition.
+    // Unknown duration passes 0 so buildSnappedSteps reports
+    // ANALYSIS_UNAVAILABLE (normalizeBeats rejects a nonpositive duration).
+    const validated = validateSongArrangement(
+      item.arrangementSteps ?? null,
+      item.recordingSections ?? null,
+      item.recordingBeats ?? [],
+      duration ?? 0,
+    );
+    if (!validated.ok) {
+      return {
+        kind: "invalid-arrangement",
+        itemId: item.itemId,
+        message: `Arrangement for item ${item.itemId} is invalid or unavailable; repair the analysis or reset the arrangement`,
+      };
     }
   }
   const timeline = buildArrangementTimeline(items);
@@ -161,7 +188,10 @@ interface ElementRecord {
   audio: HTMLAudioElement;
   /** Created exactly once per element; never re-created after fallback swap. */
   sourceNode: MediaElementAudioSourceNode | null;
-  gain: GainNode | null;
+  /** Incoming fade envelope (this item's own crossfadeSeconds). */
+  gainIn: GainNode | null;
+  /** Outgoing fade envelope (owned by the SUCCESSOR's crossfadeSeconds). */
+  gainOut: GainNode | null;
   analyser: AnalyserNode | null;
   currentClip: TimelineClip | null;
   onEnded: EventListener;
@@ -259,7 +289,8 @@ export function createArrangementPreviewSession(
       itemIndex,
       audio,
       sourceNode: null,
-      gain: null,
+      gainIn: null,
+      gainOut: null,
       analyser: null,
       currentClip: null,
       onEnded: () => handleEnded(record),
@@ -293,15 +324,21 @@ export function createArrangementPreviewSession(
         record.item.crossfadeSeconds > 0 || successorCrossfade > 0;
       if (!needsGraph) continue;
       const sourceNode = context.createMediaElementSource(record.audio);
-      const gain = context.createGain();
-      sourceNode.connect(gain);
+      const gainIn = context.createGain();
+      const gainOut = context.createGain();
+      // Two nodes in series MULTIPLY the envelopes, matching the worker's two
+      // sequential afade filters: a short item can carry an incoming fade and
+      // a successor-owned outgoing fade whose windows overlap.
+      sourceNode.connect(gainIn);
+      gainIn.connect(gainOut);
       // Every graph-routed element gets its own RMS tap: the silent-output
       // sample must follow whichever item is actually sounding.
       const analyser = context.createAnalyser();
-      gain.connect(analyser); // RMS tap; analyser itself is not audible
-      gain.connect(context.destination);
+      gainOut.connect(analyser); // RMS tap; analyser itself is not audible
+      gainOut.connect(context.destination);
       record.sourceNode = sourceNode;
-      record.gain = gain;
+      record.gainIn = gainIn;
+      record.gainOut = gainOut;
       record.analyser = analyser;
     }
   }
@@ -349,7 +386,9 @@ export function createArrangementPreviewSession(
 
   /**
    * (Re)schedules all gain automation relative to the new context origin,
-   * after cancelling previous automation. Incoming fade: 0 → 1 across
+   * after cancelling previous automation. Both envelopes live on separate
+   * nodes, so they compose by multiplication exactly like the worker's two
+   * sequential afade filters. Incoming fade: 0 → 1 across
    * [itemStart, itemStart + crossfadeSeconds]. Outgoing fade on the
    * predecessor: 1 → 0 across [itemEnd − successorCrossfade, itemEnd] — the
    * successor OWNS this fade, so its crossfadeSeconds drives the ramp.
@@ -357,68 +396,72 @@ export function createArrangementPreviewSession(
   function scheduleGains(originContextTime: number, position: number): void {
     if (fallbackMode) return;
     for (const record of records) {
-      const gain = record.gain;
-      if (!gain) continue;
-      const param = gain.gain;
       const item = record.item;
+      if (!record.gainIn || !record.gainOut) continue;
       const itemStart = item.startSeconds;
       const itemEnd = itemStart + item.durationSeconds;
-      param.cancelScheduledValues(originContextTime);
+      const successorCrossfade =
+        records[record.itemIndex + 1]?.item.crossfadeSeconds ?? 0;
 
-      const incomingCrossfade = item.crossfadeSeconds;
-      let incomingValue = 1;
-      if (incomingCrossfade > 0) {
-        const fadeInEnd = itemStart + incomingCrossfade;
+      // Incoming envelope: 0 → 1 across [itemStart, itemStart + crossfadeSeconds].
+      const incoming = record.gainIn.gain;
+      incoming.cancelScheduledValues(originContextTime);
+      if (item.crossfadeSeconds > 0) {
+        const fadeInEnd = itemStart + item.crossfadeSeconds;
         if (position >= fadeInEnd) {
-          incomingValue = 1;
-          param.setValueAtTime(1, originContextTime);
+          incoming.setValueAtTime(1, originContextTime);
         } else if (position > itemStart) {
           // Seek/resume landed inside the fade: re-enter at the matching gain.
-          incomingValue = (position - itemStart) / incomingCrossfade;
-          param.setValueAtTime(incomingValue, originContextTime);
-          param.linearRampToValueAtTime(
+          incoming.setValueAtTime(
+            (position - itemStart) / item.crossfadeSeconds,
+            originContextTime,
+          );
+          incoming.linearRampToValueAtTime(
             1,
             originContextTime + (fadeInEnd - position),
           );
         } else {
           // Item has not started yet (element paused): stay silent, then fade
           // in across the item's OWN crossfade window [start, start + cf].
-          param.setValueAtTime(0, originContextTime + (itemStart - position));
-          param.linearRampToValueAtTime(
+          incoming.setValueAtTime(0, originContextTime + (itemStart - position));
+          incoming.linearRampToValueAtTime(
             1,
             originContextTime + (fadeInEnd - position),
           );
         }
       } else {
-        param.setValueAtTime(1, originContextTime);
+        incoming.setValueAtTime(1, originContextTime);
       }
 
-      const successorCrossfade =
-        records[record.itemIndex + 1]?.item.crossfadeSeconds ?? 0;
+      // Outgoing envelope on the predecessor: 1 → 0 across
+      // [itemEnd − successorCrossfade, itemEnd]. The successor OWNS this fade.
+      const outgoing = record.gainOut.gain;
+      outgoing.cancelScheduledValues(originContextTime);
       if (successorCrossfade > 0 && itemEnd > itemStart) {
         const fadeOutStart = itemEnd - successorCrossfade;
         if (position < fadeOutStart) {
           // Hold at full until the outgoing window opens, then ramp to zero
           // exactly at item end (where overlap with the successor ends).
-          param.setValueAtTime(1, originContextTime + (fadeOutStart - position));
-          param.linearRampToValueAtTime(
+          outgoing.setValueAtTime(1, originContextTime);
+          outgoing.setValueAtTime(1, originContextTime + (fadeOutStart - position));
+          outgoing.linearRampToValueAtTime(
             0,
             originContextTime + (itemEnd - position),
           );
         } else if (position < itemEnd) {
-          const residual = clampToRange(
-            (itemEnd - position) / successorCrossfade,
-            1,
-          );
-          param.setValueAtTime(
-            Math.min(incomingValue, residual),
+          outgoing.setValueAtTime(
+            clampToRange((itemEnd - position) / successorCrossfade, 1),
             originContextTime,
           );
-          param.linearRampToValueAtTime(
+          outgoing.linearRampToValueAtTime(
             0,
             originContextTime + (itemEnd - position),
           );
+        } else {
+          outgoing.setValueAtTime(0, originContextTime);
         }
+      } else {
+        outgoing.setValueAtTime(1, originContextTime);
       }
     }
   }
@@ -690,7 +733,12 @@ export function createArrangementPreviewSession(
       // ignore
     }
     try {
-      record.gain?.disconnect();
+      record.gainIn?.disconnect();
+    } catch {
+      // ignore
+    }
+    try {
+      record.gainOut?.disconnect();
     } catch {
       // ignore
     }
@@ -700,7 +748,8 @@ export function createArrangementPreviewSession(
       // ignore
     }
     record.sourceNode = null;
-    record.gain = null;
+    record.gainIn = null;
+    record.gainOut = null;
     record.analyser = null;
   }
 
