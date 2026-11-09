@@ -540,15 +540,23 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const handleSaveArrangement = useCallback(
     async (arrangement: SongArrangement | null) => {
       if (!editingArrangementItemId) return;
+      const savedItemId = editingArrangementItemId;
 
-      const response = await fetch(
-        `/api/songsets/${songsetId}/items/${editingArrangementItemId}/arrangement`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ arrangement }),
-        }
-      );
+      let response: Response;
+      try {
+        response = await fetch(
+          `/api/songsets/${songsetId}/items/${savedItemId}/arrangement`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ arrangement }),
+          }
+        );
+      } catch {
+        // Network failure has no HTTP status: surface the generic translated
+        // save error instead of the raw "Failed to fetch".
+        throw new Error(t("arrangement.error.saveFailed"));
+      }
 
       if (!response.ok) {
         let code: string | null = null;
@@ -590,24 +598,35 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           : arrangement === null
             ? null
             : JSON.stringify(arrangement);
-      const nextItems = items.map((item) =>
-        item.id === editingArrangementItemId
-          ? applySavedArrangement(item, savedSteps, detail)
-          : item
-      );
-      setItems(nextItems);
-      setSongset((prev) =>
-        prev
-          ? {
-              ...prev,
-              durationSeconds: getSongsetDurationSeconds(nextItems.map(toArrangementInput)),
-            }
-          : prev
-      );
+      // Apply the saved arrangement to the CURRENT items, not a captured
+      // snapshot: a transition edit committed while the PUT was in flight must
+      // survive. The Songset duration derives from the same next state.
+      setItems((prev) => {
+        const nextItems = prev.map((item) =>
+          item.id === savedItemId
+            ? applySavedArrangement(item, savedSteps, detail)
+            : item
+        );
+        setSongset((prevSongset) =>
+          prevSongset
+            ? {
+                ...prevSongset,
+                durationSeconds: getSongsetDurationSeconds(
+                  nextItems.map(toArrangementInput)
+                ),
+              }
+            : prevSongset
+        );
+        return nextItems;
+      });
       markStale();
-      toast.success(t("arrangement.toast.saved"));
+      toast.success(
+        arrangement === null
+          ? t("arrangement.toast.reset")
+          : t("arrangement.toast.saved")
+      );
     },
-    [editingArrangementItemId, songsetId, items, markStale, t]
+    [editingArrangementItemId, songsetId, markStale, t]
   );
 
   // Handle render

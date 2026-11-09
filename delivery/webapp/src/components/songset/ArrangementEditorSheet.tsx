@@ -107,6 +107,7 @@ interface SortableDraftRowProps {
   displayLabel: string;
   onDuplicate: (id: string) => void;
   onRemove: (id: string) => void;
+  disabled: boolean;
 }
 
 function SortableDraftRow({
@@ -115,6 +116,7 @@ function SortableDraftRow({
   displayLabel,
   onDuplicate,
   onRemove,
+  disabled,
 }: SortableDraftRowProps) {
   const { t } = useLocale();
   const {
@@ -124,7 +126,7 @@ function SortableDraftRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: entry.id });
+  } = useSortable({ id: entry.id, disabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -147,6 +149,7 @@ function SortableDraftRow({
         variant="ghost"
         size="icon-sm"
         className="shrink-0 cursor-grab active:cursor-grabbing touch-none"
+        disabled={disabled}
         {...attributes}
         {...listeners}
         aria-label={`${t("arrangement.action.dragAria")} ${index + 1}: ${displayLabel}`}
@@ -162,6 +165,7 @@ function SortableDraftRow({
         variant="ghost"
         size="icon-sm"
         onClick={() => onDuplicate(entry.id)}
+        disabled={disabled}
         aria-label={`${t("arrangement.action.duplicateAria")} ${displayLabel}`}
         data-testid={`arrangement-duplicate-${entry.id}`}
       >
@@ -171,6 +175,7 @@ function SortableDraftRow({
         variant="ghost"
         size="icon-sm"
         onClick={() => onRemove(entry.id)}
+        disabled={disabled}
         aria-label={`${t("arrangement.action.removeAria")} ${displayLabel}`}
         data-testid={`arrangement-remove-${entry.id}`}
       >
@@ -225,7 +230,10 @@ function validateDraftProblem(
   draft: DraftStep[],
   item: SongListItem
 ): DraftProblem {
-  if (draft.length === 0) return null;
+  // An empty or over-limit draft is a live editing state, not a stale saved
+  // arrangement: the amber step-count message plus disabled Save/Preview is
+  // the only feedback, never a destructive "invalid or stale" alert.
+  if (draft.length === 0 || draft.length > MAX_ARRANGEMENT_STEPS) return null;
   const duration = item.recording?.durationSeconds ?? null;
   if (duration == null) return "stale";
   const result = validateSongArrangement(
@@ -370,13 +378,16 @@ export function ArrangementEditorSheet({
 
   const commitDraft = useCallback(
     (next: DraftStep[]) => {
+      // A pending save owns the draft: drag, duplicate, and remove must not
+      // mutate it underneath the request that is already in flight.
+      if (isSaving) return;
       preview.stop();
       setPreviewError(null);
       setFallbackNotice(false);
       setDraftState({ draft: next, problem: validateDraftProblem(next, item) });
       setIsDirty(true);
     },
-    [item, preview]
+    [isSaving, item, preview]
   );
 
   const addSection = useCallback(
@@ -434,6 +445,9 @@ export function ArrangementEditorSheet({
         onOpenChange(true);
         return;
       }
+      // A pending save decides the sheet's fate: it closes on success and
+      // stays open on failure, so a close request mid-save is ignored.
+      if (isSaving) return;
       if (isDirty) {
         setDirtyDialogOpen(true);
         return;
@@ -441,7 +455,7 @@ export function ArrangementEditorSheet({
       preview.stop();
       onOpenChange(false);
     },
-    [isDirty, onOpenChange, preview]
+    [isDirty, isSaving, onOpenChange, preview]
   );
 
   const handleDiscard = useCallback(() => {
@@ -494,6 +508,7 @@ export function ArrangementEditorSheet({
   }, [isSaving, onOpenChange, onSave, preview, t]);
 
   const handlePlayToggle = useCallback(() => {
+    if (isSaving) return;
     if (preview.status === "playing") {
       preview.pause();
       return;
@@ -502,10 +517,11 @@ export function ArrangementEditorSheet({
     void preview.play().catch(() => {
       // The hook reports failures through onPreviewError.
     });
-  }, [preview]);
+  }, [isSaving, preview]);
 
   const handleStartAt = useCallback(
     (itemId: string) => {
+      setPreviewError(null);
       void preview.startAt(itemId).catch(() => {
         // The hook reports failures through onPreviewError.
       });
@@ -617,6 +633,7 @@ export function ArrangementEditorSheet({
                               displayLabel={occurrence?.displayLabel ?? entry.step.label}
                               onDuplicate={duplicateStep}
                               onRemove={removeStep}
+                              disabled={isSaving}
                             />
                           );
                         })}
@@ -688,7 +705,9 @@ export function ArrangementEditorSheet({
                     variant="outline"
                     size="sm"
                     onClick={handlePlayToggle}
-                    disabled={!isPreviewAvailable || preview.status === "loading"}
+                    disabled={
+                      !isPreviewAvailable || preview.status === "loading" || isSaving
+                    }
                     aria-label={
                       preview.status === "playing"
                         ? t("arrangement.preview.pause")
@@ -747,7 +766,7 @@ export function ArrangementEditorSheet({
                       size="sm"
                       className="text-xs text-muted-foreground"
                       onClick={() => handleStartAt(entry.id)}
-                      disabled={!isPreviewAvailable}
+                      disabled={!isPreviewAvailable || isSaving}
                       aria-label={`${t("arrangement.preview.startHereAria")}: ${entry.song?.title || t("browse.unknownSong")}`}
                       data-testid={`arrangement-start-at-${entry.id}`}
                     >
