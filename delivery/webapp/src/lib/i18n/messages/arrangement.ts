@@ -3,7 +3,7 @@ import { bundle } from "../messages";
 // Song Arrangement Editor namespace: the editor sheet, the whole-Songset
 // preview transport, the item-row Arrange action/"Arranged" badge, and the
 // analysis-unavailable/render-repair messages (issue #286, spec
-// specs/song_arrangement_editor_v2.md §5). Recording section labels come from
+// specs/song_arrangement_editor.md §5). Recording section labels come from
 // analysis data and stay verbatim. zh-Hant completeness is compile-enforced.
 
 export const arrangementBundle = bundle({
@@ -94,6 +94,7 @@ export const arrangementBundle = bundle({
 
     // Toasts
     "arrangement.toast.saved": "Arrangement saved",
+    "arrangement.toast.reset": "Arrangement reset",
   },
   "zh-Hant": {
     // Row action and badge
@@ -170,5 +171,6 @@ export const arrangementBundle = bundle({
 
     // Toasts
     "arrangement.toast.saved": "編排已儲存",
+    "arrangement.toast.reset": "已重設編排",
   },
 });

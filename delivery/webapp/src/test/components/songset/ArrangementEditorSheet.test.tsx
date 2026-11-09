@@ -348,6 +348,74 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-too-many-error")).toBeInTheDocument();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
     expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    // Over-limit is a live editing state: the amber step-count message is the
+    // only feedback, never a destructive stale/invalid alert.
+    expect(screen.queryByText(/saved arrangement is invalid or stale/i)).toBeNull();
+    expect(screen.queryByText(/unavailable or stale/i)).toBeNull();
+    expect(screen.queryByTestId("arrangement-save-error")).toBeNull();
+  });
+
+  it("clears a surfaced preview error when starting playback from a step", () => {
+    renderSheet();
+
+    act(() => {
+      preview.options?.onPreviewError({
+        kind: "playback-failed",
+        itemId: "item-1",
+      });
+    });
+    expect(screen.getByTestId("arrangement-preview-error")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("arrangement-start-at-item-1"));
+
+    expect(screen.queryByTestId("arrangement-preview-error")).toBeNull();
+    expect(preview.controller.startAt).toHaveBeenCalledWith("item-1");
+  });
+
+  it("blocks every destructive control until a pending save settles", async () => {
+    let resolveSave: (() => void) | null = null;
+    const onSave = vi.fn(() => {
+      const deferred = Promise.withResolvers<void>();
+      resolveSave = deferred.resolve;
+      return deferred.promise;
+    });
+    const onOpenChange = vi.fn();
+    renderSheet({ onSave, onOpenChange });
+
+    fireEvent.click(screen.getByTestId("arrangement-add-1"));
+    const draftBeforeSave = draftSectionIndices();
+    fireEvent.click(screen.getByTestId("arrangement-save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+
+    // Draft mutation, preview, and close requests are all inert mid-save.
+    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-start-at-item-1")).toBeDisabled();
+    for (const button of screen.getAllByRole("button", { name: /duplicate/i })) {
+      expect(button).toBeDisabled();
+    }
+    for (const button of screen.getAllByRole("button", { name: /remove/i })) {
+      expect(button).toBeDisabled();
+    }
+    for (const button of screen.getAllByRole("button", { name: /reorder/i })) {
+      expect(button).toBeDisabled();
+    }
+    fireEvent.click(screen.getAllByRole("button", { name: /duplicate/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
+    fireEvent.click(screen.getByTestId("arrangement-start-at-item-1"));
+    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    expect(draftSectionIndices()).toEqual(draftBeforeSave);
+    expect(preview.controller.startAt).not.toHaveBeenCalled();
+    expect(preview.controller.play).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.queryByText("Discard arrangement changes?")).toBeNull();
+
+    await act(async () => {
+      resolveSave?.();
+    });
+    // The save itself closes the sheet once it settles.
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
   it("surfaces a no-recording preview rejection with its explanation", () => {
