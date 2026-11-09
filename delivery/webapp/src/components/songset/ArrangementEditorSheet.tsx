@@ -605,7 +605,8 @@ export function ArrangementEditorSheet({
           ? linesForSourceRange(
               parsedLyrics,
               entry.step.startSeconds,
-              entry.step.endSeconds
+              entry.step.endSeconds,
+              draft.map((other) => other.step)
             )
           : []
       ),

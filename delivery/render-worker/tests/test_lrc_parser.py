@@ -185,24 +185,44 @@ class TestRemapLrcToClips:
 
     def test_pickup_before_source_start_belongs_to_clip(self):
         # Forced-alignment onset 30 ms before the beat-snapped section bound:
-        # the line is the pickup into this clip, shown at its first frame.
-        local_lines = [LRCLine(time_seconds=53.30, text="chorus")]
-        result = remap_lrc_to_clips(local_lines, (_clip(53.33, 80.80, 0.0),), "Song")
-        assert len(result) == 1
-        assert result[0].text == "chorus"
-        assert result[0].global_time_seconds == 0.0
-        assert result[0].local_time_seconds == 53.30
-
-    def test_line_in_last_half_second_moves_to_next_clip(self):
+        # the line is the pickup into the next clip, emitted exactly once, at
+        # that clip's first frame.
         local_lines = [LRCLine(time_seconds=53.30, text="chorus")]
         clips = (_clip(27.37, 53.33, 0.0), _clip(53.33, 80.80, 25.96))
         result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert [(line.text, line.global_time_seconds) for line in result] == [("chorus", 25.96)]
+
+    def test_unarranged_full_file_clip_keeps_its_tail(self):
+        # An unarranged render is one clip covering the whole recording, so
+        # nothing can inherit a line in its final half second.
+        local_lines = [LRCLine(time_seconds=29.8, text="last")]
+        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 30.0, 0.0),), "Song")
+        assert [(line.text, line.global_time_seconds) for line in result] == [("last", 29.8)]
+
+    def test_last_clip_keeps_its_tail(self):
+        local_lines = [LRCLine(time_seconds=79.9, text="final")]
+        clips = (_clip(27.37, 53.33, 0.0), _clip(53.33, 80.80, 25.96))
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
         assert len(result) == 1
-        assert result[0].global_time_seconds == 25.96
+        assert result[0].global_time_seconds == pytest.approx(52.53)
+
+    def test_adjacent_short_clip_does_not_duplicate_lines(self):
+        # Real shape: a 0–0.21 s section followed by one starting at 0.21 s.
+        local_lines = [
+            LRCLine(time_seconds=0.05, text="opening"),
+            LRCLine(time_seconds=0.4, text="intro"),
+        ]
+        clips = (_clip(0.0, 0.21, 0.0), _clip(0.21, 15.91, 0.21))
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert [line.text for line in result] == ["opening", "intro"]
+
+    def test_boundary_line_appears_once_across_tiled_clips(self):
+        local_lines = [LRCLine(time_seconds=53.30, text="chorus")]
+        clips = (_clip(27.37, 53.33, 0.0), _clip(53.33, 80.80, 25.96))
+        assert len(remap_lrc_to_clips(local_lines, clips, "Song")) == 1
 
     def test_short_clip_keeps_interior_line(self):
-        # A 0.3 s clip is shorter than the tolerance; it keeps its own interior
-        # instead of collapsing to an empty window.
+        # A 0.3 s clip is shorter than the tolerance; it keeps its own interior.
         local_lines = [LRCLine(time_seconds=10.2, text="short")]
         result = remap_lrc_to_clips(local_lines, (_clip(10.0, 10.3, 0.0),), "Song")
         assert len(result) == 1
