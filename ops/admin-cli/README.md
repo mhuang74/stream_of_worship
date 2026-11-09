@@ -453,9 +453,11 @@ analyzed at the default `--analysis-tier fast` have `sections`/`beats` = NULL,
 so Arrange stays disabled even though tempo/key/duration are present.
 
 `--write-recording-analysis` fills that gap cheaply, without an allin1 GPU
-pass: it derives timed `sections` from the component results (whose labels come
-from the recording's `structured_lyrics`) and `beats` from the cached madmom
-beat grid, then writes both straight to the recording row.
+pass: it derives timed `sections` from the lyric timeline (every
+`structured_lyrics` section matched into the timed LRC) and `beats` from the
+cached madmom beat grid, then writes both straight to the recording row. Both
+inputs already exist per recording, so on the cached path this takes about a
+second and calls no LLM.
 
 ```bash
 # Single song
@@ -472,11 +474,22 @@ mark progress anywhere (`analysis_status` is deliberately left `partial`), so
 re-running the same query reprocesses rows that already have `sections` — it
 is safe, not resumable. Narrow the list yourself when continuing a long run.
 
+Sections come from the **lyrics**, not from the component-analysis payload.
+With an LLM key configured the aligner emits only chorus occurrences plus at
+most one verse role, which loses sections (a 6-section recording produced 3
+components). Coverage ceiling measured over the 446 visible recordings: 418
+derive at least one section; the other 28 have an LRC that stops before the
+lyrics do (median uncovered tail 33s), so nothing can be placed there.
+
 Behaviour worth knowing:
 
 - It **implies `--snap-to-downbeat`**, because the beats come from the
   `{hash_prefix}/beat_grid.json` artifact that only the downbeat-snap path
   produces.
+- If a recording has no beat grid yet, the command **drops the cached shortcut
+  and submits a job with `force=False`** instead of escalating to `--force`.
+  The worker resolves the beat grid before `extract_components`, then returns
+  the cached components — grid detection happens, no LLM re-billing.
 - `analysis_status` is **left unchanged** (`partial`). It still means "ran the
   full allin1 tier", and `Recording.has_full_analysis` gates treating
   `sections` as authoritative allin1 output.
@@ -485,14 +498,19 @@ Behaviour worth knowing:
 - Sections that would collapse to zero length when snapped to the nearest beat
   are dropped before writing, because `buildSnappedSteps` returns `null` for
   the *whole* recording if even one section collapses.
-- Section density is bounded by the source: `structured_lyrics` section tags
-  are coarse (median 3 sections per song), so arrangements start from a rough
-  timeline the user refines in the editor.
+- A run where the job succeeded but nothing could be persisted is reported as
+  `no_structure` in the `--stdin` summary, not as `succeeded`, so the summary
+  does not overstate the Arrange coverage delta.
 - Published recordings are still refused by the publish guard; demote first
   with `sow-admin audio set-visibility SONG_ID --status review`, run, then
   re-publish.
-- Cannot be combined with `--no-wait` (the derived structure needs the
-  completed job's components).
+- Cannot be combined with `--no-wait` (the write-back is inline). Two-phase it
+  when a pool needs beat grids first: run once with `--no-wait
+  --snap-to-downbeat` to submit every job, then re-run with
+  `--write-recording-analysis` once they drain.
+- Re-running the backfill after `structured_lyrics` changes can invalidate
+  arrangement steps a user already saved (`validateSongArrangement` reports
+  `ARRANGEMENT_STALE` when step labels/indices no longer match a re-snap).
 
 `audio list --components` takes three mutually exclusive states that partition
 every active recording: `missing` (no component rows for that recording's
