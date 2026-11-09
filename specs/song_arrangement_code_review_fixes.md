@@ -46,7 +46,8 @@ Verification: the worker does NOT sum raw selected audio. `pipeline.py:340` comp
 
 ### 3. Webapp persistence: transactional save + recording-swap existence check
 
-- `updateSongArrangement` (`src/lib/db/songsets.ts` ~L1567–1600) and `updateSongsetItem` (~L1439–1462): wrap sibling read → validation → item UPDATE → `songsets.updatedAt` UPDATE in one `db.transaction(async (tx) => …)` using `tx` for all statements (pattern exists at `src/lib/render/job-manager.ts:271`). This closes the 1500 s TOCTOU (two concurrent PUTs both passing against a pre-mutation snapshot) and keeps the staleness bump atomic with the item write. The raw-sum admission total from step 2 is computed from rows read inside the transaction.
+- `updateSongArrangement` (`src/lib/db/songsets.ts` ~L1567–1600) and `updateSongsetItem` (~L1439–1462): wrap sibling read → validation → item UPDATE → `songsets.updatedAt` UPDATE in one transaction. Implemented via the new `src/db/mutation-db.ts` client (`neon-serverless` Pool + `drizzle-orm/neon-serverless`), because the read path's `@/db` is `neon-http`, whose session rejects `transaction()`. The first statement is `select ... from songsets where id = ? and user_id = ? for update`, so two concurrent saves for one Songset serialize on the parent row: the loser re-reads the winner's commit and is rejected by admission instead of both passing against one snapshot. The staleness bump stays atomic with the item write.
+- Proof: unit tests assert the statement order inside the transaction double; a throwaway live-Neon run (two concurrent `updateSongArrangement` calls on a temp Songset, 810 s each alone vs 1600 s serialized) produced exactly one commit and one `SONGSET_TOO_LONG`, then deleted the fixture.
 - `updateSongsetItem`: when `recordingHashPrefix` changes, first verify the target exists before clearing the arrangement:
   ```ts
   const rec = await tx.select({ hashPrefix: recordings.hashPrefix })
@@ -133,11 +134,13 @@ Verification: the worker does NOT sum raw selected audio. `pipeline.py:340` comp
 ## Verification
 
 1. Worker: `cd delivery/render-worker && uv run --extra dev pytest tests/test_arrangements.py -v` — the new huge-int test passes (raises `ValueError` with the repair-or-reset message, not `OverflowError`); then `uv run --extra dev pytest tests/ -v` all green.
-2. Webapp: `cd delivery/webapp && pnpm test` all green, including:
-   - new raw-sum admission cases (800+800 with 100 s crossfade rejected at save; over-limit set with one unknown-duration item rejected at render admission with 400);
-   - 409 mapping test for the re-validation race;
-   - fallback hard-boundary and buffering-inconclusive preview tests;
-   - sheet over-limit negative assertion.
+2. Webapp: `cd delivery/webapp && pnpm test` all green (2930 passed at the time of writing), including:
+   - laid-out-timeline admission cases (1501 s rejected, exactly-1500 s across a crossfade admitted) and the concurrent-save serialization case;
+   - 409 mapping test for the re-validation race, including `createRenderJob` not being called after the admission read rejects;
+   - fallback hard-boundary and buffering-inconclusive preview tests, plus close→reopen idle reset;
+   - sheet over-limit negative assertion (amber counter, no destructive alert) and the code-point label tests (lib parser and route boundary: 100 emoji accepted, 101 rejected).
 3. New-behavior proof (throwaway, no repo file changes): from `delivery/webapp`, run `pnpm exec vitest run src/test/lib/arrangements.test.ts src/test/api/songsets/arrangement-persistence.test.ts src/test/api/render-jobs/route.test.ts` and observe the previously-failing scenarios now pass.
-4. `pnpm typecheck && pnpm lint` clean.
-5. `git pull --rebase && git push && git status` shows "up to date with origin".
+4. Live-Neon transaction proof (throwaway script, deleted after the run): seed a temp Songset with two recordings that each admit 810 s alone, fire two concurrent `updateSongArrangement` calls, assert exactly one commit and one `SONGSET_TOO_LONG`, then delete the fixture. Observed: `{fulfilled: 1, rejected: ["SONGSET_TOO_LONG …"]}`, winner's row written, loser's row unchanged.
+5. Browser smoke (dev server + headless Chrome): sheet opens prefilled, preview plays with an advancing position, close→reopen shows idle at 0 s, dirty Cancel raises the discard dialog, Save writes the canonical JSON and bumps both timestamps, reload shows the Arranged badge, Reset clears the row.
+6. `pnpm typecheck && pnpm lint` clean (0 errors).
+7. `git pull --rebase && git push && git status` shows "up to date with origin".
