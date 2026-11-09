@@ -197,7 +197,9 @@ describe("getRenderPageData", () => {
     expect(result.songset.description).toBe("Songset for hot-page smoke testing");
 
     expect(result.songset.songTitles).toEqual(["Smoke Song Alpha", "Smoke Song Beta"]);
-    expect(result.songset.durationSeconds).toBe(420);
+    // 180 s + 240 s plus the 2.0-beat default gap (1 s per beat when the
+    // recording has no BPM), which the arranged timeline inserts between items.
+    expect(result.songset.durationSeconds).toBe(422);
 
     expect(result.songset.markedLineCount).toBe(3);
 
@@ -243,7 +245,7 @@ describe("getSongsetEditorData", () => {
     expect(result.items[0].markedLineCount).toBe(2);
     expect(result.items[1].markedLineCount).toBe(1);
 
-    expect(result.durationSeconds).toBe(420);
+    expect(result.durationSeconds).toBe(422);
     expect(result.renderState).toBe("fresh");
   });
 });
@@ -262,7 +264,7 @@ describe("listSongsetSummaries", () => {
     const songset = result.songsets[0];
     expect(songset.id).toBe("smoke-songset-hot-pages");
     expect(songset.itemCount).toBe(2);
-    expect(songset.durationSeconds).toBe(420);
+    expect(songset.durationSeconds).toBe(422);
     expect(songset.renderState).toBe("fresh");
   });
 });
