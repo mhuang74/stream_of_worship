@@ -57,19 +57,26 @@ def remap_lrc_to_clips(
     Remap local LRC lines through arranged clips onto the item timeline.
 
     For every clip, include each LRC line whose local timestamp falls inside the
-    clip's shifted source window: ``source_start - LYRIC_BOUNDARY_TOLERANCE_SECONDS
-    <= time < source_end - LYRIC_BOUNDARY_TOLERANCE_SECONDS``. Section bounds are
-    beat-snapped while lyric onsets come from forced alignment, so a pickup line
-    a fraction of a second before a boundary is sung into the section that
-    starts there; the same shift decides which clip owns a lyric in the webapp's
-    arrangement sheet. A clip shorter than the tolerance keeps its own interior
-    instead of emptying out.
+    clip's source window.
+
+    Section bounds are beat-snapped while lyric onsets come from forced
+    alignment, so a pickup line starts a fraction of a second before the section
+    it is sung into: a clip accepts lines from ``source_start -
+    LYRIC_BOUNDARY_TOLERANCE_SECONDS``, and the same shift decides which clip
+    owns a lyric in the webapp's arrangement sheet.
+
+    A clip gives up its own final tolerance only when another clip starts at its
+    ``source_end`` and is itself longer than the tolerance, so the pickup has an
+    owner. Otherwise — the last Step, an omitted section, the single full-file
+    clip used by an unarranged render — it keeps its own tail instead of
+    dropping those lyrics. Consecutive clips therefore tile their shared
+    boundary: no line is emitted twice and none disappears at the ends.
 
     A line's global timestamp is the clip's target start plus its offset into
     the source range, clamped to the clip's target start so a pre-start pickup
     lands on the clip's first frame rather than the preceding item. Repeated
     steps repeat their lyrics at new target times; lines from omitted source
-    ranges never appear. Blank Gap Placeholder lines inside a clip's range are
+    ranges never appear. Blank Gap Placeholder lines inside a clip's window are
     retained.
 
     Lines are stably sorted by global timestamp (per-clip output is already
@@ -78,10 +85,28 @@ def remap_lrc_to_clips(
     remapped: list[GlobalLRCLine] = []
     for clip in clips:
         span = clip.source_end_seconds - clip.source_start_seconds
-        window_start = clip.source_start_seconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
+        accepts_pickup = any(
+            other is not clip
+            and abs(other.source_end_seconds - clip.source_start_seconds)
+            <= LYRIC_BOUNDARY_TOLERANCE_SECONDS
+            and other.source_end_seconds - other.source_start_seconds
+            > LYRIC_BOUNDARY_TOLERANCE_SECONDS
+            for other in clips
+        )
+        gives_up_tail = span > LYRIC_BOUNDARY_TOLERANCE_SECONDS and any(
+            other is not clip
+            and abs(other.source_start_seconds - clip.source_end_seconds)
+            <= LYRIC_BOUNDARY_TOLERANCE_SECONDS
+            for other in clips
+        )
+        window_start = (
+            clip.source_start_seconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
+            if accepts_pickup
+            else clip.source_start_seconds
+        )
         window_end = (
             clip.source_end_seconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
-            if span > LYRIC_BOUNDARY_TOLERANCE_SECONDS
+            if gives_up_tail
             else clip.source_end_seconds
         )
         for line in local_lines:

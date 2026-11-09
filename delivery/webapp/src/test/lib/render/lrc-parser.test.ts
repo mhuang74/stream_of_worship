@@ -491,41 +491,92 @@ describe("getLyricsTimeRange", () => {
 });
 
 describe("linesForSourceRange", () => {
+  const REAL = [
+    { startSeconds: 27.37, endSeconds: 53.33 },
+    { startSeconds: 53.33, endSeconds: 80.8 },
+  ];
+  const lines: LRCLine[] = [
+    { timeSeconds: 27.77, text: "a" },
+    { timeSeconds: 40.9, text: "b" },
+    { timeSeconds: 53.3, text: "c" },
+    { timeSeconds: 66.8, text: "d" },
+  ];
+
   it("assigns a pickup line to the section that starts at the boundary", () => {
     // Real numbers from the 讚美之泉 recording: the verse is 27.37–53.33 while
     // the line after it starts at 53.30, 30 ms before the boundary.
-    const lines: LRCLine[] = [
-      { timeSeconds: 27.77, text: "a" },
-      { timeSeconds: 40.9, text: "b" },
-      { timeSeconds: 53.3, text: "c" },
-      { timeSeconds: 66.8, text: "d" },
+    expect(
+      linesForSourceRange(lines, 27.37, 53.33, REAL).map((line) => line.text)
+    ).toEqual(["a", "b"]);
+    expect(
+      linesForSourceRange(lines, 53.33, 80.8, REAL).map((line) => line.text)
+    ).toEqual(["c", "d"]);
+  });
+
+  it("tiles consecutive ranges, showing the pickup exactly once", () => {
+    // A line in the handing-over window appears in the accepting range only.
+    const boundary: LRCLine[] = [{ timeSeconds: 53.3, text: "c" }];
+    const spans = [
+      linesForSourceRange(boundary, 27.37, 53.33, REAL),
+      linesForSourceRange(boundary, 53.33, 80.8, REAL),
     ];
-
-    expect(linesForSourceRange(lines, 27.37, 53.33).map((line) => line.text)).toEqual([
-      "a",
-      "b",
-    ]);
-    expect(linesForSourceRange(lines, 53.33, 80.8).map((line) => line.text)).toEqual([
-      "c",
-      "d",
-    ]);
+    expect(spans.flat().map((line) => line.text)).toEqual(["c"]);
   });
 
-  it("excludes a line exactly at the tolerance before the range end", () => {
-    const lines: LRCLine[] = [{ timeSeconds: 5.0, text: "x" }];
-    expect(linesForSourceRange(lines, 0, 5.5)).toEqual([]);
+  it("tiles an adjacent short range instead of duplicating into both", () => {
+    // Real shape: a 0–0.21 s "start" section followed by "intro" at 0.21.
+    // The stub is shorter than the tolerance, so it keeps its own line rather
+    // than handing it to a neighbour that would then show it a second time.
+    const stubs = [
+      { startSeconds: 0, endSeconds: 0.21 },
+      { startSeconds: 0.21, endSeconds: 15.91 },
+    ];
+    const stubLines: LRCLine[] = [
+      { timeSeconds: 0.05, text: "opening" },
+      { timeSeconds: 0.4, text: "intro line" },
+    ];
+    const spans = [
+      linesForSourceRange(stubLines, 0, 0.21, stubs).map((line) => line.text),
+      linesForSourceRange(stubLines, 0.21, 15.91, stubs).map((line) => line.text),
+    ];
+    expect(spans).toEqual([["opening"], ["intro line"]]);
   });
 
-  it("keeps the interior line of a range shorter than the tolerance", () => {
-    const lines: LRCLine[] = [{ timeSeconds: 10.2, text: "y" }];
-    expect(linesForSourceRange(lines, 10.0, 10.3).map((line) => line.text)).toEqual([
-      "y",
-    ]);
+  it("keeps its tail when no component starts at the range end", () => {
+    // A full-file clip (an unarranged render) ends at the recording duration,
+    // so nothing can inherit its final half second — the line must stay.
+    const tail: LRCLine[] = [{ timeSeconds: 29.8, text: "last line" }];
+    expect(
+      linesForSourceRange(tail, 0, 30, [{ startSeconds: 0, endSeconds: 30 }]).map(
+        (line) => line.text
+      )
+    ).toEqual(["last line"]);
+    expect(
+      linesForSourceRange(tail, 0, 30, [
+        { startSeconds: 0, endSeconds: 30 },
+        { startSeconds: 20, endSeconds: 25 },
+      ]).map((line) => line.text)
+    ).toEqual(["last line"]);
+  });
+
+  it("hands over a line exactly at the tolerance before a followed range end", () => {
+    const neighbours = [
+      { startSeconds: 0, endSeconds: 5.5 },
+      { startSeconds: 5.5, endSeconds: 10 },
+    ];
+    expect(
+      linesForSourceRange([{ timeSeconds: 5.0, text: "x" }], 0, 5.5, neighbours)
+    ).toEqual([]);
+    expect(
+      linesForSourceRange([{ timeSeconds: 5.0, text: "x" }], 5.5, 10, neighbours).map(
+        (line) => line.text
+      )
+    ).toEqual(["x"]);
   });
 
   it("returns no lines for an empty or inverted range", () => {
-    const lines: LRCLine[] = [{ timeSeconds: 5.0, text: "x" }];
-    expect(linesForSourceRange(lines, 5, 5)).toEqual([]);
-    expect(linesForSourceRange(lines, 5, 4)).toEqual([]);
+    const single: LRCLine[] = [{ timeSeconds: 5.0, text: "x" }];
+    expect(linesForSourceRange(single, 5, 5, [])).toEqual([]);
+    expect(linesForSourceRange(single, 5, 4, [])).toEqual([]);
   });
 });

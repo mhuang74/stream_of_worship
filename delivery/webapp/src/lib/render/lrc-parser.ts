@@ -219,26 +219,42 @@ export const LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5;
 /**
  * LRC lines belonging to one Step's source range.
  *
- * A line starting up to LYRIC_BOUNDARY_TOLERANCE_SECONDS before
- * startSeconds belongs here (it is the pickup into this section), and a line
- * that close to endSeconds belongs to the next section instead. A range
- * shorter than that tolerance keeps its own interior rather than collapsing.
+ * Section bounds are beat-snapped while LRC onsets come from forced alignment,
+ * so a pickup phrase starts a fraction of a second before the section it is
+ * sung into. A range therefore accepts a pre-start pickup and gives up its own
+ * final moments — but only when the neighbouring Step that could take them
+ * over exists and is itself longer than the tolerance. Ranges at the ends of
+ * the recording, and stubs shorter than the tolerance, keep their own lines
+ * instead of handing them to nobody. Consecutive Steps therefore tile: no line
+ * is shown twice and none disappears.
  *
  * @param lines - Parsed LRC lines for the whole recording
  * @param startSeconds - Source start of the Step
  * @param endSeconds - Source end of the Step
+ * @param siblings - Every Step in the same draft; decides which boundaries
+ *   hand a pickup over. Omit for a standalone range with no neighbours.
  * @returns The subset of lines assigned to this Step
  */
 export function linesForSourceRange(
   lines: LRCLine[],
   startSeconds: number,
-  endSeconds: number
+  endSeconds: number,
+  siblings: ReadonlyArray<{ startSeconds: number; endSeconds: number }> = []
 ): LRCLine[] {
   if (!(endSeconds > startSeconds)) return [];
-  const from = startSeconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS;
-  const to =
-    endSeconds - startSeconds > LYRIC_BOUNDARY_TOLERANCE_SECONDS
-      ? endSeconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
-      : endSeconds;
+  const span = endSeconds - startSeconds;
+  const acceptsPickup = siblings.some(
+    (other) =>
+      Math.abs(other.endSeconds - startSeconds) <= LYRIC_BOUNDARY_TOLERANCE_SECONDS &&
+      other.endSeconds - other.startSeconds > LYRIC_BOUNDARY_TOLERANCE_SECONDS
+  );
+  const givesUpTail =
+    span > LYRIC_BOUNDARY_TOLERANCE_SECONDS &&
+    siblings.some(
+      (other) =>
+        Math.abs(other.startSeconds - endSeconds) <= LYRIC_BOUNDARY_TOLERANCE_SECONDS
+    );
+  const from = acceptsPickup ? startSeconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS : startSeconds;
+  const to = givesUpTail ? endSeconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS : endSeconds;
   return lines.filter((line) => line.timeSeconds >= from && line.timeSeconds < to);
 }
