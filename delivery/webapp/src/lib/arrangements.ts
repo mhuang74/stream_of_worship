@@ -1,5 +1,5 @@
 // Canonical arrangement/timing vocabulary for the Song Arrangement Editor
-// (issue #282, spec: specs/song_arrangement_editor_v2.md §1).
+// (issue #282, spec: specs/song_arrangement_editor.md §1).
 //
 // Every other webapp layer (persistence, editor API, render metrics, preview
 // UI) must reuse this module — never ad hoc JSON.parse arrangement data in
@@ -257,7 +257,8 @@ function isValidStep(step: unknown): step is ArrangementStep {
     Number.isInteger(step.sectionIndex) &&
     step.sectionIndex >= 0 &&
     isNonEmptyString(step.label) &&
-    step.label.length <= 100 &&
+    // Code points, not UTF-16 units: matches the worker's Python len().
+    [...step.label].length <= 100 &&
     isFiniteNumber(step.startSeconds) &&
     isFiniteNumber(step.endSeconds) &&
     step.startSeconds >= 0 &&

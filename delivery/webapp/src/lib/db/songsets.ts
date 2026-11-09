@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { mutationDb } from "@/db/mutation-db";
 import {
   lyricMarks,
   songsets,
@@ -1429,46 +1430,76 @@ export async function updateSongsetItem(
     tempoRatio: number | null;
   }>
 ): Promise<SongsetItemDetail | null> {
-  const item = await db.query.songsetItems.findFirst({
-    where: eq(songsetItems.id, itemId),
-    with: { songset: true },
+  const applied = await mutationDb.transaction(async (tx) => {
+    // Serialize writes for this owned Songset: without the parent-row lock two
+    // concurrent saves can both validate against pre-mutation siblings.
+    const [ownedSongset] = await tx
+      .select({ id: songsets.id })
+      .from(songsets)
+      .where(and(eq(songsets.id, songsetId), eq(songsets.userId, userId)))
+      .for("update");
+
+    if (!ownedSongset) return false;
+
+    const [item] = await tx
+      .select({
+        id: songsetItems.id,
+        recordingHashPrefix: songsetItems.recordingHashPrefix,
+      })
+      .from(songsetItems)
+      .where(and(eq(songsetItems.id, itemId), eq(songsetItems.songsetId, songsetId)))
+      .limit(1);
+
+    if (!item) return false;
+
+    const now = new Date();
+    const {
+      position,
+      recordingHashPrefix,
+      gapBeats,
+      crossfadeEnabled,
+      crossfadeDurationSeconds,
+      keyShiftSemitones,
+      tempoRatio,
+    } = patch;
+    // Always bump the item timestamp: render staleness compares
+    // songset_items.updated_at to the job's completion, so transition-only and
+    // recording changes must invalidate a fresh render too (pre-existing gap).
+    // Built field by field so a route payload's extra keys never reach SQL.
+    const updateSet: Partial<typeof songsetItems.$inferInsert> = {
+      position,
+      recordingHashPrefix,
+      gapBeats,
+      crossfadeEnabled,
+      crossfadeDurationSeconds,
+      keyShiftSemitones,
+      tempoRatio,
+      updatedAt: now,
+    };
+    // A changed Recording invalidates the saved arrangement (spec §2.5); the
+    // generic transition PATCH never writes arrangement data otherwise.
+    if (recordingHashPrefix !== undefined && recordingHashPrefix !== item.recordingHashPrefix) {
+      if (recordingHashPrefix !== null) {
+        // Reject a dangling replacement inside the transaction so the saved
+        // arrangement is never cleared for a Recording that does not exist.
+        const [replacement] = await tx
+          .select({ hashPrefix: recordings.hashPrefix })
+          .from(recordings)
+          .where(eq(recordings.hashPrefix, recordingHashPrefix))
+          .limit(1);
+        if (!replacement) return false;
+      }
+      updateSet.arrangementSteps = null;
+    }
+
+    await tx.update(songsetItems).set(updateSet).where(eq(songsetItems.id, itemId));
+
+    await tx.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+
+    return true;
   });
 
-  if (!item || item.songsetId !== songsetId || item.songset.userId !== userId) return null;
-
-  const now = new Date();
-  const {
-    position,
-    recordingHashPrefix,
-    gapBeats,
-    crossfadeEnabled,
-    crossfadeDurationSeconds,
-    keyShiftSemitones,
-    tempoRatio,
-  } = patch;
-  // Always bump the item timestamp: render staleness compares
-  // songset_items.updated_at to the job's completion, so transition-only and
-  // recording changes must invalidate a fresh render too (pre-existing gap).
-  // Built field by field so a route payload's extra keys never reach SQL.
-  const updateSet: Partial<typeof songsetItems.$inferInsert> = {
-    position,
-    recordingHashPrefix,
-    gapBeats,
-    crossfadeEnabled,
-    crossfadeDurationSeconds,
-    keyShiftSemitones,
-    tempoRatio,
-    updatedAt: now,
-  };
-  // A changed Recording invalidates the saved arrangement (spec §2.5); the
-  // generic transition PATCH never writes arrangement data otherwise.
-  if (recordingHashPrefix !== undefined && recordingHashPrefix !== item.recordingHashPrefix) {
-    updateSet.arrangementSteps = null;
-  }
-
-  await db.update(songsetItems).set(updateSet).where(eq(songsetItems.id, itemId)).returning();
-
-  await db.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+  if (!applied) return null;
 
   const updated = await db.query.songsetItems.findFirst({
     where: eq(songsetItems.id, itemId),
@@ -1555,9 +1586,10 @@ const arrangementItemColumns = {
 /**
  * Save (`arrangement`) or reset (`null`) one item's arrangement (spec §2.3).
  * NULL is always valid, even without analysis. Non-NULL data must match the
- * item's current analysis and the prospective whole-Songset total must stay
- * within the selected-audio limit. Both the item and the Songset timestamps
- * bump so `mapRenderStateFromSnapshot` reports "stale" after any change.
+ * item's current analysis and the prospective whole-Songset laid-out timeline
+ * total must stay within the duration limit. Both the item and the Songset
+ * timestamps bump so `mapRenderStateFromSnapshot` reports "stale" after any
+ * change.
  */
 export async function updateSongArrangement(
   itemId: string,
@@ -1565,74 +1597,92 @@ export async function updateSongArrangement(
   userId: number,
   arrangement: SongArrangement | null
 ): Promise<SongsetItemDetail | null> {
-  const item = await db.query.songsetItems.findFirst({
-    where: eq(songsetItems.id, itemId),
-    with: { songset: true },
+  const applied = await mutationDb.transaction(async (tx) => {
+    // Parent-row lock serializes arrangement saves per Songset: admission reads
+    // the siblings' persisted state, so two unlocked saves could each pass the
+    // limit against identical snapshots.
+    const [ownedSongset] = await tx
+      .select({ id: songsets.id })
+      .from(songsets)
+      .where(and(eq(songsets.id, songsetId), eq(songsets.userId, userId)))
+      .for("update");
+
+    if (!ownedSongset) return false;
+
+    const [item] = await tx
+      .select({ id: songsetItems.id })
+      .from(songsetItems)
+      .where(and(eq(songsetItems.id, itemId), eq(songsetItems.songsetId, songsetId)))
+      .limit(1);
+
+    if (!item) return false;
+
+    let serialized: string | null = arrangement === null ? null : JSON.stringify(arrangement);
+
+    const siblingRows = await tx
+      .select(arrangementItemColumns)
+      .from(songsetItems)
+      .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+      .where(eq(songsetItems.songsetId, songsetId))
+      .orderBy(asc(songsetItems.position));
+
+    if (serialized !== null) {
+      const row = siblingRows.find((sibling) => sibling.id === itemId);
+      if (!row || row.recordingDeletedAt || row.durationSeconds == null) {
+        throw new SongsetRenderValidationError("ARRANGEMENT_ANALYSIS_UNAVAILABLE");
+      }
+      const validated = validateSongArrangement(
+        serialized,
+        parseRecordingSections(row.recordingSections),
+        parseRecordingBeats(row.recordingBeats),
+        row.durationSeconds
+      );
+      if (!validated.ok) {
+        throw analysisValidationError(validated.code);
+      }
+      if (validated.arrangement === null) {
+        // Unreachable for a non-NULL input; never write the string "null".
+        throw new SongsetRenderValidationError("ARRANGEMENT_INVALID");
+      }
+      // Canonical wire form (exact schema fields only).
+      serialized = JSON.stringify(validated.arrangement);
+
+      const prospectiveTotalSeconds = getSongsetDurationSeconds(
+        siblingRows
+          .filter((sibling) => !sibling.recordingDeletedAt)
+          .map((sibling) =>
+            toArrangementInput({
+              arrangementSteps: sibling.id === itemId ? serialized : sibling.arrangementSteps,
+              gapBeats: sibling.gapBeats,
+              crossfadeEnabled: sibling.crossfadeEnabled,
+              crossfadeDurationSeconds: sibling.crossfadeDurationSeconds,
+              tempoBpm: sibling.tempoBpm,
+              durationSeconds: sibling.durationSeconds,
+            })
+          )
+      );
+      if (
+        prospectiveTotalSeconds != null &&
+        prospectiveTotalSeconds > SONGSET_MAX_DURATION_SECONDS
+      ) {
+        throw new SongsetRenderValidationError(
+          "SONGSET_TOO_LONG",
+          `Songset exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes`
+        );
+      }
+    }
+
+    const now = new Date();
+    await tx
+      .update(songsetItems)
+      .set({ arrangementSteps: serialized, updatedAt: now })
+      .where(eq(songsetItems.id, itemId));
+    await tx.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+
+    return true;
   });
 
-  if (!item || item.songsetId !== songsetId || item.songset.userId !== userId) return null;
-
-  let serialized: string | null = arrangement === null ? null : JSON.stringify(arrangement);
-
-  const siblingRows = await db
-    .select(arrangementItemColumns)
-    .from(songsetItems)
-    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
-    .where(eq(songsetItems.songsetId, songsetId))
-    .orderBy(asc(songsetItems.position));
-
-  if (serialized !== null) {
-    const row = siblingRows.find((sibling) => sibling.id === itemId);
-    if (!row || row.recordingDeletedAt || row.durationSeconds == null) {
-      throw new SongsetRenderValidationError("ARRANGEMENT_ANALYSIS_UNAVAILABLE");
-    }
-    const validated = validateSongArrangement(
-      serialized,
-      parseRecordingSections(row.recordingSections),
-      parseRecordingBeats(row.recordingBeats),
-      row.durationSeconds
-    );
-    if (!validated.ok) {
-      throw analysisValidationError(validated.code);
-    }
-    if (validated.arrangement === null) {
-      // Unreachable for a non-NULL input; never write the string "null".
-      throw new SongsetRenderValidationError("ARRANGEMENT_INVALID");
-    }
-    // Canonical wire form (exact schema fields only).
-    serialized = JSON.stringify(validated.arrangement);
-
-    const prospectiveTotalSeconds = getSongsetDurationSeconds(
-      siblingRows
-        .filter((sibling) => !sibling.recordingDeletedAt)
-        .map((sibling) =>
-          toArrangementInput({
-            arrangementSteps: sibling.id === itemId ? serialized : sibling.arrangementSteps,
-            gapBeats: sibling.gapBeats,
-            crossfadeEnabled: sibling.crossfadeEnabled,
-            crossfadeDurationSeconds: sibling.crossfadeDurationSeconds,
-            tempoBpm: sibling.tempoBpm,
-            durationSeconds: sibling.durationSeconds,
-          })
-        )
-    );
-    if (
-      prospectiveTotalSeconds != null &&
-      prospectiveTotalSeconds > SONGSET_MAX_DURATION_SECONDS
-    ) {
-      throw new SongsetRenderValidationError(
-        "SONGSET_TOO_LONG",
-        `Songset exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes`
-      );
-    }
-  }
-
-  const now = new Date();
-  await db
-    .update(songsetItems)
-    .set({ arrangementSteps: serialized, updatedAt: now })
-    .where(eq(songsetItems.id, itemId));
-  await db.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+  if (!applied) return null;
 
   const updated = await db.query.songsetItems.findFirst({
     where: eq(songsetItems.id, itemId),
@@ -1658,7 +1708,10 @@ export interface SongsetRenderMetrics {
   /** Owned, visible items in play order. */
   items: { id: string }[];
   songCount: number;
-  /** Arranged selected-audio total (last item's end); null when unknown. */
+  /**
+   * Last item's end on the laid-out timeline; unknown durations contribute 0;
+   * null when all relevant sources are unknown.
+   */
   songsetDurationSeconds: number | null;
 }
 

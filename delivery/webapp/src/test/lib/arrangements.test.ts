@@ -255,6 +255,28 @@ describe("parseSongArrangement", () => {
     expect(parsed.present && "arrangement" in parsed).toBe(true);
   });
 
+  it("measures label length in code points, matching the worker", () => {
+    // A surrogate pair counts as one character, so 100 emoji are accepted and
+    // 101 are rejected exactly as Python's len() would decide.
+    const accepted = {
+      sectionIndex: 0,
+      label: "😀".repeat(100),
+      startSeconds: 0,
+      endSeconds: 1,
+    };
+    expect(
+      parseSongArrangement(JSON.stringify({ version: 1, steps: [accepted] }))
+    ).toEqual({
+      present: true,
+      arrangement: { version: 1, steps: [accepted] },
+    });
+
+    const rejected = { ...accepted, label: "😀".repeat(101) };
+    expect(
+      parseSongArrangement(JSON.stringify({ version: 1, steps: [rejected] }))
+    ).toEqual({ present: true, invalid: true });
+  });
+
   it("rejects malformed step fields", () => {
     const badSteps = [
       { sectionIndex: -1, label: "a", startSeconds: 0, endSeconds: 1 },

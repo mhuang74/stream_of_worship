@@ -118,6 +118,17 @@ export async function POST(request: NextRequest) {
     try {
       job = await createRenderJob(Number(session.user.id), parsed.data);
     } catch (err) {
+      // The arrangement can change between the admission read above and this
+      // write; a second-pass analysis failure is the same client-visible 409.
+      if (
+        err instanceof SongsetRenderValidationError &&
+        err.code !== "SONGSET_NOT_FOUND"
+      ) {
+        return NextResponse.json(
+          { error: err.message, code: err.code },
+          { status: 409 }
+        );
+      }
       if (err instanceof Error && err.message.includes("uq_render_jobs_active_per_songset_user")) {
         return NextResponse.json(
           { error: "A render job is already in progress for this songset" },

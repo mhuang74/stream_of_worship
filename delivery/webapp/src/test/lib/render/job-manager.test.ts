@@ -19,6 +19,10 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// The real songsets module imports the Pool-backed mutation client; stub it so
+// these tests never require a database URL.
+vi.mock("@/db/mutation-db", () => ({ mutationDb: { transaction: vi.fn() } }));
+
 vi.mock("@/db", () => {
   const selectChain = {
     from: vi.fn().mockReturnThis(),

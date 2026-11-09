@@ -21,6 +21,10 @@ vi.mock("@/lib/auth", () => ({
 // `@/db` import must not require a live database URL in unit tests.
 vi.mock("@/db", () => ({ db: {} }));
 
+// The real songsets module imports the Pool-backed mutation client; stub it so
+// these route tests never require a database URL.
+vi.mock("@/db/mutation-db", () => ({ mutationDb: { transaction: vi.fn() } }));
+
 vi.mock("@/lib/db/songsets", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/db/songsets")>();
   return {
@@ -201,6 +205,46 @@ describe("PUT /api/songsets/[id]/items/[itemId]/arrangement", () => {
     const response = await PUT(request, params);
 
     expect(response.status).toBe(400);
+  });
+
+  it("counts label length in code points at the wire boundary", async () => {
+    mockSignedIn();
+    mockUpdateSongArrangement.mockResolvedValue(detailResponse);
+
+    const emojiSteps = [
+      {
+        sectionIndex: 0,
+        label: "😀".repeat(100),
+        startSeconds: 0,
+        endSeconds: 4,
+      },
+    ];
+    const accepted = await PUT(
+      createMockRequest(URL_UNDER_TEST, {
+        method: "PUT",
+        body: JSON.stringify({
+          arrangement: { version: 1, steps: emojiSteps },
+        }),
+      }),
+      params
+    );
+    expect(accepted.status).toBe(200);
+
+    mockUpdateSongArrangement.mockClear();
+    const rejected = await PUT(
+      createMockRequest(URL_UNDER_TEST, {
+        method: "PUT",
+        body: JSON.stringify({
+          arrangement: {
+            version: 1,
+            steps: [{ ...emojiSteps[0], label: "😀".repeat(101) }],
+          },
+        }),
+      }),
+      params
+    );
+    expect(rejected.status).toBe(400);
+    expect(mockUpdateSongArrangement).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the item is missing or unowned", async () => {

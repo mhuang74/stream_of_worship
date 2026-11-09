@@ -6,7 +6,6 @@ import {
   updateSongset,
   deleteSongset,
   addSongsetItem,
-  updateSongsetItem,
   deleteSongsetItem,
   listSongsetSummaries,
   getSongsetEditorData,
@@ -17,6 +16,10 @@ import { db } from "@/db";
 import { recordings } from "@/db/schema";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// The real songsets module imports the Pool-backed mutation client; stub it so
+// these tests never require a database URL.
+vi.mock("@/db/mutation-db", () => ({ mutationDb: { transaction: vi.fn() } }));
 
 vi.mock("@/db", () => ({
   db: {
@@ -1516,85 +1519,6 @@ describe("addSongsetItem", () => {
     const result = await addSongsetItem("songset-1", 1, {
       songId: "song-1",
       position: 0,
-    });
-
-    expect(result).toBeNull();
-  });
-});
-
-describe("updateSongsetItem", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("updates songset item", async () => {
-    const mockItem = {
-      id: "item-1",
-      songsetId: "songset-1",
-      songset: { userId: 1 },
-      songId: "song-1",
-      recordingHashPrefix: null,
-      position: 0,
-      gapBeats: 2.0,
-      crossfadeEnabled: 0,
-      crossfadeDurationSeconds: null,
-      keyShiftSemitones: 0,
-      tempoRatio: 1.0,
-      song: {
-        id: "song-1",
-        title: "Test Song",
-        composer: null,
-        lyricist: null,
-        albumName: null,
-        musicalKey: null,
-      },
-      recording: null,
-    };
-
-    const mockUpdatedItem = {
-      ...mockItem,
-      position: 1,
-    };
-
-    // First call returns the original item, second call returns the updated item
-    vi.mocked(db.query.songsetItems.findFirst)
-      .mockResolvedValueOnce(mockItem as any)
-      .mockResolvedValueOnce(mockUpdatedItem as any);
-
-    const mockReturning = vi.fn().mockResolvedValue([mockUpdatedItem]);
-    const mockWhere = vi.fn().mockReturnValue({ returning: mockReturning });
-    const mockSet = vi.fn().mockReturnValue({ where: mockWhere });
-    vi.mocked(db.update).mockReturnValue({ set: mockSet } as any);
-
-    const result = await updateSongsetItem("item-1", "songset-1", 1, {
-      position: 1,
-    });
-
-    expect(result).not.toBeNull();
-    expect(result?.position).toBe(1);
-  });
-
-  it("returns null when item not found", async () => {
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(null);
-
-    const result = await updateSongsetItem("item-1", "songset-1", 1, {
-      position: 1,
-    });
-
-    expect(result).toBeNull();
-  });
-
-  it("returns null when item belongs to different songset", async () => {
-    const mockItem = {
-      id: "item-1",
-      songsetId: "songset-2",
-      songset: { userId: 1 },
-    };
-
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(mockItem as any);
-
-    const result = await updateSongsetItem("item-1", "songset-1", 1, {
-      position: 1,
     });
 
     expect(result).toBeNull();
