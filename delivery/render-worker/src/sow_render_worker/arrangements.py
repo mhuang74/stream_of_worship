@@ -2,7 +2,7 @@
 
 This is the strict Python mirror of
 ``delivery/webapp/src/lib/arrangements.ts`` (issue #282, spec:
-``specs/song_arrangement_editor_v2.md`` §1). The shared numeric fixture
+``specs/song_arrangement_editor.md`` §1). The shared numeric fixture
 ``delivery/webapp/src/test/fixtures/arrangements.cross_language.json`` is
 asserted identical to 1e-9 by both test suites.
 
@@ -62,11 +62,14 @@ class ArrangementStep:
 
 def _is_number(value: Any) -> bool:
     """JSON booleans/null/strings are not numbers; NaN/Infinity never pass."""
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-    )
+    try:
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        )
+    except (OverflowError, ValueError):
+        return False
 
 
 def _is_integral_number(value: Any) -> bool:

@@ -316,6 +316,13 @@ def test_validate_arrangement_rejects_malformed_and_structural_problems() -> Non
             validate_arrangement(raw, json.dumps(SECTIONS), json.dumps(BEATS), DURATION)
 
 
+def test_parse_song_arrangement_rejects_huge_integer_section_index() -> None:
+    big = json.loads("[1" + "0" * 400 + "]")[0]
+    step = {"sectionIndex": big, "label": "a", "startSeconds": 0, "endSeconds": 1}
+    with pytest.raises(ValueError, match="repair the Recording analysis or reset"):
+        validate_arrangement(json.dumps({"version": 1, "steps": [step]}), None, None, None)
+
+
 def test_validate_arrangement_rejects_missing_or_collapsed_analysis() -> None:
     raw = arrangement_json(SNAPPED)
     for sections_json, beats_json in (
