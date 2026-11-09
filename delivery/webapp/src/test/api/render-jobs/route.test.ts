@@ -34,6 +34,10 @@ vi.mock("@/db", () => ({
   },
 }));
 
+// The real songsets module imports the Pool-backed mutation client; stub it so
+// these route tests never require a database URL.
+vi.mock("@/db/mutation-db", () => ({ mutationDb: { transaction: vi.fn() } }));
+
 // Admission now reads items/durations through the shared render-metrics seam;
 // mock the seam (keeping the real typed error class) and exercise the route's
 // status mapping of its codes.
@@ -597,6 +601,33 @@ describe("POST /api/render-jobs", () => {
     const data = await response.json();
     expect(data.code).toBe("ARRANGEMENT_STALE");
     expect(data.error).toBe(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE);
+  });
+
+  it("returns 409 ARRANGEMENT_STALE when the arrangement goes stale before the job insert", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    // Admission passed, then a concurrent save/analysis change made the
+    // persisted arrangement stale inside createRenderJob's own validation.
+    vi.mocked(createRenderJob).mockRejectedValueOnce(
+      new SongsetRenderValidationError(
+        "ARRANGEMENT_STALE",
+        ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE
+      )
+    );
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data.error).toBe(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE);
+    expect(data.code).toBe("ARRANGEMENT_STALE");
+    expect(mockDispatchToRenderWorker).not.toHaveBeenCalled();
   });
 
   it("returns 409 when active job already exists", async () => {

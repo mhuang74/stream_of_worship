@@ -9,8 +9,13 @@ import {
   updateSongsetItem,
 } from "@/lib/db/songsets";
 import { db } from "@/db";
+import { mutationDb } from "@/db/mutation-db";
 import { songsets, songsetItems } from "@/db/schema";
 import type { SongArrangement } from "@/lib/arrangements";
+
+vi.mock("@/db/mutation-db", () => ({
+  mutationDb: { transaction: vi.fn() },
+}));
 
 vi.mock("@/db", () => ({
   db: {
@@ -40,6 +45,7 @@ type MockSelectChain = {
   orderBy: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   offset: ReturnType<typeof vi.fn>;
+  for: ReturnType<typeof vi.fn>;
   then: (resolve: (rows: unknown[]) => unknown) => Promise<unknown>;
 };
 
@@ -55,6 +61,7 @@ function createSelectChain(rows: unknown[]): MockSelectChain {
     "orderBy",
     "limit",
     "offset",
+    "for",
   ] as const) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
@@ -100,6 +107,69 @@ type SongsFindFirstResult = NonNullable<
 type ItemsFindFirstResult = NonNullable<
   Awaited<ReturnType<typeof db.query.songsetItems.findFirst>>
 >;
+
+interface MutationTransactionDouble {
+  select: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+}
+
+interface InstalledTransaction {
+  tx: MutationTransactionDouble;
+  /** `update(table).set(values)` payloads issued inside the transaction. */
+  updates: UpdateCall[];
+  /** Ordered trace of selects, the parent lock, and writes. */
+  events: string[];
+  chains: MockSelectChain[];
+}
+
+/** Build a transaction double whose selects resolve the queued row sets. */
+function createTransactionDouble(
+  rowSets: unknown[][],
+  updates: UpdateCall[],
+  events: string[],
+  chains: MockSelectChain[]
+): MutationTransactionDouble {
+  let callIndex = 0;
+  const select = vi.fn(() => {
+    callIndex += 1;
+    events.push(`select#${callIndex}`);
+    const chain = createSelectChain(rowSets[callIndex - 1] ?? []);
+    chain.for = vi.fn((strength: string) => {
+      events.push(`lock:${strength}`);
+      return chain;
+    });
+    chains.push(chain);
+    return chain;
+  });
+  const update = vi.fn((table: unknown) => ({
+    set: (values: Record<string, unknown>) => {
+      updates.push({ table, values });
+      events.push(`update:${table === songsetItems ? "songsetItems" : "songsets"}`);
+      return { where: () => Promise.resolve(undefined) };
+    },
+  }));
+  return { select, update };
+}
+
+/**
+ * Install a `mutationDb.transaction` double running `callback` against a tx
+ * whose selects resolve `rowSets` in call order: parent lock, item guard,
+ * siblings, then any existence probe.
+ */
+function installMutationTransaction(...rowSets: unknown[][]): InstalledTransaction {
+  const updates: UpdateCall[] = [];
+  const events: string[] = [];
+  const chains: MockSelectChain[] = [];
+  const tx = createTransactionDouble(rowSets, updates, events, chains);
+
+  const transaction = vi.mocked(mutationDb.transaction) as unknown as ReturnType<typeof vi.fn>;
+  transaction.mockImplementation((callback: (handle: unknown) => Promise<unknown>) =>
+    callback(tx)
+  );
+
+  return { tx, updates, events, chains };
+}
+
 
 const introSection = { label: "intro", start: 0, end: 10 };
 const verseSection = { label: "verse", start: 10, end: 30 };
@@ -177,22 +247,35 @@ function recordingRow() {
   };
 }
 
+const longSectionsJson = JSON.stringify([
+  introSection,
+  { label: "full", start: 0, end: 800 },
+]);
+const longBeatsJson = JSON.stringify([0, 5, 10, 800]);
+
+/** Full 800-second selection of the `full` section. */
+const fullRecordingArrangement: SongArrangement = {
+  version: 1,
+  steps: [{ sectionIndex: 1, label: "full", startSeconds: 0, endSeconds: 800 }],
+};
+
 describe("updateSongArrangement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("persists repeated Steps identically and bumps item and Songset timestamps", async () => {
-    vi.mocked(db.query.songsetItems.findFirst)
-      .mockResolvedValueOnce(ownedItemRow() as unknown as ItemsFindFirstResult)
-      .mockResolvedValueOnce(
-        ownedItemRow({
-          arrangementSteps: JSON.stringify(repeatedIntroArrangement),
-          recording: recordingRow(),
-        }) as unknown as ItemsFindFirstResult
-      );
-    useSelectRows([arrangementItemRow()]);
-    const updates = mockUpdates();
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      ownedItemRow({
+        arrangementSteps: JSON.stringify(repeatedIntroArrangement),
+        recording: recordingRow(),
+      }) as unknown as ItemsFindFirstResult
+    );
+    const { updates, events, chains } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }],
+      [arrangementItemRow()]
+    );
 
     const result = await updateSongArrangement(
       "item-1",
@@ -216,64 +299,79 @@ describe("updateSongArrangement", () => {
     );
     expect(itemUpdate!.values.updatedAt).toBeInstanceOf(Date);
     expect(songsetUpdate!.values.updatedAt).toBeInstanceOf(Date);
+
+    // The Songset row is locked before the item guard, the sibling snapshot,
+    // and both writes, and every write stays inside that transaction.
+    expect(chains[0].for).toHaveBeenCalledWith("update");
+    expect(events).toEqual([
+      "select#1",
+      "lock:update",
+      "select#2",
+      "select#3",
+      "update:songsetItems",
+      "update:songsets",
+    ]);
+    expect(mockUpdates()).toHaveLength(0);
   });
 
   it("rejects a stored arrangement that no longer matches changed beats with ARRANGEMENT_STALE", async () => {
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
-      ownedItemRow() as unknown as ItemsFindFirstResult
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }],
+      [
+        arrangementItemRow({
+          arrangementSteps: JSON.stringify(singleIntroArrangement),
+          recordingBeats: JSON.stringify([0, 4, 8, 12, 16, 20, 24, 28, 32]),
+        }),
+      ]
     );
-    useSelectRows([
-      arrangementItemRow({
-        arrangementSteps: JSON.stringify(singleIntroArrangement),
-        recordingBeats: JSON.stringify([0, 4, 8, 12, 16, 20, 24, 28, 32]),
-      }),
-    ]);
-    mockUpdates();
 
     await expect(
       updateSongArrangement("item-1", "songset-1", 1, singleIntroArrangement)
     ).rejects.toMatchObject({ code: "ARRANGEMENT_STALE" });
+
+    expect(updates).toHaveLength(0);
   });
 
   it("rejects a save with missing analysis with ARRANGEMENT_ANALYSIS_UNAVAILABLE", async () => {
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
-      ownedItemRow() as unknown as ItemsFindFirstResult
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }],
+      [
+        arrangementItemRow({
+          durationSeconds: null,
+          recordingSections: null,
+          recordingBeats: null,
+        }),
+      ]
     );
-    useSelectRows([
-      arrangementItemRow({
-        durationSeconds: null,
-        recordingSections: null,
-        recordingBeats: null,
-      }),
-    ]);
-    mockUpdates();
 
     await expect(
       updateSongArrangement("item-1", "songset-1", 1, singleIntroArrangement)
     ).rejects.toMatchObject({ code: "ARRANGEMENT_ANALYSIS_UNAVAILABLE" });
+
+    expect(updates).toHaveLength(0);
   });
 
   it("resets with NULL even without analysis and bumps both timestamps", async () => {
-    vi.mocked(db.query.songsetItems.findFirst)
-      .mockResolvedValueOnce(
-        ownedItemRow({
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      ownedItemRow({
+        arrangementSteps: null,
+        recording: recordingRow(),
+      }) as unknown as ItemsFindFirstResult
+    );
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }],
+      [
+        arrangementItemRow({
           arrangementSteps: JSON.stringify(singleIntroArrangement),
-        }) as unknown as ItemsFindFirstResult
-      )
-      .mockResolvedValueOnce(
-        ownedItemRow({
-          arrangementSteps: null,
-          recording: recordingRow(),
-        }) as unknown as ItemsFindFirstResult
-      );
-    useSelectRows([
-      arrangementItemRow({
-        durationSeconds: null,
-        recordingSections: null,
-        recordingBeats: null,
-      }),
-    ]);
-    const updates = mockUpdates();
+          durationSeconds: null,
+          recordingSections: null,
+          recordingBeats: null,
+        }),
+      ]
+    );
 
     const result = await updateSongArrangement("item-1", "songset-1", 1, null);
 
@@ -286,35 +384,185 @@ describe("updateSongArrangement", () => {
     expect(updates.find((call) => call.table === songsets)).toBeDefined();
   });
 
-  it("rejects a 1501-second prospective selected total with SONGSET_TOO_LONG", async () => {
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
-      ownedItemRow() as unknown as ItemsFindFirstResult
+  it("rejects a 1501-second prospective laid-out total with SONGSET_TOO_LONG", async () => {
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }],
+      [
+        // Draft contributes 10s; the sibling keeps its full 1495s recording.
+        arrangementItemRow(),
+        arrangementItemRow({
+          id: "item-2",
+          durationSeconds: 1495,
+          recordingSections: null,
+          recordingBeats: null,
+        }),
+      ]
     );
-    useSelectRows([
-      // Draft contributes 10s; the sibling keeps its full 1495s recording.
-      arrangementItemRow(),
-      arrangementItemRow({
-        id: "item-2",
-        durationSeconds: 1495,
-        recordingSections: null,
-        recordingBeats: null,
-      }),
-    ]);
-    mockUpdates();
 
     await expect(
       updateSongArrangement("item-1", "songset-1", 1, singleIntroArrangement)
     ).rejects.toMatchObject({ code: "SONGSET_TOO_LONG" });
+
+    expect(updates).toHaveLength(0);
   });
 
-  it("returns null for an unowned item", async () => {
+  it("admits an arranged laid-out total of exactly 1500 seconds across a crossfade", async () => {
     vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      ownedItemRow({
+        arrangementSteps: JSON.stringify(fullRecordingArrangement),
+        recording: recordingRow(),
+      }) as unknown as ItemsFindFirstResult
+    );
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }],
+      [
+        arrangementItemRow({
+          durationSeconds: 800,
+          recordingSections: longSectionsJson,
+          recordingBeats: longBeatsJson,
+        }),
+        arrangementItemRow({
+          id: "item-2",
+          durationSeconds: 800,
+          crossfadeEnabled: 1,
+          crossfadeDurationSeconds: 100,
+        }),
+      ]
+    );
+
+    const result = await updateSongArrangement(
+      "item-1",
+      "songset-1",
+      1,
+      fullRecordingArrangement
+    );
+
+    // 800s + 800s minus the 100s crossfade overlap = exactly the 1500s cap.
+    expect(result).not.toBeNull();
+    const itemUpdate = updates.find((call) => call.table === songsetItems);
+    expect(itemUpdate!.values.arrangementSteps).toBe(
+      JSON.stringify(fullRecordingArrangement)
+    );
+  });
+
+  it("returns null for an unowned Songset without touching rows", async () => {
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(
       ownedItemRow({ songset: { userId: 2 } }) as unknown as ItemsFindFirstResult
     );
+    const { updates, events, chains } = installMutationTransaction([]);
 
     const result = await updateSongArrangement("item-1", "songset-1", 1, null);
 
     expect(result).toBeNull();
+    expect(updates).toHaveLength(0);
+    expect(events).toEqual(["select#1", "lock:update"]);
+    expect(chains[0].for).toHaveBeenCalledWith("update");
+    expect(db.query.songsetItems.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the item does not belong to the Songset", async () => {
+    const { updates } = installMutationTransaction([{ id: "songset-1" }], []);
+
+    const result = await updateSongArrangement("item-1", "songset-1", 1, null);
+
+    expect(result).toBeNull();
+    expect(updates).toHaveLength(0);
+    expect(db.query.songsetItems.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("serializes concurrent saves so the second one sees the first commit", async () => {
+    // Each item currently contributes its 10s arrangement. Expanding both to
+    // the full 800s Recording is admitted one at a time (800 + 10 = 810) but
+    // not together (1600), so the parent lock must let only one through.
+    const arrangements = new Map<string, string | null>([
+      ["item-1", JSON.stringify(singleIntroArrangement)],
+      ["item-2", JSON.stringify(singleIntroArrangement)],
+    ]);
+    const worldItems = [
+      arrangementItemRow({
+        id: "item-1",
+        durationSeconds: 800,
+        recordingSections: longSectionsJson,
+        recordingBeats: longBeatsJson,
+      }),
+      arrangementItemRow({
+        id: "item-2",
+        durationSeconds: 800,
+        recordingSections: longSectionsJson,
+        recordingBeats: longBeatsJson,
+      }),
+    ];
+    const writes: UpdateCall[] = [];
+    const targets = ["item-1", "item-2"];
+    let tail: Promise<unknown> = Promise.resolve();
+
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(
+      ownedItemRow({ recording: recordingRow() }) as unknown as ItemsFindFirstResult
+    );
+
+    const transaction = vi.mocked(mutationDb.transaction) as unknown as ReturnType<
+      typeof vi.fn
+    >;
+    transaction.mockImplementation((callback: (handle: unknown) => Promise<unknown>) => {
+      // A locked transaction observes the state committed by its predecessor;
+      // the shared tail models the parent row's write lock.
+      const run = tail.then(() => {
+        let step = 0;
+        let target: string | null = null;
+        const tx = {
+          select: vi.fn(() => {
+            step += 1;
+            if (step === 1) return createSelectChain([{ id: "songset-1" }]);
+            if (step === 2) {
+              target = targets.shift() ?? null;
+              return createSelectChain([{ id: target }]);
+            }
+            return createSelectChain(
+              worldItems.map((item) => ({
+                ...item,
+                arrangementSteps: arrangements.get(item.id) ?? null,
+              }))
+            );
+          }),
+          update: vi.fn((table: unknown) => ({
+            set: (values: Record<string, unknown>) => {
+              writes.push({ table, values });
+              if (table === songsetItems && target !== null) {
+                arrangements.set(
+                  target,
+                  (values.arrangementSteps as string | null | undefined) ?? null
+                );
+              }
+              return { where: () => Promise.resolve(undefined) };
+            },
+          })),
+        };
+        return callback(tx);
+      });
+      tail = run.then(
+        () => undefined,
+        () => undefined
+      );
+      return run;
+    });
+
+    const results = await Promise.allSettled([
+      updateSongArrangement("item-1", "songset-1", 1, fullRecordingArrangement),
+      updateSongArrangement("item-2", "songset-1", 1, fullRecordingArrangement),
+    ]);
+
+    expect(results[0].status).toBe("fulfilled");
+    expect((results[0] as PromiseFulfilledResult<unknown>).value).not.toBeNull();
+    expect(results[1].status).toBe("rejected");
+    expect((results[1] as PromiseRejectedResult).reason).toMatchObject({
+      code: "SONGSET_TOO_LONG",
+    });
+    // Only the first save wrote; the rejected one rolled back under the lock.
+    expect(writes.filter((call) => call.table === songsetItems)).toHaveLength(1);
+    expect(arrangements.get("item-1")).toBe(JSON.stringify(fullRecordingArrangement));
+    expect(arrangements.get("item-2")).toBe(JSON.stringify(singleIntroArrangement));
   });
 });
 
@@ -404,20 +652,17 @@ describe("updateSongsetItem arrangement lifecycle", () => {
   });
 
   it("clears the arrangement and bumps updatedAt when the Recording changes", async () => {
-    vi.mocked(db.query.songsetItems.findFirst)
-      .mockResolvedValueOnce(
-        ownedItemRow({
-          recordingHashPrefix: "old",
-          arrangementSteps: JSON.stringify(singleIntroArrangement),
-        }) as unknown as ItemsFindFirstResult
-      )
-      .mockResolvedValueOnce(
-        ownedItemRow({
-          recordingHashPrefix: "new",
-          recording: recordingRow(),
-        }) as unknown as ItemsFindFirstResult
-      );
-    const updates = mockUpdates();
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      ownedItemRow({
+        recordingHashPrefix: "new",
+        recording: recordingRow(),
+      }) as unknown as ItemsFindFirstResult
+    );
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1", recordingHashPrefix: "old" }],
+      [{ hashPrefix: "new" }]
+    );
 
     await updateSongsetItem("item-1", "songset-1", 1, {
       recordingHashPrefix: "new",
@@ -429,22 +674,18 @@ describe("updateSongsetItem arrangement lifecycle", () => {
   });
 
   it("preserves the arrangement but still bumps updatedAt for transition-only changes", async () => {
-    vi.mocked(db.query.songsetItems.findFirst)
-      .mockResolvedValueOnce(
-        ownedItemRow({
-          recordingHashPrefix: "abc",
-          arrangementSteps: JSON.stringify(singleIntroArrangement),
-        }) as unknown as ItemsFindFirstResult
-      )
-      .mockResolvedValueOnce(
-        ownedItemRow({
-          recordingHashPrefix: "abc",
-          arrangementSteps: JSON.stringify(singleIntroArrangement),
-          gapBeats: 4,
-          recording: recordingRow(),
-        }) as unknown as ItemsFindFirstResult
-      );
-    const updates = mockUpdates();
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      ownedItemRow({
+        recordingHashPrefix: "abc",
+        arrangementSteps: JSON.stringify(singleIntroArrangement),
+        gapBeats: 4,
+        recording: recordingRow(),
+      }) as unknown as ItemsFindFirstResult
+    );
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1", recordingHashPrefix: "abc" }]
+    );
 
     await updateSongsetItem("item-1", "songset-1", 1, { gapBeats: 4 });
 
@@ -454,17 +695,16 @@ describe("updateSongsetItem arrangement lifecycle", () => {
   });
 
   it("does not clear the arrangement when the same Recording is re-applied", async () => {
-    vi.mocked(db.query.songsetItems.findFirst)
-      .mockResolvedValueOnce(
-        ownedItemRow({
-          recordingHashPrefix: "abc",
-          arrangementSteps: JSON.stringify(singleIntroArrangement),
-        }) as unknown as ItemsFindFirstResult
-      )
-      .mockResolvedValueOnce(
-        ownedItemRow({ recordingHashPrefix: "abc", recording: recordingRow() }) as unknown as ItemsFindFirstResult
-      );
-    const updates = mockUpdates();
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      ownedItemRow({
+        recordingHashPrefix: "abc",
+        recording: recordingRow(),
+      }) as unknown as ItemsFindFirstResult
+    );
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1", recordingHashPrefix: "abc" }]
+    );
 
     await updateSongsetItem("item-1", "songset-1", 1, {
       recordingHashPrefix: "abc",
@@ -472,6 +712,33 @@ describe("updateSongsetItem arrangement lifecycle", () => {
 
     const itemUpdate = updates.find((call) => call.table === songsetItems);
     expect(itemUpdate!.values).not.toHaveProperty("arrangementSteps");
+  });
+
+  it("returns null without writes when the replacement Recording does not exist", async () => {
+    const { updates, events } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1", recordingHashPrefix: "old" }],
+      []
+    );
+
+    const result = await updateSongsetItem("item-1", "songset-1", 1, {
+      recordingHashPrefix: "missing",
+    });
+
+    expect(result).toBeNull();
+    // Nothing is written, so the saved arrangement survives the dangling patch.
+    expect(updates).toHaveLength(0);
+    expect(events).toEqual(["select#1", "lock:update", "select#2", "select#3"]);
+    expect(db.query.songsetItems.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the item does not belong to the Songset", async () => {
+    const { updates } = installMutationTransaction([{ id: "songset-1" }], []);
+
+    const result = await updateSongsetItem("item-1", "songset-1", 1, { gapBeats: 4 });
+
+    expect(result).toBeNull();
+    expect(updates).toHaveLength(0);
   });
 });
 

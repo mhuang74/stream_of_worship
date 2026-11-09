@@ -10,9 +10,16 @@ import { z } from "zod";
 // Wire contract (spec §2.2): exactly the persisted fields, 1–64 Steps,
 // nonnegative integer section indices, finite timestamps. `strictObject`
 // rejects extra fields so the stored JSON can never drift from the schema.
+// Zod counts UTF-16 units, so the label cap counts code points explicitly to
+// stay identical to arrangements.ts and the worker's Python len().
 const arrangementStepSchema = z.strictObject({
   sectionIndex: z.number().int().nonnegative(),
-  label: z.string().min(1).max(100),
+  label: z
+    .string()
+    .min(1)
+    .refine((label) => [...label].length <= 100, {
+      message: "Label must be at most 100 characters",
+    }),
   startSeconds: z.number(),
   endSeconds: z.number(),
 });
