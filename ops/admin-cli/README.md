@@ -444,6 +444,56 @@ sow-admin audio list --components missing --format ids \
 sow-admin audio show song_0001
 ```
 
+##### Making songs arrangeable (`--write-recording-analysis`)
+
+The webapp's **Arrange** button is enabled only when the recording has
+non-empty `sections`, non-empty `beats`, a `duration_seconds`, and those pass
+`buildSnappedSteps` (`delivery/webapp/src/lib/arrangements.ts`). Recordings
+analyzed at the default `--analysis-tier fast` have `sections`/`beats` = NULL,
+so Arrange stays disabled even though tempo/key/duration are present.
+
+`--write-recording-analysis` fills that gap cheaply, without an allin1 GPU
+pass: it derives timed `sections` from the component results (whose labels come
+from the recording's `structured_lyrics`) and `beats` from the cached madmom
+beat grid, then writes both straight to the recording row.
+
+```bash
+# Single song
+sow-admin audio components SONG_ID --write-recording-analysis
+
+# Backfill a pool (idempotent: re-running rewrites the same sections/beats)
+sow-admin audio list --status partial --visibility review --format ids \
+  | sow-admin audio components --stdin --write-recording-analysis
+```
+
+`audio list` filters by **analysis** status via `--status` and by publish
+state via `--visibility`; there is no `--analysis` flag. The backfill does not
+mark progress anywhere (`analysis_status` is deliberately left `partial`), so
+re-running the same query reprocesses rows that already have `sections` — it
+is safe, not resumable. Narrow the list yourself when continuing a long run.
+
+Behaviour worth knowing:
+
+- It **implies `--snap-to-downbeat`**, because the beats come from the
+  `{hash_prefix}/beat_grid.json` artifact that only the downbeat-snap path
+  produces.
+- `analysis_status` is **left unchanged** (`partial`). It still means "ran the
+  full allin1 tier", and `Recording.has_full_analysis` gates treating
+  `sections` as authoritative allin1 output.
+- Only `sections` and `beats` are written — unlike `audio analyze`, this never
+  rewrites `duration_seconds`/tempo/key.
+- Sections that would collapse to zero length when snapped to the nearest beat
+  are dropped before writing, because `buildSnappedSteps` returns `null` for
+  the *whole* recording if even one section collapses.
+- Section density is bounded by the source: `structured_lyrics` section tags
+  are coarse (median 3 sections per song), so arrangements start from a rough
+  timeline the user refines in the editor.
+- Published recordings are still refused by the publish guard; demote first
+  with `sow-admin audio set-visibility SONG_ID --status review`, run, then
+  re-publish.
+- Cannot be combined with `--no-wait` (the derived structure needs the
+  completed job's components).
+
 `audio list --components` takes three mutually exclusive states that partition
 every active recording: `missing` (no component rows for that recording's
 current audio), `unclassified` (rows exist but the essential entry/exit/
