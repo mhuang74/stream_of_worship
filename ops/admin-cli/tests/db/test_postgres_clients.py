@@ -7,7 +7,7 @@ end-to-end operations through DatabaseClient, ReadOnlyClient, and SongsetClient.
 import pytest
 
 from stream_of_worship.admin.db.client import DatabaseClient
-from stream_of_worship.admin.db.models import Recording, Song
+from stream_of_worship.admin.db.models import Recording, Song, SongComponent
 from stream_of_worship.db.app.read_client import ReadOnlyClient
 from stream_of_worship.db.app.songset_client import SongsetClient
 from stream_of_worship.db.postgres_schema import ALL_SCHEMA_STATEMENTS
@@ -224,6 +224,55 @@ class TestDatabaseClient:
         )
 
         assert updated is False
+
+    def test_upsert_song_components_dedupes_within_one_batch(self, db_clients):
+        """Duplicate component keys inside one batch must not abort the insert.
+
+        The unique index covers (song_id, component_type, occurrence_index,
+        role). The DELETE only clears previously stored rows, so cached R2
+        payloads carrying the same verse twice used to raise UniqueViolation
+        and lose the entire batch.
+        """
+        admin_client, _, _, _ = db_clients
+
+        admin_client.insert_song(
+            Song(
+                id="song_dup_components",
+                title="Dup Components",
+                source_url="http://test",
+                scraped_at="2024-01-01T00:00:00",
+            )
+        )
+        admin_client.insert_recording(
+            Recording(
+                content_hash="c" * 64,
+                hash_prefix="cccccccccccc",
+                song_id="song_dup_components",
+                original_filename="dup.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+            )
+        )
+
+        def component(start: float, end: float) -> SongComponent:
+            return SongComponent(
+                song_id="song_dup_components",
+                content_hash="c" * 64,
+                component_type="verse",
+                occurrence_index=1,
+                role="none",
+                start_time=start,
+                end_time=end,
+            )
+
+        inserted = admin_client.upsert_song_components(
+            "song_dup_components",
+            "c" * 64,
+            [component(10.0, 20.0), component(10.0, 20.0)],
+        )
+
+        assert inserted == 1
+        assert len(admin_client.get_song_components("song_dup_components")) == 1
 
     def test_soft_delete_and_restore_song(self, db_clients):
         """Test soft-deleting and restoring a song."""
