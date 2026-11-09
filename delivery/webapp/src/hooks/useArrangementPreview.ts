@@ -72,6 +72,12 @@ export interface UseArrangementPreviewResult {
   stop: () => void;
   seek: (seconds: number) => void;
   startAt: (itemId: string) => Promise<void>;
+  /**
+   * Audition from an absolute timeline position. The Sheet opens a section or
+   * song window with this; the window END is enforced by the caller (the
+   * transport itself always owns the full Songset timeline).
+   */
+  startAtSeconds: (seconds: number) => Promise<void>;
   isFallbackMode: boolean;
 }
 
@@ -358,6 +364,16 @@ export function useArrangementPreview(
     [timeline, seek, play],
   );
 
+  const startAtSeconds = useCallback(
+    async (seconds: number) => {
+      seek(seconds);
+      if (!sessionRef.current?.isPlaying()) {
+        await play();
+      }
+    },
+    [seek, play],
+  );
+
   // Timeline-input change, sheet close, and unmount are the full-cleanup
   // triggers: timers, listeners, elements, graph, AudioContext.
   useEffect(() => {
@@ -396,6 +412,7 @@ export function useArrangementPreview(
     stop,
     seek,
     startAt,
+    startAtSeconds,
     isFallbackMode: isLive ? state.isFallbackMode : false,
   };
 }

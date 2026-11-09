@@ -5,7 +5,8 @@ import { ArrangementEditorSheet } from "@/components/songset/ArrangementEditorSh
 import type { SongListItem } from "@/components/songset/SongList";
 
 // The preview transport is owned by issue #286's audio slice; the sheet is
-// tested against its documented controller contract.
+// tested against its documented controller contract (a timeline window into
+// the whole-Songset transport).
 const preview = vi.hoisted(() => ({
   options: null as null | {
     active: boolean;
@@ -23,6 +24,7 @@ const preview = vi.hoisted(() => ({
     stop: vi.fn(),
     seek: vi.fn(),
     startAt: vi.fn().mockResolvedValue(undefined),
+    startAtSeconds: vi.fn().mockResolvedValue(undefined),
     isFallbackMode: false,
   },
 }));
@@ -32,6 +34,23 @@ vi.mock("@/hooks/useArrangementPreview", () => ({
     preview.options = options;
     return preview.controller;
   },
+}));
+
+// Real LRC timestamps so per-component filtering and line highlighting can be
+// asserted without network access.
+const lyrics = vi.hoisted(() => ({
+  lrcContent:
+    "[00:01.00]Verse one line\n[00:04.00]Verse one second\n[00:11.00]Chorus line\n[00:15.00]Chorus second\n[00:21.00]Verse two line\n",
+  loading: false,
+}));
+
+vi.mock("@/hooks/useSongLyrics", () => ({
+  useSongLyrics: () => ({
+    lrcContent: lyrics.lrcContent,
+    lines: null,
+    loading: lyrics.loading,
+    error: null,
+  }),
 }));
 
 const SECTIONS = [
@@ -85,11 +104,21 @@ describe("ArrangementEditorSheet", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     preview.controller.status = "idle";
+    preview.controller.errorMessage = null;
     preview.controller.timelinePositionSeconds = 0;
     preview.controller.totalSeconds = 120;
     preview.controller.isFallbackMode = false;
     preview.controller.play.mockResolvedValue(undefined);
     preview.controller.startAt.mockResolvedValue(undefined);
+    // Mirrors the hook: seeking + playing lands the transport on the requested
+    // timeline position, one second in, so a lyric line is current.
+    preview.controller.startAtSeconds.mockImplementation(async (seconds: number) => {
+      preview.controller.timelinePositionSeconds = seconds + 1;
+      preview.controller.status = "playing";
+    });
+    lyrics.lrcContent =
+      "[00:01.00]Verse one line\n[00:04.00]Verse one second\n[00:11.00]Chorus line\n[00:15.00]Chorus second\n[00:21.00]Verse two line\n";
+    lyrics.loading = false;
     preview.options = null;
   });
 
@@ -115,6 +144,9 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-add-0")).toHaveTextContent("Verse 1");
     expect(screen.getByTestId("arrangement-add-1")).toHaveTextContent("Chorus");
     expect(screen.getByTestId("arrangement-add-2")).toHaveTextContent("Verse 2");
+    expect(screen.getByTestId("arrangement-component-count")).toHaveTextContent(
+      /3 components/
+    );
   });
 
   it("initializes from a saved arrangement instead of the source sections", () => {
@@ -137,7 +169,83 @@ describe("ArrangementEditorSheet", () => {
     expect(draftSectionIndices()).toEqual(["2", "2", "0"]);
   });
 
-  it("omits a step, stops the preview, and keeps the palette occurrence available", () => {
+  it("shows each component's label, source timecode, and its own lyric lines", () => {
+    renderSheet();
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    expect(within(rows[0]).getByText("Verse 1")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Chorus")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("0:00–0:10")).toBeInTheDocument();
+
+    // Only the lines inside that Step's source range belong to the block.
+    expect(within(rows[0]).getByText("Verse one line")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Chorus line")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Verse two line")).toBeInTheDocument();
+    expect(within(rows[0]).queryByText("Chorus line")).toBeNull();
+    expect(screen.getAllByTestId("arrangement-lyric-line")).toHaveLength(5);
+  });
+
+  it("labels a component without lyric lines as instrumental", () => {
+    // Lyrics start after the intro, so the Intro Step has no lines of its own.
+    lyrics.lrcContent =
+      "[00:11.00]Verse line one\n[00:15.00]Verse line two\n[00:21.00]Verse line three\n";
+    const item = makeItem({
+      recording: {
+        contentHash: "abc123",
+        hashPrefix: "ab",
+        durationSeconds: 30,
+        tempoBpm: 120,
+        musicalKey: "G",
+        sections: [
+          { label: "Intro", start: 0, end: 10 },
+          { label: "Verse", start: 10, end: 30 },
+        ],
+        beats: BEATS,
+      },
+    });
+    renderSheet({ item });
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    expect(within(rows[0]).getByText(/no lyrics in this section/i)).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Verse line one")).toBeInTheDocument();
+  });
+
+  it("plays a single component from its own timeline position", () => {
+    renderSheet();
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    fireEvent.click(within(rows[1]).getByRole("button", { name: /play section 2/i }));
+
+    expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(10);
+    expect(preview.controller.stop).not.toHaveBeenCalled();
+  });
+
+  it("highlights the current lyric line while a component plays", () => {
+    renderSheet();
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    fireEvent.click(within(rows[1]).getByRole("button", { name: /play section 2/i }));
+
+    const activeLine = within(rows[1]).getByText("Chorus line");
+    expect(activeLine).toHaveAttribute("data-active", "true");
+    expect(screen.getByTestId("arrangement-preview-phase")).toHaveTextContent(
+      "Playing Chorus"
+    );
+  });
+
+  it("pauses the component that is already playing", () => {
+    preview.controller.status = "playing";
+    preview.controller.timelinePositionSeconds = 11;
+    renderSheet();
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    fireEvent.click(within(rows[1]).getByRole("button", { name: /pause section 2/i }));
+
+    expect(preview.controller.pause).toHaveBeenCalledTimes(1);
+    expect(preview.controller.startAtSeconds).not.toHaveBeenCalled();
+  });
+
+  it("removes a step, stops the preview, and keeps the palette occurrence", () => {
     renderSheet();
 
     const rows = screen.getAllByTestId("arrangement-draft-step");
@@ -163,6 +271,75 @@ describe("ArrangementEditorSheet", () => {
     fireEvent.click(screen.getByTestId("arrangement-add-1"));
 
     expect(draftSectionIndices()).toEqual(["0", "1", "2", "1"]);
+  });
+
+  it("undoes the last change and clears the dirty flag back at the start", () => {
+    renderSheet();
+    const undoButton = screen.getByTestId("arrangement-undo");
+    expect(undoButton).toBeDisabled();
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    fireEvent.click(within(rows[1]).getByRole("button", { name: /remove step/i }));
+    expect(draftSectionIndices()).toEqual(["0", "2"]);
+    expect(undoButton).not.toBeDisabled();
+    expect(screen.getByTestId("arrangement-status")).toHaveTextContent(/unsaved/i);
+
+    fireEvent.click(undoButton);
+
+    expect(draftSectionIndices()).toEqual(["0", "1", "2"]);
+    expect(undoButton).toBeDisabled();
+    expect(screen.getByTestId("arrangement-status")).toHaveTextContent(/^Saved$/);
+  });
+
+  it("undoes with the keyboard shortcut", () => {
+    renderSheet();
+
+    fireEvent.click(screen.getByTestId("arrangement-add-1"));
+    expect(draftSectionIndices()).toEqual(["0", "1", "2", "1"]);
+
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+
+    expect(draftSectionIndices()).toEqual(["0", "1", "2"]);
+  });
+
+  it("starts the song preview at the lead-in window by default", () => {
+    const previous = makeItem({ id: "item-0", position: 0 });
+    const item = makeItem({ id: "item-1", position: 1 });
+    renderSheet({ item, items: [previous, item] });
+
+    // items[0] ends at 30s, then a 1s gap (2 beats at 120 BPM) → 31s start.
+    expect(screen.getByTestId("arrangement-lead-in")).toHaveTextContent("10s");
+    expect(
+      screen.getByText(/hands over into your first component/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+
+    expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(21);
+  });
+
+  it("explains that the first song has no lead-in", () => {
+    renderSheet();
+
+    expect(screen.getByTestId("arrangement-lead-in")).toHaveTextContent("0s");
+    expect(
+      screen.getByText(/first song in this set/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+
+    expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(0);
+  });
+
+  it("pauses and stops the song preview", () => {
+    preview.controller.status = "playing";
+    renderSheet();
+
+    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    expect(preview.controller.pause).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId("arrangement-preview-stop"));
+    expect(preview.controller.stop).toHaveBeenCalled();
   });
 
   it("saves the draft as one canonical arrangement and closes", async () => {
@@ -355,7 +532,7 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.queryByTestId("arrangement-save-error")).toBeNull();
   });
 
-  it("clears a surfaced preview error when starting playback from a step", () => {
+  it("clears a surfaced preview error when a component starts playing", () => {
     renderSheet();
 
     act(() => {
@@ -366,10 +543,11 @@ describe("ArrangementEditorSheet", () => {
     });
     expect(screen.getByTestId("arrangement-preview-error")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId("arrangement-start-at-item-1"));
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    fireEvent.click(within(rows[0]).getByRole("button", { name: /play section 1/i }));
 
     expect(screen.queryByTestId("arrangement-preview-error")).toBeNull();
-    expect(preview.controller.startAt).toHaveBeenCalledWith("item-1");
+    expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(0);
   });
 
   it("blocks every destructive control until a pending save settles", async () => {
@@ -389,7 +567,10 @@ describe("ArrangementEditorSheet", () => {
 
     // Draft mutation, preview, and close requests are all inert mid-save.
     expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
-    expect(screen.getByTestId("arrangement-start-at-item-1")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-undo")).toBeDisabled();
+    for (const button of screen.getAllByRole("button", { name: /play section/i })) {
+      expect(button).toBeDisabled();
+    }
     for (const button of screen.getAllByRole("button", { name: /duplicate/i })) {
       expect(button).toBeDisabled();
     }
@@ -401,12 +582,12 @@ describe("ArrangementEditorSheet", () => {
     }
     fireEvent.click(screen.getAllByRole("button", { name: /duplicate/i })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
-    fireEvent.click(screen.getByTestId("arrangement-start-at-item-1"));
+    fireEvent.click(screen.getAllByRole("button", { name: /play section/i })[0]);
     fireEvent.click(screen.getByTestId("arrangement-preview-play"));
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
     expect(draftSectionIndices()).toEqual(draftBeforeSave);
-    expect(preview.controller.startAt).not.toHaveBeenCalled();
+    expect(preview.controller.startAtSeconds).not.toHaveBeenCalled();
     expect(preview.controller.play).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.queryByText("Discard arrangement changes?")).toBeNull();
@@ -442,35 +623,11 @@ describe("ArrangementEditorSheet", () => {
     );
   });
 
-  it("wires preview transport controls to the hook", () => {
-    preview.controller.status = "paused";
-    renderSheet();
-
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
-    expect(preview.controller.play).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByTestId("arrangement-preview-stop"));
-    expect(preview.controller.stop).toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("arrangement-start-at-item-1"));
-    expect(preview.controller.startAt).toHaveBeenCalledWith("item-1");
-  });
-
-  it("pauses instead of playing while the preview is playing", () => {
-    preview.controller.status = "playing";
-    renderSheet();
-
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
-
-    expect(preview.controller.pause).toHaveBeenCalledTimes(1);
-    expect(preview.controller.play).not.toHaveBeenCalled();
-  });
-
   it("shows original vs arranged duration and the reset semantics", () => {
     renderSheet();
 
-    expect(screen.getByText("Original")).toBeInTheDocument();
-    expect(screen.getByText("Arranged")).toBeInTheDocument();
+    expect(screen.getByText(/Arranged 30s/)).toBeInTheDocument();
+    expect(screen.getByText(/Original 30s/)).toBeInTheDocument();
     expect(
       screen.getByText(/Saving keeps only these sections; Reset restores the full recording/i)
     ).toBeInTheDocument();
