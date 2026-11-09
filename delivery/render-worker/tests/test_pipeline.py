@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sow_render_worker.arrangements import ArrangementStep
 from sow_render_worker.audio_engine import AudioClipInfo, AudioSegmentInfo, ExportResult, SongsetItem
 from sow_render_worker.chapters import ChaptersManifest, Chapter
 from sow_render_worker.db import RenderJob, RenderProgress
@@ -46,15 +45,6 @@ def _make_songset_item(**overrides) -> SongsetItem:
     }
     defaults.update(overrides)
     return SongsetItem(**defaults)
-
-
-def _make_step(start: float, end: float, section_index: int = 0) -> ArrangementStep:
-    return ArrangementStep(
-        section_index=section_index,
-        label=f"section-{section_index}",
-        start_seconds=start,
-        end_seconds=end,
-    )
 
 
 def _make_render_job(**overrides) -> RenderJob:
