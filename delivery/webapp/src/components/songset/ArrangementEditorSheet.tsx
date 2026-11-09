@@ -35,6 +35,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
@@ -439,6 +446,7 @@ export function ArrangementEditorSheet({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [fallbackNotice, setFallbackNotice] = useState(false);
   const [leadInSeconds, setLeadInSeconds] = useState(LEAD_IN_DEFAULT_SECONDS);
@@ -470,6 +478,18 @@ export function ArrangementEditorSheet({
 
   const draftSteps = useMemo(() => draft.map((entry) => entry.step), [draft]);
 
+  // Occurrence counts shown in the add dialog ("in arrangement ×2").
+  const stepCountBySectionIndex = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const entry of draft) {
+      counts.set(
+        entry.step.sectionIndex,
+        (counts.get(entry.step.sectionIndex) ?? 0) + 1
+      );
+    }
+    return counts;
+  }, [draft]);
+
   const labelForDraftIndex = useCallback(
     (index: number): string | null => {
       const entry = draft[index];
@@ -493,6 +513,12 @@ export function ArrangementEditorSheet({
 
   const isDraftValid = draft.length >= 1 && draft.length <= MAX_ARRANGEMENT_STEPS;
   const tooManySteps = draft.length > MAX_ARRANGEMENT_STEPS;
+  // The picker is only meaningful when analysis snapped at least one section.
+  const canAddSection =
+    !isSaving &&
+    occurrences.length > 0 &&
+    snappedByIndex.size > 0 &&
+    draft.length < MAX_ARRANGEMENT_STEPS;
   // Preview and Save stay blocked while the draft cannot validate against the
   // current analysis (stale/malformed saved steps) or analysis is missing.
   const isPreviewAvailable = isDraftValid && initProblem === null;
@@ -776,6 +802,16 @@ export function ArrangementEditorSheet({
     [commitDraft, draft, snappedByIndex]
   );
 
+  const handleAddFromDialog = useCallback(
+    (sectionIndex: number) => {
+      const snapped = snappedByIndex.get(sectionIndex);
+      if (!snapped || isSaving || draft.length >= MAX_ARRANGEMENT_STEPS) return;
+      addSection(sectionIndex);
+      setAddDialogOpen(false);
+    },
+    [addSection, draft.length, isSaving, snappedByIndex]
+  );
+
   const duplicateStep = useCallback(
     (id: string) => {
       const index = draft.findIndex((entry) => entry.id === id);
@@ -825,6 +861,7 @@ export function ArrangementEditorSheet({
       // A pending save decides the sheet's fate: it closes on success and
       // stays open on failure, so a close request mid-save is ignored.
       if (isSaving) return;
+      setAddDialogOpen(false);
       if (isDirty) {
         setDirtyDialogOpen(true);
         return;
@@ -836,6 +873,7 @@ export function ArrangementEditorSheet({
   );
 
   const handleDiscard = useCallback(() => {
+    setAddDialogOpen(false);
     setDirtyDialogOpen(false);
     setIsDirty(false);
     preview.stop();
@@ -848,6 +886,7 @@ export function ArrangementEditorSheet({
     setSaveError(null);
     preview.stop();
     try {
+      setAddDialogOpen(false);
       await onSave(draftToArrangement(draft));
       setIsDirty(false);
       onOpenChange(false);
@@ -994,7 +1033,7 @@ export function ArrangementEditorSheet({
                     </Alert>
                   )}
 
-                  <div className="mb-3 flex items-baseline justify-between gap-2">
+                  <div className="mb-3 flex items-center justify-between gap-2">
                     <p
                       className="text-xs text-muted-foreground"
                       data-testid="arrangement-component-count"
@@ -1004,45 +1043,23 @@ export function ArrangementEditorSheet({
                       </span>{" "}
                       {t("arrangement.draft.countLabel")}
                     </p>
-                    <span className="font-mono text-[10px] text-muted-foreground/70">
-                      {draft.length}/{MAX_ARRANGEMENT_STEPS}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="font-mono text-[10px] text-muted-foreground/70">
+                        {draft.length}/{MAX_ARRANGEMENT_STEPS}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => setAddDialogOpen(true)}
+                        disabled={!canAddSection}
+                        data-testid="arrangement-add-section"
+                      >
+                        <Plus className="size-3.5" />
+                        {t("arrangement.action.addSection")}
+                      </Button>
+                    </div>
                   </div>
-
-                  {/* Source palette */}
-                  <section aria-label={t("arrangement.section.source")} className="mb-4">
-                    <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                      {t("arrangement.section.source")}
-                    </h3>
-                    {occurrences.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        {t("arrangement.palette.empty")}
-                      </p>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap gap-1.5">
-                          {occurrences.map((occurrence) => (
-                            <Button
-                              key={`${occurrence.index}-${occurrence.section.label}`}
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() => addSection(occurrence.index)}
-                              disabled={!snappedByIndex.has(occurrence.index) || isSaving}
-                              aria-label={`${t("arrangement.action.addAria")}: ${occurrence.displayLabel}`}
-                              data-testid={`arrangement-add-${occurrence.index}`}
-                            >
-                              <Plus className="size-3" />
-                              {occurrence.displayLabel}
-                            </Button>
-                          ))}
-                        </div>
-                        <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                          {t("arrangement.section.sourceHint")}
-                        </p>
-                      </>
-                    )}
-                  </section>
 
                   <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">
                     {t("arrangement.note.reorderHint")}
@@ -1347,6 +1364,67 @@ export function ArrangementEditorSheet({
                 </Button>
               </div>
             </footer>
+
+            <Dialog
+              open={addDialogOpen}
+              onOpenChange={(open) => setAddDialogOpen(open)}
+            >
+              <DialogContent
+                className="sm:max-w-md"
+                data-testid="arrangement-add-dialog"
+              >
+                <DialogHeader>
+                  <DialogTitle>{t("arrangement.addDialog.title")}</DialogTitle>
+                  <DialogDescription>
+                    {t("arrangement.addDialog.description")}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex max-h-[min(52vh,380px)] flex-col gap-1.5 overflow-y-auto overscroll-contain pr-0.5">
+                  {occurrences.map((occurrence) => {
+                    const snapped = snappedByIndex.get(occurrence.index);
+                    const count = stepCountBySectionIndex.get(occurrence.index) ?? 0;
+                    return (
+                      <Button
+                        key={`${occurrence.index}-${occurrence.section.label}`}
+                        variant="outline"
+                        className="h-11 w-full justify-start gap-2.5 px-3 text-left"
+                        onClick={() => handleAddFromDialog(occurrence.index)}
+                        disabled={
+                          !snapped ||
+                          isSaving ||
+                          draft.length >= MAX_ARRANGEMENT_STEPS
+                        }
+                        aria-label={t("arrangement.addDialog.rowAria").replace(
+                          "{label}",
+                          occurrence.displayLabel
+                        )}
+                        data-testid={`arrangement-add-${occurrence.index}`}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+                          {occurrence.displayLabel}
+                        </span>
+                        {snapped && (
+                          <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
+                            {formatTimecode(
+                              snapped.endSeconds - snapped.startSeconds
+                            )}
+                          </span>
+                        )}
+                        {count > 0 && (
+                          <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                            {t("arrangement.addDialog.rowCount").replace(
+                              "{count}",
+                              String(count)
+                            )}
+                          </span>
+                        )}
+                        <Plus className="size-4 text-primary" />
+                      </Button>
+                    );
+                  })}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </SheetContent>
       </Sheet>

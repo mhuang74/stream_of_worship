@@ -38,7 +38,7 @@ The sheet is titled **Song arrangement**（歌曲編排）, and under the title 
 The sheet has four regions, in this order from the top:
 
 1. **Snap notice** — **Boundaries snap to the nearest detected beat, then repeat or omit any section below.**（段落邊界會對齊到最接近的節拍，之後可在下方重複或省略任何段落。）
-2. **Source sections**（來源段落）— the palette: one **＋ button per detected section**. Repeated labels are numbered in source order (`Chorus 1`, `Chorus 2`, …). Hint text: **Add any section as many times as you like. Numbers distinguish repeated labels.**（任何段落都可以重複加入。數字用於區分重複的段落名稱。）Tapping a button **appends** that section to the end of the sequence — you cannot insert in the middle, and a section whose stored bounds fall outside the recording (or that collapses when snapped) is left out of the default list and its palette button is greyed out. With no sections at all: **Recording analysis is unavailable, so there are no sections to arrange.**（錄音分析資料不可用，沒有可編排的段落。）
+2. **Score bar** — the component count on the left (for example **8 components**（個段落）) with **n/64**（步驟）and a single **Add section**（加入段落）button on the right. The button is disabled while a save is in flight, when the recording has no analysable sections, and at 64 Steps. Opening it shows a picker listing every detected section: repeated labels are numbered in source order (`Chorus 1`, `Chorus 2`, …), each row shows that section's length (`0:25`) and how many copies are already in the arrangement (**in arrangement ×2**（編排中 ×2）). Choosing a row **appends** that section to the end of the sequence and closes the picker — you cannot insert in the middle. A section whose stored bounds fall outside the recording (or that collapses when snapped) still appears in the picker but its row is greyed out.
 3. **Sequence**（編排順序）— the draft list, with the counter **Steps n/64**（步驟）. Each row has a drag handle, its position number, the section label, that Step's length (`32s`, `1m 5s`), a duplicate button, and a remove button. Drag rows to reorder — with mouse, touch, or keyboard.
 4. **Duration box** — **Original**（原始長度）and **Arranged**（編排長度）, plus the note **Saving keeps only these sections; Reset restores the full recording.**（儲存後只保留這些段落；重設會還原完整錄音。）
 
@@ -100,8 +100,8 @@ Per-song transition settings live in the row's **Gap：**（間隔：）control,
 | What you see | What it means | What to do |
 |---|---|---|
 | **Arrange**（編排）greyed out, tooltip "Recording analysis is unavailable, so a new arrangement cannot be created." | The recording has no usable section or beat analysis | Pick another recording or song; if a stale arrangement is blocking you, reset it |
-| **Recording analysis is unavailable, so there are no sections to arrange.**（錄音分析資料不可用，沒有可編排的段落。） | An arrangement is saved but the analysis behind it is gone, so no palette appears | **Reset**（重設）, or ask an admin to repair the analysis |
-| **Play preview**（播放預覽）disabled next to "Add at least one step before previewing or saving." | The draft is empty | Add at least one section from **Source sections**（來源段落） |
+| **Add section**（加入段落）greyed out with no sections in the picker | An arrangement is saved but the analysis behind it is gone, or every section collapses when snapped | **Reset**（重設）, or ask an admin to repair the analysis |
+| **Play preview**（播放預覽）disabled next to "Add at least one step before previewing or saving." | The draft is empty | Add at least one section with **Add section**（加入段落） |
 | "A sequence can have at most 64 steps. Remove some steps before saving." | All 64 Steps are used | Remove Steps before saving |
 | Save fails with "Song arrangement is unavailable or stale; repair the Recording analysis or reset the arrangement." | The recording's analysis changed after the arrangement was saved | **Reset**（重設）and rebuild the sequence; report it to an admin if the analysis changed unexpectedly |
 | Header badge **Over 25 min**（超過 25 分鐘） | Arranged audio totals more than 25 minutes (1500 s) | Shorten arrangements or remove a song |

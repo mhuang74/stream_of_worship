@@ -19,16 +19,16 @@ export const arrangementBundle = bundle({
     "arrangement.sheet.title": "Song arrangement",
     "arrangement.sheet.description":
       "Lyrics first: reorder, repeat, or omit this song's sections",
-    "arrangement.section.source": "Source sections",
     "arrangement.section.draft": "Sequence",
-    "arrangement.section.sourceHint":
-      "Add any section as many times as you like. Numbers distinguish repeated labels.",
+    "arrangement.addDialog.title": "Add a component",
+    "arrangement.addDialog.description":
+      "Adds a copy at the end of the arrangement. Drag it into place afterward.",
+    "arrangement.addDialog.rowAria": "Add {label}",
+    "arrangement.addDialog.rowCount": "in arrangement ×{count}",
     "arrangement.draft.count": "Steps",
     "arrangement.draft.countLabel": "components",
     "arrangement.draft.empty":
       "No components left. Undo the last change, reset to the original song, or add a section to start again.",
-    "arrangement.palette.empty":
-      "Recording analysis is unavailable, so there are no sections to arrange.",
     "arrangement.status.saved": "Saved",
     "arrangement.status.unsaved": "Unsaved changes",
     "arrangement.meta.key": "Key {key}",
@@ -39,7 +39,7 @@ export const arrangementBundle = bundle({
     "arrangement.action.save": "Save",
     "arrangement.action.saving": "Saving...",
     "arrangement.action.cancel": "Cancel",
-    "arrangement.action.addAria": "Add section",
+    "arrangement.action.addSection": "Add section",
     "arrangement.action.duplicateAria": "Duplicate step",
     "arrangement.action.removeAria": "Remove step",
     "arrangement.action.dragAria": "Reorder step",
@@ -138,14 +138,15 @@ export const arrangementBundle = bundle({
     // Sheet chrome
     "arrangement.sheet.title": "歌曲編排",
     "arrangement.sheet.description": "以歌詞為主：重新排序、重複或省略這首歌的段落",
-    "arrangement.section.source": "來源段落",
     "arrangement.section.draft": "編排順序",
-    "arrangement.section.sourceHint": "任何段落都可以重複加入。數字用於區分重複的段落名稱。",
+    "arrangement.addDialog.title": "加入段落",
+    "arrangement.addDialog.description": "會在編排結尾加入一個副本，之後再拖曳到指定位置。",
+    "arrangement.addDialog.rowAria": "加入 {label}",
+    "arrangement.addDialog.rowCount": "編排中 ×{count}",
     "arrangement.draft.count": "步驟",
     "arrangement.draft.countLabel": "個段落",
     "arrangement.draft.empty":
       "已沒有段落。可以復原上一個變更、重設為原始歌曲，或加入段落重新開始。",
-    "arrangement.palette.empty": "錄音分析資料不可用，沒有可編排的段落。",
     "arrangement.status.saved": "已儲存",
     "arrangement.status.unsaved": "有未儲存的變更",
     "arrangement.meta.key": "調性 {key}",
@@ -156,7 +157,7 @@ export const arrangementBundle = bundle({
     "arrangement.action.save": "儲存",
     "arrangement.action.saving": "儲存中...",
     "arrangement.action.cancel": "取消",
-    "arrangement.action.addAria": "加入段落",
+    "arrangement.action.addSection": "加入段落",
     "arrangement.action.duplicateAria": "複製步驟",
     "arrangement.action.removeAria": "移除步驟",
     "arrangement.action.dragAria": "重新排序步驟",
