@@ -520,6 +520,68 @@ would classify them again), and `complete`. The filter is scoped per
 `(song_id, content_hash)`, so rows left behind by a replaced download do not
 count as analysed.
 
+##### Beat-grid backfill for unarrangeable recordings
+
+`audio write-structure` can only derive sections where a beat grid already
+exists. Recordings that were never run through the downbeat-snap path have no
+`{hash_prefix}/beat_grid.json`, so they stay unarrangeable no matter how often
+you re-run the analysis commands — and forcing a full component job to get one
+is expensive (a component cache miss re-runs the LLM lyric aligner).
+
+`audio beat-grid` fills that gap for madmom cost only: it submits `beat_grid`
+jobs, which download the audio, resolve the grid through the shared beat-grid
+cache (madmom on the `sow-downbeats` Modal app) and upload
+`{hash_prefix}/beat_grid.json`. No components are extracted and no LLM is
+called. `audio write-structure` then does the local, free write-back.
+
+```bash
+set -a; . /opt/sow/.env; set +a   # SOW_ANALYSIS_API_KEY + R2 credentials
+
+# 1. Materialise missing beat grids (idempotent: existing grids are skipped)
+sow-admin audio list --structure missing --visibility review --format ids \
+  | sow-admin audio beat-grid --stdin
+
+# 2. Write sections+beats for everything that now has a grid (~1s/song, no job)
+sow-admin audio list --structure missing --visibility review --format ids \
+  | sow-admin audio write-structure --stdin
+```
+
+`--structure missing` is exactly the set the webapp Arrange button cannot
+open: `sections` or `beats` absent/empty. `--structure present` is its
+complement.
+
+- Step 1 runs one madmom call per song and is the only cost. With
+  `SOW_BEAT_GRID_MAX_CONCURRENT` auto-sizing to the cgroup CPU count (2 on a
+  4-CPU container), which matches the `sow-downbeats` app's `max_containers=2`,
+  each detection takes ~45–60s once a container is warm, so ~115 songs run in
+  about an hour; budget 2–4 hours if the L4 queue is cold. The CLI polls until
+  `--timeout` (default 21600s = 6h); songs still unfinished then report
+  `failed` and can be re-run, because grids that were already detected are
+  skipped.
+- **A queued Modal input looks like a hang.** `sow-downbeats` runs on L4, and
+  this workspace's L4 queue can take minutes to tens of minutes to hand out a
+  container (measured: 327s for a bare L4 `hello`; T4/A10G start in ~3s). The
+  app's `timeout=600` only starts once the input begins running, so the job
+  sits at stage `detecting_beats` with no client-side error and no container
+  in `modal container list`. Check what Modal is actually doing with:
+  `modal app list` (Tasks column), `modal container list`, and
+  `modal app logs sow-downbeats`. A cancellation leaves the analysis service's
+  asyncio task holding the beat-grid semaphore — restart `analysis-dev` before
+  re-running, or the next job sits in `waiting` forever.
+- Step 2 is local and free. Published recordings are never touched by either
+  command.
+- Re-running either command is safe: step 1 reports `already_present` (no job
+  submitted, no madmom call), step 2 reports `persisted`.
+- Songs whose LRC stops before the lyrics do cannot be fixed — step 2 reports
+  them as `no_structure`, and they stay unarrangeable by design.
+- Step 1 refuses audio whose native-rate WAV exceeds
+  `SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES` (default 200 MB, which covers roughly
+  19 minutes at 48 kHz stereo). The job fails with `madmom beat detection
+  failed (see sow-downbeats logs)` while the worker log carries the real
+  reason (`Audio too large for Modal blob upload ...`). Raise the cap in
+  `ops/analysis-service/docker-compose.yml` and recreate `analysis-dev`
+  before re-running the song.
+
 #### Lyrics Generate LLM Trace Dump
 
 `--dump-llm-trace` makes the analysis service write a per-step debug trace

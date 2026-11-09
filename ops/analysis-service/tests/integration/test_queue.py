@@ -11,6 +11,7 @@ import pytest
 from sow_analysis.models import (
     ComponentAnalysisJobRequest,
     AnalyzeJobRequest,
+    BeatGridJobRequest,
     EmbeddingJobRequest,
     FastAnalyzeJobRequest,
     ForcedAlignmentJobRequest,
@@ -121,6 +122,16 @@ def _make_job_for_type(job_type: JobType, job_id: str, status: JobStatus) -> Job
             type=job_type,
             status=status,
             request=ComponentAnalysisJobRequest(
+                audio_url=f"s3://bucket/{job_id}.mp3",
+                content_hash=job_id,
+            ),
+        )
+    if job_type == JobType.BEAT_GRID:
+        return Job(
+            id=job_id,
+            type=job_type,
+            status=status,
+            request=BeatGridJobRequest(
                 audio_url=f"s3://bucket/{job_id}.mp3",
                 content_hash=job_id,
             ),

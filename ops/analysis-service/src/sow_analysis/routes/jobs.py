@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 from ..config import settings
 from ..models import (
     AnalyzeJobRequest,
+    BeatGridJobRequest,
     ComponentAnalysisJobRequest,
     EmbeddingJobRequest,
     EmbeddingJobResult,
@@ -233,6 +234,31 @@ async def submit_component_analysis_job(
         raise HTTPException(500, "Job queue not initialized")
 
     job = await job_queue.submit(JobType.COMPONENT_ANALYSIS, request)
+    return job_to_response(job)
+
+
+@router.post("/jobs/beat-grid", response_model=JobResponse)
+async def submit_beat_grid_job(
+    request: BeatGridJobRequest,
+    api_key: str = Depends(verify_api_key),
+) -> JobResponse:
+    """Submit a beat-grid detection job.
+
+    Runs madmom on the sow-downbeats Modal app and caches
+    ``{hash12}/beat_grid.json`` in R2. No components are extracted and no LLM
+    is called.
+
+    Args:
+        request: Beat-grid job request.
+        api_key: Validated API key.
+
+    Returns:
+        Job response with status.
+    """
+    if job_queue is None:
+        raise HTTPException(500, "Job queue not initialized")
+
+    job = await job_queue.submit(JobType.BEAT_GRID, request)
     return job_to_response(job)
 
 

@@ -29,6 +29,7 @@ class JobType(str, Enum):
     FORCED_ALIGNMENT = "forced_alignment"
     FAST_ANALYZE = "fast_analyze"
     COMPONENT_ANALYSIS = "component_analysis"
+    BEAT_GRID = "beat_grid"
 
 
 class AnalyzeOptions(BaseModel):
@@ -241,6 +242,18 @@ class ComponentAnalysisJobRequest(BaseModel):
         None  # v8: parsed structured lyrics JSON (from recordings.structured_lyrics)
     )
     options: ComponentAnalysisOptions = Field(default_factory=ComponentAnalysisOptions)
+
+
+class BeatGridJobRequest(BaseModel):
+    """Request to detect + cache a beat grid. Runnable on madmom only.
+
+    Produces ``{hash12}/beat_grid.json`` in R2 and no components, so callers
+    that only need a beat grid never pay for lyric alignment.
+    """
+
+    audio_url: str
+    content_hash: str
+    skip_beat_cache: bool = False
 
 
 class ComponentResult(BaseModel):

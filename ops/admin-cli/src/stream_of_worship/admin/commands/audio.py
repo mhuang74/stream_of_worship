@@ -110,6 +110,7 @@ KEY_REVIEW_CAVEAT = (
 
 COMPONENTS_FORMAT_VALUES = {"table", "json"}
 COMPONENTS_FILTER_VALUES = {"missing", "unclassified", "complete"}
+STRUCTURE_FILTER_VALUES = {"missing", "present"}
 SEGMENTATION_MODE_VALUES = {"llm", "repetition", "allin1", "structured_lyrics"}
 
 
@@ -1684,6 +1685,14 @@ def list_recordings(
         "-s",
         help="Sort order (album|series|title|imported|updated)",
     ),
+    structure: Optional[str] = typer.Option(
+        None,
+        "--structure",
+        help=(
+            "Filter by arrangement structure: missing (sections or beats absent/empty, "
+            "so the webapp Arrange button is disabled) or present"
+        ),
+    ),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids)"),
     limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Maximum number of results"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
@@ -1697,6 +1706,9 @@ def list_recordings(
     Use ``--components`` to filter by component-analysis state
     (missing|unclassified|complete); combine with ``--format ids`` to feed
     ``sow-admin audio components --stdin``.
+    Use ``--structure`` to filter by arrangement structure (missing|present):
+    ``missing`` is exactly the set the webapp Arrange button cannot open. The
+    beat-grid backfill recipe is in ops/admin-cli/README.md.
     """
     try:
         config = AdminConfig.load(config_path)
@@ -1750,6 +1762,15 @@ def list_recordings(
             )
             raise typer.Exit(1)
 
+    # Validate structure filter
+    if structure:
+        if structure not in STRUCTURE_FILTER_VALUES:
+            console.print(
+                f"[red]Invalid structure state: {structure}. "
+                f"Must be one of: {', '.join(sorted(STRUCTURE_FILTER_VALUES))}[/red]"
+            )
+            raise typer.Exit(1)
+
     # Validate theme filter
     if theme:
         valid_themes = set(SONG_COMPONENT_THEMES) | {"none"}
@@ -1778,6 +1799,7 @@ def list_recordings(
         theme=theme,
         lrc_source=lrc_source,
         components=components,
+        structure=structure,
         sort_by=sort,
         limit=limit,
     )
@@ -1824,6 +1846,8 @@ def list_recordings(
             filter_parts.append(f"theme={theme}")
         if components:
             filter_parts.append(f"components={components}")
+        if structure:
+            filter_parts.append(f"structure={structure}")
         filter_str = f" ({', '.join(filter_parts)})" if filter_parts else ""
         # Caps keep the flexible text columns from collapsing: Rich gives
         # no_wrap columns their max content width first, starving Album/Title.
@@ -2859,8 +2883,8 @@ def _persist_derived_recording_structure(
     if not beats:
         console.print(
             f"[yellow]Cannot derive structure for {recording.hash_prefix}: no beat "
-            f"grid at {recording.hash_prefix}/beat_grid.json (run with "
-            f"--snap-to-downbeat).[/yellow]"
+            f"grid at {recording.hash_prefix}/beat_grid.json (run "
+            f"'sow-admin audio beat-grid' first).[/yellow]"
         )
         return None
 
@@ -3795,6 +3819,286 @@ def components_recording(
             _render_components_table(result, console, title=f"Components: {song_id}")
         else:
             console.print(f"[yellow]No components extracted for {song_id}.[/yellow]")
+
+
+def _resolve_cli_song_ids(song_id: Optional[str], stdin: bool, out_console: Console) -> list[str]:
+    """Resolve the song-ID list for a batch-capable audio command.
+
+    Args:
+        song_id: Single song ID from the positional argument.
+        stdin: Read IDs from stdin instead (one per line, blank/# skipped).
+        out_console: Console for error output.
+
+    Returns:
+        Non-empty list of song IDs.
+
+    Raises:
+        typer.Exit: On invalid argument combination or empty stdin.
+    """
+    if not song_id and not stdin:
+        out_console.print("[red]Error: Either provide a song_id argument or use --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if song_id and stdin:
+        out_console.print("[red]Error: Cannot use both song_id argument and --stdin flag[/red]")
+        raise typer.Exit(1)
+
+    if not stdin:
+        return [song_id]
+
+    raw = sys.stdin.read().splitlines()
+    song_ids = [
+        line.strip() for line in raw if line.strip() and not line.strip().startswith("#")
+    ]
+    if not song_ids:
+        out_console.print("[red]No song IDs read from stdin (expected one per line)[/red]")
+        raise typer.Exit(1)
+    return song_ids
+
+
+@app.command("beat-grid")
+def beat_grid_command(
+    song_id: Optional[str] = typer.Argument(None, help="Song ID (omit with --stdin)"),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin, one per line"),
+    no_wait: bool = typer.Option(False, "--no-wait", help="Submit and exit without polling"),
+    skip_cache: bool = typer.Option(
+        False, "--skip-cache", help="Re-run madmom even if a grid is cached"
+    ),
+    format_: str = typer.Option("table", "--format", "-f", help="Output format (table|json)"),
+    timeout_seconds: int = typer.Option(
+        21600, "--timeout", help="Overall poll deadline in seconds"
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Detect and cache beat grids without component extraction or LLM calls.
+
+    Submits ``beat_grid`` jobs to the analysis service, which downloads the
+    audio, resolves the grid through the shared beat-grid cache (madmom on the
+    ``sow-downbeats`` Modal app) and uploads ``{hash_prefix}/beat_grid.json``.
+    No components are extracted and no LLM is called, so this is the cheap way
+    to give a recording the beat grid that the webapp Arrange editor needs.
+
+    Recordings that already have a cached grid are skipped (``already_present``)
+    unless ``--skip-cache`` is passed. Published recordings are never touched.
+
+    Batch mode: pass ``--stdin`` to read song IDs from stdin (one per line).
+    Combine with ``sow-admin audio list --structure missing --format ids`` to
+    backfill only the unarrangeable recordings.
+    """
+    _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")
+    # In JSON mode, route all progress/error messages to stderr.
+    out_console = progress_console if format_ == "json" else console
+
+    song_ids = _resolve_cli_song_ids(song_id, stdin, out_console)
+
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        out_console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    r2 = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+
+    # Construction raises ValueError when SOW_ANALYSIS_API_KEY is unset.
+    try:
+        client = AnalysisClient(config.analysis_url, timeout=300)
+    except ValueError as e:
+        out_console.print(f"[red]Analysis service not configured: {e}[/red]")
+        raise typer.Exit(1)
+
+    results: list[dict] = []
+    pending: list[dict] = []
+
+    for sid in song_ids:
+        recording = db_client.get_recording_by_song_id(sid)
+        if not recording:
+            results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
+            continue
+        if is_published(recording):
+            out_console.print(
+                f"  [yellow]→ {sid} (skipped: published recording — demote first)[/yellow]"
+            )
+            results.append({"song_id": sid, "status": "skipped_published", "error": "published"})
+            continue
+        if not recording.r2_audio_url:
+            results.append({"song_id": sid, "status": "failed", "error": "No r2_audio_url"})
+            continue
+
+        if not skip_cache:
+            try:
+                cached = r2.download_beat_grid(recording.hash_prefix)
+            except Exception as e:
+                results.append({"song_id": sid, "status": "failed", "error": str(e)})
+                continue
+            if cached and cached.get("beats"):
+                results.append({"song_id": sid, "status": "already_present"})
+                continue
+
+        try:
+            job = client.submit_beat_grid(
+                audio_url=recording.r2_audio_url,
+                content_hash=recording.content_hash,
+                skip_beat_cache=skip_cache,
+            )
+        except AnalysisServiceError as e:
+            results.append({"song_id": sid, "status": "failed", "error": str(e)})
+            continue
+
+        entry = {"song_id": sid, "status": "submitted", "job_id": job.job_id}
+        results.append(entry)
+        pending.append(entry)
+        out_console.print(f"  [cyan]→ {sid}: beat-grid job {job.job_id} submitted[/cyan]")
+
+    if not no_wait:
+        start = time.time()
+        while pending:
+            still_pending: list[dict] = []
+            for entry in pending:
+                try:
+                    job = client.get_job(entry["job_id"])
+                except AnalysisServiceError as e:
+                    entry["status"] = "failed"
+                    entry["error"] = str(e)
+                    continue
+                if job.status == "completed":
+                    entry["status"] = "detected"
+                elif job.status == "failed":
+                    entry["status"] = "failed"
+                    entry["error"] = job.error_message or "job failed"
+                elif job.status == "cancelled":
+                    # A cancelled job is terminal; without this branch the entry
+                    # stays pending and the command spins until --timeout.
+                    entry["status"] = "failed"
+                    entry["error"] = "cancelled"
+                else:
+                    still_pending.append(entry)
+            pending = still_pending
+            if not pending or time.time() - start > timeout_seconds:
+                break
+            time.sleep(15)
+
+        for entry in pending:
+            entry["status"] = "failed"
+            entry["error"] = "timed out"
+
+    detected = sum(1 for r in results if r["status"] == "detected")
+    already = sum(1 for r in results if r["status"] == "already_present")
+    skipped = sum(1 for r in results if r["status"] == "skipped_published")
+    failed = sum(1 for r in results if r["status"] == "failed")
+
+    if format_ == "json":
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+    else:
+        if no_wait:
+            submitted = sum(1 for r in results if r["status"] == "submitted")
+            out_console.print(
+                f"\n[bold]Summary:[/bold] {submitted} submitted, {already} already present, "
+                f"{skipped} skipped (published), {failed} failed"
+            )
+            for r in results:
+                if r["status"] == "submitted":
+                    out_console.print(f"  {r['song_id']}: job {r['job_id']}")
+                elif r["status"] == "failed":
+                    out_console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
+        else:
+            out_console.print(
+                f"\n[bold]Summary:[/bold] {detected} detected, {already} already present, "
+                f"{skipped} skipped (published), {failed} failed"
+            )
+            for r in results:
+                if r["status"] == "failed":
+                    out_console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
+
+    if failed:
+        raise typer.Exit(1)
+
+
+@app.command("write-structure")
+def write_structure_command(
+    song_id: Optional[str] = typer.Argument(None, help="Song ID (omit with --stdin)"),
+    stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin, one per line"),
+    format_: str = typer.Option("table", "--format", "-f", help="Output format (table|json)"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Derive and persist arrangement sections+beats from cached artifacts.
+
+    Local and free: reads ``{hash_prefix}/beat_grid.json`` and
+    ``{hash_prefix}/lyrics.lrc`` from R2, derives sections from the lyric
+    timeline, snaps them to the beat grid, and writes ``recordings.sections`` +
+    ``recordings.beats`` so the webapp Arrange editor becomes available. No job
+    is submitted and ``analysis_status`` is left untouched.
+
+    A recording with no beat grid reports ``no_structure``; materialise grids
+    first with ``sow-admin audio beat-grid --stdin``.
+
+    Batch mode: pass ``--stdin`` to read song IDs from stdin (one per line).
+    """
+    _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")
+    # In JSON mode, route all progress/error messages to stderr.
+    out_console = progress_console if format_ == "json" else console
+
+    song_ids = _resolve_cli_song_ids(song_id, stdin, out_console)
+
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        out_console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+
+    results: list[dict] = []
+    for sid in song_ids:
+        recording = db_client.get_recording_by_song_id(sid)
+        if not recording:
+            results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
+            continue
+        if is_published(recording):
+            out_console.print(
+                f"  [yellow]→ {sid} (skipped: published recording — demote first)[/yellow]"
+            )
+            results.append({"song_id": sid, "status": "skipped_published", "error": "published"})
+            continue
+
+        try:
+            payload = _persist_derived_recording_structure(
+                recording, config, db_client, out_console
+            )
+        except Exception as e:
+            results.append({"song_id": sid, "status": "failed", "error": str(e)})
+            continue
+
+        if payload is None:
+            results.append({"song_id": sid, "status": "no_structure"})
+        else:
+            results.append(
+                {
+                    "song_id": sid,
+                    "status": "persisted",
+                    "sections": len(payload["sections"]),
+                    "beats": len(payload["beats"]),
+                }
+            )
+
+    persisted = sum(1 for r in results if r["status"] == "persisted")
+    no_structure = sum(1 for r in results if r["status"] == "no_structure")
+    skipped = sum(1 for r in results if r["status"] == "skipped_published")
+    failed = sum(1 for r in results if r["status"] == "failed")
+
+    if format_ == "json":
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+    else:
+        out_console.print(
+            f"\n[bold]Summary:[/bold] {persisted} persisted, {no_structure} no structure, "
+            f"{skipped} skipped (published), {failed} failed"
+        )
+        for r in results:
+            if r["status"] == "failed":
+                out_console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
+
+    if failed:
+        raise typer.Exit(1)
 
 
 def _sync_components_from_r2(

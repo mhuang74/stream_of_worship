@@ -67,6 +67,11 @@ class JobStore:
         # Check if we need to migrate from old schema (without 'waiting' status)
         await self._migrate_waiting_status()
 
+        # Check if we need to migrate from old schema (without 'beat_grid' job type).
+        # Runs last: it rebuilds the table with the full status+type lists, so any
+        # earlier migration must not rewrite it afterwards.
+        await self._migrate_beat_grid_type()
+
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS jobs (
@@ -86,7 +91,7 @@ class JobStore:
                 content_hash    TEXT NOT NULL,
 
                 CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
-                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze', 'component_analysis'))
+                CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze', 'component_analysis', 'beat_grid'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -547,6 +552,86 @@ class JobStore:
             logger.error(f"Database migration for waiting status failed: {e}")
             raise
 
+    async def _migrate_beat_grid_type(self) -> None:
+        """Migrate old schema to support 'beat_grid' job type.
+
+        SQLite doesn't support ALTER TABLE for CHECK constraints, so the table is
+        recreated with the extended type list. Must run after every other type
+        migration: each of those rebuilds the table with its own type list.
+        """
+        if not self._db:
+            return
+
+        try:
+            async with self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return  # Table doesn't exist yet, will be created normally
+
+            async with self._db.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                schema = row[0]
+                if "'beat_grid'" in schema:
+                    return  # Already has beat_grid
+
+                logger.warning("Migrating database schema to support BEAT_GRID job type")
+
+                await self._db.executescript(
+                    """
+                    DROP TABLE IF EXISTS jobs_old;
+
+                    ALTER TABLE jobs RENAME TO jobs_old;
+
+                    CREATE TABLE jobs (
+                        id              TEXT PRIMARY KEY,
+                        type            TEXT NOT NULL,
+                        status          TEXT NOT NULL DEFAULT 'queued',
+                        progress        REAL NOT NULL DEFAULT 0.0,
+                        stage           TEXT NOT NULL DEFAULT '',
+                        error_message   TEXT,
+
+                        request_json    TEXT NOT NULL,
+                        result_json     TEXT,
+
+                        created_at      TEXT NOT NULL,
+                        updated_at      TEXT NOT NULL,
+
+                        content_hash    TEXT NOT NULL,
+
+                        CHECK (status IN ('queued', 'waiting', 'processing', 'completed', 'failed', 'cancelled')),
+                        CHECK (type IN ('analyze', 'lrc', 'stem_separation', 'embedding', 'forced_alignment', 'fast_analyze', 'component_analysis', 'beat_grid'))
+                    );
+
+                    INSERT INTO jobs (
+                        id, type, status, progress, stage, error_message,
+                        request_json, result_json, created_at, updated_at, content_hash
+                    )
+                    SELECT
+                        id, type, status, progress, stage, error_message,
+                        request_json, result_json, created_at, updated_at, content_hash
+                    FROM jobs_old;
+
+                    DROP TABLE jobs_old;
+
+                    CREATE INDEX idx_jobs_status ON jobs(status);
+                    CREATE INDEX idx_jobs_content_hash ON jobs(content_hash);
+                    CREATE INDEX idx_jobs_created_at ON jobs(created_at);
+                    """
+                )
+                await self._db.commit()
+                logger.info("Database migration for beat_grid type complete")
+
+        except Exception as e:
+            logger.error(f"Database migration for beat_grid type failed: {e}")
+            raise
+
     async def insert_job(self, job: Job) -> None:
         """Insert a new job record.
 
@@ -663,6 +748,10 @@ class JobStore:
             request = FastAnalyzeJobRequest.model_validate_json(request_json)
         elif job_type == JobType.COMPONENT_ANALYSIS:
             request = ComponentAnalysisJobRequest.model_validate_json(request_json)
+        elif job_type == JobType.BEAT_GRID:
+            from ..models import BeatGridJobRequest
+
+            request = BeatGridJobRequest.model_validate_json(request_json)
         else:
             raise ValueError(f"Unknown job type: {job_type}")
 

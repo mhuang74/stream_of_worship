@@ -93,6 +93,7 @@ _CATEGORY_FIELDS: dict[str, tuple[str, ...]] = {
     "Processing": (
         "SOW_FAST_ANALYZE_MAX_CONCURRENT",
         "SOW_COMPONENT_MAX_CONCURRENT",
+        "SOW_BEAT_GRID_MAX_CONCURRENT",
         "SOW_ANALYZE_MAX_CONCURRENT",
         "SOW_LRC_MAX_CONCURRENT",
         "SOW_QUEUE_START_DELAY_SECONDS",

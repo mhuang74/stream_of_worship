@@ -1542,6 +1542,7 @@ class DatabaseClient:
         theme: Optional[str] = None,
         lrc_source: Optional[str] = None,
         components: Optional[str] = None,
+        structure: Optional[str] = None,
         sort_by: str = "imported",
         limit: Optional[int] = None,
         include_deleted: bool = False,
@@ -1564,6 +1565,9 @@ class DatabaseClient:
                 vocal_posture), or ``complete``. Scoped per
                 (song_id, content_hash) so a replaced recording's stale rows
                 do not count.
+            structure: Filter by arrangement structure — ``missing`` (sections
+                or beats absent/empty, so the webapp Arrange button is
+                disabled) or ``present`` (both present).
             sort_by: Sort order (``album``, ``series``, ``title``, ``imported``).
             limit: Maximum number of results.
             include_deleted: Whether to include soft-deleted recordings.
@@ -1650,6 +1654,13 @@ class DatabaseClient:
                     f" AND {rows_exist}"
                     f" AND NOT ({candidates_exist} AND NOT {candidate_lacking})"
                 )
+
+        if structure:
+            has_structure = (
+                "(r.sections IS NOT NULL AND r.sections NOT IN ('', '[]')"
+                " AND r.beats IS NOT NULL AND r.beats NOT IN ('', '[]'))"
+            )
+            query += f" AND {has_structure}" if structure == "present" else f" AND NOT {has_structure}"
 
         order_map = {
             "album": "s.album_name ASC NULLS LAST, s.title ASC NULLS LAST",

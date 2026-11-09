@@ -761,6 +761,65 @@ class AnalysisClient:
                 )
             raise AnalysisServiceError(f"Component analysis submission failed: {e}")
 
+    def submit_beat_grid(
+        self,
+        audio_url: str,
+        content_hash: str,
+        skip_beat_cache: bool = False,
+    ) -> JobInfo:
+        """Submit a beat-grid detection job to the analysis service.
+
+        Runs madmom on the sow-downbeats Modal app and caches
+        ``{hash12}/beat_grid.json`` in R2, with no component extraction and no
+        LLM call. This is the cheap path to make a recording arrangeable.
+
+        Args:
+            audio_url: R2 URL of the audio file.
+            content_hash: SHA-256 hash of the audio content.
+            skip_beat_cache: Re-run madmom even when a grid is cached.
+
+        Returns:
+            JobInfo for the submitted job.
+
+        Raises:
+            AnalysisServiceError: If submission fails.
+        """
+        payload = {
+            "audio_url": audio_url,
+            "content_hash": content_hash,
+            "skip_beat_cache": skip_beat_cache,
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/jobs/beat-grid",
+                json=payload,
+                headers=self._auth_headers(),
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 401:
+                raise AnalysisServiceError(
+                    "Authentication failed: Invalid API key", status_code=401
+                )
+
+            response.raise_for_status()
+            data = response.json()
+            return self._parse_job_response(data)
+
+        except requests.exceptions.ConnectionError as e:
+            raise AnalysisServiceError(
+                f"Cannot connect to analysis service at {self.base_url}: {e}"
+            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, "response") and e.response is not None:
+                status = e.response.status_code
+                raise AnalysisServiceError(
+                    f"Beat grid submission failed (HTTP {status}): {e}",
+                    status_code=status,
+                )
+            raise AnalysisServiceError(f"Beat grid submission failed: {e}")
+
     def get_cached_component_result(
         self,
         hash_prefix: str,

@@ -5697,3 +5697,349 @@ class TestFetchStructuredLyricsSelect:
         assert source == "zanmei"
         assert raw is None
         assert json_str is None
+
+
+class TestBeatGridBackfill:
+    """Tests for ``audio beat-grid`` / ``audio write-structure`` / ``--structure``."""
+
+    STRUCTURED_LYRICS = json.dumps(
+        {
+            "sections": [
+                {"label": "Verse 1", "lines": ["第一行", "第二行"]},
+                {"label": "Chorus 1", "lines": ["副歌一", "副歌二"]},
+            ]
+        },
+        ensure_ascii=False,
+    )
+    LRC = "[00:01.00]第一行\n[00:05.00]第二行\n[00:09.00]副歌一\n[00:13.00]副歌二"
+    BEATS = [float(t) for t in range(0, 60, 2)]
+
+    def _seed_structures(self, client: DatabaseClient) -> None:
+        """Seed three recordings: full structure, empty-array sections, both NULL."""
+        for idx, sid in enumerate(("song_struct_full", "song_struct_empty", "song_struct_null")):
+            letter = "abc"[idx]
+            client.insert_song(
+                Song(
+                    id=sid,
+                    title=f"Title {sid}",
+                    source_url=f"https://example.com/{sid}",
+                    scraped_at="2024-01-01T00:00:00",
+                )
+            )
+            client.insert_recording(
+                Recording(
+                    content_hash=letter * 64,
+                    hash_prefix=letter * 12,
+                    song_id=sid,
+                    original_filename=f"{sid}.mp3",
+                    file_size_bytes=1024000,
+                    imported_at=f"2024-01-1{idx}T10:30:00",
+                    duration_seconds=180.0,
+                )
+            )
+
+        client.update_recording_structure(
+            "a" * 12,
+            json.dumps([{"label": "Verse 1", "start": 0.0, "end": 10.0}]),
+            json.dumps([0.0, 2.0]),
+        )
+        # Empty-array sections must count as missing, not present.
+        client.update_recording_structure("b" * 12, "[]", "[]")
+
+    @pytest.mark.integration
+    def test_list_structure_missing_filter(self, make_test_provider, postgres_url, tmp_path):
+        """--structure missing selects recordings with absent/empty sections or beats."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_structures(client)
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--structure",
+                "missing",
+            ],
+        )
+
+        assert result.exit_code == 0
+        ids = sorted(line for line in result.output.split() if line)
+        assert ids == ["song_struct_empty", "song_struct_null"]
+
+        present = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--structure",
+                "present",
+            ],
+        )
+        assert present.exit_code == 0
+        assert sorted(line for line in present.output.split() if line) == ["song_struct_full"]
+
+        _drop_all_tables(make_test_provider)
+
+    def test_list_rejects_invalid_structure(self, tmp_path, monkeypatch):
+        """--structure rejects values outside missing|present."""
+        monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("[database]\n")
+
+        result = runner.invoke(
+            app,
+            ["audio", "list", "--config", str(config_path), "--structure", "bogus"],
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid structure state" in result.output
+
+    def _seed_one(self, client: DatabaseClient, *, published: bool = False) -> None:
+        client.insert_song(
+            Song(
+                id="song_bg",
+                title="Title song_bg",
+                source_url="https://example.com/song_bg",
+                scraped_at="2024-01-01T00:00:00",
+            )
+        )
+        client.insert_recording(
+            Recording(
+                content_hash="d" * 64,
+                hash_prefix="d" * 12,
+                song_id="song_bg",
+                original_filename="song_bg.mp3",
+                file_size_bytes=1024000,
+                imported_at="2024-01-15T10:30:00",
+                r2_audio_url="s3://sow-audio/dddddddddddd/audio.mp3",
+                duration_seconds=180.0,
+                lrc_status="completed",
+                structured_lyrics=self.STRUCTURED_LYRICS,
+                visibility_status="published" if published else "review",
+            )
+        )
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_beat_grid_skips_already_present(
+        self, mock_r2_cls, mock_client_cls, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """A cached grid short-circuits: no job is submitted."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = {"beats": [0.5, 1.0], "downbeats": [0.5]}
+        mock_r2_cls.return_value = mock_r2
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "beat-grid", "song_bg", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0
+        assert "1 already present" in result.output
+        mock_client_cls.return_value.submit_beat_grid.assert_not_called()
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_beat_grid_skips_published(
+        self, mock_r2_cls, mock_client_cls, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """Published recordings are skipped without submission."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client, published=True)
+
+        mock_r2_cls.return_value = MagicMock()
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "beat-grid", "song_bg", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0
+        assert "skipped: published" in result.output
+        assert "1 skipped (published)" in result.output
+        mock_client_cls.return_value.submit_beat_grid.assert_not_called()
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_beat_grid_submits_and_polls_to_detected(
+        self, mock_r2_cls, mock_client_cls, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """Missing grid → job submitted, polled, reported as detected."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = None
+        mock_r2_cls.return_value = mock_r2
+
+        mock_client = MagicMock()
+        mock_client.submit_beat_grid.return_value = JobInfo(
+            job_id="job-bg-1", status="queued", job_type="beat_grid"
+        )
+        mock_client.get_job.return_value = JobInfo(
+            job_id="job-bg-1", status="completed", job_type="beat_grid"
+        )
+        mock_client_cls.return_value = mock_client
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "beat-grid", "song_bg", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0
+        assert "1 detected" in result.output
+        mock_client.submit_beat_grid.assert_called_once()
+        kwargs = mock_client.submit_beat_grid.call_args.kwargs
+        assert kwargs["content_hash"] == "d" * 64
+        assert kwargs["skip_beat_cache"] is False
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_write_structure_persists_sections_and_beats(
+        self, mock_r2_cls, make_test_provider, postgres_url, tmp_path
+    ):
+        """Grid + LRC + structured lyrics → sections/beats written to the row."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = {"beats": self.BEATS, "downbeats": []}
+        mock_r2.download_lrc_content.return_value = self.LRC
+        mock_r2_cls.return_value = mock_r2
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "write-structure", "song_bg", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0
+        assert "1 persisted" in result.output
+
+        rows = client.list_recordings_with_songs(structure="present")
+        assert [rec.song_id for rec, *_ in rows] == ["song_bg"]
+        recording = client.get_recording_by_song_id("song_bg")
+        assert recording is not None
+        assert json.loads(recording.sections)
+        assert json.loads(recording.beats)
+        # analysis_status untouched.
+        assert recording.analysis_status != "completed"
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_write_structure_no_grid_reports_no_structure(
+        self, mock_r2_cls, make_test_provider, postgres_url, tmp_path
+    ):
+        """No beat grid → no_structure, and no DB write happens."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = None
+        mock_r2.download_lrc_content.return_value = self.LRC
+        mock_r2_cls.return_value = mock_r2
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "write-structure", "song_bg", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0
+        assert "1 no structure" in result.output
+        recording = client.get_recording_by_song_id("song_bg")
+        assert recording is not None
+        assert not recording.sections
+        assert not recording.beats
+        # Still unarrangeable.
+        assert client.list_recordings_with_songs(structure="present") == []
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_beat_grid_cancelled_job_is_terminal(
+        self, mock_r2_cls, mock_client_cls, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """A cancelled job reports failed immediately instead of spinning to --timeout."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = None
+        mock_r2_cls.return_value = mock_r2
+
+        mock_client = MagicMock()
+        mock_client.submit_beat_grid.return_value = JobInfo(
+            job_id="job-bg-cancelled", status="queued", job_type="beat_grid"
+        )
+        mock_client.get_job.return_value = JobInfo(
+            job_id="job-bg-cancelled", status="cancelled", job_type="beat_grid"
+        )
+        mock_client_cls.return_value = mock_client
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "beat-grid",
+                "song_bg",
+                "--config",
+                str(config_path),
+                "--timeout",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "cancelled" in result.output
+        assert "1 failed" in result.output
+        # Polled exactly once: a cancelled job must not be re-polled.
+        assert mock_client.get_job.call_count == 1
+
+        _drop_all_tables(make_test_provider)
