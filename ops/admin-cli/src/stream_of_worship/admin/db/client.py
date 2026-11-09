@@ -2918,6 +2918,25 @@ class DatabaseClient:
                 "DELETE FROM song_components WHERE song_id = %s AND content_hash = %s",
                 (song_id, content_hash),
             )
+            # The unique index covers (song_id, component_type,
+            # occurrence_index, role), and the DELETE above only clears rows
+            # stored by earlier runs -- duplicates *within* one batch would
+            # still collide and abort the whole statement. Cached R2 payloads
+            # do contain them (the aligner can emit the same verse twice with
+            # identical bounds), so collapse them here, keeping the first.
+            deduped: list[SongComponent] = []
+            seen_keys: set[tuple[str, str, int, str]] = set()
+            for component in components:
+                key = (
+                    component.song_id or song_id,
+                    component.component_type,
+                    component.occurrence_index,
+                    component.role,
+                )
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                deduped.append(component)
             values = [
                 (
                     c.song_id or song_id,
@@ -2956,7 +2975,7 @@ class DatabaseClient:
                     c.line_start,
                     c.line_end,
                 )
-                for c in components
+                for c in deduped
             ]
             if values:
                 cursor.executemany(
