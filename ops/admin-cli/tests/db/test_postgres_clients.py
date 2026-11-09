@@ -164,6 +164,67 @@ class TestDatabaseClient:
         assert result.hash_prefix == "abc123"
         assert result.song_id == "song_1"
 
+    def test_update_recording_structure_preserves_fast_tier_columns(self, db_clients):
+        """Writing sections/beats must not clobber fast-tier analysis columns.
+
+        The Arrange gate needs duration_seconds, so a write-back that reused
+        update_recording_analysis(analysis_status="completed") would NULL it
+        (and tempo/key) via that method's full-tier branch and disable Arrange.
+        """
+        admin_client, _, _, _ = db_clients
+
+        admin_client.insert_song(
+            Song(
+                id="song_structure",
+                title="Structure Song",
+                source_url="http://test",
+                scraped_at="2024-01-01T00:00:00",
+            )
+        )
+        admin_client.insert_recording(
+            Recording(
+                content_hash="b" * 64,
+                hash_prefix="structure123",
+                song_id="song_structure",
+                original_filename="structure.mp3",
+                file_size_bytes=1000,
+                imported_at="2024-01-01T00:00:00",
+                duration_seconds=215.5,
+                tempo_bpm=73.8,
+                musical_key="G",
+                analysis_status="partial",
+            )
+        )
+
+        updated = admin_client.update_recording_structure(
+            hash_prefix="structure123",
+            sections='[{"label": "verse", "start": 10.0, "end": 30.0}]',
+            beats="[10.0, 10.5, 30.0]",
+        )
+
+        assert updated is True
+        result = admin_client.get_recording_by_hash("structure123")
+        assert result is not None
+        assert result.sections == '[{"label": "verse", "start": 10.0, "end": 30.0}]'
+        assert result.beats == "[10.0, 10.5, 30.0]"
+        # Fast-tier columns the Arrange gate depends on survive untouched.
+        assert result.duration_seconds == 215.5
+        assert result.tempo_bpm == 73.8
+        assert result.musical_key == "G"
+        # Status is deliberately unchanged: sections are derived, not allin1.
+        assert result.analysis_status == "partial"
+
+    def test_update_recording_structure_returns_false_for_unknown_prefix(self, db_clients):
+        admin_client, _, _, _ = db_clients
+
+        updated = admin_client.update_recording_structure(
+            hash_prefix="nosuchrow123",
+            sections="[]",
+            beats="[]",
+        )
+
+        assert updated is False
+
     def test_soft_delete_and_restore_song(self, db_clients):
         """Test soft-deleting and restoring a song."""
         admin_client, read_client, _, _ = db_clients

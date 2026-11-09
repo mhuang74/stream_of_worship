@@ -1798,6 +1798,47 @@ class DatabaseClient:
             )
             return cursor.rowcount > 0
 
+    def update_recording_structure(
+        self,
+        hash_prefix: str,
+        sections: str,
+        beats: str,
+    ) -> bool:
+        """Write derived ``sections``/``beats`` without touching other columns.
+
+        This is the narrow write-back for structured-lyrics-derived structure:
+        unlike :meth:`update_recording_analysis` (whose full-tier branch
+        unconditionally rewrites every fast-tier column and would NULL
+        ``duration_seconds``), this touches only ``sections`` and ``beats``.
+
+        ``analysis_status`` is deliberately left unchanged: it still means
+        "ran the full allin1 tier", and ``Recording.has_full_analysis`` gates
+        reading ``sections`` as allin1 output. Flipping it here would make a
+        later ``audio components`` run treat these approximate, LRC-derived
+        sections as authoritative allin1 sections.
+
+        Args:
+            hash_prefix: The hash prefix of the recording.
+            sections: JSON array of ``{"label", "start", "end"}`` objects.
+            beats: JSON array of beat timestamps in seconds.
+
+        Returns:
+            True if a row was updated, False if no recording matched.
+        """
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings
+                SET sections = %s,
+                    beats = %s,
+                    updated_at = NOW()
+                WHERE hash_prefix = %s AND deleted_at IS NULL
+                """,
+                (sections, beats, hash_prefix),
+            )
+            return cursor.rowcount > 0
+
     def get_recording_by_job_id(
         self, job_id: str, job_type: str = "analysis"
     ) -> Optional[Recording]:

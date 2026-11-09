@@ -8,6 +8,7 @@ and batch orchestration plus LRC job submission via services.lrc_jobs.
 
 import json
 import logging
+import math
 import os
 import select
 import sys
@@ -2671,6 +2672,226 @@ def _persist_recording_theme(
         logger.warning(f"Failed to persist recording theme for {recording.hash_prefix}: {e}")
 
 
+_MAX_ARRANGEMENT_STEPS = 64
+
+
+def _coerce_beat_time(beat: Any) -> Optional[float]:
+    """Extract a beat timestamp from either supported payload shape.
+
+    The beat-grid artifact stores madmom's raw ``grid.tolist()``, i.e. a list of
+    ``[time, beat_position]`` pairs, while ``recordings.beats`` stores flat
+    timestamps. Accept both so the same grid can be snapped and persisted.
+    """
+    if isinstance(beat, bool):
+        return None
+    if isinstance(beat, (int, float)):
+        return float(beat)
+    if isinstance(beat, (list, tuple)) and beat:
+        head = beat[0]
+        if isinstance(head, (int, float)) and not isinstance(head, bool):
+            return float(head)
+    return None
+
+
+def _normalize_beats_for_snap(beats: list, duration_seconds: float) -> list[float]:
+    """Finite in-duration beats, sorted ascending with duplicates removed.
+
+    Mirrors ``normalizeBeats`` in ``delivery/webapp/src/lib/arrangements.ts``
+    and ``_normalize_beats`` in the render worker so the persisted grid snaps
+    identically wherever it is consumed. Accepts both the madmom pair shape and
+    flat timestamps (see ``_coerce_beat_time``).
+    """
+    if not duration_seconds or duration_seconds <= 0:
+        return []
+    filtered: list[float] = []
+    for beat in beats:
+        time_value = _coerce_beat_time(beat)
+        if time_value is None:
+            continue
+        if 0 <= time_value <= duration_seconds:
+            filtered.append(time_value)
+    return sorted(set(filtered))
+
+
+def _round_seconds(value: float) -> float:
+    """Canonical rounding shared with the webapp's ``roundSeconds``.
+
+    ``Math.round`` is half-up for non-negative values, whereas Python's
+    ``round`` is half-to-even, so implement half-up explicitly: the persisted
+    bounds are compared against the webapp's own snapped values within
+    ``VALIDATION_TOLERANCE_SECONDS`` (1e-6), and a half-even tie would drift.
+    Beat times are non-negative, which is why the floor form is sufficient.
+    """
+    return math.floor(value * 1e6 + 0.5) / 1e6
+
+
+def _snap_to_beat(value: float, beats: list[float]) -> float:
+    """Nearest beat; ties resolve to the earlier (lower) beat.
+
+    Mirrors ``snapToBeat`` in the webapp and render worker: a candidate
+    replaces the incumbent only on a strict ``<`` distance.
+    """
+    best = beats[0]
+    best_distance = abs(value - best)
+    for beat in beats[1:]:
+        distance = abs(value - beat)
+        if distance < best_distance:
+            best = beat
+            best_distance = distance
+    return best
+
+
+def derive_recording_structure(
+    components: list[dict],
+    beats: list[float],
+    duration_seconds: float,
+) -> tuple[list[dict], list[float]]:
+    """Derive persisted ``sections``/``beats`` from raw component results.
+
+    The webapp's Arrange gate (``SongsetEditorClient.hasRecordingAnalysis``)
+    requires non-empty ``sections``, non-empty ``beats``, a duration, and a
+    successful ``buildSnappedSteps``. That last step returns null if ANY
+    section collapses to zero length after snapping, which would disable
+    Arrange for the whole recording. So every section is snapped here first
+    and any section that collapses (or is otherwise unusable) is dropped
+    before persisting — the rows written are exactly the ones the gate keeps.
+
+    ``components`` are the analysis service's raw component dicts, not
+    ``SongComponent`` rows: ``section_label`` (the authoritative structured
+    lyrics label, e.g. "verse 1"/"chorus") exists only in the job payload and
+    is not persisted in ``song_components``.
+
+    Args:
+        components: Raw component dicts with ``start_time``/``end_time``,
+            ``section_label`` and ``component_type``.
+        beats: Raw beat timestamps (seconds).
+        duration_seconds: Recording duration used for clamping and filtering.
+
+    Returns:
+        ``(sections, beats)`` where ``sections`` is a list of
+        ``{"label", "start", "end"}`` dicts and ``beats`` is the normalized
+        grid. Both are empty when no usable structure could be derived.
+    """
+    if not duration_seconds or duration_seconds <= 0:
+        return [], []
+
+    normalized_beats = _normalize_beats_for_snap(beats, duration_seconds)
+    if not normalized_beats:
+        return [], []
+
+    candidates: list[tuple[float, float, str]] = []
+    for component in components:
+        start_raw = component.get("start_time")
+        end_raw = component.get("end_time")
+        if not isinstance(start_raw, (int, float)) or not isinstance(end_raw, (int, float)):
+            continue
+        start = float(start_raw)
+        end = float(end_raw)
+        if start < 0 or end > duration_seconds or start >= end:
+            continue
+        label = (component.get("section_label") or component.get("component_type") or "").strip()
+        if not 1 <= len(label) <= 100:
+            continue
+        snapped_start = min(max(_snap_to_beat(start, normalized_beats), 0.0), duration_seconds)
+        snapped_end = min(max(_snap_to_beat(end, normalized_beats), 0.0), duration_seconds)
+        snapped_start = _round_seconds(snapped_start)
+        snapped_end = _round_seconds(snapped_end)
+        if not snapped_start < snapped_end:
+            continue
+        candidates.append((snapped_start, snapped_end, label))
+
+    candidates.sort(key=lambda item: (item[0], item[1]))
+
+    sections: list[dict] = []
+    for start, end, label in candidates:
+        if len(sections) >= _MAX_ARRANGEMENT_STEPS:
+            break
+        if sections:
+            previous = sections[-1]
+            if start < previous["end"]:
+                # Overlap: keep the longer-reaching section rather than
+                # emitting crossing bounds the editor cannot render.
+                if end <= previous["end"]:
+                    continue
+                start = previous["end"]
+                if not start < end:
+                    continue
+        sections.append({"label": label, "start": start, "end": end})
+
+    if not sections:
+        return [], []
+    return sections, normalized_beats
+
+
+def _persist_derived_recording_structure(
+    recording: Recording,
+    raw_components: list[dict],
+    config: AdminConfig,
+    db_client: DatabaseClient,
+    console: Console,
+) -> Optional[dict]:
+    """Persist derived sections/beats onto the recording row.
+
+    Beat grid resolution order mirrors the analysis service's
+    ``get_or_detect_beat_grid``: R2 artifact first (it is a pure function of
+    the audio bytes and is keyed by content hash). The grid is only written by
+    the downbeat-snap path, so a miss here means the caller ran without
+    ``snap_to_downbeat``.
+
+    Returns the persisted ``{"sections": [...], "beats": [...]}`` payload, or
+    None when nothing was written (no beats, no duration, no usable
+    components, or the row could not be updated).
+    """
+    if recording.duration_seconds is None:
+        console.print(
+            f"[yellow]Cannot derive structure for {recording.hash_prefix}: "
+            f"recording has no duration_seconds.[/yellow]"
+        )
+        return None
+
+    try:
+        r2_client = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+        beat_grid = r2_client.download_beat_grid(recording.hash_prefix)
+    except Exception as e:
+        console.print(f"[red]Could not read beat grid from R2: {e}[/red]")
+        return None
+
+    beats = (beat_grid or {}).get("beats") or []
+    if not beats:
+        console.print(
+            f"[yellow]Cannot derive structure for {recording.hash_prefix}: no beat "
+            f"grid at {recording.hash_prefix}/beat_grid.json (run with "
+            f"--snap-to-downbeat).[/yellow]"
+        )
+        return None
+
+    sections, normalized_beats = derive_recording_structure(
+        raw_components, beats, recording.duration_seconds
+    )
+    if not sections:
+        console.print(
+            f"[yellow]Cannot derive structure for {recording.hash_prefix}: "
+            f"no component produced a usable section.[/yellow]"
+        )
+        return None
+
+    updated = db_client.update_recording_structure(
+        hash_prefix=recording.hash_prefix,
+        sections=json.dumps(sections, ensure_ascii=False),
+        beats=json.dumps(normalized_beats),
+    )
+    if not updated:
+        console.print(f"[red]No recording row updated for {recording.hash_prefix}.[/red]")
+        return None
+
+    console.print(
+        f"[green]Persisted {len(sections)} section(s) and "
+        f"{len(normalized_beats)} beat(s) to recording "
+        f"{recording.hash_prefix}.[/green]"
+    )
+    return {"sections": sections, "beats": normalized_beats}
+
+
 def _prepare_component_job_inputs(
     recording: Recording,
     song_id: str,
@@ -2841,6 +3062,7 @@ def _submit_component_analysis_job(
     skip_beat_cache: bool = False,
     all_components: bool = False,
     segmentation_mode: Optional[str] = None,
+    write_recording_analysis: bool = False,
 ) -> Optional[list[SongComponent]]:
     """Submit component analysis, wait for completion, persist results.
 
@@ -2873,10 +3095,39 @@ def _submit_component_analysis_job(
             also pass force=True (validated in the typer command). When set,
             the worker runs ONLY that source and returns [] if unavailable —
             no fallback chain.
+        write_recording_analysis: Derive timed ``sections``/``beats`` from the
+            extracted components and persist them to the recording row so the
+            webapp's Arrange editor becomes available. Requires a beat grid,
+            which is fetched from R2 (``{hash_prefix}/beat_grid.json``) and
+            detected via madmom on a miss. Implies downbeat snapping so the
+            grid exists.
 
     Returns:
         Persisted SongComponent list, or None on failure.
     """
+    if write_recording_analysis and not snap_to_downbeat:
+        # The beat grid artifact is only produced by the downbeat-snap path;
+        # without it there are no beats to persist and the Arrange gate stays
+        # closed. Turning it on here keeps the flag self-sufficient.
+        snap_to_downbeat = True
+
+    if write_recording_analysis and not force:
+        # The cached fast path returns R2 components without submitting a job,
+        # so no beat grid would ever be detected for recordings that were
+        # originally extracted without downbeat snapping. The write-back needs
+        # that grid, so treat a missing grid as "must run the job" rather than
+        # silently skipping the recording.
+        try:
+            _r2 = R2Client(config.r2_bucket, config.r2_endpoint_url, config.r2_region)
+            if _r2.download_beat_grid(recording.hash_prefix) is None:
+                console.print(
+                    f"[cyan]No beat grid cached for {recording.hash_prefix}; "
+                    f"running the job to detect one.[/cyan]"
+                )
+                force = True
+        except Exception as e:
+            console.print(f"[yellow]Beat grid pre-check failed ({e}); continuing.[/yellow]")
+
     inputs = _prepare_component_job_inputs(
         recording,
         song_id,
@@ -2906,6 +3157,10 @@ def _submit_component_analysis_job(
         if components:  # guard against empty = no-op upsert wipe
             db_client.upsert_song_components(song_id, recording.content_hash, components)
             _persist_recording_theme(recording, components, db_client)
+        if write_recording_analysis and cached_components:
+            _persist_derived_recording_structure(
+                recording, cached_components, config, db_client, console
+            )
         return components
 
     # Submit the job.
@@ -2998,6 +3253,10 @@ def _submit_component_analysis_job(
     )
     db_client.upsert_song_components(song_id, recording.content_hash, components)
     _persist_recording_theme(recording, components, db_client)
+    if write_recording_analysis:
+        _persist_derived_recording_structure(
+            recording, final_job.result.components, config, db_client, console
+        )
 
     console.print(
         f"[green]Extracted {len(components)} component(s) "
@@ -3120,6 +3379,16 @@ def components_recording(
         ),
     ),
     format_: str = typer.Option("table", "--format", help="Output format (table|json)"),
+    write_recording_analysis: bool = typer.Option(
+        False,
+        "--write-recording-analysis",
+        help=(
+            "After extraction, derive timed sections + beats from the components and "
+            "persist them to the recording row so the webapp Arrange editor becomes "
+            "available. Implies --snap-to-downbeat (the beat grid is required). "
+            "Leave analysis_status untouched."
+        ),
+    ),
     backfill_song_classification: bool = typer.Option(
         False,
         "--backfill-song-classification",
@@ -3167,6 +3436,16 @@ def components_recording(
     --backfill-song-classification: skip analysis; read existing song_components
     rows, aggregate theme/posture, and write recordings.theme / recordings.vocal_posture.
     Works with --stdin for batch backfill.
+
+    --write-recording-analysis: after extraction, derive timed sections + beats
+    from the components and persist them to the recording row, which is what the
+    webapp Arrange editor requires (it gates on recordings.sections + beats +
+    duration_seconds). Implies --snap-to-downbeat because the derived beats come
+    from the {hash_prefix}/beat_grid.json artifact, which only the downbeat-snap
+    path produces. analysis_status is intentionally NOT changed: it still means
+    "ran the full allin1 tier", and flipping it would make a later run treat
+    these approximate, LRC-derived sections as authoritative allin1 sections.
+    Cannot be combined with --no-wait.
     """
     # Flag override: --compute-all-fields enables advanced feature flags.
     # NOTE: does NOT set all_components — essential-only filtering still
@@ -3193,6 +3472,15 @@ def components_recording(
             "[red]--segmentation-mode requires --force. Without --force, "
             "cached components.json is returned without consulting the mode "
             "(silent no-op). Re-run with --force.[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    # --write-recording-analysis needs the job result to derive sections from.
+    if write_recording_analysis and no_wait:
+        out_console.print(
+            "[red]--write-recording-analysis cannot be combined with --no-wait: "
+            "the derived sections/beats come from the completed job's components. "
+            "Drop --no-wait, or run `sow-admin audio sync-components` afterwards.[/red]"
         )
         raise typer.Exit(code=2)
 
@@ -3357,6 +3645,7 @@ def components_recording(
                     skip_beat_cache=skip_beat_cache,
                     all_components=all_components,
                     segmentation_mode=segmentation_mode,
+                    write_recording_analysis=write_recording_analysis,
                 )
                 if result is None:
                     results.append(
@@ -3433,6 +3722,7 @@ def components_recording(
         skip_beat_cache=skip_beat_cache,
         all_components=all_components,
         segmentation_mode=segmentation_mode,
+        write_recording_analysis=write_recording_analysis,
     )
 
     if no_wait:

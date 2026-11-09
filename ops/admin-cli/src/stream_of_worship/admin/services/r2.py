@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 MAX_BACKUPS_PER_PREFIX = 5
 RECORDING_HASH_PREFIX_RE = re.compile(r"^[0-9a-f]{12}$")
 
+# Mirror of BEAT_GRID_SCHEMA_VERSION in
+# ops/analysis-service/src/sow_analysis/storage/cache.py. Cached beat grids
+# with a different version are treated as misses by the analysis service, so
+# the admin CLI must accept exactly the same payloads. Must stay equal.
+BEAT_GRID_SCHEMA_VERSION = 1
+
 
 def select_backups_to_delete(
     objects: list[tuple[str, datetime]],
@@ -625,6 +631,44 @@ class R2Client:
         response = self._client.get_object(Bucket=self.bucket, Key=s3_key)
         body = response["Body"].read().decode("utf-8")
         return json.loads(body)
+
+    def download_beat_grid(self, hash_prefix: str) -> Optional[dict]:
+        """Download and parse ``{hash_prefix}/beat_grid.json`` from R2.
+
+        The analysis service writes this artifact whenever it detects a beat
+        grid (madmom on the ``sow-downbeats`` Modal app) and keeps it keyed by
+        content hash, so it is reusable across component runs.
+
+        Args:
+            hash_prefix: 12-character hash prefix.
+
+        Returns:
+            The parsed beat-grid dict (keys ``beats``/``downbeats``/
+            ``source``/``detected_at``/``madmom_params``/``schema_version``)
+            or None when the object is missing, unreadable, or carries a
+            schema version other than the one this CLI understands.
+
+        Raises:
+            ClientError: On non-404 failures.
+        """
+        s3_key = f"{hash_prefix}/beat_grid.json"
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=s3_key)
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+        body = response["Body"].read().decode("utf-8")
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("schema_version") != BEAT_GRID_SCHEMA_VERSION:
+            return None
+        return payload
 
     def download_component_result(self, hash_prefix: str) -> Optional[dict]:
         """Download and parse ``{hash_prefix}/components.json`` from R2.
