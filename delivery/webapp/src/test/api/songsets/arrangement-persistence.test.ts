@@ -687,9 +687,20 @@ describe("updateSongsetItem arrangement lifecycle", () => {
       [{ id: "item-1", recordingHashPrefix: "abc" }]
     );
 
-    await updateSongsetItem("item-1", "songset-1", 1, { gapBeats: 4 });
+    await updateSongsetItem("item-1", "songset-1", 1, {
+      gapBeats: 8,
+      crossfadeEnabled: 1,
+      crossfadeDurationSeconds: 2.5,
+    });
 
     const itemUpdate = updates.find((call) => call.table === songsetItems);
+    // The requested transition fields must reach the UPDATE, not just the
+    // timestamp (this replaced db.test.ts's old "updates songset item" case).
+    expect(itemUpdate!.values).toMatchObject({
+      gapBeats: 8,
+      crossfadeEnabled: 1,
+      crossfadeDurationSeconds: 2.5,
+    });
     expect(itemUpdate!.values).not.toHaveProperty("arrangementSteps");
     expect(itemUpdate!.values.updatedAt).toBeInstanceOf(Date);
   });
