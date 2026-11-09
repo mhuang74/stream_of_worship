@@ -17,15 +17,22 @@ export const arrangementBundle = bundle({
 
     // Sheet chrome
     "arrangement.sheet.title": "Song arrangement",
-    "arrangement.sheet.description": "Reorder, repeat, or omit this song's sections",
+    "arrangement.sheet.description":
+      "Lyrics first: reorder, repeat, or omit this song's sections",
     "arrangement.section.source": "Source sections",
     "arrangement.section.draft": "Sequence",
     "arrangement.section.sourceHint":
       "Add any section as many times as you like. Numbers distinguish repeated labels.",
     "arrangement.draft.count": "Steps",
-    "arrangement.draft.empty": "No steps yet. Add sections from above.",
+    "arrangement.draft.countLabel": "components",
+    "arrangement.draft.empty":
+      "No components left. Undo the last change, reset to the original song, or add a section to start again.",
     "arrangement.palette.empty":
       "Recording analysis is unavailable, so there are no sections to arrange.",
+    "arrangement.status.saved": "Saved",
+    "arrangement.status.unsaved": "Unsaved changes",
+    "arrangement.meta.key": "Key {key}",
+    "arrangement.meta.tempo": "{bpm} BPM",
 
     // Draft actions
     "arrangement.action.reset": "Reset",
@@ -36,6 +43,18 @@ export const arrangementBundle = bundle({
     "arrangement.action.duplicateAria": "Duplicate step",
     "arrangement.action.removeAria": "Remove step",
     "arrangement.action.dragAria": "Reorder step",
+    "arrangement.action.undo": "Undo",
+    "arrangement.action.undoAria": "Undo last change",
+    "arrangement.action.playSection": "Play section",
+    "arrangement.action.pauseSection": "Pause section",
+    "arrangement.action.playSectionAria": "Play section",
+    "arrangement.action.pauseSectionAria": "Pause section",
+
+    // Lyrics
+    "arrangement.lyrics.loading": "Loading lyrics...",
+    "arrangement.lyrics.unavailable": "Lyrics unavailable for this song.",
+    "arrangement.lyrics.instrumental":
+      "Instrumental — no lyrics in this section.",
 
     // Durations and notes
     "arrangement.duration.originalLabel": "Original",
@@ -44,26 +63,39 @@ export const arrangementBundle = bundle({
       "Saving keeps only these sections; Reset restores the full recording.",
     "arrangement.note.snap":
       "Boundaries snap to the nearest detected beat, then repeat or omit any section below.",
+    "arrangement.note.reorderHint":
+      "Drag a component's handle to reorder. Deleting a component is undoable.",
 
     // Validation
     "arrangement.validation.empty": "Add at least one step before previewing or saving.",
     "arrangement.validation.tooMany":
       "A sequence can have at most {max} steps. Remove some steps before saving.",
 
-    // Preview transport
-    "arrangement.preview.title": "Whole-Songset preview",
+    // Preview transport (song-scoped: this song plus an optional lead-in from
+    // the preceding songset item; there is no whole-Songset preview).
+    "arrangement.preview.title": "Preview this song",
     "arrangement.preview.description":
-      "Plays this draft together with the other songs' saved transitions.",
+      "Hear how “{song}” hands over into your first component.",
     "arrangement.preview.loading": "Loading preview...",
     "arrangement.preview.play": "Play preview",
     "arrangement.preview.pause": "Pause preview",
     "arrangement.preview.stop": "Stop preview",
-    "arrangement.preview.seekAria": "Preview position",
-    "arrangement.preview.total": "Total",
-    "arrangement.preview.startHere": "Start here",
-    "arrangement.preview.startHereAria": "Start preview here",
     "arrangement.preview.fallbackNotice":
       "Crossfades are approximated as hard boundaries on this device.",
+    "arrangement.preview.leadIn": "Lead-in",
+    "arrangement.preview.leadInAria": "Lead-in seconds",
+    "arrangement.preview.seconds": "{seconds}s",
+    "arrangement.preview.leadInSummary":
+      "Includes {seconds} of “{song}” before the first component.",
+    "arrangement.preview.leadInFirst":
+      "First song in this set, so there is no previous song to lead in from.",
+    "arrangement.preview.leadInUnavailable":
+      "There is no room for a lead-in before this song.",
+    "arrangement.preview.phaseLeadIn": "Lead-in: {song}",
+    "arrangement.preview.phasePlaying": "Playing {label}",
+    "arrangement.preview.phasePaused": "Paused",
+    "arrangement.preview.timelineAria":
+      "Preview timeline: the lead-in, then each component in order",
 
     // Dialogs
     "arrangement.dialog.resetTitle": "Reset arrangement?",
@@ -82,7 +114,7 @@ export const arrangementBundle = bundle({
     "arrangement.error.unavailableOrStale":
       "Song arrangement is unavailable or stale; repair the Recording analysis or reset the arrangement.",
     "arrangement.error.noRecording":
-      "This item has no selected recording, so the whole-Songset preview cannot play.",
+      "This item has no selected recording, so the song preview cannot play.",
     "arrangement.error.invalidArrangement":
       "This item's saved arrangement is invalid or stale. Repair the recording analysis or reset the arrangement.",
     "arrangement.error.playbackFailed": "Preview playback failed. Try again.",
@@ -105,13 +137,19 @@ export const arrangementBundle = bundle({
 
     // Sheet chrome
     "arrangement.sheet.title": "歌曲編排",
-    "arrangement.sheet.description": "重新排序、重複或省略這首歌的段落",
+    "arrangement.sheet.description": "以歌詞為主：重新排序、重複或省略這首歌的段落",
     "arrangement.section.source": "來源段落",
     "arrangement.section.draft": "編排順序",
     "arrangement.section.sourceHint": "任何段落都可以重複加入。數字用於區分重複的段落名稱。",
     "arrangement.draft.count": "步驟",
-    "arrangement.draft.empty": "尚無步驟，請從上方加入段落。",
+    "arrangement.draft.countLabel": "個段落",
+    "arrangement.draft.empty":
+      "已沒有段落。可以復原上一個變更、重設為原始歌曲，或加入段落重新開始。",
     "arrangement.palette.empty": "錄音分析資料不可用，沒有可編排的段落。",
+    "arrangement.status.saved": "已儲存",
+    "arrangement.status.unsaved": "有未儲存的變更",
+    "arrangement.meta.key": "調性 {key}",
+    "arrangement.meta.tempo": "{bpm} BPM",
 
     // Draft actions
     "arrangement.action.reset": "重設",
@@ -122,29 +160,48 @@ export const arrangementBundle = bundle({
     "arrangement.action.duplicateAria": "複製步驟",
     "arrangement.action.removeAria": "移除步驟",
     "arrangement.action.dragAria": "重新排序步驟",
+    "arrangement.action.undo": "復原",
+    "arrangement.action.undoAria": "復原上一個變更",
+    "arrangement.action.playSection": "播放段落",
+    "arrangement.action.pauseSection": "暫停段落",
+    "arrangement.action.playSectionAria": "播放段落",
+    "arrangement.action.pauseSectionAria": "暫停段落",
+
+    // Lyrics
+    "arrangement.lyrics.loading": "正在載入歌詞...",
+    "arrangement.lyrics.unavailable": "這首歌沒有可用歌詞。",
+    "arrangement.lyrics.instrumental": "純音樂 — 此段落沒有歌詞。",
 
     // Durations and notes
     "arrangement.duration.originalLabel": "原始長度",
     "arrangement.duration.arrangedLabel": "編排長度",
     "arrangement.note.saveBehavior": "儲存後只保留這些段落；重設會還原完整錄音。",
     "arrangement.note.snap": "段落邊界會對齊到最接近的節拍，之後可在下方重複或省略任何段落。",
+    "arrangement.note.reorderHint": "拖曳段落的把手即可調整順序；刪除段落後可以復原。",
 
     // Validation
     "arrangement.validation.empty": "請至少加入一個步驟才能預覽或儲存。",
     "arrangement.validation.tooMany": "編排最多可有 {max} 個步驟。請在儲存前移除部分步驟。",
 
-    // Preview transport
-    "arrangement.preview.title": "整份敬拜歌單預覽",
-    "arrangement.preview.description": "以這份草稿搭配其他詩歌已儲存的轉場進行播放。",
+    // Preview transport (song-scoped: this song plus an optional lead-in from
+    // the preceding songset item; there is no whole-Songset preview).
+    "arrangement.preview.title": "預覽這首歌",
+    "arrangement.preview.description": "聽聽「{song}」如何交接到第一個段落。",
     "arrangement.preview.loading": "正在載入預覽...",
     "arrangement.preview.play": "播放預覽",
     "arrangement.preview.pause": "暫停預覽",
     "arrangement.preview.stop": "停止預覽",
-    "arrangement.preview.seekAria": "預覽播放位置",
-    "arrangement.preview.total": "總長度",
-    "arrangement.preview.startHere": "從這裡開始",
-    "arrangement.preview.startHereAria": "從這裡開始預覽",
     "arrangement.preview.fallbackNotice": "此裝置上的交叉淡化會以硬切邊界近似。",
+    "arrangement.preview.leadIn": "前導",
+    "arrangement.preview.leadInAria": "前導秒數",
+    "arrangement.preview.seconds": "{seconds} 秒",
+    "arrangement.preview.leadInSummary": "第一個段落前會先播放「{song}」的 {seconds}。",
+    "arrangement.preview.leadInFirst": "這是歌單的第一首歌，沒有前一處可作為前導。",
+    "arrangement.preview.leadInUnavailable": "這首歌之前沒有可播放的前導空間。",
+    "arrangement.preview.phaseLeadIn": "前導：{song}",
+    "arrangement.preview.phasePlaying": "正在播放 {label}",
+    "arrangement.preview.phasePaused": "已暫停",
+    "arrangement.preview.timelineAria": "預覽時間軸：前導，接著是每個段落",
 
     // Dialogs
     "arrangement.dialog.resetTitle": "重設編排？",
@@ -160,8 +217,7 @@ export const arrangementBundle = bundle({
     "arrangement.error.unavailableTitle": "編排不可用",
     "arrangement.error.unavailableOrStale":
       "歌曲編排不可用或已過期；請修復錄音分析資料，或重設編排。",
-    "arrangement.error.noRecording":
-      "此項目尚未選擇錄音，因此整份敬拜歌單的預覽無法播放。",
+    "arrangement.error.noRecording": "此項目尚未選擇錄音，因此無法播放歌曲預覽。",
     "arrangement.error.invalidArrangement":
       "此項目已儲存的編排無效或已過期。請修復錄音分析資料，或重設編排。",
     "arrangement.error.playbackFailed": "預覽播放失敗，請再試一次。",

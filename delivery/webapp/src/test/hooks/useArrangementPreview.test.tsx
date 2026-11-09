@@ -267,6 +267,16 @@ describe("useArrangementPreview", () => {
     expect(result.current.status).toBe("playing");
   });
 
+  it("startAtSeconds auditions from a timeline position and plays", async () => {
+    const { result } = renderPreview();
+    await act(async () => {
+      await result.current.startAtSeconds(140);
+    });
+    expect(fake.session.seek).toHaveBeenCalledWith(140);
+    expect(fake.session.play).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe("playing");
+  });
+
   it("reports an unknown startAt item id", async () => {
     const { result, onPreviewError } = renderPreview();
     await act(async () => {
