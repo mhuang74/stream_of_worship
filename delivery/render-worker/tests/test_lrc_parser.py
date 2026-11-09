@@ -1,3 +1,5 @@
+import pytest
+
 from sow_render_worker.audio_engine import AudioClipInfo
 from sow_render_worker.lrc_parser import (
     GlobalLRCLine,
@@ -180,6 +182,31 @@ class TestRemapLrcToClips:
             ("", 12.0),
             ("text", 13.0),
         ]
+
+    def test_pickup_before_source_start_belongs_to_clip(self):
+        # Forced-alignment onset 30 ms before the beat-snapped section bound:
+        # the line is the pickup into this clip, shown at its first frame.
+        local_lines = [LRCLine(time_seconds=53.30, text="chorus")]
+        result = remap_lrc_to_clips(local_lines, (_clip(53.33, 80.80, 0.0),), "Song")
+        assert len(result) == 1
+        assert result[0].text == "chorus"
+        assert result[0].global_time_seconds == 0.0
+        assert result[0].local_time_seconds == 53.30
+
+    def test_line_in_last_half_second_moves_to_next_clip(self):
+        local_lines = [LRCLine(time_seconds=53.30, text="chorus")]
+        clips = (_clip(27.37, 53.33, 0.0), _clip(53.33, 80.80, 25.96))
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert len(result) == 1
+        assert result[0].global_time_seconds == 25.96
+
+    def test_short_clip_keeps_interior_line(self):
+        # A 0.3 s clip is shorter than the tolerance; it keeps its own interior
+        # instead of collapsing to an empty window.
+        local_lines = [LRCLine(time_seconds=10.2, text="short")]
+        result = remap_lrc_to_clips(local_lines, (_clip(10.0, 10.3, 0.0),), "Song")
+        assert len(result) == 1
+        assert result[0].global_time_seconds == pytest.approx(0.2)
 
     def test_no_clips_returns_empty(self):
         assert remap_lrc_to_clips([LRCLine(time_seconds=1.0, text="x")], (), "Song") == []

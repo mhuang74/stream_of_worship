@@ -207,3 +207,38 @@ export function getLyricsTimeRange(
     lastTime: lyrics[lyrics.length - 1].timeSeconds,
   };
 }
+
+/**
+ * Section bounds are beat-snapped while LRC onsets come from forced
+ * alignment, so a phrase can start a few tens of ms before its section.
+ * A line this far before a boundary belongs to the section starting there.
+ * The render worker's remap_lrc_to_clips applies the identical shift.
+ */
+export const LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5;
+
+/**
+ * LRC lines belonging to one Step's source range.
+ *
+ * A line starting up to LYRIC_BOUNDARY_TOLERANCE_SECONDS before
+ * startSeconds belongs here (it is the pickup into this section), and a line
+ * that close to endSeconds belongs to the next section instead. A range
+ * shorter than that tolerance keeps its own interior rather than collapsing.
+ *
+ * @param lines - Parsed LRC lines for the whole recording
+ * @param startSeconds - Source start of the Step
+ * @param endSeconds - Source end of the Step
+ * @returns The subset of lines assigned to this Step
+ */
+export function linesForSourceRange(
+  lines: LRCLine[],
+  startSeconds: number,
+  endSeconds: number
+): LRCLine[] {
+  if (!(endSeconds > startSeconds)) return [];
+  const from = startSeconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS;
+  const to =
+    endSeconds - startSeconds > LYRIC_BOUNDARY_TOLERANCE_SECONDS
+      ? endSeconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
+      : endSeconds;
+  return lines.filter((line) => line.timeSeconds >= from && line.timeSeconds < to);
+}
