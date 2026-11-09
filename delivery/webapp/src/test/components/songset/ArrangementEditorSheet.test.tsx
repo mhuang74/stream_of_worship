@@ -196,6 +196,21 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getAllByTestId("arrangement-lyric-line")).toHaveLength(5);
   });
 
+  it("assigns a pickup line just before a boundary to the next component", () => {
+    // Forced-alignment onsets can precede the beat-snapped section bound, so a
+    // line 0.3 s before a boundary is the next section's pickup, not the tail
+    // of the section that is ending.
+    lyrics.lrcContent =
+      "[00:01.00]Verse one line\n[00:04.00]Verse one second\n[00:09.70]Chorus pickup\n[00:11.00]Chorus line\n";
+    renderSheet();
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    expect(within(rows[0]).getAllByTestId("arrangement-lyric-line")).toHaveLength(2);
+    expect(within(rows[0]).queryByText("Chorus pickup")).toBeNull();
+    expect(within(rows[1]).getAllByTestId("arrangement-lyric-line")).toHaveLength(2);
+    expect(within(rows[1]).getByText("Chorus pickup")).toBeInTheDocument();
+  });
+
   it("labels a component without lyric lines as instrumental", () => {
     // Lyrics start after the intro, so the Intro Step has no lines of its own.
     lyrics.lrcContent =

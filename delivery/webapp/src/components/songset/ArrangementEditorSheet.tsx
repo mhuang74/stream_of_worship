@@ -51,7 +51,12 @@ import { useLocale } from "@/hooks/useLocale";
 import { useSongLyrics } from "@/hooks/useSongLyrics";
 import { useArrangementPreview } from "@/hooks/useArrangementPreview";
 import type { ArrangementPreviewError } from "@/lib/audio/arrangement-preview";
-import { isValidLRC, parseLRC, type LRCLine } from "@/lib/render/lrc-parser";
+import {
+  isValidLRC,
+  linesForSourceRange,
+  parseLRC,
+  type LRCLine,
+} from "@/lib/render/lrc-parser";
 import {
   MAX_ARRANGEMENT_STEPS,
   buildArrangementTimeline,
@@ -129,17 +134,6 @@ function formatTimecode(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
   const total = Math.floor(seconds);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
-/** LRC lines whose timestamp falls inside one Step's source range. */
-function lyricsInRange(
-  lines: LRCLine[],
-  startSeconds: number,
-  endSeconds: number
-): LRCLine[] {
-  return lines.filter(
-    (line) => line.timeSeconds >= startSeconds && line.timeSeconds < endSeconds
-  );
 }
 
 /** Index of the line being sung at a recording-local time, or -1. */
@@ -608,7 +602,7 @@ export function ArrangementEditorSheet({
     () =>
       draft.map((entry) =>
         parsedLyrics
-          ? lyricsInRange(
+          ? linesForSourceRange(
               parsedLyrics,
               entry.step.startSeconds,
               entry.step.endSeconds

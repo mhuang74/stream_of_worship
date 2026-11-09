@@ -7,6 +7,7 @@ import {
   groupLyricsBySong,
   isValidLRC,
   getLyricsTimeRange,
+  linesForSourceRange,
 } from "@/lib/render/lrc-parser";
 import { LRCLine, GlobalLRCLine } from "@/lib/render/lrc-parser";
 
@@ -486,5 +487,45 @@ describe("getLyricsTimeRange", () => {
     expect(result).not.toBeNull();
     expect(result!.firstTime).toBe(100);
     expect(result!.lastTime).toBe(200);
+  });
+});
+
+describe("linesForSourceRange", () => {
+  it("assigns a pickup line to the section that starts at the boundary", () => {
+    // Real numbers from the 讚美之泉 recording: the verse is 27.37–53.33 while
+    // the line after it starts at 53.30, 30 ms before the boundary.
+    const lines: LRCLine[] = [
+      { timeSeconds: 27.77, text: "a" },
+      { timeSeconds: 40.9, text: "b" },
+      { timeSeconds: 53.3, text: "c" },
+      { timeSeconds: 66.8, text: "d" },
+    ];
+
+    expect(linesForSourceRange(lines, 27.37, 53.33).map((line) => line.text)).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(linesForSourceRange(lines, 53.33, 80.8).map((line) => line.text)).toEqual([
+      "c",
+      "d",
+    ]);
+  });
+
+  it("excludes a line exactly at the tolerance before the range end", () => {
+    const lines: LRCLine[] = [{ timeSeconds: 5.0, text: "x" }];
+    expect(linesForSourceRange(lines, 0, 5.5)).toEqual([]);
+  });
+
+  it("keeps the interior line of a range shorter than the tolerance", () => {
+    const lines: LRCLine[] = [{ timeSeconds: 10.2, text: "y" }];
+    expect(linesForSourceRange(lines, 10.0, 10.3).map((line) => line.text)).toEqual([
+      "y",
+    ]);
+  });
+
+  it("returns no lines for an empty or inverted range", () => {
+    const lines: LRCLine[] = [{ timeSeconds: 5.0, text: "x" }];
+    expect(linesForSourceRange(lines, 5, 5)).toEqual([]);
+    expect(linesForSourceRange(lines, 5, 4)).toEqual([]);
   });
 });

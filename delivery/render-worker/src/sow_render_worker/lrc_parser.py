@@ -25,6 +25,11 @@ class GlobalLRCLine:
 _LRC_PATTERN = re.compile(r"\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)")
 _VALID_LRC_PATTERN = re.compile(r"\[\d{2}:\d{2}\.\d{2,3}\]")
 
+# Section bounds are beat-snapped while LRC onsets come from forced
+# alignment. A line this far before a clip's source start belongs to that
+# clip. Must stay equal to the webapp's LYRIC_BOUNDARY_TOLERANCE_SECONDS.
+LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5
+
 
 def parse_lrc(lrc_content: str) -> list[LRCLine]:
     lines: list[LRCLine] = []
@@ -52,27 +57,44 @@ def remap_lrc_to_clips(
     Remap local LRC lines through arranged clips onto the item timeline.
 
     For every clip, include each LRC line whose local timestamp falls inside the
-    clip's source range (source_start <= time < source_end). A line's global
-    timestamp is the clip's target start plus its offset into the source range.
-    Repeated steps repeat their lyrics at new target times; lines from omitted
-    source ranges never appear. Blank Gap Placeholder lines inside a clip's
-    range are retained.
+    clip's shifted source window: ``source_start - LYRIC_BOUNDARY_TOLERANCE_SECONDS
+    <= time < source_end - LYRIC_BOUNDARY_TOLERANCE_SECONDS``. Section bounds are
+    beat-snapped while lyric onsets come from forced alignment, so a pickup line
+    a fraction of a second before a boundary is sung into the section that
+    starts there; the same shift decides which clip owns a lyric in the webapp's
+    arrangement sheet. A clip shorter than the tolerance keeps its own interior
+    instead of emptying out.
+
+    A line's global timestamp is the clip's target start plus its offset into
+    the source range, clamped to the clip's target start so a pre-start pickup
+    lands on the clip's first frame rather than the preceding item. Repeated
+    steps repeat their lyrics at new target times; lines from omitted source
+    ranges never appear. Blank Gap Placeholder lines inside a clip's range are
+    retained.
 
     Lines are stably sorted by global timestamp (per-clip output is already
     ordered, and clips are processed in arrangement order).
     """
     remapped: list[GlobalLRCLine] = []
     for clip in clips:
+        span = clip.source_end_seconds - clip.source_start_seconds
+        window_start = clip.source_start_seconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
+        window_end = (
+            clip.source_end_seconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
+            if span > LYRIC_BOUNDARY_TOLERANCE_SECONDS
+            else clip.source_end_seconds
+        )
         for line in local_lines:
-            if clip.source_start_seconds <= line.time_seconds < clip.source_end_seconds:
+            if window_start <= line.time_seconds < window_end:
                 remapped.append(
                     GlobalLRCLine(
                         text=line.text,
                         local_time_seconds=line.time_seconds,
-                        global_time_seconds=(
+                        global_time_seconds=max(
+                            clip.start_time_seconds,
                             clip.start_time_seconds
                             + line.time_seconds
-                            - clip.source_start_seconds
+                            - clip.source_start_seconds,
                         ),
                         title=title,
                     )
