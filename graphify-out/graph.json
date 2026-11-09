@@ -13347,7 +13347,7 @@
       "label": "estimate_last_lyric_duration()",
       "file_type": "code",
       "source_file": "delivery/render-worker/src/sow_render_worker/lrc_parser.py",
-      "source_location": "L106",
+      "source_location": "L131",
       "_origin": "ast",
       "id": "sow_render_worker_lrc_parser_estimate_last_lyric_duration",
       "community": 402,
@@ -13357,7 +13357,7 @@
       "label": "find_current_lyric_index()",
       "file_type": "code",
       "source_file": "delivery/render-worker/src/sow_render_worker/lrc_parser.py",
-      "source_location": "L147",
+      "source_location": "L172",
       "_origin": "ast",
       "id": "sow_render_worker_lrc_parser_find_current_lyric_index",
       "community": 402,
@@ -13367,7 +13367,7 @@
       "label": "group_lyrics_by_song()",
       "file_type": "code",
       "source_file": "delivery/render-worker/src/sow_render_worker/lrc_parser.py",
-      "source_location": "L160",
+      "source_location": "L185",
       "_origin": "ast",
       "id": "sow_render_worker_lrc_parser_group_lyrics_by_song",
       "community": 402,
@@ -13377,7 +13377,7 @@
       "label": "is_valid_lrc()",
       "file_type": "code",
       "source_file": "delivery/render-worker/src/sow_render_worker/lrc_parser.py",
-      "source_location": "L169",
+      "source_location": "L194",
       "_origin": "ast",
       "id": "sow_render_worker_lrc_parser_is_valid_lrc",
       "community": 402,
@@ -13387,7 +13387,7 @@
       "label": "get_lyrics_time_range()",
       "file_type": "code",
       "source_file": "delivery/render-worker/src/sow_render_worker/lrc_parser.py",
-      "source_location": "L173",
+      "source_location": "L198",
       "_origin": "ast",
       "id": "sow_render_worker_lrc_parser_get_lyrics_time_range",
       "community": 402,
@@ -17878,7 +17878,7 @@
       "source_location": "L483",
       "_origin": "ast",
       "id": "meta_0000_snapshot_columns_estimated_seconds_left",
-      "community": 835,
+      "community": 80,
       "norm_label": "estimated_seconds_left"
     },
     {
@@ -17888,7 +17888,7 @@
       "source_location": "L484",
       "_origin": "ast",
       "id": "meta_0000_snapshot_estimated_seconds_left_name",
-      "community": 835,
+      "community": 80,
       "norm_label": "name"
     },
     {
@@ -17898,7 +17898,7 @@
       "source_location": "L485",
       "_origin": "ast",
       "id": "meta_0000_snapshot_estimated_seconds_left_type",
-      "community": 835,
+      "community": 80,
       "norm_label": "type"
     },
     {
@@ -17908,7 +17908,7 @@
       "source_location": "L486",
       "_origin": "ast",
       "id": "meta_0000_snapshot_estimated_seconds_left_primarykey",
-      "community": 835,
+      "community": 80,
       "norm_label": "primarykey"
     },
     {
@@ -17918,7 +17918,7 @@
       "source_location": "L487",
       "_origin": "ast",
       "id": "meta_0000_snapshot_estimated_seconds_left_notnull",
-      "community": 835,
+      "community": 80,
       "norm_label": "notnull"
     },
     {
@@ -18448,7 +18448,7 @@
       "source_location": "L550",
       "_origin": "ast",
       "id": "meta_0000_snapshot_columns_mp3_r2_key",
-      "community": 80,
+      "community": 739,
       "norm_label": "mp3_r2_key"
     },
     {
@@ -18458,7 +18458,7 @@
       "source_location": "L551",
       "_origin": "ast",
       "id": "meta_0000_snapshot_mp3_r2_key_name",
-      "community": 80,
+      "community": 739,
       "norm_label": "name"
     },
     {
@@ -18468,7 +18468,7 @@
       "source_location": "L552",
       "_origin": "ast",
       "id": "meta_0000_snapshot_mp3_r2_key_type",
-      "community": 80,
+      "community": 739,
       "norm_label": "type"
     },
     {
@@ -18478,7 +18478,7 @@
       "source_location": "L553",
       "_origin": "ast",
       "id": "meta_0000_snapshot_mp3_r2_key_primarykey",
-      "community": 80,
+      "community": 739,
       "norm_label": "primarykey"
     },
     {
@@ -18488,7 +18488,7 @@
       "source_location": "L554",
       "_origin": "ast",
       "id": "meta_0000_snapshot_mp3_r2_key_notnull",
-      "community": 80,
+      "community": 739,
       "norm_label": "notnull"
     },
     {
@@ -19218,7 +19218,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_accountid",
-      "community": 719,
+      "community": 60,
       "norm_label": "accountid"
     },
     {
@@ -19228,7 +19228,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "meta_0001_snapshot_accountid_name",
-      "community": 719,
+      "community": 60,
       "norm_label": "name"
     },
     {
@@ -19238,7 +19238,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "meta_0001_snapshot_accountid_type",
-      "community": 719,
+      "community": 60,
       "norm_label": "type"
     },
     {
@@ -19248,7 +19248,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "meta_0001_snapshot_accountid_primarykey",
-      "community": 719,
+      "community": 60,
       "norm_label": "primarykey"
     },
     {
@@ -19258,7 +19258,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "meta_0001_snapshot_accountid_notnull",
-      "community": 719,
+      "community": 60,
       "norm_label": "notnull"
     },
     {
@@ -19368,7 +19368,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_refreshtoken",
-      "community": 60,
+      "community": 765,
       "norm_label": "refreshtoken"
     },
     {
@@ -19378,7 +19378,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "meta_0001_snapshot_refreshtoken_name",
-      "community": 60,
+      "community": 765,
       "norm_label": "name"
     },
     {
@@ -19388,7 +19388,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "meta_0001_snapshot_refreshtoken_type",
-      "community": 60,
+      "community": 765,
       "norm_label": "type"
     },
     {
@@ -19398,7 +19398,7 @@
       "source_location": "L55",
       "_origin": "ast",
       "id": "meta_0001_snapshot_refreshtoken_primarykey",
-      "community": 60,
+      "community": 765,
       "norm_label": "primarykey"
     },
     {
@@ -19408,7 +19408,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "meta_0001_snapshot_refreshtoken_notnull",
-      "community": 60,
+      "community": 765,
       "norm_label": "notnull"
     },
     {
@@ -20838,7 +20838,7 @@
       "source_location": "L255",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_r2_audio_url",
-      "community": 96,
+      "community": 762,
       "norm_label": "r2_audio_url"
     },
     {
@@ -20848,7 +20848,7 @@
       "source_location": "L256",
       "_origin": "ast",
       "id": "meta_0001_snapshot_r2_audio_url_name",
-      "community": 96,
+      "community": 762,
       "norm_label": "name"
     },
     {
@@ -20858,7 +20858,7 @@
       "source_location": "L257",
       "_origin": "ast",
       "id": "meta_0001_snapshot_r2_audio_url_type",
-      "community": 96,
+      "community": 762,
       "norm_label": "type"
     },
     {
@@ -20868,7 +20868,7 @@
       "source_location": "L258",
       "_origin": "ast",
       "id": "meta_0001_snapshot_r2_audio_url_primarykey",
-      "community": 96,
+      "community": 762,
       "norm_label": "primarykey"
     },
     {
@@ -20878,7 +20878,7 @@
       "source_location": "L259",
       "_origin": "ast",
       "id": "meta_0001_snapshot_r2_audio_url_notnull",
-      "community": 96,
+      "community": 762,
       "norm_label": "notnull"
     },
     {
@@ -21658,7 +21658,7 @@
       "source_location": "L353",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_lrc_job_id",
-      "community": 873,
+      "community": 96,
       "norm_label": "lrc_job_id"
     },
     {
@@ -21668,7 +21668,7 @@
       "source_location": "L354",
       "_origin": "ast",
       "id": "meta_0001_snapshot_lrc_job_id_name",
-      "community": 873,
+      "community": 96,
       "norm_label": "name"
     },
     {
@@ -21678,7 +21678,7 @@
       "source_location": "L355",
       "_origin": "ast",
       "id": "meta_0001_snapshot_lrc_job_id_type",
-      "community": 873,
+      "community": 96,
       "norm_label": "type"
     },
     {
@@ -21688,7 +21688,7 @@
       "source_location": "L356",
       "_origin": "ast",
       "id": "meta_0001_snapshot_lrc_job_id_primarykey",
-      "community": 873,
+      "community": 96,
       "norm_label": "primarykey"
     },
     {
@@ -21698,7 +21698,7 @@
       "source_location": "L357",
       "_origin": "ast",
       "id": "meta_0001_snapshot_lrc_job_id_notnull",
-      "community": 873,
+      "community": 96,
       "norm_label": "notnull"
     },
     {
@@ -22208,7 +22208,7 @@
       "source_location": "L439",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_songset_id",
-      "community": 739,
+      "community": 83,
       "norm_label": "songset_id"
     },
     {
@@ -22218,7 +22218,7 @@
       "source_location": "L440",
       "_origin": "ast",
       "id": "meta_0001_snapshot_songset_id_name",
-      "community": 739,
+      "community": 83,
       "norm_label": "name"
     },
     {
@@ -22228,7 +22228,7 @@
       "source_location": "L441",
       "_origin": "ast",
       "id": "meta_0001_snapshot_songset_id_type",
-      "community": 739,
+      "community": 83,
       "norm_label": "type"
     },
     {
@@ -22238,7 +22238,7 @@
       "source_location": "L442",
       "_origin": "ast",
       "id": "meta_0001_snapshot_songset_id_primarykey",
-      "community": 739,
+      "community": 83,
       "norm_label": "primarykey"
     },
     {
@@ -22248,7 +22248,7 @@
       "source_location": "L443",
       "_origin": "ast",
       "id": "meta_0001_snapshot_songset_id_notnull",
-      "community": 739,
+      "community": 83,
       "norm_label": "notnull"
     },
     {
@@ -22258,7 +22258,7 @@
       "source_location": "L451",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_status",
-      "community": 553,
+      "community": 83,
       "norm_label": "status"
     },
     {
@@ -22268,7 +22268,7 @@
       "source_location": "L452",
       "_origin": "ast",
       "id": "meta_0001_snapshot_status_name",
-      "community": 553,
+      "community": 83,
       "norm_label": "name"
     },
     {
@@ -22278,7 +22278,7 @@
       "source_location": "L453",
       "_origin": "ast",
       "id": "meta_0001_snapshot_status_type",
-      "community": 553,
+      "community": 83,
       "norm_label": "type"
     },
     {
@@ -22288,7 +22288,7 @@
       "source_location": "L454",
       "_origin": "ast",
       "id": "meta_0001_snapshot_status_primarykey",
-      "community": 553,
+      "community": 83,
       "norm_label": "primarykey"
     },
     {
@@ -22298,7 +22298,7 @@
       "source_location": "L455",
       "_origin": "ast",
       "id": "meta_0001_snapshot_status_notnull",
-      "community": 553,
+      "community": 83,
       "norm_label": "notnull"
     },
     {
@@ -22308,7 +22308,7 @@
       "source_location": "L456",
       "_origin": "ast",
       "id": "meta_0001_snapshot_status_default",
-      "community": 553,
+      "community": 83,
       "norm_label": "default"
     },
     {
@@ -22368,7 +22368,7 @@
       "source_location": "L464",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_phase_index",
-      "community": 83,
+      "community": 761,
       "norm_label": "phase_index"
     },
     {
@@ -22378,7 +22378,7 @@
       "source_location": "L465",
       "_origin": "ast",
       "id": "meta_0001_snapshot_phase_index_name",
-      "community": 83,
+      "community": 761,
       "norm_label": "name"
     },
     {
@@ -22388,7 +22388,7 @@
       "source_location": "L466",
       "_origin": "ast",
       "id": "meta_0001_snapshot_phase_index_type",
-      "community": 83,
+      "community": 761,
       "norm_label": "type"
     },
     {
@@ -22398,7 +22398,7 @@
       "source_location": "L467",
       "_origin": "ast",
       "id": "meta_0001_snapshot_phase_index_primarykey",
-      "community": 83,
+      "community": 761,
       "norm_label": "primarykey"
     },
     {
@@ -22408,7 +22408,7 @@
       "source_location": "L468",
       "_origin": "ast",
       "id": "meta_0001_snapshot_phase_index_notnull",
-      "community": 83,
+      "community": 761,
       "norm_label": "notnull"
     },
     {
@@ -22678,7 +22678,7 @@
       "source_location": "L501",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_template",
-      "community": 83,
+      "community": 516,
       "norm_label": "template"
     },
     {
@@ -22688,7 +22688,7 @@
       "source_location": "L502",
       "_origin": "ast",
       "id": "meta_0001_snapshot_template_name",
-      "community": 83,
+      "community": 516,
       "norm_label": "name"
     },
     {
@@ -22698,7 +22698,7 @@
       "source_location": "L503",
       "_origin": "ast",
       "id": "meta_0001_snapshot_template_type",
-      "community": 83,
+      "community": 516,
       "norm_label": "type"
     },
     {
@@ -22708,7 +22708,7 @@
       "source_location": "L504",
       "_origin": "ast",
       "id": "meta_0001_snapshot_template_primarykey",
-      "community": 83,
+      "community": 516,
       "norm_label": "primarykey"
     },
     {
@@ -22718,7 +22718,7 @@
       "source_location": "L505",
       "_origin": "ast",
       "id": "meta_0001_snapshot_template_notnull",
-      "community": 83,
+      "community": 516,
       "norm_label": "notnull"
     },
     {
@@ -22728,7 +22728,7 @@
       "source_location": "L506",
       "_origin": "ast",
       "id": "meta_0001_snapshot_template_default",
-      "community": 83,
+      "community": 516,
       "norm_label": "default"
     },
     {
@@ -23098,7 +23098,7 @@
       "source_location": "L550",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_mp3_r2_key",
-      "community": 875,
+      "community": 83,
       "norm_label": "mp3_r2_key"
     },
     {
@@ -23108,7 +23108,7 @@
       "source_location": "L551",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp3_r2_key_name",
-      "community": 875,
+      "community": 83,
       "norm_label": "name"
     },
     {
@@ -23118,7 +23118,7 @@
       "source_location": "L552",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp3_r2_key_type",
-      "community": 875,
+      "community": 83,
       "norm_label": "type"
     },
     {
@@ -23128,7 +23128,7 @@
       "source_location": "L553",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp3_r2_key_primarykey",
-      "community": 875,
+      "community": 83,
       "norm_label": "primarykey"
     },
     {
@@ -23138,7 +23138,7 @@
       "source_location": "L554",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp3_r2_key_notnull",
-      "community": 875,
+      "community": 83,
       "norm_label": "notnull"
     },
     {
@@ -23148,7 +23148,7 @@
       "source_location": "L556",
       "_origin": "ast",
       "id": "meta_0001_snapshot_columns_mp4_r2_key",
-      "community": 83,
+      "community": 753,
       "norm_label": "mp4_r2_key"
     },
     {
@@ -23158,7 +23158,7 @@
       "source_location": "L557",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp4_r2_key_name",
-      "community": 83,
+      "community": 753,
       "norm_label": "name"
     },
     {
@@ -23168,7 +23168,7 @@
       "source_location": "L558",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp4_r2_key_type",
-      "community": 83,
+      "community": 753,
       "norm_label": "type"
     },
     {
@@ -23178,7 +23178,7 @@
       "source_location": "L559",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp4_r2_key_primarykey",
-      "community": 83,
+      "community": 753,
       "norm_label": "primarykey"
     },
     {
@@ -23188,7 +23188,7 @@
       "source_location": "L560",
       "_origin": "ast",
       "id": "meta_0001_snapshot_mp4_r2_key_notnull",
-      "community": 83,
+      "community": 753,
       "norm_label": "notnull"
     },
     {
@@ -25188,7 +25188,7 @@
       "source_location": "L219",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_content_hash",
-      "community": 86,
+      "community": 775,
       "norm_label": "content_hash"
     },
     {
@@ -25198,7 +25198,7 @@
       "source_location": "L220",
       "_origin": "ast",
       "id": "meta_0003_snapshot_content_hash_name",
-      "community": 86,
+      "community": 775,
       "norm_label": "name"
     },
     {
@@ -25208,7 +25208,7 @@
       "source_location": "L221",
       "_origin": "ast",
       "id": "meta_0003_snapshot_content_hash_type",
-      "community": 86,
+      "community": 775,
       "norm_label": "type"
     },
     {
@@ -25218,7 +25218,7 @@
       "source_location": "L222",
       "_origin": "ast",
       "id": "meta_0003_snapshot_content_hash_primarykey",
-      "community": 86,
+      "community": 775,
       "norm_label": "primarykey"
     },
     {
@@ -25228,7 +25228,7 @@
       "source_location": "L223",
       "_origin": "ast",
       "id": "meta_0003_snapshot_content_hash_notnull",
-      "community": 86,
+      "community": 775,
       "norm_label": "notnull"
     },
     {
@@ -25688,7 +25688,7 @@
       "source_location": "L279",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_tempo_bpm",
-      "community": 762,
+      "community": 86,
       "norm_label": "tempo_bpm"
     },
     {
@@ -25698,7 +25698,7 @@
       "source_location": "L280",
       "_origin": "ast",
       "id": "meta_0003_snapshot_tempo_bpm_name",
-      "community": 762,
+      "community": 86,
       "norm_label": "name"
     },
     {
@@ -25708,7 +25708,7 @@
       "source_location": "L281",
       "_origin": "ast",
       "id": "meta_0003_snapshot_tempo_bpm_type",
-      "community": 762,
+      "community": 86,
       "norm_label": "type"
     },
     {
@@ -25718,7 +25718,7 @@
       "source_location": "L282",
       "_origin": "ast",
       "id": "meta_0003_snapshot_tempo_bpm_primarykey",
-      "community": 762,
+      "community": 86,
       "norm_label": "primarykey"
     },
     {
@@ -25728,7 +25728,7 @@
       "source_location": "L283",
       "_origin": "ast",
       "id": "meta_0003_snapshot_tempo_bpm_notnull",
-      "community": 762,
+      "community": 86,
       "norm_label": "notnull"
     },
     {
@@ -26308,7 +26308,7 @@
       "source_location": "L353",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_lrc_job_id",
-      "community": 753,
+      "community": 86,
       "norm_label": "lrc_job_id"
     },
     {
@@ -26318,7 +26318,7 @@
       "source_location": "L354",
       "_origin": "ast",
       "id": "meta_0003_snapshot_lrc_job_id_name",
-      "community": 753,
+      "community": 86,
       "norm_label": "name"
     },
     {
@@ -26328,7 +26328,7 @@
       "source_location": "L355",
       "_origin": "ast",
       "id": "meta_0003_snapshot_lrc_job_id_type",
-      "community": 753,
+      "community": 86,
       "norm_label": "type"
     },
     {
@@ -26338,7 +26338,7 @@
       "source_location": "L356",
       "_origin": "ast",
       "id": "meta_0003_snapshot_lrc_job_id_primarykey",
-      "community": 753,
+      "community": 86,
       "norm_label": "primarykey"
     },
     {
@@ -26348,7 +26348,7 @@
       "source_location": "L357",
       "_origin": "ast",
       "id": "meta_0003_snapshot_lrc_job_id_notnull",
-      "community": 753,
+      "community": 86,
       "norm_label": "notnull"
     },
     {
@@ -26468,7 +26468,7 @@
       "source_location": "L379",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_visibility_status",
-      "community": 86,
+      "community": 785,
       "norm_label": "visibility_status"
     },
     {
@@ -26478,7 +26478,7 @@
       "source_location": "L380",
       "_origin": "ast",
       "id": "meta_0003_snapshot_visibility_status_name",
-      "community": 86,
+      "community": 785,
       "norm_label": "name"
     },
     {
@@ -26488,7 +26488,7 @@
       "source_location": "L381",
       "_origin": "ast",
       "id": "meta_0003_snapshot_visibility_status_type",
-      "community": 86,
+      "community": 785,
       "norm_label": "type"
     },
     {
@@ -26498,7 +26498,7 @@
       "source_location": "L382",
       "_origin": "ast",
       "id": "meta_0003_snapshot_visibility_status_primarykey",
-      "community": 86,
+      "community": 785,
       "norm_label": "primarykey"
     },
     {
@@ -26508,7 +26508,7 @@
       "source_location": "L383",
       "_origin": "ast",
       "id": "meta_0003_snapshot_visibility_status_notnull",
-      "community": 86,
+      "community": 785,
       "norm_label": "notnull"
     },
     {
@@ -26858,7 +26858,7 @@
       "source_location": "L439",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_songset_id",
-      "community": 761,
+      "community": 78,
       "norm_label": "songset_id"
     },
     {
@@ -26868,7 +26868,7 @@
       "source_location": "L440",
       "_origin": "ast",
       "id": "meta_0003_snapshot_songset_id_name",
-      "community": 761,
+      "community": 78,
       "norm_label": "name"
     },
     {
@@ -26878,7 +26878,7 @@
       "source_location": "L441",
       "_origin": "ast",
       "id": "meta_0003_snapshot_songset_id_type",
-      "community": 761,
+      "community": 78,
       "norm_label": "type"
     },
     {
@@ -26888,7 +26888,7 @@
       "source_location": "L442",
       "_origin": "ast",
       "id": "meta_0003_snapshot_songset_id_primarykey",
-      "community": 761,
+      "community": 78,
       "norm_label": "primarykey"
     },
     {
@@ -26898,7 +26898,7 @@
       "source_location": "L443",
       "_origin": "ast",
       "id": "meta_0003_snapshot_songset_id_notnull",
-      "community": 761,
+      "community": 78,
       "norm_label": "notnull"
     },
     {
@@ -27328,7 +27328,7 @@
       "source_location": "L501",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_template",
-      "community": 78,
+      "community": 553,
       "norm_label": "template"
     },
     {
@@ -27338,7 +27338,7 @@
       "source_location": "L502",
       "_origin": "ast",
       "id": "meta_0003_snapshot_template_name",
-      "community": 78,
+      "community": 553,
       "norm_label": "name"
     },
     {
@@ -27348,7 +27348,7 @@
       "source_location": "L503",
       "_origin": "ast",
       "id": "meta_0003_snapshot_template_type",
-      "community": 78,
+      "community": 553,
       "norm_label": "type"
     },
     {
@@ -27358,7 +27358,7 @@
       "source_location": "L504",
       "_origin": "ast",
       "id": "meta_0003_snapshot_template_primarykey",
-      "community": 78,
+      "community": 553,
       "norm_label": "primarykey"
     },
     {
@@ -27368,7 +27368,7 @@
       "source_location": "L505",
       "_origin": "ast",
       "id": "meta_0003_snapshot_template_notnull",
-      "community": 78,
+      "community": 553,
       "norm_label": "notnull"
     },
     {
@@ -27378,7 +27378,7 @@
       "source_location": "L506",
       "_origin": "ast",
       "id": "meta_0003_snapshot_template_default",
-      "community": 78,
+      "community": 553,
       "norm_label": "default"
     },
     {
@@ -27388,7 +27388,7 @@
       "source_location": "L508",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_resolution",
-      "community": 566,
+      "community": 78,
       "norm_label": "resolution"
     },
     {
@@ -27398,7 +27398,7 @@
       "source_location": "L509",
       "_origin": "ast",
       "id": "meta_0003_snapshot_resolution_name",
-      "community": 566,
+      "community": 78,
       "norm_label": "name"
     },
     {
@@ -27408,7 +27408,7 @@
       "source_location": "L510",
       "_origin": "ast",
       "id": "meta_0003_snapshot_resolution_type",
-      "community": 566,
+      "community": 78,
       "norm_label": "type"
     },
     {
@@ -27418,7 +27418,7 @@
       "source_location": "L511",
       "_origin": "ast",
       "id": "meta_0003_snapshot_resolution_primarykey",
-      "community": 566,
+      "community": 78,
       "norm_label": "primarykey"
     },
     {
@@ -27428,7 +27428,7 @@
       "source_location": "L512",
       "_origin": "ast",
       "id": "meta_0003_snapshot_resolution_notnull",
-      "community": 566,
+      "community": 78,
       "norm_label": "notnull"
     },
     {
@@ -27438,7 +27438,7 @@
       "source_location": "L513",
       "_origin": "ast",
       "id": "meta_0003_snapshot_resolution_default",
-      "community": 566,
+      "community": 78,
       "norm_label": "default"
     },
     {
@@ -27508,7 +27508,7 @@
       "source_location": "L522",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_video_enabled",
-      "community": 568,
+      "community": 78,
       "norm_label": "video_enabled"
     },
     {
@@ -27518,7 +27518,7 @@
       "source_location": "L523",
       "_origin": "ast",
       "id": "meta_0003_snapshot_video_enabled_name",
-      "community": 568,
+      "community": 78,
       "norm_label": "name"
     },
     {
@@ -27528,7 +27528,7 @@
       "source_location": "L524",
       "_origin": "ast",
       "id": "meta_0003_snapshot_video_enabled_type",
-      "community": 568,
+      "community": 78,
       "norm_label": "type"
     },
     {
@@ -27538,7 +27538,7 @@
       "source_location": "L525",
       "_origin": "ast",
       "id": "meta_0003_snapshot_video_enabled_primarykey",
-      "community": 568,
+      "community": 78,
       "norm_label": "primarykey"
     },
     {
@@ -27548,7 +27548,7 @@
       "source_location": "L526",
       "_origin": "ast",
       "id": "meta_0003_snapshot_video_enabled_notnull",
-      "community": 568,
+      "community": 78,
       "norm_label": "notnull"
     },
     {
@@ -27558,7 +27558,7 @@
       "source_location": "L527",
       "_origin": "ast",
       "id": "meta_0003_snapshot_video_enabled_default",
-      "community": 568,
+      "community": 78,
       "norm_label": "default"
     },
     {
@@ -27688,7 +27688,7 @@
       "source_location": "L543",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_title_card_duration_seconds",
-      "community": 78,
+      "community": 566,
       "norm_label": "title_card_duration_seconds"
     },
     {
@@ -27698,7 +27698,7 @@
       "source_location": "L544",
       "_origin": "ast",
       "id": "meta_0003_snapshot_title_card_duration_seconds_name",
-      "community": 78,
+      "community": 566,
       "norm_label": "name"
     },
     {
@@ -27708,7 +27708,7 @@
       "source_location": "L545",
       "_origin": "ast",
       "id": "meta_0003_snapshot_title_card_duration_seconds_type",
-      "community": 78,
+      "community": 566,
       "norm_label": "type"
     },
     {
@@ -27718,7 +27718,7 @@
       "source_location": "L546",
       "_origin": "ast",
       "id": "meta_0003_snapshot_title_card_duration_seconds_primarykey",
-      "community": 78,
+      "community": 566,
       "norm_label": "primarykey"
     },
     {
@@ -27728,7 +27728,7 @@
       "source_location": "L547",
       "_origin": "ast",
       "id": "meta_0003_snapshot_title_card_duration_seconds_notnull",
-      "community": 78,
+      "community": 566,
       "norm_label": "notnull"
     },
     {
@@ -27738,7 +27738,7 @@
       "source_location": "L548",
       "_origin": "ast",
       "id": "meta_0003_snapshot_title_card_duration_seconds_default",
-      "community": 78,
+      "community": 566,
       "norm_label": "default"
     },
     {
@@ -27798,7 +27798,7 @@
       "source_location": "L556",
       "_origin": "ast",
       "id": "meta_0003_snapshot_columns_mp4_r2_key",
-      "community": 78,
+      "community": 783,
       "norm_label": "mp4_r2_key"
     },
     {
@@ -27808,7 +27808,7 @@
       "source_location": "L557",
       "_origin": "ast",
       "id": "meta_0003_snapshot_mp4_r2_key_name",
-      "community": 78,
+      "community": 783,
       "norm_label": "name"
     },
     {
@@ -27818,7 +27818,7 @@
       "source_location": "L558",
       "_origin": "ast",
       "id": "meta_0003_snapshot_mp4_r2_key_type",
-      "community": 78,
+      "community": 783,
       "norm_label": "type"
     },
     {
@@ -27828,7 +27828,7 @@
       "source_location": "L559",
       "_origin": "ast",
       "id": "meta_0003_snapshot_mp4_r2_key_primarykey",
-      "community": 78,
+      "community": 783,
       "norm_label": "primarykey"
     },
     {
@@ -27838,7 +27838,7 @@
       "source_location": "L560",
       "_origin": "ast",
       "id": "meta_0003_snapshot_mp4_r2_key_notnull",
-      "community": 78,
+      "community": 783,
       "norm_label": "notnull"
     },
     {
@@ -28218,7 +28218,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "meta_0004_snapshot",
-      "community": 408,
+      "community": 446,
       "norm_label": "0004_snapshot.json"
     },
     {
@@ -28228,7 +28228,7 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "meta_0004_snapshot_id",
-      "community": 408,
+      "community": 446,
       "norm_label": "id"
     },
     {
@@ -28238,7 +28238,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "meta_0004_snapshot_previd",
-      "community": 408,
+      "community": 446,
       "norm_label": "previd"
     },
     {
@@ -28248,7 +28248,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "meta_0004_snapshot_version",
-      "community": 408,
+      "community": 446,
       "norm_label": "version"
     },
     {
@@ -28258,7 +28258,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "meta_0004_snapshot_dialect",
-      "community": 408,
+      "community": 446,
       "norm_label": "dialect"
     },
     {
@@ -28268,7 +28268,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "meta_0004_snapshot_tables",
-      "community": 408,
+      "community": 446,
       "norm_label": "tables"
     },
     {
@@ -28518,7 +28518,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_accountid",
-      "community": 765,
+      "community": 63,
       "norm_label": "accountid"
     },
     {
@@ -28528,7 +28528,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "meta_0004_snapshot_accountid_name",
-      "community": 765,
+      "community": 63,
       "norm_label": "name"
     },
     {
@@ -28538,7 +28538,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "meta_0004_snapshot_accountid_type",
-      "community": 765,
+      "community": 63,
       "norm_label": "type"
     },
     {
@@ -28548,7 +28548,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "meta_0004_snapshot_accountid_primarykey",
-      "community": 765,
+      "community": 63,
       "norm_label": "primarykey"
     },
     {
@@ -28558,7 +28558,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "meta_0004_snapshot_accountid_notnull",
-      "community": 765,
+      "community": 63,
       "norm_label": "notnull"
     },
     {
@@ -28818,7 +28818,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_refreshtokenexpiresat",
-      "community": 63,
+      "community": 911,
       "norm_label": "refreshtokenexpiresat"
     },
     {
@@ -28828,7 +28828,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "meta_0004_snapshot_refreshtokenexpiresat_name",
-      "community": 63,
+      "community": 911,
       "norm_label": "name"
     },
     {
@@ -28838,7 +28838,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "meta_0004_snapshot_refreshtokenexpiresat_type",
-      "community": 63,
+      "community": 911,
       "norm_label": "type"
     },
     {
@@ -28848,7 +28848,7 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "meta_0004_snapshot_refreshtokenexpiresat_primarykey",
-      "community": 63,
+      "community": 911,
       "norm_label": "primarykey"
     },
     {
@@ -28858,7 +28858,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "meta_0004_snapshot_refreshtokenexpiresat_notnull",
-      "community": 63,
+      "community": 911,
       "norm_label": "notnull"
     },
     {
@@ -29988,7 +29988,7 @@
       "source_location": "L237",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_original_filename",
-      "community": 943,
+      "community": 87,
       "norm_label": "original_filename"
     },
     {
@@ -29998,7 +29998,7 @@
       "source_location": "L238",
       "_origin": "ast",
       "id": "meta_0004_snapshot_original_filename_name",
-      "community": 943,
+      "community": 87,
       "norm_label": "name"
     },
     {
@@ -30008,7 +30008,7 @@
       "source_location": "L239",
       "_origin": "ast",
       "id": "meta_0004_snapshot_original_filename_type",
-      "community": 943,
+      "community": 87,
       "norm_label": "type"
     },
     {
@@ -30018,7 +30018,7 @@
       "source_location": "L240",
       "_origin": "ast",
       "id": "meta_0004_snapshot_original_filename_primarykey",
-      "community": 943,
+      "community": 87,
       "norm_label": "primarykey"
     },
     {
@@ -30028,7 +30028,7 @@
       "source_location": "L241",
       "_origin": "ast",
       "id": "meta_0004_snapshot_original_filename_notnull",
-      "community": 943,
+      "community": 87,
       "norm_label": "notnull"
     },
     {
@@ -30038,7 +30038,7 @@
       "source_location": "L243",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_file_size_bytes",
-      "community": 87,
+      "community": 873,
       "norm_label": "file_size_bytes"
     },
     {
@@ -30048,7 +30048,7 @@
       "source_location": "L244",
       "_origin": "ast",
       "id": "meta_0004_snapshot_file_size_bytes_name",
-      "community": 87,
+      "community": 873,
       "norm_label": "name"
     },
     {
@@ -30058,7 +30058,7 @@
       "source_location": "L245",
       "_origin": "ast",
       "id": "meta_0004_snapshot_file_size_bytes_type",
-      "community": 87,
+      "community": 873,
       "norm_label": "type"
     },
     {
@@ -30068,7 +30068,7 @@
       "source_location": "L246",
       "_origin": "ast",
       "id": "meta_0004_snapshot_file_size_bytes_primarykey",
-      "community": 87,
+      "community": 873,
       "norm_label": "primarykey"
     },
     {
@@ -30078,7 +30078,7 @@
       "source_location": "L247",
       "_origin": "ast",
       "id": "meta_0004_snapshot_file_size_bytes_notnull",
-      "community": 87,
+      "community": 873,
       "norm_label": "notnull"
     },
     {
@@ -30488,7 +30488,7 @@
       "source_location": "L297",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_key_confidence",
-      "community": 940,
+      "community": 87,
       "norm_label": "key_confidence"
     },
     {
@@ -30498,7 +30498,7 @@
       "source_location": "L298",
       "_origin": "ast",
       "id": "meta_0004_snapshot_key_confidence_name",
-      "community": 940,
+      "community": 87,
       "norm_label": "name"
     },
     {
@@ -30508,7 +30508,7 @@
       "source_location": "L299",
       "_origin": "ast",
       "id": "meta_0004_snapshot_key_confidence_type",
-      "community": 940,
+      "community": 87,
       "norm_label": "type"
     },
     {
@@ -30518,7 +30518,7 @@
       "source_location": "L300",
       "_origin": "ast",
       "id": "meta_0004_snapshot_key_confidence_primarykey",
-      "community": 940,
+      "community": 87,
       "norm_label": "primarykey"
     },
     {
@@ -30528,7 +30528,7 @@
       "source_location": "L301",
       "_origin": "ast",
       "id": "meta_0004_snapshot_key_confidence_notnull",
-      "community": 940,
+      "community": 87,
       "norm_label": "notnull"
     },
     {
@@ -30638,7 +30638,7 @@
       "source_location": "L315",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_downbeats",
-      "community": 883,
+      "community": 87,
       "norm_label": "downbeats"
     },
     {
@@ -30648,7 +30648,7 @@
       "source_location": "L316",
       "_origin": "ast",
       "id": "meta_0004_snapshot_downbeats_name",
-      "community": 883,
+      "community": 87,
       "norm_label": "name"
     },
     {
@@ -30658,7 +30658,7 @@
       "source_location": "L317",
       "_origin": "ast",
       "id": "meta_0004_snapshot_downbeats_type",
-      "community": 883,
+      "community": 87,
       "norm_label": "type"
     },
     {
@@ -30668,7 +30668,7 @@
       "source_location": "L318",
       "_origin": "ast",
       "id": "meta_0004_snapshot_downbeats_primarykey",
-      "community": 883,
+      "community": 87,
       "norm_label": "primarykey"
     },
     {
@@ -30678,7 +30678,7 @@
       "source_location": "L319",
       "_origin": "ast",
       "id": "meta_0004_snapshot_downbeats_notnull",
-      "community": 883,
+      "community": 87,
       "norm_label": "notnull"
     },
     {
@@ -30738,7 +30738,7 @@
       "source_location": "L327",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_embeddings_shape",
-      "community": 87,
+      "community": 835,
       "norm_label": "embeddings_shape"
     },
     {
@@ -30748,7 +30748,7 @@
       "source_location": "L328",
       "_origin": "ast",
       "id": "meta_0004_snapshot_embeddings_shape_name",
-      "community": 87,
+      "community": 835,
       "norm_label": "name"
     },
     {
@@ -30758,7 +30758,7 @@
       "source_location": "L329",
       "_origin": "ast",
       "id": "meta_0004_snapshot_embeddings_shape_type",
-      "community": 87,
+      "community": 835,
       "norm_label": "type"
     },
     {
@@ -30768,7 +30768,7 @@
       "source_location": "L330",
       "_origin": "ast",
       "id": "meta_0004_snapshot_embeddings_shape_primarykey",
-      "community": 87,
+      "community": 835,
       "norm_label": "primarykey"
     },
     {
@@ -30778,7 +30778,7 @@
       "source_location": "L331",
       "_origin": "ast",
       "id": "meta_0004_snapshot_embeddings_shape_notnull",
-      "community": 87,
+      "community": 835,
       "norm_label": "notnull"
     },
     {
@@ -30898,7 +30898,7 @@
       "source_location": "L346",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_lrc_status",
-      "community": 87,
+      "community": 568,
       "norm_label": "lrc_status"
     },
     {
@@ -30908,7 +30908,7 @@
       "source_location": "L347",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_status_name",
-      "community": 87,
+      "community": 568,
       "norm_label": "name"
     },
     {
@@ -30918,7 +30918,7 @@
       "source_location": "L348",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_status_type",
-      "community": 87,
+      "community": 568,
       "norm_label": "type"
     },
     {
@@ -30928,7 +30928,7 @@
       "source_location": "L349",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_status_primarykey",
-      "community": 87,
+      "community": 568,
       "norm_label": "primarykey"
     },
     {
@@ -30938,7 +30938,7 @@
       "source_location": "L350",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_status_notnull",
-      "community": 87,
+      "community": 568,
       "norm_label": "notnull"
     },
     {
@@ -30948,7 +30948,7 @@
       "source_location": "L351",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_status_default",
-      "community": 87,
+      "community": 568,
       "norm_label": "default"
     },
     {
@@ -30958,7 +30958,7 @@
       "source_location": "L353",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_lrc_job_id",
-      "community": 775,
+      "community": 87,
       "norm_label": "lrc_job_id"
     },
     {
@@ -30968,7 +30968,7 @@
       "source_location": "L354",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_job_id_name",
-      "community": 775,
+      "community": 87,
       "norm_label": "name"
     },
     {
@@ -30978,7 +30978,7 @@
       "source_location": "L355",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_job_id_type",
-      "community": 775,
+      "community": 87,
       "norm_label": "type"
     },
     {
@@ -30988,7 +30988,7 @@
       "source_location": "L356",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_job_id_primarykey",
-      "community": 775,
+      "community": 87,
       "norm_label": "primarykey"
     },
     {
@@ -30998,7 +30998,7 @@
       "source_location": "L357",
       "_origin": "ast",
       "id": "meta_0004_snapshot_lrc_job_id_notnull",
-      "community": 775,
+      "community": 87,
       "norm_label": "notnull"
     },
     {
@@ -31468,7 +31468,7 @@
       "source_location": "L429",
       "_origin": "ast",
       "id": "meta_0004_snapshot_tables_public_render_jobs",
-      "community": 352,
+      "community": 446,
       "norm_label": "public.render_jobs"
     },
     {
@@ -31478,7 +31478,7 @@
       "source_location": "L430",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_name",
-      "community": 352,
+      "community": 446,
       "norm_label": "name"
     },
     {
@@ -31488,7 +31488,7 @@
       "source_location": "L431",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_schema",
-      "community": 352,
+      "community": 446,
       "norm_label": "schema"
     },
     {
@@ -31508,7 +31508,7 @@
       "source_location": "L439",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_songset_id",
-      "community": 783,
+      "community": 79,
       "norm_label": "songset_id"
     },
     {
@@ -31518,7 +31518,7 @@
       "source_location": "L440",
       "_origin": "ast",
       "id": "meta_0004_snapshot_songset_id_name",
-      "community": 783,
+      "community": 79,
       "norm_label": "name"
     },
     {
@@ -31528,7 +31528,7 @@
       "source_location": "L441",
       "_origin": "ast",
       "id": "meta_0004_snapshot_songset_id_type",
-      "community": 783,
+      "community": 79,
       "norm_label": "type"
     },
     {
@@ -31538,7 +31538,7 @@
       "source_location": "L442",
       "_origin": "ast",
       "id": "meta_0004_snapshot_songset_id_primarykey",
-      "community": 783,
+      "community": 79,
       "norm_label": "primarykey"
     },
     {
@@ -31548,7 +31548,7 @@
       "source_location": "L443",
       "_origin": "ast",
       "id": "meta_0004_snapshot_songset_id_notnull",
-      "community": 783,
+      "community": 79,
       "norm_label": "notnull"
     },
     {
@@ -31558,7 +31558,7 @@
       "source_location": "L451",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_status",
-      "community": 696,
+      "community": 79,
       "norm_label": "status"
     },
     {
@@ -31568,7 +31568,7 @@
       "source_location": "L452",
       "_origin": "ast",
       "id": "meta_0004_snapshot_status_name",
-      "community": 696,
+      "community": 79,
       "norm_label": "name"
     },
     {
@@ -31578,7 +31578,7 @@
       "source_location": "L453",
       "_origin": "ast",
       "id": "meta_0004_snapshot_status_type",
-      "community": 696,
+      "community": 79,
       "norm_label": "type"
     },
     {
@@ -31588,7 +31588,7 @@
       "source_location": "L454",
       "_origin": "ast",
       "id": "meta_0004_snapshot_status_primarykey",
-      "community": 696,
+      "community": 79,
       "norm_label": "primarykey"
     },
     {
@@ -31598,7 +31598,7 @@
       "source_location": "L455",
       "_origin": "ast",
       "id": "meta_0004_snapshot_status_notnull",
-      "community": 696,
+      "community": 79,
       "norm_label": "notnull"
     },
     {
@@ -31608,7 +31608,7 @@
       "source_location": "L456",
       "_origin": "ast",
       "id": "meta_0004_snapshot_status_default",
-      "community": 696,
+      "community": 79,
       "norm_label": "default"
     },
     {
@@ -31618,7 +31618,7 @@
       "source_location": "L458",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_phase",
-      "community": 79,
+      "community": 883,
       "norm_label": "phase"
     },
     {
@@ -31628,7 +31628,7 @@
       "source_location": "L459",
       "_origin": "ast",
       "id": "meta_0004_snapshot_phase_name",
-      "community": 79,
+      "community": 883,
       "norm_label": "name"
     },
     {
@@ -31638,7 +31638,7 @@
       "source_location": "L460",
       "_origin": "ast",
       "id": "meta_0004_snapshot_phase_type",
-      "community": 79,
+      "community": 883,
       "norm_label": "type"
     },
     {
@@ -31648,7 +31648,7 @@
       "source_location": "L461",
       "_origin": "ast",
       "id": "meta_0004_snapshot_phase_primarykey",
-      "community": 79,
+      "community": 883,
       "norm_label": "primarykey"
     },
     {
@@ -31658,7 +31658,7 @@
       "source_location": "L462",
       "_origin": "ast",
       "id": "meta_0004_snapshot_phase_notnull",
-      "community": 79,
+      "community": 883,
       "norm_label": "notnull"
     },
     {
@@ -31768,7 +31768,7 @@
       "source_location": "L476",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_percent_complete",
-      "community": 79,
+      "community": 676,
       "norm_label": "percent_complete"
     },
     {
@@ -31778,7 +31778,7 @@
       "source_location": "L477",
       "_origin": "ast",
       "id": "meta_0004_snapshot_percent_complete_name",
-      "community": 79,
+      "community": 676,
       "norm_label": "name"
     },
     {
@@ -31788,7 +31788,7 @@
       "source_location": "L478",
       "_origin": "ast",
       "id": "meta_0004_snapshot_percent_complete_type",
-      "community": 79,
+      "community": 676,
       "norm_label": "type"
     },
     {
@@ -31798,7 +31798,7 @@
       "source_location": "L479",
       "_origin": "ast",
       "id": "meta_0004_snapshot_percent_complete_primarykey",
-      "community": 79,
+      "community": 676,
       "norm_label": "primarykey"
     },
     {
@@ -31808,7 +31808,7 @@
       "source_location": "L480",
       "_origin": "ast",
       "id": "meta_0004_snapshot_percent_complete_notnull",
-      "community": 79,
+      "community": 676,
       "norm_label": "notnull"
     },
     {
@@ -31818,7 +31818,7 @@
       "source_location": "L481",
       "_origin": "ast",
       "id": "meta_0004_snapshot_percent_complete_default",
-      "community": 79,
+      "community": 676,
       "norm_label": "default"
     },
     {
@@ -31878,7 +31878,7 @@
       "source_location": "L489",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_elapsed_seconds",
-      "community": 911,
+      "community": 79,
       "norm_label": "elapsed_seconds"
     },
     {
@@ -31888,7 +31888,7 @@
       "source_location": "L490",
       "_origin": "ast",
       "id": "meta_0004_snapshot_elapsed_seconds_name",
-      "community": 911,
+      "community": 79,
       "norm_label": "name"
     },
     {
@@ -31898,7 +31898,7 @@
       "source_location": "L491",
       "_origin": "ast",
       "id": "meta_0004_snapshot_elapsed_seconds_type",
-      "community": 911,
+      "community": 79,
       "norm_label": "type"
     },
     {
@@ -31908,7 +31908,7 @@
       "source_location": "L492",
       "_origin": "ast",
       "id": "meta_0004_snapshot_elapsed_seconds_primarykey",
-      "community": 911,
+      "community": 79,
       "norm_label": "primarykey"
     },
     {
@@ -31918,7 +31918,7 @@
       "source_location": "L493",
       "_origin": "ast",
       "id": "meta_0004_snapshot_elapsed_seconds_notnull",
-      "community": 911,
+      "community": 79,
       "norm_label": "notnull"
     },
     {
@@ -31928,7 +31928,7 @@
       "source_location": "L495",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_error_message",
-      "community": 938,
+      "community": 79,
       "norm_label": "error_message"
     },
     {
@@ -31938,7 +31938,7 @@
       "source_location": "L496",
       "_origin": "ast",
       "id": "meta_0004_snapshot_error_message_name",
-      "community": 938,
+      "community": 79,
       "norm_label": "name"
     },
     {
@@ -31948,7 +31948,7 @@
       "source_location": "L497",
       "_origin": "ast",
       "id": "meta_0004_snapshot_error_message_type",
-      "community": 938,
+      "community": 79,
       "norm_label": "type"
     },
     {
@@ -31958,7 +31958,7 @@
       "source_location": "L498",
       "_origin": "ast",
       "id": "meta_0004_snapshot_error_message_primarykey",
-      "community": 938,
+      "community": 79,
       "norm_label": "primarykey"
     },
     {
@@ -31968,7 +31968,7 @@
       "source_location": "L499",
       "_origin": "ast",
       "id": "meta_0004_snapshot_error_message_notnull",
-      "community": 938,
+      "community": 79,
       "norm_label": "notnull"
     },
     {
@@ -31978,7 +31978,7 @@
       "source_location": "L501",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_template",
-      "community": 79,
+      "community": 696,
       "norm_label": "template"
     },
     {
@@ -31988,7 +31988,7 @@
       "source_location": "L502",
       "_origin": "ast",
       "id": "meta_0004_snapshot_template_name",
-      "community": 79,
+      "community": 696,
       "norm_label": "name"
     },
     {
@@ -31998,7 +31998,7 @@
       "source_location": "L503",
       "_origin": "ast",
       "id": "meta_0004_snapshot_template_type",
-      "community": 79,
+      "community": 696,
       "norm_label": "type"
     },
     {
@@ -32008,7 +32008,7 @@
       "source_location": "L504",
       "_origin": "ast",
       "id": "meta_0004_snapshot_template_primarykey",
-      "community": 79,
+      "community": 696,
       "norm_label": "primarykey"
     },
     {
@@ -32018,7 +32018,7 @@
       "source_location": "L505",
       "_origin": "ast",
       "id": "meta_0004_snapshot_template_notnull",
-      "community": 79,
+      "community": 696,
       "norm_label": "notnull"
     },
     {
@@ -32028,7 +32028,7 @@
       "source_location": "L506",
       "_origin": "ast",
       "id": "meta_0004_snapshot_template_default",
-      "community": 79,
+      "community": 696,
       "norm_label": "default"
     },
     {
@@ -32448,7 +32448,7 @@
       "source_location": "L556",
       "_origin": "ast",
       "id": "meta_0004_snapshot_columns_mp4_r2_key",
-      "community": 79,
+      "community": 875,
       "norm_label": "mp4_r2_key"
     },
     {
@@ -32458,7 +32458,7 @@
       "source_location": "L557",
       "_origin": "ast",
       "id": "meta_0004_snapshot_mp4_r2_key_name",
-      "community": 79,
+      "community": 875,
       "norm_label": "name"
     },
     {
@@ -32468,7 +32468,7 @@
       "source_location": "L558",
       "_origin": "ast",
       "id": "meta_0004_snapshot_mp4_r2_key_type",
-      "community": 79,
+      "community": 875,
       "norm_label": "type"
     },
     {
@@ -32478,7 +32478,7 @@
       "source_location": "L559",
       "_origin": "ast",
       "id": "meta_0004_snapshot_mp4_r2_key_primarykey",
-      "community": 79,
+      "community": 875,
       "norm_label": "primarykey"
     },
     {
@@ -32488,7 +32488,7 @@
       "source_location": "L560",
       "_origin": "ast",
       "id": "meta_0004_snapshot_mp4_r2_key_notnull",
-      "community": 79,
+      "community": 875,
       "norm_label": "notnull"
     },
     {
@@ -32598,7 +32598,7 @@
       "source_location": "L589",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_indexes",
-      "community": 352,
+      "community": 446,
       "norm_label": "indexes"
     },
     {
@@ -32778,7 +32778,7 @@
       "source_location": "L618",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_compositeprimarykeys",
-      "community": 352,
+      "community": 446,
       "norm_label": "compositeprimarykeys"
     },
     {
@@ -32788,7 +32788,7 @@
       "source_location": "L619",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_uniqueconstraints",
-      "community": 352,
+      "community": 446,
       "norm_label": "uniqueconstraints"
     },
     {
@@ -32798,7 +32798,7 @@
       "source_location": "L620",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_policies",
-      "community": 352,
+      "community": 446,
       "norm_label": "policies"
     },
     {
@@ -32808,7 +32808,7 @@
       "source_location": "L621",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_checkconstraints",
-      "community": 352,
+      "community": 446,
       "norm_label": "checkconstraints"
     },
     {
@@ -32818,7 +32818,7 @@
       "source_location": "L622",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_render_jobs_isrlsenabled",
-      "community": 352,
+      "community": 446,
       "norm_label": "isrlsenabled"
     },
     {
@@ -32828,7 +32828,7 @@
       "source_location": "L624",
       "_origin": "ast",
       "id": "meta_0004_snapshot_tables_public_session",
-      "community": 408,
+      "community": 446,
       "norm_label": "public.session"
     },
     {
@@ -32838,7 +32838,7 @@
       "source_location": "L625",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_session_name",
-      "community": 408,
+      "community": 446,
       "norm_label": "name"
     },
     {
@@ -32848,7 +32848,7 @@
       "source_location": "L626",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_session_schema",
-      "community": 408,
+      "community": 446,
       "norm_label": "schema"
     },
     {
@@ -32858,7 +32858,7 @@
       "source_location": "L627",
       "_origin": "ast",
       "id": "meta_0004_snapshot_public_session_columns",
-      "community": 408,
+      "community": 446,
       "norm_label": "columns"
     },
     {
@@ -51988,7 +51988,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "meta_0013_snapshot_columns_accesstoken",
-      "community": 50,
+      "community": 938,
       "norm_label": "accesstoken"
     },
     {
@@ -51998,7 +51998,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "meta_0013_snapshot_accesstoken_name",
-      "community": 50,
+      "community": 938,
       "norm_label": "name"
     },
     {
@@ -52008,7 +52008,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "meta_0013_snapshot_accesstoken_type",
-      "community": 50,
+      "community": 938,
       "norm_label": "type"
     },
     {
@@ -52018,7 +52018,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "meta_0013_snapshot_accesstoken_primarykey",
-      "community": 50,
+      "community": 938,
       "norm_label": "primarykey"
     },
     {
@@ -52028,7 +52028,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "meta_0013_snapshot_accesstoken_notnull",
-      "community": 50,
+      "community": 938,
       "norm_label": "notnull"
     },
     {
@@ -52338,7 +52338,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "meta_0013_snapshot_columns_createdat",
-      "community": 727,
+      "community": 50,
       "norm_label": "createdat"
     },
     {
@@ -52348,7 +52348,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "meta_0013_snapshot_createdat_name",
-      "community": 727,
+      "community": 50,
       "norm_label": "name"
     },
     {
@@ -52358,7 +52358,7 @@
       "source_location": "L90",
       "_origin": "ast",
       "id": "meta_0013_snapshot_createdat_type",
-      "community": 727,
+      "community": 50,
       "norm_label": "type"
     },
     {
@@ -52368,7 +52368,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "meta_0013_snapshot_createdat_primarykey",
-      "community": 727,
+      "community": 50,
       "norm_label": "primarykey"
     },
     {
@@ -52378,7 +52378,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "meta_0013_snapshot_createdat_notnull",
-      "community": 727,
+      "community": 50,
       "norm_label": "notnull"
     },
     {
@@ -52388,7 +52388,7 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "meta_0013_snapshot_createdat_default",
-      "community": 727,
+      "community": 50,
       "norm_label": "default"
     },
     {
@@ -65908,7 +65908,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_userid",
-      "community": 1043,
+      "community": 141,
       "norm_label": "userid"
     },
     {
@@ -65918,7 +65918,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "meta_0020_snapshot_userid_name",
-      "community": 1043,
+      "community": 141,
       "norm_label": "name"
     },
     {
@@ -65928,7 +65928,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "meta_0020_snapshot_userid_type",
-      "community": 1043,
+      "community": 141,
       "norm_label": "type"
     },
     {
@@ -65938,7 +65938,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "meta_0020_snapshot_userid_primarykey",
-      "community": 1043,
+      "community": 141,
       "norm_label": "primarykey"
     },
     {
@@ -65948,7 +65948,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "meta_0020_snapshot_userid_notnull",
-      "community": 1043,
+      "community": 141,
       "norm_label": "notnull"
     },
     {
@@ -66358,7 +66358,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_password",
-      "community": 141,
+      "community": 1014,
       "norm_label": "password"
     },
     {
@@ -66368,7 +66368,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "meta_0020_snapshot_password_name",
-      "community": 141,
+      "community": 1014,
       "norm_label": "name"
     },
     {
@@ -66378,7 +66378,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "meta_0020_snapshot_password_type",
-      "community": 141,
+      "community": 1014,
       "norm_label": "type"
     },
     {
@@ -66388,7 +66388,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "meta_0020_snapshot_password_primarykey",
-      "community": 141,
+      "community": 1014,
       "norm_label": "primarykey"
     },
     {
@@ -66398,7 +66398,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "meta_0020_snapshot_password_notnull",
-      "community": 141,
+      "community": 1014,
       "norm_label": "notnull"
     },
     {
@@ -67708,7 +67708,7 @@
       "source_location": "L291",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_hash_prefix",
-      "community": 668,
+      "community": 943,
       "norm_label": "hash_prefix"
     },
     {
@@ -67718,7 +67718,7 @@
       "source_location": "L292",
       "_origin": "ast",
       "id": "meta_0020_snapshot_hash_prefix_name",
-      "community": 668,
+      "community": 943,
       "norm_label": "name"
     },
     {
@@ -67728,7 +67728,7 @@
       "source_location": "L293",
       "_origin": "ast",
       "id": "meta_0020_snapshot_hash_prefix_type",
-      "community": 668,
+      "community": 943,
       "norm_label": "type"
     },
     {
@@ -67738,7 +67738,7 @@
       "source_location": "L294",
       "_origin": "ast",
       "id": "meta_0020_snapshot_hash_prefix_primarykey",
-      "community": 668,
+      "community": 943,
       "norm_label": "primarykey"
     },
     {
@@ -67748,7 +67748,7 @@
       "source_location": "L295",
       "_origin": "ast",
       "id": "meta_0020_snapshot_hash_prefix_notnull",
-      "community": 668,
+      "community": 943,
       "norm_label": "notnull"
     },
     {
@@ -68808,7 +68808,7 @@
       "source_location": "L423",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_embeddings_shape",
-      "community": 1014,
+      "community": 668,
       "norm_label": "embeddings_shape"
     },
     {
@@ -68818,7 +68818,7 @@
       "source_location": "L424",
       "_origin": "ast",
       "id": "meta_0020_snapshot_embeddings_shape_name",
-      "community": 1014,
+      "community": 668,
       "norm_label": "name"
     },
     {
@@ -68828,7 +68828,7 @@
       "source_location": "L425",
       "_origin": "ast",
       "id": "meta_0020_snapshot_embeddings_shape_type",
-      "community": 1014,
+      "community": 668,
       "norm_label": "type"
     },
     {
@@ -68838,7 +68838,7 @@
       "source_location": "L426",
       "_origin": "ast",
       "id": "meta_0020_snapshot_embeddings_shape_primarykey",
-      "community": 1014,
+      "community": 668,
       "norm_label": "primarykey"
     },
     {
@@ -68848,7 +68848,7 @@
       "source_location": "L427",
       "_origin": "ast",
       "id": "meta_0020_snapshot_embeddings_shape_notnull",
-      "community": 1014,
+      "community": 668,
       "norm_label": "notnull"
     },
     {
@@ -69698,7 +69698,7 @@
       "source_location": "L575",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_status",
-      "community": 138,
+      "community": 719,
       "norm_label": "status"
     },
     {
@@ -69708,7 +69708,7 @@
       "source_location": "L576",
       "_origin": "ast",
       "id": "meta_0020_snapshot_status_name",
-      "community": 138,
+      "community": 719,
       "norm_label": "name"
     },
     {
@@ -69718,7 +69718,7 @@
       "source_location": "L577",
       "_origin": "ast",
       "id": "meta_0020_snapshot_status_type",
-      "community": 138,
+      "community": 719,
       "norm_label": "type"
     },
     {
@@ -69728,7 +69728,7 @@
       "source_location": "L578",
       "_origin": "ast",
       "id": "meta_0020_snapshot_status_primarykey",
-      "community": 138,
+      "community": 719,
       "norm_label": "primarykey"
     },
     {
@@ -69738,7 +69738,7 @@
       "source_location": "L579",
       "_origin": "ast",
       "id": "meta_0020_snapshot_status_notnull",
-      "community": 138,
+      "community": 719,
       "norm_label": "notnull"
     },
     {
@@ -69748,7 +69748,7 @@
       "source_location": "L580",
       "_origin": "ast",
       "id": "meta_0020_snapshot_status_default",
-      "community": 138,
+      "community": 719,
       "norm_label": "default"
     },
     {
@@ -69758,7 +69758,7 @@
       "source_location": "L582",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_phase",
-      "community": 138,
+      "community": 1030,
       "norm_label": "phase"
     },
     {
@@ -69768,7 +69768,7 @@
       "source_location": "L583",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_name",
-      "community": 138,
+      "community": 1030,
       "norm_label": "name"
     },
     {
@@ -69778,7 +69778,7 @@
       "source_location": "L584",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_type",
-      "community": 138,
+      "community": 1030,
       "norm_label": "type"
     },
     {
@@ -69788,7 +69788,7 @@
       "source_location": "L585",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_primarykey",
-      "community": 138,
+      "community": 1030,
       "norm_label": "primarykey"
     },
     {
@@ -69798,7 +69798,7 @@
       "source_location": "L586",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_notnull",
-      "community": 138,
+      "community": 1030,
       "norm_label": "notnull"
     },
     {
@@ -69808,7 +69808,7 @@
       "source_location": "L588",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_phase_index",
-      "community": 1030,
+      "community": 138,
       "norm_label": "phase_index"
     },
     {
@@ -69818,7 +69818,7 @@
       "source_location": "L589",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_index_name",
-      "community": 1030,
+      "community": 138,
       "norm_label": "name"
     },
     {
@@ -69828,7 +69828,7 @@
       "source_location": "L590",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_index_type",
-      "community": 1030,
+      "community": 138,
       "norm_label": "type"
     },
     {
@@ -69838,7 +69838,7 @@
       "source_location": "L591",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_index_primarykey",
-      "community": 1030,
+      "community": 138,
       "norm_label": "primarykey"
     },
     {
@@ -69848,7 +69848,7 @@
       "source_location": "L592",
       "_origin": "ast",
       "id": "meta_0020_snapshot_phase_index_notnull",
-      "community": 1030,
+      "community": 138,
       "norm_label": "notnull"
     },
     {
@@ -70018,7 +70018,7 @@
       "source_location": "L613",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_elapsed_seconds",
-      "community": 138,
+      "community": 940,
       "norm_label": "elapsed_seconds"
     },
     {
@@ -70028,7 +70028,7 @@
       "source_location": "L614",
       "_origin": "ast",
       "id": "meta_0020_snapshot_elapsed_seconds_name",
-      "community": 138,
+      "community": 940,
       "norm_label": "name"
     },
     {
@@ -70038,7 +70038,7 @@
       "source_location": "L615",
       "_origin": "ast",
       "id": "meta_0020_snapshot_elapsed_seconds_type",
-      "community": 138,
+      "community": 940,
       "norm_label": "type"
     },
     {
@@ -70048,7 +70048,7 @@
       "source_location": "L616",
       "_origin": "ast",
       "id": "meta_0020_snapshot_elapsed_seconds_primarykey",
-      "community": 138,
+      "community": 940,
       "norm_label": "primarykey"
     },
     {
@@ -70058,7 +70058,7 @@
       "source_location": "L617",
       "_origin": "ast",
       "id": "meta_0020_snapshot_elapsed_seconds_notnull",
-      "community": 138,
+      "community": 940,
       "norm_label": "notnull"
     },
     {
@@ -70068,7 +70068,7 @@
       "source_location": "L619",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_error_message",
-      "community": 1072,
+      "community": 138,
       "norm_label": "error_message"
     },
     {
@@ -70078,7 +70078,7 @@
       "source_location": "L620",
       "_origin": "ast",
       "id": "meta_0020_snapshot_error_message_name",
-      "community": 1072,
+      "community": 138,
       "norm_label": "name"
     },
     {
@@ -70088,7 +70088,7 @@
       "source_location": "L621",
       "_origin": "ast",
       "id": "meta_0020_snapshot_error_message_type",
-      "community": 1072,
+      "community": 138,
       "norm_label": "type"
     },
     {
@@ -70098,7 +70098,7 @@
       "source_location": "L622",
       "_origin": "ast",
       "id": "meta_0020_snapshot_error_message_primarykey",
-      "community": 1072,
+      "community": 138,
       "norm_label": "primarykey"
     },
     {
@@ -70108,7 +70108,7 @@
       "source_location": "L623",
       "_origin": "ast",
       "id": "meta_0020_snapshot_error_message_notnull",
-      "community": 1072,
+      "community": 138,
       "norm_label": "notnull"
     },
     {
@@ -70118,7 +70118,7 @@
       "source_location": "L625",
       "_origin": "ast",
       "id": "meta_0020_snapshot_columns_estimated_total_seconds",
-      "community": 1077,
+      "community": 138,
       "norm_label": "estimated_total_seconds"
     },
     {
@@ -70128,7 +70128,7 @@
       "source_location": "L626",
       "_origin": "ast",
       "id": "meta_0020_snapshot_estimated_total_seconds_name",
-      "community": 1077,
+      "community": 138,
       "norm_label": "name"
     },
     {
@@ -70138,7 +70138,7 @@
       "source_location": "L627",
       "_origin": "ast",
       "id": "meta_0020_snapshot_estimated_total_seconds_type",
-      "community": 1077,
+      "community": 138,
       "norm_label": "type"
     },
     {
@@ -70148,7 +70148,7 @@
       "source_location": "L628",
       "_origin": "ast",
       "id": "meta_0020_snapshot_estimated_total_seconds_primarykey",
-      "community": 1077,
+      "community": 138,
       "norm_label": "primarykey"
     },
     {
@@ -70158,7 +70158,7 @@
       "source_location": "L629",
       "_origin": "ast",
       "id": "meta_0020_snapshot_estimated_total_seconds_notnull",
-      "community": 1077,
+      "community": 138,
       "norm_label": "notnull"
     },
     {
@@ -70598,7 +70598,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_userid",
-      "community": 52,
+      "community": 1077,
       "norm_label": "userid"
     },
     {
@@ -70608,7 +70608,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "meta_0021_snapshot_userid_name",
-      "community": 52,
+      "community": 1077,
       "norm_label": "name"
     },
     {
@@ -70618,7 +70618,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "meta_0021_snapshot_userid_type",
-      "community": 52,
+      "community": 1077,
       "norm_label": "type"
     },
     {
@@ -70628,7 +70628,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "meta_0021_snapshot_userid_primarykey",
-      "community": 52,
+      "community": 1077,
       "norm_label": "primarykey"
     },
     {
@@ -70638,7 +70638,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "meta_0021_snapshot_userid_notnull",
-      "community": 52,
+      "community": 1077,
       "norm_label": "notnull"
     },
     {
@@ -70848,7 +70848,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_idtoken",
-      "community": 1099,
+      "community": 52,
       "norm_label": "idtoken"
     },
     {
@@ -70858,7 +70858,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "meta_0021_snapshot_idtoken_name",
-      "community": 1099,
+      "community": 52,
       "norm_label": "name"
     },
     {
@@ -70868,7 +70868,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "meta_0021_snapshot_idtoken_type",
-      "community": 1099,
+      "community": 52,
       "norm_label": "type"
     },
     {
@@ -70878,7 +70878,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "meta_0021_snapshot_idtoken_primarykey",
-      "community": 1099,
+      "community": 52,
       "norm_label": "primarykey"
     },
     {
@@ -70888,7 +70888,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "meta_0021_snapshot_idtoken_notnull",
-      "community": 1099,
+      "community": 52,
       "norm_label": "notnull"
     },
     {
@@ -70898,7 +70898,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_accesstokenexpiresat",
-      "community": 52,
+      "community": 1043,
       "norm_label": "accesstokenexpiresat"
     },
     {
@@ -70908,7 +70908,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "meta_0021_snapshot_accesstokenexpiresat_name",
-      "community": 52,
+      "community": 1043,
       "norm_label": "name"
     },
     {
@@ -70918,7 +70918,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "meta_0021_snapshot_accesstokenexpiresat_type",
-      "community": 52,
+      "community": 1043,
       "norm_label": "type"
     },
     {
@@ -70928,7 +70928,7 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "meta_0021_snapshot_accesstokenexpiresat_primarykey",
-      "community": 52,
+      "community": 1043,
       "norm_label": "primarykey"
     },
     {
@@ -70938,7 +70938,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "meta_0021_snapshot_accesstokenexpiresat_notnull",
-      "community": 52,
+      "community": 1043,
       "norm_label": "notnull"
     },
     {
@@ -71048,7 +71048,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_password",
-      "community": 1064,
+      "community": 52,
       "norm_label": "password"
     },
     {
@@ -71058,7 +71058,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "meta_0021_snapshot_password_name",
-      "community": 1064,
+      "community": 52,
       "norm_label": "name"
     },
     {
@@ -71068,7 +71068,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "meta_0021_snapshot_password_type",
-      "community": 1064,
+      "community": 52,
       "norm_label": "type"
     },
     {
@@ -71078,7 +71078,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "meta_0021_snapshot_password_primarykey",
-      "community": 1064,
+      "community": 52,
       "norm_label": "primarykey"
     },
     {
@@ -71088,7 +71088,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "meta_0021_snapshot_password_notnull",
-      "community": 1064,
+      "community": 52,
       "norm_label": "notnull"
     },
     {
@@ -72548,7 +72548,7 @@
       "source_location": "L309",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_file_size_bytes",
-      "community": 1052,
+      "community": 101,
       "norm_label": "file_size_bytes"
     },
     {
@@ -72558,7 +72558,7 @@
       "source_location": "L310",
       "_origin": "ast",
       "id": "meta_0021_snapshot_file_size_bytes_name",
-      "community": 1052,
+      "community": 101,
       "norm_label": "name"
     },
     {
@@ -72568,7 +72568,7 @@
       "source_location": "L311",
       "_origin": "ast",
       "id": "meta_0021_snapshot_file_size_bytes_type",
-      "community": 1052,
+      "community": 101,
       "norm_label": "type"
     },
     {
@@ -72578,7 +72578,7 @@
       "source_location": "L312",
       "_origin": "ast",
       "id": "meta_0021_snapshot_file_size_bytes_primarykey",
-      "community": 1052,
+      "community": 101,
       "norm_label": "primarykey"
     },
     {
@@ -72588,7 +72588,7 @@
       "source_location": "L313",
       "_origin": "ast",
       "id": "meta_0021_snapshot_file_size_bytes_notnull",
-      "community": 1052,
+      "community": 101,
       "norm_label": "notnull"
     },
     {
@@ -73498,7 +73498,7 @@
       "source_location": "L423",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_embeddings_shape",
-      "community": 101,
+      "community": 1051,
       "norm_label": "embeddings_shape"
     },
     {
@@ -73508,7 +73508,7 @@
       "source_location": "L424",
       "_origin": "ast",
       "id": "meta_0021_snapshot_embeddings_shape_name",
-      "community": 101,
+      "community": 1051,
       "norm_label": "name"
     },
     {
@@ -73518,7 +73518,7 @@
       "source_location": "L425",
       "_origin": "ast",
       "id": "meta_0021_snapshot_embeddings_shape_type",
-      "community": 101,
+      "community": 1051,
       "norm_label": "type"
     },
     {
@@ -73528,7 +73528,7 @@
       "source_location": "L426",
       "_origin": "ast",
       "id": "meta_0021_snapshot_embeddings_shape_primarykey",
-      "community": 101,
+      "community": 1051,
       "norm_label": "primarykey"
     },
     {
@@ -73538,7 +73538,7 @@
       "source_location": "L427",
       "_origin": "ast",
       "id": "meta_0021_snapshot_embeddings_shape_notnull",
-      "community": 101,
+      "community": 1051,
       "norm_label": "notnull"
     },
     {
@@ -74388,7 +74388,7 @@
       "source_location": "L575",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_status",
-      "community": 676,
+      "community": 38,
       "norm_label": "status"
     },
     {
@@ -74398,7 +74398,7 @@
       "source_location": "L576",
       "_origin": "ast",
       "id": "meta_0021_snapshot_status_name",
-      "community": 676,
+      "community": 38,
       "norm_label": "name"
     },
     {
@@ -74408,7 +74408,7 @@
       "source_location": "L577",
       "_origin": "ast",
       "id": "meta_0021_snapshot_status_type",
-      "community": 676,
+      "community": 38,
       "norm_label": "type"
     },
     {
@@ -74418,7 +74418,7 @@
       "source_location": "L578",
       "_origin": "ast",
       "id": "meta_0021_snapshot_status_primarykey",
-      "community": 676,
+      "community": 38,
       "norm_label": "primarykey"
     },
     {
@@ -74428,7 +74428,7 @@
       "source_location": "L579",
       "_origin": "ast",
       "id": "meta_0021_snapshot_status_notnull",
-      "community": 676,
+      "community": 38,
       "norm_label": "notnull"
     },
     {
@@ -74438,7 +74438,7 @@
       "source_location": "L580",
       "_origin": "ast",
       "id": "meta_0021_snapshot_status_default",
-      "community": 676,
+      "community": 38,
       "norm_label": "default"
     },
     {
@@ -74448,7 +74448,7 @@
       "source_location": "L582",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_phase",
-      "community": 1306,
+      "community": 38,
       "norm_label": "phase"
     },
     {
@@ -74458,7 +74458,7 @@
       "source_location": "L583",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_name",
-      "community": 1306,
+      "community": 38,
       "norm_label": "name"
     },
     {
@@ -74468,7 +74468,7 @@
       "source_location": "L584",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_type",
-      "community": 1306,
+      "community": 38,
       "norm_label": "type"
     },
     {
@@ -74478,7 +74478,7 @@
       "source_location": "L585",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_primarykey",
-      "community": 1306,
+      "community": 38,
       "norm_label": "primarykey"
     },
     {
@@ -74488,7 +74488,7 @@
       "source_location": "L586",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_notnull",
-      "community": 1306,
+      "community": 38,
       "norm_label": "notnull"
     },
     {
@@ -74498,7 +74498,7 @@
       "source_location": "L588",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_phase_index",
-      "community": 38,
+      "community": 1072,
       "norm_label": "phase_index"
     },
     {
@@ -74508,7 +74508,7 @@
       "source_location": "L589",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_index_name",
-      "community": 38,
+      "community": 1072,
       "norm_label": "name"
     },
     {
@@ -74518,7 +74518,7 @@
       "source_location": "L590",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_index_type",
-      "community": 38,
+      "community": 1072,
       "norm_label": "type"
     },
     {
@@ -74528,7 +74528,7 @@
       "source_location": "L591",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_index_primarykey",
-      "community": 38,
+      "community": 1072,
       "norm_label": "primarykey"
     },
     {
@@ -74538,7 +74538,7 @@
       "source_location": "L592",
       "_origin": "ast",
       "id": "meta_0021_snapshot_phase_index_notnull",
-      "community": 38,
+      "community": 1072,
       "norm_label": "notnull"
     },
     {
@@ -74708,7 +74708,7 @@
       "source_location": "L613",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_elapsed_seconds",
-      "community": 1051,
+      "community": 38,
       "norm_label": "elapsed_seconds"
     },
     {
@@ -74718,7 +74718,7 @@
       "source_location": "L614",
       "_origin": "ast",
       "id": "meta_0021_snapshot_elapsed_seconds_name",
-      "community": 1051,
+      "community": 38,
       "norm_label": "name"
     },
     {
@@ -74728,7 +74728,7 @@
       "source_location": "L615",
       "_origin": "ast",
       "id": "meta_0021_snapshot_elapsed_seconds_type",
-      "community": 1051,
+      "community": 38,
       "norm_label": "type"
     },
     {
@@ -74738,7 +74738,7 @@
       "source_location": "L616",
       "_origin": "ast",
       "id": "meta_0021_snapshot_elapsed_seconds_primarykey",
-      "community": 1051,
+      "community": 38,
       "norm_label": "primarykey"
     },
     {
@@ -74748,7 +74748,7 @@
       "source_location": "L617",
       "_origin": "ast",
       "id": "meta_0021_snapshot_elapsed_seconds_notnull",
-      "community": 1051,
+      "community": 38,
       "norm_label": "notnull"
     },
     {
@@ -74758,7 +74758,7 @@
       "source_location": "L619",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_error_message",
-      "community": 38,
+      "community": 1052,
       "norm_label": "error_message"
     },
     {
@@ -74768,7 +74768,7 @@
       "source_location": "L620",
       "_origin": "ast",
       "id": "meta_0021_snapshot_error_message_name",
-      "community": 38,
+      "community": 1052,
       "norm_label": "name"
     },
     {
@@ -74778,7 +74778,7 @@
       "source_location": "L621",
       "_origin": "ast",
       "id": "meta_0021_snapshot_error_message_type",
-      "community": 38,
+      "community": 1052,
       "norm_label": "type"
     },
     {
@@ -74788,7 +74788,7 @@
       "source_location": "L622",
       "_origin": "ast",
       "id": "meta_0021_snapshot_error_message_primarykey",
-      "community": 38,
+      "community": 1052,
       "norm_label": "primarykey"
     },
     {
@@ -74798,7 +74798,7 @@
       "source_location": "L623",
       "_origin": "ast",
       "id": "meta_0021_snapshot_error_message_notnull",
-      "community": 38,
+      "community": 1052,
       "norm_label": "notnull"
     },
     {
@@ -74808,7 +74808,7 @@
       "source_location": "L625",
       "_origin": "ast",
       "id": "meta_0021_snapshot_columns_estimated_total_seconds",
-      "community": 38,
+      "community": 1064,
       "norm_label": "estimated_total_seconds"
     },
     {
@@ -74818,7 +74818,7 @@
       "source_location": "L626",
       "_origin": "ast",
       "id": "meta_0021_snapshot_estimated_total_seconds_name",
-      "community": 38,
+      "community": 1064,
       "norm_label": "name"
     },
     {
@@ -74828,7 +74828,7 @@
       "source_location": "L627",
       "_origin": "ast",
       "id": "meta_0021_snapshot_estimated_total_seconds_type",
-      "community": 38,
+      "community": 1064,
       "norm_label": "type"
     },
     {
@@ -74838,7 +74838,7 @@
       "source_location": "L628",
       "_origin": "ast",
       "id": "meta_0021_snapshot_estimated_total_seconds_primarykey",
-      "community": 38,
+      "community": 1064,
       "norm_label": "primarykey"
     },
     {
@@ -74848,7 +74848,7 @@
       "source_location": "L629",
       "_origin": "ast",
       "id": "meta_0021_snapshot_estimated_total_seconds_notnull",
-      "community": 38,
+      "community": 1064,
       "norm_label": "notnull"
     },
     {
@@ -75388,7 +75388,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_providerid",
-      "community": 57,
+      "community": 1099,
       "norm_label": "providerid"
     },
     {
@@ -75398,7 +75398,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "meta_0025_snapshot_providerid_name",
-      "community": 57,
+      "community": 1099,
       "norm_label": "name"
     },
     {
@@ -75408,7 +75408,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "meta_0025_snapshot_providerid_type",
-      "community": 57,
+      "community": 1099,
       "norm_label": "type"
     },
     {
@@ -75418,7 +75418,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "meta_0025_snapshot_providerid_primarykey",
-      "community": 57,
+      "community": 1099,
       "norm_label": "primarykey"
     },
     {
@@ -75428,7 +75428,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "meta_0025_snapshot_providerid_notnull",
-      "community": 57,
+      "community": 1099,
       "norm_label": "notnull"
     },
     {
@@ -75488,7 +75488,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_refreshtoken",
-      "community": 1318,
+      "community": 57,
       "norm_label": "refreshtoken"
     },
     {
@@ -75498,7 +75498,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtoken_name",
-      "community": 1318,
+      "community": 57,
       "norm_label": "name"
     },
     {
@@ -75508,7 +75508,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtoken_type",
-      "community": 1318,
+      "community": 57,
       "norm_label": "type"
     },
     {
@@ -75518,7 +75518,7 @@
       "source_location": "L55",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtoken_primarykey",
-      "community": 1318,
+      "community": 57,
       "norm_label": "primarykey"
     },
     {
@@ -75528,7 +75528,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtoken_notnull",
-      "community": 1318,
+      "community": 57,
       "norm_label": "notnull"
     },
     {
@@ -75638,7 +75638,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_refreshtokenexpiresat",
-      "community": 57,
+      "community": 1116,
       "norm_label": "refreshtokenexpiresat"
     },
     {
@@ -75648,7 +75648,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtokenexpiresat_name",
-      "community": 57,
+      "community": 1116,
       "norm_label": "name"
     },
     {
@@ -75658,7 +75658,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtokenexpiresat_type",
-      "community": 57,
+      "community": 1116,
       "norm_label": "type"
     },
     {
@@ -75668,7 +75668,7 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtokenexpiresat_primarykey",
-      "community": 57,
+      "community": 1116,
       "norm_label": "primarykey"
     },
     {
@@ -75678,7 +75678,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "meta_0025_snapshot_refreshtokenexpiresat_notnull",
-      "community": 57,
+      "community": 1116,
       "norm_label": "notnull"
     },
     {
@@ -75848,7 +75848,7 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_updatedat",
-      "community": 785,
+      "community": 57,
       "norm_label": "updatedat"
     },
     {
@@ -75858,7 +75858,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "meta_0025_snapshot_updatedat_name",
-      "community": 785,
+      "community": 57,
       "norm_label": "name"
     },
     {
@@ -75868,7 +75868,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "meta_0025_snapshot_updatedat_type",
-      "community": 785,
+      "community": 57,
       "norm_label": "type"
     },
     {
@@ -75878,7 +75878,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "meta_0025_snapshot_updatedat_primarykey",
-      "community": 785,
+      "community": 57,
       "norm_label": "primarykey"
     },
     {
@@ -75888,7 +75888,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "meta_0025_snapshot_updatedat_notnull",
-      "community": 785,
+      "community": 57,
       "norm_label": "notnull"
     },
     {
@@ -75898,7 +75898,7 @@
       "source_location": "L100",
       "_origin": "ast",
       "id": "meta_0025_snapshot_updatedat_default",
-      "community": 785,
+      "community": 57,
       "norm_label": "default"
     },
     {
@@ -77778,7 +77778,7 @@
       "source_location": "L424",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_song_id",
-      "community": 1092,
+      "community": 102,
       "norm_label": "song_id"
     },
     {
@@ -77788,7 +77788,7 @@
       "source_location": "L425",
       "_origin": "ast",
       "id": "meta_0025_snapshot_song_id_name",
-      "community": 1092,
+      "community": 102,
       "norm_label": "name"
     },
     {
@@ -77798,7 +77798,7 @@
       "source_location": "L426",
       "_origin": "ast",
       "id": "meta_0025_snapshot_song_id_type",
-      "community": 1092,
+      "community": 102,
       "norm_label": "type"
     },
     {
@@ -77808,7 +77808,7 @@
       "source_location": "L427",
       "_origin": "ast",
       "id": "meta_0025_snapshot_song_id_primarykey",
-      "community": 1092,
+      "community": 102,
       "norm_label": "primarykey"
     },
     {
@@ -77818,7 +77818,7 @@
       "source_location": "L428",
       "_origin": "ast",
       "id": "meta_0025_snapshot_song_id_notnull",
-      "community": 1092,
+      "community": 102,
       "norm_label": "notnull"
     },
     {
@@ -78028,7 +78028,7 @@
       "source_location": "L454",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_r2_stems_url",
-      "community": 1317,
+      "community": 102,
       "norm_label": "r2_stems_url"
     },
     {
@@ -78038,7 +78038,7 @@
       "source_location": "L455",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_stems_url_name",
-      "community": 1317,
+      "community": 102,
       "norm_label": "name"
     },
     {
@@ -78048,7 +78048,7 @@
       "source_location": "L456",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_stems_url_type",
-      "community": 1317,
+      "community": 102,
       "norm_label": "type"
     },
     {
@@ -78058,7 +78058,7 @@
       "source_location": "L457",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_stems_url_primarykey",
-      "community": 1317,
+      "community": 102,
       "norm_label": "primarykey"
     },
     {
@@ -78068,7 +78068,7 @@
       "source_location": "L458",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_stems_url_notnull",
-      "community": 1317,
+      "community": 102,
       "norm_label": "notnull"
     },
     {
@@ -78078,7 +78078,7 @@
       "source_location": "L460",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_r2_lrc_url",
-      "community": 1091,
+      "community": 102,
       "norm_label": "r2_lrc_url"
     },
     {
@@ -78088,7 +78088,7 @@
       "source_location": "L461",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_lrc_url_name",
-      "community": 1091,
+      "community": 102,
       "norm_label": "name"
     },
     {
@@ -78098,7 +78098,7 @@
       "source_location": "L462",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_lrc_url_type",
-      "community": 1091,
+      "community": 102,
       "norm_label": "type"
     },
     {
@@ -78108,7 +78108,7 @@
       "source_location": "L463",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_lrc_url_primarykey",
-      "community": 1091,
+      "community": 102,
       "norm_label": "primarykey"
     },
     {
@@ -78118,7 +78118,7 @@
       "source_location": "L464",
       "_origin": "ast",
       "id": "meta_0025_snapshot_r2_lrc_url_notnull",
-      "community": 1091,
+      "community": 102,
       "norm_label": "notnull"
     },
     {
@@ -78128,7 +78128,7 @@
       "source_location": "L466",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_duration_seconds",
-      "community": 102,
+      "community": 1091,
       "norm_label": "duration_seconds"
     },
     {
@@ -78138,7 +78138,7 @@
       "source_location": "L467",
       "_origin": "ast",
       "id": "meta_0025_snapshot_duration_seconds_name",
-      "community": 102,
+      "community": 1091,
       "norm_label": "name"
     },
     {
@@ -78148,7 +78148,7 @@
       "source_location": "L468",
       "_origin": "ast",
       "id": "meta_0025_snapshot_duration_seconds_type",
-      "community": 102,
+      "community": 1091,
       "norm_label": "type"
     },
     {
@@ -78158,7 +78158,7 @@
       "source_location": "L469",
       "_origin": "ast",
       "id": "meta_0025_snapshot_duration_seconds_primarykey",
-      "community": 102,
+      "community": 1091,
       "norm_label": "primarykey"
     },
     {
@@ -78168,7 +78168,7 @@
       "source_location": "L470",
       "_origin": "ast",
       "id": "meta_0025_snapshot_duration_seconds_notnull",
-      "community": 102,
+      "community": 1091,
       "norm_label": "notnull"
     },
     {
@@ -78178,7 +78178,7 @@
       "source_location": "L472",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_tempo_bpm",
-      "community": 102,
+      "community": 1146,
       "norm_label": "tempo_bpm"
     },
     {
@@ -78188,7 +78188,7 @@
       "source_location": "L473",
       "_origin": "ast",
       "id": "meta_0025_snapshot_tempo_bpm_name",
-      "community": 102,
+      "community": 1146,
       "norm_label": "name"
     },
     {
@@ -78198,7 +78198,7 @@
       "source_location": "L474",
       "_origin": "ast",
       "id": "meta_0025_snapshot_tempo_bpm_type",
-      "community": 102,
+      "community": 1146,
       "norm_label": "type"
     },
     {
@@ -78208,7 +78208,7 @@
       "source_location": "L475",
       "_origin": "ast",
       "id": "meta_0025_snapshot_tempo_bpm_primarykey",
-      "community": 102,
+      "community": 1146,
       "norm_label": "primarykey"
     },
     {
@@ -78218,7 +78218,7 @@
       "source_location": "L476",
       "_origin": "ast",
       "id": "meta_0025_snapshot_tempo_bpm_notnull",
-      "community": 102,
+      "community": 1146,
       "norm_label": "notnull"
     },
     {
@@ -78228,7 +78228,7 @@
       "source_location": "L478",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_musical_key",
-      "community": 102,
+      "community": 1093,
       "norm_label": "musical_key"
     },
     {
@@ -78238,7 +78238,7 @@
       "source_location": "L479",
       "_origin": "ast",
       "id": "meta_0025_snapshot_musical_key_name",
-      "community": 102,
+      "community": 1093,
       "norm_label": "name"
     },
     {
@@ -78248,7 +78248,7 @@
       "source_location": "L480",
       "_origin": "ast",
       "id": "meta_0025_snapshot_musical_key_type",
-      "community": 102,
+      "community": 1093,
       "norm_label": "type"
     },
     {
@@ -78258,7 +78258,7 @@
       "source_location": "L481",
       "_origin": "ast",
       "id": "meta_0025_snapshot_musical_key_primarykey",
-      "community": 102,
+      "community": 1093,
       "norm_label": "primarykey"
     },
     {
@@ -78268,7 +78268,7 @@
       "source_location": "L482",
       "_origin": "ast",
       "id": "meta_0025_snapshot_musical_key_notnull",
-      "community": 102,
+      "community": 1093,
       "norm_label": "notnull"
     },
     {
@@ -78328,7 +78328,7 @@
       "source_location": "L490",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_key_confidence",
-      "community": 102,
+      "community": 1092,
       "norm_label": "key_confidence"
     },
     {
@@ -78338,7 +78338,7 @@
       "source_location": "L491",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_confidence_name",
-      "community": 102,
+      "community": 1092,
       "norm_label": "name"
     },
     {
@@ -78348,7 +78348,7 @@
       "source_location": "L492",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_confidence_type",
-      "community": 102,
+      "community": 1092,
       "norm_label": "type"
     },
     {
@@ -78358,7 +78358,7 @@
       "source_location": "L493",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_confidence_primarykey",
-      "community": 102,
+      "community": 1092,
       "norm_label": "primarykey"
     },
     {
@@ -78368,7 +78368,7 @@
       "source_location": "L494",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_confidence_notnull",
-      "community": 102,
+      "community": 1092,
       "norm_label": "notnull"
     },
     {
@@ -78578,7 +78578,7 @@
       "source_location": "L520",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_key_detected_at",
-      "community": 1315,
+      "community": 102,
       "norm_label": "key_detected_at"
     },
     {
@@ -78588,7 +78588,7 @@
       "source_location": "L521",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_detected_at_name",
-      "community": 1315,
+      "community": 102,
       "norm_label": "name"
     },
     {
@@ -78598,7 +78598,7 @@
       "source_location": "L522",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_detected_at_type",
-      "community": 1315,
+      "community": 102,
       "norm_label": "type"
     },
     {
@@ -78608,7 +78608,7 @@
       "source_location": "L523",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_detected_at_primarykey",
-      "community": 1315,
+      "community": 102,
       "norm_label": "primarykey"
     },
     {
@@ -78618,7 +78618,7 @@
       "source_location": "L524",
       "_origin": "ast",
       "id": "meta_0025_snapshot_key_detected_at_notnull",
-      "community": 1315,
+      "community": 102,
       "norm_label": "notnull"
     },
     {
@@ -78778,7 +78778,7 @@
       "source_location": "L544",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_sections",
-      "community": 102,
+      "community": 1142,
       "norm_label": "sections"
     },
     {
@@ -78788,7 +78788,7 @@
       "source_location": "L545",
       "_origin": "ast",
       "id": "meta_0025_snapshot_sections_name",
-      "community": 102,
+      "community": 1142,
       "norm_label": "name"
     },
     {
@@ -78798,7 +78798,7 @@
       "source_location": "L546",
       "_origin": "ast",
       "id": "meta_0025_snapshot_sections_type",
-      "community": 102,
+      "community": 1142,
       "norm_label": "type"
     },
     {
@@ -78808,7 +78808,7 @@
       "source_location": "L547",
       "_origin": "ast",
       "id": "meta_0025_snapshot_sections_primarykey",
-      "community": 102,
+      "community": 1142,
       "norm_label": "primarykey"
     },
     {
@@ -78818,7 +78818,7 @@
       "source_location": "L548",
       "_origin": "ast",
       "id": "meta_0025_snapshot_sections_notnull",
-      "community": 102,
+      "community": 1142,
       "norm_label": "notnull"
     },
     {
@@ -79308,7 +79308,7 @@
       "source_location": "L621",
       "_origin": "ast",
       "id": "meta_0025_snapshot_columns_theme",
-      "community": 1093,
+      "community": 102,
       "norm_label": "theme"
     },
     {
@@ -79318,7 +79318,7 @@
       "source_location": "L622",
       "_origin": "ast",
       "id": "meta_0025_snapshot_theme_name",
-      "community": 1093,
+      "community": 102,
       "norm_label": "name"
     },
     {
@@ -79328,7 +79328,7 @@
       "source_location": "L623",
       "_origin": "ast",
       "id": "meta_0025_snapshot_theme_type",
-      "community": 1093,
+      "community": 102,
       "norm_label": "type"
     },
     {
@@ -79338,7 +79338,7 @@
       "source_location": "L624",
       "_origin": "ast",
       "id": "meta_0025_snapshot_theme_primarykey",
-      "community": 1093,
+      "community": 102,
       "norm_label": "primarykey"
     },
     {
@@ -79348,7 +79348,7 @@
       "source_location": "L625",
       "_origin": "ast",
       "id": "meta_0025_snapshot_theme_notnull",
-      "community": 1093,
+      "community": 102,
       "norm_label": "notnull"
     },
     {
@@ -83278,7 +83278,7 @@
       "source_location": "L583",
       "_origin": "ast",
       "id": "meta_0026_snapshot_columns_r2_lrc_url",
-      "community": 1116,
+      "community": 458,
       "norm_label": "r2_lrc_url"
     },
     {
@@ -83288,7 +83288,7 @@
       "source_location": "L584",
       "_origin": "ast",
       "id": "meta_0026_snapshot_r2_lrc_url_name",
-      "community": 1116,
+      "community": 458,
       "norm_label": "name"
     },
     {
@@ -83298,7 +83298,7 @@
       "source_location": "L585",
       "_origin": "ast",
       "id": "meta_0026_snapshot_r2_lrc_url_type",
-      "community": 1116,
+      "community": 458,
       "norm_label": "type"
     },
     {
@@ -83308,7 +83308,7 @@
       "source_location": "L586",
       "_origin": "ast",
       "id": "meta_0026_snapshot_r2_lrc_url_primarykey",
-      "community": 1116,
+      "community": 458,
       "norm_label": "primarykey"
     },
     {
@@ -83318,7 +83318,7 @@
       "source_location": "L587",
       "_origin": "ast",
       "id": "meta_0026_snapshot_r2_lrc_url_notnull",
-      "community": 1116,
+      "community": 458,
       "norm_label": "notnull"
     },
     {
@@ -83978,7 +83978,7 @@
       "source_location": "L667",
       "_origin": "ast",
       "id": "meta_0026_snapshot_columns_sections",
-      "community": 458,
+      "community": 1169,
       "norm_label": "sections"
     },
     {
@@ -83988,7 +83988,7 @@
       "source_location": "L668",
       "_origin": "ast",
       "id": "meta_0026_snapshot_sections_name",
-      "community": 458,
+      "community": 1169,
       "norm_label": "name"
     },
     {
@@ -83998,7 +83998,7 @@
       "source_location": "L669",
       "_origin": "ast",
       "id": "meta_0026_snapshot_sections_type",
-      "community": 458,
+      "community": 1169,
       "norm_label": "type"
     },
     {
@@ -84008,7 +84008,7 @@
       "source_location": "L670",
       "_origin": "ast",
       "id": "meta_0026_snapshot_sections_primarykey",
-      "community": 458,
+      "community": 1169,
       "norm_label": "primarykey"
     },
     {
@@ -84018,7 +84018,7 @@
       "source_location": "L671",
       "_origin": "ast",
       "id": "meta_0026_snapshot_sections_notnull",
-      "community": 458,
+      "community": 1169,
       "norm_label": "notnull"
     },
     {
@@ -84288,7 +84288,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "meta_0027_snapshot_columns_userid",
-      "community": 1146,
+      "community": 148,
       "norm_label": "userid"
     },
     {
@@ -84298,7 +84298,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "meta_0027_snapshot_userid_name",
-      "community": 1146,
+      "community": 148,
       "norm_label": "name"
     },
     {
@@ -84308,7 +84308,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "meta_0027_snapshot_userid_type",
-      "community": 1146,
+      "community": 148,
       "norm_label": "type"
     },
     {
@@ -84318,7 +84318,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "meta_0027_snapshot_userid_primarykey",
-      "community": 1146,
+      "community": 148,
       "norm_label": "primarykey"
     },
     {
@@ -84328,7 +84328,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "meta_0027_snapshot_userid_notnull",
-      "community": 1146,
+      "community": 148,
       "norm_label": "notnull"
     },
     {
@@ -84488,7 +84488,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "meta_0027_snapshot_columns_refreshtoken",
-      "community": 1142,
+      "community": 148,
       "norm_label": "refreshtoken"
     },
     {
@@ -84498,7 +84498,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtoken_name",
-      "community": 1142,
+      "community": 148,
       "norm_label": "name"
     },
     {
@@ -84508,7 +84508,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtoken_type",
-      "community": 1142,
+      "community": 148,
       "norm_label": "type"
     },
     {
@@ -84518,7 +84518,7 @@
       "source_location": "L55",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtoken_primarykey",
-      "community": 1142,
+      "community": 148,
       "norm_label": "primarykey"
     },
     {
@@ -84528,7 +84528,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtoken_notnull",
-      "community": 1142,
+      "community": 148,
       "norm_label": "notnull"
     },
     {
@@ -84638,7 +84638,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "meta_0027_snapshot_columns_refreshtokenexpiresat",
-      "community": 148,
+      "community": 1306,
       "norm_label": "refreshtokenexpiresat"
     },
     {
@@ -84648,7 +84648,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtokenexpiresat_name",
-      "community": 148,
+      "community": 1306,
       "norm_label": "name"
     },
     {
@@ -84658,7 +84658,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtokenexpiresat_type",
-      "community": 148,
+      "community": 1306,
       "norm_label": "type"
     },
     {
@@ -84668,7 +84668,7 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtokenexpiresat_primarykey",
-      "community": 148,
+      "community": 1306,
       "norm_label": "primarykey"
     },
     {
@@ -84678,7 +84678,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "meta_0027_snapshot_refreshtokenexpiresat_notnull",
-      "community": 148,
+      "community": 1306,
       "norm_label": "notnull"
     },
     {
@@ -84848,7 +84848,7 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "meta_0027_snapshot_columns_updatedat",
-      "community": 148,
+      "community": 727,
       "norm_label": "updatedat"
     },
     {
@@ -84858,7 +84858,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "meta_0027_snapshot_updatedat_name",
-      "community": 148,
+      "community": 727,
       "norm_label": "name"
     },
     {
@@ -84868,7 +84868,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "meta_0027_snapshot_updatedat_type",
-      "community": 148,
+      "community": 727,
       "norm_label": "type"
     },
     {
@@ -84878,7 +84878,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "meta_0027_snapshot_updatedat_primarykey",
-      "community": 148,
+      "community": 727,
       "norm_label": "primarykey"
     },
     {
@@ -84888,7 +84888,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "meta_0027_snapshot_updatedat_notnull",
-      "community": 148,
+      "community": 727,
       "norm_label": "notnull"
     },
     {
@@ -84898,7 +84898,7 @@
       "source_location": "L100",
       "_origin": "ast",
       "id": "meta_0027_snapshot_updatedat_default",
-      "community": 148,
+      "community": 727,
       "norm_label": "default"
     },
     {
@@ -90168,7 +90168,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "discovery_route",
-      "community": 26,
+      "community": 29,
       "norm_label": "route.ts"
     },
     {
@@ -90178,7 +90178,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "discovery_route_get",
-      "community": 26,
+      "community": 29,
       "norm_label": "get()"
     },
     {
@@ -90418,7 +90418,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "recordingcontenthash_route_delete",
-      "community": 113,
+      "community": 184,
       "norm_label": "delete()"
     },
     {
@@ -90428,7 +90428,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "marks_route",
-      "community": 70,
+      "community": 26,
       "norm_label": "route.ts"
     },
     {
@@ -90438,7 +90438,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "marks_route_get",
-      "community": 70,
+      "community": 26,
       "norm_label": "get()"
     },
     {
@@ -90448,7 +90448,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "marks_route_post",
-      "community": 70,
+      "community": 26,
       "norm_label": "post()"
     },
     {
@@ -90458,7 +90458,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "marks_route_delete",
-      "community": 70,
+      "community": 26,
       "norm_label": "delete()"
     },
     {
@@ -90598,7 +90598,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "audio_route_get",
-      "community": 113,
+      "community": 184,
       "norm_label": "get()"
     },
     {
@@ -91328,7 +91328,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "preview_route",
-      "community": 26,
+      "community": 21,
       "norm_label": "route.ts"
     },
     {
@@ -91338,7 +91338,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "preview_route_previewrequestschema",
-      "community": 26,
+      "community": 21,
       "norm_label": "previewrequestschema"
     },
     {
@@ -91348,7 +91348,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "preview_route_post",
-      "community": 26,
+      "community": 21,
       "norm_label": "post()"
     },
     {
@@ -96268,7 +96268,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "db_mutation_db",
-      "community": 184,
+      "community": 25,
       "norm_label": "mutation-db.ts"
     },
     {
@@ -96278,7 +96278,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "db_mutation_db_neonserverlessdrizzledatabase",
-      "community": 184,
+      "community": 25,
       "norm_label": "neonserverlessdrizzledatabase"
     },
     {
@@ -96288,7 +96288,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "db_mutation_db_pool",
-      "community": 184,
+      "community": 25,
       "norm_label": "pool"
     },
     {
@@ -96298,7 +96298,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "db_mutation_db_mutationdb",
-      "community": 184,
+      "community": 25,
       "norm_label": "mutationdb"
     },
     {
@@ -96338,7 +96338,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "db_schema_recordings",
-      "community": 29,
+      "community": 21,
       "norm_label": "recordings"
     },
     {
@@ -96478,7 +96478,7 @@
       "source_location": "L422",
       "_origin": "ast",
       "id": "db_schema_lyricmarks",
-      "community": 70,
+      "community": 26,
       "norm_label": "lyricmarks"
     },
     {
@@ -98348,7 +98348,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "lib_auth_session",
-      "community": 113,
+      "community": 184,
       "norm_label": "session"
     },
     {
@@ -99088,7 +99088,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "db_search_helpers_buildrecordingkeypredicate",
-      "community": 29,
+      "community": 77,
       "norm_label": "buildrecordingkeypredicate()"
     },
     {
@@ -99098,7 +99098,7 @@
       "source_location": "L102",
       "_origin": "ast",
       "id": "db_search_helpers_buildeffectivekeypredicate",
-      "community": 29,
+      "community": 77,
       "norm_label": "buildeffectivekeypredicate()"
     },
     {
@@ -99328,7 +99328,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "db_songs_effectivekeyfields",
-      "community": 29,
+      "community": 312,
       "norm_label": "effectivekeyfields()"
     },
     {
@@ -99338,7 +99338,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "db_songs_maprecordinginfo",
-      "community": 29,
+      "community": 312,
       "norm_label": "maprecordinginfo()"
     },
     {
@@ -99518,7 +99518,7 @@
       "source_location": "L719",
       "_origin": "ast",
       "id": "db_songs_findtopmatchinglines",
-      "community": 77,
+      "community": 29,
       "norm_label": "findtopmatchinglines()"
     },
     {
@@ -102985,7 +102985,7 @@
       "label": "linesForSourceRange()",
       "file_type": "code",
       "source_file": "delivery/webapp/src/lib/render/lrc-parser.ts",
-      "source_location": "L232",
+      "source_location": "L238",
       "_origin": "ast",
       "id": "render_lrc_parser_linesforsourcerange",
       "community": 30,
@@ -103858,7 +103858,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "discovery_route_test",
-      "community": 26,
+      "community": 29,
       "norm_label": "route.test.ts"
     },
     {
@@ -103868,7 +103868,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "discovery_route_test_createmockrequest",
-      "community": 26,
+      "community": 29,
       "norm_label": "createmockrequest()"
     },
     {
@@ -103878,7 +103878,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "discovery_route_test_makesong",
-      "community": 26,
+      "community": 29,
       "norm_label": "makesong()"
     },
     {
@@ -104008,7 +104008,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "lyrics_feedback_test",
-      "community": 113,
+      "community": 184,
       "norm_label": "feedback.test.ts"
     },
     {
@@ -104018,7 +104018,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "lyrics_feedback_test_mockfindfirst",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockfindfirst"
     },
     {
@@ -104028,7 +104028,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "lyrics_feedback_test_mockinsert",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockinsert"
     },
     {
@@ -104038,7 +104038,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "lyrics_feedback_test_mockdelete",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockdelete"
     },
     {
@@ -104048,7 +104048,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "lyrics_feedback_test_mockupdate",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockupdate"
     },
     {
@@ -104058,7 +104058,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "lyrics_feedback_test_mockresolvelyricssituation",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockresolvelyricssituation()"
     },
     {
@@ -104068,7 +104068,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "lyrics_feedback_test_sessionuser",
-      "community": 113,
+      "community": 184,
       "norm_label": "sessionuser"
     },
     {
@@ -104078,7 +104078,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "lyrics_feedback_test_mocksession",
-      "community": 113,
+      "community": 184,
       "norm_label": "mocksession"
     },
     {
@@ -104088,7 +104088,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "lyrics_feedback_test_makerequest",
-      "community": 113,
+      "community": 184,
       "norm_label": "makerequest()"
     },
     {
@@ -104098,7 +104098,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "lyrics_feedback_test_mockparams",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockparams()"
     },
     {
@@ -104108,7 +104108,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "lyrics_feedback_test_insertchain",
-      "community": 113,
+      "community": 184,
       "norm_label": "insertchain()"
     },
     {
@@ -104118,7 +104118,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "lyrics_marks_test",
-      "community": 70,
+      "community": 26,
       "norm_label": "marks.test.ts"
     },
     {
@@ -104128,7 +104128,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "lyrics_marks_test_mockselect",
-      "community": 70,
+      "community": 26,
       "norm_label": "mockselect"
     },
     {
@@ -104138,7 +104138,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "lyrics_marks_test_mockinsert",
-      "community": 70,
+      "community": 26,
       "norm_label": "mockinsert"
     },
     {
@@ -104148,7 +104148,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "lyrics_marks_test_mockdelete",
-      "community": 70,
+      "community": 26,
       "norm_label": "mockdelete"
     },
     {
@@ -104158,7 +104158,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "lyrics_marks_test_makerequest",
-      "community": 70,
+      "community": 26,
       "norm_label": "makerequest()"
     },
     {
@@ -104168,7 +104168,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "lyrics_marks_test_sessionuser",
-      "community": 70,
+      "community": 26,
       "norm_label": "sessionuser"
     },
     {
@@ -104388,7 +104388,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "recordings_audio_test",
-      "community": 113,
+      "community": 184,
       "norm_label": "audio.test.ts"
     },
     {
@@ -104398,7 +104398,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "recordings_audio_test_signedinsession",
-      "community": 113,
+      "community": 184,
       "norm_label": "signedinsession"
     },
     {
@@ -104408,7 +104408,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "recordings_audio_test_mockrecordingfindfirst",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockrecordingfindfirst"
     },
     {
@@ -104418,7 +104418,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "recordings_audio_test_mockgetaudiosignedurl",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockgetaudiosignedurl"
     },
     {
@@ -104428,7 +104428,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "recordings_audio_test_mockcreater2clientfromenv",
-      "community": 113,
+      "community": 184,
       "norm_label": "mockcreater2clientfromenv"
     },
     {
@@ -104438,7 +104438,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "recordings_audio_test_collectleafvalues",
-      "community": 113,
+      "community": 184,
       "norm_label": "collectleafvalues()"
     },
     {
@@ -104448,7 +104448,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "recordings_audio_test_createrequest",
-      "community": 113,
+      "community": 184,
       "norm_label": "createrequest()"
     },
     {
@@ -104458,7 +104458,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "recordings_audio_test_callget",
-      "community": 113,
+      "community": 184,
       "norm_label": "callget()"
     },
     {
@@ -104468,7 +104468,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "recordings_audio_test_streamingupstream",
-      "community": 113,
+      "community": 184,
       "norm_label": "streamingupstream()"
     },
     {
@@ -105098,7 +105098,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "songs_route_test",
-      "community": 29,
+      "community": 77,
       "norm_label": "route.test.ts"
     },
     {
@@ -105108,7 +105108,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "songs_route_test_createmockrequest",
-      "community": 29,
+      "community": 77,
       "norm_label": "createmockrequest()"
     },
     {
@@ -105118,7 +105118,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "songs_search_test",
-      "community": 77,
+      "community": 29,
       "norm_label": "search.test.ts"
     },
     {
@@ -105128,7 +105128,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "songs_search_test_createmockrequest",
-      "community": 77,
+      "community": 29,
       "norm_label": "createmockrequest()"
     },
     {
@@ -105208,7 +105208,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test",
-      "community": 184,
+      "community": 25,
       "norm_label": "arrangement-persistence.test.ts"
     },
     {
@@ -105218,7 +105218,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_mockselectchain",
-      "community": 184,
+      "community": 25,
       "norm_label": "mockselectchain"
     },
     {
@@ -105228,7 +105228,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_createselectchain",
-      "community": 184,
+      "community": 25,
       "norm_label": "createselectchain()"
     },
     {
@@ -105238,7 +105238,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_useselectrows",
-      "community": 184,
+      "community": 25,
       "norm_label": "useselectrows()"
     },
     {
@@ -105248,7 +105248,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_updatecall",
-      "community": 184,
+      "community": 25,
       "norm_label": "updatecall"
     },
     {
@@ -105258,7 +105258,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_mockupdates",
-      "community": 184,
+      "community": 25,
       "norm_label": "mockupdates()"
     },
     {
@@ -105268,7 +105268,7 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_songsfindfirstresult",
-      "community": 184,
+      "community": 25,
       "norm_label": "songsfindfirstresult"
     },
     {
@@ -105278,7 +105278,7 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_itemsfindfirstresult",
-      "community": 184,
+      "community": 25,
       "norm_label": "itemsfindfirstresult"
     },
     {
@@ -105288,7 +105288,7 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_mutationtransactiondouble",
-      "community": 184,
+      "community": 25,
       "norm_label": "mutationtransactiondouble"
     },
     {
@@ -105298,7 +105298,7 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_installedtransaction",
-      "community": 184,
+      "community": 25,
       "norm_label": "installedtransaction"
     },
     {
@@ -105308,7 +105308,7 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_createtransactiondouble",
-      "community": 184,
+      "community": 25,
       "norm_label": "createtransactiondouble()"
     },
     {
@@ -105318,7 +105318,7 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_installmutationtransaction",
-      "community": 184,
+      "community": 25,
       "norm_label": "installmutationtransaction()"
     },
     {
@@ -105328,7 +105328,7 @@
       "source_location": "L174",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_introsection",
-      "community": 184,
+      "community": 25,
       "norm_label": "introsection"
     },
     {
@@ -105338,7 +105338,7 @@
       "source_location": "L175",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_versesection",
-      "community": 184,
+      "community": 25,
       "norm_label": "versesection"
     },
     {
@@ -105348,7 +105348,7 @@
       "source_location": "L176",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_sectionsjson",
-      "community": 184,
+      "community": 25,
       "norm_label": "sectionsjson"
     },
     {
@@ -105358,7 +105358,7 @@
       "source_location": "L177",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_beatsjson",
-      "community": 184,
+      "community": 25,
       "norm_label": "beatsjson"
     },
     {
@@ -105368,7 +105368,7 @@
       "source_location": "L179",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_repeatedintroarrangement",
-      "community": 184,
+      "community": 25,
       "norm_label": "repeatedintroarrangement"
     },
     {
@@ -105378,7 +105378,7 @@
       "source_location": "L187",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_singleintroarrangement",
-      "community": 184,
+      "community": 25,
       "norm_label": "singleintroarrangement"
     },
     {
@@ -105388,7 +105388,7 @@
       "source_location": "L193",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_owneditemrow",
-      "community": 184,
+      "community": 25,
       "norm_label": "owneditemrow()"
     },
     {
@@ -105398,7 +105398,7 @@
       "source_location": "L216",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_arrangementitemrow",
-      "community": 184,
+      "community": 25,
       "norm_label": "arrangementitemrow()"
     },
     {
@@ -105408,7 +105408,7 @@
       "source_location": "L232",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_recordingrow",
-      "community": 184,
+      "community": 25,
       "norm_label": "recordingrow()"
     },
     {
@@ -105418,7 +105418,7 @@
       "source_location": "L250",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_longsectionsjson",
-      "community": 184,
+      "community": 25,
       "norm_label": "longsectionsjson"
     },
     {
@@ -105428,7 +105428,7 @@
       "source_location": "L254",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_longbeatsjson",
-      "community": 184,
+      "community": 25,
       "norm_label": "longbeatsjson"
     },
     {
@@ -105438,7 +105438,7 @@
       "source_location": "L257",
       "_origin": "ast",
       "id": "songsets_arrangement_persistence_test_fullrecordingarrangement",
-      "community": 184,
+      "community": 25,
       "norm_label": "fullrecordingarrangement"
     },
     {
@@ -105578,7 +105578,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "transitions_preview_test",
-      "community": 26,
+      "community": 21,
       "norm_label": "preview.test.ts"
     },
     {
@@ -105588,7 +105588,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "transitions_preview_test_mockgetaudiosignedurl",
-      "community": 26,
+      "community": 21,
       "norm_label": "mockgetaudiosignedurl"
     },
     {
@@ -105598,7 +105598,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "transitions_preview_test_mockfindfirst",
-      "community": 26,
+      "community": 21,
       "norm_label": "mockfindfirst"
     },
     {
@@ -105608,7 +105608,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "transitions_preview_test_collectleafvalues",
-      "community": 26,
+      "community": 21,
       "norm_label": "collectleafvalues()"
     },
     {
@@ -105618,7 +105618,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "transitions_preview_test_sessionuser",
-      "community": 26,
+      "community": 21,
       "norm_label": "sessionuser"
     },
     {
@@ -105628,7 +105628,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "transitions_preview_test_makerequest",
-      "community": 26,
+      "community": 21,
       "norm_label": "makerequest()"
     },
     {
@@ -108058,7 +108058,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "transition_transitioncontrols_test",
-      "community": 8,
+      "community": 4,
       "norm_label": "transitioncontrols.test.tsx"
     },
     {
@@ -108068,7 +108068,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "transition_transitioncontrols_test_defaultsettings",
-      "community": 8,
+      "community": 4,
       "norm_label": "defaultsettings"
     },
     {
@@ -108078,7 +108078,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "transition_transitioncontrols_test_defaultprops",
-      "community": 8,
+      "community": 4,
       "norm_label": "defaultprops"
     },
     {
@@ -108088,7 +108088,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "transition_transitioncontrols_test_rendercontrols",
-      "community": 8,
+      "community": 4,
       "norm_label": "rendercontrols()"
     },
     {
@@ -125068,7 +125068,7 @@
       "source_location": "L73",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_load_stems_for_section",
-      "community": 516,
+      "community": 150,
       "norm_label": "load_stems_for_section()"
     },
     {
@@ -125098,7 +125098,7 @@
       "source_location": "L202",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_generate_medium_transition",
-      "community": 516,
+      "community": 150,
       "norm_label": "generate_medium_transition()"
     },
     {
@@ -125108,7 +125108,7 @@
       "source_location": "L266",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_generate_medium_silence_transition",
-      "community": 516,
+      "community": 150,
       "norm_label": "generate_medium_silence_transition()"
     },
     {
@@ -125118,7 +125118,7 @@
       "source_location": "L361",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_generate_vocal_fade_transition",
-      "community": 516,
+      "community": 150,
       "norm_label": "generate_vocal_fade_transition()"
     },
     {
@@ -125128,7 +125128,7 @@
       "source_location": "L544",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_generate_drum_fade_transition",
-      "community": 516,
+      "community": 150,
       "norm_label": "generate_drum_fade_transition()"
     },
     {
@@ -125148,7 +125148,7 @@
       "source_location": "L763",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_generate_all_variants",
-      "community": 516,
+      "community": 150,
       "norm_label": "generate_all_variants()"
     },
     {
@@ -125218,7 +125218,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_rationale_74",
-      "community": 516,
+      "community": 150,
       "norm_label": "load all 4 stems (bass, drums, other, vocals) for a specific section.      args:"
     },
     {
@@ -125248,7 +125248,7 @@
       "source_location": "L203",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_rationale_203",
-      "community": 516,
+      "community": 150,
       "norm_label": "create medium transition: full section a + crossfade + full section b.      args"
     },
     {
@@ -125258,7 +125258,7 @@
       "source_location": "L268",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_rationale_268",
-      "community": 516,
+      "community": 150,
       "norm_label": "create medium transition with silence gap between sections.      algorithm:"
     },
     {
@@ -125268,7 +125268,7 @@
       "source_location": "L363",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_rationale_363",
-      "community": 516,
+      "community": 150,
       "norm_label": "create vocal-fade transition: sections connected by vocal-only bridge with silen"
     },
     {
@@ -125278,7 +125278,7 @@
       "source_location": "L546",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_rationale_546",
-      "community": 516,
+      "community": 150,
       "norm_label": "create drum-fade transition: sections connected by drum-only bridge with silence"
     },
     {
@@ -125298,7 +125298,7 @@
       "source_location": "L765",
       "_origin": "ast",
       "id": "poc_scripts_generate_section_transitions_rationale_765",
-      "community": 516,
+      "community": 150,
       "norm_label": "generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)"
     },
     {
@@ -131834,7 +131834,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "scripts_common_load_fixture",
-      "community": 468,
+      "community": 478,
       "norm_label": "load_fixture()"
     },
     {
@@ -131934,7 +131934,7 @@
       "source_location": "L250",
       "_origin": "ast",
       "id": "scripts_common_lrc_text",
-      "community": 479,
+      "community": 478,
       "norm_label": "lrc_text()"
     },
     {
@@ -131994,7 +131994,7 @@
       "source_location": "L351",
       "_origin": "ast",
       "id": "scripts_common_require_env",
-      "community": 478,
+      "community": 468,
       "norm_label": "require_env()"
     },
     {
@@ -132064,7 +132064,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "scripts_common_rationale_63",
-      "community": 468,
+      "community": 478,
       "norm_label": "load and validate a fixture json file.      each entry must have: non-empty ``so"
     },
     {
@@ -132154,7 +132154,7 @@
       "source_location": "L251",
       "_origin": "ast",
       "id": "scripts_common_rationale_251",
-      "community": 479,
+      "community": 478,
       "norm_label": "serialize lrcline objects via production ``format()`` (no ``str()`` \u2014     that y"
     },
     {
@@ -132204,7 +132204,7 @@
       "source_location": "L352",
       "_origin": "ast",
       "id": "scripts_common_rationale_352",
-      "community": 478,
+      "community": 468,
       "norm_label": "exit 1 printing the missing var names only (never values)."
     },
     {
@@ -169268,7 +169268,7 @@
       "source_location": "L234",
       "_origin": "ast",
       "id": "sow_analysis_main_format_setting_value",
-      "community": 11,
+      "community": 170,
       "norm_label": "_format_setting_value()"
     },
     {
@@ -169278,7 +169278,7 @@
       "source_location": "L251",
       "_origin": "ast",
       "id": "sow_analysis_main_startup_config_rows",
-      "community": 11,
+      "community": 170,
       "norm_label": "_startup_config_rows()"
     },
     {
@@ -169288,7 +169288,7 @@
       "source_location": "L251",
       "_origin": "ast",
       "id": "settings",
-      "community": 11,
+      "community": 170,
       "norm_label": "settings"
     },
     {
@@ -169358,7 +169358,7 @@
       "source_location": "L235",
       "_origin": "ast",
       "id": "sow_analysis_main_rationale_235",
-      "community": 11,
+      "community": 170,
       "norm_label": "render one settings value for the startup table.      secrets collapse to \"(set)"
     },
     {
@@ -169368,7 +169368,7 @@
       "source_location": "L252",
       "_origin": "ast",
       "id": "sow_analysis_main_rationale_252",
-      "community": 11,
+      "community": 170,
       "norm_label": "build (category, setting, value) rows for every env-derived setting.      covers"
     },
     {
@@ -171008,7 +171008,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzererror",
-      "community": 446,
+      "community": 11,
       "norm_label": "modalanalyzererror"
     },
     {
@@ -171018,7 +171018,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzerconfigerror",
-      "community": 446,
+      "community": 11,
       "norm_label": "modalanalyzerconfigerror"
     },
     {
@@ -171028,7 +171028,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzerclient",
-      "community": 446,
+      "community": 11,
       "norm_label": "modalanalyzerclient"
     },
     {
@@ -171038,7 +171038,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzerclient_init",
-      "community": 446,
+      "community": 11,
       "norm_label": ".__init__()"
     },
     {
@@ -171048,7 +171048,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzerclient_is_configured",
-      "community": 446,
+      "community": 11,
       "norm_label": ".is_configured()"
     },
     {
@@ -171058,7 +171058,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzerclient_get_instance",
-      "community": 446,
+      "community": 11,
       "norm_label": "._get_instance()"
     },
     {
@@ -171068,7 +171068,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "ops_analysis_service_src_sow_analysis_services_modal_analyzer_client_py_any",
-      "community": 446,
+      "community": 11,
       "norm_label": "any"
     },
     {
@@ -171078,7 +171078,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzerclient_analyze",
-      "community": 446,
+      "community": 11,
       "norm_label": ".analyze()"
     },
     {
@@ -171088,7 +171088,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "ops_analysis_service_src_sow_analysis_services_modal_analyzer_client_py_path",
-      "community": 446,
+      "community": 11,
       "norm_label": "path"
     },
     {
@@ -171098,7 +171098,7 @@
       "source_location": "L152",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_modalanalyzerclient_invoke",
-      "community": 446,
+      "community": 11,
       "norm_label": "._invoke()"
     },
     {
@@ -171128,7 +171128,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_rationale_43",
-      "community": 446,
+      "community": 11,
       "norm_label": "raised when a modal analyzer invocation fails."
     },
     {
@@ -171138,7 +171138,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_rationale_47",
-      "community": 446,
+      "community": 11,
       "norm_label": "modal is not configured, or the deployed app/class is unreachable."
     },
     {
@@ -171148,7 +171148,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_rationale_51",
-      "community": 446,
+      "community": 11,
       "norm_label": "async client for the sow-analyzer modal app."
     },
     {
@@ -171158,7 +171158,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_rationale_99",
-      "community": 446,
+      "community": 11,
       "norm_label": "run full analysis on modal.          args:             audio_path: local audio f"
     },
     {
@@ -171168,7 +171168,7 @@
       "source_location": "L161",
       "_origin": "ast",
       "id": "services_modal_analyzer_client_rationale_161",
-      "community": 446,
+      "community": 11,
       "norm_label": "shared retry ladder; one remote @modal.method() call, client-owned retries."
     },
     {
@@ -171948,7 +171948,7 @@
       "source_location": "L255",
       "_origin": "ast",
       "id": "services_modal_whisper_client_get_modal_whisper_client",
-      "community": 24,
+      "community": 84,
       "norm_label": "get_modal_whisper_client()"
     },
     {
@@ -172008,7 +172008,7 @@
       "source_location": "L256",
       "_origin": "ast",
       "id": "services_modal_whisper_client_rationale_256",
-      "community": 24,
+      "community": 84,
       "norm_label": "return the module-level singleton, constructing it on first use."
     },
     {
@@ -172938,7 +172938,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "storage_init",
-      "community": 84,
+      "community": 55,
       "norm_label": "__init__.py"
     },
     {
@@ -172948,7 +172948,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "storage_init_rationale_1",
-      "community": 84,
+      "community": 55,
       "norm_label": "storage layer for r2 and local cache."
     },
     {
@@ -173938,7 +173938,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "storage_r2",
-      "community": 84,
+      "community": 55,
       "norm_label": "r2.py"
     },
     {
@@ -173948,7 +173948,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "storage_r2_select_backups_to_delete",
-      "community": 84,
+      "community": 55,
       "norm_label": "select_backups_to_delete()"
     },
     {
@@ -173958,7 +173958,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "ops_analysis_service_src_sow_analysis_storage_r2_py_datetime",
-      "community": 84,
+      "community": 55,
       "norm_label": "datetime"
     },
     {
@@ -173968,7 +173968,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "storage_r2_staleobjecterror",
-      "community": 84,
+      "community": 55,
       "norm_label": "staleobjecterror"
     },
     {
@@ -173978,7 +173978,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "storage_r2_backupfailederror",
-      "community": 84,
+      "community": 55,
       "norm_label": "backupfailederror"
     },
     {
@@ -173988,7 +173988,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "storage_r2_parse_s3_url",
-      "community": 84,
+      "community": 55,
       "norm_label": "parse_s3_url()"
     },
     {
@@ -173998,7 +173998,7 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "storage_r2_r2client",
-      "community": 84,
+      "community": 55,
       "norm_label": "r2client"
     },
     {
@@ -174008,7 +174008,7 @@
       "source_location": "L117",
       "_origin": "ast",
       "id": "storage_r2_r2client_init",
-      "community": 84,
+      "community": 55,
       "norm_label": ".__init__()"
     },
     {
@@ -174018,7 +174018,7 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "storage_r2_r2client_download_audio",
-      "community": 84,
+      "community": 55,
       "norm_label": ".download_audio()"
     },
     {
@@ -174028,7 +174028,7 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "ops_analysis_service_src_sow_analysis_storage_r2_py_path",
-      "community": 84,
+      "community": 55,
       "norm_label": "path"
     },
     {
@@ -174038,7 +174038,7 @@
       "source_location": "L153",
       "_origin": "ast",
       "id": "storage_r2_r2client_upload_stems",
-      "community": 84,
+      "community": 55,
       "norm_label": ".upload_stems()"
     },
     {
@@ -174048,7 +174048,7 @@
       "source_location": "L181",
       "_origin": "ast",
       "id": "storage_r2_r2client_upload_analysis_result",
-      "community": 84,
+      "community": 55,
       "norm_label": ".upload_analysis_result()"
     },
     {
@@ -174058,7 +174058,7 @@
       "source_location": "L205",
       "_origin": "ast",
       "id": "storage_r2_r2client_upload_lrc",
-      "community": 84,
+      "community": 55,
       "norm_label": ".upload_lrc()"
     },
     {
@@ -174068,7 +174068,7 @@
       "source_location": "L228",
       "_origin": "ast",
       "id": "storage_r2_r2client_check_exists",
-      "community": 84,
+      "community": 55,
       "norm_label": ".check_exists()"
     },
     {
@@ -174078,7 +174078,7 @@
       "source_location": "L246",
       "_origin": "ast",
       "id": "storage_r2_r2client_check_stem_exists",
-      "community": 84,
+      "community": 55,
       "norm_label": ".check_stem_exists()"
     },
     {
@@ -174088,7 +174088,7 @@
       "source_location": "L273",
       "_origin": "ast",
       "id": "storage_r2_r2client_upload_clean_stems",
-      "community": 84,
+      "community": 55,
       "norm_label": ".upload_clean_stems()"
     },
     {
@@ -174098,7 +174098,7 @@
       "source_location": "L338",
       "_origin": "ast",
       "id": "storage_r2_r2client_copy_object",
-      "community": 84,
+      "community": 55,
       "norm_label": ".copy_object()"
     },
     {
@@ -174108,7 +174108,7 @@
       "source_location": "L357",
       "_origin": "ast",
       "id": "storage_r2_r2client_head_object",
-      "community": 84,
+      "community": 55,
       "norm_label": ".head_object()"
     },
     {
@@ -174118,7 +174118,7 @@
       "source_location": "L375",
       "_origin": "ast",
       "id": "storage_r2_r2client_list_objects",
-      "community": 84,
+      "community": 55,
       "norm_label": ".list_objects()"
     },
     {
@@ -174128,7 +174128,7 @@
       "source_location": "L399",
       "_origin": "ast",
       "id": "storage_r2_r2client_delete_object",
-      "community": 84,
+      "community": 55,
       "norm_label": ".delete_object()"
     },
     {
@@ -174138,7 +174138,7 @@
       "source_location": "L410",
       "_origin": "ast",
       "id": "storage_r2_r2client_upload_official_lrc",
-      "community": 84,
+      "community": 55,
       "norm_label": ".upload_official_lrc()"
     },
     {
@@ -174148,7 +174148,7 @@
       "source_location": "L534",
       "_origin": "ast",
       "id": "storage_r2_r2client_upload_component_result",
-      "community": 84,
+      "community": 55,
       "norm_label": ".upload_component_result()"
     },
     {
@@ -174158,7 +174158,7 @@
       "source_location": "L560",
       "_origin": "ast",
       "id": "storage_r2_r2client_download_component_result",
-      "community": 84,
+      "community": 55,
       "norm_label": ".download_component_result()"
     },
     {
@@ -174168,7 +174168,7 @@
       "source_location": "L601",
       "_origin": "ast",
       "id": "storage_r2_r2client_download_lrc_text",
-      "community": 84,
+      "community": 55,
       "norm_label": ".download_lrc_text()"
     },
     {
@@ -174178,7 +174178,7 @@
       "source_location": "L638",
       "_origin": "ast",
       "id": "storage_r2_r2client_upload_beat_grid",
-      "community": 84,
+      "community": 55,
       "norm_label": ".upload_beat_grid()"
     },
     {
@@ -174188,7 +174188,7 @@
       "source_location": "L664",
       "_origin": "ast",
       "id": "storage_r2_r2client_download_beat_grid",
-      "community": 84,
+      "community": 55,
       "norm_label": ".download_beat_grid()"
     },
     {
@@ -174198,7 +174198,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "storage_r2_rationale_1",
-      "community": 84,
+      "community": 55,
       "norm_label": "r2/s3-compatible storage client.  ``select_backups_to_delete`` (and the ``lyrics"
     },
     {
@@ -174208,7 +174208,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "storage_r2_rationale_47",
-      "community": 84,
+      "community": 55,
       "norm_label": "return backup keys to delete, oldest ``lastmodified`` first.      ordering is de"
     },
     {
@@ -174218,7 +174218,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "storage_r2_rationale_85",
-      "community": 84,
+      "community": 55,
       "norm_label": "raised when the official lrc object was modified after the job started."
     },
     {
@@ -174228,7 +174228,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "storage_r2_rationale_89",
-      "community": 84,
+      "community": 55,
       "norm_label": "raised when copying the current official lrc to backup fails."
     },
     {
@@ -174238,7 +174238,7 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "storage_r2_rationale_93",
-      "community": 84,
+      "community": 55,
       "norm_label": "parse s3://bucket/key to (bucket, key).      args:         s3_url: url in format"
     },
     {
@@ -174248,7 +174248,7 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "storage_r2_rationale_111",
-      "community": 84,
+      "community": 55,
       "norm_label": "r2/s3 storage client for audio and result files.      credentials read from sow_"
     },
     {
@@ -174258,7 +174258,7 @@
       "source_location": "L118",
       "_origin": "ast",
       "id": "storage_r2_rationale_118",
-      "community": 84,
+      "community": 55,
       "norm_label": "initialize r2 client.          args:             bucket: r2 bucket name"
     },
     {
@@ -174268,7 +174268,7 @@
       "source_location": "L139",
       "_origin": "ast",
       "id": "storage_r2_rationale_139",
-      "community": 84,
+      "community": 55,
       "norm_label": "download audio from r2 to local path.          args:             s3_url: s3://bu"
     },
     {
@@ -174278,7 +174278,7 @@
       "source_location": "L154",
       "_origin": "ast",
       "id": "storage_r2_rationale_154",
-      "community": 84,
+      "community": 55,
       "norm_label": "upload stem files to r2.          uploads: bass.wav, drums.wav, other.wav, vocal"
     },
     {
@@ -174288,7 +174288,7 @@
       "source_location": "L182",
       "_origin": "ast",
       "id": "storage_r2_rationale_182",
-      "community": 84,
+      "community": 55,
       "norm_label": "upload analysis.json to r2.          args:             hash_prefix: content hash"
     },
     {
@@ -174298,7 +174298,7 @@
       "source_location": "L211",
       "_origin": "ast",
       "id": "storage_r2_rationale_211",
-      "community": 84,
+      "community": 55,
       "norm_label": "upload lyrics.lrc to r2.          args:             hash_prefix: content hash pr"
     },
     {
@@ -174308,7 +174308,7 @@
       "source_location": "L229",
       "_origin": "ast",
       "id": "storage_r2_rationale_229",
-      "community": 84,
+      "community": 55,
       "norm_label": "check if an object exists in r2.          args:             s3_url: s3://bucket/"
     },
     {
@@ -174318,7 +174318,7 @@
       "source_location": "L249",
       "_origin": "ast",
       "id": "storage_r2_rationale_249",
-      "community": 84,
+      "community": 55,
       "norm_label": "check if a stem exists in r2, trying new name then legacy fallback.          arg"
     },
     {
@@ -174328,7 +174328,7 @@
       "source_location": "L280",
       "_origin": "ast",
       "id": "storage_r2_rationale_280",
-      "community": 84,
+      "community": 55,
       "norm_label": "upload clean stems to r2.          uploads vocals_dry.flac (stage 2 output) and"
     },
     {
@@ -174338,7 +174338,7 @@
       "source_location": "L339",
       "_origin": "ast",
       "id": "storage_r2_rationale_339",
-      "community": 84,
+      "community": 55,
       "norm_label": "copy an object within r2.          args:             source_s3_url: source s3://"
     },
     {
@@ -174348,7 +174348,7 @@
       "source_location": "L358",
       "_origin": "ast",
       "id": "storage_r2_rationale_358",
-      "community": 84,
+      "community": 55,
       "norm_label": "head an object in r2 and return response metadata.          args:             s3"
     },
     {
@@ -174358,7 +174358,7 @@
       "source_location": "L376",
       "_origin": "ast",
       "id": "storage_r2_rationale_376",
-      "community": 84,
+      "community": 55,
       "norm_label": "list objects in r2 with the given prefix.          args:             prefix: key"
     },
     {
@@ -174368,7 +174368,7 @@
       "source_location": "L400",
       "_origin": "ast",
       "id": "storage_r2_rationale_400",
-      "community": 84,
+      "community": 55,
       "norm_label": "delete an object from r2 by key.          args:             key: object key to d"
     },
     {
@@ -174378,7 +174378,7 @@
       "source_location": "L417",
       "_origin": "ast",
       "id": "storage_r2_rationale_417",
-      "community": 84,
+      "community": 55,
       "norm_label": "upload the official lyrics.lrc with backup and etag protection.          1. head"
     },
     {
@@ -174388,7 +174388,7 @@
       "source_location": "L535",
       "_origin": "ast",
       "id": "storage_r2_rationale_535",
-      "community": 84,
+      "community": 55,
       "norm_label": "upload components.json to r2 at {hash_prefix}/components.json.          the ``re"
     },
     {
@@ -174398,7 +174398,7 @@
       "source_location": "L561",
       "_origin": "ast",
       "id": "storage_r2_rationale_561",
-      "community": 84,
+      "community": 55,
       "norm_label": "download components.json from r2 and return as dict.          returns none if no"
     },
     {
@@ -174408,7 +174408,7 @@
       "source_location": "L602",
       "_origin": "ast",
       "id": "storage_r2_rationale_602",
-      "community": 84,
+      "community": 55,
       "norm_label": "download lyrics.lrc from r2 and return as text (none if not found).          not"
     },
     {
@@ -174418,7 +174418,7 @@
       "source_location": "L639",
       "_origin": "ast",
       "id": "storage_r2_rationale_639",
-      "community": 84,
+      "community": 55,
       "norm_label": "upload beat_grid.json to r2 at {hash_prefix}/beat_grid.json.          the ``payl"
     },
     {
@@ -174428,7 +174428,7 @@
       "source_location": "L665",
       "_origin": "ast",
       "id": "storage_r2_rationale_665",
-      "community": 84,
+      "community": 55,
       "norm_label": "download beat_grid.json from r2 and return as dict.          returns none if not"
     },
     {
@@ -174438,7 +174438,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "workers_init",
-      "community": 24,
+      "community": 84,
       "norm_label": "__init__.py"
     },
     {
@@ -174448,7 +174448,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "workers_init_rationale_1",
-      "community": 24,
+      "community": 84,
       "norm_label": "analysis workers for processing jobs.  full analysis runs on modal (sow-analyzer"
     },
     {
@@ -175378,7 +175378,7 @@
       "source_location": "L1517",
       "_origin": "ast",
       "id": "workers_components_compute_component_features",
-      "community": 11,
+      "community": 41,
       "norm_label": "compute_component_features()"
     },
     {
@@ -175618,7 +175618,7 @@
       "source_location": "L1524",
       "_origin": "ast",
       "id": "workers_components_rationale_1524",
-      "community": 11,
+      "community": 41,
       "norm_label": "compute per-component bpm, key, groove_density, backbeat_strength, energy_level."
     },
     {
@@ -175788,7 +175788,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "workers_embedder_count_cjk_chars",
-      "community": 55,
+      "community": 24,
       "norm_label": "_count_cjk_chars()"
     },
     {
@@ -175818,7 +175818,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "workers_embedder_embeddingworker_embed_song",
-      "community": 55,
+      "community": 24,
       "norm_label": ".embed_song()"
     },
     {
@@ -175828,7 +175828,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "ops_analysis_service_src_sow_analysis_workers_embedder_py_embeddingjobrequest",
-      "community": 55,
+      "community": 24,
       "norm_label": "embeddingjobrequest"
     },
     {
@@ -175838,7 +175838,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "embeddingjobresult",
-      "community": 55,
+      "community": 24,
       "norm_label": "embeddingjobresult"
     },
     {
@@ -175848,7 +175848,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "workers_embedder_embeddingworker_embed_texts",
-      "community": 55,
+      "community": 24,
       "norm_label": "._embed_texts()"
     },
     {
@@ -176758,7 +176758,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "workers_lrc",
-      "community": 24,
+      "community": 84,
       "norm_label": "lrc.py"
     },
     {
@@ -176818,7 +176818,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "workers_lrc_contains_cjk",
-      "community": 24,
+      "community": 84,
       "norm_label": "_contains_cjk()"
     },
     {
@@ -176828,7 +176828,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "workers_lrc_contains_latin",
-      "community": 24,
+      "community": 84,
       "norm_label": "_contains_latin()"
     },
     {
@@ -176838,7 +176838,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "workers_lrc_resolve_lrc_language",
-      "community": 24,
+      "community": 84,
       "norm_label": "resolve_lrc_language()"
     },
     {
@@ -176848,7 +176848,7 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "workers_lrc_warn_if_lrc_language_script_mismatch",
-      "community": 24,
+      "community": 84,
       "norm_label": "warn_if_lrc_language_script_mismatch()"
     },
     {
@@ -176858,7 +176858,7 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "resolvedlrclanguage",
-      "community": 24,
+      "community": 84,
       "norm_label": "resolvedlrclanguage"
     },
     {
@@ -176888,7 +176888,7 @@
       "source_location": "L152",
       "_origin": "ast",
       "id": "workers_lrc_lrcline_format",
-      "community": 24,
+      "community": 84,
       "norm_label": ".format()"
     },
     {
@@ -176898,7 +176898,7 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "workers_lrc_format_timestamp",
-      "community": 24,
+      "community": 84,
       "norm_label": "_format_timestamp()"
     },
     {
@@ -176908,7 +176908,7 @@
       "source_location": "L166",
       "_origin": "ast",
       "id": "workers_lrc_run_whisper_transcription",
-      "community": 24,
+      "community": 84,
       "norm_label": "_run_whisper_transcription()"
     },
     {
@@ -176918,7 +176918,7 @@
       "source_location": "L166",
       "_origin": "ast",
       "id": "ops_analysis_service_src_sow_analysis_workers_lrc_py_path",
-      "community": 24,
+      "community": 84,
       "norm_label": "path"
     },
     {
@@ -176928,7 +176928,7 @@
       "source_location": "L328",
       "_origin": "ast",
       "id": "workers_lrc_build_alignment_prompt",
-      "community": 24,
+      "community": 84,
       "norm_label": "_build_alignment_prompt()"
     },
     {
@@ -176938,7 +176938,7 @@
       "source_location": "L443",
       "_origin": "ast",
       "id": "workers_lrc_build_qwen3_asr_alignment_prompt",
-      "community": 24,
+      "community": 84,
       "norm_label": "_build_qwen3_asr_alignment_prompt()"
     },
     {
@@ -176948,7 +176948,7 @@
       "source_location": "L501",
       "_origin": "ast",
       "id": "workers_lrc_parse_llm_response",
-      "community": 24,
+      "community": 84,
       "norm_label": "_parse_llm_response()"
     },
     {
@@ -176968,7 +176968,7 @@
       "source_location": "L604",
       "_origin": "ast",
       "id": "workers_lrc_llm_align",
-      "community": 24,
+      "community": 84,
       "norm_label": "_llm_align()"
     },
     {
@@ -176978,7 +176978,7 @@
       "source_location": "L604",
       "_origin": "ast",
       "id": "ops_analysis_service_src_sow_analysis_workers_lrc_py_llmtrace",
-      "community": 24,
+      "community": 84,
       "norm_label": "llmtrace"
     },
     {
@@ -176988,7 +176988,7 @@
       "source_location": "L837",
       "_origin": "ast",
       "id": "workers_lrc_write_lrc",
-      "community": 24,
+      "community": 84,
       "norm_label": "_write_lrc()"
     },
     {
@@ -176998,7 +176998,7 @@
       "source_location": "L856",
       "_origin": "ast",
       "id": "workers_lrc_build_qwen3_asr_cache_key",
-      "community": 24,
+      "community": 84,
       "norm_label": "build_qwen3_asr_cache_key()"
     },
     {
@@ -177008,7 +177008,7 @@
       "source_location": "L885",
       "_origin": "ast",
       "id": "workers_lrc_build_whisper_transcription_cache_key",
-      "community": 24,
+      "community": 84,
       "norm_label": "build_whisper_transcription_cache_key()"
     },
     {
@@ -177018,7 +177018,7 @@
       "source_location": "L910",
       "_origin": "ast",
       "id": "workers_lrc_build_qwen3_context",
-      "community": 24,
+      "community": 84,
       "norm_label": "_build_qwen3_context()"
     },
     {
@@ -177028,7 +177028,7 @@
       "source_location": "L933",
       "_origin": "ast",
       "id": "workers_lrc_last_lyric_timestamp",
-      "community": 24,
+      "community": 84,
       "norm_label": "last_lyric_timestamp()"
     },
     {
@@ -177038,7 +177038,7 @@
       "source_location": "L941",
       "_origin": "ast",
       "id": "workers_lrc_tail_fill_threshold_seconds",
-      "community": 24,
+      "community": 84,
       "norm_label": "tail_fill_threshold_seconds()"
     },
     {
@@ -177048,7 +177048,7 @@
       "source_location": "L949",
       "_origin": "ast",
       "id": "workers_lrc_should_fill_tail",
-      "community": 24,
+      "community": 84,
       "norm_label": "should_fill_tail()"
     },
     {
@@ -177058,7 +177058,7 @@
       "source_location": "L968",
       "_origin": "ast",
       "id": "workers_lrc_merge_tail_lines",
-      "community": 24,
+      "community": 84,
       "norm_label": "merge_tail_lines()"
     },
     {
@@ -177068,7 +177068,7 @@
       "source_location": "L995",
       "_origin": "ast",
       "id": "workers_lrc_slice_audio_tail",
-      "community": 24,
+      "community": 84,
       "norm_label": "_slice_audio_tail()"
     },
     {
@@ -177078,7 +177078,7 @@
       "source_location": "L1013",
       "_origin": "ast",
       "id": "workers_lrc_fill_uncovered_tail",
-      "community": 24,
+      "community": 84,
       "norm_label": "fill_uncovered_tail()"
     },
     {
@@ -177088,7 +177088,7 @@
       "source_location": "L1013",
       "_origin": "ast",
       "id": "lrcoptions",
-      "community": 24,
+      "community": 84,
       "norm_label": "lrcoptions"
     },
     {
@@ -177128,7 +177128,7 @@
       "source_location": "L1227",
       "_origin": "ast",
       "id": "workers_lrc_generate_lrc_from_qwen3_asr",
-      "community": 24,
+      "community": 84,
       "norm_label": "generate_lrc_from_qwen3_asr()"
     },
     {
@@ -177138,7 +177138,7 @@
       "source_location": "L1316",
       "_origin": "ast",
       "id": "workers_lrc_try_youtube_transcript_lrc",
-      "community": 24,
+      "community": 84,
       "norm_label": "try_youtube_transcript_lrc()"
     },
     {
@@ -177148,7 +177148,7 @@
       "source_location": "L1387",
       "_origin": "ast",
       "id": "workers_lrc_generate_lrc",
-      "community": 24,
+      "community": 84,
       "norm_label": "generate_lrc()"
     },
     {
@@ -177158,7 +177158,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "workers_lrc_rationale_1",
-      "community": 24,
+      "community": 84,
       "norm_label": "lrc generation worker \u2014 whisper transcription + llm alignment.  generates timest"
     },
     {
@@ -177208,7 +177208,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "workers_lrc_rationale_94",
-      "community": 24,
+      "community": 84,
       "norm_label": "resolve raw lrc language option to a concrete downstream language."
     },
     {
@@ -177238,7 +177238,7 @@
       "source_location": "L153",
       "_origin": "ast",
       "id": "workers_lrc_rationale_153",
-      "community": 24,
+      "community": 84,
       "norm_label": "format as lrc timestamp line: [mm:ss.xx] text"
     },
     {
@@ -177248,7 +177248,7 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "workers_lrc_rationale_160",
-      "community": 24,
+      "community": 84,
       "norm_label": "format seconds as [mm:ss.xx] timestamp."
     },
     {
@@ -177258,7 +177258,7 @@
       "source_location": "L177",
       "_origin": "ast",
       "id": "workers_lrc_rationale_177",
-      "community": 24,
+      "community": 84,
       "norm_label": "run whisper transcription with phrase-level timestamps (on modal).      args:"
     },
     {
@@ -177268,7 +177268,7 @@
       "source_location": "L333",
       "_origin": "ast",
       "id": "workers_lrc_rationale_333",
-      "community": 24,
+      "community": 84,
       "norm_label": "build the llm prompt for lyrics alignment.      args:         lyrics_text: origi"
     },
     {
@@ -177278,7 +177278,7 @@
       "source_location": "L502",
       "_origin": "ast",
       "id": "workers_lrc_rationale_502",
-      "community": 24,
+      "community": 84,
       "norm_label": "parse llm response into lrcline objects.      args:         response_text: raw l"
     },
     {
@@ -177298,7 +177298,7 @@
       "source_location": "L617",
       "_origin": "ast",
       "id": "workers_lrc_rationale_617",
-      "community": 24,
+      "community": 84,
       "norm_label": "use llm to align lyrics with whisper timestamps.      args:         lyrics_text:"
     },
     {
@@ -177308,7 +177308,7 @@
       "source_location": "L838",
       "_origin": "ast",
       "id": "workers_lrc_rationale_838",
-      "community": 24,
+      "community": 84,
       "norm_label": "write lrc lines to file.      args:         lines: list of timestamped lyric lin"
     },
     {
@@ -177318,7 +177318,7 @@
       "source_location": "L867",
       "_origin": "ast",
       "id": "workers_lrc_rationale_867",
-      "community": 24,
+      "community": 84,
       "norm_label": "build rich qwen3 asr cache key. ``range_suffix`` scopes the key to an audio"
     },
     {
@@ -177328,7 +177328,7 @@
       "source_location": "L893",
       "_origin": "ast",
       "id": "workers_lrc_rationale_893",
-      "community": 24,
+      "community": 84,
       "norm_label": "build language-aware whisper transcription cache key. ``range_suffix`` scopes"
     },
     {
@@ -177338,7 +177338,7 @@
       "source_location": "L934",
       "_origin": "ast",
       "id": "workers_lrc_rationale_934",
-      "community": 24,
+      "community": 84,
       "norm_label": "timestamp of the last lrc line with non-empty text (gap placeholders ignored)."
     },
     {
@@ -177348,7 +177348,7 @@
       "source_location": "L942",
       "_origin": "ast",
       "id": "workers_lrc_rationale_942",
-      "community": 24,
+      "community": 84,
       "norm_label": "min(sow_lrc_tail_gap_seconds, sow_lrc_tail_gap_fraction * duration_seconds)."
     },
     {
@@ -177358,7 +177358,7 @@
       "source_location": "L950",
       "_origin": "ast",
       "id": "workers_lrc_rationale_950",
-      "community": 24,
+      "community": 84,
       "norm_label": "gap in seconds when the tail fill should run, else none.      none when sow_lrc_"
     },
     {
@@ -177368,7 +177368,7 @@
       "source_location": "L974",
       "_origin": "ast",
       "id": "workers_lrc_rationale_974",
-      "community": 24,
+      "community": 84,
       "norm_label": "append recovered lines after last_lyric_ts; returns (merged lines, appended coun"
     },
     {
@@ -177378,7 +177378,7 @@
       "source_location": "L996",
       "_origin": "ast",
       "id": "workers_lrc_rationale_996",
-      "community": 24,
+      "community": 84,
       "norm_label": "write [start_seconds, eof) as 16 khz mono pcm-16 wav; returns the clip duration."
     },
     {
@@ -177388,7 +177388,7 @@
       "source_location": "L1029",
       "_origin": "ast",
       "id": "workers_lrc_rationale_1029",
-      "community": 24,
+      "community": 84,
       "norm_label": "transcribe the uncovered tail, align it to the official lyrics, merge into the l"
     },
     {
@@ -177398,7 +177398,7 @@
       "source_location": "L1240",
       "_origin": "ast",
       "id": "workers_lrc_rationale_1240",
-      "community": 24,
+      "community": 84,
       "norm_label": "generate lrc from dashscope qwen3 asr, snap, then llm alignment."
     },
     {
@@ -177408,7 +177408,7 @@
       "source_location": "L1325",
       "_origin": "ast",
       "id": "workers_lrc_rationale_1325",
-      "community": 24,
+      "community": 84,
       "norm_label": "attempt lrc generation via youtube transcript (primary path).      returns (path"
     },
     {
@@ -177418,7 +177418,7 @@
       "source_location": "L1400",
       "_origin": "ast",
       "id": "workers_lrc_rationale_1400",
-      "community": 24,
+      "community": 84,
       "norm_label": "generate timestamped lrc file from audio and lyrics.      if a youtube_url is pr"
     },
     {
@@ -177548,7 +177548,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "workers_queue_compute_lrc_cache_key",
-      "community": 55,
+      "community": 84,
       "norm_label": "_compute_lrc_cache_key()"
     },
     {
@@ -177938,7 +177938,7 @@
       "source_location": "L1423",
       "_origin": "ast",
       "id": "workers_queue_jobqueue_process_lrc_job",
-      "community": 24,
+      "community": 84,
       "norm_label": "._process_lrc_job()"
     },
     {
@@ -178018,7 +178018,7 @@
       "source_location": "L2951",
       "_origin": "ast",
       "id": "workers_queue_jobqueue_stop",
-      "community": 1169,
+      "community": 24,
       "norm_label": ".stop()"
     },
     {
@@ -178068,7 +178068,7 @@
       "source_location": "L3149",
       "_origin": "ast",
       "id": "workers_queue_jobqueue_stop_periodic_logging",
-      "community": 1169,
+      "community": 24,
       "norm_label": ".stop_periodic_logging()"
     },
     {
@@ -178088,7 +178088,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "workers_queue_rationale_42",
-      "community": 55,
+      "community": 84,
       "norm_label": "compute cache key for lrc generation based on audio hash and lyrics.      the ca"
     },
     {
@@ -178308,7 +178308,7 @@
       "source_location": "L1424",
       "_origin": "ast",
       "id": "workers_queue_rationale_1424",
-      "community": 24,
+      "community": 84,
       "norm_label": "process an lrc generation job.          downloads audio from r2, optionally uses"
     },
     {
@@ -178388,7 +178388,7 @@
       "source_location": "L2952",
       "_origin": "ast",
       "id": "workers_queue_rationale_2952",
-      "community": 1169,
+      "community": 24,
       "norm_label": "stop processing jobs."
     },
     {
@@ -178438,7 +178438,7 @@
       "source_location": "L3150",
       "_origin": "ast",
       "id": "workers_queue_rationale_3150",
-      "community": 1169,
+      "community": 24,
       "norm_label": "stop the periodic logging task gracefully."
     },
     {
@@ -219865,9 +219865,9 @@
       "source_file": "delivery/render-worker/src/sow_render_worker/lrc_parser.py",
       "source_location": "L56",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sow_render_worker_lrc_parser_rationale_56",
-      "target": "sow_render_worker_lrc_parser_remap_lrc_to_clips",
-      "confidence_score": 1.0
+      "target": "sow_render_worker_lrc_parser_remap_lrc_to_clips"
     },
     {
       "relation": "references",
@@ -318455,9 +318455,9 @@
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
       "source_location": "L54",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "songset_arrangementeditorsheet",
-      "target": "render_lrc_parser_linesforsourcerange",
-      "confidence_score": 1.0
+      "target": "render_lrc_parser_linesforsourcerange"
     },
     {
       "relation": "imports",
@@ -344915,9 +344915,9 @@
       "source_file": "delivery/webapp/src/lib/render/lrc-parser.ts",
       "source_location": "L232",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "render_lrc_parser",
-      "target": "render_lrc_parser_linesforsourcerange",
-      "confidence_score": 1.0
+      "target": "render_lrc_parser_linesforsourcerange"
     },
     {
       "relation": "contains",
@@ -345067,9 +345067,9 @@
       "source_file": "delivery/webapp/src/test/lib/render/lrc-parser.test.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "render_lrc_parser_test",
-      "target": "render_lrc_parser_linesforsourcerange",
-      "confidence_score": 1.0
+      "target": "render_lrc_parser_linesforsourcerange"
     },
     {
       "relation": "contains",
@@ -511724,5 +511724,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "7772fbb05bb3af32a1aea9768b1574fa06b251e3"
+  "built_at_commit": "40e7c63d8ac1f9f2c3f32f0beb92aac838ff5944"
 }
