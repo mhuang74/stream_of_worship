@@ -97,6 +97,94 @@ flowchart LR
   sheet -->|buildArrangementTimeline<br/>song window + lead-in| preview[arrangement-preview.ts<br/>streaming audio elements]
 ```
 
+## Recordings with usable arrangement data
+
+Verified 2026-11-10 against the configured Neon database (`SOW_DATABASE_URL`, sourced from
+`/opt/sow/.env`) with the app's own parse/snap/validate functions. Read-only snapshot: nothing here
+implies a database change.
+
+### Arrangeable, `visibility_status = 'review'`
+
+Ten Recordings chosen for a spread of section counts and label vocabularies; all have
+`lrc_status = 'completed'`, audio + LRC objects in R2, and live in two Songsets each. The in-app
+browse API defaults to `published,review` (`api/songs/route.ts:85-90`), so `review` Recordings are
+addable to a Songset and arrangeable today.
+
+| # | `hash_prefix` | Title | `songs.id` | Duration | Sections → Steps | Label sequence | Arranged duration | Songsets |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `3c0772a6c961` | 最珍貴的角落 | `zui_zhen_gui_de_jiao_luo_e1cf618a` | 252.83 s | 2 → 2 | verse 1, chorus | 93.94 s | Hope_Grace_Set_12, Hope_Grace_Set_2 |
+| 2 | `446ee6cc4768` | 甦醒 | `su_xing_cb0e9895` | 219.52 s | 2 → 2 | chorus, verse | 80.07 s | Hope_Grace_Set_20, Hope_Grace_Set_9 |
+| 3 | `8720ed26892f` | 全然向祢 | `quan_ran_xiang_mi_79bb05cb` | 283.52 s | 3 → 3 | verse, chorus, chorus | 124.26 s | Hardship_Grace_1, Hardship_Grace_3 |
+| 4 | `31676c05b3c1` | 是耶穌 | `shi_ye_su_f8d7c4a7` | 272.02 s | 3 → 3 | verse, verse, chorus | 111.70 s | Hope_Grace_Set_10, Hope_Grace_Set_20 |
+| 5 | `138f339e3dce` | 展開清晨的翅膀 | `zhan_kai_qing_chen_de_chi_bang_44a8f2f4` | 322.92 s | 4 → 4 | chorus ×4 | 135.27 s | Hope_Grace_Set_8, Test Arrangement |
+| 6 | `9e2eb249c3de` | 我選擇喜樂 | `wo_xuan_ze_xi_le_e2ec9095` | 177.15 s | 5 → 5 | verse, chorus 1, verse, chorus 1, chorus 2 | 146.90 s | Set15_信心復興, 絕望與恩典_藏身恩典 |
+| 7 | `a7a5745b439e` | 誰能像祢 | `shui_neng_xiang_mi_70ade820` | 201.39 s | 5 → 5 | verse, chorus, verse, chorus, coda | 140.05 s | Hardship_Grace_3, Hardship_Grace_5 |
+| 8 | `1c172aa74bfe` | 主的喜樂是我力量 | `zhu_de_xi_le_shi_wo_li_liang_e1084c5e` | 256.27 s | 6 → 6 | verse, verse, chorus, verse, chorus, chorus | 205.98 s | Hope_Grace_Set_19, Hope_Grace_Set_9 |
+| 9 | `751e0e5286bc` | 聖潔的羔羊 | `sheng_jie_de_gao_yang_6c8e17b1` | 489.02 s | 7 → 7 | verse, verse, chorus, verse, chorus, chorus, chorus | 426.66 s | 絕望與恩典_羔羊恩典, 齊來讚美_我敬拜祢_聖潔的羔羊_主啊，我要跟隨祢 |
+| 10 | `210344eabd33` | 十字架 | `shi_zi_jia_a5203e7d` | 351.57 s | 8 → 8 | verse, chorus, verse, chorus, refrain, refrain, chorus, chorus | 298.18 s | Set03_信心, Set05_十字架 |
+
+### Arrangeable, `visibility_status = 'published'`
+
+Exactly one published Recording passes the availability rule. It is the E2E fixture, appears in two
+test Songsets, and is the only published item that can be arranged without publishing more
+Recordings:
+
+| # | `hash_prefix` | Title | `songs.id` | Duration | Sections → Steps | Label sequence | Arranged duration | Songsets |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `e2e348684622` | Arrangement E2E Song | `arrangement_e2e_849348684622` | 244.78 s | 10 → 9 | intro, verse, verse, inst, intro, verse, verse, chorus, chorus | 226.20 s | Arrangement E2E 1794151675566, Arrangement Render 1794152024896 |
+
+Of the 106 published Recordings, only 3 carry `sections` + `beats`; the other 103 have no analysis
+data at all, and the two non-fixture ones fail snapping (see *Known analysis-data gaps*). Making
+more published Recordings arrangeable needs `sow-admin audio set-visibility <song_id> --status
+published` (or re-analysis), neither of which this guide performs.
+
+Arranged duration is `getItemDurationSeconds` for all snapped Steps in section order (sum of Step
+lengths), which is why it is shorter than the Recording: untaken gaps and untaken repeats are
+dropped (e.g. 是耶穌 `31676c05b3c1` spans 30.62–234.02 s but arranges to 111.70 s).
+
+Reproduce the counts (no `psql` on this host; the `postgres` package ships with the webapp):
+
+```bash
+set -a; . /opt/sow/.env; set +a   # provides SOW_DATABASE_URL
+cd delivery/webapp && npx tsx -e '
+import postgres from "postgres";
+import { parseRecordingSections, parseRecordingBeats, buildSnappedSteps } from "./src/lib/arrangements.ts";
+const sql = postgres(process.env.SOW_DATABASE_URL!, { ssl: "require", max: 1 });
+(async () => {
+  const rows = await sql.unsafe("select r.hash_prefix, r.duration_seconds, r.sections, r.beats from recordings r where r.deleted_at is null and r.sections is not null and r.beats is not null");
+  let usable = 0;
+  for (const row of rows) {
+    const steps = buildSnappedSteps(parseRecordingSections(row.sections), parseRecordingBeats(row.beats), row.duration_seconds);
+    if (steps) usable += 1;
+  }
+  console.log(rows.length, usable);
+  await sql.end();
+})().catch((e) => { console.error(e); process.exit(1); });
+'
+```
+
+Expected output: `322 320`. No `songset_items.arrangement_steps` row is non-NULL yet.
+
+## Known analysis-data gaps
+
+Two of the 322 analyzed Recordings fail the availability rule; both are `visibility_status =
+'published'` and used by real Songsets, so Arrange is disabled on those items:
+
+| `hash_prefix` | Title | Songset items | First section | First detected beat | Effect |
+|---|---|---|---|---|---|
+| `28a0ed6e1408` | 與祢漫步 | 8 (incl. Hope_Grace_Set_6, Set03_信心, Agent Proposal #1) | `start` 0.00–0.17 s | 6.23 s | both bounds snap to 6.23 s → collapsed → `buildSnappedSteps` returns `null` |
+| `e5c16c2f35f2` | 從早晨到夜晚 | 2 (Arrangement E2E 1794151675566) | `start` 0.00–0.21 s | 8.44 s | both bounds snap to 8.44 s → same collapse |
+
+The degenerate leading `start` micro-section (analysis artefact emitted before the first detected
+beat) is the sole collapse: every other section of both Recordings either snaps to a non-zero
+length or is skipped as out-of-range. Because `buildSnappedSteps` bails out on the first collapse,
+the failure is all-or-nothing for the Recording. Both also carry the same harmless quirk as the
+published fixture — a trailing `outro` whose `end` runs 1.31 ms and 1.35 ms past `duration_seconds`
+respectively — but out-of-range sections are *skipped* per `arrangements.ts:233-234`, not fatal.
+Clearing the collapse requires repairing `recordings.sections`/`beats` or re-running analysis;
+neither the webapp nor the admin CLI exposes a section-timing editor (the admin component editor
+only edits lyrics).
+
 ## Tests
 
 - Webapp (all under `delivery/webapp/src/`): `test/lib/arrangements.test.ts`,
