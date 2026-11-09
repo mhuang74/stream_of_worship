@@ -1,6 +1,6 @@
 # Switch local code between Production and Dev DB with one command per component (v2)
 
-> v2 of `separate_dev_and_prod_db_for_local_testing.md`. Changes: branch guard for destructive admin commands, render-submission consequence corrected (SQS redelivery → DLQ), `sow_admin_dev` sources only the DSN, `db url`/`db status` show the Neon branch, and a local UI badge (`NEXT_PUBLIC_DB_TARGET`) makes the active DB target visible.
+> v2 of `separate_dev_and_prod_db_for_local_testing.md`. Changes: a fail-closed Neon-branch guard for the three destructive admin commands, render-submission consequence corrected (SQS redelivery → DLQ), `sow_admin_dev` sources only the DSN, `db url`/`db status` show the Neon branch, and a local UI badge (`NEXT_PUBLIC_DB_TARGET`) makes the active DB target visible.
 
 ## Context
 
@@ -25,7 +25,8 @@ Verified facts driving the design:
 - Analysis Service never touches Postgres: `ops/analysis-service/src/sow_analysis/storage/db.py` is `aiosqlite`; no `SOW_DATABASE_URL`/`psycopg` anywhere under `ops/analysis-service`. `start-dev.sh` only runs `docker compose --env-file /opt/sow/.env up analysis-dev`. No source/doc references the filename (only generated `graphify-out/` artifacts, refreshed by `graphify update`).
 - **Destructive admin commands use the connected DB branch as the R2-safety oracle while the bucket is always the production one.** `maintenance purge-r2-waste` deletes every bucket prefix that has no recording row *in the connected branch* (`commands/maintenance.py:598-614,650-700`); `maintenance purge-soft-deletes` hard-deletes the connected-branch row and then `r2_client.delete_prefix()`s the shared bucket (`maintenance.py:375-389`), so a dev-branch purge destroys production audio while the production row stays live; `db init --wipe-songsets` runs `DROP TABLE IF EXISTS songset_items, songsets CASCADE` on the connected branch (`db/client.py:193-194`). `R2Client` reads its credentials from `SOW_R2_ACCESS_KEY_ID` / `SOW_R2_SECRET_ACCESS_KEY` (`services/r2.py:109-148`) — the same values in both webapp env files, one bucket. Nothing in the admin CLI is branch-aware today: `current_setting('neon.branch_id')` appears nowhere in source.
 - **Dev render submissions mount up in production infrastructure.** The dev webapp enqueues to the production SQS queue; the deployed Lambda connects to the production branch, `get_render_job` returns `None`, and the pipeline raises `ValueError("Render job … not found")` (`delivery/render-worker/src/sow_render_worker/pipeline.py:217-219`). SQS→Lambda deletes a message only on successful invocation, so every dev submission redelivers until `maxReceiveCount` and lands in the DLQ — repeated production Lambda invocations per dev submit, not a single silent no-op.
-- Admin CLI test layout: command tests live in `ops/admin-cli/tests/admin/` (e.g. `test_publish_guard.py`, `test_audio_soft_delete_maintenance.py`, `test_r2_backup_commands.py`), with `db` command tests under `ops/admin-cli/tests/admin/commands/test_db_commands.py`; `MagicMock`/`patch` client doubles and `typer.testing.CliRunner` are the established style.
+- **The branch oracle works through the exact endpoint hosts the app uses** (verified live: `select current_setting('neon.branch_id', true)` → `br-silent-surf-b3qfgd71` on `ep-calm-mode-b33utavj…`, `br-lucky-violet-b36bpnpu` on `ep-crimson-bar-b3se1v53…`, both non-NULL through Neon's pooled endpoint), so the guard can rely on it. The host check in the guard exists for the failure case — a pooler config change, a network error, or a malformed DSN all yield an unreadable branch id — and fails closed rather than allowing the delete.
+- Admin CLI test layout: command tests live in `ops/admin-cli/tests/admin/` (e.g. `test_publish_guard.py`, `test_audio_soft_delete_maintenance.py`, `test_r2_backup_commands.py`), with `db` command tests under `ops/admin-cli/tests/admin/commands/test_db_commands.py`; `MagicMock`/`patch` client doubles and `typer.testing.CliRunner` are the established style. `ops/admin-cli/pyproject.toml:105` sets `addopts = "-m 'not integration'"`, so the testcontainers-backed `TestDbInit` class there is skipped by default — new guard tests belong in an unmarked module.
 - Webapp test pattern for env-dependent modules: `vi.resetModules()` + `await import(…)` per case — see `delivery/webapp/src/test/lib/render/dispatcher.test.ts:80-122` and `src/test/lib/r2/public-url.test.ts:1-15`; component tests render with `@testing-library/react` under `jsdom` (`vitest.config.ts:8`, `src/test/setup.ts`).
 - The webapp `dev` / `dev:https` scripts already wrap `next dev` in `env-cmd -f "${SOW_WEBAPP_ENV_FILE:-/opt/sow/.env}"` (`delivery/webapp/package.json:7-8`), and `~/.zshrc:383` exports `SOW_WEBAPP_ENV_FILE=/opt/sow/.env_webapp`, so dev currently reads the production webapp env by accident of that export. v1's "byte-identical `next dev` invocations" description of those lines is stale; step 2 below changes their default path rather than introducing the wrapper.
 
@@ -166,6 +167,7 @@ New helper file `ops/admin-cli/src/stream_of_worship/admin/commands/guard.py`:
 """Branch guard for destructive admin commands."""
 
 import os
+from urllib.parse import urlparse
 
 import typer
 from rich.console import Console
@@ -174,22 +176,34 @@ from stream_of_worship.admin.db.client import DatabaseClient
 
 console = Console()
 PRODUCTION_BRANCH_ID = "br-silent-surf-b3qfgd71"
+NEON_HOST_SUFFIX = ".neon.tech"
 OVERRIDE_ENV_VAR = "SOW_ALLOW_DESTRUCTIVE_ON_BRANCH"
 
 
-def ensure_production_branch(db_client: DatabaseClient) -> None:
-    """Abort unless connected to the Neon production branch.
+def ensure_production_branch(db_client: DatabaseClient, db_url: str) -> None:
+    """Abort unless the connection targets the Neon production branch.
 
-    Off-Neon targets (branch id None, e.g. testcontainers) are allowed.
-    Set SOW_ALLOW_DESTRUCTIVE_ON_BRANCH to any non-empty value to bypass.
+    Fail-closed: once the host is known to be Neon, an unreadable branch id
+    (pooler that hides ``neon.branch_id``, network failure, empty host) is
+    refused — never allowed — because that is exactly the shape of the
+    dev-branch data-loss case. Only a host that is *known* to be non-Neon
+    (testcontainers, local postgres) skips the check.
+    Set SOW_ALLOW_DESTRUCTIVE_ON_BRANCH=1 to bypass.
     """
+    host = (urlparse(db_url).hostname or "").lower()
     branch = db_client.current_neon_branch()
     if branch == PRODUCTION_BRANCH_ID:
         return
     if os.environ.get(OVERRIDE_ENV_VAR):
         console.print(
             f"[yellow]Destructive override active: target branch "
-            f"{branch or 'unknown'}[/yellow]"
+            f"{branch or 'unknown'} on {host or 'unknown host'}[/yellow]"
+        )
+        return
+    if host and not host.endswith(NEON_HOST_SUFFIX):
+        console.print(
+            f"[yellow]Target host {host} is not Neon ({NEON_HOST_SUFFIX}); "
+            "branch check not applicable.[/yellow]"
         )
         return
     console.print(
@@ -200,24 +214,54 @@ def ensure_production_branch(db_client: DatabaseClient) -> None:
     raise typer.Exit(1)
 ```
 
-Guarded callsites — the guard runs only where the command would actually destroy; dry-run stays allowed because wrong-branch reconnaissance leaves data intact:
+Guarded callsites — the guard runs only where the command would actually destroy; dry-run stays allowed because wrong-branch reconnaissance leaves data intact. Callers pass the DSN they are connecting with (`config` is already in scope in all three) so the guard can tell Neon from off-Neon hosts:
 
-- `commands/maintenance.py` `purge_soft_deletes`: immediately after `config, db_client = _load_clients(config_path)` / `r2_client = _load_r2(config)` (currently lines 354-355), add `if confirm: ensure_production_branch(db_client)`, with `from stream_of_worship.admin.commands.guard import ensure_production_branch` at the top.
-- `commands/maintenance.py` `purge_r2_waste`: same insertion after its `_load_clients` / `_load_r2` lines (currently 655-656).
-- `commands/db.py` `init_db`: inside the `with client:` block, immediately before `client.initialize_schema(wipe_songsets=wipe_songsets)`, add `if wipe_songsets: ensure_production_branch(client)`. (`--force` alone only re-runs idempotent schema statements; it stays unguarded.)
+- `commands/maintenance.py` `purge_soft_deletes`: immediately after `config, db_client = _load_clients(config_path)` / `r2_client = _load_r2(config)` (currently lines 354-355), add `if confirm: ensure_production_branch(db_client, config.get_connection_url())`, with `from stream_of_worship.admin.commands.guard import ensure_production_branch` at the top.
+- `commands/maintenance.py` `purge_r2_waste`: same insertion after its `_load_clients` / `_load_r2` lines (currently 655-656). Neither command body wraps its work in `except Exception`, so the guard's message and exit code pass straight through.
+- `commands/db.py` `init_db`: **the guard must sit outside the existing `try:`**. `typer.Exit` subclasses `RuntimeError` (verified: `typer.Exit.__mro__` = `Exit, RuntimeError, Exception, …`) and `init_db` ends in `except Exception as e: console.print(f"[red]Failed to initialize schema: {e}[/red]"); raise typer.Exit(1)`, so a guard raise placed inside that block is caught and re-emitted as the useless `Failed to initialize schema: 1`. Restructure the tail of `init_db` to:
 
-New tests:
+```python
+    client = _get_db_client(config)
+    if wipe_songsets:
+        ensure_production_branch(client, config.get_connection_url())
+    try:
+        with client:
+            client.initialize_schema(wipe_songsets=wipe_songsets)
+            console.print("[green]Postgres schema initialized successfully![/green]")
+            # Display connection info without re-connecting
+            _show_connection_info(config, db_client=client)
+            # Reuse same connection so Neon's pooler doesn't route us to a stale backend
+            _display_stats(client)
+    except Exception as e:
+        console.print(f"[red]Failed to initialize schema: {e}[/red]")
+        raise typer.Exit(1)
+```
 
-- `ops/admin-cli/tests/admin/test_maintenance_branch_guard.py`, following the `CliRunner` + `MagicMock` conventions of `tests/admin/test_audio_soft_delete_maintenance.py` / `tests/admin/test_r2_backup_commands.py` (patch the command module's `_load_clients` and `_load_r2`, and give the fake db client a `current_neon_branch.return_value`). Four cases: production branch id → command proceeds past guard (no exit); dev branch id + `--confirm` → `exit_code == 1` and the "Refusing destructive operation" message; dev branch id + `SOW_ALLOW_DESTRUCTIVE_ON_BRANCH=1` → proceeds with the override warning; branch id `None` (off-Neon) → proceeds.
-- One `db init --wipe-songsets` refusal case in `ops/admin-cli/tests/admin/commands/test_db_commands.py` (mock level, not the `@pytest.mark.integration` testcontainers class): patch `DatabaseClient.current_neon_branch` → `br-lucky-violet-b36bpnpu` and assert `exit_code == 1` with the refusal message; the paired `None` (off-Neon) case asserts the wipe path is not blocked, which is what keeps the existing testcontainers suite green.
+  Hoisting `client = _get_db_client(config)` above the `try:` is safe because `init_db` has already validated `config.get_connection_url()` a few lines earlier (its own `except ValueError` → exit 1), and `_get_db_client` only builds a lazy `ConnectionProvider`. (`--force` alone merely re-runs idempotent schema statements; it stays unguarded.)
+
+New tests — all in one new **unmarked** file, `ops/admin-cli/tests/admin/test_maintenance_branch_guard.py` (an unmarked test placed in `tests/admin/commands/test_db_commands.py` would drag in that module's testcontainers fixtures, and its `TestDbInit` class is `@pytest.mark.integration`, excluded by `addopts = "-m 'not integration'"` in `ops/admin-cli/pyproject.toml:105`). Follow the `CliRunner` + `MagicMock` conventions of `tests/admin/test_audio_soft_delete_maintenance.py` / `tests/admin/test_r2_backup_commands.py`: patch `_load_clients`/`_load_r2` (or `_get_db_client` for `db init`) with a mock `DatabaseClient` whose `current_neon_branch.return_value` is set per case, and pass a `--config`-free `AdminConfig` whose `get_connection_url()` returns a Neon or localhost DSN. Cases:
+
+| # | branch id returned | DSN host | env | expected |
+|---|---|---|---|---|
+| 1 | `br-silent-surf-b3qfgd71` | `*.neon.tech` (prod endpoint) | — | proceeds |
+| 2 | `br-lucky-violet-b36bpnpu` | `*.neon.tech` (dev endpoint) | — | `exit_code == 1` + "Refusing destructive operation" |
+| 3 | `br-lucky-violet-b36bpnpu` | `*.neon.tech` | `SOW_ALLOW_DESTRUCTIVE_ON_BRANCH=1` | proceeds + override warning |
+| 4 | `None` | `127.0.0.1` (testcontainers) | — | proceeds (off-Neon) |
+| 5 | `None` | `*.neon.tech` (pooler hides the setting / read failed) | — | `exit_code == 1` (fail-closed) |
+| 6 | `None` | empty host | — | `exit_code == 1` (fail-closed) |
+
+Cover 1-6 for `maintenance purge-soft-deletes --song-id X --confirm`; repeat 2 and 5 for `maintenance purge-r2-waste --all --confirm` (both commands share the guard, so the value is in proving each callsite is wired) and for `db init --wipe-songsets`, plus a `db init --wipe-songsets --confirm`-free case asserting the refusal message is the guard's own line, not `Failed to initialize schema: 1`.
 
 ### 7. Local UI target badge
 
 New file `delivery/webapp/src/components/db-target-badge.tsx` (nothing equivalent exists):
 
 ```tsx
-"use client";
-
+// Deliberately a server component: no hooks, no "use client". A client
+// component would inline NEXT_PUBLIC_DB_TARGET into the client bundle at
+// compile time, so a warm `.next` cache could keep rendering the previous
+// target after switching env files. Server-side rendering reads process.env
+// per request, so the label always matches the running server.
 export function DbTargetBadge() {
   const target = process.env.NEXT_PUBLIC_DB_TARGET;
   if (!target) return null; // unset in deployed envs → no badge
@@ -237,7 +281,7 @@ export function DbTargetBadge() {
 }
 ```
 
-Mount it in `delivery/webapp/src/app/layout.tsx` — inside `<body>`, after the `</LocaleProvider>` closing tag and before `<Analytics />`, leaving the existing `LocaleProvider` / `GlobalAudioPlayer` / `Header` / `main` / `BottomNav` / `Toaster` / `ServiceWorkerRegistrar` chain untouched — so the chip renders on every route including `/login`. English-only copy is intentional: dev tooling, not user-facing zh-Hant content (no `docs/translation-guidelines.md` string table involvement).
+Mount it in `delivery/webapp/src/app/layout.tsx` — inside `<body>`, after the `</LocaleProvider>` closing tag and before `<Analytics />`, leaving the existing `LocaleProvider` / `GlobalAudioPlayer` / `Header` / `main` / `BottomNav` / `Toaster` / `ServiceWorkerRegistrar` chain untouched — so the chip renders on every route including `/login`. `RootLayout` is already an async server component, so an async-free server child needs no plumbing. No existing test renders `RootLayout` (`src/test/components/layout/` holds only `Header.test.tsx` and `BottomNav.test.tsx`), so the layout edit needs no matching layout test. English-only copy is intentional: dev tooling, not user-facing zh-Hant content (no `docs/translation-guidelines.md` string table involvement).
 
 New test `delivery/webapp/src/test/components/db-target-badge.test.tsx` (new file; `src/test/components/` exists) copying the env-reset idiom from `src/test/lib/r2/public-url.test.ts` — `vi.resetModules()` in `beforeEach`, env save/restore in `afterEach`, `await import("@/components/db-target-badge")` per case, `render()` from `@testing-library/react`:
 
@@ -288,7 +332,7 @@ describe("DbTargetBadge", () => {
 
 - `delivery/webapp/README.md` "Environment Setup" (lines 18-25): state that `pnpm dev` / `pnpm dev:https` load `/opt/sow/.env_webapp_dev` (Neon `dev` branch) and `pnpm prod` / `pnpm prod:https` load `${SOW_WEBAPP_ENV_FILE:-/opt/sow/.env_webapp}` (production); `env-cmd`'s default precedence means the selected file beats an exported `SOW_DATABASE_URL`; other files are selected with `SOW_WEBAPP_ENV_FILE_DEV` / `SOW_WEBAPP_ENV_FILE`. Add `pnpm prod` / `pnpm prod:https` to the "Development" command block.
 - `delivery/webapp/README.md` also gets three lines: `sow_admin_dev` (admin CLI against `dev`), `ops/analysis-service/start.sh` (service has no Postgres), and the note that dev-stack render submissions still land in the production queue (`SOW_RENDER_WORKER_MODE=sqs`).
-- `delivery/webapp/CLAUDE.md` "Development Commands" table (the file `delivery/webapp/AGENTS.md` symlinks to): add rows `| pnpm prod | Local dev server on :8080 against the production DB |` and `| pnpm prod:https | Same, HTTPS (Cast testing) |`.
+- `delivery/webapp/AGENTS.md:9-16` — the real "Development Commands" table (`delivery/webapp/CLAUDE.md` is an 8-line file whose first line is `@AGENTS.md`, so editing `AGENTS.md` covers both client idiolects): add rows `| pnpm prod | Local dev server on :8080 against the production DB |` and `| pnpm prod:https | Same, HTTPS (Cast testing) |`. The root `/AGENTS.md` "Web App Commands (delivery/webapp/ directory)" block deserves the same two rows, since it is the file every agent loads.
 - `delivery/webapp/README.md` "Development" block gains a warning line: do **not** submit render jobs from a dev-branch session (`pnpm dev`) — jobs land in the production SQS queue, redeliver until the DLQ, and never complete.
 - The `sow_admin_dev` bullet states the branch guard: `maintenance purge-soft-deletes`, `maintenance purge-r2-waste`, and `db init --wipe-songsets` refuse on non-production branches unless `SOW_ALLOW_DESTRUCTIVE_ON_BRANCH` is set (dry-runs stay allowed).
 - One line about the badge: the chip in the bottom-right corner of every page shows `DEV database` (dev file) or `PRODUCTION data` (production file); absent when `NEXT_PUBLIC_DB_TARGET` is unset (deployed webapp).
@@ -306,7 +350,9 @@ describe("DbTargetBadge", () => {
 - `~/.zshrc:402` — alias block where `sow_admin_dev` is added; `~/.zshrc:383` exports `SOW_WEBAPP_ENV_FILE`.
 - `ops/admin-cli/src/stream_of_worship/admin/commands/db.py` — `init_db` (`with client:` / `initialize_schema` ~117-118), `_show_connection_info` (~129), `show_status` (~161), `show_url` (~200).
 - `ops/admin-cli/src/stream_of_worship/admin/commands/maintenance.py:336-360,639-660` — `purge_soft_deletes` / `purge_r2_waste` guard insertion points (`_load_clients` at 55, `_load_r2` at 64).
-- `ops/admin-cli/src/stream_of_worship/admin/commands/guard.py` — new file (`ensure_production_branch`, `PRODUCTION_BRANCH_ID`).
+- `ops/admin-cli/src/stream_of_worship/admin/commands/guard.py` — new file (`ensure_production_branch(db_client, db_url)`, `PRODUCTION_BRANCH_ID`, `NEON_HOST_SUFFIX`).
+- `ops/admin-cli/pyproject.toml:105` — `addopts = "-m 'not integration'"`; guard tests go in an unmarked module.
+- `delivery/webapp/AGENTS.md:9-16` — the real Development Commands table (`CLAUDE.md` only `@AGENTS.md`-imports it); root `/AGENTS.md` "Web App Commands" block is the second place for the same rows.
 - `ops/admin-cli/src/stream_of_worship/admin/db/client.py:95-97` — `connection` property precedent for the new `current_neon_branch`.
 - `delivery/webapp/src/app/layout.tsx` — badge mount point (inside `<body>`, after `</LocaleProvider>`, before `<Analytics />`).
 - `delivery/webapp/src/test/lib/render/dispatcher.test.ts:80-122` and `src/test/lib/r2/public-url.test.ts:1-15` — `vi.resetModules()` + dynamic-import env-reset patterns to copy.
@@ -386,24 +432,44 @@ cd delivery/webapp && pnpm test
 
 **V7 — branch guard**
 
+Pre-flight: prove the oracle returns a real id through the *exact* endpoint hosts the app uses (verified in plan review: `ep-calm-mode-b33utavj…` → `br-silent-surf-b3qfgd71`, `ep-crimson-bar-b3se1v53…` → `br-lucky-violet-b36bpnpu`, both non-NULL, so Neon's pooler does expose `neon.branch_id` here):
+
 ```bash
-zsh -ic 'sow_admin_dev maintenance purge-soft-deletes --song-id deadbeef --confirm'   # → refuses with "connected to Neon branch br-lucky-violet-…", exit 1
-zsh -ic 'sow_admin_dev maintenance purge-r2-waste --all'                              # → dry-run runs (guard only checks when --confirm)
-zsh -ic 'sow_admin_dev db init --wipe-songsets'                                       # → refuses
-SOW_ALLOW_DESTRUCTIVE_ON_BRANCH=1 zsh -ic 'sow_admin_dev maintenance purge-soft-deletes --song-id deadbeef --confirm'   # → override warning printed, then dry-run manifest (no matching soft-deleted id)
+psql "$PROD_DSN" -Atc "select coalesce(current_setting('neon.branch_id', true), 'NULL')"   # → br-silent-surf-b3qfgd71
+psql "$DEV_DSN"  -Atc "select coalesce(current_setting('neon.branch_id', true), 'NULL')"   # → br-lucky-violet-b36bpnpu
 ```
 
-The production-side allow path and the off-Neon (`None`) path are covered by the unit tests, not by a live prod purge. `db init --wipe-songsets` is never actually applied on a real branch during verification.
+If either prints `NULL`, stop: the guard fails closed on that branch and will refuse even legitimate production runs. Do not "fix" it with the override — check whether the endpoint hides the setting.
+
+```bash
+zsh -ic 'sow_admin_dev maintenance purge-soft-deletes --song-id deadbeef --confirm'
+# → "Refusing destructive operation: connected to Neon branch br-lucky-violet-b36bpnpu, not production (br-silent-surf-b3qfgd71)." + "If that is intentional, re-run with SOW_ALLOW_DESTRUCTIVE_ON_BRANCH=1."; exit 1
+zsh -ic 'sow_admin_dev maintenance purge-r2-waste --all'
+# → dry-run manifest, no refusal (the guard only runs with --confirm)
+zsh -ic 'sow_admin_dev maintenance purge-r2-waste --all --confirm'
+# → same refusal line, exit 1
+zsh -ic 'sow_admin_dev db init --wipe-songsets'
+# → same refusal line, exit 1 — and NOT "Failed to initialize schema: 1" (that would mean the guard is inside init_db's except Exception)
+SOW_ALLOW_DESTRUCTIVE_ON_BRANCH=1 zsh -ic 'sow_admin_dev maintenance purge-soft-deletes --song-id deadbeef --confirm'
+# → "Destructive override active: target branch br-lucky-violet-… on ep-crimson-bar-…", then the dry-run manifest (no matching soft-deleted id)
+```
+
+The production-side allow path, the off-Neon (`127.0.0.1`) allow path, and the fail-closed `NULL` cases are covered by the unit tests, not by a live prod purge. `db init --wipe-songsets` is never actually applied on a real branch during verification.
 
 **V8 — target badge**
 
+`pnpm dev` / `pnpm prod` serve plain HTTP on :8080 — only the `:https` twins pass `--experimental-https`, so `curl -k https://…` against them hits no TLS listener. Use the HTTPS pair (it matches the headless-Chrome recipe):
+
 ```bash
-cd delivery/webapp && pnpm dev    # keep running
-curl -sS -k https://localhost:8080/login | grep -o 'DEV database'        # → 1 match
+cd delivery/webapp && pnpm dev:https    # keep running
+curl -sS -k https://localhost:8080/login | grep -o 'DEV database'           # → 1 match
+curl -sS -k https://localhost:8080/login | grep -o 'data-db-target="dev"'   # → 1 match
 # stop that server, then:
-pnpm prod
-curl -sS -k https://localhost:8080/login | grep -o 'PRODUCTION data'     # → 1 match
+pnpm prod:https
+curl -sS -k https://localhost:8080/login | grep -o 'PRODUCTION data'        # → 1 match
 ```
+
+Plain-HTTP variant: `pnpm dev` / `pnpm prod` with `http://localhost:8080/login`. Because the badge is a server component, the label comes from the running server's `process.env` — no client-bundle inlining, so a warm `.next` cache cannot serve the previous label.
 
 (If curl can't reach the page, use the headless-Chrome recipe in the root `AGENTS.md` and inspect the `[data-db-target]` element instead.)
 
@@ -414,6 +480,8 @@ curl -sS -k https://localhost:8080/login | grep -o 'PRODUCTION data'     # → 1
 - **`dev` branch schema drift**: if `select count(*) from drizzle.__drizzle_migrations` on the dev DSN is below `ls delivery/webapp/drizzle/*.sql | wc -l`, apply migrations with `SOW_DATABASE_URL="<dev DSN>" npx tsx scripts/migrate.ts` from `delivery/webapp` before using `pnpm dev`.
 - **If a future `env-cmd` release stops letting the file win**: prepend `env -u SOW_DATABASE_URL` to all four scripts so the file-selected DSN can never be overridden by a stray export.
 - **`pnpm prod` writes to production data.** It is intentionally named `prod`; no confirmation prompt is added. `sow_admin` (production via `config.toml`) is left untouched.
-- **Off-Neon connections** (testcontainers, local postgres) return no `neon.branch_id`; the guard intentionally allows them so the admin CLI integration suites run without the override.
-- **Badge env var scope**: `NEXT_PUBLIC_DB_TARGET` is read per-process (and inlined at build time in client bundles); the deployed webapp sets no such var, so the badge is local-only. If a deployment ever sets it to something other than `production`, the badge would appear there — correctly, per the label.
-- **Badge test env mutation** requires `vi.resetModules()` + dynamic import (`dispatcher.test.ts` / `public-url.test.ts` idiom); do not invent a new mocking style.
+- **Off-Neon connections** (testcontainers, local postgres) return no `neon.branch_id`; the guard allows them *by host* (`127.0.0.1` and friends are not `*.neon.tech`) so the admin CLI integration suites run without the override. A Neon host with an unreadable branch id is refused, not allowed — that asymmetry is deliberate and is what closes the dev-branch deletion hole.
+- **The guard depends on Neon exposing `neon.branch_id`.** It does today on both endpoints (verified live, see Context). If a future endpoint or pooler configuration stops returning it, the guard fails closed on that branch: `--confirm` purges get refused until `PRODUCTION_BRANCH_ID` detection works again, or the operator sets `SOW_ALLOW_DESTRUCTIVE_ON_BRANCH=1` deliberately after checking `db status`'s `Neon branch` row.
+- **`typer.Exit` is caught by broad handlers.** It subclasses `RuntimeError`, so any `except Exception` between the guard and the CLI top level will swallow the refusal and re-raise it as a generic failure message. That is why the `init_db` guard sits outside its `try:`; the same review applies to any future guarded callsite.
+- **Badge env var scope**: the badge is a **server** component, so `NEXT_PUBLIC_DB_TARGET` is read from the server's `process.env` per request (no build-time inlining, nothing shipped to the client bundle, no `.next` staleness after switching files). The deployed webapp sets no such var, so the badge is local-only. If a deployment ever sets it to something other than `production`, the badge would appear there — correctly, per the label.
+- **Badge test env mutation** requires `vi.resetModules()` + dynamic import (`dispatcher.test.ts` / `public-url.test.ts` idiom); a server component is just a synchronous function returning JSX, so `@testing-library/react` renders it directly — do not add hooks or `"use client"` to make it "testable".
