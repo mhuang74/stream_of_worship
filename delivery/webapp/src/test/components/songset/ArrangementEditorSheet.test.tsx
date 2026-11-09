@@ -398,6 +398,25 @@ describe("ArrangementEditorSheet", () => {
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(21);
   });
 
+  it("forwards sibling analysis so the transport can validate saved siblings", () => {
+    const previous = makeItem({ id: "item-0", position: 0 });
+    const item = makeItem({ id: "item-1", position: 1 });
+    renderSheet({ item, items: [previous, item] });
+
+    // Without the sibling's sections/beats the transport cannot tell a stale
+    // saved arrangement from a valid one, so it must forward both.
+    expect(preview.options?.items[0]).toMatchObject({
+      itemId: "item-0",
+      recordingSections: SECTIONS,
+      recordingBeats: BEATS,
+    });
+    expect(preview.options?.items[1]).toMatchObject({
+      itemId: "item-1",
+      recordingSections: SECTIONS,
+      recordingBeats: BEATS,
+    });
+  });
+
   it("explains that the first song has no lead-in", () => {
     renderSheet();
 

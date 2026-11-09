@@ -67,6 +67,10 @@ export interface ArrangementItemInput {
 export interface TimelineItemSource extends ArrangementItemInput {
   itemId: string;
   recordingHashPrefix: string | null;
+  /** Current parsed analysis (recordings.sections); undefined = caller has none. */
+  recordingSections?: RecordingSection[] | null;
+  /** Current parsed beats (recordings.beats); empty = analysis unavailable. */
+  recordingBeats?: number[] | null;
 }
 
 // Canonical half-up rounding to six decimals, pinned in BOTH languages.
