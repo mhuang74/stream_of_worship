@@ -2,7 +2,7 @@
 
 /**
  * React binding for the whole-Songset arrangement preview transport
- * (issue #286, spec specs/song_arrangement_editor_v2.md §5.11).
+ * (issue #286, spec specs/song_arrangement_editor.md §5.11).
  *
  * The Sheet owns translations and builds the `TimelineItemSource[]` inputs
  * (draft serialized for the selected item, raw persisted arrangement strings
@@ -20,7 +20,10 @@
  *
  * State is keyed by the serialized timeline inputs; a teardown triggered by
  * an input change masks the previous session's view instead of writing state
- * from an effect (React: no cascading renders from effects).
+ * from an effect (React: no cascading renders from effects). Closing the
+ * sheet is the one exception: the transport state must actually become idle,
+ * because the next open reuses the same key and would otherwise render the
+ * torn-down session as still playing.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -231,7 +234,35 @@ export function useArrangementPreview(
     }));
 
     const run = (async () => {
-      await currentSession.play();
+      try {
+        await currentSession.play();
+      } catch (err) {
+        if (sessionRef.current !== currentSession) return;
+        // Contained rejection: a throwing play() must surface as a reported
+        // failure, never an unhandled rejection stuck on "loading".
+        const failure: ArrangementPreviewError = currentSession.getError() ?? {
+          kind: "playback-failed",
+          itemId: null,
+          message:
+            err instanceof Error ? err.message : "Preview playback failed",
+        };
+        if (reportedErrorRef.current !== failure) {
+          reportedErrorRef.current = failure;
+          onPreviewErrorRef.current(failure);
+        }
+        setState((previous) => {
+          const base = baseState(previous, itemsKey);
+          return {
+            key: itemsKey,
+            status: "error",
+            errorMessage: failure.message,
+            timelinePositionSeconds: currentSession.getTimelinePositionSeconds(),
+            isFallbackMode:
+              currentSession.isFallbackMode() || base.isFallbackMode,
+          };
+        });
+        return;
+      }
       if (sessionRef.current !== currentSession) return;
       const failure = currentSession.getError();
       setState((previous) => {
@@ -334,8 +365,17 @@ export function useArrangementPreview(
   }, [itemsKey, teardown]);
 
   useEffect(() => {
-    if (!active) teardown();
-  }, [active, teardown]);
+    if (active) return;
+    teardown();
+    // Closing the sheet must leave a replayable idle view; a stale "playing"
+    // status would make the reopened sheet claim audio it already tore down.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the reset is the point of reopening correctly; no render-derived alternative survives a prop flip back to active
+    setState((previous) =>
+      previous.key === itemsKey && previous.status !== "idle"
+        ? idleState(itemsKey)
+        : previous
+    );
+  }, [active, itemsKey, teardown]);
 
   useEffect(() => {
     return () => {
@@ -343,8 +383,8 @@ export function useArrangementPreview(
     };
   }, [teardown]);
 
-  // Stale-key / inactive state renders as a fresh idle view without an
-  // effect-driven state write.
+  // Stale-key / inactive state renders as a fresh idle view; the close effect
+  // additionally normalizes the stored state so a reopen starts idle.
   const isLive = active && state.key === itemsKey;
   return {
     status: isLive ? state.status : "idle",

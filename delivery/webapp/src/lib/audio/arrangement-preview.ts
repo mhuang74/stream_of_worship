@@ -1,6 +1,6 @@
 /**
  * Whole-Songset arrangement preview transport (issue #286, spec
- * specs/song_arrangement_editor_v2.md §5.11).
+ * specs/song_arrangement_editor.md §5.11).
  *
  * Architecture constraints (why NOT decodeAudioData):
  * - 25 minutes of stereo 44.1 kHz PCM ≈ 529 MB; streaming media elements are
@@ -286,7 +286,6 @@ export function createArrangementPreviewSession(
     if (graphWired || fallbackMode || stopped) return;
     graphWired = true;
     const context = audioContext as AudioContext;
-    let analyserAssigned = false;
     for (const record of records) {
       const successorCrossfade =
         records[record.itemIndex + 1]?.item.crossfadeSeconds ?? 0;
@@ -296,12 +295,10 @@ export function createArrangementPreviewSession(
       const sourceNode = context.createMediaElementSource(record.audio);
       const gain = context.createGain();
       sourceNode.connect(gain);
-      let analyser: AnalyserNode | null = null;
-      if (!analyserAssigned) {
-        analyserAssigned = true;
-        analyser = context.createAnalyser();
-        gain.connect(analyser); // RMS tap; analyser itself is not audible
-      }
+      // Every graph-routed element gets its own RMS tap: the silent-output
+      // sample must follow whichever item is actually sounding.
+      const analyser = context.createAnalyser();
+      gain.connect(analyser); // RMS tap; analyser itself is not audible
       gain.connect(context.destination);
       record.sourceNode = sourceNode;
       record.gain = gain;
@@ -463,7 +460,13 @@ export function createArrangementPreviewSession(
     const playPromises: Promise<void>[] = [];
     for (const record of records) {
       const item = record.item;
-      const itemEnd = item.startSeconds + item.durationSeconds;
+      // Direct (fallback) playback has no overlap: hand over to the successor
+      // at its crossfade start instead of letting both elements sound.
+      const successorCrossfade = fallbackMode
+        ? records[record.itemIndex + 1]?.item.crossfadeSeconds ?? 0
+        : 0;
+      const itemEnd =
+        item.startSeconds + item.durationSeconds - successorCrossfade;
       const active = position >= item.startSeconds && position < itemEnd;
       const clip = active ? clipAt(item, position) : null;
       if (!active || !clip) {
@@ -480,6 +483,9 @@ export function createArrangementPreviewSession(
         record.currentClip = clip;
         if (audible) {
           playPromises.push(safePlay(record));
+          // A graph-routed element that just started is the right RMS sample
+          // source; an earlier inconclusive read retries here.
+          if (record.analyser !== null) armRmsCheck();
         }
       } else if (force || record.currentClip !== clip) {
         record.audio.currentTime = offset;
@@ -559,6 +565,9 @@ export function createArrangementPreviewSession(
 
   function failPlayback(itemId: string): void {
     if (stopped) return;
+    // Capture the live position BEFORE clearing `playing`, so a retry resumes
+    // from where playback actually failed instead of the last pause/seek.
+    pausedPositionSeconds = getTimelinePositionSeconds();
     error = {
       kind: "playback-failed",
       itemId,
@@ -600,17 +609,26 @@ export function createArrangementPreviewSession(
 
   function armRmsCheck(): void {
     if (rmsChecked || fallbackMode || stopped) return;
-    const first = records.find((record) => record.analyser !== null);
-    if (!first) return; // no graph-routed items → no fallback path exists
+    if (!records.some((record) => record.analyser !== null)) return; // no graph path
     cancelRmsCheck();
     rmsTimer = setTimeout(() => {
       rmsTimer = null;
-      if (stopped || !playing || fallbackMode) return;
-      // Inconclusive while the sampled element is not actually sounding;
-      // the next play() re-arms the check.
-      if (first.audio.paused) return;
+      if (stopped || fallbackMode) return;
+      // The startup hold has already started elements even though the clock
+      // has not been anchored yet.
+      if (!playing && !startupPending) return;
+      // Sample an element that is actually sounding AND has media data: a
+      // buffering element reads as silence, so an inconclusive pass stays
+      // unchecked and the next element start retries.
+      const sampled = records.find(
+        (record) =>
+          record.analyser !== null &&
+          !record.audio.paused &&
+          record.audio.readyState >= 2
+      );
+      if (!sampled) return;
       rmsChecked = true;
-      const analyser = first.analyser as AnalyserNode;
+      const analyser = sampled.analyser as AnalyserNode;
       const data = new Float32Array(analyser.fftSize);
       analyser.getFloatTimeDomainData(data);
       let sum = 0;

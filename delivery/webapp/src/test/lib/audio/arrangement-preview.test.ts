@@ -57,6 +57,7 @@ interface FakeAudio {
   loadCalls: () => number;
   pauseCalls: () => number;
   setPlayMode: (mode: "resolve" | "reject" | "defer" | "throw") => void;
+  setReadyState: (value: number) => void;
   resolvePlays: () => void;
   dispatch: (type: string) => void;
 }
@@ -66,6 +67,7 @@ function makeFakeAudio(src: string): FakeAudio {
   let paused = true;
   let muted = false;
   let preload = "";
+  let readyState = 4;
   let pauseCount = 0;
   let loadCount = 0;
   let playMode: "resolve" | "reject" | "defer" | "throw" = "resolve";
@@ -150,6 +152,10 @@ function makeFakeAudio(src: string): FakeAudio {
     },
     configurable: true,
   });
+  Object.defineProperty(element, "readyState", {
+    get: () => readyState,
+    configurable: true,
+  });
 
   return {
     element: element as unknown as HTMLAudioElement,
@@ -161,6 +167,9 @@ function makeFakeAudio(src: string): FakeAudio {
     pauseCalls: () => pauseCount,
     setPlayMode: (mode) => {
       playMode = mode;
+    },
+    setReadyState: (value) => {
+      readyState = value;
     },
     resolvePlays: () => {
       for (const resolve of pendingPlays.splice(0)) resolve();
@@ -423,8 +432,9 @@ describe("createArrangementPreviewSession", () => {
     expect(session.totalSeconds).toBeCloseTo(17, 6);
     expect(sources).toHaveLength(2);
     expect(gains).toHaveLength(2);
-    // Only the first graph-routed item carries the RMS analyser tap.
-    expect(analysers).toHaveLength(1);
+    // Each graph-routed item carries its own RMS tap so the sample follows the
+    // item that is actually sounding.
+    expect(analysers).toHaveLength(2);
 
     const [gainA, gainB] = gains;
     // Outgoing fade on the predecessor is owned by the successor's 3s fade:
@@ -811,6 +821,9 @@ describe("createArrangementPreviewSession", () => {
     context.currentTime = 8;
     vi.advanceTimersByTime(25);
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(8, 6);
+    // Direct playback has no overlap: the predecessor hands over at the
+    // successor's crossfade start (10 − 3 = 7) instead of sounding on.
+    expect(created[2].element.paused).toBe(true);
     expect(created[3].element.paused).toBe(false);
     // Fallback is one-way: no further element churn.
     vi.advanceTimersByTime(2000);
@@ -862,6 +875,61 @@ describe("createArrangementPreviewSession", () => {
     vi.advanceTimersByTime(1000);
     expect(session.isFallbackMode()).toBe(true);
     expect(created.length).toBeGreaterThan(2);
+  });
+
+  it("does not fall back while the sampled element is still buffering", async () => {
+    const { session, created, context, sources } = makeSession(
+      [
+        source({ itemId: "a", recordingDurationSeconds: 10 }),
+        source({
+          itemId: "b",
+          recordingDurationSeconds: 10,
+          crossfadeEnabled: 1,
+          crossfadeDurationSeconds: 3,
+        }),
+      ],
+      {},
+      0, // silent analyser
+    );
+    await session.play();
+    // Metadata only: a buffering element reads as silence, so the sample is
+    // inconclusive rather than evidence of a broken graph.
+    for (const audio of created) audio.setReadyState(1);
+    vi.advanceTimersByTime(1000);
+
+    expect(session.isFallbackMode()).toBe(false);
+    expect(sources).toHaveLength(2);
+    expect(session.isPlaying()).toBe(true);
+
+    // Once media data arrives, the next element start retries the check and
+    // the genuine silence is detected.
+    for (const audio of created) audio.setReadyState(2);
+    context.currentTime = 7;
+    vi.advanceTimersByTime(25);
+    vi.advanceTimersByTime(1000);
+    expect(session.isFallbackMode()).toBe(true);
+  });
+
+  it("resumes from the failure position after a mid-timeline media error", async () => {
+    const { session, created, context } = makeSession([
+      source({ itemId: "a", recordingDurationSeconds: 100 }),
+    ]);
+    await session.play();
+    context.currentTime = 30;
+    vi.advanceTimersByTime(25);
+
+    created[0].dispatch("error");
+    expect(session.getError()).toMatchObject({
+      kind: "playback-failed",
+      itemId: "a",
+    });
+    expect(session.isPlaying()).toBe(false);
+    // The reported failure position is the retry point, not the last seek.
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(30, 6);
+
+    await session.play();
+    expect(last(created[0].currentTimeSets)).toBeCloseTo(30, 6);
+    expect(created[0].playCalls.at(-1)?.currentTime).toBeCloseTo(30, 6);
   });
 
   it("seek within the same clip forces a reposition", async () => {

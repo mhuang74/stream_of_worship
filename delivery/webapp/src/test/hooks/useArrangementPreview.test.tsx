@@ -333,10 +333,35 @@ describe("useArrangementPreview", () => {
       onPreviewError: vi.fn(),
       onFallbackNotice: vi.fn(),
     });
+    // Reopening an unchanged sheet starts from a clean idle view rather than
+    // the stale "playing" status of the torn-down session.
+    expect(result.current.status).toBe("idle");
+    expect(result.current.timelinePositionSeconds).toBe(0);
     await act(async () => {
       await result.current.play();
     });
     expect(mocks.createSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("contains a rejecting session play as a reported error", async () => {
+    const failing = makeFakeSession();
+    const failure = new Error("Decoder exploded");
+    vi.mocked(failing.session.play).mockRejectedValueOnce(failure);
+    mocks.createSession.mockImplementation(() => failing.session);
+    const { result, onPreviewError } = renderPreview();
+
+    // A throwing play() must not escape as an unhandled rejection or leave the
+    // sheet stuck on "loading".
+    await expect(runPlay(result)).resolves.toBeUndefined();
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.errorMessage).toBe("Decoder exploded");
+    expect(onPreviewError).toHaveBeenCalledTimes(1);
+    expect(onPreviewError).toHaveBeenCalledWith({
+      kind: "playback-failed",
+      itemId: null,
+      message: "Decoder exploded",
+    });
   });
 
   it("tears down on unmount", async () => {
