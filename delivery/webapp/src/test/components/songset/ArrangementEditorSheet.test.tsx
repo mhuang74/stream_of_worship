@@ -137,10 +137,21 @@ describe("ArrangementEditorSheet", () => {
     return { props, ...render(<ArrangementEditorSheet {...props} />) };
   }
 
-  it("initializes the draft with every source section in source order", () => {
+  async function openAddDialog() {
+    fireEvent.click(screen.getByTestId("arrangement-add-section"));
+    return screen.findByTestId("arrangement-add-dialog");
+  }
+
+  async function addSectionFromDialog(index: number) {
+    await openAddDialog();
+    fireEvent.click(screen.getByTestId(`arrangement-add-${index}`));
+  }
+
+  it("initializes the draft with every source section in source order", async () => {
     renderSheet();
 
     expect(draftSectionIndices()).toEqual(["0", "1", "2"]);
+    await openAddDialog();
     expect(screen.getByTestId("arrangement-add-0")).toHaveTextContent("Verse 1");
     expect(screen.getByTestId("arrangement-add-1")).toHaveTextContent("Chorus");
     expect(screen.getByTestId("arrangement-add-2")).toHaveTextContent("Verse 2");
@@ -245,7 +256,7 @@ describe("ArrangementEditorSheet", () => {
     expect(preview.controller.startAtSeconds).not.toHaveBeenCalled();
   });
 
-  it("removes a step, stops the preview, and keeps the palette occurrence", () => {
+  it("removes a step, stops the preview, and keeps the section available in the add dialog", async () => {
     renderSheet();
 
     const rows = screen.getAllByTestId("arrangement-draft-step");
@@ -253,6 +264,8 @@ describe("ArrangementEditorSheet", () => {
 
     expect(draftSectionIndices()).toEqual(["0", "2"]);
     expect(preview.controller.stop).toHaveBeenCalled();
+    expect(screen.getByTestId("arrangement-add-section")).not.toBeDisabled();
+    await openAddDialog();
     expect(screen.getByTestId("arrangement-add-1")).not.toBeDisabled();
   });
 
@@ -265,12 +278,64 @@ describe("ArrangementEditorSheet", () => {
     expect(draftSectionIndices()).toEqual(["0", "1", "1", "2"]);
   });
 
-  it("appends a palette section to the end of the draft", () => {
+  it("appends a section chosen in the add dialog to the end of the draft", async () => {
     renderSheet();
 
-    fireEvent.click(screen.getByTestId("arrangement-add-1"));
+    await addSectionFromDialog(1);
 
     expect(draftSectionIndices()).toEqual(["0", "1", "2", "1"]);
+    await waitFor(() =>
+      expect(screen.queryByTestId("arrangement-add-dialog")).toBeNull()
+    );
+  });
+
+  it("opens one picker listing every source section with duration and occurrence count", async () => {
+    renderSheet();
+    await openAddDialog();
+
+    const rows = [0, 1, 2].map((index) =>
+      screen.getByTestId(`arrangement-add-${index}`)
+    );
+    expect(rows[0]).toHaveTextContent("Verse 1");
+    expect(rows[1]).toHaveTextContent("Chorus");
+    expect(rows[1]).toHaveTextContent("0:10");
+    expect(rows[2]).toHaveTextContent("Verse 2");
+    // The sheet opens with every section already in the draft, so each
+    // occurrence count starts at one.
+    expect(rows[1]).toHaveTextContent("in arrangement ×1");
+
+    fireEvent.click(rows[1]);
+    await waitFor(() =>
+      expect(screen.queryByTestId("arrangement-add-dialog")).toBeNull()
+    );
+
+    await openAddDialog();
+    expect(screen.getByTestId("arrangement-add-1")).toHaveTextContent(
+      "in arrangement ×2"
+    );
+  });
+
+  it("disables the picker row for a section that snapping skips", async () => {
+    const item = makeItem({
+      recording: {
+        contentHash: "abc123",
+        hashPrefix: "ab",
+        durationSeconds: 30,
+        tempoBpm: 120,
+        musicalKey: "G",
+        sections: [
+          { label: "Verse", start: 0, end: 10 },
+          { label: "Tail", start: 25, end: 40 },
+        ],
+        beats: [0, 10, 20],
+      },
+      arrangementSteps: null,
+    });
+    renderSheet({ item, items: [item] });
+    await openAddDialog();
+
+    expect(screen.getByTestId("arrangement-add-0")).not.toBeDisabled();
+    expect(screen.getByTestId("arrangement-add-1")).toBeDisabled();
   });
 
   it("undoes the last change and clears the dirty flag back at the start", () => {
@@ -291,10 +356,10 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-status")).toHaveTextContent(/^Saved$/);
   });
 
-  it("undoes with the keyboard shortcut", () => {
+  it("undoes with the keyboard shortcut", async () => {
     renderSheet();
 
-    fireEvent.click(screen.getByTestId("arrangement-add-1"));
+    await addSectionFromDialog(1);
     expect(draftSectionIndices()).toEqual(["0", "1", "2", "1"]);
 
     fireEvent.keyDown(window, { key: "z", ctrlKey: true });
@@ -386,7 +451,7 @@ describe("ArrangementEditorSheet", () => {
     const onOpenChange = vi.fn();
     renderSheet({ onOpenChange });
 
-    fireEvent.click(screen.getByTestId("arrangement-add-1"));
+    await addSectionFromDialog(1);
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
     await waitFor(() =>
@@ -437,7 +502,8 @@ describe("ArrangementEditorSheet", () => {
     renderSheet({ item, items: [item] });
 
     expect(screen.queryAllByTestId("arrangement-draft-step")).toHaveLength(0);
-    expect(screen.getByText(/no sections to arrange/i)).toBeInTheDocument();
+    expect(screen.getByTestId("arrangement-add-section")).toBeDisabled();
+    expect(screen.queryByTestId("arrangement-add-dialog")).toBeNull();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
     expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
   });
@@ -520,7 +586,13 @@ describe("ArrangementEditorSheet", () => {
     renderSheet({ item, items: [item] });
 
     expect(screen.getAllByTestId("arrangement-draft-step")).toHaveLength(64);
-    fireEvent.click(screen.getByTestId("arrangement-add-0"));
+    expect(screen.getByTestId("arrangement-add-section")).toBeDisabled();
+    fireEvent.click(
+      within(screen.getAllByTestId("arrangement-draft-step")[0]).getByRole(
+        "button",
+        { name: /duplicate step/i }
+      )
+    );
 
     expect(screen.getByTestId("arrangement-too-many-error")).toBeInTheDocument();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
@@ -560,7 +632,12 @@ describe("ArrangementEditorSheet", () => {
     const onOpenChange = vi.fn();
     renderSheet({ onSave, onOpenChange });
 
-    fireEvent.click(screen.getByTestId("arrangement-add-1"));
+    fireEvent.click(
+      within(screen.getAllByTestId("arrangement-draft-step")[1]).getByRole(
+        "button",
+        { name: /remove step/i }
+      )
+    );
     const draftBeforeSave = draftSectionIndices();
     fireEvent.click(screen.getByTestId("arrangement-save"));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -568,6 +645,7 @@ describe("ArrangementEditorSheet", () => {
     // Draft mutation, preview, and close requests are all inert mid-save.
     expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
     expect(screen.getByTestId("arrangement-undo")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-add-section")).toBeDisabled();
     for (const button of screen.getAllByRole("button", { name: /play section/i })) {
       expect(button).toBeDisabled();
     }
