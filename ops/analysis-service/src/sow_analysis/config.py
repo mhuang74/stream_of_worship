@@ -350,7 +350,7 @@ class Settings(BaseSettings):
     SOW_MODAL_DOWNBEATS_CLASS_NAME: str = "DownbeatDetector"
     SOW_MODAL_DOWNBEATS_MAX_ATTEMPTS: int = 2
     SOW_MODAL_DOWNBEATS_RETRY_DELAY_SECONDS: float = 5.0
-    SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES: int = 200_000_000
+    SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES: int = 150_000_000
     SOW_ANALYSIS_CACHE_VERSION: int = 2  # bump: local allin1 CPU -> Modal GPU may shift BPM/beats/embedding values
     # Keeps ANALYZE jobs from all piling up client-side while Modal
     # max_containers=2 handles the GPU-side queue.
