@@ -11,11 +11,11 @@ into one timestamped line.
 """
 
 from stream_of_worship.admin.commands.audio import _finalize_arrangement_structure
+from stream_of_worship.admin.services.arrangement_structure import normalize_beats
 from stream_of_worship.admin.services.lyrics_sections import (
     DerivedSection,
     derive_sections_from_lyrics,
 )
-from stream_of_worship.admin.commands.audio import _normalize_beats_for_snap
 
 
 def _beats(max_seconds, step=0.5):
@@ -33,20 +33,20 @@ def _structured(*sections):
     }
 
 
-class TestNormalizeBeatsForSnap:
+class TestNormalizeBeats:
     def test_accepts_flat_timestamps(self):
-        assert _normalize_beats_for_snap([0.5, 1.0, 1.5], 10.0) == [0.5, 1.0, 1.5]
+        assert normalize_beats([0.5, 1.0, 1.5], 10.0) == [0.5, 1.0, 1.5]
 
     def test_accepts_madmom_pairs(self):
         # sow-downbeats stores madmom's raw grid.tolist(): [time, beat_position].
         pairs = [[0.76, 1.0], [1.16, 2.0], [1.52, 3.0]]
-        assert _normalize_beats_for_snap(pairs, 10.0) == [0.76, 1.16, 1.52]
+        assert normalize_beats(pairs, 10.0) == [0.76, 1.16, 1.52]
 
     def test_drops_out_of_duration_and_sorts_and_dedupes(self):
-        assert _normalize_beats_for_snap([5.0, -1.0, 2.0, 2.0, 99.0], 10.0) == [2.0, 5.0]
+        assert normalize_beats([5.0, -1.0, 2.0, 2.0, 99.0], 10.0) == [2.0, 5.0]
 
     def test_rejects_non_positive_duration(self):
-        assert _normalize_beats_for_snap([1.0], 0) == []
+        assert normalize_beats([1.0], 0) == []
 
 
 class TestDeriveSectionsFromLyrics:

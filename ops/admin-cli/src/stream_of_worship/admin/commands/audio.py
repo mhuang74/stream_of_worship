@@ -8,7 +8,6 @@ and batch orchestration plus LRC job submission via services.lrc_jobs.
 
 import json
 import logging
-import math
 import os
 import select
 import sys
@@ -53,6 +52,14 @@ from stream_of_worship.admin.services.analysis import (
     AnalysisServiceError,
     JobInfo,
     _cached_components_have_llm_fields,
+)
+from stream_of_worship.admin.services.arrangement_structure import (
+    MAX_ARRANGEMENT_STEPS,
+    StructureEvaluation,
+    evaluate_recording_structure,
+    normalize_beats,
+    round_seconds,
+    snap_to_beat,
 )
 from stream_of_worship.admin.services.ffprobe import is_ffprobe_available, probe_duration
 from stream_of_worship.admin.services.hasher import compute_file_hash, get_hash_prefix
@@ -110,7 +117,8 @@ KEY_REVIEW_CAVEAT = (
 
 COMPONENTS_FORMAT_VALUES = {"table", "json"}
 COMPONENTS_FILTER_VALUES = {"missing", "unclassified", "complete"}
-STRUCTURE_FILTER_VALUES = {"missing", "present"}
+STRUCTURE_FILTER_VALUES = {"missing", "present", "unusable"}
+AUDIT_FORMAT_VALUES = {"table", "json", "ids"}
 SEGMENTATION_MODE_VALUES = {"llm", "repetition", "allin1", "structured_lyrics"}
 
 
@@ -464,6 +472,25 @@ def _list_column_caps(
         return 12, 11, updated_cap, None
     # Below 100 nothing fits without clipping headers; degrade gracefully.
     return 12, 11, 9, None
+
+
+def _unusable_rows(
+    enriched: Sequence[tuple[Recording, Optional[str], Optional[str], Optional[str]]],
+    limit: Optional[int],
+) -> list[tuple[Recording, Optional[str], Optional[str], Optional[str]]]:
+    """Keep only rows whose Arrange gate fails, then apply ``limit``.
+
+    ``audio list --structure present`` is a SQL presence test (both columns
+    non-empty), which over-reports: a Recording can store ``sections`` +
+    ``beats`` and still fail ``buildSnappedSteps`` (one collapsed section
+    disables Arrange for the whole Recording). This is the snap-aware
+    complement, so ``--limit`` must slice AFTER evaluation -- a SQL ``LIMIT``
+    would drop rows that look present but are unusable.
+    """
+    kept = [
+        row for row in enriched if evaluate_recording_structure(row[0]).verdict != "arrangeable"
+    ]
+    return kept[:limit] if limit else kept
 
 
 def _display_truncate(value: str, cap: int) -> str:
@@ -1689,8 +1716,9 @@ def list_recordings(
         None,
         "--structure",
         help=(
-            "Filter by arrangement structure: missing (sections or beats absent/empty, "
-            "so the webapp Arrange button is disabled) or present"
+            "Filter by arrangement structure: missing (sections or beats absent/empty), "
+            "present (both non-empty, may still fail the webapp gate), or unusable "
+            "(both non-empty but the webapp Arrange gate fails)"
         ),
     ),
     format: str = typer.Option("table", "--format", "-f", help="Output format (table|ids)"),
@@ -1706,8 +1734,13 @@ def list_recordings(
     Use ``--components`` to filter by component-analysis state
     (missing|unclassified|complete); combine with ``--format ids`` to feed
     ``sow-admin audio components --stdin``.
-    Use ``--structure`` to filter by arrangement structure (missing|present):
-    ``missing`` is exactly the set the webapp Arrange button cannot open. The
+    Use ``--structure`` to filter by arrangement structure
+    (missing|present|unusable). ``missing`` = ``sections`` or ``beats``
+    absent/empty; ``present`` = both non-empty (a SQL presence test, so it may
+    still fail the webapp gate); ``unusable`` = both non-empty but
+    ``buildSnappedSteps`` fails, so the Arrange button cannot open.
+    ``missing`` + ``unusable`` is exactly the set of unarrangeable recordings.
+    For ``unusable``, ``--limit`` applies after the gate is evaluated. The
     beat-grid backfill recipe is in ops/admin-cli/README.md.
     """
     try:
@@ -1791,6 +1824,11 @@ def list_recordings(
     db_client = get_db_client(config)
     # Use the efficient method with JOIN to avoid N+1 queries
     # Album filtering and sorting are now handled at the database layer
+    #
+    # structure="unusable" has no SQL predicate: it is the snap-aware
+    # complement of the presence test, so the SQL prefilter narrows to
+    # "present" and the Arrange gate is evaluated in Python afterwards
+    # (limit applied after that filter, see _unusable_rows).
     enriched = db_client.list_recordings_with_songs(
         status=status,
         visibility=visibility,
@@ -1799,10 +1837,12 @@ def list_recordings(
         theme=theme,
         lrc_source=lrc_source,
         components=components,
-        structure=structure,
+        structure="present" if structure == "unusable" else structure,
         sort_by=sort,
-        limit=limit,
+        limit=None if structure == "unusable" else limit,
     )
+    if structure == "unusable":
+        enriched = _unusable_rows(enriched, limit)
 
     if not enriched:
         console.print("[yellow]No recordings found.[/yellow]")
@@ -1944,6 +1984,228 @@ def list_recordings(
                 f"| sow-admin audio components --stdin[/dim]"
             )
         console.print("[dim]● published   ◐ review   ○ hold   · none[/dim]")
+
+
+def _audit_layout(width: int) -> tuple[bool, int]:
+    """Pick the ``structure-audit`` table shape for a console of ``width`` cells.
+
+    Returns ``(show_album_title, song_id_cap)``. The table has seven columns
+    and Detail carries the actionable text, so the fixed-width ones are sized
+    to leave it room; below 130 cells the Album/Title pair is dropped rather
+    than squeezing Detail (measured: the generic ``_list_column_caps`` ladder
+    gives Detail zero width at 80-120 cells, hiding the only column that says
+    what to fix). Measured Detail width: 21 at 80, 53 at 120, 25 at 130, 35 at
+    160.
+    """
+    if width >= 150:
+        return True, 36
+    if width >= 130:
+        return True, 20
+    if width >= 100:
+        return False, 20
+    return False, 12
+
+
+@app.command("structure-audit")
+def structure_audit(
+    status: Optional[str] = typer.Option(
+        None, "--status", help="Filter by analysis status (as audio list)"
+    ),
+    visibility: Optional[str] = typer.Option(
+        None, "--visibility", "-v", help="Filter by visibility status (as audio list)"
+    ),
+    album: Optional[str] = typer.Option(
+        None, "--album", "-a", help="Filter by album name (as audio list)"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-l", help="Maximum non-arrangeable rows to print (after evaluation)"
+    ),
+    format_: str = typer.Option("table", "--format", "-f", help="Output format (table|json|ids)"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
+) -> None:
+    """Audit which recordings can open the webapp Arrange editor (read-only).
+
+    The webapp gate needs a duration, parsed ``sections``, parsed ``beats``,
+    and a successful ``buildSnappedSteps`` -- which bails out for the WHOLE
+    recording if any single section collapses to zero length when snapped to
+    the nearest beat. ``audio list --structure missing`` only tests presence,
+    so it cannot see that case; this command evaluates the real rule and
+    reports a verdict per recording.
+
+    Only non-arrangeable recordings are emitted (the arrangeable count appears
+    in the summary), so ``--format ids`` is a ready pipeline input for the
+    repair path. ``--limit`` slices that set after evaluation.
+
+    Repair, in order, for anything that is not ``arrangeable``:
+    ``sow-admin audio structure-audit --format ids | sow-admin audio
+    beat-grid --stdin`` (materialise the madmom beat grids) then the same ids
+    piped into ``sow-admin audio write-structure --stdin`` (local, free
+    rewrite of sections+beats). Published recordings are refused by both;
+    demote first with ``sow-admin audio set-visibility <song_id> --status
+    review``.
+    """
+    try:
+        config = AdminConfig.load(config_path)
+    except FileNotFoundError:
+        console.print("[red]Config file not found. Run 'sow-admin db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if format_ not in AUDIT_FORMAT_VALUES:
+        console.print(
+            f"[red]Invalid format: {format_}. "
+            f"Must be one of: {', '.join(sorted(AUDIT_FORMAT_VALUES))}[/red]"
+        )
+        raise typer.Exit(1)
+
+    if visibility:
+        valid_visibilities = {"published", "review", "hold", "none"}
+        if visibility not in valid_visibilities:
+            console.print(
+                f"[red]Invalid visibility: {visibility}. "
+                f"Must be one of: {', '.join(valid_visibilities)}[/red]"
+            )
+            raise typer.Exit(1)
+
+    db_client = get_db_client(config)
+    # limit=None: the audit must see every row so the summary counts are the
+    # real split; --limit only trims the rows it prints (applied below).
+    enriched = db_client.list_recordings_with_songs(
+        status=status,
+        visibility=visibility,
+        album=album,
+        sort_by="album",
+        limit=None,
+    )
+    # SQL ORDER BY is lexicographic; mirror `audio list --sort album`.
+    enriched.sort(key=lambda t: (t[2] or "", t[1] or ""))
+
+    verdict_counts: dict[str, int] = {}
+    non_arrangeable: list[
+        tuple[Recording, Optional[str], Optional[str], StructureEvaluation]
+    ] = []
+    arrangeable = 0
+    for rec, song_title, album_name, _series in enriched:
+        evaluation = evaluate_recording_structure(rec)
+        if evaluation.verdict == "arrangeable":
+            arrangeable += 1
+            continue
+        verdict_counts[evaluation.verdict] = verdict_counts.get(evaluation.verdict, 0) + 1
+        non_arrangeable.append((rec, song_title, album_name, evaluation))
+
+    total = len(enriched)
+    published = sum(1 for rec, _t, _a, _e in non_arrangeable if is_published(rec))
+    shown = non_arrangeable[:limit] if limit else non_arrangeable
+
+    def _summary(target: Console) -> None:
+        target.print(
+            f"[bold]Summary:[/bold] {arrangeable} arrangeable, "
+            f"{len(non_arrangeable)} non-arrangeable ({total} recordings)"
+        )
+        if verdict_counts:
+            target.print(
+                "[dim]"
+                + ", ".join(
+                    f"{verdict}={verdict_counts[verdict]}" for verdict in sorted(verdict_counts)
+                )
+                + "[/dim]"
+            )
+        if limit and len(shown) < len(non_arrangeable):
+            target.print(f"[dim]Showing first {len(shown)} of {len(non_arrangeable)}.[/dim]")
+        target.print(
+            f"[dim]Among non-arrangeable: {published} published — repair commands refuse "
+            f"published recordings; demote with: sow-admin audio set-visibility <song_id> "
+            f"--status review[/dim]"
+        )
+        target.print(
+            "[dim]Repair: sow-admin audio structure-audit --format ids "
+            "| sow-admin audio beat-grid --stdin  then  "
+            "sow-admin audio structure-audit --format ids "
+            "| sow-admin audio write-structure --stdin[/dim]"
+        )
+
+    if format_ == "ids":
+        for rec, _title, _album, _evaluation in shown:
+            console.print(rec.song_id if rec.song_id else rec.hash_prefix)
+        # stdout carries ids only; the counts are diagnostics.
+        _summary(progress_console)
+        return
+
+    if format_ == "json":
+        payload = [
+            {
+                "song_id": rec.song_id,
+                "hash_prefix": rec.hash_prefix,
+                "title": song_title,
+                "album": album_name,
+                "visibility": rec.visibility_status,
+                "published": is_published(rec),
+                "verdict": evaluation.verdict,
+                "detail": evaluation.detail,
+                "steps": len(evaluation.steps),
+                "section": (
+                    {
+                        "label": evaluation.section.label,
+                        "start": evaluation.section.start,
+                        "end": evaluation.section.end,
+                    }
+                    if evaluation.section is not None
+                    else None
+                ),
+            }
+            for rec, song_title, album_name, evaluation in shown
+        ]
+        # Plain print, not Rich: Rich wraps to the console width, which would
+        # corrupt the JSON for long titles/details.
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        _summary(progress_console)
+        return
+
+    if not shown:
+        console.print("[green]Every recording in scope is arrangeable.[/green]")
+        _summary(console)
+        return
+
+    # Seven columns do not fit a narrow terminal, and reaching for
+    # _list_column_caps here would starve Detail to zero width at <=120 cells
+    # (measured). Detail is the actionable column, so Album/Title -- the least
+    # actionable pair -- appear only when there is room for them.
+    show_identity, song_id_cap = _audit_layout(console.width)
+    table = Table(title=f"Non-arrangeable recordings ({len(shown)})")
+    if show_identity:
+        text_cap = 18 if console.width >= 150 else 16
+        table.add_column(
+            "Album", style="yellow", no_wrap=True, max_width=text_cap, overflow="ellipsis"
+        )
+        table.add_column(
+            "Title", style="green", no_wrap=True, max_width=text_cap, overflow="ellipsis"
+        )
+    table.add_column("Vis", justify="center", no_wrap=True)
+    table.add_column("Verdict", style="red", no_wrap=True)
+    # Detail is the actionable part: fold it rather than ellipsize it away.
+    table.add_column("Detail", overflow="fold")
+    table.add_column(
+        "Song ID", style="dim", no_wrap=True, max_width=song_id_cap, overflow="ellipsis"
+    )
+    table.add_column("Hash Prefix", style="dim", no_wrap=True, max_width=12)
+    for rec, song_title, album_name, evaluation in shown:
+        row_vals = []
+        if show_identity:
+            row_vals.extend([album_name or "-", song_title or "-"])
+        row_vals.extend(
+            [
+                format_visibility(rec.visibility_status),
+                evaluation.verdict,
+                evaluation.detail,
+                rec.song_id or "-",
+                rec.hash_prefix,
+            ]
+        )
+        table.add_row(*row_vals)
+    console.print(table)
+    if not show_identity:
+        console.print("[dim]Widen the terminal for Album/Title columns.[/dim]")
+    console.print("[dim]● published   ◐ review   ○ hold   · none[/dim]")
+    _summary(console)
 
 
 @app.command("show")
@@ -2700,75 +2962,6 @@ def _persist_recording_theme(
         logger.warning(f"Failed to persist recording theme for {recording.hash_prefix}: {e}")
 
 
-_MAX_ARRANGEMENT_STEPS = 64
-
-
-def _coerce_beat_time(beat: Any) -> Optional[float]:
-    """Extract a beat timestamp from either supported payload shape.
-
-    The beat-grid artifact stores madmom's raw ``grid.tolist()``, i.e. a list of
-    ``[time, beat_position]`` pairs, while ``recordings.beats`` stores flat
-    timestamps. Accept both so the same grid can be snapped and persisted.
-    """
-    if isinstance(beat, bool):
-        return None
-    if isinstance(beat, (int, float)):
-        return float(beat)
-    if isinstance(beat, (list, tuple)) and beat:
-        head = beat[0]
-        if isinstance(head, (int, float)) and not isinstance(head, bool):
-            return float(head)
-    return None
-
-
-def _normalize_beats_for_snap(beats: list, duration_seconds: float) -> list[float]:
-    """Finite in-duration beats, sorted ascending with duplicates removed.
-
-    Mirrors ``normalizeBeats`` in ``delivery/webapp/src/lib/arrangements.ts``
-    and ``_normalize_beats`` in the render worker so the persisted grid snaps
-    identically wherever it is consumed. Accepts both the madmom pair shape and
-    flat timestamps (see ``_coerce_beat_time``).
-    """
-    if not duration_seconds or duration_seconds <= 0:
-        return []
-    filtered: list[float] = []
-    for beat in beats:
-        time_value = _coerce_beat_time(beat)
-        if time_value is None:
-            continue
-        if 0 <= time_value <= duration_seconds:
-            filtered.append(time_value)
-    return sorted(set(filtered))
-
-
-def _round_seconds(value: float) -> float:
-    """Canonical rounding shared with the webapp's ``roundSeconds``.
-
-    ``Math.round`` is half-up for non-negative values, whereas Python's
-    ``round`` is half-to-even, so implement half-up explicitly: the persisted
-    bounds are compared against the webapp's own snapped values within
-    ``VALIDATION_TOLERANCE_SECONDS`` (1e-6), and a half-even tie would drift.
-    Beat times are non-negative, which is why the floor form is sufficient.
-    """
-    return math.floor(value * 1e6 + 0.5) / 1e6
-
-
-def _snap_to_beat(value: float, beats: list[float]) -> float:
-    """Nearest beat; ties resolve to the earlier (lower) beat.
-
-    Mirrors ``snapToBeat`` in the webapp and render worker: a candidate
-    replaces the incumbent only on a strict ``<`` distance.
-    """
-    best = beats[0]
-    best_distance = abs(value - best)
-    for beat in beats[1:]:
-        distance = abs(value - beat)
-        if distance < best_distance:
-            best = beat
-            best_distance = distance
-    return best
-
-
 def _finalize_arrangement_structure(
     derived_sections: Sequence[DerivedSection],
     beats: list,
@@ -2787,7 +2980,7 @@ def _finalize_arrangement_structure(
     Args:
         derived_sections: Sections recovered from the lyric timeline.
         beats: Raw beat timestamps (seconds), or madmom ``[time, position]``
-            pairs; both shapes are accepted by ``_normalize_beats_for_snap``.
+            pairs; both shapes are accepted by ``normalize_beats``.
         duration_seconds: Recording duration used for clamping and filtering.
 
     Returns:
@@ -2798,7 +2991,7 @@ def _finalize_arrangement_structure(
     if not duration_seconds or duration_seconds <= 0:
         return [], []
 
-    normalized_beats = _normalize_beats_for_snap(beats, duration_seconds)
+    normalized_beats = normalize_beats(beats, duration_seconds)
     if not normalized_beats:
         return [], []
 
@@ -2809,10 +3002,10 @@ def _finalize_arrangement_structure(
         label = (section.label or "").strip()
         if not 1 <= len(label) <= 100:
             continue
-        snapped_start = min(max(_snap_to_beat(section.start, normalized_beats), 0.0), duration_seconds)
-        snapped_end = min(max(_snap_to_beat(section.end, normalized_beats), 0.0), duration_seconds)
-        snapped_start = _round_seconds(snapped_start)
-        snapped_end = _round_seconds(snapped_end)
+        snapped_start = min(max(snap_to_beat(section.start, normalized_beats), 0.0), duration_seconds)
+        snapped_end = min(max(snap_to_beat(section.end, normalized_beats), 0.0), duration_seconds)
+        snapped_start = round_seconds(snapped_start)
+        snapped_end = round_seconds(snapped_end)
         if not snapped_start < snapped_end:
             continue
         candidates.append((snapped_start, snapped_end, label))
@@ -2821,7 +3014,7 @@ def _finalize_arrangement_structure(
 
     sections: list[dict] = []
     for start, end, label in candidates:
-        if len(sections) >= _MAX_ARRANGEMENT_STEPS:
+        if len(sections) >= MAX_ARRANGEMENT_STEPS:
             break
         if sections:
             previous = sections[-1]

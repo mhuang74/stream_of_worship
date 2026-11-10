@@ -546,9 +546,36 @@ sow-admin audio list --structure missing --visibility review --format ids \
   | sow-admin audio write-structure --stdin
 ```
 
-`--structure missing` is exactly the set the webapp Arrange button cannot
-open: `sections` or `beats` absent/empty. `--structure present` is its
-complement.
+`--structure missing` covers recordings whose `sections` or `beats` are
+absent/empty, but that is not the whole unarrangeable set: the webapp gate
+(`buildSnappedSteps`) also fails for a recording that stores both columns when
+any single section collapses to zero length after snapping. `--structure
+present` is only a presence test and includes those rows; the second class is
+`--structure unusable` (both columns non-empty, gate still fails), so
+`missing` ∪ `unusable` is exactly the set the Arrange button cannot open.
+
+`structure-audit` classifies a pool in one pass and, like the commands below,
+refuses nothing (it is read-only). Only non-arrangeable rows are emitted, so
+`--format ids` feeds the same pipeline:
+
+```bash
+# Every unarrangeable recording (missing ∪ unusable), with the reason per row
+sow-admin audio structure-audit                # table; also --format json|ids
+sow-admin audio list --structure unusable --format ids   # snap-aware failures only
+
+# Backfill from the audit instead of from --structure missing
+sow-admin audio structure-audit --format ids | sow-admin audio beat-grid --stdin
+sow-admin audio structure-audit --format ids | sow-admin audio write-structure --stdin
+```
+
+`--limit` on `--structure unusable` and on `structure-audit` counts
+non-arrangeable rows and is applied after the gate is evaluated, not as a SQL
+`LIMIT`. Today exactly two analyzed recordings are `collapsed`
+(`28a0ed6e1408`, `e5c16c2f35f2`) and both are `published`, so demote them
+first: `sow-admin audio set-visibility <song_id> --status review`. The
+reasoning behind the rule, the verdict vocabulary, and the Analysis-Service vs
+CLI split are in `docs/song-arrangement-editor-dev-guide.md`
+(*Finding and backfilling arrangeable recordings*).
 
 - Step 1 runs one madmom call per song and is the only cost. With
   `SOW_BEAT_GRID_MAX_CONCURRENT` auto-sizing to the cgroup CPU count (2 on a

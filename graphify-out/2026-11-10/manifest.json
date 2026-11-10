@@ -1506,9 +1506,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1794271672.6425645,
-    "seen": 1794272118.3106246,
-    "ast_hash": "2c614c050291e3aa9f763d0c3dfaa5cb",
+    "mtime": 1794272232.789079,
+    "seen": 1794272351.626176,
+    "ast_hash": "2e22a857c7a813a673dae337103f1cb8",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/BpmRangeMultiSelect.tsx": {
@@ -2862,9 +2862,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/ArrangementEditorSheet.test.tsx": {
-    "mtime": 1794271738.636842,
-    "seen": 1794272118.3288198,
-    "ast_hash": "f55ae3b698b0eeb8713a8e3c3ad5ec98",
+    "mtime": 1794272210.2003999,
+    "seen": 1794272351.6473732,
+    "ast_hash": "07cf868201119ca1e2c52b9dca34e55f",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/BrowseSheet.test.tsx": {
@@ -4302,9 +4302,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/audio.py": {
-    "mtime": 1794199925.3431635,
-    "seen": 1794203409.7345383,
-    "ast_hash": "489a3ae0f0121786c47200eee0973049",
+    "mtime": 1794272290.6257308,
+    "seen": 1794272351.6699064,
+    "ast_hash": "c20aa3cdd75732b31020507f08161471",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/commands/catalog.py": {
@@ -4428,9 +4428,9 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/db/client.py": {
-    "mtime": 1794196593.6253822,
-    "seen": 1794203409.7360811,
-    "ast_hash": "4fb4934b5eeda33eb54128627c17f129",
+    "mtime": 1794272223.4508007,
+    "seen": 1794272351.6718216,
+    "ast_hash": "6a8af2d22327a406e3b52ca0f57e1844",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/db/models.py": {
@@ -5364,9 +5364,9 @@
     "semantic_hash": ""
   },
   "CONTEXT.md": {
-    "mtime": 1794177975.5120206,
-    "seen": 1794179962.9110198,
-    "ast_hash": "b34497c65e40413e24f11ff5f09ca4e9",
+    "mtime": 1794272204.2122166,
+    "seen": 1794272351.6880507,
+    "ast_hash": "8e30740302f730ebd9fa26179322f441",
     "semantic_hash": ""
   },
   "DEVELOPER.md": {
@@ -5799,6 +5799,12 @@
     "mtime": 1794184033.8621855,
     "seen": 1794185477.8695374,
     "ast_hash": "a7f2fe49cd42ab3c1df76153b83bbe2e",
+    "semantic_hash": ""
+  },
+  "ops/admin-cli/src/stream_of_worship/admin/services/arrangement_structure.py": {
+    "mtime": 1794272129.0927875,
+    "seen": 1794272351.6739643,
+    "ast_hash": "ae2b0d56bd590b59f188bcbf2fa026d1",
     "semantic_hash": ""
   }
 }

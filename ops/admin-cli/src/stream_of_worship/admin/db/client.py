@@ -1565,9 +1565,12 @@ class DatabaseClient:
                 vocal_posture), or ``complete``. Scoped per
                 (song_id, content_hash) so a replaced recording's stale rows
                 do not count.
-            structure: Filter by arrangement structure — ``missing`` (sections
-                or beats absent/empty, so the webapp Arrange button is
-                disabled) or ``present`` (both present).
+            structure: Filter by arrangement structure presence — ``missing``
+                (sections or beats absent/empty) or ``present`` (both
+                non-empty). This is a SQL presence test only: a ``present``
+                row can still fail the webapp's ``buildSnappedSteps`` gate.
+                The snap-aware verdict lives in
+                ``services.arrangement_structure.evaluate_recording_structure``.
             sort_by: Sort order (``album``, ``series``, ``title``, ``imported``).
             limit: Maximum number of results.
             include_deleted: Whether to include soft-deleted recordings.
