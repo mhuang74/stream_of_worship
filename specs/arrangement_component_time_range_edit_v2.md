@@ -1,4 +1,4 @@
-# Arrangement Editor v2: reviewed bounds editing + three-pass transition preview
+# Arrangement Editor v2: reviewed bounds editing + junction transition review
 
 **Status:** approved specification, not yet implemented. This is the implementation
 contract for a separately authorized task.
@@ -13,14 +13,15 @@ behaviour is required.
 Revise the arrangement-component time-range work in place of v1. Let the current
 editor add an Intro Step inferred from the first LRC line, and persist
 user-corrected bounds on the Songset Item only with explicit Apply/Cancel review.
-Replace the anonymous, single-component preview with adjacent-component
-transition review played three passes total, plus optional previous-song context
-and a clearly labelled next-song Opening tail.
+Replace the anonymous, single-component preview with two explicit scopes: a
+junction transition review (4 beats each side of a component join, played twice)
+and an arrangement preview (every component once, always with an 8-beat lead-in
+from the previous song and an 8-beat lead-out into the next).
 
 The existing whole-Songset Web Audio transport already seeks, plays across item
 boundaries, and reapplies crossfade gains after a seek. Reuse it; range limits and
-the three-pass counter belong to `ArrangementEditorSheet`, not a second audio
-engine.
+the pass counter and the window bounds belong to `ArrangementEditorSheet`, not a
+second audio engine.
 
 ## Approach
 
@@ -217,7 +218,7 @@ introduce a Radix dependency.
    `!boundsEditorInvalid`; the popover reports that flag on every edit and on close
    resets it to false. Thus Audition always uses the currently displayed candidate,
    and normal transport remains disabled until Apply/Cancel.
-9. Audition is a separate one-shot action, not a three-pass review. For the
+9. Audition is a separate one-shot action, not the looped junction review. For the
    candidate's clip in the override timeline:
    - Start: play from `clip.startSeconds` through
      `min(clip.startSeconds + 3, clip.endSeconds)`.
@@ -225,108 +226,107 @@ introduce a Radix dependency.
      `clip.endSeconds`.
 
    These inside-boundary snippets intentionally do not include pre-roll/out-roll or
-   adjacent-song context. Set a non-looping `playbackWindow` with pass count 1 and
-   use `startAtSeconds`. At its end, pause. Starting another audition replaces the
-   previous window. Changing either field stops the audition before the new
+   neighbouring-song material. Set a one-shot `playbackWindow` with `kind:
+   "audition"` and use `startAtSeconds`. At its end, pause. Starting another audition
+   replaces the previous window. Changing either field stops the audition before the new
    candidate becomes audible.
 
-### 4. Select an adjacent component pair and review it exactly three times
+### 4. Review the 4 beats each side of a component junction, twice
 
-1. Replace single-component Play behavior with pair selection:
+1. Replace single-component Play behavior with a junction review:
    ```ts
-   interface TransitionReviewSelection { firstClipIndex: number; }
-   const [selectedPairIndex, setSelectedPairIndex] = useState(0);
+   const [reviewClipIndex, setReviewClipIndex] = useState<number | null>(null);
    const [reviewPass, setReviewPass] = useState(1);
    const [reviewCompleted, setReviewCompleted] = useState(false);
    ```
-   A pair is draft indices `i` and `i+1`; `0 <= i < draft.length - 1`. The last
+   A junction is draft indices `i` and `i+1`; `0 <= i < draft.length - 1`. The last
    Step has no transition action. After reorder, deletion, duplication, undo, or
-   Apply, stop preview and clamp the selection to
-   `max(0, draft.length - 2)`; reset pass/completion. There is no arbitrary From/To
-   selector, single-component full-play action, persistent loop toggle, or fourth
-   automatic pass.
-2. In each non-last component header, replace the existing Play/Pause control with
-   a clearly labelled **Review transition ×3** action naming both components. On
-   click, select pair `i`, reset to pass 1, build its window, and start playback.
-   The main rail Play button uses the selected pair and the same label; when paused
-   mid-review it resumes without resetting the pass. The last component's bounds
-   Audition controls remain available for short checks.
-3. Derive the exact pair from `songTimelineItem.clips`: start = first clip start,
-   core end = second clip end. Clips tile continuously inside the item, so this
-   covers both components and their join with no extra transport API.
+   Apply, stop preview and clamp the review index to
+   `Math.min(index, Math.max(0, draft.length - 2))`; reset pass/completion. There is
+   no arbitrary From/To selector, whole-component play action, persistent loop
+   toggle, or third automatic pass.
+2. In each non-last component header, replace the existing Play/Pause control with a
+   clearly labelled **Review transition** action whose accessible name names both
+   components and the 4-beat window. On click, set the review index, reset to pass 1,
+   build its window, and start playback. The last component's bounds Audition
+   controls remain available for short checks.
+3. Derive the window from `songTimelineItem.clips`; clips tile continuously inside the
+   item, so the junction is `join = clips[i].endSeconds`. With
+   `lead = 4 * beatSeconds(tempoBpm)` and `beatSeconds(bpm) = bpm > 0 ? 60 / bpm : 1`
+   (the `calculateGapSeconds` fallback),
+   `startSeconds = Math.max(clips[i].startSeconds, join - lead)` and
+   `endSeconds = Math.min(clips[i + 1].endSeconds, join + lead)`. Clamping keeps the
+   review inside the two adjacent components: a short component simply yields a
+   shorter review, never a third component.
 4. At `position >= playbackWindow.endSeconds - 0.02` while playing:
-   - pass 1 or 2 of a transition review: increment the pass and call
+   - pass 1 of a transition review: increment the pass and call
      `preview.seek(playbackWindow.startSeconds)` without pausing or stopping;
-   - pass 3: call `preview.pause()`, retain the end position, and mark the review
+   - pass 2: call `preview.pause()`, retain the end position, and mark the review
      completed.
 
    Guard the boundary handling by the current playback-window identity and pass so
-   one tick cannot increment twice. The existing 25 ms transport ticker and sheet
+   one tick cannot advance twice. The existing 25 ms transport ticker and sheet
    effect are acceptable; no session-level loop is needed.
-5. Pause/resume preserves position, pass, and completion state. Play after
-   completion restarts at pass 1 from the window start. Stop tears down and resets
-   pass/completion. Choosing another pair, scrubbing, changing either context
-   toggle/duration, applying/cancelling bounds, or any other draft mutation resets
-   the next review to pass 1. Scrubbing while playing retains playing state;
-   scrubbing while paused/idle does not start audio.
+5. Pause/resume preserves position, pass, and completion state. Stop tears down and
+   resets pass/completion. The rail's **Preview** button always starts the arrangement
+   preview (section 5), never a resumed transition review. Choosing another junction,
+   scrubbing, applying/cancelling bounds, or any other draft mutation resets the next
+   review to pass 1. Scrubbing while playing retains playing state; scrubbing while
+   paused/idle does not start audio.
 
-### 5. Make adjacent-song context explicit and truthful
+### 5. Always include an 8-beat lead-in and lead-out in the arrangement preview
 
-1. Default every pair review to exact component bounds. Add two opt-in Switch
-   controls using `@/components/ui/switch`:
-   - **Include previous-song tail**, enabled only when pair index is 0 and a
-     previous item exists;
-   - **Include next-song Opening**, enabled only when the pair ends at the last
-     current-item Step and a next item exists.
+1. The rail previews the whole arrangement exactly once and pauses at its end. Its
+   window always includes an 8-beat lead-in from the previous item and an 8-beat
+   lead-out into the next item; there are no switches, sliders, or 0–30 s range.
+   Derive `arrangementWindow` from `songTimelineItem.clips`, where `songStartSeconds`
+   is the first clip start and `songEndSeconds` the last clip end:
+   - with a previous timeline item,
+     `startSeconds = Math.max(previousTimelineItem.startSeconds, songStartSeconds - 8 * beatSeconds(previous tempo ?? this tempo))`;
+   - with a next timeline item that has clips,
+     `contextEnd = Math.min(nextItemStart + nextItemDuration, songEndSeconds + 8 * beatSeconds(next tempo ?? this tempo))`,
+     and when `contextEnd > songEndSeconds`, `endSeconds = contextEnd` with
+     `actualOpeningSeconds = contextEnd - nextItemStart`.
 
-   Both default off. Enabling one uses a default of 10 s; expose the existing
-   Slider pattern for 0–30 whole seconds. A zero-second enabled context adds no
-   duration and may be switched off without changing the selected pair.
-2. Previous context starts at `max(0, songStartSeconds - seconds)`. This preserves
-   the existing preceding-item tail, gap, and incoming crossfade behavior. Replace
-   the old always-visible lead-in control with this opt-in control; no separate
-   full-song window remains.
-3. Next Opening is a duration-bounded context, not a claim that the next item has
-   an Intro component. Do not fetch its LRC. Measure from the next item's actual
-   timeline start, which may overlap the current item during a crossfade, and set
-   `windowEnd = min(nextItemStart + nextOpeningSeconds, nextTimelineItem.startSeconds + nextTimelineItem.durationSeconds)`.
-   It may span more than one saved next-item Step when the selected duration
-   requires it. `actualOpeningSeconds = max(0, windowEnd - nextItemStart)` drives
-   the displayed duration. Disable the toggle when the next item has no clips. The
-   next item uses its saved arrangement; only the current item carries unsaved
-   edits.
-4. Before Play, show a summary derived from timeline data, not source-label
-   assumptions:
-   - exact pair: **Verse 1 → Chorus 1 · 3 passes**;
-   - incoming context:
-     **{Previous song title} · {its final clip label} → {Current song title} · {first pair label}**;
-   - outgoing context:
-     **{Current song title} · {last pair label} → {Next song title} · Opening — first {actualOpeningSeconds} s**.
+   `beatSeconds(bpm) = bpm > 0 ? 60 / bpm : 1`, matching the inter-item gap fallback.
+2. `includesPreviousTail` is true when the window starts before the song start and
+   `includesNextOpening` when it ends after the song end. A missing previous or next
+   item yields no bookend; a previous item's own timeline start and a next item's own
+   timeline end are hard limits, so the preview never reaches past one neighbour. When
+   a Songset crossfade makes items overlap, the overlap is heard as-is by the existing
+   transport.
+3. Pre-play copy is derived from timeline data, not source-label assumptions:
+   - always **Whole arrangement · {count} components**;
+   - with a lead-in,
+     **{Previous song title} · {its final clip label} → {Current song title} · {first component label}**;
+   - with a lead-out,
+     **Next: {Next song title} · Opening — first {actualOpeningSeconds} s**;
+   - while a junction is selected, the reviewed pair
+     (**{fromLabel} → {toLabel} · 2 passes**), the window note
+     (**Transition window: 4 beats before → 4 beats after the join**), and the pass
+     line **Pass {current} of 2** / **Review complete · 2 passes**.
 
    Resolve current-item component labels from draft Steps. For a previous sibling's
-   tail, parse its saved arrangement and label the actual final clip; use
-   **Full song** for an untouched full-Recording clip. For the next sibling, always
-   use **Opening** in the pre-play summary, not Intro or an assumed component.
-   During playback, identify the actual active saved next-item Step when one
-   exists; for an untouched next item keep the **Opening** label throughout the
-   bounded tail and do not fetch or infer its LRC. The guaranteed Song 2 pre-play
-   copy is **Song 2 · Opening — first 10 s**, so the user knows exactly what time
-   range will play without inventing catalog component data. Show the three-pass
-   count separately.
-5. During playback, derive the active item and clip from the whole timeline for
-   both `playing` and `paused`. The phase/status shows
+   tail, parse its saved arrangement and label the actual final clip; use **Full song**
+   for an untouched full-Recording clip. For the next sibling, always use **Opening**
+   in the copy, not Intro or an assumed component.
+4. During playback, derive the active item and clip from the whole timeline for both
+   `playing` and `paused`. The phase/status shows
    **Playing: {song title} · {component label}** or **Paused: …**. During an
    overlapping crossfade where both items have active clips, show
    **Crossfade: {song A} · {component A} → {song B} · {component B}**. Highlight the
    current-item draft block only when its clip is active; for a next/previous item,
-   highlight the corresponding timeline band and show its song/component in the
-   status rather than attributing it to the current draft.
-6. The timeline displays named current-item Step bands, a distinct previous-tail
-   band, and a next-item band labelled **{next song title} · Opening**. The
-   next-song acceptance case must visibly identify that Opening before playback and
-   mark it active while its audio plays. The status region uses
-   `role="status"`/`aria-live="polite"` for pass and item/component changes, not
-   25 ms timecode updates.
+   highlight the corresponding timeline band and show its song/component in the status
+   rather than attributing it to the current draft.
+5. The band strip follows the arrangement window, not the window currently playing: a
+   previous-tail band over `[windowStart, songStart)`, every component band clipped to
+   the window, and a next band over `[max(nextItemStart, windowStart), windowEnd)`
+   labelled **{next song title} · Opening**. Every band is a button carrying its start
+   time, so a tap seeks there whether the band is context or a component; a drag
+   scrubs, and the playhead slider's max is the arrangement window duration. While a
+   junction is selected, a ring overlay marks the 4-beat window about to play. The
+   status region uses `role="status"`/`aria-live="polite"` for pass and item/component
+   changes, not 25 ms timecode updates.
 
 ### 6. Make scrubbing and component selection coexist
 
@@ -337,28 +337,27 @@ introduce a Radix dependency.
 2. Use explicit tap-versus-drag handling; do not rely on a captured pointer
    producing a normal button click:
    - on pointer down, record pointer id, starting client X/Y, whether playback was
-     active, and `event.target.closest('[data-clip-index]')`; capture on the strip
-     but do not pause or seek yet;
+     active, and `event.target.closest('[data-band-start-seconds]')`; capture on the
+     strip but do not pause or seek yet;
    - until movement exceeds `SCRUB_CLICK_TOLERANCE_PX` in either axis, do not seek
      or pause;
    - on the first movement beyond the threshold, pause if playback was active at
      pointer down; then scrub to the pointer's clamped fraction of the **current
      playback window**, never widening it to the whole song;
-   - on pointer up with no threshold crossing and an originating non-final clip
-     index, select that clip's pair and seek to its first clip start; do not
-     perform a fractional seek or an extra click jump, and preserve the
-     playing/paused state;
-   - render the final clip as a labelled non-button band because it has no outgoing
-     component pair; it remains reachable through scrubbing and the preceding pair;
-   - on a drag, suppress the subsequent native click, reset pass/completion, and
-     resume only if playback was active at drag start. Pointer cancel never resumes
-     automatically. Pointer taps are handled on pointer up; clip `onClick` handles
-     only keyboard-generated clicks (`event.detail === 0`) so the same gesture
-     cannot run twice.
-3. Clicking a component band outside an active scrub selects that pair, resets
-   pass/completion, and seeks to its start while preserving playing/paused state. It
-   does not silently change the window to song end. The next Play reviews the newly
-   selected pair three times.
+   - on pointer up with no threshold crossing and an originating band, seek to that
+     band's start; do not perform a fractional seek or an extra click jump, and
+     preserve the playing/paused state;
+   - render every band (context and component) as a labelled button, since a tap
+     seeks rather than selecting a pair;
+   - on a drag, suppress the subsequent native click, reset the review pass and
+     completion, and resume only if playback was active at drag start. Pointer cancel
+     never resumes automatically. Pointer taps are handled on pointer up; band
+     `onClick` handles only keyboard-generated clicks (`event.detail === 0`) so the
+     same gesture cannot run twice.
+3. Clicking a band outside an active scrub seeks to its start, clears the reviewed
+   junction and its pass counter, and preserves playing/paused state. It does not
+   silently change the window to song end; the next Play previews the whole
+   arrangement.
 4. Keep the playhead `role="slider"` with `tabIndex=0`, min 0, max rounded window
    duration, current value, and `m:ss / m:ss` value text. ArrowLeft/Right seek ±1 s
    clamped to the current window; Home/End seek to its boundaries. Every keyboard
@@ -384,16 +383,23 @@ introduce a Radix dependency.
    - `arrangement.bounds.auditionNote`:
      `Play 3 seconds inside the candidate boundary. Apply or Cancel before using transition review.` /
      `試聽候選邊界內的 3 秒。套用或取消後才能使用交接預覽。`
-   - `arrangement.preview.reviewTransition`: `Review transition ×3` / `交接預覽（3 次）`
+   - `arrangement.preview.timelineAria`:
+     `Arrangement preview timeline: lead-in, all components, lead-out` /
+     `編排預覽時間軸：前一首尾段、所有段落、下一首開頭`
+   - `arrangement.preview.play`: `Preview` / `預覽`
+   - `arrangement.preview.reviewTransition`: `Review transition` / `交接預覽`
    - `arrangement.preview.reviewTransitionAria`:
-     `Review {fromLabel} to {toLabel}, three passes` /
-     `預覽「{fromLabel}」到「{toLabel}」的交接，共 3 次`
-   - `arrangement.preview.pass`: `Pass {current} of 3` / `第 {current} 次，共 3 次`
-   - `arrangement.preview.completed`: `Review complete · 3 passes` / `預覽完成，共 3 次`
-   - `arrangement.preview.includePrevious`:
-     `Include previous-song tail` / `包含前一首歌尾段`
-   - `arrangement.preview.includeNext`:
-     `Include next-song Opening` / `包含下一首歌開頭`
+     `Review {fromLabel} to {toLabel}: {beats} beats each side, played twice` /
+     `預覽「{fromLabel}」到「{toLabel}」的交接：前後各 {beats} 拍，播放兩次`
+   - `arrangement.preview.pass`: `Pass {current} of 2` / `第 {current} 次，共 2 次`
+   - `arrangement.preview.completed`: `Review complete · 2 passes` / `預覽完成，共 2 次`
+   - `arrangement.preview.pairSummary`: `{fromLabel} → {toLabel} · 2 passes` /
+     `{fromLabel} → {toLabel}，共 2 次`
+   - `arrangement.preview.reviewWindow`:
+     `Transition window: {beats} beats before → {beats} beats after the join` /
+     `交接範圍：交接前 {beats} 拍 → 交接後 {beats} 拍`
+   - `arrangement.preview.arrangementSummary`: `Whole arrangement · {count} components` /
+     `整首編排・{count} 個段落`
    - `arrangement.preview.nextOpening`:
      `Next: {song} · Opening — first {seconds} s` /
      `下一首：{song}・開頭，播放 {seconds} 秒`
@@ -413,15 +419,16 @@ introduce a Radix dependency.
      `Crossfade: {fromSong} · {fromLabel} → {toSong} · {toLabel}` /
      `交叉淡化：{fromSong}・{fromLabel} → {toSong}・{toLabel}`
 
-   Reuse v1's bounds labels, detected/reset text, stepper/audition labels, timeline
-   aria labels, and English/Traditional Chinese translations where still
-   applicable; remove obsolete immediate-edit/Done wording rather than leaving
-   unused keys.
+   Reuse v1's bounds labels, detected/reset text, stepper/audition labels, and
+   English/Traditional Chinese translations where still applicable; delete the
+   obsolete `arrangement.preview.includePrevious`, `arrangement.preview.includeNext`,
+   `arrangement.preview.seconds`, and `arrangement.preview.secondsLabel` keys rather
+   than leaving unused copy.
 2. Update `specs/song_arrangement_editor.md`: document nullable `sectionIndex` for
    the Songset-local inferred Intro plus optional `manualBounds`; replace
    song-only/non-interactive preview language with Apply/Cancel bounds review,
-   adjacent-pair three-pass review, opt-in previous tail/next Opening, truthful
-   labels, and scrubbing. Add under `CONTEXT.md` → **Arrangement Step** that an
+   the junction transition review, the always-included arrangement lead-in and
+   lead-out, truthful labels, and scrubbing. Add under `CONTEXT.md` → **Arrangement Step** that an
    inferred Intro uses a null section index and starts at zero through the first
    LRC timestamp, and both it and manual bounds belong only to the Songset Item,
    never catalog Recording analysis.
@@ -443,7 +450,8 @@ introduce a Radix dependency.
   ~282. Must mirror the TS manual-bounds contract.
 - `delivery/webapp/src/test/components/songset/ArrangementEditorSheet.test.tsx` —
   preview mock ~13–30 and fixtures ~55–145. Extend this harness for temporary
-  bounds, three-pass review, pointer gestures, and next-item labels.
+  bounds, the junction review, the arrangement window, pointer gestures, and
+  next-item labels.
 
 ## Verification
 
@@ -506,22 +514,24 @@ introduce a Radix dependency.
    - change Start from its opening value to `0:12.3`, audition it, Cancel, and
      verify the header/draft did not change; repeat and Apply, then verify one Undo
      restores it;
-   - start the first pair and observe status pass 1/3 → 2/3 → 3/3 → complete, with
-     audible return to the pair start exactly twice; Pause in pass 2 and Resume
-     without restarting the count;
+   - start a component's Review transition and observe status pass 1/2 → 2/2 →
+     complete, with the 8-beat window (4 beats each side of the join) heard twice and
+     exactly one audible return to its start; Pause in pass 1 and Resume without
+     restarting the count;
    - for a current Recording whose first LRC line is at 12.4 s, add Intro
-     (inferred), verify its fixed 0–12.4 range, review Intro → next component three
-     times, Save/reopen, and confirm the null-index Step persists; verify a separate
-     3.0 s fixture offers no Intro;
-   - select the final pair, enable next-song Opening at 10 s, and verify before Play
-     that the rail says **Song 2 · Opening — first 10 s**, then its Opening
-     band/audio becomes active at the expected position; verify playback stops at
-     the configured Opening end and never claims Song 2 has a stored Intro
-     component;
-   - repeat with previous-song tail on the first pair, including a crossfade, and
-     verify both song/component names;
-   - tap a component and drag across it: tap selects/seeks to its start, drag scrubs
-     without a release jump, and neither changes the selected window;
+     (inferred), verify its fixed 0–12.4 range, review the Intro → next component
+     junction twice, Save/reopen, and confirm the null-index Step persists; verify a
+     separate 3.0 s fixture offers no Intro;
+   - on an item with a next sibling, verify the rail always says **Next: Song 2 ·
+     Opening — first {seconds} s** for the 8-beat lead-out, that the Opening band
+     becomes active at the expected position, and that the preview pauses at the
+     window end without ever claiming Song 2 has a stored Intro component;
+   - repeat with a previous sibling present (including a crossfade) and verify the
+     rail names both songs/components for the 8-beat lead-in, and that Play starts
+     inside that lead-in;
+   - tap a band and drag across the strip: a tap seeks to that band's start (and
+     clears the reviewed junction), a drag scrubs without a release jump, and the
+     strip keeps showing every component;
    - Save, reopen, and reload: bounds and the visible Edited badge persist; the
      editor API's `recording.sections`/`beats` are byte-identical to before editing
      and the catalog view is unchanged;
@@ -530,9 +540,11 @@ introduce a Radix dependency.
 
 ## Assumptions & contingencies
 
-- Three passes means the selected pair is heard three times total, with exactly two
-  automatic returns to its start. Pause alone preserves the pass; other review
-  interruptions reset it.
+- Two passes means the junction window is heard twice, with exactly one automatic
+  return to its start; the arrangement preview never loops. Pause alone preserves
+  the pass; other review interruptions reset it. Beat length is tempo-derived from
+  the song being heard (previous tour for the lead-in, next item for the lead-out)
+  with this song's tempo as the fallback and 1 s/beat when no tempo exists.
 - If the Base UI popover's focus containment fails inside the Sheet, use one
   sheet-owned inline expanding panel below the selected block with identical
   temporary state, controls, callbacks, validation, and testids; do not revert to
@@ -540,6 +552,6 @@ introduce a Radix dependency.
 - Inferred Intro is offered only when the first LRC timestamp is strictly greater
   than 3 seconds and within Recording duration. It belongs to the current Songset
   Item; later LRC edits do not rewrite or revalidate a saved Intro.
-- Next Opening is a duration-bounded slice of the next item's saved timeline, not
-  an inferred or persisted component. If that item has no clips, the next-context
-  toggle is disabled and exact current-item pair review remains available.
+- The lead-out is an 8-beat slice of the next item's saved timeline, not an
+  inferred or persisted component. If that item has no clips it contributes no
+  lead-out, and the arrangement preview is the components alone.

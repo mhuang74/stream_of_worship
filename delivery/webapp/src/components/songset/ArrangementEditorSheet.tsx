@@ -46,8 +46,6 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { useLocale } from "@/hooks/useLocale";
@@ -115,13 +113,14 @@ let draftStepSequence = 0;
 const BOUNDS_STEP_SECONDS = 0.1;
 /** How much of the candidate boundary an audition plays. */
 const BOUNDS_AUDITION_SECONDS = 3;
+/** Beats of material each side of a component junction in a transition review. */
+const TRANSITION_REVIEW_BEATS = 4;
 /** Transition review passes before the transport stops. */
-const TRANSITION_REVIEW_PASSES = 3;
+const TRANSITION_REVIEW_PASSES = 2;
+/** Beats of neighbouring-song material at each end of the arrangement preview. */
+const ARRANGEMENT_CONTEXT_BEATS = 8;
 /** Pointer travel that turns a strip tap into a scrub. */
 const SCRUB_CLICK_TOLERANCE_PX = 5;
-/** Opt-in previous-tail / next-Opening context defaults, in seconds. */
-const CONTEXT_DEFAULT_SECONDS = 10;
-const CONTEXT_MAX_SECONDS = 30;
 /** First sung LRC line at or below this time is treated as noise, not an outro-less Intro. */
 const INFERRED_INTRO_MIN_SECONDS = 3;
 /** In-sheet undo depth; Reset is the persisted restore and is not part of it. */
@@ -639,8 +638,9 @@ function SortableStepBlock({
           onClick={() => onReviewTransition(index)}
           disabled={disabled || isLast}
           aria-label={t("arrangement.preview.reviewTransitionAria")
-            .replace("{fromLabel}", displayLabel)
-            .replace("{toLabel}", nextLabel)}
+            .replaceAll("{fromLabel}", displayLabel)
+            .replaceAll("{toLabel}", nextLabel)
+            .replaceAll("{beats}", String(TRANSITION_REVIEW_BEATS))}
           data-testid={`arrangement-review-transition-${index}`}
         >
           <Play className="size-4" />
@@ -806,20 +806,25 @@ function deriveDraftInit(item: SongListItem): DraftInit {
 }
 
 /**
- * A transport window in Songset-timeline seconds. `kind` distinguishes the
- * three-pass review from a one-shot bounds audition; the Sheet owns the end.
+ * A transport window in Songset-timeline seconds. `includesPreviousTail` and
+ * `includesNextOpening` say whether neighbouring-song material sits inside it;
+ * the Sheet owns the end of every window.
  */
-interface ReviewWindowCore {
+interface ArrangementWindow {
   startSeconds: number;
   endSeconds: number;
   includesPreviousTail: boolean;
   includesNextOpening: boolean;
-  /** Seconds of next-song Opening actually inside the window. */
+  /** Seconds of next-song material actually inside the window. */
   actualOpeningSeconds: number;
 }
 
-interface ReviewWindow extends ReviewWindowCore {
-  kind: "review" | "audition";
+/**
+ * `kind` distinguishes the looped transition review, a one-shot bounds
+ * audition, and the whole-arrangement preview the rail's button starts.
+ */
+interface PlaybackWindow extends ArrangementWindow {
+  kind: "review" | "audition" | "arrangement";
 }
 
 interface StripGesture {
@@ -827,61 +832,42 @@ interface StripGesture {
   startX: number;
   startY: number;
   wasPlaying: boolean;
-  /** Step band hit on pointer down; null on the final band or context bands. */
-  clipIndex: number | null;
+  /** Band start hit on pointer down; null when the tap missed every band. */
+  bandStartSeconds: number | null;
   dragging: boolean;
   rectLeft: number;
   rectWidth: number;
 }
 
-interface ReviewWindowInput {
-  clips: TimelineClip[];
-  itemStartSeconds: number;
-  pairIndex: number;
-  /** Effective seconds, 0 = off. */
-  previousTailSeconds: number;
-  /** Effective seconds, 0 = off. */
-  nextOpeningSeconds: number;
-  nextItem: { startSeconds: number; endSeconds: number; hasClips: boolean } | null;
+/** Seconds per beat; 1 s/beat when tempo is unusable (same fallback as calculateGapSeconds). */
+function beatSeconds(tempoBpm: number | null | undefined): number {
+  return tempoBpm && tempoBpm > 0 ? 60 / tempoBpm : 1;
 }
 
 /**
- * The window for reviewing one adjacent pair: the pair itself, plus the
- * previous song's tail on the first pair and the next song's Opening on the
- * last. Pure: the pass counter and transport belong to the Sheet.
+ * The junction window for component `index`: 4 beats before the join into
+ * `index + 1` and 4 beats after, clamped to the two adjacent clips so no other
+ * component is heard. Null when either side is missing.
  */
-function buildReviewWindow(input: ReviewWindowInput): ReviewWindowCore | null {
-  const first = input.clips[input.pairIndex];
-  const second = input.clips[input.pairIndex + 1];
+function buildTransitionWindow(
+  clips: TimelineClip[],
+  index: number,
+  tempoBpm: number | null
+): ArrangementWindow | null {
+  const first = clips[index];
+  const second = clips[index + 1];
   if (!first || !second) return null;
-  const includesPreviousTail = input.pairIndex === 0 && input.previousTailSeconds > 0;
-  const startSeconds = includesPreviousTail
-    ? Math.max(0, input.itemStartSeconds - input.previousTailSeconds)
-    : first.startSeconds;
-  const coreEnd = second.endSeconds;
-  let endSeconds = coreEnd;
-  let actualOpeningSeconds = 0;
-  let includesNextOpening = false;
-  const isFinalPair = input.pairIndex + 1 === input.clips.length - 1;
-  if (isFinalPair && input.nextItem?.hasClips && input.nextOpeningSeconds > 0) {
-    const contextEnd = Math.min(
-      input.nextItem.startSeconds + input.nextOpeningSeconds,
-      input.nextItem.endSeconds
-    );
-    actualOpeningSeconds = Math.max(0, contextEnd - input.nextItem.startSeconds);
-    if (actualOpeningSeconds > 0) {
-      includesNextOpening = true;
-      // The pair itself is never truncated by an overlapping crossfade.
-      endSeconds = Math.max(coreEnd, contextEnd);
-    }
-  }
+  const join = first.endSeconds;
+  const lead = TRANSITION_REVIEW_BEATS * beatSeconds(tempoBpm);
+  const startSeconds = Math.max(first.startSeconds, join - lead);
+  const endSeconds = Math.min(second.endSeconds, join + lead);
   if (!(endSeconds > startSeconds)) return null;
   return {
     startSeconds,
     endSeconds,
-    includesPreviousTail,
-    includesNextOpening,
-    actualOpeningSeconds,
+    includesPreviousTail: false,
+    includesNextOpening: false,
+    actualOpeningSeconds: 0,
   };
 }
 
@@ -918,7 +904,6 @@ interface StripBand {
   label: string;
   startSeconds: number;
   endSeconds: number;
-  isFinalStep: boolean;
 }
 
 export function ArrangementEditorSheet({
@@ -930,8 +915,6 @@ export function ArrangementEditorSheet({
 }: ArrangementEditorSheetProps) {
   const { t } = useLocale();
   const dndContextId = useId();
-  const previousSwitchId = useId();
-  const nextSwitchId = useId();
 
   // Initialized synchronously at mount; the client remounts the sheet per
   // item (`key`), so there is no cross-item state to reset in an effect.
@@ -955,16 +938,14 @@ export function ArrangementEditorSheet({
   const [boundsPreviewOverride, setBoundsPreviewOverride] =
     useState<{ id: string; step: ArrangementStep } | null>(null);
   const [boundsEditorInvalid, setBoundsEditorInvalid] = useState(false);
-  // Adjacent-pair review: which pair, how many passes it has started, and
-  // whether all three are done.
-  const [selectedPairIndex, setSelectedPairIndex] = useState(0);
+  // Transition review: which junction is being reviewed, which pass it has
+  // started, and whether the passes are done. The whole-arrangement preview
+  // shares the pass-free half of this state.
+  const [reviewClipIndex, setReviewClipIndex] = useState<number | null>(null);
   const [reviewPass, setReviewPass] = useState(1);
   const [reviewCompleted, setReviewCompleted] = useState(false);
-  const [previousTailEnabled, setPreviousTailEnabled] = useState(false);
-  const [previousTailSeconds, setPreviousTailSeconds] = useState(CONTEXT_DEFAULT_SECONDS);
-  const [nextOpeningEnabled, setNextOpeningEnabled] = useState(false);
-  const [nextOpeningSeconds, setNextOpeningSeconds] = useState(CONTEXT_DEFAULT_SECONDS);
-  const [playbackWindow, setPlaybackWindow] = useState<ReviewWindow | null>(null);
+  const [arrangementCompleted, setArrangementCompleted] = useState(false);
+  const [playbackWindow, setPlaybackWindow] = useState<PlaybackWindow | null>(null);
   const boundaryHandledRef = useRef<{ key: string; pass: number } | null>(null);
   const stripGestureRef = useRef<StripGesture | null>(null);
   const suppressStripClickRef = useRef(false);
@@ -1127,6 +1108,13 @@ export function ArrangementEditorSheet({
         : null,
     [nextItem, timeline]
   );
+  const previousTimelineItem = useMemo(
+    () =>
+      previousItem
+        ? timeline.items.find((entry) => entry.itemId === previousItem.id) ?? null
+        : null,
+    [previousItem, timeline]
+  );
 
   // The previous song is context only through the label its final Step carries;
   // an untouched or unreadable sibling plays as "Full song".
@@ -1161,60 +1149,68 @@ export function ArrangementEditorSheet({
     onFallbackNotice: handleFallbackNotice,
   });
 
-  // Context switches only apply where the neighbours are audible: the tail on
-  // the first pair, the Opening on the last.
-  const previousApplicable = selectedPairIndex === 0 && previousItem !== null;
-  const nextApplicable =
-    nextItem !== null &&
-    (nextTimelineItem?.clips.length ?? 0) > 0 &&
-    selectedPairIndex + 1 === draft.length - 1;
-  const effectivePreviousSeconds =
-    previousApplicable && previousTailEnabled ? previousTailSeconds : 0;
-  const effectiveNextSeconds =
-    nextApplicable && nextOpeningEnabled ? nextOpeningSeconds : 0;
-
-  const songStartSeconds = songTimelineItem?.startSeconds ?? 0;
-
-  // One window definition feeds the candidate, the transport, and the strip.
-  const reviewInput = useCallback(
-    (pairIndex: number): ReviewWindowInput | null =>
-      songTimelineItem
-        ? {
-            clips: songTimelineItem.clips,
-            itemStartSeconds: songTimelineItem.startSeconds,
-            pairIndex,
-            previousTailSeconds: effectivePreviousSeconds,
-            nextOpeningSeconds: effectiveNextSeconds,
-            nextItem: nextTimelineItem
-              ? {
-                  startSeconds: nextTimelineItem.startSeconds,
-                  endSeconds:
-                    nextTimelineItem.startSeconds + nextTimelineItem.durationSeconds,
-                  hasClips: nextTimelineItem.clips.length > 0,
-                }
-              : null,
-          }
-        : null,
-    [effectiveNextSeconds, effectivePreviousSeconds, nextTimelineItem, songTimelineItem]
-  );
-
-  const candidateWindow = useMemo<ReviewWindowCore | null>(() => {
-    const input = reviewInput(selectedPairIndex);
-    return input ? buildReviewWindow(input) : null;
-  }, [reviewInput, selectedPairIndex]);
-
-  const activeWindow = useMemo<ReviewWindow | null>(
-    () =>
-      playbackWindow ?? (candidateWindow ? { kind: "review", ...candidateWindow } : null),
-    [playbackWindow, candidateWindow]
-  );
+  // The arrangement preview window: every component, always with an 8-beat
+  // lead-in from the previous item and an 8-beat lead-out into the next. Each
+  // bookend is measured in the tempo of the song actually heard there, falling
+  // back to this song's tempo, then 1 s/beat. A missing neighbour yields no
+  // bookend, and a neighbour's own extent is the hard limit.
+  const arrangementWindow = useMemo<ArrangementWindow | null>(() => {
+    const clips = songTimelineItem?.clips ?? [];
+    if (clips.length === 0) return null;
+    const songStartSeconds = clips[0].startSeconds;
+    const songEndSeconds = clips[clips.length - 1].endSeconds;
+    let startSeconds = songStartSeconds;
+    if (previousTimelineItem) {
+      const leadIn =
+        ARRANGEMENT_CONTEXT_BEATS *
+        beatSeconds(previousItem?.recording?.tempoBpm ?? item.recording?.tempoBpm);
+      startSeconds = Math.max(
+        previousTimelineItem.startSeconds,
+        songStartSeconds - leadIn
+      );
+    }
+    let endSeconds = songEndSeconds;
+    let actualOpeningSeconds = 0;
+    if (nextTimelineItem && nextTimelineItem.clips.length > 0) {
+      const leadOut =
+        ARRANGEMENT_CONTEXT_BEATS *
+        beatSeconds(nextItem?.recording?.tempoBpm ?? item.recording?.tempoBpm);
+      const contextEnd = Math.min(
+        nextTimelineItem.startSeconds + nextTimelineItem.durationSeconds,
+        songEndSeconds + leadOut
+      );
+      if (contextEnd > songEndSeconds) {
+        actualOpeningSeconds = contextEnd - nextTimelineItem.startSeconds;
+        endSeconds = contextEnd;
+      }
+    }
+    return {
+      startSeconds,
+      endSeconds,
+      includesPreviousTail: startSeconds < songStartSeconds,
+      includesNextOpening: endSeconds > songEndSeconds,
+      actualOpeningSeconds,
+    };
+  }, [
+    item.recording?.tempoBpm,
+    nextItem?.recording?.tempoBpm,
+    nextTimelineItem,
+    previousItem?.recording?.tempoBpm,
+    previousTimelineItem,
+    songTimelineItem,
+  ]);
 
   const position = preview.timelinePositionSeconds;
-  const windowDurationSeconds = activeWindow
-    ? activeWindow.endSeconds - activeWindow.startSeconds
+  // The strip always shows the whole arrangement window, never the shorter
+  // review or audition window that currently governs playback.
+  const windowDurationSeconds = arrangementWindow
+    ? arrangementWindow.endSeconds - arrangementWindow.startSeconds
     : 0;
-  const windowPositionSeconds = activeWindow
-    ? Math.min(Math.max(position - activeWindow.startSeconds, 0), windowDurationSeconds)
+  const windowPositionSeconds = arrangementWindow
+    ? Math.min(
+        Math.max(position - arrangementWindow.startSeconds, 0),
+        windowDurationSeconds
+      )
     : 0;
 
   const blockLyrics = useMemo(
@@ -1252,12 +1248,13 @@ export function ArrangementEditorSheet({
       ? -1
       : activeLyricIndex(blockLyrics[activeClipIndex] ?? [], activeLocalSeconds);
 
-  // Exactly two automatic returns per review (passes 1→2 and 2→3); the third
-  // pass stops the transport, so no fourth seek can happen. An audition never
-  // loops. The guard ref keys on the window and pass, so one boundary event is
-  // handled once even though the position keeps ticking.
-  const windowKey = activeWindow
-    ? `${playbackWindow?.kind ?? "review"}:${activeWindow.startSeconds}:${activeWindow.endSeconds}`
+  // Exactly one automatic return per transition review (pass 1→2); pass 2 stops
+  // the transport, so no further seek can happen. An audition and the whole
+  // arrangement play once and pause. The guard ref keys on the window and pass,
+  // so one boundary event is handled once even though the position keeps
+  // ticking.
+  const windowKey = playbackWindow
+    ? `${playbackWindow.kind}:${playbackWindow.startSeconds}:${playbackWindow.endSeconds}`
     : null;
 
   useEffect(() => {
@@ -1271,10 +1268,15 @@ export function ArrangementEditorSheet({
       preview.pause();
       return;
     }
+    if (playbackWindow.kind === "arrangement") {
+      preview.pause();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the completion flag is the boundary's outcome, not derivable state
+      setArrangementCompleted(true);
+      return;
+    }
     if (reviewPass < TRANSITION_REVIEW_PASSES) {
       // The transport position is an external event; the pass counter is the
       // render-visible consequence of reaching the boundary.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the pass advance is the boundary's outcome, not derivable state
       setReviewPass(reviewPass + 1);
       preview.seek(playbackWindow.startSeconds);
     } else {
@@ -1283,31 +1285,62 @@ export function ArrangementEditorSheet({
     }
   }, [playbackWindow, preview, position, reviewPass, windowKey]);
 
+  /**
+   * A strip tap or key seek lands inside the arrangement window and always
+   * hands transport control back to the arrangement window, so a scrub is never
+   * governed by the 8-beat review end.
+   */
   const seekWithinWindow = useCallback(
     (seconds: number) => {
-      if (!activeWindow) return;
+      if (!arrangementWindow) return;
       const target = Math.min(
-        Math.max(seconds, activeWindow.startSeconds),
-        activeWindow.endSeconds
+        Math.max(seconds, arrangementWindow.startSeconds),
+        arrangementWindow.endSeconds
       );
       preview.seek(target);
+      setReviewClipIndex(null);
       setReviewPass(1);
       setReviewCompleted(false);
+      setArrangementCompleted(false);
       boundaryHandledRef.current = null;
+      if (playbackWindow !== null) {
+        setPlaybackWindow({ kind: "arrangement", ...arrangementWindow });
+      }
     },
-    [activeWindow, preview]
+    [arrangementWindow, playbackWindow, preview]
   );
 
-  /** Play the selected adjacent pair from pass 1 at its window start. */
-  const startReview = useCallback(
-    (pairIndex: number) => {
+  /** Play the whole arrangement once from its window start. */
+  const startArrangementPreview = useCallback(() => {
+    if (isSaving || !isPreviewAvailable || boundsEditorId !== null || !arrangementWindow) {
+      return;
+    }
+    setReviewClipIndex(null);
+    setReviewPass(1);
+    setReviewCompleted(false);
+    setArrangementCompleted(false);
+    boundaryHandledRef.current = null;
+    setPreviewError(null);
+    setPlaybackWindow({ kind: "arrangement", ...arrangementWindow });
+    void preview.startAtSeconds(arrangementWindow.startSeconds).catch(() => {
+      // The hook reports failures through onPreviewError.
+    });
+  }, [arrangementWindow, boundsEditorId, isPreviewAvailable, isSaving, preview]);
+
+  /** Review the junction into component `index`: 4 beats each side, twice. */
+  const startTransitionReview = useCallback(
+    (index: number) => {
       if (isSaving || !isPreviewAvailable || boundsEditorId !== null) return;
-      const input = reviewInput(pairIndex);
-      const win = input ? buildReviewWindow(input) : null;
+      const win = buildTransitionWindow(
+        songTimelineItem?.clips ?? [],
+        index,
+        item.recording?.tempoBpm ?? null
+      );
       if (!win) return;
-      setSelectedPairIndex(pairIndex);
+      setReviewClipIndex(index);
       setReviewPass(1);
       setReviewCompleted(false);
+      setArrangementCompleted(false);
       boundaryHandledRef.current = null;
       setPreviewError(null);
       setPlaybackWindow({ kind: "review", ...win });
@@ -1315,97 +1348,87 @@ export function ArrangementEditorSheet({
         // The hook reports failures through onPreviewError.
       });
     },
-    [boundsEditorId, isPreviewAvailable, isSaving, preview, reviewInput]
-  );
-
-  /** Select a pair from a tap, a keyboard activation, or a drag release. */
-  const selectPair = useCallback(
-    (pairIndex: number) => {
-      const input = reviewInput(pairIndex);
-      const win = input ? buildReviewWindow(input) : null;
-      if (!win) return;
-      setSelectedPairIndex(pairIndex);
-      setReviewPass(1);
-      setReviewCompleted(false);
-      boundaryHandledRef.current = null;
-      if (preview.status === "playing" || preview.status === "paused") {
-        setPlaybackWindow({ kind: "review", ...win });
-        preview.seek(win.startSeconds);
-      } else {
-        setPlaybackWindow(null);
-      }
-    },
-    [preview, reviewInput]
+    [boundsEditorId, isPreviewAvailable, isSaving, item.recording?.tempoBpm, preview, songTimelineItem]
   );
 
   const handlePreviewToggle = useCallback(() => {
-    if (isSaving || !isPreviewAvailable || boundsEditorId !== null || !candidateWindow) {
+    if (
+      !isPreviewAvailable ||
+      !arrangementWindow ||
+      boundsEditorId !== null ||
+      preview.status === "loading" ||
+      isSaving
+    ) {
       return;
     }
     if (preview.status === "playing") {
       preview.pause();
       return;
     }
-    // Resume a mid-window pause without resetting the pass; anything at the
-    // window boundary (or after completion/stop) restarts at pass 1.
+    // Resume a mid-window pause without restarting; anything at the window
+    // boundary (or after completion/stop, or a paused transition review)
+    // restarts the whole arrangement from its start.
     const resumable =
-      preview.status === "paused" &&
-      !reviewCompleted &&
-      position > candidateWindow.startSeconds + 0.25 &&
-      position < candidateWindow.endSeconds - 0.25;
+      playbackWindow?.kind === "arrangement" &&
+      !arrangementCompleted &&
+      (preview.status === "paused" || preview.status === "idle") &&
+      position > arrangementWindow.startSeconds + 0.25 &&
+      position < arrangementWindow.endSeconds - 0.25;
     if (resumable) {
-      setPlaybackWindow({ kind: "review", ...candidateWindow });
+      setPlaybackWindow({ kind: "arrangement", ...arrangementWindow });
       setPreviewError(null);
       void preview.play().catch(() => {
         // The hook reports failures through onPreviewError.
       });
       return;
     }
-    startReview(selectedPairIndex);
+    startArrangementPreview();
   }, [
+    arrangementCompleted,
+    arrangementWindow,
     boundsEditorId,
-    candidateWindow,
     isPreviewAvailable,
     isSaving,
+    playbackWindow,
     position,
     preview,
-    reviewCompleted,
-    selectedPairIndex,
-    startReview,
+    startArrangementPreview,
   ]);
 
   const handleStop = useCallback(() => {
     preview.stop();
     setPlaybackWindow(null);
+    setReviewClipIndex(null);
     setReviewPass(1);
     setReviewCompleted(false);
+    setArrangementCompleted(false);
     boundaryHandledRef.current = null;
   }, [preview]);
 
   const handleStripPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !activeWindow) return;
+    if (event.button !== 0 || !arrangementWindow) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const clipIndexAttr =
+    const bandStartAttr =
       (event.target as HTMLElement | null)
-        ?.closest("[data-clip-index]")
-        ?.getAttribute("data-clip-index") ?? null;
+        ?.closest("[data-band-start-seconds]")
+        ?.getAttribute("data-band-start-seconds") ?? null;
     stripGestureRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       wasPlaying: preview.status === "playing",
-      clipIndex: clipIndexAttr === null ? null : Number(clipIndexAttr),
+      bandStartSeconds: bandStartAttr === null ? null : Number(bandStartAttr),
       dragging: false,
       rectLeft: rect.left,
       rectWidth: rect.width,
     };
-    // Down alone seeks nothing: a tap selects, a drag scrubs.
+    // Down alone seeks nothing: a tap seeks to the band, a drag scrubs.
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const handleStripPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const gesture = stripGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || !activeWindow) return;
+    if (!gesture || gesture.pointerId !== event.pointerId || !arrangementWindow) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
     if (!gesture.dragging) {
@@ -1415,10 +1438,10 @@ export function ArrangementEditorSheet({
       ) {
         return;
       }
-      // Leaving the tap tolerance is a scrub: the tap target is gone and a
-      // playing review pauses instead of fighting the drag.
+      // Leaving the tap tolerance is a scrub: the tap target is gone and
+      // playback pauses instead of fighting the drag.
       gesture.dragging = true;
-      gesture.clipIndex = null;
+      gesture.bandStartSeconds = null;
       if (gesture.wasPlaying) preview.pause();
     }
     const fraction =
@@ -1429,8 +1452,8 @@ export function ArrangementEditorSheet({
           )
         : 0;
     seekWithinWindow(
-      activeWindow.startSeconds +
-        fraction * (activeWindow.endSeconds - activeWindow.startSeconds)
+      arrangementWindow.startSeconds +
+        fraction * (arrangementWindow.endSeconds - arrangementWindow.startSeconds)
     );
   };
 
@@ -1440,7 +1463,9 @@ export function ArrangementEditorSheet({
     suppressStripClickRef.current = true;
     if (!gesture) return;
     if (!gesture.dragging) {
-      if (gesture.clipIndex !== null) selectPair(gesture.clipIndex);
+      if (gesture.bandStartSeconds !== null) {
+        seekWithinWindow(gesture.bandStartSeconds);
+      }
       return;
     }
     if (gesture.wasPlaying) {
@@ -1464,15 +1489,15 @@ export function ArrangementEditorSheet({
 
   const handleBandClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     // Pointer taps are handled on pointer up; only keyboard activation
-    // (`detail === 0`) needs the click path, so a drag never double-selects.
+    // (`detail === 0`) needs the click path, so a drag never seeks twice.
     if (event.detail !== 0) return;
-    const clipIndex = event.currentTarget.dataset.clipIndex;
-    if (clipIndex === undefined) return;
-    selectPair(Number(clipIndex));
+    const bandStart = event.currentTarget.dataset.bandStartSeconds;
+    if (bandStart === undefined) return;
+    seekWithinWindow(Number(bandStart));
   };
 
   const handlePlayheadKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!activeWindow) return;
+    if (!arrangementWindow) return;
     if (event.key === "ArrowLeft") {
       event.preventDefault();
       seekWithinWindow(position - 1);
@@ -1481,10 +1506,10 @@ export function ArrangementEditorSheet({
       seekWithinWindow(position + 1);
     } else if (event.key === "Home") {
       event.preventDefault();
-      seekWithinWindow(activeWindow.startSeconds);
+      seekWithinWindow(arrangementWindow.startSeconds);
     } else if (event.key === "End") {
       event.preventDefault();
-      seekWithinWindow(activeWindow.endSeconds);
+      seekWithinWindow(arrangementWindow.endSeconds);
     }
   };
 
@@ -1499,8 +1524,10 @@ export function ArrangementEditorSheet({
       if (isSaving) return;
       preview.stop();
       setPlaybackWindow(null);
+      setReviewClipIndex(null);
       setReviewPass(1);
       setReviewCompleted(false);
+      setArrangementCompleted(false);
       boundaryHandledRef.current = null;
       setBoundsEditorId(id);
       setBoundsPreviewOverride(null);
@@ -1513,6 +1540,11 @@ export function ArrangementEditorSheet({
     (id: string, candidate: ArrangementStep | null) => {
       preview.stop();
       setPlaybackWindow(null);
+      setReviewClipIndex(null);
+      setReviewPass(1);
+      setReviewCompleted(false);
+      setArrangementCompleted(false);
+      boundaryHandledRef.current = null;
       if (candidate === null) {
         // An unsavable candidate blocks preview: the strip and the audition
         // cannot claim a window the arrangement does not have.
@@ -1580,15 +1612,15 @@ export function ArrangementEditorSheet({
   );
 
   /**
-   * Any draft mutation invalidates the selected pair, the pass counter, and
-   * the boundary guard: a stale pair index would review the wrong cut.
+   * Any draft mutation ends the reviewed junction, the pass counter, and the
+   * boundary guard: the transport is stopped, so the rail must return to the
+   * arrangement preview rather than claim a review that is no longer playing.
    */
-  const resetReview = useCallback((nextDraftLength: number) => {
-    setSelectedPairIndex((current) =>
-      Math.min(current, Math.max(0, nextDraftLength - 2))
-    );
+  const resetReview = useCallback(() => {
+    setReviewClipIndex(null);
     setReviewPass(1);
     setReviewCompleted(false);
+    setArrangementCompleted(false);
     boundaryHandledRef.current = null;
   }, []);
 
@@ -1605,7 +1637,7 @@ export function ArrangementEditorSheet({
       if (recordHistory) {
         setHistory((entries) => [...entries.slice(-(HISTORY_LIMIT - 1)), draft]);
       }
-      resetReview(next.length);
+      resetReview();
       closeBoundsEditor();
       setIsDirty(draftKey(next) !== draftKey(initialDraftRef.current));
     },
@@ -1639,7 +1671,7 @@ export function ArrangementEditorSheet({
       draft: previous,
       problem: validateDraftProblem(previous, item),
     });
-    resetReview(previous.length);
+    resetReview();
     closeBoundsEditor();
     setIsDirty(draftKey(previous) !== draftKey(initialDraftRef.current));
   }, [closeBoundsEditor, history, isSaving, item, preview, resetReview]);
@@ -1909,57 +1941,51 @@ export function ArrangementEditorSheet({
     t,
   ]);
 
-  // Pre-play copy names exactly what will be heard, including the opt-in
-  // context; it never calls a neighbour's intro an Intro it does not have.
-  const pairSummary = useMemo(() => {
-    if (!candidateWindow || !songTimelineItem) return null;
-    const fromLabel = labelForDraftIndex(selectedPairIndex) ?? "";
-    const toLabel = labelForDraftIndex(selectedPairIndex + 1) ?? "";
-    if (!candidateWindow.includesPreviousTail && !candidateWindow.includesNextOpening) {
-      return t("arrangement.preview.pairSummary")
-        .replace("{fromLabel}", fromLabel)
-        .replace("{toLabel}", toLabel);
-    }
-    if (candidateWindow.includesPreviousTail) {
-      return t("arrangement.preview.handover")
-        .replace("{fromSong}", previousTitle)
-        .replace(
-          "{fromLabel}",
-          previousFinalClipLabel ?? t("arrangement.preview.fullSong")
-        )
-        .replace("{toSong}", songTitle)
-        .replace("{toLabel}", fromLabel);
-    }
-    const toContextLabel = t("arrangement.preview.openingWithSeconds").replace(
-      "{seconds}",
-      String(Math.round(candidateWindow.actualOpeningSeconds))
-    );
+  // The rail always names what will play: every component, plus the
+  // neighbouring-song bookends when they exist.
+  const arrangementSummary = useMemo(
+    () =>
+      arrangementWindow
+        ? t("arrangement.preview.arrangementSummary").replace(
+            "{count}",
+            String(draft.length)
+          )
+        : null,
+    [arrangementWindow, draft.length, t]
+  );
+
+  // The lead-in line names both sides of the hand-over as it will actually
+  // play; a neighbour with no readable saved arrangement plays whole.
+  const previousHandover = useMemo(() => {
+    if (!arrangementWindow?.includesPreviousTail) return null;
     return t("arrangement.preview.handover")
-      .replace("{fromSong}", songTitle)
-      .replace("{fromLabel}", toLabel)
-      .replace("{toSong}", nextSongTitle)
-      .replace("{toLabel}", toContextLabel);
+      .replace("{fromSong}", previousTitle)
+      .replace(
+        "{fromLabel}",
+        previousFinalClipLabel ?? t("arrangement.preview.fullSong")
+      )
+      .replace("{toSong}", songTitle)
+      .replace("{toLabel}", labelForDraftIndex(0) ?? "");
   }, [
-    candidateWindow,
+    arrangementWindow,
     labelForDraftIndex,
-    nextSongTitle,
     previousFinalClipLabel,
     previousTitle,
-    selectedPairIndex,
-    songTimelineItem,
     songTitle,
     t,
   ]);
 
-  // Strip bands follow the transport window: a bounds audition shrinks the
-  // strip to its 3 s snippet; context tails and Openings get their own bands.
+  // Strip bands always follow the arrangement window, so every component is
+  // visible before playback; a review window is drawn as an overlay on top.
   const stripBands = useMemo<StripBand[]>(() => {
-    if (!activeWindow) return [];
-    const windowStart = activeWindow.startSeconds;
-    const windowEnd = activeWindow.endSeconds;
+    if (!arrangementWindow) return [];
+    const windowStart = arrangementWindow.startSeconds;
+    const windowEnd = arrangementWindow.endSeconds;
     const bands: StripBand[] = [];
-    if (activeWindow.includesPreviousTail) {
-      const end = Math.min(songStartSeconds, windowEnd);
+    const clips = songTimelineItem?.clips ?? [];
+    const songStart = clips[0]?.startSeconds ?? windowStart;
+    if (arrangementWindow.includesPreviousTail) {
+      const end = Math.min(songStart, windowEnd);
       if (end > windowStart) {
         bands.push({
           key: "previous",
@@ -1968,11 +1994,9 @@ export function ArrangementEditorSheet({
           label: previousTitle,
           startSeconds: windowStart,
           endSeconds: end,
-          isFinalStep: false,
         });
       }
     }
-    const clips = songTimelineItem?.clips ?? [];
     clips.forEach((clip, index) => {
       const start = Math.max(clip.startSeconds, windowStart);
       const end = Math.min(clip.endSeconds, windowEnd);
@@ -1984,10 +2008,9 @@ export function ArrangementEditorSheet({
         label: labelForDraftIndex(index) ?? "",
         startSeconds: start,
         endSeconds: end,
-        isFinalStep: index === clips.length - 1,
       });
     });
-    if (activeWindow.includesNextOpening && nextTimelineItem) {
+    if (arrangementWindow.includesNextOpening && nextTimelineItem) {
       const start = Math.max(nextTimelineItem.startSeconds, windowStart);
       if (windowEnd > start) {
         bands.push({
@@ -1997,20 +2020,44 @@ export function ArrangementEditorSheet({
           label: `${nextSongTitle} · ${t("arrangement.preview.opening")}`,
           startSeconds: start,
           endSeconds: windowEnd,
-          isFinalStep: false,
         });
       }
     }
     return bands;
   }, [
-    activeWindow,
+    arrangementWindow,
     labelForDraftIndex,
     nextSongTitle,
     nextTimelineItem,
     previousTitle,
-    songStartSeconds,
     songTimelineItem,
     t,
+  ]);
+
+  // The transition review draws the 8-beat window it will play on the strip,
+  // so the reduced scope of the component action is visible, not implied.
+  const reviewRegionStyle = useMemo(() => {
+    if (reviewClipIndex === null || !arrangementWindow || windowDurationSeconds <= 0) {
+      return null;
+    }
+    const win = buildTransitionWindow(
+      songTimelineItem?.clips ?? [],
+      reviewClipIndex,
+      item.recording?.tempoBpm ?? null
+    );
+    if (!win) return null;
+    const toPercent = (seconds: number) =>
+      ((seconds - arrangementWindow.startSeconds) / windowDurationSeconds) * 100;
+    return {
+      left: `${toPercent(win.startSeconds)}%`,
+      width: `${toPercent(win.endSeconds) - toPercent(win.startSeconds)}%`,
+    };
+  }, [
+    arrangementWindow,
+    item.recording?.tempoBpm,
+    reviewClipIndex,
+    songTimelineItem,
+    windowDurationSeconds,
   ]);
 
   const activeBandKey =
@@ -2184,7 +2231,7 @@ export function ArrangementEditorSheet({
                               onAuditionBounds={auditionBounds}
                               onDuplicate={duplicateStep}
                               onRemove={removeStep}
-                              onReviewTransition={startReview}
+                              onReviewTransition={startTransitionReview}
                             />
                           ))}
                         </ol>
@@ -2217,8 +2264,9 @@ export function ArrangementEditorSheet({
                   </p>
                 </div>
 
-                {/* Preview rail: adjacent-pair transition review plus opt-in
-                    previous-tail / next-Opening context. */}
+                {/* Preview rail: the arrangement preview (every component plus
+                    the 8-beat neighbouring-song bookends) and the transition
+                    review of the junction selected on a component row. */}
                 <aside
                   aria-label={t("arrangement.preview.title")}
                   className="border-t px-4 py-4 sm:px-5 lg:sticky lg:top-0 lg:border-t-0 lg:border-l"
@@ -2233,16 +2281,22 @@ export function ArrangementEditorSheet({
                       </span>
                     </div>
 
-                    {pairSummary && (
+                    {isPreviewAvailable && arrangementWindow && (
                       <p
                         className="text-[11px] leading-relaxed text-muted-foreground"
                         data-testid="arrangement-preview-summary"
                       >
-                        {pairSummary}
+                        {arrangementSummary}
                       </p>
                     )}
 
-                    {candidateWindow?.includesNextOpening && (
+                    {isPreviewAvailable && arrangementWindow && previousHandover && (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        {previousHandover}
+                      </p>
+                    )}
+
+                    {isPreviewAvailable && arrangementWindow?.includesNextOpening && (
                       <p
                         className="text-[11px] leading-relaxed text-muted-foreground"
                         data-testid="arrangement-next-opening-notice"
@@ -2251,26 +2305,45 @@ export function ArrangementEditorSheet({
                           .replace("{song}", nextSongTitle)
                           .replace(
                             "{seconds}",
-                            String(Math.round(candidateWindow.actualOpeningSeconds))
+                            String(Math.round(arrangementWindow.actualOpeningSeconds))
                           )}
                       </p>
                     )}
 
-                    {candidateWindow && (
-                      <p
-                        className="font-mono text-[11px] tabular-nums text-primary"
-                        data-testid="arrangement-preview-pass"
-                      >
-                        {reviewCompleted
-                          ? t("arrangement.preview.completed")
-                          : t("arrangement.preview.pass").replace(
-                              "{current}",
-                              String(reviewPass)
+                    {isPreviewAvailable && arrangementWindow && reviewClipIndex !== null && (
+                      <div className="space-y-1">
+                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                          {t("arrangement.preview.pairSummary")
+                            .replace(
+                              "{fromLabel}",
+                              labelForDraftIndex(reviewClipIndex) ?? ""
+                            )
+                            .replace(
+                              "{toLabel}",
+                              labelForDraftIndex(reviewClipIndex + 1) ?? ""
                             )}
-                      </p>
+                        </p>
+                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                          {t("arrangement.preview.reviewWindow").replaceAll(
+                            "{beats}",
+                            String(TRANSITION_REVIEW_BEATS)
+                          )}
+                        </p>
+                        <p
+                          className="font-mono text-[11px] tabular-nums text-primary"
+                          data-testid="arrangement-preview-pass"
+                        >
+                          {reviewCompleted
+                            ? t("arrangement.preview.completed")
+                            : t("arrangement.preview.pass").replace(
+                                "{current}",
+                                String(reviewPass)
+                              )}
+                        </p>
+                      </div>
                     )}
 
-                    {activeWindow && windowDurationSeconds > 0 && (
+                    {isPreviewAvailable && arrangementWindow && windowDurationSeconds > 0 && (
                       <div
                         role="group"
                         aria-label={t("arrangement.preview.timelineAria")}
@@ -2289,7 +2362,7 @@ export function ArrangementEditorSheet({
                             100;
                           const style = {
                             left: `${
-                              ((band.startSeconds - activeWindow.startSeconds) /
+                              ((band.startSeconds - arrangementWindow.startSeconds) /
                                 windowDurationSeconds) *
                               100
                             }%`,
@@ -2303,8 +2376,18 @@ export function ArrangementEditorSheet({
                                 ? "bg-primary/25"
                                 : "bg-foreground/15"
                           );
-                          const inner = (
-                            <>
+                          // Every band is a tap target: a tap seeks there, so a
+                          // context band is as reachable as a component band.
+                          return (
+                            <button
+                              type="button"
+                              key={band.key}
+                              data-band-start-seconds={band.startSeconds}
+                              data-clip-index={band.clipIndex ?? undefined}
+                              onClick={handleBandClick}
+                              className={cn(bandClass, "text-left")}
+                              style={style}
+                            >
                               <span className="truncate px-1 text-[10px]">
                                 {band.label}
                               </span>
@@ -2321,27 +2404,17 @@ export function ArrangementEditorSheet({
                                   }}
                                 />
                               )}
-                            </>
-                          );
-                          // Only non-final Steps are tap targets: the final
-                          // Step has no pair of its own.
-                          return band.kind === "step" && !band.isFinalStep ? (
-                            <button
-                              type="button"
-                              key={band.key}
-                              data-clip-index={band.clipIndex}
-                              onClick={handleBandClick}
-                              className={cn(bandClass, "text-left")}
-                              style={style}
-                            >
-                              {inner}
                             </button>
-                          ) : (
-                            <div key={band.key} className={bandClass} style={style}>
-                              {inner}
-                            </div>
                           );
                         })}
+                        {reviewRegionStyle && (
+                          <div
+                            aria-hidden="true"
+                            data-testid="arrangement-transition-region"
+                            className="pointer-events-none absolute inset-y-1 rounded-[3px] ring-2 ring-primary/70"
+                            style={reviewRegionStyle}
+                          />
+                        )}
                         <div
                           role="slider"
                           tabIndex={0}
@@ -2364,100 +2437,6 @@ export function ArrangementEditorSheet({
                       </div>
                     )}
 
-                    <div data-testid="arrangement-previous-context" className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label
-                          htmlFor={previousSwitchId}
-                          className="text-[11px] font-medium text-foreground/80"
-                        >
-                          {t("arrangement.preview.includePrevious")}
-                        </label>
-                        <Switch
-                          id={previousSwitchId}
-                          checked={previousApplicable && previousTailEnabled}
-                          disabled={!previousApplicable || isSaving || boundsEditorId !== null}
-                          onCheckedChange={(checked) => {
-                            setPreviousTailEnabled(checked);
-                            preview.stop();
-                            setPlaybackWindow(null);
-                            resetReview(draft.length);
-                          }}
-                          data-testid="arrangement-preview-include-previous"
-                        />
-                      </div>
-                      {previousApplicable && previousTailEnabled && (
-                        <Slider
-                          value={[previousTailSeconds]}
-                          min={0}
-                          max={CONTEXT_MAX_SECONDS}
-                          step={1}
-                          disabled={isSaving || boundsEditorId !== null}
-                          onValueChange={(value) => {
-                            const next = Array.isArray(value) ? value[0] : value;
-                            if (typeof next !== "number") return;
-                            setPreviousTailSeconds(
-                              Math.max(0, Math.min(CONTEXT_MAX_SECONDS, Math.round(next)))
-                            );
-                            preview.stop();
-                            setPlaybackWindow(null);
-                            resetReview(draft.length);
-                          }}
-                          aria-label={t("arrangement.preview.secondsLabel").replace(
-                            "{seconds}",
-                            String(previousTailSeconds)
-                          )}
-                          data-testid="arrangement-previous-seconds"
-                        />
-                      )}
-                    </div>
-
-                    <div data-testid="arrangement-next-context" className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <label
-                          htmlFor={nextSwitchId}
-                          className="text-[11px] font-medium text-foreground/80"
-                        >
-                          {t("arrangement.preview.includeNext")}
-                        </label>
-                        <Switch
-                          id={nextSwitchId}
-                          checked={nextApplicable && nextOpeningEnabled}
-                          disabled={!nextApplicable || isSaving || boundsEditorId !== null}
-                          onCheckedChange={(checked) => {
-                            setNextOpeningEnabled(checked);
-                            preview.stop();
-                            setPlaybackWindow(null);
-                            resetReview(draft.length);
-                          }}
-                          data-testid="arrangement-preview-include-next"
-                        />
-                      </div>
-                      {nextApplicable && nextOpeningEnabled && (
-                        <Slider
-                          value={[nextOpeningSeconds]}
-                          min={0}
-                          max={CONTEXT_MAX_SECONDS}
-                          step={1}
-                          disabled={isSaving || boundsEditorId !== null}
-                          onValueChange={(value) => {
-                            const next = Array.isArray(value) ? value[0] : value;
-                            if (typeof next !== "number") return;
-                            setNextOpeningSeconds(
-                              Math.max(0, Math.min(CONTEXT_MAX_SECONDS, Math.round(next)))
-                            );
-                            preview.stop();
-                            setPlaybackWindow(null);
-                            resetReview(draft.length);
-                          }}
-                          aria-label={t("arrangement.preview.secondsLabel").replace(
-                            "{seconds}",
-                            String(nextOpeningSeconds)
-                          )}
-                          data-testid="arrangement-next-seconds"
-                        />
-                      )}
-                    </div>
-
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
@@ -2465,7 +2444,7 @@ export function ArrangementEditorSheet({
                         onClick={handlePreviewToggle}
                         disabled={
                           !isPreviewAvailable ||
-                          !candidateWindow ||
+                          !arrangementWindow ||
                           boundsEditorId !== null ||
                           preview.status === "loading" ||
                           isSaving

@@ -67,37 +67,36 @@ export const arrangementBundle = bundle({
     "arrangement.validation.tooMany":
       "A sequence can have at most {max} steps. Remove some steps before saving.",
 
-    // Preview transport (adjacent-pair transition review: the selected pair
-    // plus opt-in previous-song tail / next-song Opening context; there is no
-    // whole-Songset preview).
+    // Preview transport: the rail previews the whole arrangement once (every
+    // component plus an always-included 8-beat lead-in from the previous item
+    // and 8-beat lead-out into the next); a component row reviews only the
+    // 4 beats each side of its junction, twice.
     "arrangement.preview.title": "Preview this song",
     "arrangement.preview.loading": "Loading preview...",
-    "arrangement.preview.play": "Play preview",
+    "arrangement.preview.play": "Preview",
     "arrangement.preview.pause": "Pause preview",
     "arrangement.preview.stop": "Stop preview",
     "arrangement.preview.fallbackNotice":
       "Crossfades are approximated as hard boundaries on this device.",
-    "arrangement.preview.seconds": "{seconds}s",
     "arrangement.preview.timelineAria":
-      "Review timeline: previous tail, current components, next Opening",
-    "arrangement.preview.reviewTransition": "Review transition ×3",
+      "Arrangement preview timeline: lead-in, all components, lead-out",
+    "arrangement.preview.reviewTransition": "Review transition",
     "arrangement.preview.reviewTransitionAria":
-      "Review {fromLabel} to {toLabel}, three passes",
-    "arrangement.preview.pass": "Pass {current} of 3",
-    "arrangement.preview.completed": "Review complete · 3 passes",
-    "arrangement.preview.pairSummary": "{fromLabel} → {toLabel} · 3 passes",
-    "arrangement.preview.includePrevious": "Include previous-song tail",
-    "arrangement.preview.includeNext": "Include next-song Opening",
+      "Review {fromLabel} to {toLabel}: {beats} beats each side, played twice",
+    "arrangement.preview.pass": "Pass {current} of 2",
+    "arrangement.preview.completed": "Review complete · 2 passes",
+    "arrangement.preview.pairSummary": "{fromLabel} → {toLabel} · 2 passes",
+    "arrangement.preview.reviewWindow":
+      "Transition window: {beats} beats before → {beats} beats after the join",
+    "arrangement.preview.arrangementSummary": "Whole arrangement · {count} components",
     "arrangement.preview.nextOpening": "Next: {song} · Opening — first {seconds} s",
     "arrangement.preview.handover": "{fromSong} · {fromLabel} → {toSong} · {toLabel}",
     "arrangement.preview.opening": "Opening",
-    "arrangement.preview.openingWithSeconds": "Opening — first {seconds} s",
     "arrangement.preview.fullSong": "Full song",
     "arrangement.preview.playingAt": "Playing: {song} · {label}",
     "arrangement.preview.pausedAt": "Paused: {song} · {label}",
     "arrangement.preview.crossfade":
       "Crossfade: {fromSong} · {fromLabel} → {toSong} · {toLabel}",
-    "arrangement.preview.secondsLabel": "{seconds} s",
 
     // Bounds editing (a temporary Apply/Cancel transaction).
     "arrangement.bounds.edited": "Edited",
@@ -208,33 +207,31 @@ export const arrangementBundle = bundle({
     "arrangement.validation.empty": "請至少加入一個步驟才能預覽或儲存。",
     "arrangement.validation.tooMany": "編排最多可有 {max} 個步驟。請在儲存前移除部分步驟。",
 
-    // Preview transport (adjacent-pair transition review: the selected pair
-    // plus opt-in previous-song tail / next-song Opening context; there is no
-    // whole-Songset preview).
+    // Preview transport: the rail previews the whole arrangement once (every
+    // component plus an always-included 8-beat lead-in from the previous item
+    // and 8-beat lead-out into the next); a component row reviews only the
+    // 4 beats each side of its junction, twice.
     "arrangement.preview.title": "預覽這首歌",
     "arrangement.preview.loading": "正在載入預覽...",
-    "arrangement.preview.play": "播放預覽",
+    "arrangement.preview.play": "預覽",
     "arrangement.preview.pause": "暫停預覽",
     "arrangement.preview.stop": "停止預覽",
     "arrangement.preview.fallbackNotice": "此裝置上的交叉淡化會以硬切邊界近似。",
-    "arrangement.preview.seconds": "{seconds} 秒",
-    "arrangement.preview.timelineAria": "交接預覽時間軸：前一首尾段、目前段落、下一首開頭",
-    "arrangement.preview.reviewTransition": "交接預覽（3 次）",
-    "arrangement.preview.reviewTransitionAria": "預覽「{fromLabel}」到「{toLabel}」的交接，共 3 次",
-    "arrangement.preview.pass": "第 {current} 次，共 3 次",
-    "arrangement.preview.completed": "預覽完成，共 3 次",
-    "arrangement.preview.pairSummary": "{fromLabel} → {toLabel}，共 3 次",
-    "arrangement.preview.includePrevious": "包含前一首歌尾段",
-    "arrangement.preview.includeNext": "包含下一首歌開頭",
+    "arrangement.preview.timelineAria": "編排預覽時間軸：前一首尾段、所有段落、下一首開頭",
+    "arrangement.preview.reviewTransition": "交接預覽",
+    "arrangement.preview.reviewTransitionAria": "預覽「{fromLabel}」到「{toLabel}」的交接：前後各 {beats} 拍，播放兩次",
+    "arrangement.preview.pass": "第 {current} 次，共 2 次",
+    "arrangement.preview.completed": "預覽完成，共 2 次",
+    "arrangement.preview.pairSummary": "{fromLabel} → {toLabel}，共 2 次",
+    "arrangement.preview.reviewWindow": "交接範圍：交接前 {beats} 拍 → 交接後 {beats} 拍",
+    "arrangement.preview.arrangementSummary": "整首編排・{count} 個段落",
     "arrangement.preview.nextOpening": "下一首：{song}・開頭，播放 {seconds} 秒",
     "arrangement.preview.handover": "{fromSong}・{fromLabel} → {toSong}・{toLabel}",
     "arrangement.preview.opening": "開頭",
-    "arrangement.preview.openingWithSeconds": "開頭，播放 {seconds} 秒",
     "arrangement.preview.fullSong": "整首歌",
     "arrangement.preview.playingAt": "正在播放：{song}・{label}",
     "arrangement.preview.pausedAt": "已暫停：{song}・{label}",
     "arrangement.preview.crossfade": "交叉淡化：{fromSong}・{fromLabel} → {toSong}・{toLabel}",
-    "arrangement.preview.secondsLabel": "{seconds} 秒",
 
     // Bounds editing (a temporary Apply/Cancel transaction).
     "arrangement.bounds.edited": "已調整",
