@@ -285,8 +285,9 @@ The Analysis Service supplies the inputs; the admin CLI decides and writes.
   occurrence even when the label is unchanged, so a repeated chorus stays two sections. A line
   shared by two sections is attributed to the section that also explains the following lines; a
   lyric line split across two timestamps is recognised from the two fragments; a section block that
-  lists the same line twice still yields one occurrence per rendition; and a run not explained by at
-  least one whole lyric line of its section is dropped. That is why a `[verse]`
+  lists the same line twice, or an LRC that repeats a phrase back-to-back, still yields one
+  occurrence per rendition; and a run not explained by
+  at least one whole lyric line of its section is dropped. That is why a `[verse]`
   block whose lines are sung on either side of a chorus still yields both verse occurrences plus the
   chorus, and why LRC lines that pack two lyric lines into one timestamp still match.
 - `sow-admin audio structure-audit` and `audio list --structure …` only read the row and apply the

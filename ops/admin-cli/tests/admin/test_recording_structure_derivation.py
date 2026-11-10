@@ -160,6 +160,21 @@ class TestDeriveSectionsFromLyrics:
         sections = derive_sections_from_lyrics(structured, lrc, 40.0)
         assert [(s.label, s.start, s.end) for s in sections] == [("chorus", 10.0, 30.0)]
 
+    def test_keeps_a_phrase_repeated_inside_one_occurrence(self):
+        # LRC files repeat a phrase inside a rendition ("...宣告" sung twice) while
+        # structured_lyrics lists it once. That is a repeat within the occurrence,
+        # not a restart, so the chorus must not fragment around it.
+        structured = _structured(("chorus", ["chorus a", "chorus b", "chorus c"]))
+        lrc = (
+            "[00:10.00] chorus a\n"
+            "[00:15.00] chorus b\n"
+            "[00:20.00] chorus c\n"
+            "[00:25.00] chorus c\n"
+            "[00:30.00] fade out\n"
+        )
+        sections = derive_sections_from_lyrics(structured, lrc, 40.0)
+        assert [(s.label, s.start, s.end) for s in sections] == [("chorus", 10.0, 30.0)]
+
     def test_keeps_boundaries_between_consecutive_repeats(self):
         # A chorus repeated back-to-back has no differently-labelled line between
         # the repetitions; both occurrences must stay separately selectable.
