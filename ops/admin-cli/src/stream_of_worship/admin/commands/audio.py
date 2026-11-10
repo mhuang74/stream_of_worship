@@ -77,6 +77,7 @@ from stream_of_worship.admin.services.lyrics_sections import (
 )
 from stream_of_worship.admin.services.structured_lyrics import flatten_structured_lyrics
 from stream_of_worship.admin.services.visibility import (
+    PUBLISHED_OVERRIDE_FLAG,
     ensure_reprocessable,
     format_visibility,
     is_published,
@@ -2035,11 +2036,12 @@ def structure_audit(
 
     Repair, in order, for anything that is not ``arrangeable``:
     ``sow-admin audio structure-audit --format ids | sow-admin audio
-    beat-grid --stdin`` (materialise the madmom beat grids) then the same ids
-    piped into ``sow-admin audio write-structure --stdin`` (local, free
-    rewrite of sections+beats). Published recordings are refused by both;
-    demote first with ``sow-admin audio set-visibility <song_id> --status
-    review``.
+    beat-grid --stdin --include-published`` (materialise the madmom beat grids)
+    then the same ids piped into ``sow-admin audio write-structure --stdin
+    --include-published`` (local, free rewrite of sections+beats). Published
+    recordings are written in place because arrangement data is a secondary
+    feature; the flag is explicit because rewriting ``sections``/``beats``
+    under an already-saved arrangement makes that arrangement stale.
     """
     try:
         config = AdminConfig.load(config_path)
@@ -2103,15 +2105,16 @@ def structure_audit(
         if limit and len(shown) < len(non_arrangeable):
             target.print(f"[dim]Showing first {len(shown)} of {len(non_arrangeable)}.[/dim]")
         target.print(
-            f"[dim]Among non-arrangeable: {published} published — repair commands refuse "
-            f"published recordings; demote with: sow-admin audio set-visibility <song_id> "
-            f"--status review[/dim]"
+            f"[dim]Among non-arrangeable: {published} published — pass "
+            f"{PUBLISHED_OVERRIDE_FLAG} to the repair commands to backfill them in place "
+            f"(no demotion; rewriting sections/beats can make a saved arrangement "
+            f"stale)[/dim]"
         )
         target.print(
             "[dim]Repair: sow-admin audio structure-audit --format ids "
-            "| sow-admin audio beat-grid --stdin  then  "
+            f"| sow-admin audio beat-grid {PUBLISHED_OVERRIDE_FLAG} --stdin  then  "
             "sow-admin audio structure-audit --format ids "
-            "| sow-admin audio write-structure --stdin[/dim]"
+            f"| sow-admin audio write-structure {PUBLISHED_OVERRIDE_FLAG} --stdin[/dim]"
         )
 
     if format_ == "ids":
@@ -2491,6 +2494,14 @@ def analyze_recording(
         "fast", "--analysis-tier", help="Analysis tier: fast (default) or full"
     ),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-analysis"),
+    include_published: bool = typer.Option(
+        False,
+        "--include-published",
+        help=(
+            "Re-analyze a 'published' recording instead of refusing "
+            "(publish guard override; visibility is never changed)."
+        ),
+    ),
     no_stems: bool = typer.Option(
         False, "--no-stems", help="Skip stem separation (full tier only)"
     ),
@@ -2513,6 +2524,8 @@ def analyze_recording(
     By default the command waits for completion (30-minute timeout) and writes
     results back. Use --no-wait to submit and exit immediately; write back later
     with 'sow-admin audio status --sync' (or --reconcile).
+
+    A published recording is refused unless --include-published is passed.
     """
     wait = not no_wait
 
@@ -2554,7 +2567,19 @@ def analyze_recording(
         console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
         raise typer.Exit(1)
 
-    ensure_reprocessable(recording, song_id=song_id, action="re-analyze", console=console)
+    ensure_reprocessable(
+        recording,
+        song_id=song_id,
+        action="re-analyze",
+        console=console,
+        allow_published=include_published,
+        offer_override=True,
+    )
+    if include_published and is_published(recording):
+        console.print(
+            f"[yellow]Proceeding on published recording {recording.hash_prefix} "
+            f"({song_id}): {PUBLISHED_OVERRIDE_FLAG}[/yellow]"
+        )
 
     # Check if already analyzed (tier-aware)
     if not force:
@@ -3557,6 +3582,14 @@ def components_recording(
     stdin: bool = typer.Option(
         False, "--stdin", help="Read song IDs from stdin (one per line) for batch backfill"
     ),
+    include_published: bool = typer.Option(
+        False,
+        "--include-published",
+        help=(
+            "Operate on a 'published' recording instead of skipping/refusing it "
+            "(publish guard override; visibility is never changed)."
+        ),
+    ),
     # v5 options
     snap_to_downbeat: bool = typer.Option(
         False,
@@ -3679,6 +3712,9 @@ def components_recording(
     "ran the full allin1 tier", and flipping it would make a later run treat
     these approximate, LRC-derived sections as authoritative allin1 sections.
     Cannot be combined with --no-wait.
+
+    Published recordings are refused in single-song mode and skipped in --stdin
+    mode unless --include-published is passed.
     """
     # Flag override: --compute-all-fields enables advanced feature flags.
     # NOTE: does NOT set all_components — essential-only filtering still
@@ -3824,13 +3860,19 @@ def components_recording(
                 results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
                 continue
             if is_published(recording):
+                if not include_published:
+                    out_console.print(
+                        f"  [yellow]→ {sid} (skipped: published recording — demote first "
+                        f"or pass {PUBLISHED_OVERRIDE_FLAG})[/yellow]"
+                    )
+                    results.append(
+                        {"song_id": sid, "status": "skipped_published", "error": "published"}
+                    )
+                    continue
                 out_console.print(
-                    f"  [yellow]→ {sid} (skipped: published recording — demote first)[/yellow]"
+                    f"  [yellow]→ {sid}: published recording — proceeding "
+                    f"({PUBLISHED_OVERRIDE_FLAG})[/yellow]"
                 )
-                results.append(
-                    {"song_id": sid, "status": "skipped_published", "error": "published"}
-                )
-                continue
             if not recording.r2_audio_url:
                 results.append({"song_id": sid, "status": "failed", "error": "No audio URL"})
                 continue
@@ -3931,7 +3973,10 @@ def components_recording(
                     f"no beat grid or an LRC that stops short of the lyrics)[/yellow]"
                 )
             if protected_count:
-                console.print(f"  Protected (published): {protected_count}")
+                console.print(
+                    f"  Protected (published): {protected_count} — pass "
+                    f"{PUBLISHED_OVERRIDE_FLAG} to include them"
+                )
             for r in results:
                 if r["status"] == "failed":
                     console.print(f"  [red]{r['song_id']}: {r['error']}[/red]")
@@ -3949,8 +3994,18 @@ def components_recording(
         )
         raise typer.Exit(1)
     ensure_reprocessable(
-        recording, song_id=song_id, action="re-extract components", console=out_console
+        recording,
+        song_id=song_id,
+        action="re-extract components",
+        console=out_console,
+        allow_published=include_published,
+        offer_override=True,
     )
+    if include_published and is_published(recording):
+        out_console.print(
+            f"[yellow]Proceeding on published recording {recording.hash_prefix} "
+            f"({song_id}): {PUBLISHED_OVERRIDE_FLAG}[/yellow]"
+        )
 
     if not recording.r2_audio_url:
         out_console.print(f"[red]Recording {recording.hash_prefix} has no audio URL.[/red]")
@@ -4048,6 +4103,14 @@ def beat_grid_command(
     skip_cache: bool = typer.Option(
         False, "--skip-cache", help="Re-run madmom even if a grid is cached"
     ),
+    include_published: bool = typer.Option(
+        False,
+        "--include-published",
+        help=(
+            "Backfill a 'published' recording in place instead of skipping it "
+            "(publish guard override; visibility is never changed)."
+        ),
+    ),
     format_: str = typer.Option("table", "--format", "-f", help="Output format (table|json)"),
     timeout_seconds: int = typer.Option(
         21600, "--timeout", help="Overall poll deadline in seconds"
@@ -4063,7 +4126,8 @@ def beat_grid_command(
     to give a recording the beat grid that the webapp Arrange editor needs.
 
     Recordings that already have a cached grid are skipped (``already_present``)
-    unless ``--skip-cache`` is passed. Published recordings are never touched.
+    unless ``--skip-cache`` is passed. Published recordings are reported as
+    ``skipped_published`` unless ``--include-published`` is passed.
 
     Batch mode: pass ``--stdin`` to read song IDs from stdin (one per line).
     Combine with ``sow-admin audio structure-audit --format ids`` to backfill
@@ -4096,6 +4160,7 @@ def beat_grid_command(
 
     results: list[dict] = []
     pending: list[dict] = []
+    published_included: list[str] = []
 
     for sid in song_ids:
         recording = db_client.get_recording_by_song_id(sid)
@@ -4103,11 +4168,20 @@ def beat_grid_command(
             results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
             continue
         if is_published(recording):
+            if not include_published:
+                out_console.print(
+                    f"  [yellow]→ {sid} (skipped: published recording — demote first or "
+                    f"pass {PUBLISHED_OVERRIDE_FLAG})[/yellow]"
+                )
+                results.append(
+                    {"song_id": sid, "status": "skipped_published", "error": "published"}
+                )
+                continue
+            published_included.append(sid)
             out_console.print(
-                f"  [yellow]→ {sid} (skipped: published recording — demote first)[/yellow]"
+                f"  [yellow]→ {sid}: published recording — proceeding "
+                f"({PUBLISHED_OVERRIDE_FLAG})[/yellow]"
             )
-            results.append({"song_id": sid, "status": "skipped_published", "error": "published"})
-            continue
         if not recording.r2_audio_url:
             results.append({"song_id": sid, "status": "failed", "error": "No r2_audio_url"})
             continue
@@ -4177,11 +4251,12 @@ def beat_grid_command(
     if format_ == "json":
         print(json.dumps(results, ensure_ascii=False, indent=2))
     else:
+        published_suffix = f", {len(published_included)} published" if published_included else ""
         if no_wait:
             submitted = sum(1 for r in results if r["status"] == "submitted")
             out_console.print(
                 f"\n[bold]Summary:[/bold] {submitted} submitted, {already} already present, "
-                f"{skipped} skipped (published), {failed} failed"
+                f"{skipped} skipped (published), {failed} failed{published_suffix}"
             )
             for r in results:
                 if r["status"] == "submitted":
@@ -4191,7 +4266,7 @@ def beat_grid_command(
         else:
             out_console.print(
                 f"\n[bold]Summary:[/bold] {detected} detected, {already} already present, "
-                f"{skipped} skipped (published), {failed} failed"
+                f"{skipped} skipped (published), {failed} failed{published_suffix}"
             )
             for r in results:
                 if r["status"] == "failed":
@@ -4205,6 +4280,14 @@ def beat_grid_command(
 def write_structure_command(
     song_id: Optional[str] = typer.Argument(None, help="Song ID (omit with --stdin)"),
     stdin: bool = typer.Option(False, "--stdin", help="Read song IDs from stdin, one per line"),
+    include_published: bool = typer.Option(
+        False,
+        "--include-published",
+        help=(
+            "Backfill sections+beats on a 'published' recording in place instead of "
+            "skipping it (publish guard override; visibility is never changed)."
+        ),
+    ),
     format_: str = typer.Option("table", "--format", "-f", help="Output format (table|json)"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ) -> None:
@@ -4220,6 +4303,8 @@ def write_structure_command(
     first with ``sow-admin audio beat-grid --stdin``.
 
     Batch mode: pass ``--stdin`` to read song IDs from stdin (one per line).
+    Published recordings are skipped unless ``--include-published`` is passed;
+    rewriting them in place can make an already-saved arrangement stale.
     """
     _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")
     # In JSON mode, route all progress/error messages to stderr.
@@ -4236,17 +4321,27 @@ def write_structure_command(
     db_client = get_db_client(config)
 
     results: list[dict] = []
+    published_included: list[str] = []
     for sid in song_ids:
         recording = db_client.get_recording_by_song_id(sid)
         if not recording:
             results.append({"song_id": sid, "status": "failed", "error": "No recording found"})
             continue
         if is_published(recording):
+            if not include_published:
+                out_console.print(
+                    f"  [yellow]→ {sid} (skipped: published recording — demote first or "
+                    f"pass {PUBLISHED_OVERRIDE_FLAG})[/yellow]"
+                )
+                results.append(
+                    {"song_id": sid, "status": "skipped_published", "error": "published"}
+                )
+                continue
+            published_included.append(sid)
             out_console.print(
-                f"  [yellow]→ {sid} (skipped: published recording — demote first)[/yellow]"
+                f"  [yellow]→ {sid}: published recording — proceeding "
+                f"({PUBLISHED_OVERRIDE_FLAG})[/yellow]"
             )
-            results.append({"song_id": sid, "status": "skipped_published", "error": "published"})
-            continue
 
         try:
             payload = _persist_derived_recording_structure(
@@ -4276,9 +4371,10 @@ def write_structure_command(
     if format_ == "json":
         print(json.dumps(results, ensure_ascii=False, indent=2))
     else:
+        published_suffix = f", {len(published_included)} published" if published_included else ""
         out_console.print(
             f"\n[bold]Summary:[/bold] {persisted} persisted, {no_structure} no structure, "
-            f"{skipped} skipped (published), {failed} failed"
+            f"{skipped} skipped (published), {failed} failed{published_suffix}"
         )
         for r in results:
             if r["status"] == "failed":

@@ -136,10 +136,10 @@ Recordings:
 
 Of the 106 published Recordings, only 3 carry `sections` + `beats`; the other 103 have no analysis
 data at all, and the two non-fixture ones fail snapping (see *Known analysis-data gaps*). Making
-more published Recordings arrangeable is a two-step job: give them the missing analysis (the
-backfill recipe in *Finding and backfilling arrangeable recordings*), then re-publish the rows that
-were demoted to `review` with `sow-admin audio set-visibility <song_id> --status published`. This
-guide performs neither.
+more published Recordings arrangeable is a single job: give them the missing analysis with the
+backfill recipe in *Finding and backfilling arrangeable recordings*, passing `--include-published`
+so the published rows are written in place. No demote/re-publish cycle is needed — the flag never
+changes `visibility_status`. This guide performs neither.
 
 Arranged duration is `getItemDurationSeconds` for all snapped Steps in section order (sum of Step
 lengths), which is why it is shorter than the Recording: untaken gaps and untaken repeats are
@@ -186,9 +186,9 @@ published fixture — a trailing `outro` whose `end` runs 1.31 ms and 1.35 ms pa
 respectively — but out-of-range sections are *skipped* per `arrangements.ts:233-234`, not fatal.
 Clearing the collapse means regenerating `recordings.sections`: `sow-admin audio write-structure`
 rederives both columns from the lyric timeline plus the cached beat grid and drops any section that
-would still collapse, so the repair is demote → `write-structure` → re-publish (see *Finding and
-backfilling arrangeable recordings*). Neither the webapp nor the admin CLI exposes a manual
-section-timing editor; the admin component editor only edits lyrics.
+would still collapse, so the repair is `beat-grid` + `write-structure` with `--include-published`
+(see *Finding and backfilling arrangeable recordings*). Neither the webapp nor the admin CLI exposes
+a manual section-timing editor; the admin component editor only edits lyrics.
 
 ## Finding and backfilling arrangeable recordings
 
@@ -237,8 +237,8 @@ Non-arrangeable recordings (2)
 │ G.L.O.W. 差遣我    │ 主啊，我要跟隨祢 │  ●  │ missing_sections │ recordings.sections absent or empty │ zhu_a__wo_yao_gen_sui_mi_83163301 │ dbd506660aa3 │
 Summary: 320 arrangeable, 127 non-arrangeable (447 recordings)
 collapsed=2, missing_sections=125
-Among non-arrangeable: 105 published — repair commands refuse published recordings; demote with: sow-admin audio set-visibility <song_id> --status review
-Repair: sow-admin audio structure-audit --format ids | sow-admin audio beat-grid --stdin  then  sow-admin audio structure-audit --format ids | sow-admin audio write-structure --stdin
+Among non-arrangeable: 105 published — pass --include-published to the repair commands to backfill them in place (no demotion; rewriting sections/beats can make a saved arrangement stale)
+Repair: sow-admin audio structure-audit --format ids | sow-admin audio beat-grid --include-published --stdin  then  sow-admin audio structure-audit --format ids | sow-admin audio write-structure --include-published --stdin
 ```
 
 Verdicts, in precedence order (first match wins):
@@ -258,8 +258,8 @@ Live counts on the configured Neon DB: 447 active Recordings, 320 `arrangeable`,
 non-arrangeable (125 `missing_sections`, 2 `collapsed`), of which 105 are published. `present` = 322
 matches the *322 analyzed* figure in *Recordings with usable arrangement data*; the 125
 `missing_sections` rows are the never-analyzed or no-retained-analysis columns. The 127 is not a
-repair quota — 105 are published and refused by the repair commands until demoted, and the LRC
-ceiling below means some can never gain sections.
+repair quota — 105 are published and need `--include-published` to be repaired, and the LRC ceiling
+below means some can never gain sections.
 
 ### Who produces what
 
@@ -283,8 +283,9 @@ The Analysis Service supplies the inputs; the admin CLI decides and writes.
 
 ### Repair recipe
 
-Scope the repair set first, and keep it: demoting a published Recording that you then never repair
-hides it from the user app, and 105 of today's 127 non-arrangeable rows are published.
+Scope the repair set first, and keep it: rewriting `sections`/`beats` under a saved arrangement makes
+that arrangement stale, so a run should touch exactly the Recordings you intend to fix. Published
+rows are included with `--include-published` and stay published — no demote/re-publish cycle.
 
 ```bash
 set -a; . /opt/sow/.env; set +a   # SOW_ANALYSIS_API_KEY + R2 credentials
@@ -294,41 +295,33 @@ set -a; . /opt/sow/.env; set +a   # SOW_ANALYSIS_API_KEY + R2 credentials
 sow-admin audio list --structure unusable --format ids > /tmp/repair.txt   # snap failures only
 #    or: sow-admin audio structure-audit --album <name> --format ids > /tmp/repair.txt
 
-# 1. Demote the published rows in that set: both repair commands refuse is_published
-sow-admin audio set-visibility --status review --stdin < /tmp/repair.txt
+# 1. Materialise missing beat grids (idempotent: existing grids are skipped)
+sow-admin audio beat-grid --stdin --include-published < /tmp/repair.txt
 
-# 2. Materialise missing beat grids (idempotent: existing grids are skipped)
-sow-admin audio beat-grid --stdin < /tmp/repair.txt
+# 2. Rewrite sections+beats locally (~1s/song, no job)
+sow-admin audio write-structure --stdin --include-published < /tmp/repair.txt
 
-# 3. Rewrite sections+beats locally (~1s/song, no job)
-sow-admin audio write-structure --stdin < /tmp/repair.txt
-
-# 4. Re-publish exactly the demoted rows that now pass. `structure-audit` lists what
-#    still fails, so the difference is the fixed set; a row it still reports (e.g.
-#    no_structure because its LRC stops early) stays in `review` until dealt with.
-comm -23 \
-  <(sort /tmp/repair.txt) \
-  <(sow-admin audio structure-audit --visibility review --format ids | sort) \
-  | sow-admin audio set-visibility --status published --stdin
-
-# 5. Residual, by verdict — the rows that need a different fix (or none exists)
-sow-admin audio structure-audit --visibility review
+# 3. Residual, by verdict — the rows that need a different fix (or none exists)
+sow-admin audio structure-audit --visibility published   # plus the review/hold pools
 ```
 
-Step 4 works because step 1 puts every id in the repair set into `review`, so
-`structure-audit --visibility review` is a complete list of the set's remaining failures.
+`--include-published` is a deliberate per-run override of the publish guard: it writes the two
+arrangement columns in place and never writes `visibility_status`. Both steps report a per-row
+`published recording — proceeding (--include-published)` line and count the rows in the summary
+(`..., N published`), so the override is visible in the run log rather than implicit.
 
-`audio components <song_id...> --write-recording-analysis` is the per-song alternative to steps 2–3
+`audio components <song_id...> --write-recording-analysis` is the per-song alternative to steps 1–2
 when a component analysis run is already warranted; it derives the same columns from the same two
-artifacts (see `ops/admin-cli/README.md:447-615` — *Making songs arrangeable* for that path and
+artifacts (see `ops/admin-cli/README.md:447-624` — *Making songs arrangeable* for that path and
 *Beat-grid backfill for unarrangeable recordings* for the beat-grid path, which also documents the
 `sow-downbeats` Modal queue timing and the `SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES` audio-size cap).
 
 Caveats:
 
-- **Published rows are refused** by `beat-grid` and `write-structure`, so step 1 (or an equivalent
-  `audio set-visibility <song_id> --status review`) is mandatory for the collapsed published
-  Recordings. Re-publishing is a deliberate admin decision, not part of the repair.
+- **Published rows are written in place only with `--include-published`**; without it `beat-grid`
+  and `write-structure` report them as `skipped_published`, so the collapsed published Recordings
+  need the flag. There is no demote/re-publish cycle: the flag never touches
+  `visibility_status`.
 - **`ARRANGEMENT_STALE`**: regenerating a Recording that already has saved
   `songset_items.arrangement_steps` changes the section indices/labels underneath them, so
   `validateSongArrangement` reports `ARRANGEMENT_STALE` and Render is blocked until the arrangement

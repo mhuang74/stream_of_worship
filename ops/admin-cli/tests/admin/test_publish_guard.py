@@ -151,6 +151,25 @@ class TestEnsureReprocessable:
         assert "upload LRC" in reason
         assert REMEDIATION in reason
 
+    def test_allow_published_skips_refusal(self):
+        """The override keeps the recording published and writes nothing."""
+        console, buffer = _console()
+        ensure_reprocessable(
+            _make_recording(),
+            song_id="song_1",
+            action="re-analyze",
+            console=console,
+            allow_published=True,
+        )
+        assert buffer.getvalue() == ""
+
+    def test_reason_offers_override(self):
+        reason = reprocess_blocked_reason(
+            "song_1", "abc123def456", "re-analyze", offer_override=True
+        )
+        assert REMEDIATION in reason
+        assert "--include-published" in reason
+
 
 # ---------------------------------------------------------------------------
 # LRC job submission
@@ -323,6 +342,56 @@ class TestAudioSingleTargetGuards:
         assert result.exit_code == 1, result.output
         assert REMEDIATION in _flat(result.output)
         analysis_client_cls.assert_not_called()
+
+    def test_analyze_allows_published_with_flag(self):
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording()
+        analysis_client_cls = MagicMock()
+        analysis_client_cls.return_value.submit_analysis.return_value = JobInfo(
+            job_id="job-pub-1", status="queued", job_type="full_analyze"
+        )
+
+        with patch.object(audio_commands, "AnalysisClient", analysis_client_cls):
+            result = _invoke_audio(
+                [
+                    "analyze",
+                    "song_1",
+                    "--include-published",
+                    "--analysis-tier",
+                    "full",
+                    "--force",
+                    "--no-wait",
+                ],
+                db_client,
+            )
+
+        assert result.exit_code == 0, result.output
+        analysis_client_cls.return_value.submit_analysis.assert_called_once()
+        assert "--include-published" in _flat(result.output)
+        # Visibility is never written by the override.
+        db_client.update_recording_visibility.assert_not_called()
+
+    def test_components_allows_published_with_flag(self):
+        db_client = MagicMock()
+        db_client.get_recording_by_song_id.return_value = _make_recording()
+        analysis_client_cls = MagicMock()
+        analysis_client_cls.return_value.submit_component_analysis.return_value = JobInfo(
+            job_id="job-pub-2", status="queued", job_type="component_extraction"
+        )
+
+        with (
+            patch.object(audio_commands, "AnalysisClient", analysis_client_cls),
+            patch.object(audio_commands, "R2Client", MagicMock()),
+        ):
+            result = _invoke_audio(
+                ["components", "song_1", "--include-published", "--force", "--no-wait"],
+                db_client,
+            )
+
+        assert result.exit_code == 0, result.output
+        analysis_client_cls.return_value.submit_component_analysis.assert_called_once()
+        assert "--include-published" in _flat(result.output)
+        db_client.update_recording_visibility.assert_not_called()
 
     def test_delete_command_refuses_published(self):
         db_client = MagicMock()

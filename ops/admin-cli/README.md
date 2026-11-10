@@ -501,9 +501,9 @@ Behaviour worth knowing:
 - A run where the job succeeded but nothing could be persisted is reported as
   `no_structure` in the `--stdin` summary, not as `succeeded`, so the summary
   does not overstate the Arrange coverage delta.
-- Published recordings are still refused by the publish guard; demote first
-  with `sow-admin audio set-visibility SONG_ID --status review`, run, then
-  re-publish.
+- Published recordings need `--include-published`: the flag writes the same two
+  columns in place and never changes visibility, so a validated Recording never
+  has to be demoted and re-published for a secondary feature.
 - Cannot be combined with `--no-wait` (the write-back is inline). Two-phase it
   when a pool needs beat grids first: run once with `--no-wait
   --snap-to-downbeat` to submit every job, then re-run with
@@ -537,17 +537,19 @@ called. `audio write-structure` then does the local, free write-back.
 ```bash
 set -a; . /opt/sow/.env; set +a   # SOW_ANALYSIS_API_KEY + R2 credentials
 
-# `review`-only and `missing`-only on purpose (published rows are refused, and
-# this pair says nothing about rows whose stored structure fails snapping).
-# The audit variant below covers missing ∪ unusable and published rows too.
+# --include-published writes published rows in place (no demotion); it is the
+# only way to backfill them, because rewriting sections/beats under a saved
+# arrangement makes that arrangement stale — the override is explicit so that
+# is a deliberate choice per run. `--visibility review` is now only an optional
+# narrowing filter. The audit variant below covers missing ∪ unusable.
 
 # 1. Materialise missing beat grids (idempotent: existing grids are skipped)
-sow-admin audio list --structure missing --visibility review --format ids \
-  | sow-admin audio beat-grid --stdin
+sow-admin audio list --structure missing --format ids \
+  | sow-admin audio beat-grid --stdin --include-published
 
 # 2. Write sections+beats for everything that now has a grid (~1s/song, no job)
-sow-admin audio list --structure missing --visibility review --format ids \
-  | sow-admin audio write-structure --stdin
+sow-admin audio list --structure missing --format ids \
+  | sow-admin audio write-structure --stdin --include-published
 ```
 
 `--structure missing` covers recordings whose `sections` or `beats` are
@@ -559,7 +561,8 @@ present` is only a presence test and includes those rows; the second class is
 `missing` ∪ `unusable` is exactly the set the Arrange button cannot open.
 
 `structure-audit` classifies a pool in one pass and is read-only: it refuses
-nothing, unlike `beat-grid`/`write-structure`, which refuse published rows.
+nothing, unlike `beat-grid`/`write-structure`, which require
+`--include-published` for published rows.
 Only non-arrangeable rows are emitted, so `--format ids` feeds the same
 pipeline:
 
@@ -569,15 +572,17 @@ sow-admin audio structure-audit                # table; also --format json|ids
 sow-admin audio list --structure unusable --format ids   # snap-aware failures only
 
 # Backfill from the audit instead of from --structure missing
-sow-admin audio structure-audit --format ids | sow-admin audio beat-grid --stdin
-sow-admin audio structure-audit --format ids | sow-admin audio write-structure --stdin
+sow-admin audio structure-audit --format ids \
+  | sow-admin audio beat-grid --stdin --include-published
+sow-admin audio structure-audit --format ids \
+  | sow-admin audio write-structure --stdin --include-published
 ```
 
 `--limit` on `--structure unusable` and on `structure-audit` counts
 non-arrangeable rows and is applied after the gate is evaluated, not as a SQL
 `LIMIT`. Today exactly two analyzed recordings are `collapsed`
-(`28a0ed6e1408`, `e5c16c2f35f2`) and both are `published`, so demote them
-first: `sow-admin audio set-visibility <song_id> --status review`. The
+(`28a0ed6e1408`, `e5c16c2f35f2`) and both are `published`; pass
+`--include-published`, no demotion needed. The
 reasoning behind the rule, the verdict vocabulary, and the Analysis-Service vs
 CLI split are in `docs/song-arrangement-editor-dev-guide.md`
 (*Finding and backfilling arrangeable recordings*).
@@ -600,8 +605,8 @@ CLI split are in `docs/song-arrangement-editor-dev-guide.md`
   `modal app logs sow-downbeats`. A cancellation leaves the analysis service's
   asyncio task holding the beat-grid semaphore — restart `analysis-dev` before
   re-running, or the next job sits in `waiting` forever.
-- Step 2 is local and free. Published recordings are never touched by either
-  command.
+- Step 2 is local and free. Published recordings are skipped by both commands
+  unless `--include-published` is passed.
 - Re-running either command is safe: step 1 reports `already_present` (no job
   submitted, no madmom call), step 2 reports `persisted`.
 - Songs whose LRC stops before the lyrics do cannot be fixed — step 2 reports

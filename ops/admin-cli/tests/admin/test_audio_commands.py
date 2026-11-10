@@ -6072,7 +6072,55 @@ class TestBeatGridBackfill:
         assert result.exit_code == 0
         assert "skipped: published" in result.output
         assert "1 skipped (published)" in result.output
+        assert "--include-published" in " ".join(result.output.split())
         mock_client_cls.return_value.submit_beat_grid.assert_not_called()
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_beat_grid_include_published_submits(
+        self, mock_r2_cls, mock_client_cls, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """--include-published processes the published row and reports the count."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client, published=True)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = None
+        mock_r2_cls.return_value = mock_r2
+
+        mock_client = MagicMock()
+        mock_client.submit_beat_grid.return_value = JobInfo(
+            job_id="job-bg-pub", status="queued", job_type="beat_grid"
+        )
+        mock_client.get_job.return_value = JobInfo(
+            job_id="job-bg-pub", status="completed", job_type="beat_grid"
+        )
+        mock_client_cls.return_value = mock_client
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "beat-grid", "song_bg", "--config", str(config_path), "--include-published"],
+        )
+
+        assert result.exit_code == 0, result.output
+        flat = " ".join(result.output.split())
+        assert "1 detected" in flat
+        assert "1 detected" in result.output
+        assert ", 1 published" in flat
+        mock_client.submit_beat_grid.assert_called_once()
+        kwargs = mock_client.submit_beat_grid.call_args.kwargs
+        assert kwargs["content_hash"] == "d" * 64
+        # Visibility is never written by the override.
+        recording = client.get_recording_by_song_id("song_bg")
+        assert recording is not None
+        assert recording.visibility_status == "published"
 
         _drop_all_tables(make_test_provider)
 
@@ -6114,6 +6162,78 @@ class TestBeatGridBackfill:
         kwargs = mock_client.submit_beat_grid.call_args.kwargs
         assert kwargs["content_hash"] == "d" * 64
         assert kwargs["skip_beat_cache"] is False
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_write_structure_include_published_persists(
+        self, mock_r2_cls, make_test_provider, postgres_url, tmp_path
+    ):
+        """--include-published backfills sections+beats without demoting the row."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client, published=True)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = {"beats": self.BEATS, "downbeats": []}
+        mock_r2.download_lrc_content.return_value = self.LRC
+        mock_r2_cls.return_value = mock_r2
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "write-structure",
+                "song_bg",
+                "--config",
+                str(config_path),
+                "--include-published",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        flat = " ".join(result.output.split())
+        assert "1 persisted" in result.output
+        assert ", 1 published" in flat
+
+        recording = client.get_recording_by_song_id("song_bg")
+        assert recording is not None
+        assert json.loads(recording.sections)
+        assert json.loads(recording.beats)
+        # The override never changes visibility.
+        assert recording.visibility_status == "published"
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_write_structure_skips_published_without_flag(
+        self, mock_r2_cls, make_test_provider, postgres_url, tmp_path
+    ):
+        """Without the flag a published row is skipped and left unarrangeable."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client, published=True)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = {"beats": self.BEATS, "downbeats": []}
+        mock_r2.download_lrc_content.return_value = self.LRC
+        mock_r2_cls.return_value = mock_r2
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "write-structure", "song_bg", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "1 skipped (published)" in result.output
+        assert client.list_recordings_with_songs(structure="present") == []
+        mock_r2.download_beat_grid.assert_not_called()
 
         _drop_all_tables(make_test_provider)
 
