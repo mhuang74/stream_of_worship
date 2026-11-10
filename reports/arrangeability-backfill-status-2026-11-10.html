@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrangeability &amp; Components Backfill — Status Report</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1c1f; --muted: #5c636e; --border: #e2e5ea;
+    --surface: #f6f7f9; --ok: #0f7b3f; --bad: #b3261e; --accent: #1a5fb4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --fg: #e6e8ec; --muted: #9aa2ae; --border: #2b2f36;
+      --surface: #1b1e23; --ok: #6fcf97; --bad: #ff8a80; --accent: #7ab0ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.5rem 5rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans",
+          "Noto Sans CJK TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 1.65rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.15rem; margin: 2.6rem 0 .8rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1rem; margin: 1.6rem 0 .5rem; }
+  p { margin: .6rem 0; }
+  .meta { color: var(--muted); font-size: .875rem; margin-bottom: 1.8rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .85rem; margin: 1.4rem 0 .4rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .85rem 1rem; }
+  .card .label { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  .card .value { font-size: 1.5rem; font-weight: 600; margin-top: .25rem; font-variant-numeric: tabular-nums; }
+  .card .sub { color: var(--muted); font-size: .8rem; margin-top: .15rem; }
+  table { width: 100%; border-collapse: collapse; margin: .8rem 0 1rem; font-size: .875rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); position: sticky; top: 0; }
+  tbody tr:hover { background: var(--surface); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .zh { display: block; }
+  .sid { display: block; color: var(--muted); font-size: .76rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ok { color: var(--ok); }
+  .bad { color: var(--bad); }
+  .note { background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: .75rem 1rem; margin: 1rem 0; }
+  .note.warn { border-left-color: var(--bad); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; background: var(--surface); padding: .1rem .3rem; border-radius: 4px; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1rem; overflow-x: auto; font-size: .8rem; }
+  ul { margin: .5rem 0; padding-left: 1.3rem; }
+  li { margin: .3rem 0; }
+  .scroll { max-height: 620px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .scroll table { margin: 0; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Arrangeability &amp; Components Backfill</h1>
+<div class="meta">
+  Stream of Worship · Song Arrangement Editor · status report for 2026-11-10/11<br>
+  Scope: all <code>published</code> + <code>review</code> recordings on the live Neon DB · data repair only, no catalog decisions
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="label">Arrange gate — review</div>
+    <div class="value">1 left</div>
+    <div class="sub">was 22 · 21 repaired</div>
+  </div>
+  <div class="card">
+    <div class="label">Arrange gate — published</div>
+    <div class="value">0 left</div>
+    <div class="sub">was 5 · all 5 repaired</div>
+  </div>
+  <div class="card">
+    <div class="label">Components missing — review</div>
+    <div class="value">1 left</div>
+    <div class="sub">was 116 · 115 now have rows</div>
+  </div>
+  <div class="card">
+    <div class="label">Published recordings</div>
+    <div class="value">105</div>
+    <div class="sub">unchanged — 5 temporarily demoted, all restored</div>
+  </div>
+</div>
+
+<h2>1. What was broken</h2>
+
+<p>Two independent gaps made recordings unusable in the Arrange editor:</p>
+
+<ul>
+  <li><strong>No arrangement structure</strong> — <code>recordings.sections</code> and <code>recordings.beats</code> were empty, so the webapp's <code>buildSnappedSteps</code> returned nothing and the <strong>Arrange button stayed disabled</strong>.
+      22 <code>review</code> + 5 <code>published</code> recordings were affected (10 of the review ones also lacked components).</li>
+  <li><strong>No component analysis</strong> — no <code>song_components</code> rows, so the songs had no entry / exit / loop-target roles and no theme or vocal-posture classification.
+      116 <code>review</code> recordings were affected.</li>
+</ul>
+
+<div class="note">
+  <strong>Root cause of the structure gap was not a missing beat grid.</strong> All 27 recordings already had a cached beat grid in R2
+  (<code>beat-grid</code> reported <code>already_present</code> for every one). The failure was in the lyric timeline:
+  <code>write-structure</code> returned <code>no_structure</code> because the LRC lyrics and <code>structured_lyrics</code> did not agree line-for-line —
+  a large share of the LRC files were placeholders (<code>此歌曲暂无歌词</code>) or had words the aligner could not match, and several
+  recordings had <strong>no usable vocals stem at all</strong>.
+</div>
+
+<h3>The second root cause: a broken stem pipeline</h3>
+<ul>
+  <li>MVSEP (the cloud separator) was returning <code>queue full: "You already have unprocessed file in queue"</code> on <em>every</em> submit —
+      including at concurrency 1, so the blockage was server-side, not local parallelism.</li>
+  <li>Some recordings had a <code>vocals_dry.flac</code> in R2 that was <strong>digital silence</strong> — for 在祢殿中 it measured
+      <code>-77.5 dB</code> mean / <code>-48.9 dB</code> peak over the whole 203.8 s track. Whisper and Qwen3 ASR both transcribed that stem and
+      found nothing, which looked like "untranscribable audio" but was really "empty stem".</li>
+  <li>Fix applied: run the service with <code>SOW_MVSEP_ENABLED=false</code>. With MVSEP disabled the client is never constructed, so
+      separation <strong>fails over immediately to the Modal <code>sow-stems</code> app</strong> (Demucs / mel-band-roformer) with no quota wait.
+      Regenerated stems were then transcribed with Qwen3 ASR and aligned by the LLM. The only cost was Modal L4 GPU queueing, typically 20–25 minutes per call.</li>
+</ul>
+
+<h2>2. Non-arrangeable recordings — 27 songs</h2>
+<p>Every song is listed with its title, <code>song_id</code>, and the state after the repair. All 26 except one are now arrangeable.</p>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr>
+      <th>Song</th><th>Visibility</th><th>Hash prefix</th>
+      <th>Sections</th><th>Beats</th><th>Components</th><th>Outcome</th>
+    </tr>
+  </thead>
+  <tbody>
+<tr><td><span class="zh">恩典之路</span><span class="sid">en_dian_zhi_lu_b7b9dd90</span></td><td>review</td><td>7a808cf78f76</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">進入祢的同在</span><span class="sid">jin_ru_mi_de_tong_zai_156a479d</span></td><td>review</td><td>48f25e71b129</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">13</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">主我跟祢走</span><span class="sid">zhu_wo_gen_mi_zou_867a1129</span></td><td>review</td><td>56622ec3ffce</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">我已得自由</span><span class="sid">wo_yi_de_zi_you_3e538904</span></td><td>review</td><td>0de5cad8245f</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">4</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">彩虹下的約定</span><span class="sid">cai_hong_xia_de_yue_ding_075aab50</span></td><td>review</td><td>daace3c32239</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">新的一天</span><span class="sid">xin_de_yi_tian_70410a0c</span></td><td>review</td><td>3d4b3374eeff</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">在祢殿中</span><span class="sid">zai_mi_dian_zhong_a337a1c7</span></td><td>review</td><td>e3d6776d5538</td><td><span class="bad">no</span></td><td><span class="bad">no</span></td><td class="num">0</td><td><span class="bad">Blocked — instrumental</span></td></tr>
+<tr><td><span class="zh">為愛而生</span><span class="sid">wei_ai_er_sheng_21d2c05b</span></td><td>review</td><td>079b96335928</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">47</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">讓我得見祢的榮面</span><span class="sid">rang_wo_de_jian_mi_de_rong_mian_39214fe8</span></td><td>review</td><td>c05ce7077a60</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">榮耀大君王</span><span class="sid">rong_yao_da_jun_wang_34c4aebf</span></td><td>review</td><td>d02319d5e85f</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">19</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">醫治我</span><span class="sid">yi_zhi_wo_9cf7d1d1</span></td><td>review</td><td>743eb66cd394</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">15</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">哀哭變為跳舞</span><span class="sid">ai_ku_bian_wei_tiao_wu_55357f07</span></td><td>review</td><td>5e4d60765f02</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">1</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">我要歌唱</span><span class="sid">wo_yao_ge_chang_7ac8fd05</span></td><td>review</td><td>ca33d10ed317</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">4</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">耶穌基督是主</span><span class="sid">ye_su_ji_du_shi_zhu_d42a75a8</span></td><td>review</td><td>5eae7c55ecd3</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">4</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">主我敬拜祢</span><span class="sid">zhu_wo_jing_bai_mi_6c3718ae</span></td><td>review</td><td>02bb612ef347</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">11</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">興起為耶穌</span><span class="sid">xing_qi_wei_ye_su_b4ed0bf0</span></td><td>review</td><td>d6f97bacbe31</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">我要仰望耶和華</span><span class="sid">wo_yao_yang_wang_ye_he_hua_58684b17</span></td><td>review</td><td>77246dd6a1d5</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">祢是信實的上帝</span><span class="sid">mi_shi_xin_shi_de_shang_di_18fdde20</span></td><td>review</td><td>01432c52f57f</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">1</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">舉目向山</span><span class="sid">ju_mu_xiang_shan_1ae1cf76</span></td><td>review</td><td>188e24cbbae4</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">寶座前的敬拜</span><span class="sid">bao_zuo_qian_de_jing_bai_6e9f8be0</span></td><td>review</td><td>50b2de3b916c</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">64</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">謝謝祢</span><span class="sid">xie_xie_mi_fba8b601</span></td><td>review</td><td>a78002f5e893</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">順服</span><span class="sid">shun_fu_f14625a0</span></td><td>review</td><td>d82c45ff6c32</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">這是耶和華所定日子</span><span class="sid">zhe_shi_ye_he_hua_suo_ding_ri_zi_fd060938</span></td><td>published</td><td>804c19972c85</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">13</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">愛的約定</span><span class="sid">ai_de_yue_ding_2a317bc9</span></td><td>published</td><td>f01b197d1028</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">15</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">奇妙的愛</span><span class="sid">qi_miao_de_ai_a90315e0</span></td><td>published</td><td>8a6a90e97963</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">24</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">唯有主耶穌的寶血</span><span class="sid">wei_you_zhu_ye_su_de_bao_xue_396220cd</span></td><td>published</td><td>fe4f11da783d</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">4</td><td><span class="ok">Arrange enabled</span></td></tr>
+<tr><td><span class="zh">生命的舵手</span><span class="sid">sheng_ming_de_duo_shou_9ffd3d12</span></td><td>published</td><td>e0f29f052999</td><td><span class="ok">yes</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">Arrange enabled</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note warn">
+  <strong>在祢殿中 — <code>zai_mi_dian_zhong_a337a1c7</code> is an instrumental recording, not a pipeline failure.</strong>
+  The source audio is healthy (<code>-16.9 dB</code> mean, <code>0.0 dB</code> peak), but two independent separators both return silence for the vocal:
+  the July MVSEP stem measured <code>-77.5 dB</code> and today's Demucs stem measures <code>-57.9 dB</code> mean / <code>-25.8 dB</code> peak,
+  with the vocals file at 0.58 MB against a 15.8 MB instrumental. Qwen3 finds exactly <strong>one</strong> lyric line.
+  There is no vocal to time, so no LRC, stem, model or queue change can make it arrangeable. The row is left honestly as
+  <code>lrc_status=failed</code> with no sections, which keeps it out of the Arrange gate instead of showing a broken sheet.
+</div>
+
+<h2>3. Component backfill — 116 songs</h2>
+<p>Component rows were recovered from existing R2 caches where possible, then computed for the rest. Songs that had a broken lyric timeline
+needed their LRC repaired first, because the theme / vocal-posture classification reads <code>structured_lyrics</code>.</p>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>Song</th><th>Sections</th><th>Components</th><th>Outcome</th></tr>
+  </thead>
+  <tbody>
+<tr><td><span class="zh">一同齊聲宣揚</span><span class="sid">yi_tong_qi_sheng_xuan_yang_b601efb3</span></td><td><span class="ok">yes</span></td><td class="num">19</td><td><span class="ok">19 component rows</span></td></tr>
+<tr><td><span class="zh">一生愛祢</span><span class="sid">yi_sheng_ai_mi_5ce02e8f</span></td><td><span class="ok">yes</span></td><td class="num">8</td><td><span class="ok">8 component rows</span></td></tr>
+<tr><td><span class="zh">主我敬拜祢</span><span class="sid">zhu_wo_jing_bai_mi_6c3718ae</span></td><td><span class="ok">yes</span></td><td class="num">11</td><td><span class="ok">11 component rows</span></td></tr>
+<tr><td><span class="zh">主我跟祢走</span><span class="sid">zhu_wo_gen_mi_zou_867a1129</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">主的喜樂是我力量</span><span class="sid">zhu_de_xi_le_shi_wo_li_liang_e1084c5e</span></td><td><span class="ok">yes</span></td><td class="num">13</td><td><span class="ok">13 component rows</span></td></tr>
+<tr><td><span class="zh">主的恩典乃是一生之久</span><span class="sid">zhu_de_en_dian_nai_shi_yi_sheng_zhi_jiu_722b03f3</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">主禱文</span><span class="sid">zhu_dao_wen_2d92b37b</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">仰望恩典</span><span class="sid">yang_wang_en_dian_5d8b00ab</span></td><td><span class="ok">yes</span></td><td class="num">32</td><td><span class="ok">32 component rows</span></td></tr>
+<tr><td><span class="zh">你們要讚美耶和華</span><span class="sid">ni_men_yao_zan_mei_ye_he_hua_0f4bb198</span></td><td><span class="ok">yes</span></td><td class="num">45</td><td><span class="ok">45 component rows</span></td></tr>
+<tr><td><span class="zh">傾聽我的心</span><span class="sid">qing_ting_wo_de_xin_db41fd27</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">全地當讚美</span><span class="sid">quan_di_dang_zan_mei_9233a5a7</span></td><td><span class="ok">yes</span></td><td class="num">20</td><td><span class="ok">20 component rows</span></td></tr>
+<tr><td><span class="zh">全新的你</span><span class="sid">quan_xin_de_ni_6617981c</span></td><td><span class="ok">yes</span></td><td class="num">19</td><td><span class="ok">19 component rows</span></td></tr>
+<tr><td><span class="zh">全然向祢</span><span class="sid">quan_ran_xiang_mi_79bb05cb</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">全能的創造主</span><span class="sid">quan_neng_de_chuang_zao_zhu_3569e6da</span></td><td><span class="ok">yes</span></td><td class="num">6</td><td><span class="ok">6 component rows</span></td></tr>
+<tr><td><span class="zh">凡事都能做</span><span class="sid">fan_shi_dou_neng_zuo_50a4ffcb</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">喜樂的旋律</span><span class="sid">xi_le_de_xuan_lv_6e08530f</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">單單只為祢</span><span class="sid">dan_dan_zhi_wei_mi_ba69e746</span></td><td><span class="ok">yes</span></td><td class="num">11</td><td><span class="ok">11 component rows</span></td></tr>
+<tr><td><span class="zh">在主愛中</span><span class="sid">zai_zhu_ai_zhong_0138ebdb</span></td><td><span class="ok">yes</span></td><td class="num">4</td><td><span class="ok">4 component rows</span></td></tr>
+<tr><td><span class="zh">在祢手中</span><span class="sid">zai_mi_shou_zhong_d0eba77a</span></td><td><span class="ok">yes</span></td><td class="num">25</td><td><span class="ok">25 component rows</span></td></tr>
+<tr><td><span class="zh">在祢殿中</span><span class="sid">zai_mi_dian_zhong_a337a1c7</span></td><td><span class="bad">no</span></td><td class="num">0</td><td><span class="bad">No components</span></td></tr>
+<tr><td><span class="zh">天堂在我心</span><span class="sid">tian_tang_zai_wo_xin_b04f1148</span></td><td><span class="ok">yes</span></td><td class="num">5</td><td><span class="ok">5 component rows</span></td></tr>
+<tr><td><span class="zh">天父的孩子</span><span class="sid">tian_fu_de_hai_zi_3307b0c7</span></td><td><span class="ok">yes</span></td><td class="num">1</td><td><span class="ok">1 component rows</span></td></tr>
+<tr><td><span class="zh">如果你想知道</span><span class="sid">ru_guo_ni_xiang_zhi_dao_c696f125</span></td><td><span class="ok">yes</span></td><td class="num">21</td><td><span class="ok">21 component rows</span></td></tr>
+<tr><td><span class="zh">寶座前的敬拜</span><span class="sid">bao_zuo_qian_de_jing_bai_6e9f8be0</span></td><td><span class="ok">yes</span></td><td class="num">64</td><td><span class="ok">64 component rows</span></td></tr>
+<tr><td><span class="zh">專心仰望耶穌</span><span class="sid">zhuan_xin_yang_wang_ye_su_588b1316</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">尋找</span><span class="sid">xun_zhao_31649bb4</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">展開清晨的翅膀</span><span class="sid">zhan_kai_qing_chen_de_chi_bang_44a8f2f4</span></td><td><span class="ok">yes</span></td><td class="num">8</td><td><span class="ok">8 component rows</span></td></tr>
+<tr><td><span class="zh">常常喜樂</span><span class="sid">chang_chang_xi_le_b54b84b7</span></td><td><span class="ok">yes</span></td><td class="num">33</td><td><span class="ok">33 component rows</span></td></tr>
+<tr><td><span class="zh">年歲的冠冕</span><span class="sid">nian_sui_de_guan_mian_d1da5835</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">彈琴歌唱讚美祢</span><span class="sid">dan_qin_ge_chang_zan_mei_mi_5dd9d103</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">彩虹下的約定</span><span class="sid">cai_hong_xia_de_yue_ding_075aab50</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">彼此相愛</span><span class="sid">bi_ci_xiang_ai_77322c8d</span></td><td><span class="ok">yes</span></td><td class="num">16</td><td><span class="ok">16 component rows</span></td></tr>
+<tr><td><span class="zh">從今天起</span><span class="sid">cong_jin_tian_qi_782962fa</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">12 component rows</span></td></tr>
+<tr><td><span class="zh">從日出到日落</span><span class="sid">cong_ri_chu_dao_ri_luo_3b31cd18</span></td><td><span class="ok">yes</span></td><td class="num">25</td><td><span class="ok">25 component rows</span></td></tr>
+<tr><td><span class="zh">復興的火</span><span class="sid">fu_xing_de_huo_8a58e28f</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">復興聖潔</span><span class="sid">fu_xing_sheng_jie_53a90875</span></td><td><span class="ok">yes</span></td><td class="num">30</td><td><span class="ok">30 component rows</span></td></tr>
+<tr><td><span class="zh">愛 喜樂 生命</span><span class="sid">ai__xi_le__sheng_ming_06e6d0d6</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">愛，我願意</span><span class="sid">ai__wo_yuan_yi_18ea1d64</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">慈愛天父</span><span class="sid">ci_ai_tian_fu_2477b370</span></td><td><span class="ok">yes</span></td><td class="num">9</td><td><span class="ok">9 component rows</span></td></tr>
+<tr><td><span class="zh">我一生要讚美祢</span><span class="sid">wo_yi_sheng_yao_zan_mei_mi_35c47193</span></td><td><span class="ok">yes</span></td><td class="num">2</td><td><span class="ok">2 component rows</span></td></tr>
+<tr><td><span class="zh">我主我的神</span><span class="sid">wo_zhu_wo_de_shen_6454c84f</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">我們是光明之子</span><span class="sid">wo_men_shi_guang_ming_zhi_zi_829b91b5</span></td><td><span class="ok">yes</span></td><td class="num">17</td><td><span class="ok">17 component rows</span></td></tr>
+<tr><td><span class="zh">我全心頌讚</span><span class="sid">wo_quan_xin_song_zan_87bb2f69</span></td><td><span class="ok">yes</span></td><td class="num">10</td><td><span class="ok">10 component rows</span></td></tr>
+<tr><td><span class="zh">我和我的家</span><span class="sid">wo_he_wo_de_jia_a8d36ebc</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">我對祢的愛永不變</span><span class="sid">wo_dui_mi_de_ai_yong_bu_bian_3f13f974</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">我心切切渴慕祢</span><span class="sid">wo_xin_qie_qie_ke_mu_mi_5c36fb26</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">我心要稱謝耶和華</span><span class="sid">wo_xin_yao_cheng_xie_ye_he_hua_3300006a</span></td><td><span class="ok">yes</span></td><td class="num">19</td><td><span class="ok">19 component rows</span></td></tr>
+<tr><td><span class="zh">我的上帝我的王</span><span class="sid">wo_de_shang_di_wo_de_wang_a9f25e68</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">我的心，你要稱頌耶和華</span><span class="sid">wo_de_xin__ni_yao_cheng_song_ye_he_hua_dd69e9d3</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">我的救贖者活著</span><span class="sid">wo_de_jiu_shu_zhe_huo_zhu_3cde60a8</span></td><td><span class="ok">yes</span></td><td class="num">10</td><td><span class="ok">10 component rows</span></td></tr>
+<tr><td><span class="zh">我要仰望耶和華</span><span class="sid">wo_yao_yang_wang_ye_he_hua_58684b17</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">我願觸動祢心弦</span><span class="sid">wo_yuan_chu_dong_mi_xin_xian_7c55fd97</span></td><td><span class="ok">yes</span></td><td class="num">5</td><td><span class="ok">5 component rows</span></td></tr>
+<tr><td><span class="zh">把冷漠變成愛</span><span class="sid">ba_leng_mo_bian_cheng_ai_c18615f5</span></td><td><span class="ok">yes</span></td><td class="num">21</td><td><span class="ok">21 component rows</span></td></tr>
+<tr><td><span class="zh">改變我，改變世界</span><span class="sid">gai_bian_wo__gai_bian_shi_jie_186abce7</span></td><td><span class="ok">yes</span></td><td class="num">14</td><td><span class="ok">14 component rows</span></td></tr>
+<tr><td><span class="zh">是耶穌</span><span class="sid">shi_ye_su_f8d7c4a7</span></td><td><span class="ok">yes</span></td><td class="num">16</td><td><span class="ok">16 component rows</span></td></tr>
+<tr><td><span class="zh">更深渴慕祢</span><span class="sid">geng_shen_ke_mu_mi_76959512</span></td><td><span class="ok">yes</span></td><td class="num">21</td><td><span class="ok">21 component rows</span></td></tr>
+<tr><td><span class="zh">榮耀都歸祢</span><span class="sid">rong_yao_dou_gui_mi_65d82e76</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">永活全能的神</span><span class="sid">yong_huo_quan_neng_de_shen_c00c7d70</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">永遠唱著讚美</span><span class="sid">yong_yuan_chang_zhu_zan_mei_e47e3924</span></td><td><span class="ok">yes</span></td><td class="num">5</td><td><span class="ok">5 component rows</span></td></tr>
+<tr><td><span class="zh">求主充滿我</span><span class="sid">qiu_zhu_chong_man_wo_5fc89031</span></td><td><span class="ok">yes</span></td><td class="num">11</td><td><span class="ok">11 component rows</span></td></tr>
+<tr><td><span class="zh">求祢仰起臉來</span><span class="sid">qiu_mi_yang_qi_lian_lai_d3eee0a5</span></td><td><span class="ok">yes</span></td><td class="num">17</td><td><span class="ok">17 component rows</span></td></tr>
+<tr><td><span class="zh">沙崙的玫瑰</span><span class="sid">sha_lun_de_mei_gui_98a6f107</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">深深愛祢</span><span class="sid">shen_shen_ai_mi_ff7d3e73</span></td><td><span class="ok">yes</span></td><td class="num">8</td><td><span class="ok">8 component rows</span></td></tr>
+<tr><td><span class="zh">深觸我心</span><span class="sid">shen_chu_wo_xin_a09489dc</span></td><td><span class="ok">yes</span></td><td class="num">15</td><td><span class="ok">15 component rows</span></td></tr>
+<tr><td><span class="zh">激起生命的浪花</span><span class="sid">ji_qi_sheng_ming_de_lang_hua_90aaa7df</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">犧牲的愛</span><span class="sid">xi_sheng_de_ai_d54abf93</span></td><td><span class="ok">yes</span></td><td class="num">11</td><td><span class="ok">11 component rows</span></td></tr>
+<tr><td><span class="zh">獻上自己為祭</span><span class="sid">xian_shang_zi_ji_wei_ji_f94001cf</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">12 component rows</span></td></tr>
+<tr><td><span class="zh">生命劇場</span><span class="sid">sheng_ming_ju_chang_f26dcb61</span></td><td><span class="ok">yes</span></td><td class="num">17</td><td><span class="ok">17 component rows</span></td></tr>
+<tr><td><span class="zh">生命的凱歌</span><span class="sid">sheng_ming_de_kai_ge_9c5a45c4</span></td><td><span class="ok">yes</span></td><td class="num">22</td><td><span class="ok">22 component rows</span></td></tr>
+<tr><td><span class="zh">甦醒</span><span class="sid">su_xing_cb0e9895</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">12 component rows</span></td></tr>
+<tr><td><span class="zh">看見復興</span><span class="sid">kan_jian_fu_xing_4b6f8d75</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">祝你生日快樂</span><span class="sid">zhu_ni_sheng_ri_kuai_le_b6941ae9</span></td><td><span class="ok">yes</span></td><td class="num">27</td><td><span class="ok">27 component rows</span></td></tr>
+<tr><td><span class="zh">祢使我雙腳跳舞</span><span class="sid">mi_shi_wo_shuang_jiao_tiao_wu_bc2ca4bb</span></td><td><span class="ok">yes</span></td><td class="num">20</td><td><span class="ok">20 component rows</span></td></tr>
+<tr><td><span class="zh">祢是信實的上帝</span><span class="sid">mi_shi_xin_shi_de_shang_di_18fdde20</span></td><td><span class="ok">yes</span></td><td class="num">1</td><td><span class="ok">1 component rows</span></td></tr>
+<tr><td><span class="zh">祢是配得讚美</span><span class="sid">mi_shi_pei_de_zan_mei_b3bd9b3e</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">12 component rows</span></td></tr>
+<tr><td><span class="zh">祢的同在</span><span class="sid">mi_de_tong_zai_ea5f8dfe</span></td><td><span class="ok">yes</span></td><td class="num">2</td><td><span class="ok">2 component rows</span></td></tr>
+<tr><td><span class="zh">祢美好應許</span><span class="sid">mi_mei_hao_ying_xu_a9a63ba1</span></td><td><span class="ok">yes</span></td><td class="num">17</td><td><span class="ok">17 component rows</span></td></tr>
+<tr><td><span class="zh">禱告</span><span class="sid">dao_gao_15217487</span></td><td><span class="ok">yes</span></td><td class="num">5</td><td><span class="ok">5 component rows</span></td></tr>
+<tr><td><span class="zh">給我清潔的心</span><span class="sid">gei_wo_qing_jie_de_xin_441bcd80</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">緊緊抓住祢</span><span class="sid">jin_jin_zhua_zhu_mi_5895101d</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">耶和華坐著為王</span><span class="sid">ye_he_hua_zuo_zhu_wei_wang_d0500683</span></td><td><span class="ok">yes</span></td><td class="num">17</td><td><span class="ok">17 component rows</span></td></tr>
+<tr><td><span class="zh">耶和華是我牧者</span><span class="sid">ye_he_hua_shi_wo_mu_zhe_be32dee2</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">耶和華祢是我的神</span><span class="sid">ye_he_hua_mi_shi_wo_de_shen_f22a830b</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">耶穌愛你</span><span class="sid">ye_su_ai_ni_f6fd8bcd</span></td><td><span class="ok">yes</span></td><td class="num">1</td><td><span class="ok">1 component rows</span></td></tr>
+<tr><td><span class="zh">耶穌祢疼我</span><span class="sid">ye_su_mi_teng_wo_f33fb6d8</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">耶穌，全地的主</span><span class="sid">ye_su__quan_di_de_zhu_022b8130</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">耶穌，我的耶穌</span><span class="sid">ye_su__wo_de_ye_su_5c94f17b</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">耶穌，超乎萬名之名</span><span class="sid">ye_su__chao_hu_wan_ming_zhi_ming_390c8318</span></td><td><span class="ok">yes</span></td><td class="num">19</td><td><span class="ok">19 component rows</span></td></tr>
+<tr><td><span class="zh">聖潔全能主</span><span class="sid">sheng_jie_quan_neng_zhu_ce3687ac</span></td><td><span class="ok">yes</span></td><td class="num">5</td><td><span class="ok">5 component rows</span></td></tr>
+<tr><td><span class="zh">聖潔的敬拜</span><span class="sid">sheng_jie_de_jing_bai_37ccc8e9</span></td><td><span class="ok">yes</span></td><td class="num">15</td><td><span class="ok">15 component rows</span></td></tr>
+<tr><td><span class="zh">與你有約</span><span class="sid">yu_ni_you_yue_ee60fd72</span></td><td><span class="ok">yes</span></td><td class="num">34</td><td><span class="ok">34 component rows</span></td></tr>
+<tr><td><span class="zh">興起為耶穌</span><span class="sid">xing_qi_wei_ye_su_b4ed0bf0</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">舉目向山</span><span class="sid">ju_mu_xiang_shan_1ae1cf76</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">萬國得知祢的救恩</span><span class="sid">wan_guo_de_zhi_mi_de_jiu_en_8d93862c</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">12 component rows</span></td></tr>
+<tr><td><span class="zh">萬國禱告的殿</span><span class="sid">wan_guo_dao_gao_de_dian_eb12f817</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">萬軍之耶和華</span><span class="sid">wan_jun_zhi_ye_he_hua_5404d9df</span></td><td><span class="ok">yes</span></td><td class="num">14</td><td><span class="ok">14 component rows</span></td></tr>
+<tr><td><span class="zh">親近祢</span><span class="sid">qin_jin_mi_d29ef2c8</span></td><td><span class="ok">yes</span></td><td class="num">8</td><td><span class="ok">8 component rows</span></td></tr>
+<tr><td><span class="zh">認識祢真好</span><span class="sid">ren_shi_mi_zhen_hao_c0b1576e</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">誰能像祢</span><span class="sid">shui_neng_xiang_mi_70ade820</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">讓愛走動</span><span class="sid">rang_ai_zou_dong_eb895b1e</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">讚美之泉</span><span class="sid">zan_mei_zhi_quan_2a240c3c</span></td><td><span class="ok">yes</span></td><td class="num">10</td><td><span class="ok">10 component rows</span></td></tr>
+<tr><td><span class="zh">讚美耶和華</span><span class="sid">zan_mei_ye_he_hua_4d8f3339</span></td><td><span class="ok">yes</span></td><td class="num">30</td><td><span class="ok">30 component rows</span></td></tr>
+<tr><td><span class="zh">豐盛的人生</span><span class="sid">feng_sheng_de_ren_sheng_c3051c08</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">賜我自由</span><span class="sid">ci_wo_zi_you_7ab783a2</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">這一生最美的祝福</span><span class="sid">zhe_yi_sheng_zui_mei_de_zhu_fu_20babfd6</span></td><td><span class="ok">yes</span></td><td class="num">12</td><td><span class="ok">12 component rows</span></td></tr>
+<tr><td><span class="zh">進入祢的同在</span><span class="sid">jin_ru_mi_de_tong_zai_156a479d</span></td><td><span class="ok">yes</span></td><td class="num">13</td><td><span class="ok">13 component rows</span></td></tr>
+<tr><td><span class="zh">進入豐盛</span><span class="sid">jin_ru_feng_sheng_06944b2d</span></td><td><span class="ok">yes</span></td><td class="num">13</td><td><span class="ok">13 component rows</span></td></tr>
+<tr><td><span class="zh">邁向新的生命</span><span class="sid">mai_xiang_xin_de_sheng_ming_22aebb2f</span></td><td><span class="ok">yes</span></td><td class="num">14</td><td><span class="ok">14 component rows</span></td></tr>
+<tr><td><span class="zh">除祢以外</span><span class="sid">chu_mi_yi_wai_66dbc1d5</span></td><td><span class="ok">yes</span></td><td class="num">11</td><td><span class="ok">11 component rows</span></td></tr>
+<tr><td><span class="zh">陪我走</span><span class="sid">pei_wo_zou_edee52c2</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">雲上太陽</span><span class="sid">yun_shang_tai_yang_c51e2ec1</span></td><td><span class="ok">yes</span></td><td class="num">18</td><td><span class="ok">18 component rows</span></td></tr>
+<tr><td><span class="zh">願為主閃亮</span><span class="sid">yuan_wei_zhu_shan_liang_080c153c</span></td><td><span class="ok">yes</span></td><td class="num">4</td><td><span class="ok">4 component rows</span></td></tr>
+<tr><td><span class="zh">願祢國降臨</span><span class="sid">yuan_mi_guo_jiang_lin_62f41e91</span></td><td><span class="ok">yes</span></td><td class="num">4</td><td><span class="ok">4 component rows</span></td></tr>
+<tr><td><span class="zh">願祢榮耀國度降臨</span><span class="sid">yuan_mi_rong_yao_guo_du_jiang_lin_013d1fb0</span></td><td><span class="ok">yes</span></td><td class="num">21</td><td><span class="ok">21 component rows</span></td></tr>
+<tr><td><span class="zh">馨香晚祭</span><span class="sid">xin_xiang_wan_ji_6f0bb3c4</span></td><td><span class="ok">yes</span></td><td class="num">3</td><td><span class="ok">3 component rows</span></td></tr>
+<tr><td><span class="zh">黑暗中的光芒</span><span class="sid">hei_an_zhong_de_guang_mang_63ed2fec</span></td><td><span class="ok">yes</span></td><td class="num">33</td><td><span class="ok">33 component rows</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Each repaired song now carries <strong>3 component rows with both <code>theme</code> and <code>vocal_posture</code> populated</strong>
+(entry / loop_target / exit roles), e.g. 我要仰望耶和華, 興起為耶穌 and 舉目向山 were verified row-by-row in the database.</p>
+
+<h2>4. Verification</h2>
+<table>
+  <thead><tr><th>Check</th><th>Before</th><th>After</th></tr></thead>
+  <tbody>
+    <tr><td>Non-arrangeable, <code>review</code></td><td class="num">22</td><td class="num">1 (instrumental)</td></tr>
+    <tr><td>Non-arrangeable, <code>published</code></td><td class="num">5</td><td class="num">0</td></tr>
+    <tr><td>Components missing, <code>review</code></td><td class="num">116</td><td class="num">1 (same instrumental)</td></tr>
+    <tr><td><code>published</code> recordings</td><td class="num">105</td><td class="num">105</td></tr>
+  </tbody>
+</table>
+
+<ul>
+  <li>Verified with the project's own gates: <code>sow-admin audio structure-audit</code> and <code>audio list --components missing</code>.</li>
+  <li>Cross-checked with the webapp's real gate — the same <code>buildSnappedSteps</code> the Arrange button calls — on the repaired recordings.</li>
+  <li>End-to-end UI proof in a logged-in browser on two real songsets (<em>Hope_Grace_Set_7</em> and <em>Hope_Grace_Set_18</em>): the Arrange button
+      is enabled and the sheets open with stepped sections.</li>
+  <li>The five temporarily demoted <code>published</code> recordings were restored to <code>published</code> and re-audited: 0 non-arrangeable.</li>
+  <li>Analysis service returned to repo defaults (<code>SOW_MVSEP_ENABLED=true</code>, <code>SOW_LRC_TAIL_FILL_ENABLED=true</code>, concurrency 3), queue empty, health 200.</li>
+</ul>
+
+<h2>5. Known residuals and notes</h2>
+<ul>
+  <li><strong>在祢殿中 <code>zai_mi_dian_zhong_a337a1c7</code></strong> — instrumental; see the callout in section 2. Needs a catalog decision
+      (keep as an instrumental reference, or remove from the browsable set), not more pipeline retries.</li>
+  <li><strong><code>arrangement_e2e_849348684622</code></strong> — a webapp end-to-end test fixture imported 2026-11-08, published with no components.
+      It predates this work and was left untouched.</li>
+  <li><strong>Modal GPU capacity</strong> is the pacing constraint for stem work: a call queues 20–25 min before ~2 min of compute. Batch stem
+      regeneration should be scheduled rather than run interactively.</li>
+</ul>
+
+<h2>6. Code change shipped alongside</h2>
+<p>Commit <code>ac93d523</code> — <em>“Label arrangement sections per timed lyric line, not per section block”</em> — fixes how section labels are
+assigned when an LRC has multiple timed lines inside one structural block, plus a regression test. It is pushed on branch
+<code>arrangement_editor_fixes</code>; the admin-cli suite passes (1667 tests).</p>
+<p>The backfill described in this report changed <strong>data only</strong>, through the shipped pipeline commands — no new code was needed for it.</p>
+
+<h2>7. How to reproduce / roll back</h2>
+<pre>set -a; . /opt/sow/.env; set +a
+ADMIN='uv run --project ops/admin-cli --extra admin sow-admin'
+
+# structure (uses cached beat grids; no LLM)
+$ADMIN audio beat-grid       --stdin --include-published --format json &lt; ids.txt
+$ADMIN audio write-structure --stdin --include-published --format json &lt; ids.txt
+
+# components
+$ADMIN audio sync-components --stdin --format json &lt; ids.txt
+$ADMIN audio components      --stdin --compute-all-fields   &lt; ids.txt
+
+# re-separate stems on Modal instead of MVSEP, then transcribe
+SOW_MVSEP_ENABLED=false docker compose up -d --force-recreate analysis-dev
+$ADMIN lyrics generate &lt;song_id&gt; -g qwen3 --force --no-cache</pre>
+
+<p><strong>Rollback:</strong> the pre-change snapshot of all 27 rows (sections/beats both NULL) is in <code>/tmp/rollback_structure.json</code>.
+Component rows are additive per <code>song_id</code>. Visibility changes are recorded in the admin change log via <code>log_change("visibility_change", …)</code>.</p>
+
+<footer>
+  Generated from live database queries and command output. Counts in section 4 are the values observed at the end of the run, not estimates.
+</footer>
+
+</main>
+</body>
+</html>
