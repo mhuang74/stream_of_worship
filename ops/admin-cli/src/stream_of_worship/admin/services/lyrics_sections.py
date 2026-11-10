@@ -10,31 +10,40 @@ Why not reuse the component-analysis job output: with an LLM key configured the
 aligner emits only chorus occurrences plus at most one ``loop_target`` verse,
 which is a *subset* of the structured sections (measured pool-wide: a 6-section
 recording yielded 3 components). Arrangement coverage depends on every section
-being placeable, so this module matches every section occurrence instead.
+being placeable, so this module matches every sung line instead.
 
-Matching operates on the concatenated normalized text rather than line-for-line,
-because LRC files routinely pack several lyric lines into one timestamped line
-(e.g. ``[00:13.20] 我相信天父創造世界 我相信耶穌死裡復活``) while
-``structured_lyrics`` lists each lyric line separately. A per-line window can
-never match those, which is why a naive port of the analysis service's
-``identify_from_structured_lyrics`` silently yields nothing for such songs.
+Matching is per timed LRC line, not per section block. Two pool-wide shapes
+break block matching:
+
+* LRC files routinely pack several lyric lines into one timestamped line
+  (``[00:13.20] 我相信天父創造世界 我相信耶穌死裡復活``) while
+  ``structured_lyrics`` lists each lyric line separately; and
+* the sung order repeats and alternates the listed lines (a ``[verse]`` block of
+  eight lines whose lines 5-8 are sung after a chorus), so the section's lines
+  are never contiguous in the LRC even though every line is present.
+
+The LRC is the ground truth for *timing and order*; ``structured_lyrics`` only
+supplies *labels*. So each timed line is labelled by whichever section explains
+the most of its text, and consecutive lines sharing a label form one occurrence.
+Unlabelled lines close the current occurrence (they do not extend it) and never
+open one, so an unplaceable song still yields ``[]``.
 """
 
 from __future__ import annotations
 
-import bisect
 import difflib
 import json
 import re
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Any, Optional
 
 from stream_of_worship.admin.services.lrc_parser import parse_lrc
 
-# Whole-block similarity accepted as "the same lyrics" (upstream uses 85
-# per line; on concatenated text the same threshold behaves equivalently).
-_BLOCK_MATCH_RATIO = 0.85
-# Fallback line duration when the matched block ends the song.
+# Whole-line similarity accepted as the same lyric line (the analysis service
+# uses the same threshold per line).
+_LINE_MATCH_RATIO = 0.85
+# Fallback line duration when the matched occurrence ends the song.
 _FALLBACK_LINE_SECONDS = 4.0
 
 _STRIP_RE = re.compile(r"[^\w]")
@@ -67,7 +76,7 @@ def normalize_line(text: str) -> str:
 
 
 def _parse_sections(structured_lyrics: Any) -> list[tuple[str, list[str]]]:
-    """Extract ``(label, lines)`` pairs from the structured-lyrics payload."""
+    """Extract ``(label, normalized lines)`` pairs from the structured lyrics."""
     if isinstance(structured_lyrics, str):
         try:
             payload = json.loads(structured_lyrics)
@@ -88,58 +97,58 @@ def _parse_sections(structured_lyrics: Any) -> list[tuple[str, list[str]]]:
             # Sections without lyric lines (e.g. an instrumental intro) carry no
             # position information to match on.
             continue
-        needle = "".join(normalize_line(line) for line in lines)
-        if needle:
-            parsed.append((label, lines))
+        normalized = [normalize_line(line) for line in lines]
+        normalized = [line for line in normalized if line]
+        if normalized:
+            parsed.append((label, normalized))
     return parsed
 
 
-def _find_spans(
-    stream: str,
-    needle: str,
-    offsets: list[int],
-) -> list[tuple[int, int, float]]:
-    """All non-overlapping ``(char_start, char_end, confidence)`` occurrences.
+def _coverage(lrc_norm: str, section_lines: Sequence[str]) -> float:
+    """Characters of ``lrc_norm`` explained by the section's lyric lines.
 
-    Exact matches are scanned first: both artifacts come from the same lyrics,
-    so exact concatenated equality is the common case. When a section appears
-    nowhere exactly (punctuation or a one-character divergence), each line
-    boundary is tried as a fuzzy anchor and the best non-overlapping candidates
-    are kept.
+    Exact substring occurrences win; a line that is merely *close* to one listed
+    line (a one-character ASR/login divergence) still counts when the whole-line
+    similarity clears ``_LINE_MATCH_RATIO``. Longer matches score higher, so a
+    short generic line cannot outvote the section actually being sung.
     """
-    if not needle or not stream:
-        return []
+    if not lrc_norm:
+        return 0.0
 
-    spans: list[tuple[int, int, float]] = []
-    position = 0
-    while True:
-        found = stream.find(needle, position)
-        if found < 0:
-            break
-        spans.append((found, found + len(needle), 1.0))
-        position = found + len(needle)
-    if spans:
-        return spans
+    covered = [False] * len(lrc_norm)
+    for needle in section_lines:
+        start = lrc_norm.find(needle)
+        while start >= 0:
+            for index in range(start, start + len(needle)):
+                covered[index] = True
+            start = lrc_norm.find(needle, start + len(needle))
+    score = float(sum(covered))
+    if score > 0:
+        return score
 
-    length = len(needle)
-    candidates: list[tuple[int, int, float]] = []
-    for offset in offsets:
-        window = stream[offset : offset + length]
-        if len(window) < length // 2:
-            break
-        ratio = difflib.SequenceMatcher(None, window, needle).ratio()
-        if ratio >= _BLOCK_MATCH_RATIO:
-            candidates.append((offset, offset + len(window), ratio))
-    if not candidates:
-        return []
+    best = 0.0
+    for needle in section_lines:
+        ratio = difflib.SequenceMatcher(None, lrc_norm, needle).ratio()
+        if ratio > best:
+            best = ratio
+    return float(len(lrc_norm)) * best if best >= _LINE_MATCH_RATIO else 0.0
 
-    # Keep the strongest, earliest occurrences without overlap.
-    candidates.sort(key=lambda entry: (-entry[2], entry[0]))
-    for start, end, ratio in candidates:
-        if all(start >= kept_end or end <= kept_start for kept_start, kept_end, _ in spans):
-            spans.append((start, end, ratio))
-    spans.sort()
-    return spans
+
+def _label_lines(
+    lrc_norm: Sequence[str],
+    sections: Sequence[tuple[str, list[str]]],
+) -> list[Optional[str]]:
+    """Label each timed line with the section that explains most of its text."""
+    labels: list[Optional[str]] = []
+    for text in lrc_norm:
+        best_label: Optional[str] = None
+        best_score = 0.0
+        for label, lines in sections:
+            score = _coverage(text, lines)
+            if score > best_score:
+                best_label, best_score = label, score
+        labels.append(best_label)
+    return labels
 
 
 def derive_sections_from_lyrics(
@@ -147,7 +156,7 @@ def derive_sections_from_lyrics(
     lrc_content: Optional[str],
     duration_seconds: Optional[float],
 ) -> list[DerivedSection]:
-    """Match every structured-lyrics section occurrence into the timed LRC.
+    """Label every timed lyric line and group consecutive same-label lines.
 
     Args:
         structured_lyrics: ``recordings.structured_lyrics`` (JSON string or dict).
@@ -156,9 +165,10 @@ def derive_sections_from_lyrics(
 
     Returns:
         Section occurrences sorted by start time. Empty when the inputs are
-        missing or nothing matches. Overlaps are truncated at the next
-        section's start, so the result is a monotonic, non-overlapping timeline
-        -- the shape the editor's ``buildSnappedSteps`` expects.
+        missing or no timed line is attributable to a structured section.
+        Overlaps are truncated at the next section's start, so the result is a
+        monotonic, non-overlapping timeline -- the shape the editor's
+        ``buildSnappedSteps`` expects.
     """
     if not lrc_content:
         return []
@@ -174,57 +184,46 @@ def derive_sections_from_lyrics(
     if len(timed) < 2:
         return []
 
-    lrc_norm = [normalize_line(line.text) for line in timed]
-    stream = "".join(lrc_norm)
-
-    offsets: list[int] = []
-    cursor = 0
-    for text in lrc_norm:
-        offsets.append(cursor)
-        cursor += len(text)
-
-    def _line_of(char_position: int) -> int:
-        """Index of the LRC line whose text contains ``char_position``."""
-        return max(0, bisect.bisect_right(offsets, char_position) - 1)
+    labels = _label_lines([normalize_line(line.text) for line in timed], sections)
 
     occurrences: list[DerivedSection] = []
-    seen: set[tuple[str, float, float]] = set()
-    for label, lines in sections:
-        needle = "".join(normalize_line(line) for line in lines)
-        for char_start, char_end, _confidence in _find_spans(stream, needle, offsets):
-            first_line = _line_of(char_start)
-            last_line = _line_of(max(char_start, char_end - 1))
-            start = timed[first_line].time_seconds
-            if last_line + 1 < len(timed):
-                end = timed[last_line + 1].time_seconds
-            else:
-                gaps = [
-                    timed[index + 1].time_seconds - timed[index].time_seconds
-                    for index in range(first_line, len(timed) - 1)
-                ]
-                average_gap = sum(gaps) / len(gaps) if gaps else _FALLBACK_LINE_SECONDS
-                end = timed[last_line].time_seconds + average_gap
-            if duration_seconds and duration_seconds > 0:
-                start = min(start, duration_seconds)
-                end = min(end, duration_seconds)
-            if start >= end:
-                continue
-            key = (label, round(start, 3), round(end, 3))
-            if key in seen:
-                continue
-            seen.add(key)
+    index = 0
+    while index < len(timed):
+        label = labels[index]
+        if label is None:
+            index += 1
+            continue
+        last = index
+        while last + 1 < len(timed) and labels[last + 1] == label:
+            last += 1
+
+        start = timed[index].time_seconds
+        if last + 1 < len(timed):
+            end = timed[last + 1].time_seconds
+        else:
+            gaps = [
+                timed[position + 1].time_seconds - timed[position].time_seconds
+                for position in range(index, len(timed) - 1)
+            ]
+            average_gap = sum(gaps) / len(gaps) if gaps else _FALLBACK_LINE_SECONDS
+            end = timed[last].time_seconds + average_gap
+        if duration_seconds and duration_seconds > 0:
+            start = min(start, duration_seconds)
+            end = min(end, duration_seconds)
+        if start < end:
             occurrences.append(DerivedSection(label=label, start=start, end=end))
+        index = last + 1
 
     if not occurrences:
         return []
 
-    occurrences.sort(key=lambda section: (section.start, section.end))
-    # Truncate overlaps so the timeline is monotonic and contiguous.
+    # Grouping yields disjoint runs already; truncation keeps the contract if a
+    # future rule ever emits overlapping bounds.
     resolved: list[DerivedSection] = []
-    for index, section in enumerate(occurrences):
+    for position, section in enumerate(occurrences):
         end = section.end
-        if index + 1 < len(occurrences):
-            end = min(end, occurrences[index + 1].start)
+        if position + 1 < len(occurrences):
+            end = min(end, occurrences[position + 1].start)
         if end > section.start:
             resolved.append(DerivedSection(label=section.label, start=section.start, end=end))
     return resolved

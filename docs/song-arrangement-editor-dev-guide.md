@@ -278,6 +278,12 @@ The Analysis Service supplies the inputs; the admin CLI decides and writes.
   `sections`/`beats` via `update_recording_structure`. `analysis_status` is left untouched — it
   still means "the full allin1 tier ran", and `Recording.has_full_analysis` remains the marker for
   authoritative allin1 sections.
+  `derive_sections_from_lyrics` treats the LRC as the ground truth for **order and timing** and
+  `structured_lyrics` only as a **label source**: each timed LRC line is labelled by whichever
+  section explains most of its text, and consecutive same-label lines form one occurrence. That is
+  why a `[verse]` block whose lines are sung on either side of a chorus still yields both verse
+  occurrences plus the chorus, and why LRC lines that pack two lyric lines into one timestamp still
+  match.
 - `sow-admin audio structure-audit` and `audio list --structure …` only read the row and apply the
   webapp rule; they never repair.
 
