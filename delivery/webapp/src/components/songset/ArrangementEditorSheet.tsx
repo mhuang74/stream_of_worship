@@ -501,6 +501,8 @@ interface SortableStepBlockProps {
   isPlaying: boolean;
   disabled: boolean;
   boundsOpen: boolean;
+  /** Opening counter that remounts the bounds session on every open. */
+  boundsSession: number;
   /**
    * Lock for the bounds transaction itself. The row's own `disabled` also
    * covers "another Step is being edited", which must not disable the editor
@@ -538,6 +540,7 @@ function SortableStepBlock({
   isPlaying,
   disabled,
   boundsOpen,
+  boundsSession,
   boundsDisabled,
   recordingDurationSeconds,
   resetStep,
@@ -613,11 +616,12 @@ function SortableStepBlock({
           </span>
         )}
         <BoundsEditorPopover
-          // Keyed on the committed bounds: Apply must remount the session so
-          // the fields re-seed from the new Step and Apply starts disabled.
+          // Keyed on the committed bounds and the opening: Apply must remount
+          // the session so the fields re-seed from the new Step, and reopening
+          // after Cancel must discard the abandoned text and its edit flag.
           key={`${entry.id}:${entry.step.startSeconds}:${entry.step.endSeconds}:${
             entry.step.manualBounds ? 1 : 0
-          }`}
+          }:${boundsOpen ? boundsSession : 0}`}
           index={index}
           step={entry.step}
           displayLabel={displayLabel}
@@ -938,6 +942,10 @@ export function ArrangementEditorSheet({
   const [boundsPreviewOverride, setBoundsPreviewOverride] =
     useState<{ id: string; step: ArrangementStep } | null>(null);
   const [boundsEditorInvalid, setBoundsEditorInvalid] = useState(false);
+  // The popover stays mounted while closed, so its field text and edit flag
+  // would survive a Cancel. A new session number per opening remounts it and
+  // re-seeds both from the committed Step.
+  const [boundsSession, setBoundsSession] = useState(0);
   // Transition review: which junction is being reviewed, which pass it has
   // started, and whether the passes are done. The whole-arrangement preview
   // shares the pass-free half of this state.
@@ -1263,8 +1271,13 @@ export function ArrangementEditorSheet({
 
   useEffect(() => {
     if (!playbackWindow || !windowKey) return;
-    if (preview.status !== "playing") return;
     if (position < playbackWindow.endSeconds - 0.02) return;
+    // The engine stops itself on reaching the Songset end, which can coincide
+    // with a window end (last item, no lead-out; short final component). That
+    // stop is the boundary too, or the last pass would never complete.
+    const stoppedAtTimelineEnd =
+      preview.status === "paused" && position >= preview.totalSeconds - 0.02;
+    if (preview.status !== "playing" && !stoppedAtTimelineEnd) return;
     const handled = boundaryHandledRef.current;
     if (handled && handled.key === windowKey && handled.pass === reviewPass) return;
     boundaryHandledRef.current = { key: windowKey, pass: reviewPass };
@@ -1282,7 +1295,15 @@ export function ArrangementEditorSheet({
       // The transport position is an external event; the pass counter is the
       // render-visible consequence of reaching the boundary.
       setReviewPass(reviewPass + 1);
-      preview.seek(playbackWindow.startSeconds);
+      if (stoppedAtTimelineEnd) {
+        // Already past the timeline end, so a bare seek would leave it paused:
+        // restart the transport inside the window for the next pass.
+        void preview.startAtSeconds(playbackWindow.startSeconds).catch(() => {
+          // The hook reports failures through onPreviewError.
+        });
+      } else {
+        preview.seek(playbackWindow.startSeconds);
+      }
     } else {
       preview.pause();
       setReviewCompleted(true);
@@ -1536,6 +1557,7 @@ export function ArrangementEditorSheet({
       setBoundsEditorId(id);
       setBoundsPreviewOverride(null);
       setBoundsEditorInvalid(false);
+      setBoundsSession((session) => session + 1);
     },
     [isSaving, preview]
   );
@@ -2226,6 +2248,7 @@ export function ArrangementEditorSheet({
                               disabled={isSaving || boundsEditorId !== null}
                               boundsDisabled={isSaving}
                               boundsOpen={boundsEditorId === entry.id}
+                              boundsSession={boundsSession}
                               recordingDurationSeconds={recordingDurationSeconds}
                               resetStep={resetStepFor(entry.step)}
                               onOpenBounds={openBoundsEditor}

@@ -365,6 +365,48 @@ describe("ArrangementEditorSheet", () => {
     expect(preview.controller.seek).toHaveBeenCalledTimes(1);
   });
 
+  it("completes a review whose window ends at the Songset end", async () => {
+    // A 2 s final component makes the junction window (8..12) end exactly at
+    // the timeline end, where the transport stops itself instead of ticking
+    // past the boundary.
+    preview.controller.totalSeconds = 12;
+    const item = makeItem({
+      recording: {
+        contentHash: "abc123",
+        hashPrefix: "ab",
+        durationSeconds: 12,
+        tempoBpm: 120,
+        musicalKey: "G",
+        sections: [
+          { label: "Verse", start: 0, end: 10 },
+          { label: "Chorus", start: 10, end: 12 },
+        ],
+        beats: BEATS,
+      },
+      arrangedDurationSeconds: 12,
+    });
+    const view = renderSheet({ item, items: [item] });
+
+    fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
+    expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(8);
+
+    // Natural end of pass 1: the sheet counts the pass and restarts playback
+    // inside the window, because a seek alone would leave it stopped.
+    await moveTransport(view, { position: 12, status: "paused" });
+    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+      "Pass 2 of 2"
+    );
+    expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(8);
+    expect(preview.controller.seek).not.toHaveBeenCalled();
+
+    await moveTransport(view, { position: 8, status: "playing" });
+    await moveTransport(view, { position: 12, status: "paused" });
+    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+      "Review complete · 2 passes"
+    );
+    expect(preview.controller.pause).toHaveBeenCalled();
+  });
+
   it("restarts from the whole arrangement after a completed review", async () => {
     const view = renderSheet();
     fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
@@ -604,6 +646,12 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.queryByTestId("arrangement-bounds-edited-0")).toBeNull();
     expect(screen.getByTestId("arrangement-status")).toHaveTextContent(/^Saved$/);
     expect(screen.getByTestId("arrangement-preview-play")).not.toBeDisabled();
+
+    // Reopening starts a fresh session: the abandoned text and its edit flag
+    // are gone, so Apply cannot fire without a new edit.
+    fireEvent.click(screen.getByTestId("arrangement-bounds-trigger-0"));
+    expect(screen.getByTestId("arrangement-bounds-input-end-0")).toHaveValue("0:10.0");
+    expect(screen.getByTestId("arrangement-bounds-apply-0")).toBeDisabled();
   });
 
   it("blocks preview while a bounds candidate is unsavable", () => {

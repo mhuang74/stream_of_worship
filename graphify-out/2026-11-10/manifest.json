@@ -1506,9 +1506,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1794276831.4592266,
-    "seen": 1794277190.8285623,
-    "ast_hash": "92481fa9c86b2208f56a31525e149a39",
+    "mtime": 1794277273.9514117,
+    "seen": 1794277376.3008208,
+    "ast_hash": "aff586440888845662452ef3b94c61c3",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/BpmRangeMultiSelect.tsx": {
@@ -2862,9 +2862,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/ArrangementEditorSheet.test.tsx": {
-    "mtime": 1794276402.7228272,
-    "seen": 1794277190.8471231,
-    "ast_hash": "be2344e123168ed0920d96297e07dd6b",
+    "mtime": 1794277292.1124287,
+    "seen": 1794277376.3169105,
+    "ast_hash": "85139d2827018950147719bf92dbedf5",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/BrowseSheet.test.tsx": {
