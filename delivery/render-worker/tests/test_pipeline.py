@@ -428,6 +428,30 @@ class TestFetchSongsetItems:
         ]
         assert items[0].duration_seconds == 20.0
 
+    def test_null_index_intro_step_renders_from_zero(self):
+        # An LRC-inferred Intro is Songset-local: analysis is irrelevant, and
+        # the arranged duration is exactly its length.
+        row = self._arranged_row()
+        row["arrangement_steps"] = json.dumps({
+            "version": 1,
+            "steps": [
+                {
+                    "sectionIndex": None,
+                    "label": "intro",
+                    "startSeconds": 0.0,
+                    "endSeconds": 12.4,
+                    "manualBounds": True,
+                },
+            ],
+        })
+        conn, _ = _make_mock_conn(fetchall_result=[row])
+        _, items = fetch_songset_items(conn, "ss_001")
+        steps = items[0].arrangement_steps
+        assert steps is not None
+        assert steps[0].section_index is None
+        assert steps[0].manual_bounds is True
+        assert items[0].duration_seconds == pytest.approx(12.4)
+
     def test_stale_arrangement_raises_repair_or_reset(self):
         row = self._arranged_row()
         row["arrangement_steps"] = json.dumps({

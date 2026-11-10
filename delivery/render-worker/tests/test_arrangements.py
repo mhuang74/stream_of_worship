@@ -34,20 +34,18 @@ def cross_language_fixture() -> dict[str, Any]:
 
 
 def arrangement_json(steps: list[ArrangementStep]) -> str:
-    return json.dumps(
-        {
-            "version": 1,
-            "steps": [
-                {
-                    "sectionIndex": step.section_index,
-                    "label": step.label,
-                    "startSeconds": step.start_seconds,
-                    "endSeconds": step.end_seconds,
-                }
-                for step in steps
-            ],
+    entries = []
+    for step in steps:
+        payload: dict[str, Any] = {
+            "sectionIndex": step.section_index,
+            "label": step.label,
+            "startSeconds": step.start_seconds,
+            "endSeconds": step.end_seconds,
         }
-    )
+        if step.manual_bounds:
+            payload["manualBounds"] = True
+        entries.append(payload)
+    return json.dumps({"version": 1, "steps": entries})
 
 
 def fixture_snapped_steps(fixture: dict[str, Any]) -> list[ArrangementStep]:
@@ -290,6 +288,53 @@ def test_parse_song_arrangement_strict_step_fields() -> None:
             parse_song_arrangement(json.dumps({"version": 1, "steps": [step]}))
 
 
+def test_parse_song_arrangement_accepts_inferred_intro_and_manual_bounds() -> None:
+    intro = {
+        "sectionIndex": None,
+        "label": "intro",
+        "startSeconds": 0,
+        "endSeconds": 12.4,
+        "manualBounds": True,
+    }
+    assert parse_song_arrangement(
+        json.dumps({"version": 1, "steps": [intro]})
+    ) == (ArrangementStep(None, "intro", 0.0, 12.4, True),)
+
+    manual = {
+        "sectionIndex": 0,
+        "label": "intro",
+        "startSeconds": 0.5,
+        "endSeconds": 4.0,
+        "manualBounds": True,
+    }
+    assert parse_song_arrangement(
+        json.dumps({"version": 1, "steps": [manual]})
+    ) == (ArrangementStep(0, "intro", 0.5, 4.0, True),)
+
+
+def test_parse_song_arrangement_rejects_manual_flag_spellings() -> None:
+    base = {"sectionIndex": 0, "label": "intro", "startSeconds": 0, "endSeconds": 1}
+    for value in (False, 1, "true", None):
+        with pytest.raises(ValueError):
+            parse_song_arrangement(
+                json.dumps({"version": 1, "steps": [{**base, "manualBounds": value}]})
+            )
+
+
+def test_parse_song_arrangement_rejects_malformed_inferred_intro() -> None:
+    bad_intros = [
+        # the label is what names an Intro
+        {"sectionIndex": None, "label": "chorus", "startSeconds": 0, "endSeconds": 12.4, "manualBounds": True},
+        # an Intro always runs from zero
+        {"sectionIndex": None, "label": "intro", "startSeconds": 2, "endSeconds": 12.4, "manualBounds": True},
+        # the flag is required: an unflagged null index is meaningless
+        {"sectionIndex": None, "label": "intro", "startSeconds": 0, "endSeconds": 12.4},
+    ]
+    for step in bad_intros:
+        with pytest.raises(ValueError):
+            parse_song_arrangement(json.dumps({"version": 1, "steps": [step]}))
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -381,6 +426,42 @@ def test_validate_arrangement_enforces_64_step_maximum() -> None:
             json.dumps(BEATS),
             DURATION,
         )
+
+
+def test_validate_arrangement_accepts_manual_bounds_that_drift_from_snapped() -> None:
+    raw_sections = json.dumps(SECTIONS)
+    raw_beats = json.dumps(BEATS)
+    manual = [ArrangementStep(0, "intro", 0.3, 4.2, True)]
+    assert validate_arrangement(
+        arrangement_json(manual), raw_sections, raw_beats, DURATION
+    ) == tuple(manual)
+    # The same bounds without the flag are a forged cut, not an edit.
+    unflag = [ArrangementStep(0, "intro", 0.3, 4.2)]
+    with pytest.raises(ValueError, match="repair the Recording analysis or reset"):
+        validate_arrangement(arrangement_json(unflag), raw_sections, raw_beats, DURATION)
+
+
+def test_validate_arrangement_rejects_manual_steps_with_stale_index_label_or_range() -> None:
+    raw_sections = json.dumps(SECTIONS)
+    raw_beats = json.dumps(BEATS)
+    for steps in (
+        [ArrangementStep(99, "intro", 0.3, 4.2, True)],
+        [ArrangementStep(0, "wrong", 0.3, 4.2, True)],
+        [ArrangementStep(0, "intro", 0.3, DURATION + 1, True)],
+        [ArrangementStep(0, "intro", 4.2, 0.3, True)],
+    ):
+        with pytest.raises(ValueError, match="repair the Recording analysis or reset"):
+            validate_arrangement(arrangement_json(steps), raw_sections, raw_beats, DURATION)
+
+
+def test_validate_arrangement_intro_only_needs_no_analysis() -> None:
+    intro = [ArrangementStep(None, "intro", 0.0, 12.4, True)]
+    # LRC is never re-fetched or re-validated: an Intro-only arrangement
+    # validates with no sections or beats at all.
+    assert validate_arrangement(arrangement_json(intro), None, None, DURATION) == tuple(intro)
+    out_of_range = [ArrangementStep(None, "intro", 0.0, DURATION + 1, True)]
+    with pytest.raises(ValueError, match="repair the Recording analysis or reset"):
+        validate_arrangement(arrangement_json(out_of_range), None, None, DURATION)
 
 
 def test_repair_or_reset_message_is_exact() -> None:

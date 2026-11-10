@@ -42,19 +42,32 @@ def visibility_alternatives(current: Optional[str]) -> list[str]:
 
 PROTECTED_VISIBILITY_STATUS = "published"
 
+# Flag the arrangement-writing commands accept to back a published recording in
+# place; it overrides the publish guard without ever changing visibility.
+PUBLISHED_OVERRIDE_FLAG = "--include-published"
+
 
 def is_published(recording: Optional[Recording]) -> bool:
     """True when the recording is published (admin-validated, user-visible)."""
     return recording is not None and recording.visibility_status == PROTECTED_VISIBILITY_STATUS
 
 
-def reprocess_blocked_reason(song_id: str, hash_prefix: str, action: str) -> str:
+def reprocess_blocked_reason(
+    song_id: str,
+    hash_prefix: str,
+    action: str,
+    *,
+    offer_override: bool = False,
+) -> str:
     """One-line refusal plus the exact remediation command."""
-    return (
+    reason = (
         f"Refusing to {action}: recording {hash_prefix} for {song_id} is "
         f"'{PROTECTED_VISIBILITY_STATUS}'. Change visibility first: "
         f"sow-admin audio set-visibility {song_id} --status review"
     )
+    if offer_override:
+        reason += f", or pass {PUBLISHED_OVERRIDE_FLAG} to write to it without demoting"
+    return reason
 
 
 def ensure_reprocessable(
@@ -63,14 +76,20 @@ def ensure_reprocessable(
     song_id: str,
     action: str,
     console: Console,
+    allow_published: bool = False,
+    offer_override: bool = False,
 ) -> None:
     """Hard-block re-processing of a published recording.
 
     Raises:
-        typer.Exit: exit code 1 when ``recording`` is published.
+        typer.Exit: exit code 1 when ``recording`` is published and
+            ``allow_published`` is false.
     """
+    if allow_published:
+        return
     if is_published(recording):
-        console.print(
-            f"[red]{reprocess_blocked_reason(song_id, recording.hash_prefix, action)}[/red]"
+        reason = reprocess_blocked_reason(
+            song_id, recording.hash_prefix, action, offer_override=offer_override
         )
+        console.print(f"[red]{reason}[/red]")
         raise typer.Exit(1)

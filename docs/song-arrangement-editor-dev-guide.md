@@ -136,8 +136,10 @@ Recordings:
 
 Of the 106 published Recordings, only 3 carry `sections` + `beats`; the other 103 have no analysis
 data at all, and the two non-fixture ones fail snapping (see *Known analysis-data gaps*). Making
-more published Recordings arrangeable needs `sow-admin audio set-visibility <song_id> --status
-published` (or re-analysis), neither of which this guide performs.
+more published Recordings arrangeable is a single job: give them the missing analysis with the
+backfill recipe in *Finding and backfilling arrangeable recordings*, passing `--include-published`
+so the published rows are written in place. No demote/re-publish cycle is needed — the flag never
+changes `visibility_status`. This guide performs neither.
 
 Arranged duration is `getItemDurationSeconds` for all snapped Steps in section order (sum of Step
 lengths), which is why it is shorter than the Recording: untaken gaps and untaken repeats are
@@ -182,9 +184,152 @@ length or is skipped as out-of-range. Because `buildSnappedSteps` bails out on t
 the failure is all-or-nothing for the Recording. Both also carry the same harmless quirk as the
 published fixture — a trailing `outro` whose `end` runs 1.31 ms and 1.35 ms past `duration_seconds`
 respectively — but out-of-range sections are *skipped* per `arrangements.ts:233-234`, not fatal.
-Clearing the collapse requires repairing `recordings.sections`/`beats` or re-running analysis;
-neither the webapp nor the admin CLI exposes a section-timing editor (the admin component editor
-only edits lyrics).
+Clearing the collapse means regenerating `recordings.sections`: `sow-admin audio write-structure`
+rederives both columns from the lyric timeline plus the cached beat grid and drops any section that
+would still collapse, so the repair is `beat-grid` + `write-structure` with `--include-published`
+(see *Finding and backfilling arrangeable recordings*). Neither the webapp nor the admin CLI exposes
+a manual section-timing editor; the admin component editor only edits lyrics.
+
+## Finding and backfilling arrangeable recordings
+
+A Recording is arrangeable only when all four conditions hold:
+
+1. `duration_seconds` is present and > 0;
+2. `recordings.sections` parses as a JSON array of `{label, start, end}` (non-empty `str` label,
+   finite numeric bounds);
+3. `recordings.beats` parses as a non-empty array of finite numbers, at least one inside
+   `[0, duration_seconds]`;
+4. `buildSnappedSteps` (`arrangements.ts:219-259`) returns steps for the whole Recording.
+
+Condition 4 is all-or-nothing: if **any** section collapses to zero length after snapping, the
+whole Recording is unarrangeable even when every other section snaps cleanly (that is exactly the
+two published failures in *Known analysis-data gaps*). So storing the two columns is necessary but
+not sufficient, and a presence-only audit over-reports coverage.
+
+The admin CLI mirrors the rule in
+`ops/admin-cli/src/stream_of_worship/admin/services/arrangement_structure.py`
+(`evaluate_recording_structure`); it is pinned to the webapp and render-worker implementations by
+the shared fixture `delivery/webapp/src/test/fixtures/arrangements.cross_language.json` (all three
+suites assert the same snapped bounds to 1e-9). Use it to classify the library:
+
+| `audio list --structure` | SQL predicate | Arrange editor opens? |
+|---|---|---|
+| `missing` | `sections` or `beats` NULL / `''` / `'[]'` | no |
+| `present` | both columns non-empty (presence test only) | **maybe** — snapping may still fail |
+| `unusable` | `present` **and** the snap-aware gate fails | no |
+
+`missing` ∪ `unusable` is exactly the set of Recordings that cannot open Arrange; `present` −
+`unusable` is the arrangeable set. `--structure unusable` is evaluated in the CLI after the SQL
+prefilter, so its `--limit` is applied **after** the gate check (a SQL `LIMIT` would drop rows that
+look present but are unusable).
+
+`sow-admin audio structure-audit` prints one verdict per Recording. It is read-only — no writes, no
+analysis jobs — and exits 0 unless config/DB loading fails. Only non-arrangeable rows are emitted
+(the arrangeable count appears in the summary), so `--format ids` is the pipeline input for the
+repair commands, while `--format json` carries the same rows as objects (`verdict`, `detail`,
+`steps`, and the offending `section`). Excerpt of a real run, table borders trimmed:
+
+```console
+$ sow-admin audio structure-audit --limit 2
+Non-arrangeable recordings (2)
+┃ Album              ┃ Title            ┃ Vis ┃ Verdict          ┃ Detail                              ┃ Song ID                           ┃ Hash Prefix  ┃
+│ After All These Y… │ Here I Bow       │  ●  │ missing_sections │ recordings.sections absent or empty │ hereibow_a9271bf4                 │ 6a410a5c222a │
+│ G.L.O.W. 差遣我    │ 主啊，我要跟隨祢 │  ●  │ missing_sections │ recordings.sections absent or empty │ zhu_a__wo_yao_gen_sui_mi_83163301 │ dbd506660aa3 │
+Summary: 320 arrangeable, 127 non-arrangeable (447 recordings)
+collapsed=2, missing_sections=125
+Among non-arrangeable: 105 published — pass --include-published to the repair commands to backfill them in place (no demotion; rewriting sections/beats can make a saved arrangement stale)
+Repair: sow-admin audio structure-audit --format ids | sow-admin audio beat-grid --include-published --stdin  then  sow-admin audio structure-audit --format ids | sow-admin audio write-structure --include-published --stdin
+```
+
+Verdicts, in precedence order (first match wins):
+
+| Verdict | Trigger |
+|---|---|
+| `no_duration` | `duration_seconds` NULL or ≤ 0 |
+| `missing_sections` | `sections` NULL/blank/`[]` |
+| `invalid_sections` | `sections` non-blank but unparseable / not an array of `{label,start,end}` |
+| `missing_beats` | `beats` NULL/blank/unparseable, or no finite *number* entries (madmom `[time, position]` pairs do not count — `parseRecordingBeats` drops them too) |
+| `no_beats_in_range` | beats parse, but none inside `[0, duration_seconds]` |
+| `collapsed` | one section's snapped `start`/`end` become equal → whole Recording unarrangeable; `section` names the offender |
+| `no_usable_sections` | every section is out of range or has `start >= end` |
+| `arrangeable` | `buildSnappedSteps` returns steps |
+
+Live counts on the configured Neon DB: 447 active Recordings, 320 `arrangeable`, 127
+non-arrangeable (125 `missing_sections`, 2 `collapsed`), of which 105 are published. `present` = 322
+matches the *322 analyzed* figure in *Recordings with usable arrangement data*; the 125
+`missing_sections` rows are the never-analyzed or no-retained-analysis columns. The 127 is not a
+repair quota — 105 are published and need `--include-published` to be repaired, and the LRC ceiling
+below means some can never gain sections.
+
+### Who produces what
+
+The Analysis Service supplies the inputs; the admin CLI decides and writes.
+
+- `sow-admin audio beat-grid` submits a `beat_grid` job
+  (`BeatGridJobRequest`, `ops/analysis-service/src/sow_analysis/models.py:247`): madmom runs on the
+  `sow-downbeats` Modal app and the grid is cached to `{hash_prefix}/beat_grid.json` in R2. No
+  components, no LLM.
+- `sow-admin audio analyze --analysis-tier full` persists allin1 `sections` + `beats` from the job
+  result (the fast tier writes neither) and sets `analysis_status = 'completed'`.
+- `sow-admin audio write-structure` runs **entirely locally, with no job**: it reads
+  `{hash_prefix}/beat_grid.json` + `{hash_prefix}/lyrics.lrc` from R2, calls
+  `derive_sections_from_lyrics`, passes the result through `_finalize_arrangement_structure` (which
+  snaps every bound to the nearest beat and drops collapsing/out-of-range sections), and writes
+  `sections`/`beats` via `update_recording_structure`. `analysis_status` is left untouched — it
+  still means "the full allin1 tier ran", and `Recording.has_full_analysis` remains the marker for
+  authoritative allin1 sections.
+- `sow-admin audio structure-audit` and `audio list --structure …` only read the row and apply the
+  webapp rule; they never repair.
+
+### Repair recipe
+
+Scope the repair set first, and keep it: rewriting `sections`/`beats` under a saved arrangement makes
+that arrangement stale, so a run should touch exactly the Recordings you intend to fix. Published
+rows are included with `--include-published` and stay published — no demote/re-publish cycle.
+
+```bash
+set -a; . /opt/sow/.env; set +a   # SOW_ANALYSIS_API_KEY + R2 credentials
+
+# 0. Pick the repair set and keep it. `structure-audit --format ids` is every row
+#    the gate rejects (missing ∪ unusable); narrow it to what this run can fix:
+sow-admin audio list --structure unusable --format ids > /tmp/repair.txt   # snap failures only
+#    or: sow-admin audio structure-audit --album <name> --format ids > /tmp/repair.txt
+
+# 1. Materialise missing beat grids (idempotent: existing grids are skipped)
+sow-admin audio beat-grid --stdin --include-published < /tmp/repair.txt
+
+# 2. Rewrite sections+beats locally (~1s/song, no job)
+sow-admin audio write-structure --stdin --include-published < /tmp/repair.txt
+
+# 3. Residual, by verdict — the rows that need a different fix (or none exists)
+sow-admin audio structure-audit --visibility published   # plus the review/hold pools
+```
+
+`--include-published` is a deliberate per-run override of the publish guard: it writes the two
+arrangement columns in place and never writes `visibility_status`. Both steps report a per-row
+`published recording — proceeding (--include-published)` line and count the rows in the summary
+(`..., N published`), so the override is visible in the run log rather than implicit.
+
+`audio components <song_id...> --write-recording-analysis` is the per-song alternative to steps 1–2
+when a component analysis run is already warranted; it derives the same columns from the same two
+artifacts (see `ops/admin-cli/README.md:447-624` — *Making songs arrangeable* for that path and
+*Beat-grid backfill for unarrangeable recordings* for the beat-grid path, which also documents the
+`sow-downbeats` Modal queue timing and the `SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES` audio-size cap).
+
+Caveats:
+
+- **Published rows are written in place only with `--include-published`**; without it `beat-grid`
+  and `write-structure` report them as `skipped_published`, so the collapsed published Recordings
+  need the flag. There is no demote/re-publish cycle: the flag never touches
+  `visibility_status`.
+- **`ARRANGEMENT_STALE`**: regenerating a Recording that already has saved
+  `songset_items.arrangement_steps` changes the section indices/labels underneath them, so
+  `validateSongArrangement` reports `ARRANGEMENT_STALE` and Render is blocked until the arrangement
+  is recreated. Check `songset_items` before rewriting a Recording used by real Songsets.
+- **Unfixable class**: a Recording whose LRC stops before the lyrics do cannot gain sections
+  (measured ceiling: 418 of 446 visible Recordings derive at least one section; median uncovered
+  tail 33 s). `write-structure` reports those as `no_structure` and they stay unarrangeable by
+  design.
 
 ## Tests
 

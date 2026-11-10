@@ -45,10 +45,6 @@ export const arrangementBundle = bundle({
     "arrangement.action.dragAria": "Reorder step",
     "arrangement.action.undo": "Undo",
     "arrangement.action.undoAria": "Undo last change",
-    "arrangement.action.playSection": "Play section",
-    "arrangement.action.pauseSection": "Pause section",
-    "arrangement.action.playSectionAria": "Play section",
-    "arrangement.action.pauseSectionAria": "Pause section",
 
     // Lyrics
     "arrangement.lyrics.loading": "Loading lyrics...",
@@ -71,31 +67,62 @@ export const arrangementBundle = bundle({
     "arrangement.validation.tooMany":
       "A sequence can have at most {max} steps. Remove some steps before saving.",
 
-    // Preview transport (song-scoped: this song plus an optional lead-in from
-    // the preceding songset item; there is no whole-Songset preview).
+    // Preview transport: the rail previews the whole arrangement once (every
+    // component plus an always-included 8-beat lead-in from the previous item
+    // and 8-beat lead-out into the next); a component row reviews only the
+    // 4 beats each side of its junction, twice.
     "arrangement.preview.title": "Preview this song",
-    "arrangement.preview.description":
-      "Hear how “{song}” hands over into your first component.",
     "arrangement.preview.loading": "Loading preview...",
-    "arrangement.preview.play": "Play preview",
+    "arrangement.preview.play": "Preview",
     "arrangement.preview.pause": "Pause preview",
     "arrangement.preview.stop": "Stop preview",
     "arrangement.preview.fallbackNotice":
       "Crossfades are approximated as hard boundaries on this device.",
-    "arrangement.preview.leadIn": "Lead-in",
-    "arrangement.preview.leadInAria": "Lead-in seconds",
-    "arrangement.preview.seconds": "{seconds}s",
-    "arrangement.preview.leadInSummary":
-      "Includes {seconds} of “{song}” before the first component.",
-    "arrangement.preview.leadInFirst":
-      "First song in this set, so there is no previous song to lead in from.",
-    "arrangement.preview.leadInUnavailable":
-      "There is no room for a lead-in before this song.",
-    "arrangement.preview.phaseLeadIn": "Lead-in: {song}",
-    "arrangement.preview.phasePlaying": "Playing {label}",
-    "arrangement.preview.phasePaused": "Paused",
     "arrangement.preview.timelineAria":
-      "Preview timeline: the lead-in, then each component in order",
+      "Arrangement preview timeline: lead-in, all components, lead-out",
+    "arrangement.preview.reviewTransition": "Review transition",
+    "arrangement.preview.reviewTransitionAria":
+      "Review {fromLabel} to {toLabel}: {beats} beats each side, played twice",
+    "arrangement.preview.pass": "Pass {current} of 2",
+    "arrangement.preview.completed": "Review complete · 2 passes",
+    "arrangement.preview.pairSummary": "{fromLabel} → {toLabel} · 2 passes",
+    "arrangement.preview.reviewWindow":
+      "Transition window: {beats} beats before → {beats} beats after the join",
+    "arrangement.preview.arrangementSummary": "Whole arrangement · {count} components",
+    "arrangement.preview.nextOpening": "Next: {song} · Opening — first {seconds} s",
+    "arrangement.preview.handover": "{fromSong} · {fromLabel} → {toSong} · {toLabel}",
+    "arrangement.preview.opening": "Opening",
+    "arrangement.preview.fullSong": "Full song",
+    "arrangement.preview.playingAt": "Playing: {song} · {label}",
+    "arrangement.preview.pausedAt": "Paused: {song} · {label}",
+    "arrangement.preview.crossfade":
+      "Crossfade: {fromSong} · {fromLabel} → {toSong} · {toLabel}",
+
+    // Bounds editing (a temporary Apply/Cancel transaction).
+    "arrangement.bounds.edited": "Edited",
+    "arrangement.bounds.apply": "Apply bounds",
+    "arrangement.bounds.cancel": "Cancel",
+    "arrangement.bounds.invalid":
+      "Use m:ss.s, keep start before end, and stay within the recording.",
+    "arrangement.bounds.auditionNote":
+      "Play 3 seconds inside the candidate boundary. Apply or Cancel before using transition review.",
+    "arrangement.bounds.rangeAria": "Adjust {label} time range",
+    "arrangement.bounds.start": "Start",
+    "arrangement.bounds.end": "End",
+    "arrangement.bounds.startAria": "Start timecode for {label}",
+    "arrangement.bounds.endAria": "End timecode for {label}",
+    "arrangement.bounds.fixedStart": "Start fixed at 0:00.0",
+    "arrangement.bounds.decrease": "Decrease by 0.1 seconds",
+    "arrangement.bounds.increase": "Increase by 0.1 seconds",
+    "arrangement.bounds.auditionStart": "Audition start",
+    "arrangement.bounds.auditionEnd": "Audition end",
+    "arrangement.bounds.resetDetected": "Reset to detected",
+
+    // Inferred Intro (from the first sung LRC line).
+    "arrangement.intro.inferred": "Intro (inferred from lyrics)",
+    "arrangement.intro.inferredShort": "Intro (inferred)",
+    "arrangement.intro.firstLyric": "0:00.0–first lyric at {timecode}",
+    "arrangement.intro.reset": "Reset to inferred",
 
     // Dialogs
     "arrangement.dialog.resetTitle": "Reset arrangement?",
@@ -163,10 +190,6 @@ export const arrangementBundle = bundle({
     "arrangement.action.dragAria": "重新排序步驟",
     "arrangement.action.undo": "復原",
     "arrangement.action.undoAria": "復原上一個變更",
-    "arrangement.action.playSection": "播放段落",
-    "arrangement.action.pauseSection": "暫停段落",
-    "arrangement.action.playSectionAria": "播放段落",
-    "arrangement.action.pauseSectionAria": "暫停段落",
 
     // Lyrics
     "arrangement.lyrics.loading": "正在載入歌詞...",
@@ -184,25 +207,57 @@ export const arrangementBundle = bundle({
     "arrangement.validation.empty": "請至少加入一個步驟才能預覽或儲存。",
     "arrangement.validation.tooMany": "編排最多可有 {max} 個步驟。請在儲存前移除部分步驟。",
 
-    // Preview transport (song-scoped: this song plus an optional lead-in from
-    // the preceding songset item; there is no whole-Songset preview).
+    // Preview transport: the rail previews the whole arrangement once (every
+    // component plus an always-included 8-beat lead-in from the previous item
+    // and 8-beat lead-out into the next); a component row reviews only the
+    // 4 beats each side of its junction, twice.
     "arrangement.preview.title": "預覽這首歌",
-    "arrangement.preview.description": "聽聽「{song}」如何交接到第一個段落。",
     "arrangement.preview.loading": "正在載入預覽...",
-    "arrangement.preview.play": "播放預覽",
+    "arrangement.preview.play": "預覽",
     "arrangement.preview.pause": "暫停預覽",
     "arrangement.preview.stop": "停止預覽",
     "arrangement.preview.fallbackNotice": "此裝置上的交叉淡化會以硬切邊界近似。",
-    "arrangement.preview.leadIn": "前導",
-    "arrangement.preview.leadInAria": "前導秒數",
-    "arrangement.preview.seconds": "{seconds} 秒",
-    "arrangement.preview.leadInSummary": "第一個段落前會先播放「{song}」的 {seconds}。",
-    "arrangement.preview.leadInFirst": "這是歌單的第一首歌，沒有前一處可作為前導。",
-    "arrangement.preview.leadInUnavailable": "這首歌之前沒有可播放的前導空間。",
-    "arrangement.preview.phaseLeadIn": "前導：{song}",
-    "arrangement.preview.phasePlaying": "正在播放 {label}",
-    "arrangement.preview.phasePaused": "已暫停",
-    "arrangement.preview.timelineAria": "預覽時間軸：前導，接著是每個段落",
+    "arrangement.preview.timelineAria": "編排預覽時間軸：前一首尾段、所有段落、下一首開頭",
+    "arrangement.preview.reviewTransition": "交接預覽",
+    "arrangement.preview.reviewTransitionAria": "預覽「{fromLabel}」到「{toLabel}」的交接：前後各 {beats} 拍，播放兩次",
+    "arrangement.preview.pass": "第 {current} 次，共 2 次",
+    "arrangement.preview.completed": "預覽完成，共 2 次",
+    "arrangement.preview.pairSummary": "{fromLabel} → {toLabel}，共 2 次",
+    "arrangement.preview.reviewWindow": "交接範圍：交接前 {beats} 拍 → 交接後 {beats} 拍",
+    "arrangement.preview.arrangementSummary": "整首編排・{count} 個段落",
+    "arrangement.preview.nextOpening": "下一首：{song}・開頭，播放 {seconds} 秒",
+    "arrangement.preview.handover": "{fromSong}・{fromLabel} → {toSong}・{toLabel}",
+    "arrangement.preview.opening": "開頭",
+    "arrangement.preview.fullSong": "整首歌",
+    "arrangement.preview.playingAt": "正在播放：{song}・{label}",
+    "arrangement.preview.pausedAt": "已暫停：{song}・{label}",
+    "arrangement.preview.crossfade": "交叉淡化：{fromSong}・{fromLabel} → {toSong}・{toLabel}",
+
+    // Bounds editing (a temporary Apply/Cancel transaction).
+    "arrangement.bounds.edited": "已調整",
+    "arrangement.bounds.apply": "套用時間",
+    "arrangement.bounds.cancel": "取消",
+    "arrangement.bounds.invalid":
+      "請使用 分:秒.十分之一秒 格式，開始須早於結束，且不得超出錄音範圍。",
+    "arrangement.bounds.auditionNote":
+      "試聽候選邊界內的 3 秒。套用或取消後才能使用交接預覽。",
+    "arrangement.bounds.rangeAria": "調整「{label}」時間範圍",
+    "arrangement.bounds.start": "開始",
+    "arrangement.bounds.end": "結束",
+    "arrangement.bounds.startAria": "「{label}」開始時間",
+    "arrangement.bounds.endAria": "「{label}」結束時間",
+    "arrangement.bounds.fixedStart": "開始固定為 0:00.0",
+    "arrangement.bounds.decrease": "減少 0.1 秒",
+    "arrangement.bounds.increase": "增加 0.1 秒",
+    "arrangement.bounds.auditionStart": "試聽開始處",
+    "arrangement.bounds.auditionEnd": "試聽結束處",
+    "arrangement.bounds.resetDetected": "還原偵測值",
+
+    // Inferred Intro (from the first sung LRC line).
+    "arrangement.intro.inferred": "前奏（根據歌詞推斷）",
+    "arrangement.intro.inferredShort": "前奏（推斷）",
+    "arrangement.intro.firstLyric": "0:00.0 至第一句歌詞 {timecode}",
+    "arrangement.intro.reset": "還原推斷值",
 
     // Dialogs
     "arrangement.dialog.resetTitle": "重設編排？",

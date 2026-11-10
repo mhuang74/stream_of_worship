@@ -172,6 +172,97 @@ describe("PUT /api/songsets/[id]/items/[itemId]/arrangement", () => {
     expect(mockUpdateSongArrangement).not.toHaveBeenCalled();
   });
 
+  it("accepts a manual-bounds Step and a null-index inferred Intro", async () => {
+    mockSignedIn();
+    mockUpdateSongArrangement.mockResolvedValue(detailResponse);
+
+    const manualArrangement = {
+      version: 1 as const,
+      steps: [
+        {
+          sectionIndex: null,
+          label: "intro",
+          startSeconds: 0,
+          endSeconds: 12.4,
+          manualBounds: true as const,
+        },
+        {
+          sectionIndex: 1,
+          label: "verse",
+          startSeconds: 12.3,
+          endSeconds: 28.7,
+          manualBounds: true as const,
+        },
+      ],
+    };
+    const response = await PUT(
+      createMockRequest(URL_UNDER_TEST, {
+        method: "PUT",
+        body: JSON.stringify({ arrangement: manualArrangement }),
+      }),
+      params
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockUpdateSongArrangement).toHaveBeenCalledWith(
+      "item-1",
+      "songset-1",
+      1,
+      manualArrangement
+    );
+  });
+
+  it("returns 400 for a manualBounds value that is not the literal true", async () => {
+    mockSignedIn();
+
+    for (const manualBounds of [false, 1, "true"] as const) {
+      const response = await PUT(
+        createMockRequest(URL_UNDER_TEST, {
+          method: "PUT",
+          body: JSON.stringify({
+            arrangement: {
+              version: 1,
+              steps: [
+                {
+                  sectionIndex: 0,
+                  label: "intro",
+                  startSeconds: 0,
+                  endSeconds: 4,
+                  manualBounds,
+                },
+              ],
+            },
+          }),
+        }),
+        params
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(mockUpdateSongArrangement).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a negative section index", async () => {
+    mockSignedIn();
+
+    const response = await PUT(
+      createMockRequest(URL_UNDER_TEST, {
+        method: "PUT",
+        body: JSON.stringify({
+          arrangement: {
+            version: 1,
+            steps: [
+              { sectionIndex: -1, label: "intro", startSeconds: 0, endSeconds: 4 },
+            ],
+          },
+        }),
+      }),
+      params
+    );
+
+    expect(response.status).toBe(400);
+    expect(mockUpdateSongArrangement).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when steps exceed the 64-Step maximum", async () => {
     mockSignedIn();
 

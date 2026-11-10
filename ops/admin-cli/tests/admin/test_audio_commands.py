@@ -5715,9 +5715,11 @@ class TestBeatGridBackfill:
     BEATS = [float(t) for t in range(0, 60, 2)]
 
     def _seed_structures(self, client: DatabaseClient) -> None:
-        """Seed three recordings: full structure, empty-array sections, both NULL."""
-        for idx, sid in enumerate(("song_struct_full", "song_struct_empty", "song_struct_null")):
-            letter = "abc"[idx]
+        """Seed four recordings: full structure, empty sections, both NULL, collapsed."""
+        for idx, sid in enumerate(
+            ("song_struct_full", "song_struct_empty", "song_struct_null", "song_struct_collapsed")
+        ):
+            letter = "abce"[idx]
             client.insert_song(
                 Song(
                     id=sid,
@@ -5745,6 +5747,19 @@ class TestBeatGridBackfill:
         )
         # Empty-array sections must count as missing, not present.
         client.update_recording_structure("b" * 12, "[]", "[]")
+        # Present in SQL terms, unarrangeable in fact: both bounds of the
+        # 0.00-0.17 s leading section snap to the first beat at 6.23 s, and
+        # buildSnappedSteps then returns null for the whole recording.
+        client.update_recording_structure(
+            "e" * 12,
+            json.dumps(
+                [
+                    {"label": "intro", "start": 0.0, "end": 0.17},
+                    {"label": "verse", "start": 10.0, "end": 40.0},
+                ]
+            ),
+            json.dumps([6.23] + [float(t) for t in range(10, 45, 2)]),
+        )
 
     @pytest.mark.integration
     def test_list_structure_missing_filter(self, make_test_provider, postgres_url, tmp_path):
@@ -5787,12 +5802,187 @@ class TestBeatGridBackfill:
             ],
         )
         assert present.exit_code == 0
-        assert sorted(line for line in present.output.split() if line) == ["song_struct_full"]
+        assert sorted(line for line in present.output.split() if line) == [
+            "song_struct_collapsed",
+            "song_struct_full",
+        ]
+
+        _drop_all_tables(make_test_provider)
+
+    def _seed_collapsed(self, client: DatabaseClient, *, song_id: str, letter: str) -> None:
+        """Seed one more recording whose first section collapses when snapped."""
+        client.insert_song(
+            Song(
+                id=song_id,
+                title=f"Title {song_id}",
+                source_url=f"https://example.com/{song_id}",
+                scraped_at="2024-01-01T00:00:00",
+            )
+        )
+        client.insert_recording(
+            Recording(
+                content_hash=letter * 64,
+                hash_prefix=letter * 12,
+                song_id=song_id,
+                original_filename=f"{song_id}.mp3",
+                file_size_bytes=1024000,
+                imported_at="2024-01-16T10:30:00",
+                duration_seconds=180.0,
+            )
+        )
+        client.update_recording_structure(
+            letter * 12,
+            json.dumps(
+                [
+                    {"label": "intro", "start": 0.0, "end": 0.17},
+                    {"label": "verse", "start": 10.0, "end": 40.0},
+                ]
+            ),
+            json.dumps([6.23] + [float(t) for t in range(10, 45, 2)]),
+        )
+
+    @pytest.mark.integration
+    def test_list_structure_unusable_filter(self, make_test_provider, postgres_url, tmp_path):
+        """--structure unusable is the snap-aware complement of the presence test."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_structures(client)
+        # Title sorts after "Title song_struct_collapsed" so the ordering of the
+        # two collapsed rows is deterministic.
+        self._seed_collapsed(client, song_id="song_struct_collapsed_two", letter="f")
+        # An arrangeable recording that sorts FIRST by album/title. A SQL LIMIT
+        # would return it alone and the Python filter would then drop it, so
+        # `--limit 1` yielding a collapsed id proves the limit is applied after
+        # evaluation.
+        client.insert_song(
+            Song(
+                id="song_struct_aaa",
+                title="AAA arrangeable",
+                source_url="https://example.com/song_struct_aaa",
+                scraped_at="2024-01-01T00:00:00",
+            )
+        )
+        client.insert_recording(
+            Recording(
+                content_hash="g" * 64,
+                hash_prefix="g" * 12,
+                song_id="song_struct_aaa",
+                original_filename="song_struct_aaa.mp3",
+                file_size_bytes=1024000,
+                imported_at="2024-01-17T10:30:00",
+                duration_seconds=180.0,
+            )
+        )
+        client.update_recording_structure(
+            "g" * 12,
+            json.dumps([{"label": "Verse 1", "start": 10.0, "end": 40.0}]),
+            json.dumps([float(t) for t in range(0, 60, 2)]),
+        )
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--structure",
+                "unusable",
+            ],
+        )
+
+        assert result.exit_code == 0
+        ids = sorted(line for line in result.output.split() if line)
+        assert ids == ["song_struct_collapsed", "song_struct_collapsed_two"]
+
+        limited = runner.invoke(
+            app,
+            [
+                "audio",
+                "list",
+                "--config",
+                str(config_path),
+                "--format",
+                "ids",
+                "--structure",
+                "unusable",
+                "--limit",
+                "1",
+            ],
+        )
+
+        assert limited.exit_code == 0
+        assert [line for line in limited.output.split() if line] == ["song_struct_collapsed"]
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    def test_structure_audit_json_and_ids(self, make_test_provider, postgres_url, tmp_path):
+        """structure-audit emits only non-arrangeable rows, with a stderr summary."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_structures(client)
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "structure-audit", "--config", str(config_path), "--format", "json"],
+        )
+
+        assert result.exit_code == 0, result.output
+        rows = json.loads(result.stdout)
+        assert all(row["verdict"] != "arrangeable" for row in rows)
+        by_id = {row["song_id"]: row for row in rows}
+        # Arrangeable rows are never emitted; only their count reaches the summary.
+        assert sorted(by_id) == [
+            "song_struct_collapsed",
+            "song_struct_empty",
+            "song_struct_null",
+        ]
+        assert by_id["song_struct_collapsed"]["verdict"] == "collapsed"
+        assert by_id["song_struct_collapsed"]["section"] == {
+            "label": "intro",
+            "start": 0.0,
+            "end": 0.17,
+        }
+        assert by_id["song_struct_collapsed"]["steps"] == 0
+        assert by_id["song_struct_empty"]["verdict"] == "missing_sections"
+        assert by_id["song_struct_null"]["verdict"] == "missing_sections"
+        assert "1 arrangeable" in result.stderr
+        assert "3 non-arrangeable" in result.stderr
+
+        ids_result = runner.invoke(
+            app,
+            ["audio", "structure-audit", "--config", str(config_path), "--format", "ids"],
+        )
+
+        assert ids_result.exit_code == 0
+        assert sorted(line for line in ids_result.stdout.splitlines() if line) == [
+            "song_struct_collapsed",
+            "song_struct_empty",
+            "song_struct_null",
+        ]
+        assert "Summary:" in ids_result.stderr
+
+        table_result = runner.invoke(
+            app,
+            ["audio", "structure-audit", "--config", str(config_path), "--format", "table"],
+        )
+
+        assert table_result.exit_code == 0, table_result.output
+        # Verdicts are the unscaled column, so they survive any terminal width.
+        assert "collapsed" in table_result.stdout
+        assert "missing_sections" in table_result.stdout
 
         _drop_all_tables(make_test_provider)
 
     def test_list_rejects_invalid_structure(self, tmp_path, monkeypatch):
-        """--structure rejects values outside missing|present."""
+        """--structure rejects values outside missing|present|unusable."""
         monkeypatch.delenv("SOW_DATABASE_URL", raising=False)
         config_path = tmp_path / "config.toml"
         config_path.write_text("[database]\n")
@@ -5882,7 +6072,55 @@ class TestBeatGridBackfill:
         assert result.exit_code == 0
         assert "skipped: published" in result.output
         assert "1 skipped (published)" in result.output
+        assert "--include-published" in " ".join(result.output.split())
         mock_client_cls.return_value.submit_beat_grid.assert_not_called()
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.AnalysisClient")
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_beat_grid_include_published_submits(
+        self, mock_r2_cls, mock_client_cls, make_test_provider, postgres_url, tmp_path, monkeypatch
+    ):
+        """--include-published processes the published row and reports the count."""
+        monkeypatch.setenv("SOW_ANALYSIS_API_KEY", "test-key")
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client, published=True)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = None
+        mock_r2_cls.return_value = mock_r2
+
+        mock_client = MagicMock()
+        mock_client.submit_beat_grid.return_value = JobInfo(
+            job_id="job-bg-pub", status="queued", job_type="beat_grid"
+        )
+        mock_client.get_job.return_value = JobInfo(
+            job_id="job-bg-pub", status="completed", job_type="beat_grid"
+        )
+        mock_client_cls.return_value = mock_client
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "beat-grid", "song_bg", "--config", str(config_path), "--include-published"],
+        )
+
+        assert result.exit_code == 0, result.output
+        flat = " ".join(result.output.split())
+        assert "1 detected" in flat
+        assert "1 detected" in result.output
+        assert ", 1 published" in flat
+        mock_client.submit_beat_grid.assert_called_once()
+        kwargs = mock_client.submit_beat_grid.call_args.kwargs
+        assert kwargs["content_hash"] == "d" * 64
+        # Visibility is never written by the override.
+        recording = client.get_recording_by_song_id("song_bg")
+        assert recording is not None
+        assert recording.visibility_status == "published"
 
         _drop_all_tables(make_test_provider)
 
@@ -5924,6 +6162,78 @@ class TestBeatGridBackfill:
         kwargs = mock_client.submit_beat_grid.call_args.kwargs
         assert kwargs["content_hash"] == "d" * 64
         assert kwargs["skip_beat_cache"] is False
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_write_structure_include_published_persists(
+        self, mock_r2_cls, make_test_provider, postgres_url, tmp_path
+    ):
+        """--include-published backfills sections+beats without demoting the row."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client, published=True)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = {"beats": self.BEATS, "downbeats": []}
+        mock_r2.download_lrc_content.return_value = self.LRC
+        mock_r2_cls.return_value = mock_r2
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            [
+                "audio",
+                "write-structure",
+                "song_bg",
+                "--config",
+                str(config_path),
+                "--include-published",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        flat = " ".join(result.output.split())
+        assert "1 persisted" in result.output
+        assert ", 1 published" in flat
+
+        recording = client.get_recording_by_song_id("song_bg")
+        assert recording is not None
+        assert json.loads(recording.sections)
+        assert json.loads(recording.beats)
+        # The override never changes visibility.
+        assert recording.visibility_status == "published"
+
+        _drop_all_tables(make_test_provider)
+
+    @pytest.mark.integration
+    @patch("stream_of_worship.admin.commands.audio.R2Client")
+    def test_write_structure_skips_published_without_flag(
+        self, mock_r2_cls, make_test_provider, postgres_url, tmp_path
+    ):
+        """Without the flag a published row is skipped and left unarrangeable."""
+        provider = make_test_provider()
+        client = DatabaseClient(provider)
+        client.initialize_schema()
+        self._seed_one(client, published=True)
+
+        mock_r2 = MagicMock()
+        mock_r2.download_beat_grid.return_value = {"beats": self.BEATS, "downbeats": []}
+        mock_r2.download_lrc_content.return_value = self.LRC
+        mock_r2_cls.return_value = mock_r2
+
+        config_path = _write_config(tmp_path, postgres_url)
+        result = runner.invoke(
+            app,
+            ["audio", "write-structure", "song_bg", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "1 skipped (published)" in result.output
+        assert client.list_recordings_with_songs(structure="present") == []
+        mock_r2.download_beat_grid.assert_not_called()
 
         _drop_all_tables(make_test_provider)
 

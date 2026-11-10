@@ -49,10 +49,15 @@ class RecordingSection:
 
 @dataclass(frozen=True)
 class ArrangementStep:
-    section_index: int
+    # None only for a Songset-local LRC-inferred Intro; detected sections use
+    # their zero-based Recording section index.
+    section_index: int | None
     label: str
     start_seconds: float
     end_seconds: float
+    # True for an inferred Intro and user-adjusted bounds: skips only the
+    # beat-snap equality check, never range validation.
+    manual_bounds: bool = False
 
     @property
     def duration_seconds(self) -> float:
@@ -220,24 +225,36 @@ def build_snapped_steps(
     return steps or None
 
 
+_BASE_STEP_KEYS = frozenset({"sectionIndex", "label", "startSeconds", "endSeconds"})
+_MANUAL_STEP_KEYS = _BASE_STEP_KEYS | {"manualBounds"}
+
+
 def _is_valid_step_payload(value: Any) -> bool:
+    """Exactly the base keys plus optionally ``manualBounds: true``.
+
+    Mirrors ``isValidStep`` in arrangements.ts: ``manualBounds`` must be the
+    JSON literal ``true`` (``1 is not True`` in Python, so ints are rejected),
+    and a null section index is legal only for the inferred Intro.
+    """
     if not isinstance(value, Mapping):
         return False
-    if set(value.keys()) != {"sectionIndex", "label", "startSeconds", "endSeconds"}:
+    keys = set(value.keys())
+    if keys != _BASE_STEP_KEYS and keys != _MANUAL_STEP_KEYS:
         return False
+    has_manual = "manualBounds" in value
+    if has_manual and value["manualBounds"] is not True:
+        return False
+    index = value["sectionIndex"]
     label = value["label"]
     start = value["startSeconds"]
     end = value["endSeconds"]
-    return (
-        _is_integral_number(value["sectionIndex"])
-        and int(value["sectionIndex"]) >= 0
-        and isinstance(label, str)
-        and 1 <= len(label) <= 100
-        and _is_number(start)
-        and _is_number(end)
-        and start >= 0
-        and start < end
-    )
+    if not isinstance(label, str) or not 1 <= len(label) <= 100:
+        return False
+    if not _is_number(start) or not _is_number(end) or start < 0 or start >= end:
+        return False
+    if index is None:
+        return label == "intro" and start == 0 and has_manual
+    return _is_integral_number(index) and int(index) >= 0
 
 
 def parse_song_arrangement(raw: str | None) -> tuple[ArrangementStep, ...] | None:
@@ -268,12 +285,14 @@ def parse_song_arrangement(raw: str | None) -> tuple[ArrangementStep, ...] | Non
     for payload in steps_payload:
         if not _is_valid_step_payload(payload):
             raise ValueError(PARSE_FAILURE_MESSAGE)
+        raw_index = payload["sectionIndex"]
         steps.append(
             ArrangementStep(
-                section_index=int(payload["sectionIndex"]),
+                section_index=None if raw_index is None else int(raw_index),
                 label=str(payload["label"]),
                 start_seconds=float(payload["startSeconds"]),
                 end_seconds=float(payload["endSeconds"]),
+                manual_bounds=payload.get("manualBounds") is True,
             )
         )
     return tuple(steps)
@@ -291,6 +310,10 @@ def validate_arrangement(
     Steps when they match freshly snapped bounds. Raises the repair-or-reset
     :class:`ValueError` for any present-invalid value: malformed JSON, missing
     or collapsed analysis, structural problems, or stale label/index/bounds.
+
+    A null-index Intro and any ``manual_bounds`` Step are Songset-Item-local
+    cuts: analysis is consulted only when a detected Step exists, and only the
+    snapped-bounds equality is skipped — range checks stay unconditional.
     """
     if raw is None:
         return None
@@ -303,26 +326,30 @@ def validate_arrangement(
     if not _is_number(recording_duration) or recording_duration <= 0:
         raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
 
-    sections = parse_recording_sections(sections_json)
-    beats = parse_recording_beats(beats_json)
-    snapped = build_snapped_steps(sections, beats, recording_duration)
-    if snapped is None:
-        raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
-    expected_by_index = {step.section_index: step for step in snapped}
+    detected = [step for step in steps if step.section_index is not None]
+    expected_by_index: dict[int, ArrangementStep] = {}
+    if detected:
+        sections = parse_recording_sections(sections_json)
+        beats = parse_recording_beats(beats_json)
+        snapped = build_snapped_steps(sections, beats, recording_duration)
+        if snapped is None:
+            raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
+        expected_by_index = {step.section_index: step for step in snapped}
 
     for step in steps:
-        expected = expected_by_index.get(step.section_index)
-        if expected is None:
-            raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
-        if expected.label != step.label:
-            raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
-        if (
-            abs(step.start_seconds - expected.start_seconds)
-            > VALIDATION_TOLERANCE_SECONDS
-            or abs(step.end_seconds - expected.end_seconds)
-            > VALIDATION_TOLERANCE_SECONDS
-        ):
-            raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
+        if step.section_index is not None:
+            expected = expected_by_index.get(step.section_index)
+            if expected is None:
+                raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
+            if expected.label != step.label:
+                raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
+            if not step.manual_bounds and (
+                abs(step.start_seconds - expected.start_seconds)
+                > VALIDATION_TOLERANCE_SECONDS
+                or abs(step.end_seconds - expected.end_seconds)
+                > VALIDATION_TOLERANCE_SECONDS
+            ):
+                raise ValueError(ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE)
         if (
             step.start_seconds < 0
             or step.end_seconds > recording_duration

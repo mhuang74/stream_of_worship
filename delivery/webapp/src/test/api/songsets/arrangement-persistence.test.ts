@@ -189,6 +189,27 @@ const singleIntroArrangement: SongArrangement = {
   steps: [{ sectionIndex: 0, label: "intro", startSeconds: 0, endSeconds: 10 }],
 };
 
+/** An LRC-inferred Intro plus a user-adjusted detected Step. */
+const manualBoundsArrangement: SongArrangement = {
+  version: 1,
+  steps: [
+    {
+      sectionIndex: null,
+      label: "intro",
+      startSeconds: 0,
+      endSeconds: 12.4,
+      manualBounds: true,
+    },
+    {
+      sectionIndex: 1,
+      label: "verse",
+      startSeconds: 12.3,
+      endSeconds: 28.7,
+      manualBounds: true,
+    },
+  ],
+};
+
 /** Owned SongsetItem row returned by the guarded `findFirst` lookups. */
 function ownedItemRow(extra: Record<string, unknown> = {}) {
   return {
@@ -312,6 +333,37 @@ describe("updateSongArrangement", () => {
       "update:songsets",
     ]);
     expect(mockUpdates()).toHaveLength(0);
+  });
+
+  it("persists a null-index Intro and a manual detected Step verbatim", async () => {
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      ownedItemRow({
+        arrangementSteps: null,
+        recording: recordingRow(),
+      }) as unknown as ItemsFindFirstResult
+    );
+    const { updates } = installMutationTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }],
+      [arrangementItemRow()]
+    );
+
+    const result = await updateSongArrangement(
+      "item-1",
+      "songset-1",
+      1,
+      manualBoundsArrangement
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.arrangementInvalid).toBe(false);
+    const itemUpdate = updates.find((call) => call.table === songsetItems);
+    const persisted = itemUpdate!.values.arrangementSteps as string;
+    // The wire JSON keeps both Songset-local markers, since the flag is what
+    // tells every reader these bounds are intentional.
+    expect(persisted).toContain('"sectionIndex":null');
+    expect(persisted).toContain('"manualBounds":true');
+    expect(persisted).toBe(JSON.stringify(manualBoundsArrangement));
   });
 
   it("rejects a stored arrangement that no longer matches changed beats with ARRANGEMENT_STALE", async () => {
@@ -899,6 +951,65 @@ describe("readers expose arranged durations", () => {
       verseSection,
     ]);
     expect(result!.items[0].recording?.beats).toHaveLength(7);
+  });
+
+  it("getSongsetEditorData totals an intro plus a manual Step", async () => {
+    const songsetRow = {
+      id: "songset-1",
+      name: "Set",
+      description: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      latestRenderJobId: null,
+      lastFailedRenderJobId: null,
+      lastCompletedRenderJobId: null,
+      latestJobStatus: null,
+      latestJobCompletedAt: null,
+      renderErrorMessage: null,
+      latestJobStartedAt: null,
+      latestJobCreatedAt: null,
+    };
+    const itemRow = {
+      id: "item-1",
+      songId: "song-1",
+      recordingHashPrefix: "abc",
+      position: 0,
+      gapBeats: 0,
+      crossfadeEnabled: 0,
+      crossfadeDurationSeconds: null,
+      keyShiftSemitones: 0,
+      tempoRatio: 1,
+      arrangementSteps: JSON.stringify(manualBoundsArrangement),
+      updatedAt: new Date(),
+      songTitle: "Song A",
+      composer: null,
+      lyricist: null,
+      albumName: null,
+      songMusicalKey: null,
+      recordingContentHash: "hash-1",
+      durationSeconds: 180,
+      tempoBpm: 120,
+      recordingSections: sectionsJson,
+      recordingBeats: beatsJson,
+      recordingMusicalKey: "C",
+      recordingMusicalMode: null,
+      keyConfidence: null,
+      keyScoreMargin: null,
+      keyWindowAgreement: null,
+      r2AudioUrl: null,
+      recordingTheme: null,
+      recordingDeletedAt: null,
+      markedLineCount: 0,
+    };
+    useSelectRows([songsetRow], [itemRow]);
+
+    const result = await getSongsetEditorData("songset-1", 1);
+
+    expect(result).not.toBeNull();
+    // 12.4s inferred Intro + a 16.4s adjusted verse.
+    expect(result!.durationSeconds).toBeCloseTo(28.8, 6);
+    expect(result!.items[0].arrangement?.steps[0].sectionIndex).toBeNull();
+    expect(result!.items[0].arrangement?.steps[1].manualBounds).toBe(true);
   });
 
   it("getSongsetEditorData exposes invalid arrangements as null durations", async () => {

@@ -18,10 +18,19 @@ export interface RecordingSection {
 }
 
 export interface ArrangementStep {
-  sectionIndex: number;
+  /**
+   * Null only for a Songset-local LRC-inferred Intro; detected sections use
+   * their zero-based Recording section index.
+   */
+  sectionIndex: number | null;
   label: string;
   startSeconds: number;
   endSeconds: number;
+  /**
+   * Required for an inferred Intro and for user-adjusted bounds. It skips
+   * only beat-snap equality — range validation still applies.
+   */
+  manualBounds?: true;
 }
 
 export interface SongArrangement {
@@ -31,7 +40,8 @@ export interface SongArrangement {
 
 export interface TimelineClip {
   recordingHashPrefix: string;
-  sectionIndex: number;
+  /** Mirrors ArrangementStep.sectionIndex; -1 for an untouched Recording. */
+  sectionIndex: number | null;
   sourceStartSeconds: number;
   sourceEndSeconds: number;
   startSeconds: number;
@@ -253,21 +263,33 @@ export function buildSnappedSteps(
 // Persisted arrangement parsing (SQL NULL vs malformed JSON)
 // ---------------------------------------------------------------------------
 
+const BASE_STEP_KEYS = ["sectionIndex", "label", "startSeconds", "endSeconds"] as const;
+
+// Exactly the base keys, plus optionally `manualBounds: true` (never false/1/
+// "true"/null — a false value must not survive as a second spelling of
+// "not edited"). A null section index is legal only for the inferred Intro.
 function isValidStep(step: unknown): step is ArrangementStep {
-  return (
-    isPlainObject(step) &&
-    Object.keys(step).length === 4 &&
-    typeof step.sectionIndex === "number" &&
-    Number.isInteger(step.sectionIndex) &&
-    step.sectionIndex >= 0 &&
-    isNonEmptyString(step.label) &&
-    // Code points, not UTF-16 units: matches the worker's Python len().
-    [...step.label].length <= 100 &&
-    isFiniteNumber(step.startSeconds) &&
-    isFiniteNumber(step.endSeconds) &&
-    step.startSeconds >= 0 &&
-    step.startSeconds < step.endSeconds
-  );
+  if (!isPlainObject(step)) return false;
+  const keys = Object.keys(step);
+  const hasManual = keys.includes("manualBounds");
+  if (keys.length !== (hasManual ? 5 : 4)) return false;
+  for (const key of keys) {
+    if (key !== "manualBounds" && !(BASE_STEP_KEYS as readonly string[]).includes(key)) {
+      return false;
+    }
+  }
+  for (const key of BASE_STEP_KEYS) {
+    if (!(key in step)) return false;
+  }
+  if (hasManual && step.manualBounds !== true) return false;
+  const { sectionIndex: index, label } = step;
+  if (!isNonEmptyString(label) || [...label].length > 100) return false;
+  if (!isFiniteNumber(step.startSeconds) || !isFiniteNumber(step.endSeconds)) return false;
+  if (!(step.startSeconds >= 0 && step.startSeconds < step.endSeconds)) return false;
+  if (index === null) {
+    return label === "intro" && step.startSeconds === 0 && hasManual;
+  }
+  return typeof index === "number" && Number.isInteger(index) && index >= 0;
 }
 
 // Distinguishes NULL (absent arrangement) from malformed JSON (present but
@@ -313,6 +335,11 @@ export function parseSongArrangement(
 // analysis and accepts only exact labels plus bounds within 1e-6 inclusive
 // (pinned rounding makes both sides identical; the tolerance only absorbs
 // float noise). Rejects forged cuts and stale analysis.
+//
+// A null-index Intro and any `manualBounds` Step are Songset-Item-local cuts:
+// LRC is never re-fetched or re-validated, so later lyric edits can neither
+// invalidate nor rewrite them. Range checks stay unconditional; only the
+// snapped-bounds equality is skipped for them.
 export function validateSongArrangement(
   value: string | null,
   sections: RecordingSection[] | null,
@@ -327,22 +354,30 @@ export function validateSongArrangement(
     return { ok: false, code: "ARRANGEMENT_INVALID" };
   }
 
-  const snapped = buildSnappedSteps(sections, beats, durationSeconds);
-  if (!snapped) {
-    return { ok: false, code: "ANALYSIS_UNAVAILABLE" };
+  const steps = parsed.arrangement.steps;
+  // Analysis is consulted only when a detected Step exists: an Intro-only
+  // arrangement needs no sections or beats to be savable.
+  let expectedByIndex: Map<number, ArrangementStep> | null = null;
+  if (steps.some((step) => step.sectionIndex !== null)) {
+    const snapped = buildSnappedSteps(sections, beats, durationSeconds);
+    if (!snapped) return { ok: false, code: "ANALYSIS_UNAVAILABLE" };
+    expectedByIndex = new Map(snapped.map((step) => [step.sectionIndex as number, step]));
   }
-  const expectedByIndex = new Map(snapped.map((step) => [step.sectionIndex, step]));
 
-  for (const step of parsed.arrangement.steps) {
-    const expected = expectedByIndex.get(step.sectionIndex);
-    if (!expected) return { ok: false, code: "ARRANGEMENT_STALE" };
-    if (expected.label !== step.label) return { ok: false, code: "ARRANGEMENT_STALE" };
-    if (
-      Math.abs(step.startSeconds - expected.startSeconds) >
-        VALIDATION_TOLERANCE_SECONDS ||
-      Math.abs(step.endSeconds - expected.endSeconds) > VALIDATION_TOLERANCE_SECONDS
-    ) {
-      return { ok: false, code: "ARRANGEMENT_STALE" };
+  for (const step of steps) {
+    if (step.sectionIndex !== null) {
+      const expected = expectedByIndex?.get(step.sectionIndex);
+      if (!expected) return { ok: false, code: "ARRANGEMENT_STALE" };
+      if (expected.label !== step.label) return { ok: false, code: "ARRANGEMENT_STALE" };
+      if (
+        step.manualBounds !== true &&
+        (Math.abs(step.startSeconds - expected.startSeconds) >
+          VALIDATION_TOLERANCE_SECONDS ||
+          Math.abs(step.endSeconds - expected.endSeconds) >
+            VALIDATION_TOLERANCE_SECONDS)
+      ) {
+        return { ok: false, code: "ARRANGEMENT_STALE" };
+      }
     }
     if (
       step.startSeconds < 0 ||
