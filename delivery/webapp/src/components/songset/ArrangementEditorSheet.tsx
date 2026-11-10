@@ -1269,9 +1269,10 @@ export function ArrangementEditorSheet({
     ? `${playbackWindow.kind}:${playbackWindow.startSeconds}:${playbackWindow.endSeconds}`
     : null;
   // A window can only end where its own playback reaches, so the transport must
-  // have reported a position inside it first. Without this, the render that
-  // opens a new window still carries the previous window's position (often the
-  // timeline end) and would spend a pass instantly.
+  // have reported a position inside it first. Every open path seeks in the same
+  // event batch, so today's renders never carry a foreign position — the guard
+  // keeps that invariant explicit rather than trusting it, because a position at
+  // the timeline end would otherwise spend a pass instantly.
   const windowEntryRef = useRef<{ key: string | null; sawInside: boolean }>({
     key: null,
     sawInside: false,

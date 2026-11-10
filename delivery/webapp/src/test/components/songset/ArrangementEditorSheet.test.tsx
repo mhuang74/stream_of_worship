@@ -416,8 +416,9 @@ describe("ArrangementEditorSheet", () => {
     await moveTransport(view, { position: 30, status: "paused" });
     expect(preview.controller.startAtSeconds).toHaveBeenCalledTimes(1);
 
-    // …and the junction review's start is still in flight, so the render that
-    // opens its 8..12 window carries position 30. That must not spend a pass.
+    // …and the junction review's start is still in flight, so that render
+    // carries position 30. The hook's own seek is synchronous, so this only
+    // pins the invariant; it must never spend a pass.
     preview.controller.startAtSeconds.mockImplementationOnce(() => new Promise(() => {}));
     fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
 
