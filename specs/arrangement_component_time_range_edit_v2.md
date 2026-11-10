@@ -481,19 +481,21 @@ introduce a Radix dependency.
      Reset back to initial values clears dirty;
    - malformed/reversed/out-of-duration input disables Apply, steppers, and
      auditions; arrow boundaries are disabled at 0 and Recording duration;
-   - selecting pair 0 starts at clip 0 and its window ends at clip 1 end. Simulated
-     end positions cause seeks to start after passes 1 and 2, then pause after pass
-     3 with no fourth seek; pause/resume retains pass 2, while scrub resets to pass
-     1;
-   - a 2 px pointer movement then release on a clip selects without fractional seek;
-     a 20 px drag seeks and emits no clip click/jump; starting a drag during pair
-     review never widens its window;
-   - with next Opening enabled on the final pair, the pre-play summary says
-     `Song 2 · Opening — first 10 s`; moving the mocked playhead ten seconds into
-     Song 2 marks its Opening band active, and a shorter next item clamps the window
-     to that item's end;
+   - reviewing junction 0 at 120 BPM starts at `startAtSeconds(8)` (the join at
+     10 s minus 4 beats of 0.5 s) and renders the 8..12 s region over the strip;
+     simulated end positions cause one seek back to 8 after pass 1, then a pause with
+     `Review complete · 2 passes` after pass 2 and no further seek; a following
+     Preview click starts the arrangement at 0 and removes the pass line;
+   - a 2 px pointer movement then release on a band seeks to that band's start with
+     no fractional seek; a 20 px drag seeks and emits no extra band click; the strip
+     keeps the whole arrangement window before, during, and after a review;
+   - with a next sibling the pre-play notice reads
+     `Next: Next Song · Opening — first 3 s` (8 beats of 0.5 s, clamped to the next
+     item's extent), the strip ends at 34 s, and Preview starts at 0; with a previous
+     sibling the hand-over line names both songs and Preview starts 4 s before this
+     item;
    - pause-state lyric/component highlighting remains active, and keyboard
-     Home/End/arrows stay within the selected review window.
+     Home/End/arrows stay within the arrangement window.
 
    Stub pointer capture and strip `getBoundingClientRect` locally in this test file.
 3. From `delivery/render-worker`, run:
@@ -543,7 +545,7 @@ introduce a Radix dependency.
 - Two passes means the junction window is heard twice, with exactly one automatic
   return to its start; the arrangement preview never loops. Pause alone preserves
   the pass; other review interruptions reset it. Beat length is tempo-derived from
-  the song being heard (previous tour for the lead-in, next item for the lead-out)
+  the song being heard (previous item for the lead-in, next item for the lead-out)
   with this song's tempo as the fallback and 1 s/beat when no tempo exists.
 - If the Base UI popover's focus containment fails inside the Sheet, use one
   sheet-owned inline expanding panel below the selected block with identical

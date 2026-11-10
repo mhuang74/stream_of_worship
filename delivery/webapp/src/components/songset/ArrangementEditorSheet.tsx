@@ -1017,6 +1017,10 @@ export function ArrangementEditorSheet({
   // current analysis (stale/malformed saved steps) or analysis is missing, and
   // while a bounds session holds an unsavable candidate.
   const isPreviewAvailable = isDraftValid && initProblem === null && !boundsEditorInvalid;
+  // The rail's structure (summary, notices, strip) describes the arrangement
+  // itself, so it stays visible while a bounds candidate is merely unsavable;
+  // only the transport actions depend on isPreviewAvailable.
+  const isRailVisible = isDraftValid && initProblem === null;
   const canSave = isDraftValid && initProblem === null && !isSaving;
 
   // Lyrics are the real recording's LRC, shown per component, used to infer
@@ -2281,7 +2285,7 @@ export function ArrangementEditorSheet({
                       </span>
                     </div>
 
-                    {isPreviewAvailable && arrangementWindow && (
+                    {isRailVisible && arrangementWindow && (
                       <p
                         className="text-[11px] leading-relaxed text-muted-foreground"
                         data-testid="arrangement-preview-summary"
@@ -2290,13 +2294,13 @@ export function ArrangementEditorSheet({
                       </p>
                     )}
 
-                    {isPreviewAvailable && arrangementWindow && previousHandover && (
+                    {isRailVisible && arrangementWindow && previousHandover && (
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
                         {previousHandover}
                       </p>
                     )}
 
-                    {isPreviewAvailable && arrangementWindow?.includesNextOpening && (
+                    {isRailVisible && arrangementWindow?.includesNextOpening && (
                       <p
                         className="text-[11px] leading-relaxed text-muted-foreground"
                         data-testid="arrangement-next-opening-notice"
@@ -2310,7 +2314,7 @@ export function ArrangementEditorSheet({
                       </p>
                     )}
 
-                    {isPreviewAvailable && arrangementWindow && reviewClipIndex !== null && (
+                    {isRailVisible && arrangementWindow && reviewClipIndex !== null && (
                       <div className="space-y-1">
                         <p className="text-[11px] leading-relaxed text-muted-foreground">
                           {t("arrangement.preview.pairSummary")
@@ -2343,7 +2347,7 @@ export function ArrangementEditorSheet({
                       </div>
                     )}
 
-                    {isPreviewAvailable && arrangementWindow && windowDurationSeconds > 0 && (
+                    {isRailVisible && arrangementWindow && windowDurationSeconds > 0 && (
                       <div
                         role="group"
                         aria-label={t("arrangement.preview.timelineAria")}

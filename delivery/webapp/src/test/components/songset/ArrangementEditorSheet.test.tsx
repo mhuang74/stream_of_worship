@@ -618,6 +618,10 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-bounds-apply-0")).toBeDisabled();
     expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
     expect(screen.getByTestId("arrangement-review-transition-0")).toBeDisabled();
+    // Typing an unsavable value blocks the transport but must not blank the
+    // rail: the strip and summary describe the arrangement, not the candidate.
+    expect(screen.getByTestId("arrangement-preview-timeline")).toBeInTheDocument();
+    expect(screen.getByTestId("arrangement-preview-summary")).toBeInTheDocument();
   });
 
   it("offers an inferred Intro from the first sung lyric and flags it edited", async () => {
@@ -941,7 +945,8 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getAllByTestId("arrangement-draft-step")).toHaveLength(1);
     expect(screen.getByText(/unavailable or stale/i)).toBeInTheDocument();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
-    // A single Step has no adjacent pair, so there is nothing to review.
+    // Without analysis there is no timeline to draw, so the strip is absent
+    // (a single Step still produces a preview when analysis exists).
     expect(screen.queryByTestId("arrangement-preview-timeline")).toBeNull();
     expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
     expect(screen.getByTestId("arrangement-reset")).not.toBeDisabled();
