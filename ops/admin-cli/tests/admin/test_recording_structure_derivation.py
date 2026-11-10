@@ -116,6 +116,67 @@ class TestDeriveSectionsFromLyrics:
         assert derive_sections_from_lyrics({"sections": []}, "[00:01.00] x\n", 10.0) == []
         assert derive_sections_from_lyrics(_structured(("verse", ["x"])), None, 10.0) == []
 
+    def test_matches_a_lyric_line_split_across_timestamps(self):
+        # The LRC splits one structured lyric line across two timestamps, so
+        # neither fragment clears the whole-line ratio on its own.
+        structured = _structured(("verse", ["主我敬拜祢 我全心讚美祢"]))
+        lrc = "[00:10.00] 主我敬拜祢\n[00:15.00] 我全心讚美祢\n[00:20.00] fade out\n"
+        sections = derive_sections_from_lyrics(structured, lrc, 40.0)
+        assert [(s.label, s.start, s.end) for s in sections] == [("verse", 10.0, 20.0)]
+
+    def test_attributes_a_shared_lyric_line_by_its_neighbours(self):
+        # Both sections contain "saved by grace"; order in structured_lyrics must
+        # not decide which one owns each occurrence.
+        structured = _structured(
+            ("verse", ["saved by grace", "verse only line"]),
+            ("chorus", ["saved by grace", "chorus only line"]),
+        )
+        lrc = (
+            "[00:10.00] saved by grace\n"
+            "[00:15.00] verse only line\n"
+            "[00:20.00] saved by grace\n"
+            "[00:25.00] chorus only line\n"
+            "[00:30.00] fade out\n"
+        )
+        sections = derive_sections_from_lyrics(structured, lrc, 40.0)
+        assert [(s.label, s.start, s.end) for s in sections] == [
+            ("verse", 10.0, 20.0),
+            ("chorus", 20.0, 30.0),
+        ]
+
+    def test_keeps_a_repeat_line_inside_one_occurrence(self):
+        # The pool's chorus blocks list each sung line twice, so one rendition is
+        # A A B B across four timestamps. All four belong to one occurrence: the
+        # cursor steps one duplicate at a time instead of jumping past it and
+        # forcing spurious boundaries.
+        structured = _structured(("chorus", ["chorus a", "chorus a", "chorus b", "chorus b"]))
+        lrc = (
+            "[00:10.00] chorus a\n"
+            "[00:15.00] chorus a\n"
+            "[00:20.00] chorus b\n"
+            "[00:25.00] chorus b\n"
+            "[00:30.00] fade out\n"
+        )
+        sections = derive_sections_from_lyrics(structured, lrc, 40.0)
+        assert [(s.label, s.start, s.end) for s in sections] == [("chorus", 10.0, 30.0)]
+
+    def test_keeps_boundaries_between_consecutive_repeats(self):
+        # A chorus repeated back-to-back has no differently-labelled line between
+        # the repetitions; both occurrences must stay separately selectable.
+        structured = _structured(("chorus", ["first chorus line", "second chorus line"]))
+        lrc = (
+            "[00:10.00] first chorus line\n"
+            "[00:15.00] second chorus line\n"
+            "[00:20.00] first chorus line\n"
+            "[00:25.00] second chorus line\n"
+            "[00:30.00] fade out\n"
+        )
+        sections = derive_sections_from_lyrics(structured, lrc, 40.0)
+        assert [(s.label, s.start, s.end) for s in sections] == [
+            ("chorus", 10.0, 20.0),
+            ("chorus", 20.0, 30.0),
+        ]
+
 
 class TestFinalizeArrangementStructure:
     def test_snaps_to_nearest_beat_and_returns_flat_beats(self):
