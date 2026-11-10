@@ -234,15 +234,16 @@ def _snap_pass(
     sections: Sequence[RecordingSection],
     normalized_beats: Sequence[float],
     duration_seconds: float,
-) -> tuple[list[SnappedStep], Optional[int]]:
-    """Snap sections onto the grid; also report the first collapsing index.
+) -> tuple[list[SnappedStep], Optional[tuple[int, float]]]:
+    """Snap sections onto the grid; also report the first collapsing section.
 
     Returns ``(steps, None)`` when every section snapped cleanly, or
-    ``(steps_before_collapse, index)`` for the first section whose snapped
-    bounds are not strictly ascending. Out-of-range sections are skipped, not
-    fatal. Both :func:`build_snapped_steps` and
-    :func:`evaluate_recording_structure` call this, so their verdicts cannot
-    disagree.
+    ``(steps_before_collapse, (index, snapped_start))`` for the first section
+    whose snapped bounds are not strictly ascending -- ``index`` and the
+    collapse value come from this single pass so callers never re-derive them.
+    Out-of-range sections are skipped, not fatal. Both
+    :func:`build_snapped_steps` and :func:`evaluate_recording_structure` call
+    this, so their verdicts cannot disagree.
     """
     steps: list[SnappedStep] = []
     for index, section in enumerate(sections):
@@ -257,7 +258,7 @@ def _snap_pass(
             min(max(snap_to_beat(section.end, normalized_beats), 0.0), duration_seconds)
         )
         if not start < end:
-            return steps, index
+            return steps, (index, start)
         steps.append(
             SnappedStep(section_index=index, label=section.label, start=start, end=end)
         )
@@ -281,8 +282,8 @@ def build_snapped_steps(
     normalized_beats = normalize_beats(beats, duration_seconds)
     if not normalized_beats:
         return None
-    steps, collapsed_index = _snap_pass(sections, normalized_beats, duration_seconds)
-    if collapsed_index is not None:
+    steps, collapse = _snap_pass(sections, normalized_beats, duration_seconds)
+    if collapse is not None:
         return None
     return steps or None
 
@@ -338,12 +339,10 @@ def evaluate_recording_structure(recording: Recording) -> StructureEvaluation:
             verdict="no_beats_in_range", detail=f"no beat in 0..{duration:.2f}s"
         )
 
-    steps, collapsed_index = _snap_pass(sections, normalized_beats, duration)
-    if collapsed_index is not None:
+    steps, collapse = _snap_pass(sections, normalized_beats, duration)
+    if collapse is not None:
+        collapsed_index, snapped = collapse
         section = sections[collapsed_index]
-        snapped = round_seconds(
-            min(max(snap_to_beat(section.start, normalized_beats), 0.0), duration)
-        )
         return StructureEvaluation(
             verdict="collapsed",
             steps=steps,

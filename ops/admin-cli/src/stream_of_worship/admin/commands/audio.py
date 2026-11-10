@@ -119,6 +119,8 @@ COMPONENTS_FORMAT_VALUES = {"table", "json"}
 COMPONENTS_FILTER_VALUES = {"missing", "unclassified", "complete"}
 STRUCTURE_FILTER_VALUES = {"missing", "present", "unusable"}
 AUDIT_FORMAT_VALUES = {"table", "json", "ids"}
+# "none" matches recordings with NULL visibility_status.
+VISIBILITY_FILTER_VALUES = {"published", "review", "hold", "none"}
 SEGMENTATION_MODE_VALUES = {"llm", "repetition", "allin1", "structured_lyrics"}
 
 
@@ -1751,12 +1753,7 @@ def list_recordings(
 
     # Validate visibility filter
     if visibility:
-        valid_visibilities = {"published", "review", "hold", "none"}
-        if visibility not in valid_visibilities:
-            console.print(
-                f"[red]Invalid visibility: {visibility}. Must be one of: {', '.join(valid_visibilities)}[/red]"
-            )
-            raise typer.Exit(1)
+        _validate_choice(visibility, VISIBILITY_FILTER_VALUES, "Invalid visibility")
 
     # Validate LRC status filter
     if lrc:
@@ -2058,13 +2055,7 @@ def structure_audit(
         raise typer.Exit(1)
 
     if visibility:
-        valid_visibilities = {"published", "review", "hold", "none"}
-        if visibility not in valid_visibilities:
-            console.print(
-                f"[red]Invalid visibility: {visibility}. "
-                f"Must be one of: {', '.join(valid_visibilities)}[/red]"
-            )
-            raise typer.Exit(1)
+        _validate_choice(visibility, VISIBILITY_FILTER_VALUES, "Invalid visibility")
 
     db_client = get_db_client(config)
     # limit=None: the audit must see every row so the summary counts are the
@@ -4075,8 +4066,11 @@ def beat_grid_command(
     unless ``--skip-cache`` is passed. Published recordings are never touched.
 
     Batch mode: pass ``--stdin`` to read song IDs from stdin (one per line).
-    Combine with ``sow-admin audio list --structure missing --format ids`` to
-    backfill only the unarrangeable recordings.
+    Combine with ``sow-admin audio structure-audit --format ids`` to backfill
+    every recording the webapp Arrange gate rejects (its ``missing`` plus
+    ``unusable`` classes); ``audio list --structure missing --format ids`` is a
+    narrower presence-only source that skips rows whose stored structure fails
+    snapping.
     """
     _validate_choice(format_, COMPONENTS_FORMAT_VALUES, "--format")
     # In JSON mode, route all progress/error messages to stderr.

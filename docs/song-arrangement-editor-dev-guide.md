@@ -257,7 +257,9 @@ Verdicts, in precedence order (first match wins):
 Live counts on the configured Neon DB: 447 active Recordings, 320 `arrangeable`, 127
 non-arrangeable (125 `missing_sections`, 2 `collapsed`), of which 105 are published. `present` = 322
 matches the *322 analyzed* figure in *Recordings with usable arrangement data*; the 125
-`missing_sections` rows are the never-analyzed or no-retained-analysis columns.
+`missing_sections` rows are the never-analyzed or no-retained-analysis columns. The 127 is not a
+repair quota — 105 are published and refused by the repair commands until demoted, and the LRC
+ceiling below means some can never gain sections.
 
 ### Who produces what
 
@@ -281,30 +283,45 @@ The Analysis Service supplies the inputs; the admin CLI decides and writes.
 
 ### Repair recipe
 
+Scope the repair set first, and keep it: demoting a published Recording that you then never repair
+hides it from the user app, and 105 of today's 127 non-arrangeable rows are published.
+
 ```bash
 set -a; . /opt/sow/.env; set +a   # SOW_ANALYSIS_API_KEY + R2 credentials
 
-# 1. Demote published rows first: both repair commands refuse is_published rows.
-#    (105 rows today — review the list before running it.)
-sow-admin audio structure-audit --visibility published --format ids \
-  | sow-admin audio set-visibility --status review --stdin
+# 0. Pick the repair set and keep it. `structure-audit --format ids` is every row
+#    the gate rejects (missing ∪ unusable); narrow it to what this run can fix:
+sow-admin audio list --structure unusable --format ids > /tmp/repair.txt   # snap failures only
+#    or: sow-admin audio structure-audit --album <name> --format ids > /tmp/repair.txt
+
+# 1. Demote the published rows in that set: both repair commands refuse is_published
+sow-admin audio set-visibility --status review --stdin < /tmp/repair.txt
 
 # 2. Materialise missing beat grids (idempotent: existing grids are skipped)
-sow-admin audio structure-audit --format ids | sow-admin audio beat-grid --stdin
+sow-admin audio beat-grid --stdin < /tmp/repair.txt
 
-# 3. Rewrite sections+beats locally (~1s/song, no job) and re-audit
-sow-admin audio structure-audit --format ids | sow-admin audio write-structure --stdin
-sow-admin audio structure-audit
+# 3. Rewrite sections+beats locally (~1s/song, no job)
+sow-admin audio write-structure --stdin < /tmp/repair.txt
 
-# 4. Re-publish the repaired rows (deliberate, per-recording decision)
-sow-admin audio list --structure unusable --visibility review --format ids   # must be empty
-sow-admin audio set-visibility <song_id> --status published
+# 4. Re-publish exactly the demoted rows that now pass. `structure-audit` lists what
+#    still fails, so the difference is the fixed set; a row it still reports (e.g.
+#    no_structure because its LRC stops early) stays in `review` until dealt with.
+comm -23 \
+  <(sort /tmp/repair.txt) \
+  <(sow-admin audio structure-audit --visibility review --format ids | sort) \
+  | sow-admin audio set-visibility --status published --stdin
+
+# 5. Residual, by verdict — the rows that need a different fix (or none exists)
+sow-admin audio structure-audit --visibility review
 ```
+
+Step 4 works because step 1 puts every id in the repair set into `review`, so
+`structure-audit --visibility review` is a complete list of the set's remaining failures.
 
 `audio components <song_id...> --write-recording-analysis` is the per-song alternative to steps 2–3
 when a component analysis run is already warranted; it derives the same columns from the same two
 artifacts (see `ops/admin-cli/README.md:447-615` — *Making songs arrangeable* for that path and
-*Beat-grid backfill for unarrangeable recordings* for the recipe above, which also documents the
+*Beat-grid backfill for unarrangeable recordings* for the beat-grid path, which also documents the
 `sow-downbeats` Modal queue timing and the `SOW_MODAL_DOWNBEATS_MAX_AUDIO_BYTES` audio-size cap).
 
 Caveats:

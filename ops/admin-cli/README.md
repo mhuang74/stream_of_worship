@@ -537,6 +537,10 @@ called. `audio write-structure` then does the local, free write-back.
 ```bash
 set -a; . /opt/sow/.env; set +a   # SOW_ANALYSIS_API_KEY + R2 credentials
 
+# `review`-only and `missing`-only on purpose (published rows are refused, and
+# this pair says nothing about rows whose stored structure fails snapping).
+# The audit variant below covers missing ∪ unusable and published rows too.
+
 # 1. Materialise missing beat grids (idempotent: existing grids are skipped)
 sow-admin audio list --structure missing --visibility review --format ids \
   | sow-admin audio beat-grid --stdin
@@ -554,9 +558,10 @@ present` is only a presence test and includes those rows; the second class is
 `--structure unusable` (both columns non-empty, gate still fails), so
 `missing` ∪ `unusable` is exactly the set the Arrange button cannot open.
 
-`structure-audit` classifies a pool in one pass and, like the commands below,
-refuses nothing (it is read-only). Only non-arrangeable rows are emitted, so
-`--format ids` feeds the same pipeline:
+`structure-audit` classifies a pool in one pass and is read-only: it refuses
+nothing, unlike `beat-grid`/`write-structure`, which refuse published rows.
+Only non-arrangeable rows are emitted, so `--format ids` feeds the same
+pipeline:
 
 ```bash
 # Every unarrangeable recording (missing ∪ unusable), with the reason per row
