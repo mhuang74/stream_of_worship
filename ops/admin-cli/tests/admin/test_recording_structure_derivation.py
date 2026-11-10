@@ -73,6 +73,27 @@ class TestDeriveSectionsFromLyrics:
         sections = derive_sections_from_lyrics(structured, lrc, 40.0)
         assert [(s.start, s.end) for s in sections] == [(10.0, 20.0), (30.0, 34.0)]
 
+    def test_labels_interleaved_repeats_from_one_section_block(self):
+        # Regression: the pool's [verse] blocks list lines whose second half is
+        # sung after a chorus, so the block never appears contiguously in the
+        # LRC even though every line is present. Labelling each timed line on
+        # its own evidence keeps both the verse occurrences and the chorus.
+        structured = _structured(
+            ("verse", ["v1 words", "v2 words", "v3 words", "v4 words"]),
+            ("chorus", ["c1 words", "c2 words"]),
+        )
+        lrc = (
+            "[00:10.00] v1 words v2 words\n"
+            "[00:20.00] c1 words c2 words\n"
+            "[00:30.00] v3 words v4 words\n"
+        )
+        sections = derive_sections_from_lyrics(structured, lrc, 40.0)
+        assert [(s.label, s.start, s.end) for s in sections] == [
+            ("verse", 10.0, 20.0),
+            ("chorus", 20.0, 30.0),
+            ("verse", 30.0, 34.0),
+        ]
+
     def test_ignores_punctuation_and_full_width_spaces(self):
         structured = _structured(("verse", ["主我敬拜祢，"]))
         lrc = "[00:10.00] 主我敬拜祢\n[00:20.00] next\n"
