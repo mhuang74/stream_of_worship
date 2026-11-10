@@ -1506,9 +1506,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1794280989.637778,
-    "seen": 1794281210.5612133,
-    "ast_hash": "5a6439c03315e115b792d2d7a6853867",
+    "mtime": 1794281318.693267,
+    "seen": 1794327462.4511642,
+    "ast_hash": "01112a7ccba9f357a904af03d509f96b",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/BpmRangeMultiSelect.tsx": {
@@ -2862,9 +2862,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/ArrangementEditorSheet.test.tsx": {
-    "mtime": 1794280983.0557685,
-    "seen": 1794281210.6005204,
-    "ast_hash": "67aecd43fb547efa79285170efa23552",
+    "mtime": 1794281318.7402673,
+    "seen": 1794327462.4670293,
+    "ast_hash": "98661b9ce481f2b947f4b88559ab4acd",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/BrowseSheet.test.tsx": {
@@ -5796,15 +5796,21 @@
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/lyrics_sections.py": {
-    "mtime": 1794184033.8621855,
-    "seen": 1794185477.8695374,
-    "ast_hash": "a7f2fe49cd42ab3c1df76153b83bbe2e",
+    "mtime": 1794326348.9922366,
+    "seen": 1794327462.4877121,
+    "ast_hash": "5208bf8b27e23d4070d64f49f8ac9e23",
     "semantic_hash": ""
   },
   "ops/admin-cli/src/stream_of_worship/admin/services/arrangement_structure.py": {
     "mtime": 1794272933.528611,
     "seen": 1794273167.2672174,
     "ast_hash": "436753a38d3ca0e9e868a9a43f7805f9",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/gate_check.ts": {
+    "mtime": 1794325857.1273894,
+    "seen": 1794327462.4429762,
+    "ast_hash": "9386913a44b8d25c57e1b963526e91d3",
     "semantic_hash": ""
   }
 }
