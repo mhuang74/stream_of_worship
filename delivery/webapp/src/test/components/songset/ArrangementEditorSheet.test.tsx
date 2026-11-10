@@ -556,6 +556,20 @@ describe("ArrangementEditorSheet", () => {
     });
   });
 
+  it("restarts the bounds transaction from the committed Step after Apply", () => {
+    renderSheet();
+    fireEvent.click(screen.getByTestId("arrangement-bounds-trigger-0"));
+    fireEvent.click(screen.getByTestId("arrangement-bounds-end-inc-0"));
+    fireEvent.click(screen.getByTestId("arrangement-bounds-apply-0"));
+
+    fireEvent.click(screen.getByTestId("arrangement-bounds-trigger-0"));
+
+    // The reopened session reads the committed bound, not the pre-Apply text,
+    // and has no local edits of its own.
+    expect(screen.getByTestId("arrangement-bounds-input-end-0")).toHaveValue("0:10.1");
+    expect(screen.getByTestId("arrangement-bounds-apply-0")).toBeDisabled();
+  });
+
   it("discards the bounds candidate on Cancel without touching the draft", () => {
     renderSheet();
     fireEvent.click(screen.getByTestId("arrangement-bounds-trigger-0"));

@@ -614,7 +614,11 @@ function SortableStepBlock({
           </span>
         )}
         <BoundsEditorPopover
-          key={entry.id}
+          // Keyed on the committed bounds: Apply must remount the session so
+          // the fields re-seed from the new Step and Apply starts disabled.
+          key={`${entry.id}:${entry.step.startSeconds}:${entry.step.endSeconds}:${
+            entry.step.manualBounds ? 1 : 0
+          }`}
           index={index}
           step={entry.step}
           displayLabel={displayLabel}

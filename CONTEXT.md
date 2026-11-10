@@ -69,7 +69,8 @@ A Songset Item's ordered, repeatable sequence of Arrangement Steps. An untouched
 _Avoid_: song version, section sequence
 
 **Arrangement Step**:
-One use of a detected Recording section in a Song Arrangement. Repeating a section creates another Step without increasing the Songset's song count.
+One use of a detected Recording section in a Song Arrangement. Repeating a section creates another Step without increasing the Songset's song count. A Step carries an optional `manualBounds` marker when the user reviewed and accepted its bounds. A Songset-local inferred Intro is also a Step: it has a null section index, starts at zero, and ends at the first LRC timestamp. Both the inferred Intro and manual bounds belong only to the Songset Item and are never written to catalog Recording analysis.
+_Avoid_: song version, section sequence
 
 **Worship Arc**:
 The fixed five-phase liturgy every Songset is constructed against: 讚美 (Call) → 感恩 (Thanksgiving) → 敬拜 (Worship) → 奉獻 (Response) → 差遣 (Commission). A Songset's songs are chosen to follow this arc. The arc is invariant; per-song-count templates select which phases appear (2 songs: Call→Response; 3: Call→Worship→Commission; 4: Call→Worship→Response→Commission; 5: full arc). Currently defined for 2-5 song sets.
