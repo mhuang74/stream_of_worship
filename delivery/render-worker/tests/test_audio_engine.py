@@ -50,7 +50,7 @@ def _make_item(**overrides) -> SongsetItem:
 def _step(
     start: float,
     end: float,
-    section_index: int = 0,
+    section_index: int | None = 0,
     label: str = "section",
 ) -> ArrangementStep:
     return ArrangementStep(
@@ -744,6 +744,29 @@ class TestGenerateSongsetAudio:
         ]
         assert segment.duration_seconds == 30.0
         assert result.total_duration_seconds == 30.0
+
+    def test_null_index_intro_slices_from_zero(self, tmp_path):
+        # An inferred Intro carries no catalog section index; the engine only
+        # needs its source range, so 0.0 → 12.4 is one clip.
+        item = _make_item(
+            recording_hash_prefix="abc",
+            duration_seconds=999.0,
+            arrangement_steps=(_step(0.0, 12.4, section_index=None, label="intro"),),
+        )
+        fetcher = MagicMock()
+        fetcher.download_audio.return_value = "/tmp/song.mp3"
+        output_path = str(tmp_path / "out.mp3")
+
+        with patch("sow_render_worker.audio_engine.concatenate_audio_files"):
+            result = generate_songset_audio([item], output_path, fetcher)
+
+        segment = result.segments[0]
+        assert [
+            (c.source_start_seconds, c.source_end_seconds, c.start_time_seconds)
+            for c in segment.clips
+        ] == [(0.0, 12.4, 0.0)]
+        assert segment.duration_seconds == pytest.approx(12.4)
+        assert result.total_duration_seconds == pytest.approx(12.4)
 
     def test_arranged_clips_join_without_internal_gaps(self, tmp_path):
         item = _make_item(

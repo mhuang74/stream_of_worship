@@ -277,6 +277,63 @@ describe("parseSongArrangement", () => {
     ).toEqual({ present: true, invalid: true });
   });
 
+  it("parses an inferred Intro and preserves the manual flag", () => {
+    const steps: ArrangementStep[] = [
+      {
+        sectionIndex: null,
+        label: "intro",
+        startSeconds: 0,
+        endSeconds: 12.4,
+        manualBounds: true,
+      },
+      {
+        sectionIndex: 1,
+        label: "verse",
+        startSeconds: 12.3,
+        endSeconds: 28.7,
+        manualBounds: true,
+      },
+    ];
+    expect(parseSongArrangement(arrangementJson(steps))).toEqual({
+      present: true,
+      arrangement: { version: 1, steps },
+    });
+  });
+
+  it("rejects every manualBounds spelling except the literal true", () => {
+    const base = { sectionIndex: 0, label: "intro", startSeconds: 0, endSeconds: 1 };
+    for (const manualBounds of [false, 1, "true", null]) {
+      expect(
+        parseSongArrangement(
+          JSON.stringify({ version: 1, steps: [{ ...base, manualBounds }] }),
+        ),
+      ).toEqual({ present: true, invalid: true });
+    }
+    // An unknown fifth key is still rejected.
+    expect(
+      parseSongArrangement(
+        JSON.stringify({ version: 1, steps: [{ ...base, manualBounds: true, forged: 1 }] }),
+      ),
+    ).toEqual({ present: true, invalid: true });
+  });
+
+  it("restricts a null section index to the inferred Intro", () => {
+    const badIntros = [
+      // the label is what names an Intro
+      { sectionIndex: null, label: "chorus", startSeconds: 0, endSeconds: 12.4, manualBounds: true },
+      // an Intro always runs from zero
+      { sectionIndex: null, label: "intro", startSeconds: 2, endSeconds: 12.4, manualBounds: true },
+      // the flag is required: an unflagged null index is meaningless
+      { sectionIndex: null, label: "intro", startSeconds: 0, endSeconds: 12.4 },
+    ];
+    for (const step of badIntros) {
+      expect(parseSongArrangement(JSON.stringify({ version: 1, steps: [step] }))).toEqual({
+        present: true,
+        invalid: true,
+      });
+    }
+  });
+
   it("rejects malformed step fields", () => {
     const badSteps = [
       { sectionIndex: -1, label: "a", startSeconds: 0, endSeconds: 1 },
@@ -394,6 +451,80 @@ describe("validateSongArrangement", () => {
       ok: false,
       code: "ARRANGEMENT_STALE",
     });
+  });
+
+  it("skips only snapped equality for a manualBounds Step", () => {
+    const manual: ArrangementStep = {
+      sectionIndex: 1,
+      label: "verse",
+      startSeconds: 12.3,
+      endSeconds: 28.7,
+      manualBounds: true,
+    };
+    expect(validateSongArrangement(arrangementJson([manual]), sections, beats, duration)).toEqual({
+      ok: true,
+      arrangement: { version: 1, steps: [manual] },
+    });
+    // Identical bounds without the flag are a forged cut against the analysis.
+    const unflagged: ArrangementStep = {
+      sectionIndex: manual.sectionIndex,
+      label: manual.label,
+      startSeconds: manual.startSeconds,
+      endSeconds: manual.endSeconds,
+    };
+    expect(validateSongArrangement(arrangementJson([unflagged]), sections, beats, duration)).toEqual(
+      { ok: false, code: "ARRANGEMENT_STALE" },
+    );
+  });
+
+  it("still rejects a manual Step with a stale label or out-of-range bounds", () => {
+    const manual: ArrangementStep = {
+      sectionIndex: 1,
+      label: "verse",
+      startSeconds: 12.3,
+      endSeconds: 28.7,
+      manualBounds: true,
+    };
+    expect(
+      validateSongArrangement(
+        arrangementJson([{ ...manual, label: "wrong" }]),
+        sections,
+        beats,
+        duration,
+      ),
+    ).toEqual({ ok: false, code: "ARRANGEMENT_STALE" });
+    expect(
+      validateSongArrangement(
+        arrangementJson([{ ...manual, endSeconds: duration + 1 }]),
+        sections,
+        beats,
+        duration,
+      ),
+    ).toEqual({ ok: false, code: "ARRANGEMENT_STALE" });
+  });
+
+  it("validates an Intro-only arrangement without any analysis", () => {
+    const intro: ArrangementStep = {
+      sectionIndex: null,
+      label: "intro",
+      startSeconds: 0,
+      endSeconds: 12.4,
+      manualBounds: true,
+    };
+    // LRC is never re-fetched or re-validated, so a missing Recording section
+    // list cannot invalidate an Intro the user already accepted.
+    expect(validateSongArrangement(arrangementJson([intro]), null, [], duration)).toEqual({
+      ok: true,
+      arrangement: { version: 1, steps: [intro] },
+    });
+    expect(
+      validateSongArrangement(
+        arrangementJson([{ ...intro, endSeconds: duration + 1 }]),
+        null,
+        [],
+        duration,
+      ),
+    ).toEqual({ ok: false, code: "ARRANGEMENT_STALE" });
   });
 
   it("enforces the 64-Step maximum (never truncating)", () => {
@@ -540,6 +671,32 @@ describe("buildArrangementTimeline", () => {
         endSeconds: 10,
       },
     ]);
+  });
+
+  it("keeps a null section index on the inferred-Intro clip", () => {
+    const timeline = buildArrangementTimeline([
+      {
+        itemId: "a",
+        recordingHashPrefix: "hash-a",
+        recordingDurationSeconds: 120,
+        arrangementSteps: arrangementJson([
+          { sectionIndex: null, label: "intro", startSeconds: 0, endSeconds: 12.4, manualBounds: true },
+        ]),
+      },
+      { itemId: "b", recordingHashPrefix: "hash-b", recordingDurationSeconds: 10 },
+    ]);
+    expect(timeline.items[0].clips).toEqual([
+      {
+        recordingHashPrefix: "hash-a",
+        sectionIndex: null,
+        sourceStartSeconds: 0,
+        sourceEndSeconds: 12.4,
+        startSeconds: 0,
+        endSeconds: 12.4,
+      },
+    ]);
+    // An untouched sibling keeps the synthetic -1 clip index.
+    expect(timeline.items[1].clips[0].sectionIndex).toBe(-1);
   });
 
   it("reads the untouched duration from a SongsetItemDetail-shaped item", () => {

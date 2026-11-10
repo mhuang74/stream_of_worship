@@ -8,12 +8,16 @@ import { MAX_ARRANGEMENT_STEPS } from "@/lib/arrangements";
 import { z } from "zod";
 
 // Wire contract (spec §2.2): exactly the persisted fields, 1–64 Steps,
-// nonnegative integer section indices, finite timestamps. `strictObject`
-// rejects extra fields so the stored JSON can never drift from the schema.
-// Zod counts UTF-16 units, so the label cap counts code points explicitly to
-// stay identical to arrangements.ts and the worker's Python len().
+// nonnegative integer section indices (null only for the Songset-local
+// LRC-inferred Intro), finite timestamps. `strictObject` rejects extra fields
+// so the stored JSON can never drift from the schema. `manualBounds` is
+// `z.literal(true)` so false/1/"true" are 400s; the Intro/manual
+// cross-field rules stay in validateSongArrangement (already called by the
+// update path). Zod counts UTF-16 units, so the label cap counts code points
+// explicitly to stay identical to arrangements.ts and the worker's Python
+// len().
 const arrangementStepSchema = z.strictObject({
-  sectionIndex: z.number().int().nonnegative(),
+  sectionIndex: z.number().int().nonnegative().nullable(),
   label: z
     .string()
     .min(1)
@@ -22,6 +26,7 @@ const arrangementStepSchema = z.strictObject({
     }),
   startSeconds: z.number(),
   endSeconds: z.number(),
+  manualBounds: z.literal(true).optional(),
 });
 
 const songArrangementSchema = z.strictObject({

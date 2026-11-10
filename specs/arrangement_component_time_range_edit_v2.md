@@ -170,7 +170,10 @@ introduce a Radix dependency.
    `aria-invalid`, associate the error with both fields, and show it in the
    popover. Disable Apply, both audition buttons, and all steppers while either
    value is invalid. The main transport is disabled while a bounds popover is open;
-   only its audition actions may play.
+   only its audition actions may play. Locking the open Step's own row must not
+   reach into the popover: pass the save-time lock to the Step's toolbar and a
+   separate bounds lock to the popover, or the transaction's own steppers, Apply,
+   and auditions arrive disabled and the editor is unusable.
 5. Each Start/End row contains an `Input` (`type="text"`, `inputMode="decimal"`,
    `autoComplete="off"`), −0.1 s and +0.1 s buttons, and an Audition button. A
    stepper uses the parsed current value, adds/subtracts `0.1`, rounds to tenths,
