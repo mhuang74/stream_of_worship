@@ -407,6 +407,27 @@ describe("ArrangementEditorSheet", () => {
     expect(preview.controller.pause).toHaveBeenCalled();
   });
 
+  it("ignores a stale position at the timeline end when a new window opens", async () => {
+    // The arrangement preview stops at the timeline end…
+    preview.controller.totalSeconds = 30;
+    const view = renderSheet();
+    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    await moveTransport(view, { position: 29.99 });
+    await moveTransport(view, { position: 30, status: "paused" });
+    expect(preview.controller.startAtSeconds).toHaveBeenCalledTimes(1);
+
+    // …and the junction review's start is still in flight, so the render that
+    // opens its 8..12 window carries position 30. That must not spend a pass.
+    preview.controller.startAtSeconds.mockImplementationOnce(() => new Promise(() => {}));
+    fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
+
+    expect(preview.controller.startAtSeconds).toHaveBeenCalledTimes(2);
+    expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(8);
+    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+      "Pass 1 of 2"
+    );
+  });
+
   it("restarts from the whole arrangement after a completed review", async () => {
     const view = renderSheet();
     fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));

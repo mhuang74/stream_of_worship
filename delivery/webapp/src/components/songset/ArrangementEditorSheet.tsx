@@ -1268,16 +1268,33 @@ export function ArrangementEditorSheet({
   const windowKey = playbackWindow
     ? `${playbackWindow.kind}:${playbackWindow.startSeconds}:${playbackWindow.endSeconds}`
     : null;
+  // A window can only end where its own playback reaches, so the transport must
+  // have reported a position inside it first. Without this, the render that
+  // opens a new window still carries the previous window's position (often the
+  // timeline end) and would spend a pass instantly.
+  const windowEntryRef = useRef<{ key: string | null; sawInside: boolean }>({
+    key: null,
+    sawInside: false,
+  });
 
   useEffect(() => {
     if (!playbackWindow || !windowKey) return;
-    if (position < playbackWindow.endSeconds - 0.02) return;
+    if (windowEntryRef.current.key !== windowKey) {
+      windowEntryRef.current = { key: windowKey, sawInside: false };
+    }
+    if (position < playbackWindow.endSeconds - 0.02) {
+      windowEntryRef.current.sawInside = true;
+      return;
+    }
     // The engine stops itself on reaching the Songset end, which can coincide
     // with a window end (last item, no lead-out; short final component). That
     // stop is the boundary too, or the last pass would never complete.
     const stoppedAtTimelineEnd =
-      preview.status === "paused" && position >= preview.totalSeconds - 0.02;
+      preview.status === "paused" &&
+      position >= preview.totalSeconds - 0.02 &&
+      playbackWindow.endSeconds >= preview.totalSeconds - 0.02;
     if (preview.status !== "playing" && !stoppedAtTimelineEnd) return;
+    if (!windowEntryRef.current.sawInside) return;
     const handled = boundaryHandledRef.current;
     if (handled && handled.key === windowKey && handled.pass === reviewPass) return;
     boundaryHandledRef.current = { key: windowKey, pass: reviewPass };
