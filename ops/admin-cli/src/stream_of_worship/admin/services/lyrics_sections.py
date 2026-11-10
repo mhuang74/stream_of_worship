@@ -252,6 +252,10 @@ def _assign_runs(
 
     for position, scores in enumerate(matches):
         if section is not None:
+            if position > start and texts[position] and texts[position] == texts[position - 1]:
+                # The same phrase sung twice inside one occurrence: keep the run
+                # and the cursor, instead of splitting at every repeated phrase.
+                continue
             section_scores = scores.get(section) or {}
             candidates = [index for index in section_scores if index >= next_line]
             if not candidates and pending_line is not None:
