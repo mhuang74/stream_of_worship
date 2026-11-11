@@ -16,6 +16,8 @@ describe("SongsetList", () => {
       renderState: "fresh" as RenderState,
       isOfflineAvailable: true,
       isArtifactsStale: false,
+      latestRenderJobId: "render-job-1",
+      lastCompletedRenderJobId: "render-job-1",
     },
     {
       id: "songset-2",
@@ -27,6 +29,8 @@ describe("SongsetList", () => {
       renderState: "stale" as RenderState,
       isOfflineAvailable: false,
       isArtifactsStale: true,
+      latestRenderJobId: "render-job-2",
+      lastCompletedRenderJobId: "render-job-2",
     },
   ];
 
