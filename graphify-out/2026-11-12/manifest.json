@@ -5850,9 +5850,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/audio/SongsetPlayerBar.tsx": {
-    "mtime": 1794415189.3454459,
-    "seen": 1794416133.1841316,
-    "ast_hash": "b75bd4c839958eb5c495f5ca74e767f4",
+    "mtime": 1794438697.5093865,
+    "seen": 1794438998.811186,
+    "ast_hash": "2e2b8552f6911f4461ec284fe8d9e759",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/audio/useLyricsPullup.ts": {
@@ -5868,9 +5868,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/audio/SongsetPlayerBar.test.tsx": {
-    "mtime": 1794416765.231273,
-    "seen": 1794417284.1902823,
-    "ast_hash": "f71933c011710714ef3d7dae1fb29af1",
+    "mtime": 1794438709.9083986,
+    "seen": 1794438998.8286927,
+    "ast_hash": "62d23cce224224607dd581d55b710867",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/contexts/SongsetListenContext.test.tsx": {
