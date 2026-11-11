@@ -4,10 +4,18 @@ import { db } from "@/db";
 import { userLrcOverrides, recordings, songs } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createR2ClientFromEnv } from "@/lib/r2/client";
+import { parseRecordingSections, type RecordingSection } from "@/lib/arrangements";
 
 export interface LyricsResponse {
   lrcContent: string | null;
   lines: string[] | null;
+  /**
+   * The Recording's detected sections, on every successful branch — including
+   * a user override, so a Section Label heading is never missing just because
+   * the user authored the text. `null` means the Recording has no readable
+   * sections; the caller renders a flat list.
+   */
+  sections: RecordingSection[] | null;
 }
 
 export async function GET(
@@ -22,7 +30,22 @@ export async function GET(
 
     const { recordingContentHash } = await params;
 
-    // Step 1: Check user LRC override
+    // Step 1: Look up the Recording. Read unconditionally — its sections head
+    // the lyric list on every branch below, even when an override wins.
+    const [recording] = await db
+      .select({
+        hashPrefix: recordings.hashPrefix,
+        lrcStatus: recordings.lrcStatus,
+        songId: recordings.songId,
+        sections: recordings.sections,
+      })
+      .from(recordings)
+      .where(eq(recordings.contentHash, recordingContentHash))
+      .limit(1);
+
+    const sections = parseRecordingSections(recording?.sections ?? null);
+
+    // Step 2: Check user LRC override
     const override = await db.query.userLrcOverrides.findFirst({
       where: and(
         eq(userLrcOverrides.userId, Number(session.user.id)),
@@ -34,19 +57,9 @@ export async function GET(
       return NextResponse.json<LyricsResponse>({
         lrcContent: override.lrcContent,
         lines: null,
+        sections,
       });
     }
-
-    // Step 2: Look up recording by contentHash
-    const [recording] = await db
-      .select({
-        hashPrefix: recordings.hashPrefix,
-        lrcStatus: recordings.lrcStatus,
-        songId: recordings.songId,
-      })
-      .from(recordings)
-      .where(eq(recordings.contentHash, recordingContentHash))
-      .limit(1);
 
     // Step 3: Attempt R2 fetch unless lrcStatus === "missing"
     if (recording && recording.lrcStatus !== "missing") {
@@ -61,6 +74,7 @@ export async function GET(
             return NextResponse.json<LyricsResponse>({
               lrcContent,
               lines: null,
+              sections,
             });
           }
         }
@@ -91,6 +105,7 @@ export async function GET(
                 return NextResponse.json<LyricsResponse>({
                   lrcContent: null,
                   lines,
+                  sections,
                 });
               }
             }
@@ -106,6 +121,7 @@ export async function GET(
           return NextResponse.json<LyricsResponse>({
             lrcContent: song.lyricsRaw,
             lines: null,
+            sections,
           });
         }
       }
@@ -115,6 +131,7 @@ export async function GET(
     return NextResponse.json<LyricsResponse>({
       lrcContent: null,
       lines: null,
+      sections,
     });
   } catch (error) {
     console.error("Error fetching lyrics:", error);
