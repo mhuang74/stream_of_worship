@@ -56,7 +56,9 @@ describe("toSongsetLyricLines", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].text).toBe("line-9.8");
-    expect(result[0].localTimeSeconds).toBe(9.8);
+    // The heading is looked up at the clamped position, so it names a section
+    // this cut actually plays (10–20), not the 0–10 one it faded out of.
+    expect(result[0].localTimeSeconds).toBe(10);
     expect(result[0].timelineSeconds).toBe(10);
   });
 
@@ -68,7 +70,10 @@ describe("toSongsetLyricLines", () => {
     const result = toSongsetLyricLines(clips, lines([10.3]));
 
     expect(result).toHaveLength(1);
-    expect(result[0].localTimeSeconds).toBe(10.3);
+    // Heading lookup follows the highlight: it stays just inside the played
+    // range (the 1 ms inset keeps it off the next section's boundary) instead
+    // of jumping to 20 s.
+    expect(result[0].localTimeSeconds).toBeCloseTo(9.999, 6);
     expect(result[0].timelineSeconds).toBeCloseTo(9.999, 6);
     expect(result[0].timelineSeconds).toBeLessThan(10);
   });
@@ -78,7 +83,7 @@ describe("toSongsetLyricLines", () => {
     const result = toSongsetLyricLines(clips, lines([19.8]));
 
     expect(result).toHaveLength(1);
-    expect(result[0].localTimeSeconds).toBe(19.8);
+    expect(result[0].localTimeSeconds).toBe(20);
     expect(result[0].timelineSeconds).toBe(10);
   });
 
@@ -103,5 +108,21 @@ describe("toSongsetLyricLines", () => {
 
   it("returns nothing for an Item without clips", () => {
     expect(toSongsetLyricLines([], lines([1, 2, 3]))).toEqual([]);
+  });
+
+  it("heads a within-tolerance late line with a section the cut plays, agreeing with the controller sheet", () => {
+    // The real shape that disagreed: chorus 34.86–59.13 is the last step, the
+    // Recording's next section starts exactly at 59.13, and a line 0.2 s past
+    // the clip end is still kept by the ownership tolerance. Its heading must
+    // be the chorus this cut plays, which is also what the controller sheet's
+    // chapterLineHeadings derives from the same clamp.
+    const clips = [clip(34.86, 59.13, 0)];
+    const result = toSongsetLyricLines(clips, lines([59.3]));
+
+    expect(result).toHaveLength(1);
+    // 1 ms inside the clip end, so the half-open section lookup stays in the
+    // chorus rather than landing on the following interlude's start.
+    expect(result[0].localTimeSeconds).toBeCloseTo(59.129, 6);
+    expect(result[0].localTimeSeconds).toBeLessThan(59.13);
   });
 });

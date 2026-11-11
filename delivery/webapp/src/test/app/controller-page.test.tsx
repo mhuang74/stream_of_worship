@@ -174,6 +174,7 @@ interface CapturedControllerProps {
   audioSrc?: string;
   chapters: unknown[];
   chapterRecordingHashes?: (string | null)[];
+  chapterLineHeadings?: (string | null)[][] | null;
   isOfflineMedia?: boolean;
   onMediaError?: () => Promise<boolean>;
   isPresentationActive: boolean;

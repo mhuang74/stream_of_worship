@@ -343,13 +343,16 @@ describe("SongsetPlayerBar", () => {
     const headingTexts = () =>
       Array.from(document.querySelectorAll("[data-lyric-heading]")).map((n) => n.textContent);
 
-    function withSections(sections: RecordingSection[] | null) {
+    function withSections(
+      sections: RecordingSection[] | null,
+      arrangementSteps: string | null = null,
+    ) {
       const first = itemPayload("item-1", "Amazing Grace", "content-1");
       const second = itemPayload("item-2", "Second Song", "content-2");
       if (!first.recording || !second.recording) throw new Error("fixture needs recordings");
       setSession({
         items: [
-          { ...first, recording: { ...first.recording, sections } },
+          { ...first, arrangementSteps, recording: { ...first.recording, sections } },
           second,
         ],
       });
@@ -406,6 +409,53 @@ describe("SongsetPlayerBar", () => {
 
       expect(headingTexts()).toEqual(["verse"]);
       expect(document.querySelectorAll("[data-lyric-index]")).toHaveLength(2);
+    });
+
+    it("heads a line by its source position, not its timeline position", () => {
+      // The arrangement plays 30–40 s of the Recording as the Item's first
+      // 10 s, so LRC (source) seconds 36 and 38 land at timeline 6 and 8. A
+      // timeline-based lookup would read those seconds as 6 s and 8 s and head
+      // them "verse"; the source lookup keeps them in the chorus.
+      mocks.lyrics = {
+        lrcContent: "[00:36.00]chorus line\n[00:38.00]still chorus\n",
+        lines: null,
+      };
+      const steps = JSON.stringify({
+        version: 1,
+        steps: [{ sectionIndex: 1, label: "chorus", startSeconds: 30, endSeconds: 40 }],
+      });
+      const first = itemPayload("item-1", "Amazing Grace", "content-1");
+      if (!first.recording) throw new Error("fixture needs a recording");
+      const arrangedItems = [
+        {
+          ...first,
+          arrangementSteps: steps,
+            // The Recording must be long enough for the 30–40 s Step, or the
+            // arrangement is stale and the Item plays the whole Recording.
+          recording: {
+            ...first.recording,
+            durationSeconds: 40,
+            sections: [
+              { label: "verse", start: 0, end: 30 },
+              { label: "chorus", start: 30, end: 40 },
+            ],
+          },
+        },
+        itemPayload("item-2", "Second Song", "content-2"),
+      ];
+      // The session's timeline must describe the same arrangement.
+      setSession({
+        items: arrangedItems,
+        timeline: buildArrangementTimeline(toListenTimelineSources(arrangedItems)),
+      });
+      render(<SongsetPlayerBar />);
+
+      fireEvent.click(screen.getByTestId("songset-lyrics-toggle"));
+
+      // Timeline positions are 6 and 8 s (verse territory); the heading is the
+      // chorus the lines were sung in at 36 and 38 s.
+      expect(headingTexts()).toEqual(["chorus"]);
+      expect(Array.from(document.querySelectorAll("[data-lyric-index]"))).toHaveLength(2);
     });
 
     it("renders the flat list when the Recording has no section data", () => {
