@@ -60,6 +60,35 @@ describe("toSongsetLyricLines", () => {
     expect(result[0].timelineSeconds).toBe(10);
   });
 
+  it("keeps a late line inside its own Step's window instead of the next one", () => {
+    // Source section 10–20 s was dropped: the 20–30 s clip sits directly after
+    // the 0–10 s clip on the timeline, so an unclamped 10.3 s line would
+    // highlight 0.3 s inside the next Step.
+    const clips = [clip(0, 10, 0), clip(20, 30, 10)];
+    const result = toSongsetLyricLines(clips, lines([10.3]));
+
+    expect(result).toHaveLength(1);
+    expect(result[0].localTimeSeconds).toBe(10.3);
+    expect(result[0].timelineSeconds).toBeCloseTo(9.999, 6);
+    expect(result[0].timelineSeconds).toBeLessThan(10);
+  });
+
+  it("keeps a pickup whose preceding section was dropped, at the Step's start", () => {
+    const clips = [clip(0, 10, 0), clip(20, 30, 10)];
+    const result = toSongsetLyricLines(clips, lines([19.8]));
+
+    expect(result).toHaveLength(1);
+    expect(result[0].localTimeSeconds).toBe(19.8);
+    expect(result[0].timelineSeconds).toBe(10);
+  });
+
+  it("shows the same line under two identical repeated Steps", () => {
+    const clips = [clip(10, 20, 0), clip(10, 20, 20)];
+    const result = toSongsetLyricLines(clips, lines([15]));
+
+    expect(result.map((line) => line.timelineSeconds)).toEqual([5, 25]);
+  });
+
   it("maps each Item's lines against that Item's own start, even when Items overlap", () => {
     // Two Items whose timeline ranges overlap (crossfade): item two starts at
     // 50 while item one still runs to 60.

@@ -574,6 +574,58 @@ describe("linesForSourceRange", () => {
     ).toEqual(["x"]);
   });
 
+  it("keeps a pickup when the section before it is absent from the arrangement", () => {
+    // The source section 10–20 s was dropped, so no Step ends at the 20 s
+    // boundary the pickup is sung into. Ownership tolerates a line within 0.5 s
+    // of a Step's bounds, so the pickup still lands on the Step starting at 20.
+    const steps = [
+      { startSeconds: 0, endSeconds: 10 },
+      { startSeconds: 20, endSeconds: 30 },
+    ];
+    const pickup: LRCLine[] = [{ timeSeconds: 19.8, text: "pickup" }];
+    expect(linesForSourceRange(pickup, 20, 30, steps)).toEqual(pickup);
+    expect(linesForSourceRange(pickup, 0, 10, steps)).toEqual([]);
+  });
+
+  it("keeps a late line with the Step it was sung into and not the next one", () => {
+    const steps = [
+      { startSeconds: 0, endSeconds: 10 },
+      { startSeconds: 20, endSeconds: 30 },
+    ];
+    const late: LRCLine[] = [{ timeSeconds: 10.3, text: "late" }];
+    expect(linesForSourceRange(late, 0, 10, steps)).toEqual(late);
+    expect(linesForSourceRange(late, 20, 30, steps)).toEqual([]);
+  });
+
+  it("shows a line exactly on a shared boundary once, under the later Step", () => {
+    const steps = [
+      { startSeconds: 0, endSeconds: 10 },
+      { startSeconds: 10, endSeconds: 20 },
+    ];
+    const boundary: LRCLine[] = [{ timeSeconds: 10, text: "boundary" }];
+    expect(linesForSourceRange(boundary, 0, 10, steps)).toEqual([]);
+    expect(linesForSourceRange(boundary, 10, 20, steps)).toEqual(boundary);
+  });
+
+  it("shows the same line under two identical repeated Steps", () => {
+    const steps = [
+      { startSeconds: 10, endSeconds: 20 },
+      { startSeconds: 10, endSeconds: 20 },
+    ];
+    const repeated: LRCLine[] = [{ timeSeconds: 15, text: "chorus" }];
+    expect(linesForSourceRange(repeated, 10, 20, steps)).toEqual(repeated);
+  });
+
+  it("drops a line more than the tolerance outside every Step", () => {
+    const steps = [
+      { startSeconds: 0, endSeconds: 10 },
+      { startSeconds: 20, endSeconds: 30 },
+    ];
+    const gone: LRCLine[] = [{ timeSeconds: 10.6, text: "omitted" }];
+    expect(linesForSourceRange(gone, 0, 10, steps)).toEqual([]);
+    expect(linesForSourceRange(gone, 20, 30, steps)).toEqual([]);
+  });
+
   it("returns no lines for an empty or inverted range", () => {
     const single: LRCLine[] = [{ timeSeconds: 5.0, text: "x" }];
     expect(linesForSourceRange(single, 5, 5, [])).toEqual([]);

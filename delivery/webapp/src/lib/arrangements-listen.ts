@@ -51,10 +51,13 @@ export interface SongsetLyricLine extends GlobalLRCLine {
  * Lyrics lines of ONE Songset Item, placed on the Songset timeline.
  *
  * Each clip takes its own lines via linesForSourceRange with the Item's other
- * clips as siblings (the same tiling the render worker and the Arrangement
- * Editor use), then each line is shifted by the clip's timeline offset.
+ * clips as siblings (the same ownership the render worker and the Arrangement
+ * Editor apply), then each line is shifted by the clip's timeline offset.
  * A pickup line that precedes its Step (LYRIC_BOUNDARY_TOLERANCE_SECONDS)
- * clamps to the clip start so it is highlighted at the boundary.
+ * clamps to the clip start so it is highlighted at the boundary, and a late
+ * line within the same tolerance clamps just inside the clip end, so a
+ * highlight never bleeds into the next Item — the same clamp the render
+ * worker's remap_lrc_to_clips applies.
  */
 export function toSongsetLyricLines(
   clips: readonly TimelineClip[],
@@ -74,9 +77,15 @@ export function toSongsetLyricLines(
       siblings,
     );
     for (const line of assigned) {
+      // `TimelineClip.endSeconds` is `startSeconds + (sourceEnd - sourceStart)`
+      // (see `buildArrangementTimeline`), so this end clamp is the same
+      // `start_time_seconds + span - 0.001` clamp the render worker applies.
       const timeline = Math.max(
         clip.startSeconds,
-        clip.startSeconds + (line.timeSeconds - clip.sourceStartSeconds),
+        Math.min(
+          clip.endSeconds - 0.001,
+          clip.startSeconds + (line.timeSeconds - clip.sourceStartSeconds),
+        ),
       );
       result.push({
         text: line.text,
