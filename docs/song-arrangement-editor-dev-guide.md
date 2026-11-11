@@ -85,6 +85,27 @@ The fixture is asserted at **≤ 1e-9** in both suites
 is a different constant — the tolerance `validateSongArrangement` uses for staleness — and is not
 the fixture bound.
 
+## Section Label vocabulary
+
+One numbering rule feeds every surface that names a Step (issue #304). Do not
+re-derive occurrence numbers anywhere else.
+
+| File | Lines | Role |
+|---|---|---|
+| `delivery/webapp/src/lib/section-labels.ts` | 86 | The single vocabulary: `buildSectionHeadings(sections)` returns `{ index, label, occurrence, displayLabel }` in Recording order, numbering a label (`chorus 1`, `chorus 2`) only when it repeats; `sectionIndexAtPosition`; `headingForPositions(sections, positions)` returns one heading per position, `null` where the heading continues the previous one (sticky: an uncovered position keeps the previous label, and nothing is emitted before the first match). The Arrange sheet, both Lyrics pullups and the Worship controller all call these |
+| `delivery/webapp/src/lib/render/chapter-sections.ts` | 99 | `chapterLineHeadings(chapters, items, tolerance = 0.5)`: maps every chapter line's *global* second back to its position in the source Recording through the current Song Arrangement's clips, then applies `headingForPositions`. Returns `null` — render flat — whenever the manifest cannot be trusted: no Items, chapter count ≠ Item count, a chapter start more than 0.5 s from its Item's timeline start, an Item with no clips, or a line no clip covers |
+| `delivery/webapp/src/components/audio/LyricsLinesPanel.tsx` | 120 | Shared lyric row list (`lines[i].heading` renders above its run, `data-lyric-heading`). Headings are not rows: `data-lyric-index`, click-to-seek and the auto-scroll position lookup see lyric lines only |
+| `delivery/webapp/src/components/audio/SongsetLyricsPanel.tsx` | 103 | Songset audition pullup: lines mapped onto the Songset timeline, headings looked up from each line's **source** time (`localTimeSeconds`), never its timeline time — the cuts move timeline positions, not the section a line was sung in |
+| `delivery/webapp/src/components/audio/PlayerLyricsPanel.tsx` | 104 | Single-Song pullup: headings from the Recording's sections over the parsed LRC's own times. `lines` (unsynced) and raw-LRC fallbacks stay flat: timed structure does not exist there |
+| `delivery/webapp/src/components/play/LyricJumpList.tsx` | 318 | Worship controller sheet: `chapterLineHeadings[chapter][line]` inside every expanded chapter. Omitted/`null` renders flat |
+| `delivery/webapp/src/app/api/lyrics/[recordingContentHash]/route.ts` | 140 | Returns the Recording's parsed `sections` on every branch. The Recording row is read **before** the override check, so a user-authored LRC still gets headings |
+| `delivery/webapp/src/hooks/useSongLyrics.ts` | 132 | Carries `sections` through to the pullup (cached with the text) and resets them to `null` on every reset path: no hash, hash change, loading, error |
+
+The controller page passes headings only for a `fresh` Render: a stale Render's
+chapters describe a previous Song Arrangement, so its global times cannot be
+mapped back and the sheet renders flat. The share controller and the offline
+boot never fetch the Songset payload, so they never pass headings at all.
+
 ## Flow
 
 ```mermaid
@@ -351,8 +372,15 @@ Caveats:
   `test/api/songsets/{arrangement,arrangement-persistence,db}.test.ts`,
   `test/api/render-jobs/route.test.ts`, `test/lib/render/job-manager.test.ts`,
   `test/accessibility/accessibility.test.tsx`.
+- Section Labels and lyric surfaces: `test/lib/section-labels.test.ts` (numbering rule),
+  `test/lib/render/chapter-sections.test.ts` (chapter mapping and every flat fallback),
+  `test/lib/render/lrc-parser.test.ts` (line ownership), `test/components/audio/PlayerLyricsPanel.test.tsx`,
+  `test/components/audio/SongsetPlayerBar.test.tsx`, `test/components/play/LyricJumpList.test.tsx`,
+  `test/app/controller-page.test.tsx`, `test/api/lyrics/recordingContentHash.test.ts`,
+  `test/hooks/useSongLyrics.test.ts`.
 - Worker: `delivery/render-worker/tests/test_arrangements.py`, plus the arrangement-aware cases in
-  `test_audio_engine.py`, `test_pipeline.py`, `test_video_engine.py`.
+  `test_audio_engine.py`, `test_pipeline.py`, `test_video_engine.py`; lyric ownership and remapping in
+  `test_lrc_parser.py`.
 
 ## Invariants
 
@@ -364,3 +392,12 @@ Caveats:
 - 409 codes are `ARRANGEMENT_ANALYSIS_UNAVAILABLE` and `ARRANGEMENT_STALE`; the stale message string
   is byte-identical in TS and Python.
 - 1–64 steps per item (`MAX_ARRANGEMENT_STEPS`), labels capped in code points on both sides.
+- One Section Label numbering rule (`lib/section-labels.ts`) names Steps on every surface. A label is
+  occurrence-numbered only when it repeats; the Arrange sheet and all three lyric sheets must
+  agree, so no call site may compute `chorus 2` itself.
+- A heading is never a lyric row: indices, click-to-seek and auto-scroll operate on lyric lines
+  only. A flat list is always the fallback when sections, chapters or the current Song Arrangement
+  are unavailable — a wrong label never is.
+- The audition dock has exactly one seek control: a proportional strip where each Item's segment is
+  as wide as its share of the Songset timeline, the crossfade is drawn at the incoming Item's start,
+  and exactly one segment is active. The per-song marker strip and the separate slider are gone.
