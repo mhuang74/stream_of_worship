@@ -382,6 +382,11 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     router.replace(`/songsets/${songsetId}${query ? `?${query}` : ""}`);
   }, [highlightSongParam, songsetId, searchParams, router]);
 
+  const touchUpdatedAt = useCallback(() => {
+    const now = new Date().toISOString();
+    setSongset((prev) => (prev ? { ...prev, updatedAt: now } : prev));
+  }, []);
+
   const markStale = useCallback(() => {
     setSongset((prev) =>
       prev
@@ -394,7 +399,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           }
         : prev
     );
-  }, []);
+    touchUpdatedAt();
+  }, [touchUpdatedAt]);
 
   // Handle item reorder (optimistic)
   const handleUpdateItems = useCallback(
@@ -470,6 +476,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         if (!response.ok) {
           throw new Error(t("songsets.error.removeItemFailed"));
         }
+
+        touchUpdatedAt();
       } catch {
         if (removedItem && removedIndex >= 0) {
           setItems((prev) => {
@@ -683,8 +691,9 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       setSongset((prev) =>
         prev ? { ...prev, description } : null
       );
+      touchUpdatedAt();
     },
-    [songsetId, t]
+    [songsetId, t, touchUpdatedAt]
   );
 
   // Handle name update (rename)
@@ -704,8 +713,9 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       setSongset((prev) =>
         prev ? { ...prev, name } : null
       );
+      touchUpdatedAt();
     },
-    [songsetId, t]
+    [songsetId, t, touchUpdatedAt]
   );
 
   // Handle duplicate
@@ -830,8 +840,9 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
             }
           : prev
       );
+      touchUpdatedAt();
     },
-    [items.length, songsetId, t]
+    [items.length, songsetId, t, touchUpdatedAt]
   );
 
   const editingArrangementItem = editingArrangementItemId
@@ -883,6 +894,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         isRemoving={isRemoving}
         highlightSongId={highlightSongId}
         onHighlightConsumed={() => setHighlightSongId(null)}
+        isOfflineAvailable={isOfflineAvailable}
         offlineStatusSlot={
           songset && renderJobR2Keys ? (
             <div className="px-4 pt-3">

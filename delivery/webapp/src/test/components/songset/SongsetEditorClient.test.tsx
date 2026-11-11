@@ -61,6 +61,7 @@ vi.mock("@/contexts/SongsetListenContext", () => ({
  */
 vi.mock("@/components/songset/SongsetEditor", () => ({
   SongsetEditor: (props: {
+    songset: { updatedAt: string };
     items: SongListItem[];
     onListen: () => void;
     onUpdateTransition: (
@@ -72,6 +73,7 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
     const item = props.items[0];
     return (
       <div>
+        <span data-testid="shell-updated-at">{props.songset.updatedAt}</span>
         <span data-testid="shell-gap">{item?.gapBeats}</span>
         <span data-testid="shell-arrangement">{item?.arrangementSteps}</span>
         <button
@@ -215,6 +217,23 @@ describe("SongsetEditorClient arrangement save", () => {
     );
     // The save applies its arrangement without reverting the newer transition.
     expect(screen.getByTestId("shell-gap")).toHaveTextContent("7");
+  });
+
+  it("bumps the displayed last-modified timestamp after a successful edit", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ ok: true })));
+
+    render(<SongsetEditorClient songsetId="songset-1" initialData={initialData()} />);
+    expect(screen.getByTestId("shell-updated-at")).toHaveTextContent(
+      "2026-01-01T00:00:00.000Z"
+    );
+
+    fireEvent.click(screen.getByTestId("shell-update-transition"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("shell-updated-at")).not.toHaveTextContent(
+        "2026-01-01T00:00:00.000Z"
+      )
+    );
   });
 
   it("unlocks audio in the click and starts the audition for the saved Songset", async () => {

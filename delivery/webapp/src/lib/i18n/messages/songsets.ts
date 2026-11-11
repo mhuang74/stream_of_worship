@@ -148,6 +148,7 @@ export const songsetsBundle = bundle({
     "songsets.unknown": "Unknown",
 
     // Metadata
+    "songsets.createdPrefix": "Created ",
     "songsets.updatedPrefix": "Updated ",
 
     // aria-labels
@@ -312,6 +313,7 @@ export const songsetsBundle = bundle({
     "songsets.unknown": "未知",
 
     // Metadata
+    "songsets.createdPrefix": "建立於 ",
     "songsets.updatedPrefix": "更新於 ",
 
     // aria-labels

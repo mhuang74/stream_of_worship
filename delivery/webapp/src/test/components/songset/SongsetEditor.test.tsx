@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithLocale, renderWithLocale as render } from "@/test/render";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
@@ -40,6 +40,7 @@ describe("SongsetEditor", () => {
     id: "songset-1",
     name: "Sunday Worship",
     description: "Easter service songs",
+    createdAt: "2024-01-10T09:00:00Z",
     renderState: "fresh" as RenderState,
     isArtifactsStale: false,
     latestRenderJobId: "job-1",
@@ -171,14 +172,64 @@ describe("SongsetEditor", () => {
       expect(mockRouterPush).toHaveBeenCalledWith("/songsets");
     });
 
-    it("has render status badge", () => {
-      renderEditor();
-      expect(screen.getByText("Rendered")).toBeInTheDocument();
-    });
-
     it("has overflow menu", () => {
       renderEditor();
       expect(screen.getByRole("button", { name: /more options/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("header metadata", () => {
+    it("renders the total arranged duration next to the song count", () => {
+      renderEditor();
+      expect(screen.getByText("7:00")).toBeInTheDocument();
+    });
+
+    it("hides the duration when an arrangement cannot be measured", () => {
+      renderEditor({
+        items: mockItems.map((item, index) =>
+          index === 0 ? { ...item, arrangedDurationSeconds: null } : item
+        ),
+      });
+
+      expect(screen.queryByText("7:00")).not.toBeInTheDocument();
+      expect(screen.getByText("Duration unavailable")).toBeInTheDocument();
+    });
+
+    it.each(["fresh", "unrendered", "rendering", "stale"] as RenderState[])(
+      "renders no render-state badge for %s",
+      (renderState) => {
+        renderEditor({
+          songset: {
+            ...mockSongset,
+            renderState,
+            lastCompletedRenderJobId: "job-1",
+          },
+        });
+
+        for (const text of ["Rendered", "Not rendered", "Rendering", "Needs re-render"]) {
+          expect(screen.queryByText(text)).not.toBeInTheDocument();
+        }
+      }
+    );
+
+    it("renders created and updated timestamps", () => {
+      renderEditor();
+      expect(screen.getByText(/^Created/)).toBeInTheDocument();
+      expect(screen.getByText(/^Updated/)).toBeInTheDocument();
+    });
+
+    it("renders the offline badge only when the offline copy exists", () => {
+      renderEditor();
+      expect(screen.queryByText("Offline")).not.toBeInTheDocument();
+
+      renderEditor({ isOfflineAvailable: true });
+      expect(screen.getByText("Offline")).toBeInTheDocument();
+    });
+
+    it("renders the description inside the header", () => {
+      renderEditor();
+      const header = screen.getByRole("heading", { name: "Sunday Worship" }).closest("header")!;
+      expect(within(header).getByText("Easter service songs")).toBeInTheDocument();
     });
   });
 
@@ -195,7 +246,6 @@ describe("SongsetEditor", () => {
 
       const worship = screen.getByTestId("songset-worship");
       expect(worship).toBeEnabled();
-      expect(worship).toHaveAttribute("title", "Worship");
       expect(worship).toHaveAttribute("aria-label", "Worship");
 
       fireEvent.click(worship);
@@ -212,7 +262,7 @@ describe("SongsetEditor", () => {
 
     it.each(["unrendered", "rendering", "failed"] as RenderState[])(
       "disables worship for renderState %s with the not-rendered reason",
-      (renderState) => {
+      async (renderState) => {
         const onPlay = vi.fn();
         renderEditor({
           onPlay,
@@ -221,8 +271,10 @@ describe("SongsetEditor", () => {
 
         const worship = screen.getByTestId("songset-worship");
         expect(worship).toBeDisabled();
-        expect(worship.getAttribute("title")).toContain(notRenderedText);
         expect(worship.getAttribute("aria-label")).toContain(notRenderedText);
+
+        fireEvent.mouseEnter(screen.getByTestId("songset-worship-trigger"));
+        expect(screen.getByText(notRenderedText)).toBeInTheDocument();
 
         fireEvent.click(worship);
         expect(onPlay).not.toHaveBeenCalled();
@@ -236,8 +288,10 @@ describe("SongsetEditor", () => {
 
       const worship = screen.getByTestId("songset-worship");
       expect(worship).toBeDisabled();
-      expect(worship.getAttribute("title")).toContain(notRenderedText);
       expect(worship.getAttribute("aria-label")).toContain(notRenderedText);
+
+      fireEvent.mouseEnter(screen.getByTestId("songset-worship-trigger"));
+      expect(screen.getByText(notRenderedText)).toBeInTheDocument();
     });
 
     it.each(renderStates)("keeps listen enabled for renderState %s", (renderState) => {
