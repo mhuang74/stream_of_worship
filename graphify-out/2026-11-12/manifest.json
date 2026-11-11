@@ -2610,9 +2610,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/app/controller-page.test.tsx": {
-    "mtime": 1794415472.0498562,
-    "seen": 1794416133.217982,
-    "ast_hash": "27fada58015960b1efb2c40596fe2cc2",
+    "mtime": 1794416678.9321015,
+    "seen": 1794417284.1880112,
+    "ast_hash": "31f8782e834845d14d1491c486e92d34",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx": {
@@ -2790,9 +2790,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/play/LyricJumpList.test.tsx": {
-    "mtime": 1794415401.0667453,
-    "seen": 1794416133.2228317,
-    "ast_hash": "6f0da4a326e22f7504932f8b77b6ec60",
+    "mtime": 1794416809.5573614,
+    "seen": 1794417284.1908603,
+    "ast_hash": "b53c6d1edf0cb6e6528547ed565e6fe4",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/play/LyricJumpListFeedback.test.tsx": {
@@ -5790,9 +5790,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/arrangements-listen.ts": {
-    "mtime": 1794413617.7331853,
-    "seen": 1794414238.0426579,
-    "ast_hash": "ca6fe1dfa32c716a698381f632a12919",
+    "mtime": 1794416534.9338167,
+    "seen": 1794417284.1762931,
+    "ast_hash": "969ad80f827f1e778eb1626aaa0f8842",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/audio/audio-context.ts": {
@@ -5868,9 +5868,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/audio/SongsetPlayerBar.test.tsx": {
-    "mtime": 1794415742.680314,
-    "seen": 1794416133.2218096,
-    "ast_hash": "a6f9d76b7c9340cd7e3d078471474bef",
+    "mtime": 1794416765.231273,
+    "seen": 1794417284.1902823,
+    "ast_hash": "f71933c011710714ef3d7dae1fb29af1",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/contexts/SongsetListenContext.test.tsx": {
@@ -5880,9 +5880,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/arrangements-listen.test.ts": {
-    "mtime": 1794413718.2627997,
-    "seen": 1794414238.0607944,
-    "ast_hash": "d9a6b741e702ad54dbbac905eea30ef8",
+    "mtime": 1794416576.198898,
+    "seen": 1794417284.1955717,
+    "ast_hash": "725bdc01b344383875711aa5e88bc88f",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/chapter-sections.ts": {
