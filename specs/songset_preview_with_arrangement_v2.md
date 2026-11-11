@@ -190,7 +190,7 @@ Rendering states:
 | Session state | UI |
 |---|---|
 | `idle \| loading` | `listen-progress`: with a known `totalBytes`, `songsets.listen.loading` = `"Loading {title}… {percent}%"`; otherwise `songsets.listen.loadingIndeterminate` = `"Loading {title}…"`. `{title}` is that item's `song.title`, falling back to `songsets.listen.untitled`. A determinate `<progress>` element carries the percentage for assistive tech |
-| `playing \| paused` | Play/Pause; range seek over `[0, totalSeconds]` driven by `timelinePositionSeconds`; `m:ss / m:ss`; the current item title; the marker strip built from `buildArrangementTimeline` (clicking a marker seeks); the permanent `songsets.listen.localNotice` |
+| `playing \| paused` | Play/Pause; range seek over `[0, totalSeconds]` driven by `timelinePositionSeconds`; `m:ss / m:ss`; the current item title; a proportional seek bar whose segment widths come from `buildArrangementTimeline` and tile the timeline total, with the transition zone drawn once at the incoming Item's start, one active segment, click/drag/keys seeking with an 8 px boundary snap, and no seeking when unseekable; the permanent `songsets.listen.localNotice` |
 | playing while `progress` is non-null **and** `progress.phase !== "ready"` | `songsets.listen.preparingNext` in `listen-status` — this is what tells the user the mid-set work is happening. The label must disappear the moment `getProgress()` returns `null` (§3.4 item 3); it is never a permanent banner |
 | `error` | `errorMessage` + Retry (`retry()`) + `songsets.listen.error.renderHint` |
 
@@ -237,7 +237,6 @@ Strings in `delivery/webapp/src/lib/i18n/messages/songsets.ts`, both locales (Tr
 | `songsets.listen.action.retry` | Retry | 重試 |
 | `songsets.listen.action.close` | Close | 關閉 |
 | `songsets.listen.seekAria` | Seek preview | 調整試聽位置 |
-| `songsets.listen.markersAria` | Song markers | 歌曲標記 |
 | `songsets.listen.currentItem` | Now playing | 現正播放 |
 | `songsets.listen.error.noRecording` | A song in this Songset has no Recording | 此歌集有歌曲沒有錄音 |
 | `songsets.listen.error.invalidArrangement` | A saved arrangement no longer matches its Recording | 已儲存的編排與錄音不符 |

@@ -17,11 +17,14 @@ import { useLocale } from "@/hooks/useLocale";
 import { CURSOR_LEAD_SECONDS, LyricsLinesPanel } from "@/components/audio/LyricsLinesPanel";
 import { parseLRC, isValidLRC, findCurrentLyricIndex } from "@/lib/render/lrc-parser";
 import { toSongsetLyricLines } from "@/lib/arrangements-listen";
-import type { TimelineClip } from "@/lib/arrangements";
+import type { RecordingSection, TimelineClip } from "@/lib/arrangements";
+import { headingForPositions } from "@/lib/section-labels";
 
 export interface SongsetLyricsPanelProps {
   contentHash: string | null;
   clips: TimelineClip[];
+  /** The Recording's detected sections; headings are looked up through them. */
+  sections: RecordingSection[] | null;
   /** Current Songset timeline position, in seconds. */
   positionSeconds: number;
   onSeek: (timelineSeconds: number) => void;
@@ -30,6 +33,7 @@ export interface SongsetLyricsPanelProps {
 export function SongsetLyricsPanel({
   contentHash,
   clips,
+  sections,
   positionSeconds,
   onSeek,
 }: SongsetLyricsPanelProps) {
@@ -47,6 +51,19 @@ export function SongsetLyricsPanel({
   const activeIndex = songsetLines
     ? findCurrentLyricIndex(songsetLines, positionSeconds + CURSOR_LEAD_SECONDS)
     : -1;
+  // Headings are looked up from each line's position in the Recording (its
+  // source time), never from its timeline position — the arranged cuts move
+  // timeline positions, not the section a line was sung in.
+  const headings = useMemo(
+    () =>
+      songsetLines
+        ? headingForPositions(
+            sections,
+            songsetLines.map((line) => line.localTimeSeconds),
+          )
+        : null,
+    [sections, songsetLines],
+  );
 
   let fallback: React.ReactNode;
   if (loading) {
@@ -70,9 +87,10 @@ export function SongsetLyricsPanel({
     <div className="flex flex-col max-h-[40dvh] md:max-h-[400px]">
       <LyricsLinesPanel
         lines={
-          songsetLines?.map((line) => ({
+          songsetLines?.map((line, index) => ({
             text: line.text,
             timeSeconds: line.timelineSeconds,
+            heading: headings?.[index] ?? undefined,
           })) ?? null
         }
         activeIndex={activeIndex}

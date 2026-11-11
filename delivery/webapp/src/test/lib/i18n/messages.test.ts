@@ -31,7 +31,6 @@ describe("i18n messages", () => {
       "songsets.listen.untitled",
       "songsets.listen.action.retry",
       "songsets.listen.seekAria",
-      "songsets.listen.markersAria",
       "songsets.listen.currentItem",
       "songsets.listen.error.noRecording",
       "songsets.listen.error.invalidArrangement",
