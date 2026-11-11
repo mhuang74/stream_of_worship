@@ -461,4 +461,104 @@ describe("LyricJumpList", () => {
       expect(screen.getByText("0:20")).toBeInTheDocument();
     });
   });
+
+  // Section Label headings inside an expanded chapter (issue #306).
+  describe("section headings", () => {
+    const headingTexts = () =>
+      Array.from(document.querySelectorAll("[data-lyric-heading]")).map((n) => n.textContent);
+
+    it("heads each run of lines in an expanded chapter", () => {
+      render(
+        <LyricJumpList
+          {...defaultProps}
+          isOpen={true}
+          chapterLineHeadings={[["verse", null, "chorus 1"], ["bridge"], null]}
+        />
+      );
+
+      // The current chapter is expanded on open.
+      expect(headingTexts()).toEqual(["verse", "chorus 1"]);
+    });
+
+    it("heads an expanded non-current chapter too", async () => {
+      render(
+        <LyricJumpList
+          {...defaultProps}
+          isOpen={true}
+          chapterLineHeadings={[["verse"], ["bridge", "chorus 2"], ["verse"]]}
+        />
+      );
+
+      const chapterButton = screen.getByText("How Great Thou Art");
+      await act(async () => {
+        fireEvent.click(chapterButton);
+      });
+
+      expect(headingTexts()).toContain("bridge");
+    });
+
+    it("renders flat without headings data", () => {
+      render(<LyricJumpList {...defaultProps} isOpen={true} />);
+
+      expect(document.querySelectorAll("[data-lyric-heading]")).toHaveLength(0);
+    });
+
+    it("renders flat when headings are null", () => {
+      render(
+        <LyricJumpList {...defaultProps} isOpen={true} chapterLineHeadings={null} />
+      );
+
+      expect(document.querySelectorAll("[data-lyric-heading]")).toHaveLength(0);
+    });
+
+    it("renders flat for a chapter whose recording has no sections", () => {
+      render(
+        <LyricJumpList
+          {...defaultProps}
+          isOpen={true}
+          chapterLineHeadings={[null, null, null]}
+        />
+      );
+
+      expect(document.querySelectorAll("[data-lyric-heading]")).toHaveLength(0);
+    });
+
+    it("does not shift line indices or jump targets", () => {
+      render(
+        <LyricJumpList
+          {...defaultProps}
+          currentSongIndex={0}
+          isOpen={true}
+          chapterLineHeadings={[["verse", "chorus 1", null]]}
+        />
+      );
+
+      // Line 1 still carries its own row key and still jumps to (0, 1).
+      const lineButton = screen.getByText("That saved a wretch like me").closest("button");
+      expect(lineButton).toBeTruthy();
+      fireEvent.click(lineButton!);
+
+      expect(mockJumpToLine).toHaveBeenCalledWith(0, 1);
+      // Heading elements are not rows: the active-line lookup sees only lines.
+      const heading = document.querySelector("[data-lyric-heading]");
+      expect(heading?.hasAttribute("data-lyric-row")).toBe(false);
+    });
+
+    it("keeps the active-line highlight following playback", () => {
+      render(
+        <LyricJumpList
+          {...defaultProps}
+          currentSongIndex={0}
+          currentTime={25}
+          isOpen={true}
+          chapterLineHeadings={[["verse", "chorus 1", null]]}
+        />
+      );
+
+      expect(document.querySelector('[data-lyric-row="0-1"]')).toHaveAttribute(
+        "data-active",
+        "true"
+      );
+    });
+  });
 });
