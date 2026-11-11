@@ -83,16 +83,12 @@ export const songsetsBundle = bundle({
     "songsets.action.createSongset": "Create Songset",
 
     // Listen dialog
-    "songsets.listen.title": "Listen to Songset",
+    "songsets.listen.loadingSongset": "Loading Songset…",
     "songsets.listen.loading": "Loading {title}… {percent}%",
     "songsets.listen.loadingIndeterminate": "Loading {title}…",
     "songsets.listen.preparingNext": "Preparing the next song…",
-    "songsets.listen.localNotice": "Browser preview — loudness differs from the final render",
     "songsets.listen.untitled": "Untitled",
-    "songsets.listen.action.play": "Play",
-    "songsets.listen.action.pause": "Pause",
     "songsets.listen.action.retry": "Retry",
-    "songsets.listen.action.close": "Close",
     "songsets.listen.seekAria": "Seek preview",
     "songsets.listen.markersAria": "Song markers",
     "songsets.listen.currentItem": "Now playing",
@@ -102,7 +98,7 @@ export const songsetsBundle = bundle({
     "songsets.listen.error.playbackFailed": "Could not prepare the audio for this Songset",
     "songsets.listen.error.notFound": "Songset not found",
     "songsets.listen.error.build": "Could not load this Songset",
-    "songsets.listen.error.renderHint": "Render this Songset to listen to it in full",
+    "songsets.listen.error.empty": "This Songset has no songs to audition",
 
     // Units
     "songsets.unit.song": "song",
@@ -252,16 +248,12 @@ export const songsetsBundle = bundle({
     "songsets.action.createSongset": "建立敬拜歌單",
 
     // Listen dialog
-    "songsets.listen.title": "試聽歌集",
+    "songsets.listen.loadingSongset": "正在載入敬拜歌單…",
     "songsets.listen.loading": "正在載入 {title}…{percent}%",
     "songsets.listen.loadingIndeterminate": "正在載入 {title}…",
     "songsets.listen.preparingNext": "正在準備下一首…",
-    "songsets.listen.localNotice": "瀏覽器試聽，音量可能與完成渲染不同",
     "songsets.listen.untitled": "未命名",
-    "songsets.listen.action.play": "播放",
-    "songsets.listen.action.pause": "暫停",
     "songsets.listen.action.retry": "重試",
-    "songsets.listen.action.close": "關閉",
     "songsets.listen.seekAria": "調整試聽位置",
     "songsets.listen.markersAria": "歌曲標記",
     "songsets.listen.currentItem": "現正播放",
@@ -271,7 +263,7 @@ export const songsetsBundle = bundle({
     "songsets.listen.error.playbackFailed": "無法準備此歌集的音訊",
     "songsets.listen.error.notFound": "找不到歌集",
     "songsets.listen.error.build": "無法載入此歌集",
-    "songsets.listen.error.renderHint": "渲染此歌集以完整試聽",
+    "songsets.listen.error.empty": "這個敬拜歌單沒有可試聽的詩歌",
 
     // Units
     "songsets.unit.song": "首詩歌",

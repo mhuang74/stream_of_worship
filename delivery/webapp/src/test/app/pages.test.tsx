@@ -51,6 +51,12 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+// The real provider is mounted by the root layout; these page-level renders
+// only need the Listen entry point to exist.
+vi.mock("@/contexts/SongsetListenContext", () => ({
+  useSongsetListen: () => ({ open: vi.fn() }),
+}));
+
 describe("HomePage", () => {
   // Marketing moved to the marketing site (issue #213): signed-out visitors
   // are login-first — the page redirects instead of rendering a landing.

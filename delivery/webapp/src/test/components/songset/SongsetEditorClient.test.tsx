@@ -5,7 +5,12 @@ import type { SongListItem } from "@/components/songset/SongList";
 import type { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { SongsetEditorClient } from "@/app/songsets/[id]/SongsetEditorClient";
 
-const shell = vi.hoisted(() => ({ push: vi.fn(), unlockAudioContext: vi.fn() }));
+const shell = vi.hoisted(() => ({
+  push: vi.fn(),
+  unlockAudioContext: vi.fn(),
+  open: vi.fn(),
+  pauseAudition: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: shell.push }),
@@ -44,26 +49,9 @@ vi.mock("@/lib/audio/audio-context", () => ({
   getAudioContext: vi.fn(),
 }));
 
-vi.mock("@/components/songset/ListenMixDialog", () => ({
-  ListenMixDialog: (props: {
-    songsetId: string;
-    songsetName: string;
-    isOpen: boolean;
-    onOpenChange: (open: boolean) => void;
-  }) =>
-    props.isOpen ? (
-      <div
-        data-testid="listen-dialog-mock"
-        data-songset-id={props.songsetId}
-        data-songset-name={props.songsetName}
-      >
-        <button
-          type="button"
-          data-testid="listen-dialog-close"
-          onClick={() => props.onOpenChange(false)}
-        />
-      </div>
-    ) : null,
+vi.mock("@/contexts/SongsetListenContext", () => ({
+  // The editor starts the audition; the arrangement sheet pauses it.
+  useSongsetListen: () => ({ open: shell.open, audio: { pause: shell.pauseAudition } }),
 }));
 
 /**
@@ -229,27 +217,15 @@ describe("SongsetEditorClient arrangement save", () => {
     expect(screen.getByTestId("shell-gap")).toHaveTextContent("7");
   });
 
-  it("unlocks audio in the click and mounts the Listen dialog for the saved Songset", async () => {
+  it("unlocks audio in the click and starts the audition for the saved Songset", async () => {
     render(<SongsetEditorClient songsetId="songset-1" initialData={initialData()} />);
 
     fireEvent.click(screen.getByTestId("shell-listen"));
 
     expect(shell.unlockAudioContext).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
-      "data-songset-id",
-      "songset-1"
-    );
-    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
-      "data-songset-name",
-      "Sunday Worship"
-    );
-
-    fireEvent.click(screen.getByTestId("listen-dialog-close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("listen-dialog-mock")
-      ).not.toBeInTheDocument();
+    expect(shell.open).toHaveBeenCalledWith({
+      songsetId: "songset-1",
+      name: "Sunday Worship",
     });
   });
 

@@ -24,16 +24,12 @@ describe("i18n messages", () => {
   it("defines every Listen dialog key in both locales (issue #297)", () => {
     const listenKeys = [
       "songsets.action.listen",
-      "songsets.listen.title",
+      "songsets.listen.loadingSongset",
       "songsets.listen.loading",
       "songsets.listen.loadingIndeterminate",
       "songsets.listen.preparingNext",
-      "songsets.listen.localNotice",
       "songsets.listen.untitled",
-      "songsets.listen.action.play",
-      "songsets.listen.action.pause",
       "songsets.listen.action.retry",
-      "songsets.listen.action.close",
       "songsets.listen.seekAria",
       "songsets.listen.markersAria",
       "songsets.listen.currentItem",
@@ -43,7 +39,7 @@ describe("i18n messages", () => {
       "songsets.listen.error.playbackFailed",
       "songsets.listen.error.notFound",
       "songsets.listen.error.build",
-      "songsets.listen.error.renderHint",
+      "songsets.listen.error.empty",
     ];
 
     for (const locale of LOCALES) {

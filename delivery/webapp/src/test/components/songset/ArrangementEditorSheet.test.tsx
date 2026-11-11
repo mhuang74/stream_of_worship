@@ -34,6 +34,14 @@ const preview = vi.hoisted(() => ({
   },
 }));
 
+// The sheet pauses the global Songset audition on mount; it does not own that
+// transport, so a stub context is enough.
+const audition = vi.hoisted(() => ({ pause: vi.fn() }));
+
+vi.mock("@/contexts/SongsetListenContext", () => ({
+  useSongsetListen: () => ({ audio: { pause: audition.pause } }),
+}));
+
 vi.mock("@/hooks/useSongsetAudio", () => ({
   useSongsetAudio: (options: typeof preview.options) => {
     preview.options = options;
@@ -195,6 +203,12 @@ describe("ArrangementEditorSheet", () => {
     await openAddDialog();
     fireEvent.click(screen.getByTestId(`arrangement-add-${index}`));
   }
+
+  it("pauses the global Songset audition when the sheet mounts", () => {
+    renderSheet();
+
+    expect(audition.pause).toHaveBeenCalledTimes(1);
+  });
 
   it("initializes the draft with every source section in source order", async () => {
     renderSheet();

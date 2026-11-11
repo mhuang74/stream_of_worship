@@ -14,7 +14,7 @@ import { buildSongsetsUrl, saveSongsetListState } from "@/lib/songset-list-state
 import { removeOfflineSongset, listOfflineRecords } from "@/lib/offline/offline-index";
 import { downloadOfflineArtifacts, NoArtifactsError } from "@/lib/offline/download-offline";
 import { unlockAudioContext } from "@/lib/audio/audio-context";
-import { ListenMixDialog } from "@/components/songset/ListenMixDialog";
+import { useSongsetListen } from "@/contexts/SongsetListenContext";
 
 const ShareDialog = dynamic(
   () => import("@/components/share/ShareDialog").then((m) => ({ default: m.ShareDialog })),
@@ -106,6 +106,7 @@ export function SongsetsClient({
   const router = useRouter();
   const { t } = useLocale();
   const connectivity = useConnectivity();
+  const { open } = useSongsetListen();
   useOfflineRedirect();
   const [songsets, setSongsets] = useState<Songset[]>(() =>
     transformSongsets(initialData.songsets)
@@ -121,9 +122,6 @@ export function SongsetsClient({
   const [offlineDownloadId, setOfflineDownloadId] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<{
     id: string; name: string; durationSeconds: number | null;
-  } | null>(null);
-  const [listeningSongset, setListeningSongset] = useState<{
-    id: string; name: string;
   } | null>(null);
 
   useEffect(() => {
@@ -271,10 +269,10 @@ export function SongsetsClient({
       unlockAudioContext();
       const songset = songsets.find((s) => s.id === id);
       if (songset) {
-        setListeningSongset({ id: songset.id, name: songset.name });
+        open({ songsetId: songset.id, name: songset.name });
       }
     },
-    [songsets]
+    [open, songsets]
   );
 
   const handleRetry = useCallback((id: string) => {
@@ -500,18 +498,6 @@ export function SongsetsClient({
         onSearch={handleSearch}
         isSearching={isLoading && committedSearch.trim().length > 0}
       />
-
-      {listeningSongset && (
-        <ListenMixDialog
-          key={listeningSongset.id}
-          songsetId={listeningSongset.id}
-          songsetName={listeningSongset.name}
-          isOpen
-          onOpenChange={(open) => {
-            if (!open) setListeningSongset(null);
-          }}
-        />
-      )}
 
       {shareTarget && (
         <ShareDialog

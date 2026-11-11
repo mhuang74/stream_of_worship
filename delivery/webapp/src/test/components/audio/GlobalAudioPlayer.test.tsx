@@ -16,6 +16,21 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
+// The dock switches on the audition request; the audition transport itself has
+// its own suite, so a stub provider and a stub bar isolate the switch.
+const listen = vi.hoisted(() => ({
+  request: null as { songsetId: string; name: string } | null,
+}));
+
+vi.mock("@/contexts/SongsetListenContext", () => ({
+  SongsetListenProvider: ({ children }: { children: React.ReactNode }) => children,
+  useSongsetListen: () => ({ request: listen.request }),
+}));
+
+vi.mock("@/components/audio/SongsetPlayerBar", () => ({
+  SongsetPlayerBar: () => <div data-testid="songset-player-bar" />,
+}));
+
 // Test component that uses the audio player
 function TestChildComponent() {
   const { currentTrack, isPlaying } = useAudioPlayer();
@@ -34,6 +49,7 @@ function TestChildComponent() {
 describe("GlobalAudioPlayer", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/");
+    listen.request = null;
   });
 
   it("renders children content", () => {
@@ -67,6 +83,29 @@ describe("GlobalAudioPlayer", () => {
     );
 
     expect(screen.queryByTestId("audio-player-bar")).not.toBeInTheDocument();
+  });
+
+  it("shows the audition bar and hides the song bar while a Songset is auditioning", () => {
+    listen.request = { songsetId: "songset-1", name: "Sunday Worship" };
+    render(
+      <GlobalAudioPlayer>
+        <TestChildComponent />
+      </GlobalAudioPlayer>
+    );
+
+    expect(screen.getByTestId("songset-player-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("audio-player-bar")).not.toBeInTheDocument();
+  });
+
+  it("shows the song bar once no Songset is auditioning", () => {
+    listen.request = null;
+    render(
+      <GlobalAudioPlayer>
+        <TestChildComponent />
+      </GlobalAudioPlayer>
+    );
+
+    expect(screen.queryByTestId("songset-player-bar")).not.toBeInTheDocument();
   });
 
   it("wraps content with AudioPlayerProvider", () => {

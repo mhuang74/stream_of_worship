@@ -20,7 +20,7 @@ import {
   NoArtifactsError,
 } from "@/lib/offline/download-offline";
 import { unlockAudioContext } from "@/lib/audio/audio-context";
-import { ListenMixDialog } from "@/components/songset/ListenMixDialog";
+import { useSongsetListen } from "@/contexts/SongsetListenContext";
 
 /**
  * /worship list (issue #211 follow-up descope): lists every songset with a
@@ -92,14 +92,11 @@ export function WorshipClient() {
   const router = useRouter();
   const { t } = useLocale();
   const connectivity = useConnectivity();
+  const { open } = useSongsetListen();
   const [rows, setRows] = useState<WorshipRow[] | null>(null);
   const [filter, setFilter] = useState<"ready" | "all">("ready");
   const [page, setPage] = useState(1);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [listeningSongset, setListeningSongset] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
 
   // Offline boot: base rows from the IndexedDB index, works with zero
   // connectivity (the SW pre-cached this document).
@@ -252,9 +249,9 @@ export function WorshipClient() {
       // Resume inside the click gesture (iOS/Chrome) before React state work.
       unlockAudioContext();
       const row = rows?.find((r) => r.id === id);
-      if (row) setListeningSongset({ id: row.id, name: row.name });
+      if (row) open({ songsetId: row.id, name: row.name });
     },
-    [rows]
+    [open, rows]
   );
 
   const handleDownloadOffline = useCallback(
@@ -466,17 +463,6 @@ export function WorshipClient() {
             <ChevronRight className="size-4" />
           </Button>
         </nav>
-      )}
-      {listeningSongset && (
-        <ListenMixDialog
-          key={listeningSongset.id}
-          songsetId={listeningSongset.id}
-          songsetName={listeningSongset.name}
-          isOpen
-          onOpenChange={(open) => {
-            if (!open) setListeningSongset(null);
-          }}
-        />
       )}
     </div>
   );

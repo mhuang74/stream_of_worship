@@ -557,3 +557,23 @@ export function buildArrangementTimeline(
       : 0,
   };
 }
+
+/**
+ * Index of the Item whose audio owns a timeline position: the first Item whose
+ * end lies after the position, else the last Item. Matches the engine's
+ * itemIndexAt so the player, the lyric pullup, and decode preparation never
+ * disagree. -1 for an empty timeline.
+ */
+export function findTimelineItemIndex(
+  timeline: ArrangementTimeline,
+  positionSeconds: number,
+): number {
+  const itemCount = timeline.items.length;
+  if (itemCount === 0) return -1;
+  const target = Math.min(Math.max(positionSeconds, 0), timeline.totalSeconds);
+  for (let index = 0; index < itemCount; index++) {
+    const item = timeline.items[index]!;
+    if (target < item.startSeconds + item.durationSeconds) return index;
+  }
+  return itemCount - 1;
+}
