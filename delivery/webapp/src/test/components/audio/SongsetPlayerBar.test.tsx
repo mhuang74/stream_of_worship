@@ -213,6 +213,25 @@ describe("SongsetPlayerBar", () => {
     expect(screen.getByTestId("songset-subtitle")).toHaveTextContent("Amazing Grace");
   });
 
+  it("gives every Item its own hue so the strip reads as N Songs", () => {
+    render(<SongsetPlayerBar />);
+    const hues = screen.getAllByTestId("songset-seek-segment-hue");
+    expect(hues).toHaveLength(2);
+    expect(hues[0]!.style.backgroundColor).toBe("var(--songset-item-1)");
+    expect(hues[1]!.style.backgroundColor).toBe("var(--songset-item-2)");
+  });
+
+  it("marks the playhead and fills each Item's segment up to it", () => {
+    setSession({ audio: { timelinePositionSeconds: 15 } });
+    render(<SongsetPlayerBar />);
+
+    expect(screen.getByTestId("songset-seek-playhead").style.left).toBe("75%");
+
+    const played = screen.getAllByTestId("songset-seek-segment-played");
+    expect(played[0]!.style.width).toBe("100%");
+    expect(played[1]!.style.width).toBe("50%");
+  });
+
   it("draws the transition zone once at the incoming Item's start", () => {
     const crossfadeItems = [
       itemPayload("item-1", "Amazing Grace", "content-1"),
@@ -287,6 +306,7 @@ describe("SongsetPlayerBar", () => {
     render(<SongsetPlayerBar />);
     const slider = screen.getByTestId("songset-seek");
     expect(slider).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByTestId("songset-seek-playhead")).not.toBeInTheDocument();
 
     stubSeekRect(slider);
     fireEvent.pointerDown(slider, { clientX: 400, pointerId: 1 });
