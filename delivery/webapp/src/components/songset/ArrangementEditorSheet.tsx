@@ -70,11 +70,11 @@ import type {
   ArrangementStep,
   ArrangementTimeline,
   ArrangementTimelineItem,
-  RecordingSection,
   SongArrangement,
   TimelineClip,
   TimelineItemSource,
 } from "@/lib/arrangements";
+import { buildSectionHeadings } from "@/lib/section-labels";
 import type { SongListItem } from "./SongList";
 import {
   AlertTriangle,
@@ -722,31 +722,6 @@ function SortableStepBlock({
   );
 }
 
-interface SourceOccurrence {
-  index: number;
-  section: RecordingSection;
-  displayLabel: string;
-}
-
-function buildSourceOccurrences(sections: RecordingSection[] | null): SourceOccurrence[] {
-  if (!sections) return [];
-  const totals = new Map<string, number>();
-  for (const section of sections) {
-    totals.set(section.label, (totals.get(section.label) ?? 0) + 1);
-  }
-  const seen = new Map<string, number>();
-  return sections.map((section, index) => {
-    const occurrence = (seen.get(section.label) ?? 0) + 1;
-    seen.set(section.label, occurrence);
-    const repeated = (totals.get(section.label) ?? 0) > 1;
-    return {
-      index,
-      section,
-      displayLabel: repeated ? `${section.label} ${occurrence}` : section.label,
-    };
-  });
-}
-
 interface DraftInit {
   draft: DraftStep[];
   /**
@@ -974,7 +949,7 @@ export function ArrangementEditorSheet({
     return new Map((snapped ?? []).map((step) => [step.sectionIndex, step]));
   }, [item.recording?.sections, item.recording?.beats, item.recording?.durationSeconds]);
 
-  const occurrences = useMemo(() => buildSourceOccurrences(sections), [sections]);
+  const occurrences = useMemo(() => buildSectionHeadings(sections), [sections]);
   const occurrenceByIndex = useMemo(
     () => new Map(occurrences.map((occurrence) => [occurrence.index, occurrence])),
     [occurrences]
