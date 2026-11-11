@@ -12,9 +12,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildArrangementTimeline,
-  type ArrangementTimelineItem,
   type TimelineItemSource,
 } from "@/lib/arrangements";
+import {
+  incomingEnvelope,
+  outgoingEnvelope,
+  scheduleEnvelope,
+} from "./envelopes";
 
 // Spec §6 guard: above this total the local tier defers to the worker mix.
 const SPEC_MEMORY_GUARD_SECONDS = 420;
@@ -40,11 +44,6 @@ interface ClipBuffer {
   endSeconds: number;
 }
 
-interface GainPoint {
-  t: number;
-  v: number;
-}
-
 type Phase = "idle" | "preparing" | "ready" | "playing" | "error";
 
 function readHeapBytes(): number | null {
@@ -65,44 +64,6 @@ function formatSeconds(seconds: number): string {
   const minutes = Math.floor(total / 60);
   const rest = total - minutes * 60;
   return `${minutes}:${rest.toFixed(2).padStart(5, "0")}`;
-}
-
-// Gain automation breakpoints for one item, in absolute timeline seconds,
-// mirroring the worker's sequential afade pair: the incoming item owns the
-// crossfade (0 -> 1 over its own crossfadeSeconds) and fades out over the
-// successor's crossfadeSeconds window.
-function gainPoints(
-  item: ArrangementTimelineItem,
-  nextItem: ArrangementTimelineItem | null,
-): GainPoint[] {
-  const itemEnd = item.startSeconds + item.durationSeconds;
-  const points: GainPoint[] = [];
-  if (item.crossfadeSeconds > 0) {
-    points.push({ t: item.startSeconds, v: 0 });
-    points.push({ t: item.startSeconds + item.crossfadeSeconds, v: 1 });
-  } else {
-    points.push({ t: item.startSeconds, v: 1 });
-  }
-  if (nextItem && nextItem.crossfadeSeconds > 0) {
-    points.push({ t: itemEnd - nextItem.crossfadeSeconds, v: 1 });
-    points.push({ t: itemEnd, v: 0 });
-  }
-  points.sort((a, b) => a.t - b.t);
-  return points;
-}
-
-function gainValueAt(points: GainPoint[], t: number): number {
-  if (points.length === 0) return 1;
-  if (t <= points[0].t) return points[0].v;
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const next = points[i];
-    if (t <= next.t) {
-      if (next.t === prev.t) return next.v;
-      return prev.v + ((next.v - prev.v) * (t - prev.t)) / (next.t - prev.t);
-    }
-  }
-  return points[points.length - 1].v;
 }
 
 export function PreviewLatencyClient({
@@ -164,15 +125,25 @@ export function PreviewLatencyClient({
         const itemEnd = item.startSeconds + item.durationSeconds;
         if (itemEnd <= position) return;
 
-        const gain = ctx.createGain();
-        gain.connect(ctx.destination);
-
-        const points = gainPoints(item, timeline.items[index + 1] ?? null);
-        gain.gain.setValueAtTime(gainValueAt(points, position), now);
-        for (const point of points) {
-          if (point.t <= position) continue;
-          gain.gain.linearRampToValueAtTime(point.v, now + (point.t - position));
-        }
+        // Two nodes in series MULTIPLY the envelopes, matching the worker's
+        // two sequential afade filters: a short item can carry an incoming
+        // fade and a successor-owned outgoing fade whose windows overlap.
+        const gainIn = ctx.createGain();
+        const gainOut = ctx.createGain();
+        gainIn.connect(gainOut);
+        gainOut.connect(ctx.destination);
+        scheduleEnvelope(
+          gainIn.gain,
+          incomingEnvelope(item),
+          position,
+          now,
+        );
+        scheduleEnvelope(
+          gainOut.gain,
+          outgoingEnvelope(item, timeline.items[index + 1] ?? null),
+          position,
+          now,
+        );
 
         const clipBuffers = clipBuffersRef.current[index] ?? [];
         for (const clip of clipBuffers) {
@@ -188,12 +159,12 @@ export function PreviewLatencyClient({
           if (duration <= 0) continue;
           const source = ctx.createBufferSource();
           source.buffer = clip.buffer;
-          source.connect(gain);
+          source.connect(gainIn);
           source.start(now + Math.max(0, clip.startSeconds - position), offsetInClip, duration);
           sources.push(source);
         }
 
-        gains.push(gain);
+        gains.push(gainIn, gainOut);
       });
 
       nodesRef.current = { sources, gains };
