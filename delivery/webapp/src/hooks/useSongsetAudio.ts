@@ -1,29 +1,14 @@
 "use client";
 
 /**
- * React binding for the whole-Songset arrangement preview transport
- * (issue #286, spec specs/song_arrangement_editor.md §5.11).
+ * React binding for the browser Songset audio transport (spec §3.5).
  *
- * The Sheet owns translations and builds the `TimelineItemSource[]` inputs
- * (draft serialized for the selected item, raw persisted arrangement strings
- * for saved siblings). This hook owns:
- * - preview session lifecycle: created on the first Play (elements are created
- *   only then — never at sheet open), fully torn down on stop, on any
- *   timeline-input change (draft mutation), on active=false, and on unmount;
- * - the global AudioPlayerContext stop(): starting a preview explicitly stops
- *   the shared player so the two transports never mix. The preview never
- *   creates an AudioTrack, never calls the global play(), and therefore can
- *   never write Completion (markSongCompleted).
- * - error/fallback surfacing: `onPreviewError` for no-recording /
- *   invalid-arrangement / playback-failed, `onFallbackNotice` for the iOS
- *   silent-output crossfade fallback.
- *
- * State is keyed by the serialized timeline inputs; a teardown triggered by
- * an input change masks the previous session's view instead of writing state
- * from an effect (React: no cascading renders from effects). Closing the
- * sheet is the one exception: the transport state must actually become idle,
- * because the next open reuses the same key and would otherwise render the
- * torn-down session as still playing.
+ * Lifecycle preserves the prior editor transport contract: the session is
+ * created on the first `play`, torn down on
+ * `itemsKey` change (`JSON.stringify(items)`), on `active=false`, and on
+ * unmount; `player.stop()` runs before the session starts; errors flow through
+ * a latest-ref and are reported once per distinct error object. The new engine
+ * adds byte-level `progress`, which is snapshotted on every state change.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,114 +17,108 @@ import {
   type TimelineItemSource,
 } from "@/lib/arrangements";
 import {
-  createArrangementPreviewSession,
-  validateArrangementPreviewSources,
-  type ArrangementPreviewError,
-  type ArrangementPreviewSession,
-} from "@/lib/audio/arrangement-preview";
+  createSongsetAudioSession,
+  validateSongsetAudioSources,
+  type SongsetAudioError,
+  type SongsetAudioProgress,
+  type SongsetAudioSession,
+} from "@/lib/audio/songset-audio";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 
-// The Sheet consumes the error contract from this hook module (single import
-// surface for the editor sheet); it re-exports the transport's error types.
+// The Listen dialog and the editor sheet keep one import surface for the
+// transport's error contract.
 export type {
-  ArrangementPreviewError,
-  ArrangementPreviewErrorKind,
-} from "@/lib/audio/arrangement-preview";
+  SongsetAudioError,
+  SongsetAudioErrorKind,
+} from "@/lib/audio/songset-audio";
 
-export type ArrangementPreviewStatus =
+export type SongsetAudioStatus =
   | "idle"
   | "loading"
   | "playing"
   | "paused"
   | "error";
 
-export interface UseArrangementPreviewOptions {
-  /** Timeline inputs in Songset order; the selected item carries the draft. */
+export interface UseSongsetAudioOptions {
+  /** Timeline inputs in Songset order. */
   items: TimelineItemSource[];
-  /** False when the sheet is closed or preview is disabled; tears down. */
+  /** False when the dialog is closed; tears the session down. */
   active: boolean;
-  onPreviewError: (error: ArrangementPreviewError) => void;
-  onFallbackNotice: () => void;
+  onPreviewError: (error: SongsetAudioError) => void;
 }
 
-export interface UseArrangementPreviewResult {
-  status: ArrangementPreviewStatus;
+export interface UseSongsetAudioResult {
+  status: SongsetAudioStatus;
   errorMessage: string | null;
   timelinePositionSeconds: number;
   totalSeconds: number;
+  /** Snapshot of the session's in-flight prepare state, or null. */
+  progress: SongsetAudioProgress | null;
   play: () => Promise<void>;
   pause: () => void;
   stop: () => void;
   seek: (seconds: number) => void;
-  startAt: (itemId: string) => Promise<void>;
-  /**
-   * Audition from an absolute timeline position. The Sheet opens a section or
-   * song window with this; the window END is enforced by the caller (the
-   * transport itself always owns the full Songset timeline).
-   */
   startAtSeconds: (seconds: number) => Promise<void>;
-  isFallbackMode: boolean;
+  /** Recreates the session at the current position and replays. */
+  retry: () => Promise<void>;
 }
 
-interface ArrangementPreviewHookState {
+interface SongsetAudioHookState {
   /** Serialized `items` the state belongs to; stale keys render as idle. */
   key: string;
-  status: ArrangementPreviewStatus;
+  status: SongsetAudioStatus;
   errorMessage: string | null;
   timelinePositionSeconds: number;
-  isFallbackMode: boolean;
+  progress: SongsetAudioProgress | null;
 }
 
-function idleState(key: string): ArrangementPreviewHookState {
+function idleState(key: string): SongsetAudioHookState {
   return {
     key,
     status: "idle",
     errorMessage: null,
     timelinePositionSeconds: 0,
-    isFallbackMode: false,
+    progress: null,
   };
 }
 
-/** Carries keyboard state forward only while it belongs to the same inputs. */
+/** Carries playback state forward only while it belongs to the same inputs. */
 function baseState(
-  previous: ArrangementPreviewHookState,
+  previous: SongsetAudioHookState,
   key: string,
-): ArrangementPreviewHookState {
+): SongsetAudioHookState {
   return previous.key === key ? previous : idleState(key);
 }
 
-export function useArrangementPreview(
-  options: UseArrangementPreviewOptions,
-): UseArrangementPreviewResult {
+export function useSongsetAudio(
+  options: UseSongsetAudioOptions,
+): UseSongsetAudioResult {
   const { items, active } = options;
   const player = useAudioPlayerContext();
 
   // Latest-ref pattern: async transport callbacks must not capture stale
   // render closures.
   const onPreviewErrorRef = useRef(options.onPreviewError);
-  const onFallbackNoticeRef = useRef(options.onFallbackNotice);
   useEffect(() => {
     onPreviewErrorRef.current = options.onPreviewError;
-    onFallbackNoticeRef.current = options.onFallbackNotice;
   });
 
   // Content identity: reorder/repeat/omit changes this string, which must
-  // stop the preview (spec: draft mutation stops preview) even though the
-  // Sheet may hand over a fresh array on unrelated renders.
+  // stop the session even though callers may hand over a fresh array on
+  // unrelated renders.
   const itemsKey = useMemo(() => JSON.stringify(items), [items]);
   const timeline = useMemo(() => buildArrangementTimeline(items), [items]);
   const validationError = useMemo(
-    () => validateArrangementPreviewSources(items),
+    () => validateSongsetAudioSources(items),
     [items],
   );
 
-  const [state, setState] = useState<ArrangementPreviewHookState>(() =>
+  const [state, setState] = useState<SongsetAudioHookState>(() =>
     idleState(itemsKey),
   );
-  const sessionRef = useRef<ArrangementPreviewSession | null>(null);
+  const sessionRef = useRef<SongsetAudioSession | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  const reportedErrorRef = useRef<ArrangementPreviewError | null>(null);
-  const reportedFallbackRef = useRef(false);
+  const reportedErrorRef = useRef<SongsetAudioError | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const playInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -150,16 +129,14 @@ export function useArrangementPreview(
     sessionRef.current?.stop();
     sessionRef.current = null;
     reportedErrorRef.current = null;
-    reportedFallbackRef.current = false;
     pendingSeekRef.current = null;
     playInFlightRef.current = null;
   }, []);
 
   const attachSession = useCallback(
-    (session: ArrangementPreviewSession, key: string) => {
+    (session: SongsetAudioSession, key: string) => {
       sessionRef.current = session;
       reportedErrorRef.current = null;
-      reportedFallbackRef.current = false;
       unsubscribeRef.current = session.onStateChange(() => {
         if (sessionRef.current !== session) return;
         const failure = session.getError();
@@ -167,14 +144,9 @@ export function useArrangementPreview(
           reportedErrorRef.current = failure;
           onPreviewErrorRef.current(failure);
         }
-        const fallback = session.isFallbackMode();
-        if (fallback && !reportedFallbackRef.current) {
-          reportedFallbackRef.current = true;
-          onFallbackNoticeRef.current();
-        }
         setState((previous) => {
           const base = baseState(previous, key);
-          let status: ArrangementPreviewStatus;
+          let status: SongsetAudioStatus;
           if (failure) status = "error";
           else if (base.status === "loading") status = "loading";
           else status = session.isPlaying() ? "playing" : "paused";
@@ -183,7 +155,7 @@ export function useArrangementPreview(
             status,
             errorMessage: failure ? failure.message : base.errorMessage,
             timelinePositionSeconds: session.getTimelinePositionSeconds(),
-            isFallbackMode: fallback,
+            progress: session.getProgress(),
           };
         });
       });
@@ -197,8 +169,8 @@ export function useArrangementPreview(
     if (sessionRef.current?.isPlaying()) return;
 
     // Reject before playback: missing recording / invalid sibling
-    // arrangement. Never substitute original audio, never create elements.
-    const validation = validateArrangementPreviewSources(items);
+    // arrangement. Never create a session or start a fetch.
+    const validation = validateSongsetAudioSources(items);
     if (validation) {
       onPreviewErrorRef.current(validation);
       setState({
@@ -209,8 +181,8 @@ export function useArrangementPreview(
       return;
     }
 
-    // Starting preview explicitly stops the global player: the preview is not
-    // a "song" track and must never share the global transport.
+    // Starting the Listen transport explicitly stops the global player: the
+    // two transports must never sound together.
     player.stop();
 
     let session = sessionRef.current;
@@ -224,7 +196,7 @@ export function useArrangementPreview(
       session = null;
     }
     if (!session) {
-      session = createArrangementPreviewSession(items);
+      session = createSongsetAudioSession(items);
       attachSession(session, itemsKey);
       const pending = pendingSeekRef.current;
       pendingSeekRef.current = null;
@@ -237,6 +209,7 @@ export function useArrangementPreview(
       ...baseState(previous, itemsKey),
       status: "loading",
       errorMessage: null,
+      progress: currentSession.getProgress(),
     }));
 
     const run = (async () => {
@@ -246,44 +219,37 @@ export function useArrangementPreview(
         if (sessionRef.current !== currentSession) return;
         // Contained rejection: a throwing play() must surface as a reported
         // failure, never an unhandled rejection stuck on "loading".
-        const failure: ArrangementPreviewError = currentSession.getError() ?? {
+        const failure: SongsetAudioError = currentSession.getError() ?? {
           kind: "playback-failed",
           itemId: null,
           message:
-            err instanceof Error ? err.message : "Preview playback failed",
+            err instanceof Error ? err.message : "Songset playback failed",
         };
         if (reportedErrorRef.current !== failure) {
           reportedErrorRef.current = failure;
           onPreviewErrorRef.current(failure);
         }
-        setState((previous) => {
-          const base = baseState(previous, itemsKey);
-          return {
-            key: itemsKey,
-            status: "error",
-            errorMessage: failure.message,
-            timelinePositionSeconds: currentSession.getTimelinePositionSeconds(),
-            isFallbackMode:
-              currentSession.isFallbackMode() || base.isFallbackMode,
-          };
+        setState({
+          key: itemsKey,
+          status: "error",
+          errorMessage: failure.message,
+          timelinePositionSeconds: currentSession.getTimelinePositionSeconds(),
+          progress: currentSession.getProgress(),
         });
-        return;
+        throw err;
       }
       if (sessionRef.current !== currentSession) return;
       const failure = currentSession.getError();
-      setState((previous) => {
-        const base = baseState(previous, itemsKey);
-        return {
-          key: itemsKey,
-          status: failure
-            ? "error"
-            : currentSession.isPlaying()
-              ? "playing"
-              : "paused",
-          errorMessage: failure ? failure.message : null,
-          timelinePositionSeconds: currentSession.getTimelinePositionSeconds(),
-          isFallbackMode: currentSession.isFallbackMode() || base.isFallbackMode,
-        };
+      setState({
+        key: itemsKey,
+        status: failure
+          ? "error"
+          : currentSession.isPlaying()
+            ? "playing"
+            : "paused",
+        errorMessage: failure ? failure.message : null,
+        timelinePositionSeconds: currentSession.getTimelinePositionSeconds(),
+        progress: currentSession.getProgress(),
       });
     })();
     playInFlightRef.current = run;
@@ -308,6 +274,7 @@ export function useArrangementPreview(
         status: failure ? "error" : "paused",
         errorMessage: failure ? failure.message : base.errorMessage,
         timelinePositionSeconds: session.getTimelinePositionSeconds(),
+        progress: session.getProgress(),
       };
     });
   }, [itemsKey]);
@@ -332,6 +299,7 @@ export function useArrangementPreview(
         setState((previous) => ({
           ...baseState(previous, itemsKey),
           timelinePositionSeconds: session.getTimelinePositionSeconds(),
+          progress: session.getProgress(),
         }));
       } else {
         pendingSeekRef.current = target;
@@ -344,26 +312,6 @@ export function useArrangementPreview(
     [itemsKey, timeline.totalSeconds],
   );
 
-  const startAt = useCallback(
-    async (itemId: string) => {
-      const item = timeline.items.find((entry) => entry.itemId === itemId);
-      if (!item) {
-        onPreviewErrorRef.current({
-          kind: "playback-failed",
-          itemId,
-          message: `Unknown arrangement item ${itemId}`,
-        });
-        return;
-      }
-      // "Start here": audition from that item's start, playing if idle/paused.
-      seek(item.startSeconds);
-      if (!sessionRef.current?.isPlaying()) {
-        await play();
-      }
-    },
-    [timeline, seek, play],
-  );
-
   const startAtSeconds = useCallback(
     async (seconds: number) => {
       seek(seconds);
@@ -374,8 +322,18 @@ export function useArrangementPreview(
     [seek, play],
   );
 
-  // Timeline-input change, sheet close, and unmount are the full-cleanup
-  // triggers: timers, listeners, elements, graph, AudioContext.
+  const retry = useCallback(async () => {
+    if (!active) return;
+    const position =
+      sessionRef.current?.getTimelinePositionSeconds() ??
+      state.timelinePositionSeconds;
+    teardown();
+    pendingSeekRef.current = position;
+    await play();
+  }, [active, play, state.timelinePositionSeconds, teardown]);
+
+  // Timeline-input change, dialog close, and unmount are the full-cleanup
+  // triggers: sources, ticker, buffers, and the session itself.
   useEffect(() => {
     teardown();
   }, [itemsKey, teardown]);
@@ -383,13 +341,13 @@ export function useArrangementPreview(
   useEffect(() => {
     if (active) return;
     teardown();
-    // Closing the sheet must leave a replayable idle view; a stale "playing"
-    // status would make the reopened sheet claim audio it already tore down.
+    // Closing the dialog must leave a replayable idle view; a stale "playing"
+    // status would make the reopened dialog claim audio it already tore down.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the reset is the point of reopening correctly; no render-derived alternative survives a prop flip back to active
     setState((previous) =>
       previous.key === itemsKey && previous.status !== "idle"
         ? idleState(itemsKey)
-        : previous
+        : previous,
     );
   }, [active, itemsKey, teardown]);
 
@@ -407,12 +365,12 @@ export function useArrangementPreview(
     errorMessage: isLive ? state.errorMessage : null,
     timelinePositionSeconds: isLive ? state.timelinePositionSeconds : 0,
     totalSeconds: validationError ? 0 : timeline.totalSeconds,
+    progress: isLive ? state.progress : null,
     play,
     pause,
     stop,
     seek,
-    startAt,
     startAtSeconds,
-    isFallbackMode: isLive ? state.isFallbackMode : false,
+    retry,
   };
 }

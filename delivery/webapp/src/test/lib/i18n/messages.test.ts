@@ -21,6 +21,41 @@ describe("i18n messages", () => {
     }
   });
 
+  it("defines every Listen dialog key in both locales (issue #297)", () => {
+    const listenKeys = [
+      "songsets.action.listen",
+      "songsets.listen.title",
+      "songsets.listen.loading",
+      "songsets.listen.loadingIndeterminate",
+      "songsets.listen.preparingNext",
+      "songsets.listen.localNotice",
+      "songsets.listen.untitled",
+      "songsets.listen.action.play",
+      "songsets.listen.action.pause",
+      "songsets.listen.action.retry",
+      "songsets.listen.action.close",
+      "songsets.listen.seekAria",
+      "songsets.listen.markersAria",
+      "songsets.listen.currentItem",
+      "songsets.listen.error.noRecording",
+      "songsets.listen.error.invalidArrangement",
+      "songsets.listen.error.deletedRecording",
+      "songsets.listen.error.playbackFailed",
+      "songsets.listen.error.notFound",
+      "songsets.listen.error.build",
+      "songsets.listen.error.renderHint",
+    ];
+
+    for (const locale of LOCALES) {
+      for (const key of listenKeys) {
+        expect(
+          messages[locale][key as keyof typeof messages.en],
+          `${locale}:${key}`
+        ).toBeTruthy();
+      }
+    }
+  });
+
   it("throws when a key is duplicated across bundles (no silent overwrite)", () => {
     const a = bundle({ en: { dup: "a" }, "zh-Hant": { dup: "a" } });
     const b = bundle({ en: { dup: "b" }, "zh-Hant": { dup: "b" } });

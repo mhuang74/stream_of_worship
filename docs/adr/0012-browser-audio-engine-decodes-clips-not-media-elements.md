@@ -1,0 +1,15 @@
+# The browser audio engine decodes clips, not media elements
+
+Songset Audition uses `decodeAudioData` for one Recording at a time, copies each arranged source range into its own small `AudioBuffer`, and schedules those clip buffers with clock-scheduled `AudioBufferSourceNode`s. Every item is routed through two GainNodes in series (`source → gainIn → gainOut → destination`) so the incoming item's fade-in and the successor-owned fade-out compose by multiplication, exactly like the render worker's two sequential `afade` filters.
+
+We chose decoding over streaming `<audio>` elements because the previous element transport was the source of the fallback mode, analyser/RMS probing, and crossfade approximation it needed to survive iOS silent-output failures. Decoded clips remove that entire branch: there is no `MediaElementAudioSourceNode`, no analyser/RMS fallback, and no per-item element lifecycle. The transport is one AudioContext clock schedule, so seek, pause, and prepare-ahead are ordinary node teardown and re-scheduling rather than element-time reconciliation. Arranged ranges are copied out of the decoded Recording, so a prepared item keeps only the audio it will actually play; the full decoded buffer is dropped after extraction and is never retained.
+
+The cost is bounded, transient memory. The probe played a real Songset through the browser engine: 2 items, 253.03 s, 10.0 MB of MP3, desktop Chrome. Time to first sample was 2.3–5.0 s; preparing every item took 5–8 s. Transient decoded PCM peaked at 147 MB while one Recording was decoded, and the retained clip buffers were 84.7 MB. Gain composition was verified numerically: two series gain nodes per item, with the envelope product matching the worker's sequential `afade` pair. MP3 decode proved transparent, and the only audible difference against a Render is loudness because no `loudnorm` is applied.
+
+Memory is bounded by a 480 s retained-clip budget with eviction of items whose timeline end has passed. The budget is a soft target, never an admission rule: eviction runs before preparing the next item, never evicts the item at the current position, a later item, or the last remaining item, and an item longer than 480 s still prepares and plays (its retained total simply stays over budget). There is no server-side cache and no loudness normalization. A Songset whose total clip PCM exceeds the budget does not fail admission; memory pressure surfaces as a decode or tab failure through the `playback-failed` path.
+
+## Considered options
+
+- Streaming media elements with one `<audio>` and `MediaElementAudioSourceNode` per item — rejected: retains the iOS silent-output detector and crossfade-approximation fallback, and couples seek/prepare to element time.
+- A server-side pre-built clip cache — rejected: adds storage, invalidation on arrangement edits, and a network round trip before the first sample; the browser can copy decoded ranges cheaply.
+- Loudness normalization in the browser — rejected: normalization needs the whole Songset's measured loudness and duplicates Render work; the Listen action explicitly accepts Render-relative loudness differences.

@@ -20,7 +20,8 @@ describe("SongsetRow", () => {
     lastCompletedRenderJobId: "render-job-1",
     latestRenderJobId: "render-job-1",
     onRender: vi.fn(),
-    onPlay: vi.fn(),
+    onWorshipPlayback: vi.fn(),
+    onListen: vi.fn(),
     onRetry: vi.fn(),
     onRename: vi.fn(),
     onDuplicate: vi.fn(),
@@ -108,17 +109,17 @@ describe("SongsetRow", () => {
     });
 
     it("tooltip interaction does not trigger row navigation", () => {
-      const onPlay = vi.fn();
+      const onWorshipPlayback = vi.fn();
       renderRow({
         renderState: "failed" as RenderState,
         renderErrorMessage: "FFmpeg crashed",
         failedAt: new Date("2024-06-15T10:30:00Z"),
-        onPlay,
+        onWorshipPlayback,
       });
       const trigger = screen.getByText("Render failed").closest("button")!;
       fireEvent.focus(trigger);
       fireEvent.click(trigger);
-      expect(onPlay).not.toHaveBeenCalled();
+      expect(onWorshipPlayback).not.toHaveBeenCalled();
     });
   });
 
@@ -368,7 +369,8 @@ describe("SongsetRow", () => {
         expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
         expect(screen.getByRole("menuitem", { name: /duplicate/i })).toBeInTheDocument();
         expect(screen.getByRole("menuitem", { name: /render/i })).toBeInTheDocument();
-        expect(screen.getByRole("menuitem", { name: /play/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /worship/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /^listen$/i })).toBeInTheDocument();
         expect(screen.getByRole("menuitem", { name: /share/i })).toBeInTheDocument();
         expect(screen.getByRole("menuitem", { name: /delete/i })).toBeInTheDocument();
       });
@@ -413,9 +415,41 @@ describe("SongsetRow", () => {
       expect(defaultProps.onDelete).toHaveBeenCalled();
     });
 
+    it("places the Listen menu item directly below Worship", async () => {
+      renderRow();
+      await openMenu();
+
+      const labels = screen
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent?.trim() ?? "");
+      const worshipIndex = labels.findIndex((label) => /^worship$/i.test(label));
+      expect(worshipIndex).toBeGreaterThanOrEqual(0);
+      expect(labels[worshipIndex + 1]).toMatch(/^listen$/i);
+    });
+
+    it("calls onListen when Listen menu item clicked", async () => {
+      const onListen = vi.fn();
+      renderRow({ onListen });
+      await openMenu();
+
+      fireEvent.click(screen.getByRole("menuitem", { name: /^listen$/i }));
+
+      expect(onListen).toHaveBeenCalled();
+    });
+
+    it("hides the Listen menu item when onListen is undefined", async () => {
+      renderRow({ onListen: undefined });
+      await openMenu();
+
+      expect(
+        screen.queryByRole("menuitem", { name: /^listen$/i })
+      ).not.toBeInTheDocument();
+    });
+
     it("whitelisted menu shows only the allowed items", async () => {
       renderRow({
-        menuActions: ["play", "downloadOffline", "removeOffline"],
+        menuActions: ["worship", "listen", "downloadOffline", "removeOffline"],
+        onListen: vi.fn(),
         onDownloadOffline: vi.fn(),
         onRemoveOffline: vi.fn(),
         isOfflineAvailable: true,
@@ -425,7 +459,8 @@ describe("SongsetRow", () => {
       fireEvent.click(menuButton);
 
       await waitFor(() => {
-        expect(screen.getByRole("menuitem", { name: /^play/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /^worship/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /^listen$/i })).toBeInTheDocument();
         // Stale copy ⇒ re-download variant replaces Remove's slot.
         expect(screen.getByRole("menuitem", { name: /re-download for offline/i })).toBeInTheDocument();
       });
@@ -439,7 +474,7 @@ describe("SongsetRow", () => {
 
     it("removeOffline excluded from whitelist hides remove item", async () => {
       renderRow({
-        menuActions: ["play"],
+        menuActions: ["worship"],
         isOfflineAvailable: true,
         onRemoveOffline: vi.fn(),
       });
@@ -447,7 +482,7 @@ describe("SongsetRow", () => {
       fireEvent.click(menuButton);
 
       await waitFor(() => {
-        expect(screen.getByRole("menuitem", { name: /^play/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /^worship/i })).toBeInTheDocument();
       });
       expect(
         screen.queryByRole("menuitem", { name: /remove from offline/i })
@@ -462,65 +497,99 @@ describe("SongsetRow", () => {
     });
   });
 
-  describe("prominent Play button", () => {
-    it("shows prominent Play button when renderState is fresh and lastCompletedRenderJobId exists", () => {
+  describe("prominent Worship button", () => {
+    it("shows prominent Worship button when renderState is fresh and lastCompletedRenderJobId exists", () => {
       renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1" });
-      const playButtons = screen.getAllByRole("button", { name: /^play$/i });
-      expect(playButtons.length).toBe(1);
+      const worshipButtons = screen.getAllByRole("button", { name: /^worship$/i });
+      expect(worshipButtons.length).toBe(1);
     });
 
-    it("does not show prominent Play button when lastCompletedRenderJobId is null", () => {
+    it("does not show prominent Worship button when lastCompletedRenderJobId is null", () => {
       renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: null });
-      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
-      expect(playButtons.length).toBe(0);
+      const worshipButtons = screen.queryAllByRole("button", { name: /^worship$/i });
+      expect(worshipButtons.length).toBe(0);
     });
 
-    it("does not show prominent Play button when renderState is stale", () => {
+    it("does not show prominent Worship button when renderState is stale", () => {
       renderRow({ renderState: "stale" as RenderState, lastCompletedRenderJobId: "render-job-1" });
-      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
-      expect(playButtons.length).toBe(0);
+      const worshipButtons = screen.queryAllByRole("button", { name: /^worship$/i });
+      expect(worshipButtons.length).toBe(0);
     });
 
-    it("does not show prominent Play button when renderState is unrendered", () => {
+    it("does not show prominent Worship button when renderState is unrendered", () => {
       renderRow({ renderState: "unrendered" as RenderState, lastCompletedRenderJobId: null });
-      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
-      expect(playButtons.length).toBe(0);
+      const worshipButtons = screen.queryAllByRole("button", { name: /^worship$/i });
+      expect(worshipButtons.length).toBe(0);
     });
 
-    it("does not show prominent Play button when renderState is rendering", () => {
+    it("does not show prominent Worship button when renderState is rendering", () => {
       renderRow({ renderState: "rendering" as RenderState, lastCompletedRenderJobId: null });
-      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
-      expect(playButtons.length).toBe(0);
+      const worshipButtons = screen.queryAllByRole("button", { name: /^worship$/i });
+      expect(worshipButtons.length).toBe(0);
     });
 
-    it("does not show prominent Play button when renderState is failed", () => {
+    it("does not show prominent Worship button when renderState is failed", () => {
       renderRow({ renderState: "failed" as RenderState, lastCompletedRenderJobId: null });
-      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
-      expect(playButtons.length).toBe(0);
+      const worshipButtons = screen.queryAllByRole("button", { name: /^worship$/i });
+      expect(worshipButtons.length).toBe(0);
     });
 
-    it("does not show prominent Play button when onPlay is undefined", () => {
-      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1", onPlay: undefined });
-      const playButtons = screen.queryAllByRole("button", { name: /^play$/i });
-      expect(playButtons.length).toBe(0);
+    it("does not show prominent Worship button when onWorshipPlayback is undefined", () => {
+      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1", onWorshipPlayback: undefined });
+      const worshipButtons = screen.queryAllByRole("button", { name: /^worship$/i });
+      expect(worshipButtons.length).toBe(0);
     });
 
-    it("calls onPlay when prominent Play button is clicked", () => {
-      const onPlay = vi.fn();
-      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1", onPlay });
-      const playButtons = screen.getAllByRole("button", { name: /^play$/i });
-      fireEvent.click(playButtons[0]);
-      expect(onPlay).toHaveBeenCalled();
+    it("calls onWorshipPlayback when prominent Worship button is clicked", () => {
+      const onWorshipPlayback = vi.fn();
+      renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1", onWorshipPlayback });
+      const worshipButtons = screen.getAllByRole("button", { name: /^worship$/i });
+      fireEvent.click(worshipButtons[0]);
+      expect(onWorshipPlayback).toHaveBeenCalled();
     });
 
-    it("kebab dropdown still contains Play menu item when prominent Play button is shown", async () => {
+    it("kebab dropdown still contains Worship menu item when prominent Worship button is shown", async () => {
       renderRow({ renderState: "fresh" as RenderState, lastCompletedRenderJobId: "render-job-1" });
       const menuButton = screen.getByRole("button", { name: /open menu/i });
       fireEvent.click(menuButton);
 
       await waitFor(() => {
-        expect(screen.getByRole("menuitem", { name: /play/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /worship/i })).toBeInTheDocument();
       });
+    });
+
+    it("shows the Listen button when onListen is set", () => {
+      renderRow({ renderState: "fresh" as RenderState, onListen: vi.fn() });
+
+      expect(screen.getByRole("button", { name: /^listen$/i })).toBeInTheDocument();
+    });
+
+    it("does not show the Listen button when onListen is undefined", () => {
+      renderRow({ renderState: "fresh" as RenderState, onListen: undefined });
+
+      expect(
+        screen.queryByRole("button", { name: /^listen$/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("places the Listen button directly below the prominent Worship button", () => {
+      renderRow({ renderState: "fresh" as RenderState });
+      const buttonNames = screen
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim());
+      const worshipIndex = buttonNames.findIndex((name) => /^worship$/i.test(name ?? ""));
+
+      expect(worshipIndex).toBeGreaterThanOrEqual(0);
+      expect(buttonNames[worshipIndex + 1]).toMatch(/^listen$/i);
+    });
+
+    it("calls onListen when the prominent Listen button is clicked", () => {
+      const onListen = vi.fn();
+      renderRow({ renderState: "fresh" as RenderState, onListen });
+
+      fireEvent.click(screen.getByRole("button", { name: /^listen$/i }));
+
+      expect(onListen).toHaveBeenCalled();
     });
   });
 

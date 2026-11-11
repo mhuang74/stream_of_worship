@@ -322,6 +322,8 @@ export interface SongsetItemDetail {
 
 export interface SongsetDetail extends SongsetListItem {
   items: SongsetItemDetail[];
+  /** Items whose Recording is soft-deleted and therefore filtered from `items`. */
+  deletedItemCount: number;
 }
 
 export interface RenderJobSummary {
@@ -895,6 +897,7 @@ export async function getSongsetEditorData(
       lastFailedRenderJobId: row.lastFailedRenderJobId,
       lastCompletedRenderJobId: row.lastCompletedRenderJobId,
       itemCount: items.length,
+      deletedItemCount: itemRows.length - visibleItemRows.length,
       durationSeconds:
         getSongsetDurationSeconds(
           items.map((item) =>
@@ -1148,6 +1151,7 @@ export async function getSongset(
     lastFailedRenderJobId: row.lastFailedRenderJobId,
     lastCompletedRenderJobId: row.lastCompletedRenderJobId,
     itemCount: items.length,
+    deletedItemCount: sortedItems.length - items.length,
     durationSeconds:
       getSongsetDurationSeconds(
         items.map((item) =>

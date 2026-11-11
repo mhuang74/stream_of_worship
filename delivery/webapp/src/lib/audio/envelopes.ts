@@ -1,9 +1,9 @@
-// PROTOTYPE (throwaway): envelope math for the spec
-// songset_preview_with_arrangement.md §6 local tier; delete before merge.
+// Production crossfade envelope math for the shared browser audio engine
+// (ADR-0012: browser audio engine decodes clips, not media elements).
 //
 // Two envelopes per item on TWO nodes in series, so they compose by
-// multiplication exactly like the worker's two sequential afade filters (see
-// lib/audio/arrangement-preview.ts scheduleGains). A single piecewise gain
+// multiplication exactly like the render worker's two sequential afade filters.
+// A single piecewise gain
 // cannot express the product: an item shorter than its own fade-in plus the
 // successor-owned fade-out would step to full volume mid-overlap.
 

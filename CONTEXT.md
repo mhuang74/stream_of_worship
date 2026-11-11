@@ -68,6 +68,14 @@ _Avoid_: tag, category, label
 A Songset Item's ordered, repeatable sequence of Arrangement Steps. An untouched item has no custom Song Arrangement; resetting restores the full Recording without creating a catalog Recording or reusable song variant.
 _Avoid_: song version, section sequence
 
+**Audition**:
+Browser-built playback of a Songset timeline from saved or draft arrangements; used while editing and by the Listen action; loudness differs from a Render because no loudness normalization is applied.
+_Avoid_: preview (unqualified), preview mix, client render
+
+**Worship Playback**:
+The two-screen controller experience for a completed Render, started from a Songset row's Worship action; distinct from the **Worship Page** at `/worship`, which lists Songsets.
+_Avoid_: play, playback page
+
 **Arrangement Step**:
 One use of a detected Recording section in a Song Arrangement. Repeating a section creates another Step without increasing the Songset's song count. A Step carries an optional `manualBounds` marker when the user reviewed and accepted its bounds. A Songset-local inferred Intro is also a Step: it has a null section index, starts at zero, and ends at the first LRC timestamp. Both the inferred Intro and manual bounds belong only to the Songset Item and are never written to catalog Recording analysis.
 _Avoid_: song version, section sequence

@@ -4,12 +4,13 @@ import { renderWithLocale as render } from "@/test/render";
 import { WorshipClient } from "@/app/worship/WorshipClient";
 import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
 import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
-const { mockListOfflineRecords, mockRemoveOfflineSongset, mockMatchCachedArtifact, mockDownloadOfflineArtifacts } =
+const { mockListOfflineRecords, mockRemoveOfflineSongset, mockMatchCachedArtifact, mockDownloadOfflineArtifacts, mockUnlockAudioContext } =
   vi.hoisted(() => ({
     mockListOfflineRecords: vi.fn<() => Promise<unknown>>(),
     mockRemoveOfflineSongset: vi.fn<() => Promise<void>>(),
     mockMatchCachedArtifact: vi.fn<() => Promise<unknown>>(),
     mockDownloadOfflineArtifacts: vi.fn<() => Promise<void>>(),
+    mockUnlockAudioContext: vi.fn(),
   }));
 
 vi.mock("@/lib/offline/offline-index", async (importOriginal) => {
@@ -36,6 +37,33 @@ vi.mock("@/lib/offline/download-offline", async (importOriginal) => {
     downloadOfflineArtifacts: mockDownloadOfflineArtifacts,
   };
 });
+
+vi.mock("@/lib/audio/audio-context", () => ({
+  unlockAudioContext: mockUnlockAudioContext,
+  getAudioContext: vi.fn(),
+}));
+
+vi.mock("@/components/songset/ListenMixDialog", () => ({
+  ListenMixDialog: (props: {
+    songsetId: string;
+    songsetName: string;
+    isOpen: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) =>
+    props.isOpen ? (
+      <div
+        data-testid="listen-dialog-mock"
+        data-songset-id={props.songsetId}
+        data-songset-name={props.songsetName}
+      >
+        <button
+          type="button"
+          data-testid="listen-dialog-close"
+          onClick={() => props.onOpenChange(false)}
+        />
+      </div>
+    ) : null,
+}));
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn() },
@@ -160,6 +188,68 @@ describe("WorshipClient (issue #211 follow-up descope)", () => {
     // Ready filter again hides it.
     fireEvent.click(screen.getByRole("button", { name: "Ready for Offline Worship" }));
     expect(screen.queryByText("Evening Prayer")).not.toBeInTheDocument();
+  });
+
+  it("offers Worship, Listen, Download offline and Remove offline in order and opens the Listen dialog", async () => {
+    mockedFetch.mockImplementation((url: string) => {
+      if (url === "/api/songsets?limit=100&offset=0") {
+        return Promise.resolve(
+          songsetListResponse(1, [
+            makeApiSongset({
+              id: "songset-1",
+              name: "Sunday Worship",
+              latestRenderJobId: "render-job-1",
+              lastCompletedRenderJobId: "render-job-1",
+            }),
+          ])
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${url}`));
+    });
+    // Cached copy trails the latest render ⇒ both offline actions render.
+    mockListOfflineRecords.mockResolvedValue([
+      makeRecord({ renderJobId: "old-render-job" }),
+    ]);
+    await confirmOnline();
+
+    render(<WorshipClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sunday Worship")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+
+    const labels = await waitFor(() => {
+      const items = screen.getAllByRole("menuitem");
+      expect(items).toHaveLength(4);
+      return items.map((item) => item.textContent?.trim() ?? "");
+    });
+    expect(labels).toEqual([
+      "Worship",
+      "Listen",
+      "Re-download for Offline",
+      "Remove from offline",
+    ]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /^listen$/i }));
+
+    expect(mockUnlockAudioContext).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
+      "data-songset-id",
+      "songset-1"
+    );
+    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
+      "data-songset-name",
+      "Sunday Worship"
+    );
+
+    fireEvent.click(screen.getByTestId("listen-dialog-close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("listen-dialog-mock")
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("marks a downloaded row stale when the cached renderJobId trails the server's latest render", async () => {
@@ -323,7 +413,7 @@ describe("WorshipClient (issue #211 follow-up descope)", () => {
     await waitFor(() => {
       expect(screen.getByText("Evening Prayer")).toBeInTheDocument();
     });
-    // Audio-only render: no Play action (online load would reject with
+    // Audio-only render: no Worship action (online load would reject with
     // "No video available"), so the row is filtered out entirely.
     expect(screen.queryByText("Audio Only Set")).not.toBeInTheDocument();
   });

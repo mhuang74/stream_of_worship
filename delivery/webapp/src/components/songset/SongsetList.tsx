@@ -42,7 +42,8 @@ interface SongsetListProps {
   error?: string | null;
   onCreateSongset?: (name: string, description?: string) => Promise<void>;
   onRender?: (id: string) => void;
-  onPlay?: (id: string) => void;
+  onWorshipPlayback?: (id: string) => void;
+  onListen?: (id: string) => void;
   onRetry?: (id: string) => void;
   onRename?: (id: string, name: string) => Promise<void>;
   onDuplicate?: (id: string) => Promise<void>;
@@ -69,7 +70,8 @@ export function SongsetList({
   error = null,
   onCreateSongset,
   onRender,
-  onPlay,
+  onWorshipPlayback,
+  onListen,
   onRetry,
   onRename,
   onDuplicate,
@@ -351,7 +353,8 @@ export function SongsetList({
             key={songset.id}
             {...songset}
             onRender={() => onRender?.(songset.id)}
-            onPlay={() => onPlay?.(songset.id)}
+            onWorshipPlayback={() => onWorshipPlayback?.(songset.id)}
+            onListen={onListen ? () => onListen(songset.id) : undefined}
             onRetry={() => onRetry?.(songset.id)}
             onRename={() => openRenameDialog(songset.id, songset.name)}
             onDuplicate={() => onDuplicate?.(songset.id)}

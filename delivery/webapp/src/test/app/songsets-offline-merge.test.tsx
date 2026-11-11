@@ -10,6 +10,7 @@ const {
   mockListOfflineRecords,
   mockRemoveOfflineSongset,
   mockDownloadOfflineArtifacts,
+  mockUnlockAudioContext,
   toastLoading,
   toastSuccess,
   toastError,
@@ -17,6 +18,7 @@ const {
   mockListOfflineRecords: vi.fn<() => Promise<unknown>>(),
   mockRemoveOfflineSongset: vi.fn<() => Promise<void>>(),
   mockDownloadOfflineArtifacts: vi.fn<() => Promise<void>>(),
+  mockUnlockAudioContext: vi.fn(),
   toastLoading: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -41,6 +43,33 @@ vi.mock("@/lib/offline/download-offline", async (importOriginal) => {
 
 vi.mock("sonner", () => ({
   toast: { success: toastSuccess, error: toastError, loading: toastLoading },
+}));
+
+vi.mock("@/lib/audio/audio-context", () => ({
+  unlockAudioContext: mockUnlockAudioContext,
+  getAudioContext: vi.fn(),
+}));
+
+vi.mock("@/components/songset/ListenMixDialog", () => ({
+  ListenMixDialog: (props: {
+    songsetId: string;
+    songsetName: string;
+    isOpen: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) =>
+    props.isOpen ? (
+      <div
+        data-testid="listen-dialog-mock"
+        data-songset-id={props.songsetId}
+        data-songset-name={props.songsetName}
+      >
+        <button
+          type="button"
+          data-testid="listen-dialog-close"
+          onClick={() => props.onOpenChange(false)}
+        />
+      </div>
+    ) : null,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -155,6 +184,40 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     });
     fireEvent.click(menuButton);
   }
+
+  it("opens the keyed Listen dialog for a row and unlocks audio synchronously", async () => {
+    renderClient();
+
+    // The mount fetch swaps rows for the skeleton and back; click only once
+    // a Listen button has survived a real tick.
+    await waitFor(async () => {
+      const button = screen.getByRole("button", { name: "Listen" });
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 10);
+      await promise;
+      expect(button.isConnected).toBe(true);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+
+    // The unlock happens in the click handler, not after an await.
+    expect(mockUnlockAudioContext).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
+      "data-songset-id",
+      "songset-1"
+    );
+    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
+      "data-songset-name",
+      "Sunday Worship"
+    );
+
+    fireEvent.click(screen.getByTestId("listen-dialog-close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("listen-dialog-mock")
+      ).not.toBeInTheDocument();
+    });
+  });
 
   it("merges index records so rows with a record show the offline badge", async () => {
     mockListOfflineRecords.mockResolvedValue([makeRecord()]);
@@ -303,7 +366,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     await confirmOnline();
     mockDownloadOfflineArtifacts.mockResolvedValue(undefined);
     renderClient();
-    const playButton = await screen.findByRole("button", { name: "Play" });
+    const playButton = await screen.findByRole("button", { name: "Worship" });
     await openRowMenu();
     await waitFor(() => {
       expect(
@@ -334,7 +397,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     await confirmOnline();
     mockDownloadOfflineArtifacts.mockRejectedValue(new Error("network down"));
     renderClient();
-    await screen.findByRole("button", { name: "Play" });
+    await screen.findByRole("button", { name: "Worship" });
 
     await openRowMenu();
     await waitFor(() => {
@@ -375,9 +438,9 @@ describe("SongsetsClient offline merge (issue #207)", () => {
   });
 
   // Fail toward offline (issue #211): probe unstubbed → Unknown, onLine
-  // false → definitive Offline. Play must take the deterministic
+  // false → definitive Offline. Worship must take the deterministic
   // full-document path, never SPA navigation.
-  it("offline Play is a full document navigation", async () => {
+  it("offline Worship is a full document navigation", async () => {
     const locationAssignMock = vi.fn();
     const locationReplaceMock = vi.fn();
     Object.defineProperty(window, "location", {
@@ -388,7 +451,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
     try {
       renderClient();
-      const playButton = await screen.findByRole("button", { name: "Play" });
+      const playButton = await screen.findByRole("button", { name: "Worship" });
       fireEvent.click(playButton);
       expect(locationAssignMock).toHaveBeenCalledWith(
         "/songsets/songset-1/play/controller"
@@ -403,7 +466,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
   // Cache-first entry (issue #211 follow-up): a row with an offline record
   // takes the full-document path even when positively online — the SW
   // serves the pre-cached controller document.
-  it("cached row Play is a full document navigation even when online", async () => {
+  it("cached row Worship is a full document navigation even when online", async () => {
     const locationAssignMock = vi.fn();
     const locationReplaceMock = vi.fn();
     Object.defineProperty(window, "location", {
@@ -413,7 +476,7 @@ describe("SongsetsClient offline merge (issue #207)", () => {
     const onLineDescriptor = Object.getOwnPropertyDescriptor(navigator, "onLine");
     try {
       renderClient();
-      const playButton = await screen.findByRole("button", { name: "Play" });
+      const playButton = await screen.findByRole("button", { name: "Worship" });
       fireEvent.click(playButton);
       expect(locationAssignMock).toHaveBeenCalledWith(
         "/songsets/songset-1/play/controller"

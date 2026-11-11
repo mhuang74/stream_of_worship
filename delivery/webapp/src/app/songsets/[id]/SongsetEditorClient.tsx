@@ -23,6 +23,8 @@ import { useSongsetListBack } from "@/hooks/useSongsetListBack";
 import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { removeOfflineSongset } from "@/lib/offline/offline-index";
 import { OfflineStatus } from "@/components/play/OfflineStatus";
+import { unlockAudioContext } from "@/lib/audio/audio-context";
+import { ListenMixDialog } from "@/components/songset/ListenMixDialog";
 
 /** R2 keys the offline download needs, fetched from the render job. */
 interface RenderJobR2Keys {
@@ -354,6 +356,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const error: string | null = null;
   const [isRemoving, setIsRemoving] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(searchParams.get("share") === "true");
+  const [isListenOpen, setIsListenOpen] = useState(false);
   const autoOpenDoneRef = useRef(false);
   const isShare = searchParams.get("share") === "true";
 
@@ -634,8 +637,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     router.push(`/songsets/${songsetId}/render`);
   }, [songsetId, router]);
 
-  // Handle play
-  const handlePlay = useCallback(() => {
+  // Handle worship playback
+  const handleWorshipPlayback = useCallback(() => {
     // Cached ⇒ offline copy (cache-first controller boot): a full document
     // navigation is deterministic regardless of connectivity — the SW
     // document route serves the pre-cached controller. Not positively
@@ -649,6 +652,14 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     }
     router.push(`/songsets/${songsetId}/play/controller`);
   }, [isOfflineAvailable, connectivity, songsetId, router]);
+
+  // Handle Listen: unlock the shared context inside the click, then open the
+  // dialog. The dialog reads saved arrangements, so unsaved sheet edits are
+  // not audible until Apply.
+  const handleListen = useCallback(() => {
+    unlockAudioContext();
+    setIsListenOpen(true);
+  }, []);
 
   // Handle retry
   const handleRetry = useCallback(() => {
@@ -858,7 +869,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         onUpdateTransition={handleUpdateTransition}
         onEditArrangement={setEditingArrangementItemId}
         onRender={handleRender}
-        onPlay={handlePlay}
+        onPlay={handleWorshipPlayback}
+        onListen={handleListen}
         onRetry={handleRetry}
         onUpdateDescription={handleUpdateDescription}
         onRename={handleUpdateName}
@@ -905,6 +917,13 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           onSave={handleSaveArrangement}
         />
       )}
+      <ListenMixDialog
+        key={songsetId}
+        songsetId={songsetId}
+        songsetName={songset.name}
+        isOpen={isListenOpen}
+        onOpenChange={setIsListenOpen}
+      />
       <ShareDialog
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}

@@ -51,8 +51,8 @@ Data path to the sheet: `lib/db/songsets.ts:422-423` parses `sections`/`beats` i
 |---|---|---|
 | `delivery/webapp/src/lib/arrangements.ts` | 520 | Canonical vocabulary for every layer: types `RecordingSection`, `ArrangementStep`, `SongArrangement` (`version: 1`), `ArrangementItemInput`, `ArrangementTimeline`, `TimelineItemSource`; constants `MAX_ARRANGEMENT_STEPS = 64`, `VALIDATION_TOLERANCE_SECONDS = 1e-6` (staleness tolerance used by `validateSongArrangement`), `ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE`; `parseRecordingSections`/`parseRecordingBeats`, `buildSnappedSteps`, `parseSongArrangement`, `validateSongArrangement` (codes `ANALYSIS_UNAVAILABLE` / `ARRANGEMENT_INVALID` / `ARRANGEMENT_STALE`), `getItemDurationSeconds`, `calculateGapSeconds`, `getSongsetDurationSeconds`, `buildArrangementTimeline` |
 | `delivery/webapp/src/lib/render/lrc-parser.ts` | 260 | LRC parsing (`parseLRC`, `isValidLRC`, `LRCLine`) plus `LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5` and `linesForSourceRange`, which owns the lyric-to-Section assignment rule shared (by value) with the render worker. Taking the draft's Steps as `siblings`, a range accepts a 0.5 s pre-start pickup and hands its own final 0.5 s to the Step starting at its end, so lines tile: none shown twice, none dropped at the recording's ends |
-| `delivery/webapp/src/lib/audio/arrangement-preview.ts` | 879 | Whole-Songset browser preview transport: streaming `<audio>` elements plus `AudioContext`, not `decodeAudioData` (25 min stereo ≈ 529 MB); `createArrangementPreviewSession`, `validateArrangementPreviewSources`; error kinds `no-recording` / `invalid-arrangement` / `playback-failed` |
-| `delivery/webapp/src/hooks/useArrangementPreview.ts` | 418 | React binding: session created on first Play, torn down on stop/close; state keyed by serialized timeline inputs; `startAtSeconds` opens a song/section window on the full timeline (the caller enforces the window end); surfaces preview errors and the iOS silent-output crossfade fallback |
+| `delivery/webapp/src/lib/audio/songset-audio.ts` | 860 | Whole-Songset browser playback engine: decoded-clip buffers scheduled on the shared `AudioContext` clock through a two-series-gain chain per item, matching the render worker's two sequential fades; bounded retained-PCM budget (480 s soft target) with oldest-first eviction; one fetch/decode in flight; error kinds `no-recording` / `invalid-arrangement` / `playback-failed`; see `docs/adr/0012-browser-audio-engine-decodes-clips-not-media-elements.md` |
+| `delivery/webapp/src/hooks/useSongsetAudio.ts` | 376 | React binding: session created on first Play, torn down on `active=false` or `items` change; surfaces `progress` snapshots, errors, and `retry()`; callers must `unlockAudioContext()` synchronously in the click handler |
 | `delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx` | 1463 | The editor UI: lyrics-first component blocks (label, source time range, per-Step lyric lines, per-Step Play/Pause), drag reorder, duplicate/remove, in-sheet undo (button + Ctrl/Cmd+Z), song-scoped preview rail with a 0–30 s lead-in (default 10 s), and Reset/Save emitting exactly one PUT (no autosave). Per-Step lines come from `linesForSourceRange` in `lib/render/lrc-parser.ts`. Test ids: `arrangement-draft-step`, `arrangement-section-play-*`, `arrangement-undo`, `arrangement-lead-in`, `arrangement-lyric-line` |
 | `delivery/webapp/src/components/songset/SongList.tsx` | 561 | Item-row surface: Arrange action (`onEditArrangement`) disabled when no saved arrangement and analysis unusable; Arranged badge; arranged duration (`data-testid="arranged-duration"`) or "Duration unavailable" (`arranged-invalid`) |
 | `delivery/webapp/src/components/songset/SongsetEditor.tsx` | 684 | Editor shell: derives `hasUnknownDuration` from `arrangedDurationSeconds`, blocks Render with a destructive alert when any arrangement is invalid/stale, forwards `onEditArrangement` |
@@ -95,7 +95,7 @@ flowchart LR
   db -->|getSongsetRenderMetrics<br/>validate every arrangement| render[api/render-jobs]
   render -->|409 ANALYSIS_UNAVAILABLE / STALE| renderPage[RenderPageClient toast]
   render -->|job| worker[pipeline.validate_arrangement<br/>render on new timeline]
-  sheet -->|buildArrangementTimeline<br/>song window + lead-in| preview[arrangement-preview.ts<br/>streaming audio elements]
+  sheet -->|buildArrangementTimeline<br/>song window + lead-in| preview[songset-audio.ts<br/>decoded-clip engine]
 ```
 
 ## Recordings with usable arrangement data
@@ -346,7 +346,7 @@ Caveats:
 ## Tests
 
 - Webapp (all under `delivery/webapp/src/`): `test/lib/arrangements.test.ts`,
-  `test/lib/audio/arrangement-preview.test.ts`, `test/hooks/useArrangementPreview.test.tsx`,
+  `test/lib/audio/songset-audio.test.ts`, `test/hooks/useSongsetAudio.test.tsx`,
   `test/components/songset/{ArrangementEditorSheet,SongList,SongList.favorites,SongsetEditor,SongsetEditorClient}.test.tsx`,
   `test/api/songsets/{arrangement,arrangement-persistence,db}.test.ts`,
   `test/api/render-jobs/route.test.ts`, `test/lib/render/job-manager.test.ts`,
