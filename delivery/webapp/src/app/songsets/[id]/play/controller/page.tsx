@@ -69,6 +69,10 @@ export default function ControllerPage() {
   // the render is stale/rendering/failed, the chapters do not line up with the
   // timeline, or the payload has no Items. Computed once the manifest lands.
   const [chapterHeadings, setChapterHeadings] = useState<(string | null)[][] | null>(null);
+  // Where the error screen's Go Back goes: the Songset it was opened from.
+  // A Songset that 404s has no page to return to, so that error falls back
+  // to the list (see runOnlineChain).
+  const [errorExitRoute, setErrorExitRoute] = useState(`/songsets/${songsetId}`);
 
   const core = usePlaybackCore({
     bootKey: songsetId,
@@ -110,6 +114,7 @@ export default function ControllerPage() {
           throw new AuthRedirectError();
         }
         if (songsetResponse.status === 404) {
+          setErrorExitRoute("/songsets");
           throw new Error(t("control.songsetNotFound"));
         }
         throw new Error(t("control.failedToLoadSongset"));
@@ -222,7 +227,7 @@ export default function ControllerPage() {
           </p>
           <button
             type="button"
-            onClick={() => router.push("/worship")}
+            onClick={() => router.push(errorExitRoute)}
             className="px-4 py-2 bg-primary text-white rounded-lg"
           >
             {t("control.goBack")}

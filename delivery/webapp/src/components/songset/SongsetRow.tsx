@@ -126,6 +126,10 @@ export function SongsetRow({
 
   const canPlayFreshRender =
     renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onWorshipPlayback);
+  // Worship needs a completed render: without one the controller dead-ends on
+  // "Songset has not been rendered yet". Same rule as the editor's header
+  // button — a stale render still owns a completed job, so it stays enabled.
+  const canWorship = Boolean(lastCompletedRenderJobId);
 
   // Download for Offline (issue #212 follow-up): fresh rows without a copy
   // get the plain item; stale rows get the re-download variant. Hidden when
@@ -239,7 +243,15 @@ export function SongsetRow({
                       </DropdownMenuItem>
                     )}
                     {showMenuItem("worship") && (
-                      <DropdownMenuItem onClick={onWorshipPlayback}>
+                      <DropdownMenuItem
+                        onClick={onWorshipPlayback}
+                        disabled={!canWorship}
+                        aria-label={
+                          canWorship
+                            ? t("songsets.action.worship")
+                            : `${t("songsets.action.worship")} — ${t("control.songsetNotRendered")}`
+                        }
+                      >
                         <Play className="size-4 mr-2" />
                         {t("songsets.action.worship")}
                       </DropdownMenuItem>

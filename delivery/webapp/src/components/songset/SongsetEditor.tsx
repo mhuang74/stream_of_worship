@@ -394,7 +394,15 @@ export function SongsetEditor({
                 <RefreshCw className="size-4 mr-2" />
                 {t("songsets.action.render")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onPlay}>
+              <DropdownMenuItem
+                onClick={onPlay}
+                disabled={!canWorship}
+                aria-label={
+                  canWorship
+                    ? t("songsets.action.worship")
+                    : `${t("songsets.action.worship")} — ${t("control.songsetNotRendered")}`
+                }
+              >
                 <Play className="size-4 mr-2" />
                 {t("songsets.action.worship")}
               </DropdownMenuItem>

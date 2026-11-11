@@ -7,6 +7,7 @@ import {
   probeConnectivity,
   setConnectivityProbe,
 } from "@/hooks/useConnectivity";
+import { messages } from "@/lib/i18n/messages";
 
 describe("SongsetRow", () => {
   const defaultProps = {
@@ -319,6 +320,46 @@ describe("SongsetRow", () => {
           screen.getByRole("menuitem", { name: /下載離線副本/ })
         ).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("worship menu item", () => {
+    it("disables Worship until a render has completed", async () => {
+      const onWorshipPlayback = vi.fn();
+      renderRow({
+        renderState: "unrendered" as RenderState,
+        latestRenderJobId: null,
+        lastCompletedRenderJobId: null,
+        onWorshipPlayback,
+      });
+      await openMenu();
+
+      const item = screen.getByRole("menuitem", { name: /worship/i });
+      expect(item).toHaveAttribute("data-disabled");
+      expect(item.getAttribute("aria-label")).toContain(
+        messages.en["control.songsetNotRendered"]
+      );
+
+      fireEvent.click(item);
+      expect(onWorshipPlayback).not.toHaveBeenCalled();
+    });
+
+    it("keeps Worship enabled for a stale render with a completed job", async () => {
+      const onWorshipPlayback = vi.fn();
+      renderRow({
+        renderState: "stale" as RenderState,
+        isArtifactsStale: true,
+        latestRenderJobId: "job-2",
+        lastCompletedRenderJobId: "job-1",
+        onWorshipPlayback,
+      });
+      await openMenu();
+
+      const item = screen.getByRole("menuitem", { name: /worship/i });
+      expect(item).not.toHaveAttribute("data-disabled");
+
+      fireEvent.click(item);
+      expect(onWorshipPlayback).toHaveBeenCalledTimes(1);
     });
   });
 
