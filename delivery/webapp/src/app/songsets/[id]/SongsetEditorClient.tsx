@@ -503,7 +503,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         setIsRemoving(false);
       }
     },
-    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState, songset?.renderErrorMessage, songset?.failedAt, t]
+    [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState, songset?.renderErrorMessage, songset?.failedAt, t, touchUpdatedAt]
   );
 
   // Handle transition update
