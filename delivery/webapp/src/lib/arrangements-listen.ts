@@ -89,7 +89,11 @@ export function toSongsetLyricLines(
       );
       result.push({
         text: line.text,
-        localTimeSeconds: line.timeSeconds,
+        // Heading lookup position, derived from the *clamped* timeline second
+        // by the same expression `chapter-sections.ts#sourcePositionFor` uses.
+        // A line kept by the ownership tolerance past the clip end would
+        // otherwise be labelled with a section this cut never reaches.
+        localTimeSeconds: clip.sourceStartSeconds + (timeline - clip.startSeconds),
         globalTimeSeconds: timeline,
         timelineSeconds: timeline,
         title: "",

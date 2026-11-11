@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, fireEvent, act, within } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { LyricJumpList } from "@/components/play/LyricJumpList";
@@ -472,7 +472,7 @@ describe("LyricJumpList", () => {
         <LyricJumpList
           {...defaultProps}
           isOpen={true}
-          chapterLineHeadings={[["verse", null, "chorus 1"], ["bridge"], null]}
+          chapterLineHeadings={[["verse", null, "chorus 1"], ["bridge"], [null]]}
         />
       );
 
@@ -516,7 +516,7 @@ describe("LyricJumpList", () => {
         <LyricJumpList
           {...defaultProps}
           isOpen={true}
-          chapterLineHeadings={[null, null, null]}
+          chapterLineHeadings={[[null, null, null]]}
         />
       );
 
