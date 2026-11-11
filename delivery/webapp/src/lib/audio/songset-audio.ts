@@ -15,6 +15,7 @@
 
 import {
   buildArrangementTimeline,
+  findTimelineItemIndex,
   parseSongArrangement,
   validateSongArrangement,
   type ArrangementTimeline,
@@ -348,12 +349,7 @@ export function createSongsetAudioSession(
 
   function itemIndexAt(seconds: number): number {
     if (itemCount === 0) return 0;
-    const target = clamp(seconds, 0, totalSeconds);
-    for (let index = 0; index < itemCount; index++) {
-      const item = timeline.items[index]!;
-      if (target < item.startSeconds + item.durationSeconds) return index;
-    }
-    return itemCount - 1;
+    return Math.max(0, findTimelineItemIndex(timeline, seconds));
   }
 
   function storedSeconds(index: number): number {

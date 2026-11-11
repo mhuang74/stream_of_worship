@@ -4,13 +4,14 @@ import { renderWithLocale as render } from "@/test/render";
 import { WorshipClient } from "@/app/worship/WorshipClient";
 import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
 import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
-const { mockListOfflineRecords, mockRemoveOfflineSongset, mockMatchCachedArtifact, mockDownloadOfflineArtifacts, mockUnlockAudioContext } =
+const { mockListOfflineRecords, mockRemoveOfflineSongset, mockMatchCachedArtifact, mockDownloadOfflineArtifacts, mockUnlockAudioContext, mockOpen } =
   vi.hoisted(() => ({
     mockListOfflineRecords: vi.fn<() => Promise<unknown>>(),
     mockRemoveOfflineSongset: vi.fn<() => Promise<void>>(),
     mockMatchCachedArtifact: vi.fn<() => Promise<unknown>>(),
     mockDownloadOfflineArtifacts: vi.fn<() => Promise<void>>(),
     mockUnlockAudioContext: vi.fn(),
+    mockOpen: vi.fn(),
   }));
 
 vi.mock("@/lib/offline/offline-index", async (importOriginal) => {
@@ -43,26 +44,8 @@ vi.mock("@/lib/audio/audio-context", () => ({
   getAudioContext: vi.fn(),
 }));
 
-vi.mock("@/components/songset/ListenMixDialog", () => ({
-  ListenMixDialog: (props: {
-    songsetId: string;
-    songsetName: string;
-    isOpen: boolean;
-    onOpenChange: (open: boolean) => void;
-  }) =>
-    props.isOpen ? (
-      <div
-        data-testid="listen-dialog-mock"
-        data-songset-id={props.songsetId}
-        data-songset-name={props.songsetName}
-      >
-        <button
-          type="button"
-          data-testid="listen-dialog-close"
-          onClick={() => props.onOpenChange(false)}
-        />
-      </div>
-    ) : null,
+vi.mock("@/contexts/SongsetListenContext", () => ({
+  useSongsetListen: () => ({ open: mockOpen }),
 }));
 
 vi.mock("sonner", () => ({
@@ -234,21 +217,9 @@ describe("WorshipClient (issue #211 follow-up descope)", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /^listen$/i }));
 
     expect(mockUnlockAudioContext).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
-      "data-songset-id",
-      "songset-1"
-    );
-    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
-      "data-songset-name",
-      "Sunday Worship"
-    );
-
-    fireEvent.click(screen.getByTestId("listen-dialog-close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("listen-dialog-mock")
-      ).not.toBeInTheDocument();
+    expect(mockOpen).toHaveBeenCalledWith({
+      songsetId: "songset-1",
+      name: "Sunday Worship",
     });
   });
 

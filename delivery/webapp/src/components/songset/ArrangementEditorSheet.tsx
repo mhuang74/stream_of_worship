@@ -51,6 +51,7 @@ import { formatDuration } from "@/lib/format";
 import { useLocale } from "@/hooks/useLocale";
 import { useSongLyrics } from "@/hooks/useSongLyrics";
 import { useSongsetAudio } from "@/hooks/useSongsetAudio";
+import { useSongsetListen } from "@/contexts/SongsetListenContext";
 import type { SongsetAudioError } from "@/hooks/useSongsetAudio";
 import {
   isValidLRC,
@@ -1154,6 +1155,19 @@ export function ArrangementEditorSheet({
     active: isOpen && isPreviewAvailable,
     onPreviewError: handlePreviewError,
   });
+
+  // Opening this sheet pauses the global Songset audition: the sheet's own
+  // preview stops the Song transport, so the audition must not keep sounding.
+  // Mount-only, and read through a latest-ref so a changed `pause` identity
+  // never re-fires it.
+  const { audio: audition } = useSongsetListen();
+  const auditionPauseRef = useRef(audition.pause);
+  useEffect(() => {
+    auditionPauseRef.current = audition.pause;
+  }, [audition.pause]);
+  useEffect(() => {
+    auditionPauseRef.current();
+  }, []);
 
   // The arrangement preview window: every component, always with an 8-beat
   // lead-in from the previous item and an 8-beat lead-out into the next. Each

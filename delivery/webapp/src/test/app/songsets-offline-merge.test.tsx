@@ -11,6 +11,7 @@ const {
   mockRemoveOfflineSongset,
   mockDownloadOfflineArtifacts,
   mockUnlockAudioContext,
+  mockOpen,
   toastLoading,
   toastSuccess,
   toastError,
@@ -19,6 +20,7 @@ const {
   mockRemoveOfflineSongset: vi.fn<() => Promise<void>>(),
   mockDownloadOfflineArtifacts: vi.fn<() => Promise<void>>(),
   mockUnlockAudioContext: vi.fn(),
+  mockOpen: vi.fn(),
   toastLoading: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -50,26 +52,8 @@ vi.mock("@/lib/audio/audio-context", () => ({
   getAudioContext: vi.fn(),
 }));
 
-vi.mock("@/components/songset/ListenMixDialog", () => ({
-  ListenMixDialog: (props: {
-    songsetId: string;
-    songsetName: string;
-    isOpen: boolean;
-    onOpenChange: (open: boolean) => void;
-  }) =>
-    props.isOpen ? (
-      <div
-        data-testid="listen-dialog-mock"
-        data-songset-id={props.songsetId}
-        data-songset-name={props.songsetName}
-      >
-        <button
-          type="button"
-          data-testid="listen-dialog-close"
-          onClick={() => props.onOpenChange(false)}
-        />
-      </div>
-    ) : null,
+vi.mock("@/contexts/SongsetListenContext", () => ({
+  useSongsetListen: () => ({ open: mockOpen }),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -201,21 +185,9 @@ describe("SongsetsClient offline merge (issue #207)", () => {
 
     // The unlock happens in the click handler, not after an await.
     expect(mockUnlockAudioContext).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
-      "data-songset-id",
-      "songset-1"
-    );
-    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
-      "data-songset-name",
-      "Sunday Worship"
-    );
-
-    fireEvent.click(screen.getByTestId("listen-dialog-close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("listen-dialog-mock")
-      ).not.toBeInTheDocument();
+    expect(mockOpen).toHaveBeenCalledWith({
+      songsetId: "songset-1",
+      name: "Sunday Worship",
     });
   });
 

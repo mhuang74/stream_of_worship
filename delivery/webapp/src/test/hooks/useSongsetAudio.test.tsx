@@ -385,6 +385,29 @@ describe("useSongsetAudio", () => {
     );
   });
 
+  it("play at the timeline end seeks to 0 before playing instead of rebuilding an empty graph", async () => {
+    const { result } = renderAudio();
+    await runPlay(result);
+
+    act(() => {
+      fake.setPlaying(false);
+      fake.setPosition(200);
+      fake.notify();
+    });
+    expect(result.current.status).toBe("paused");
+
+    await act(async () => {
+      await result.current.play();
+    });
+
+    expect(fake.session.seek).toHaveBeenCalledWith(0);
+    expect(fake.session.seek.mock.invocationCallOrder[0]).toBeLessThan(
+      fake.session.play.mock.invocationCallOrder.at(-1)!,
+    );
+    expect(mocks.createSession).toHaveBeenCalledTimes(1);
+    expect(fake.session.play).toHaveBeenCalledTimes(2);
+  });
+
   it("startAtSeconds seeks and plays", async () => {
     const { result } = renderAudio();
     await act(async () => {

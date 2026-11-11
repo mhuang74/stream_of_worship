@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -22,6 +20,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { PlayerLyricsPanel } from "./PlayerLyricsPanel";
 import { LyricsErrorBoundary } from "./LyricsErrorBoundary";
 import { LocateSongsetsPopover } from "./LocateSongsetsPopover";
+import { useLyricsPullup } from "./useLyricsPullup";
 
 function LyricsErrorFallback() {
   const { t } = useLocale();
@@ -53,102 +52,18 @@ export function AudioPlayerBar() {
     seekRelative,
   } = useAudioPlayer();
 
-  const [showLyrics, setShowLyrics] = useState(false);
-  const [isLyricsMounted, setIsLyricsMounted] = useState(false);
-  const pathname = usePathname();
-
-  // Ref to track currentTrack without re-attaching listener
-  const currentTrackRef = useRef(currentTrack);
-  useEffect(() => {
-    currentTrackRef.current = currentTrack;
-  }, [currentTrack]);
-
-  // Auto-collapse on track change / stop
-  useEffect(() => {
-    if (!currentTrack?.recordingContentHash) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShowLyrics(false);
-    }
-  }, [currentTrack?.recordingContentHash]);
-
-  // Mount content when expanding; keep mounted during collapse transition
-  useEffect(() => {
-    if (showLyrics && currentTrack?.recordingContentHash) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsLyricsMounted(true);
-    }
-  }, [showLyrics, currentTrack?.recordingContentHash]);
-
-  // Unmount content after collapse transition completes
-  const handleTransitionEnd = () => {
-    if (!showLyrics) {
-      setIsLyricsMounted(false);
-    }
-  };
-
-  // Keyboard shortcut ('L') — v6: modal-aware, stable listener, no-op preventDefault
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const track = currentTrackRef.current;
-      if (!track) return;
-
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-
-      if (
-        document.querySelector('[role="dialog"]') ||
-        document.querySelector('[data-slot="sheet"]')
-      ) {
-        return;
-      }
-
-      if (e.key === "l" || e.key === "L") {
-        if (track.recordingContentHash) {
-          e.preventDefault();
-          setShowLyrics((prev) => !prev);
-        }
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  // Auto-collapse on route change
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShowLyrics(false);
-  }, [pathname]);
-
-  // Auto-collapse on modal/sheet open. React only when a modal element is
-  // actually inserted: re-querying the whole document on every subtree
-  // mutation collapsed the panel on unrelated updates (feedback row clicks,
-  // toasts) whenever any stale/closing [role=dialog] was present, and made
-  // the lyrics-toggle click race die during sheet close animations.
-  useEffect(() => {
-    const observer = new MutationObserver((muts) => {
-      const modalAdded = muts.some((m) =>
-        [...m.addedNodes].some(
-          (n) =>
-            n.nodeType === 1 &&
-            ((n as Element).matches?.('[role="dialog"]') ||
-              (n as Element).querySelector?.('[role="dialog"]'))
-        )
-      );
-      if (modalAdded) {
-        setShowLyrics(false);
-      }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
+  const lyricsContentHash = currentTrack?.recordingContentHash;
+  const hasLyrics = Boolean(lyricsContentHash);
+  const {
+    showLyrics,
+    isMounted: isLyricsMounted,
+    toggle: toggleLyrics,
+    handleTransitionEnd,
+    panelId: lyricsPanelId,
+  } = useLyricsPullup({
+    available: hasLyrics,
+    panelId: "player-lyrics-panel",
+  });
 
   // Don't show if no track is loaded
   if (!currentTrack) {
@@ -179,20 +94,20 @@ export function AudioPlayerBar() {
         onTransitionEnd={handleTransitionEnd}
         className={cn(
           "overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out border-t bg-background/95 backdrop-blur-sm",
-          showLyrics && currentTrack?.recordingContentHash
+          showLyrics && hasLyrics
             ? "max-h-[40dvh] md:max-h-[400px] opacity-100"
             : "max-h-0 opacity-0 border-t-0"
         )}
       >
-        {isLyricsMounted && currentTrack?.recordingContentHash && (
+        {isLyricsMounted && lyricsContentHash && (
           <div
-            id="player-lyrics-panel"
+            id={lyricsPanelId}
             role="region"
             aria-label={`${t("audio.lyricsFor")} ${currentTrack.title}`}
             className="overflow-y-auto overscroll-y-contain h-full"
           >
             <LyricsErrorBoundary fallback={<LyricsErrorFallback />}>
-              <PlayerLyricsPanel recordingContentHash={currentTrack.recordingContentHash} />
+              <PlayerLyricsPanel recordingContentHash={lyricsContentHash} />
             </LyricsErrorBoundary>
           </div>
         )}
@@ -359,14 +274,14 @@ export function AudioPlayerBar() {
         </div>
 
         {/* Lyrics toggle button */}
-        {currentTrack.recordingContentHash && (
+        {hasLyrics && (
           <Button
             variant={showLyrics ? "secondary" : "ghost"}
             size="icon"
             className="size-8 lg:size-10 shrink-0"
-            onClick={() => setShowLyrics((prev) => !prev)}
+            onClick={toggleLyrics}
             aria-expanded={showLyrics}
-            aria-controls="player-lyrics-panel"
+            aria-controls={lyricsPanelId}
             aria-label={showLyrics ? t("audio.hideLyrics") : t("audio.showLyrics")}
             data-testid="lyrics-toggle-button"
             title={t("audio.lyricsTitle")}

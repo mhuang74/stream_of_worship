@@ -4,6 +4,7 @@ import {
   buildArrangementTimeline,
   buildSnappedSteps,
   calculateGapSeconds,
+  findTimelineItemIndex,
   getItemDurationSeconds,
   getSongsetDurationSeconds,
   parseRecordingBeats,
@@ -782,5 +783,38 @@ describe("buildArrangementTimeline", () => {
     ]);
     expect(timeline.items[0].clips).toEqual([]);
     expect(timeline.totalSeconds).toBe(10);
+  });
+});
+
+describe("findTimelineItemIndex", () => {
+  // Item a: [0, 10); item b starts at 12 (1 s gap, no crossfade) and runs 10 s.
+  const timeline = buildArrangementTimeline([
+    { itemId: "a", recordingHashPrefix: "hash-a", recordingDurationSeconds: 10 },
+    { itemId: "b", recordingHashPrefix: "hash-b", recordingDurationSeconds: 10 },
+  ]);
+
+  it("returns the Item whose audio owns the position", () => {
+    expect(findTimelineItemIndex(timeline, 0)).toBe(0);
+    expect(findTimelineItemIndex(timeline, 9.999)).toBe(0);
+    expect(findTimelineItemIndex(timeline, 12)).toBe(1);
+  });
+
+  it("hands an exact Item end to the next Item", () => {
+    // a ends at 10, b starts at 12: the first item whose END lies after 10 is b.
+    expect(findTimelineItemIndex(timeline, 10)).toBe(1);
+  });
+
+  it("keeps the next Item through a gap and clamps past the timeline end", () => {
+    expect(findTimelineItemIndex(timeline, 11)).toBe(1);
+    expect(findTimelineItemIndex(timeline, timeline.totalSeconds)).toBe(1);
+    expect(findTimelineItemIndex(timeline, timeline.totalSeconds + 60)).toBe(1);
+  });
+
+  it("clamps negative positions to the first Item", () => {
+    expect(findTimelineItemIndex(timeline, -5)).toBe(0);
+  });
+
+  it("returns -1 for an empty timeline", () => {
+    expect(findTimelineItemIndex(buildArrangementTimeline([]), 0)).toBe(-1);
   });
 });

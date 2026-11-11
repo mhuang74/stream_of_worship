@@ -186,6 +186,16 @@ export function useSongsetAudio(
     player.stop();
 
     let session = sessionRef.current;
+    // Play at the timeline end restarts the Songset instead of rebuilding an
+    // empty graph.
+    const atEnd =
+      timeline.totalSeconds > 0 &&
+      session !== null &&
+      session.getTimelinePositionSeconds() >= timeline.totalSeconds - 0.05;
+    if (atEnd) {
+      pendingSeekRef.current = 0;
+      if (!session!.getError()) session!.seek(0);
+    }
     if (session?.getError()) {
       // A failed session is unusable; start a fresh one from the pending seek
       // (or, absent one, from where the failed session stopped).
@@ -260,7 +270,7 @@ export function useSongsetAudio(
         playInFlightRef.current = null;
       }
     }
-  }, [active, items, itemsKey, player, attachSession, teardown]);
+  }, [active, items, itemsKey, player, attachSession, teardown, timeline.totalSeconds]);
 
   const pause = useCallback(() => {
     const session = sessionRef.current;
