@@ -54,7 +54,8 @@ export const songsetsBundle = bundle({
 
     // Actions (shared across row/editor/list)
     "songsets.action.render": "Render",
-    "songsets.action.play": "Play",
+    "songsets.action.worship": "Worship",
+    "songsets.action.listen": "Listen",
     "songsets.action.rename": "Rename",
     "songsets.action.duplicate": "Duplicate",
     "songsets.action.share": "Share",
@@ -80,6 +81,28 @@ export const songsetsBundle = bundle({
     "songsets.action.renderAgain": "Render again",
     "songsets.action.editDescription": "Edit description",
     "songsets.action.createSongset": "Create Songset",
+
+    // Listen dialog
+    "songsets.listen.title": "Listen to Songset",
+    "songsets.listen.loading": "Loading {title}… {percent}%",
+    "songsets.listen.loadingIndeterminate": "Loading {title}…",
+    "songsets.listen.preparingNext": "Preparing the next song…",
+    "songsets.listen.localNotice": "Browser preview — loudness differs from the final render",
+    "songsets.listen.untitled": "Untitled",
+    "songsets.listen.action.play": "Play",
+    "songsets.listen.action.pause": "Pause",
+    "songsets.listen.action.retry": "Retry",
+    "songsets.listen.action.close": "Close",
+    "songsets.listen.seekAria": "Seek preview",
+    "songsets.listen.markersAria": "Song markers",
+    "songsets.listen.currentItem": "Now playing",
+    "songsets.listen.error.noRecording": "A song in this Songset has no Recording",
+    "songsets.listen.error.invalidArrangement": "A saved arrangement no longer matches its Recording",
+    "songsets.listen.error.deletedRecording": "A song in this Songset no longer has a Recording",
+    "songsets.listen.error.playbackFailed": "Could not prepare the audio for this Songset",
+    "songsets.listen.error.notFound": "Songset not found",
+    "songsets.listen.error.build": "Could not load this Songset",
+    "songsets.listen.error.renderHint": "Render this Songset to listen to it in full",
 
     // Units
     "songsets.unit.song": "song",
@@ -200,7 +223,8 @@ export const songsetsBundle = bundle({
 
     // Actions (shared across row/editor/list)
     "songsets.action.render": "渲染",
-    "songsets.action.play": "播放",
+    "songsets.action.worship": "敬拜",
+    "songsets.action.listen": "試聽",
     "songsets.action.rename": "重新命名",
     "songsets.action.duplicate": "複製",
     "songsets.action.share": "分享",
@@ -226,6 +250,28 @@ export const songsetsBundle = bundle({
     "songsets.action.renderAgain": "再次渲染",
     "songsets.action.editDescription": "編輯描述",
     "songsets.action.createSongset": "建立敬拜歌單",
+
+    // Listen dialog
+    "songsets.listen.title": "試聽歌集",
+    "songsets.listen.loading": "正在載入 {title}…{percent}%",
+    "songsets.listen.loadingIndeterminate": "正在載入 {title}…",
+    "songsets.listen.preparingNext": "正在準備下一首…",
+    "songsets.listen.localNotice": "瀏覽器試聽，音量可能與完成渲染不同",
+    "songsets.listen.untitled": "未命名",
+    "songsets.listen.action.play": "播放",
+    "songsets.listen.action.pause": "暫停",
+    "songsets.listen.action.retry": "重試",
+    "songsets.listen.action.close": "關閉",
+    "songsets.listen.seekAria": "調整試聽位置",
+    "songsets.listen.markersAria": "歌曲標記",
+    "songsets.listen.currentItem": "現正播放",
+    "songsets.listen.error.noRecording": "此歌集有歌曲沒有錄音",
+    "songsets.listen.error.invalidArrangement": "已儲存的編排與錄音不符",
+    "songsets.listen.error.deletedRecording": "此歌集有歌曲的錄音已刪除",
+    "songsets.listen.error.playbackFailed": "無法準備此歌集的音訊",
+    "songsets.listen.error.notFound": "找不到歌集",
+    "songsets.listen.error.build": "無法載入此歌集",
+    "songsets.listen.error.renderHint": "渲染此歌集以完整試聽",
 
     // Units
     "songsets.unit.song": "首詩歌",

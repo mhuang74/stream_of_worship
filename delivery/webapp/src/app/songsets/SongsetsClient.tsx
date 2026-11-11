@@ -13,6 +13,8 @@ import { sanitizeFilename, fetchSignedUrlAndDownload } from "@/lib/download";
 import { buildSongsetsUrl, saveSongsetListState } from "@/lib/songset-list-state";
 import { removeOfflineSongset, listOfflineRecords } from "@/lib/offline/offline-index";
 import { downloadOfflineArtifacts, NoArtifactsError } from "@/lib/offline/download-offline";
+import { unlockAudioContext } from "@/lib/audio/audio-context";
+import { ListenMixDialog } from "@/components/songset/ListenMixDialog";
 
 const ShareDialog = dynamic(
   () => import("@/components/share/ShareDialog").then((m) => ({ default: m.ShareDialog })),
@@ -119,6 +121,9 @@ export function SongsetsClient({
   const [offlineDownloadId, setOfflineDownloadId] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<{
     id: string; name: string; durationSeconds: number | null;
+  } | null>(null);
+  const [listeningSongset, setListeningSongset] = useState<{
+    id: string; name: string;
   } | null>(null);
 
   useEffect(() => {
@@ -242,7 +247,7 @@ export function SongsetsClient({
     router.push(`/songsets/${id}/render`);
   }, [router]);
 
-  const handlePlay = useCallback(
+  const handleWorshipPlayback = useCallback(
     (id: string) => {
       // Cached ⇒ offline copy (cache-first controller boot): a full document
       // navigation is deterministic regardless of connectivity — the SW
@@ -257,6 +262,19 @@ export function SongsetsClient({
       router.push(`/songsets/${id}/play/controller`);
     },
     [songsets, connectivity, router]
+  );
+
+  const handleListen = useCallback(
+    (id: string) => {
+      // iOS/Chrome only unlock audio inside the click gesture, so resume the
+      // shared context synchronously before any state update.
+      unlockAudioContext();
+      const songset = songsets.find((s) => s.id === id);
+      if (songset) {
+        setListeningSongset({ id: songset.id, name: songset.name });
+      }
+    },
+    [songsets]
   );
 
   const handleRetry = useCallback((id: string) => {
@@ -462,7 +480,8 @@ export function SongsetsClient({
         error={error}
         onCreateSongset={handleCreateSongset}
         onRender={handleRender}
-        onPlay={handlePlay}
+        onWorshipPlayback={handleWorshipPlayback}
+        onListen={handleListen}
         onRetry={handleRetry}
         onRename={handleRename}
         onDuplicate={handleDuplicate}
@@ -481,6 +500,18 @@ export function SongsetsClient({
         onSearch={handleSearch}
         isSearching={isLoading && committedSearch.trim().length > 0}
       />
+
+      {listeningSongset && (
+        <ListenMixDialog
+          key={listeningSongset.id}
+          songsetId={listeningSongset.id}
+          songsetName={listeningSongset.name}
+          isOpen
+          onOpenChange={(open) => {
+            if (!open) setListeningSongset(null);
+          }}
+        />
+      )}
 
       {shareTarget && (
         <ShareDialog

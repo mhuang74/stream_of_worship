@@ -73,11 +73,10 @@ export const arrangementBundle = bundle({
     // 4 beats each side of its junction, twice.
     "arrangement.preview.title": "Preview this song",
     "arrangement.preview.loading": "Loading preview...",
+    "arrangement.preview.loadingProgress": "Loading preview... {percent}%",
     "arrangement.preview.play": "Preview",
     "arrangement.preview.pause": "Pause preview",
     "arrangement.preview.stop": "Stop preview",
-    "arrangement.preview.fallbackNotice":
-      "Crossfades are approximated as hard boundaries on this device.",
     "arrangement.preview.timelineAria":
       "Arrangement preview timeline: lead-in, all components, lead-out",
     "arrangement.preview.reviewTransition": "Review transition",
@@ -212,11 +211,11 @@ export const arrangementBundle = bundle({
     // and 8-beat lead-out into the next); a component row reviews only the
     // 4 beats each side of its junction, twice.
     "arrangement.preview.title": "預覽這首歌",
-    "arrangement.preview.loading": "正在載入預覽...",
+    "arrangement.preview.loading": "正在載入預覽…",
+    "arrangement.preview.loadingProgress": "正在載入預覽…{percent}%",
     "arrangement.preview.play": "預覽",
     "arrangement.preview.pause": "暫停預覽",
     "arrangement.preview.stop": "停止預覽",
-    "arrangement.preview.fallbackNotice": "此裝置上的交叉淡化會以硬切邊界近似。",
     "arrangement.preview.timelineAria": "編排預覽時間軸：前一首尾段、所有段落、下一首開頭",
     "arrangement.preview.reviewTransition": "交接預覽",
     "arrangement.preview.reviewTransitionAria": "預覽「{fromLabel}」到「{toLabel}」的交接：前後各 {beats} 拍，播放兩次",

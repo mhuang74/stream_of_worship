@@ -5,7 +5,7 @@ import type { SongListItem } from "@/components/songset/SongList";
 import type { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { SongsetEditorClient } from "@/app/songsets/[id]/SongsetEditorClient";
 
-const shell = vi.hoisted(() => ({ push: vi.fn() }));
+const shell = vi.hoisted(() => ({ push: vi.fn(), unlockAudioContext: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: shell.push }),
@@ -39,6 +39,33 @@ vi.mock("@/components/share/ShareDialog", () => ({
   ShareDialog: () => null,
 }));
 
+vi.mock("@/lib/audio/audio-context", () => ({
+  unlockAudioContext: shell.unlockAudioContext,
+  getAudioContext: vi.fn(),
+}));
+
+vi.mock("@/components/songset/ListenMixDialog", () => ({
+  ListenMixDialog: (props: {
+    songsetId: string;
+    songsetName: string;
+    isOpen: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) =>
+    props.isOpen ? (
+      <div
+        data-testid="listen-dialog-mock"
+        data-songset-id={props.songsetId}
+        data-songset-name={props.songsetName}
+      >
+        <button
+          type="button"
+          data-testid="listen-dialog-close"
+          onClick={() => props.onOpenChange(false)}
+        />
+      </div>
+    ) : null,
+}));
+
 /**
  * Minimal editor-shell stub: it renders the item state the client owns and
  * exposes the two callbacks this slice exercises, so the assertions read the
@@ -47,6 +74,7 @@ vi.mock("@/components/share/ShareDialog", () => ({
 vi.mock("@/components/songset/SongsetEditor", () => ({
   SongsetEditor: (props: {
     items: SongListItem[];
+    onListen: () => void;
     onUpdateTransition: (
       itemId: string,
       settings: TransitionSettings
@@ -58,6 +86,11 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
       <div>
         <span data-testid="shell-gap">{item?.gapBeats}</span>
         <span data-testid="shell-arrangement">{item?.arrangementSteps}</span>
+        <button
+          type="button"
+          data-testid="shell-listen"
+          onClick={props.onListen}
+        />
         <button
           type="button"
           data-testid="shell-edit-arrangement"
@@ -194,6 +227,30 @@ describe("SongsetEditorClient arrangement save", () => {
     );
     // The save applies its arrangement without reverting the newer transition.
     expect(screen.getByTestId("shell-gap")).toHaveTextContent("7");
+  });
+
+  it("unlocks audio in the click and mounts the Listen dialog for the saved Songset", async () => {
+    render(<SongsetEditorClient songsetId="songset-1" initialData={initialData()} />);
+
+    fireEvent.click(screen.getByTestId("shell-listen"));
+
+    expect(shell.unlockAudioContext).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
+      "data-songset-id",
+      "songset-1"
+    );
+    expect(screen.getByTestId("listen-dialog-mock")).toHaveAttribute(
+      "data-songset-name",
+      "Sunday Worship"
+    );
+
+    fireEvent.click(screen.getByTestId("listen-dialog-close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("listen-dialog-mock")
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("reports the translated save error when the PUT fails on the network", async () => {

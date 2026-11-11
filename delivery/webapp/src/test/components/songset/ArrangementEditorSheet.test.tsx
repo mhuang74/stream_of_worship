@@ -4,33 +4,38 @@ import { renderWithLocale as render } from "@/test/render";
 import { ArrangementEditorSheet } from "@/components/songset/ArrangementEditorSheet";
 import type { SongListItem } from "@/components/songset/SongList";
 
-// The preview transport is owned by issue #286's audio slice; the sheet is
-// tested against its documented controller contract (a timeline window into
+// The preview transport is the shared Songset audio engine (#293); the sheet
+// is tested against its documented controller contract (a timeline window into
 // the whole-Songset transport).
 const preview = vi.hoisted(() => ({
   options: null as null | {
     active: boolean;
     items: Array<Record<string, unknown>>;
     onPreviewError: (error: { kind: string; itemId?: string }) => void;
-    onFallbackNotice: () => void;
   },
   controller: {
     status: "idle" as "idle" | "loading" | "playing" | "paused" | "error",
     errorMessage: null as string | null,
     timelinePositionSeconds: 0,
     totalSeconds: 120,
+    progress: null as null | {
+      itemId: string;
+      itemIndex: number;
+      itemCount: number;
+      phase: "fetching" | "decoding" | "ready";
+      receivedBytes: number;
+      totalBytes: number | null;
+    },
     play: vi.fn().mockResolvedValue(undefined),
     pause: vi.fn(),
     stop: vi.fn(),
     seek: vi.fn(),
-    startAt: vi.fn().mockResolvedValue(undefined),
     startAtSeconds: vi.fn().mockResolvedValue(undefined),
-    isFallbackMode: false,
   },
 }));
 
-vi.mock("@/hooks/useArrangementPreview", () => ({
-  useArrangementPreview: (options: typeof preview.options) => {
+vi.mock("@/hooks/useSongsetAudio", () => ({
+  useSongsetAudio: (options: typeof preview.options) => {
     preview.options = options;
     return preview.controller;
   },
@@ -124,7 +129,7 @@ describe("ArrangementEditorSheet", () => {
     preview.controller.errorMessage = null;
     preview.controller.timelinePositionSeconds = 0;
     preview.controller.totalSeconds = 120;
-    preview.controller.isFallbackMode = false;
+    preview.controller.progress = null;
     // The transport mock keeps position and status coherent with the sheet's
     // calls, so the boundary effect sees what the real hook would expose.
     preview.controller.play.mockImplementation(async () => {
@@ -140,7 +145,6 @@ describe("ArrangementEditorSheet", () => {
     preview.controller.seek.mockImplementation((seconds: number) => {
       preview.controller.timelinePositionSeconds = seconds;
     });
-    preview.controller.startAt.mockResolvedValue(undefined);
     // Mirrors the hook: seeking + playing lands the transport on the requested
     // timeline position, one second in, so a lyric line is current.
     preview.controller.startAtSeconds.mockImplementation(async (seconds: number) => {
@@ -295,7 +299,7 @@ describe("ArrangementEditorSheet", () => {
 
     // Tempo 120 → 0.5 s/beat, so the junction at 10 s plays 8..12 s.
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(8);
-    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-pass")).toHaveTextContent(
       "Pass 1 of 2"
     );
     expect(preview.controller.stop).not.toHaveBeenCalled();
@@ -325,7 +329,7 @@ describe("ArrangementEditorSheet", () => {
     // the current one.
     const activeLine = within(rows[0]).getByText("Verse one second");
     expect(activeLine).toHaveAttribute("data-active", "true");
-    expect(screen.getByTestId("arrangement-preview-phase")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-phase")).toHaveTextContent(
       "Playing: Amazing Grace · Verse 1"
     );
   });
@@ -335,10 +339,10 @@ describe("ArrangementEditorSheet", () => {
     preview.controller.timelinePositionSeconds = 3;
     renderSheet();
 
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.pause).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByTestId("arrangement-preview-stop"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-stop"));
     expect(preview.controller.stop).toHaveBeenCalled();
   });
 
@@ -349,13 +353,13 @@ describe("ArrangementEditorSheet", () => {
 
     // Pass 1 → 2: the window end (8..12) is reached, so the sheet rewinds.
     await moveTransport(view, { position: 11.99 });
-    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-pass")).toHaveTextContent(
       "Pass 2 of 2"
     );
     expect(preview.controller.seek).toHaveBeenLastCalledWith(8);
 
     await moveTransport(view, { position: 11.99 });
-    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-pass")).toHaveTextContent(
       "Review complete · 2 passes"
     );
     expect(preview.controller.pause).toHaveBeenCalledTimes(1);
@@ -393,7 +397,7 @@ describe("ArrangementEditorSheet", () => {
     // Natural end of pass 1: the sheet counts the pass and restarts playback
     // inside the window, because a seek alone would leave it stopped.
     await moveTransport(view, { position: 12, status: "paused" });
-    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-pass")).toHaveTextContent(
       "Pass 2 of 2"
     );
     expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(8);
@@ -401,7 +405,7 @@ describe("ArrangementEditorSheet", () => {
 
     await moveTransport(view, { position: 8, status: "playing" });
     await moveTransport(view, { position: 12, status: "paused" });
-    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-pass")).toHaveTextContent(
       "Review complete · 2 passes"
     );
     expect(preview.controller.pause).toHaveBeenCalled();
@@ -411,7 +415,7 @@ describe("ArrangementEditorSheet", () => {
     // The arrangement preview stops at the timeline end…
     preview.controller.totalSeconds = 30;
     const view = renderSheet();
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     await moveTransport(view, { position: 29.99 });
     await moveTransport(view, { position: 30, status: "paused" });
     expect(preview.controller.startAtSeconds).toHaveBeenCalledTimes(1);
@@ -424,7 +428,7 @@ describe("ArrangementEditorSheet", () => {
 
     expect(preview.controller.startAtSeconds).toHaveBeenCalledTimes(2);
     expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(8);
-    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-pass")).toHaveTextContent(
       "Pass 1 of 2"
     );
   });
@@ -434,20 +438,20 @@ describe("ArrangementEditorSheet", () => {
     fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
     await moveTransport(view, { position: 11.99 });
     await moveTransport(view, { position: 11.99 });
-    expect(screen.getByTestId("arrangement-preview-pass")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-pass")).toHaveTextContent(
       /review complete/i
     );
 
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
 
     expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(0);
     // The rail's button starts the arrangement preview, never a review.
-    expect(screen.queryByTestId("arrangement-preview-pass")).toBeNull();
+    expect(screen.queryByTestId("arrangement-audition-pass")).toBeNull();
   });
 
   it("seeks to a component by tapping its band", () => {
     renderSheet();
-    const strip = screen.getByTestId("arrangement-preview-timeline");
+    const strip = screen.getByTestId("arrangement-audition-timeline");
     stubStripWidth(strip, 200);
     const bands = within(strip).getAllByRole("button");
     expect(bands).toHaveLength(3);
@@ -462,7 +466,7 @@ describe("ArrangementEditorSheet", () => {
 
   it("scrubs the strip and seeks inside the arrangement window", () => {
     renderSheet();
-    const strip = screen.getByTestId("arrangement-preview-timeline");
+    const strip = screen.getByTestId("arrangement-audition-timeline");
     stubStripWidth(strip, 200);
 
     fireEvent.pointerDown(strip, { pointerId: 2, clientX: 20, clientY: 6, button: 0 });
@@ -479,7 +483,7 @@ describe("ArrangementEditorSheet", () => {
 
   it("nudges the playhead with the keyboard", () => {
     renderSheet();
-    const playhead = screen.getByTestId("arrangement-preview-playhead");
+    const playhead = screen.getByTestId("arrangement-audition-playhead");
 
     fireEvent.keyDown(playhead, { key: "ArrowRight" });
     expect(preview.controller.seek).toHaveBeenLastCalledWith(1);
@@ -493,9 +497,9 @@ describe("ArrangementEditorSheet", () => {
 
   it("shows every component in the arrangement preview", () => {
     renderSheet();
-    const strip = screen.getByTestId("arrangement-preview-timeline");
+    const strip = screen.getByTestId("arrangement-audition-timeline");
 
-    expect(screen.getByTestId("arrangement-preview-summary")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-summary")).toHaveTextContent(
       "Whole arrangement · 3 components"
     );
     const bands = within(strip).getAllByRole("button");
@@ -507,7 +511,7 @@ describe("ArrangementEditorSheet", () => {
     // A lone item has no neighbour, so no lead-in or lead-out claims appear.
     expect(screen.queryByTestId("arrangement-next-opening-notice")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(0);
   });
 
@@ -521,12 +525,12 @@ describe("ArrangementEditorSheet", () => {
     });
     renderSheet({ item, items: [item] });
 
-    expect(screen.getByTestId("arrangement-preview-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("arrangement-preview-play")).not.toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-timeline")).toBeInTheDocument();
+    expect(screen.getByTestId("arrangement-audition-play")).not.toBeDisabled();
     // One component has no transition of its own.
     expect(screen.getByTestId("arrangement-review-transition-0")).toBeDisabled();
 
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(0);
   });
 
@@ -545,7 +549,7 @@ describe("ArrangementEditorSheet", () => {
       screen.getByText("Prev Song · Full song → Amazing Grace · Verse 1")
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(27);
   });
 
@@ -563,25 +567,25 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-next-opening-notice")).toHaveTextContent(
       "Next: Next Song · Opening — first 3 s"
     );
-    expect(screen.getByTestId("arrangement-preview-playhead")).toHaveAttribute(
+    expect(screen.getByTestId("arrangement-audition-playhead")).toHaveAttribute(
       "aria-valuemax",
       "34"
     );
 
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(0);
   });
 
   it("pauses the arrangement preview at its window end", async () => {
     const view = renderSheet();
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
 
     await moveTransport(view, { position: 29.99 });
     expect(preview.controller.pause).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId("arrangement-preview-pass")).toBeNull();
+    expect(screen.queryByTestId("arrangement-audition-pass")).toBeNull();
 
     // A finished preview starts over rather than resuming at its end.
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.startAtSeconds).toHaveBeenCalledTimes(2);
     expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(0);
     expect(preview.controller.play).not.toHaveBeenCalled();
@@ -592,10 +596,10 @@ describe("ArrangementEditorSheet", () => {
     fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
 
     await moveTransport(view, { position: 9, status: "paused" });
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
 
     expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(0);
-    expect(screen.queryByTestId("arrangement-preview-pass")).toBeNull();
+    expect(screen.queryByTestId("arrangement-audition-pass")).toBeNull();
   });
 
   it("opens a bounds transaction and auditions inside the candidate boundary", () => {
@@ -647,18 +651,29 @@ describe("ArrangementEditorSheet", () => {
     fireEvent.click(screen.getByTestId("arrangement-bounds-end-inc-0"));
     fireEvent.click(screen.getByTestId("arrangement-bounds-apply-0"));
 
+    // Apply rebuilds the transport input from the committed draft, so the new
+    // range is what a later audition plays.
+    const forwarded = JSON.parse(
+      String(preview.options?.items[0]?.arrangementSteps)
+    ) as { steps: Array<{ endSeconds: number }> };
+    expect(forwarded.steps[0]?.endSeconds).toBeCloseTo(10.1);
+
     fireEvent.click(screen.getByTestId("arrangement-bounds-trigger-0"));
 
     // The reopened session reads the committed bound, not the pre-Apply text,
     // and has no local edits of its own.
     expect(screen.getByTestId("arrangement-bounds-input-end-0")).toHaveValue("0:10.1");
     expect(screen.getByTestId("arrangement-bounds-apply-0")).toBeDisabled();
+
+    // Auditioning after Apply starts inside the edited clip (10.1 s - 3 s).
+    fireEvent.click(screen.getByTestId("arrangement-bounds-audition-end-0"));
+    expect(preview.controller.startAtSeconds).toHaveBeenLastCalledWith(7.1);
   });
 
   it("discards the bounds candidate on Cancel without touching the draft", () => {
     renderSheet();
     fireEvent.click(screen.getByTestId("arrangement-bounds-trigger-0"));
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
 
     fireEvent.change(screen.getByTestId("arrangement-bounds-input-end-0"), {
       target: { value: "0:09.0" },
@@ -667,7 +682,7 @@ describe("ArrangementEditorSheet", () => {
 
     expect(screen.queryByTestId("arrangement-bounds-edited-0")).toBeNull();
     expect(screen.getByTestId("arrangement-status")).toHaveTextContent(/^Saved$/);
-    expect(screen.getByTestId("arrangement-preview-play")).not.toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).not.toBeDisabled();
 
     // Reopening starts a fresh session: the abandoned text and its edit flag
     // are gone, so Apply cannot fire without a new edit.
@@ -686,12 +701,12 @@ describe("ArrangementEditorSheet", () => {
 
     expect(screen.getByTestId("arrangement-bounds-error-0")).toBeInTheDocument();
     expect(screen.getByTestId("arrangement-bounds-apply-0")).toBeDisabled();
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
     expect(screen.getByTestId("arrangement-review-transition-0")).toBeDisabled();
     // Typing an unsavable value blocks the transport but must not blank the
     // rail: the strip and summary describe the arrangement, not the candidate.
-    expect(screen.getByTestId("arrangement-preview-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("arrangement-preview-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("arrangement-audition-timeline")).toBeInTheDocument();
+    expect(screen.getByTestId("arrangement-audition-summary")).toBeInTheDocument();
   });
 
   it("offers an inferred Intro from the first sung lyric and flags it edited", async () => {
@@ -953,7 +968,7 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-add-section")).toBeDisabled();
     expect(screen.queryByTestId("arrangement-add-dialog")).toBeNull();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
   });
 
   it("explains when analysis exists but every section collapses during snapping", () => {
@@ -976,7 +991,7 @@ describe("ArrangementEditorSheet", () => {
       screen.getByText(/analysis is unavailable, so a new arrangement cannot be created/i)
     ).toBeInTheDocument();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
   });
 
   it("keeps a malformed saved arrangement open for explanation and reset", () => {
@@ -990,7 +1005,7 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.queryAllByTestId("arrangement-draft-step")).toHaveLength(0);
     expect(screen.getByText(/saved arrangement is invalid or stale/i)).toBeInTheDocument();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
     expect(screen.getByTestId("arrangement-reset")).not.toBeDisabled();
   });
 
@@ -1017,8 +1032,8 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
     // Without analysis there is no timeline to draw, so the strip is absent
     // (a single Step still produces a preview when analysis exists).
-    expect(screen.queryByTestId("arrangement-preview-timeline")).toBeNull();
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.queryByTestId("arrangement-audition-timeline")).toBeNull();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
     expect(screen.getByTestId("arrangement-reset")).not.toBeDisabled();
   });
 
@@ -1047,7 +1062,7 @@ describe("ArrangementEditorSheet", () => {
 
     expect(screen.getByTestId("arrangement-too-many-error")).toBeInTheDocument();
     expect(screen.getByTestId("arrangement-save")).toBeDisabled();
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
     // Over-limit is a live editing state: the amber step-count message is the
     // only feedback, never a destructive stale/invalid alert.
     expect(screen.queryByText(/saved arrangement is invalid or stale/i)).toBeNull();
@@ -1064,11 +1079,11 @@ describe("ArrangementEditorSheet", () => {
         itemId: "item-1",
       });
     });
-    expect(screen.getByTestId("arrangement-preview-error")).toBeInTheDocument();
+    expect(screen.getByTestId("arrangement-audition-error")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
 
-    expect(screen.queryByTestId("arrangement-preview-error")).toBeNull();
+    expect(screen.queryByTestId("arrangement-audition-error")).toBeNull();
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(8);
   });
 
@@ -1093,7 +1108,7 @@ describe("ArrangementEditorSheet", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
 
     // Draft mutation, preview, and close requests are all inert mid-save.
-    expect(screen.getByTestId("arrangement-preview-play")).toBeDisabled();
+    expect(screen.getByTestId("arrangement-audition-play")).toBeDisabled();
     expect(screen.getByTestId("arrangement-undo")).toBeDisabled();
     expect(screen.getByTestId("arrangement-add-section")).toBeDisabled();
     for (const button of screen.getAllByRole("button", { name: /review .* to .*/i })) {
@@ -1111,7 +1126,7 @@ describe("ArrangementEditorSheet", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /duplicate/i })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
     fireEvent.click(screen.getByTestId("arrangement-review-transition-0"));
-    fireEvent.click(screen.getByTestId("arrangement-preview-play"));
+    fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
     expect(draftSectionIndices()).toEqual(draftBeforeSave);
@@ -1134,20 +1149,25 @@ describe("ArrangementEditorSheet", () => {
       preview.options?.onPreviewError({ kind: "no-recording", itemId: "item-2" });
     });
 
-    expect(screen.getByTestId("arrangement-preview-error")).toHaveTextContent(
+    expect(screen.getByTestId("arrangement-audition-error")).toHaveTextContent(
       /no selected recording/i
     );
   });
 
-  it("surfaces the iOS fallback notice", () => {
+  it("shows loading progress as a percentage", () => {
+    preview.controller.status = "loading";
+    preview.controller.progress = {
+      itemId: "item-1",
+      itemIndex: 0,
+      itemCount: 1,
+      phase: "fetching",
+      receivedBytes: 5,
+      totalBytes: 10,
+    };
     renderSheet();
 
-    act(() => {
-      preview.options?.onFallbackNotice();
-    });
-
-    expect(screen.getByTestId("arrangement-fallback-notice")).toHaveTextContent(
-      /hard boundaries/i
+    expect(screen.getByTestId("arrangement-audition-play")).toHaveTextContent(
+      "Loading preview... 50%"
     );
   });
 

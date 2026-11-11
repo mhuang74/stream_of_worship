@@ -50,8 +50,8 @@ import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { useLocale } from "@/hooks/useLocale";
 import { useSongLyrics } from "@/hooks/useSongLyrics";
-import { useArrangementPreview } from "@/hooks/useArrangementPreview";
-import type { ArrangementPreviewError } from "@/lib/audio/arrangement-preview";
+import { useSongsetAudio } from "@/hooks/useSongsetAudio";
+import type { SongsetAudioError } from "@/hooks/useSongsetAudio";
 import {
   isValidLRC,
   linesForSourceRange,
@@ -934,7 +934,6 @@ export function ArrangementEditorSheet({
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [fallbackNotice, setFallbackNotice] = useState(false);
   // Bounds editing is one open transaction at a time: the id of the Step being
   // edited, its candidate (auditioned by the transport but never committed),
   // and whether the candidate is currently unsavable.
@@ -1138,7 +1137,7 @@ export function ArrangementEditorSheet({
   }, [previousItem]);
 
   const handlePreviewError = useCallback(
-    (error: ArrangementPreviewError) => {
+    (error: SongsetAudioError) => {
       setPreviewError(
         error.kind === "no-recording"
           ? t("arrangement.error.noRecording")
@@ -1150,15 +1149,10 @@ export function ArrangementEditorSheet({
     [t]
   );
 
-  const handleFallbackNotice = useCallback(() => {
-    setFallbackNotice(true);
-  }, []);
-
-  const preview = useArrangementPreview({
+  const preview = useSongsetAudio({
     items: previewItems,
     active: isOpen && isPreviewAvailable,
     onPreviewError: handlePreviewError,
-    onFallbackNotice: handleFallbackNotice,
   });
 
   // The arrangement preview window: every component, always with an 8-beat
@@ -1676,7 +1670,6 @@ export function ArrangementEditorSheet({
       preview.stop();
       setPlaybackWindow(null);
       setPreviewError(null);
-      setFallbackNotice(false);
       setDraftState({ draft: next, problem: validateDraftProblem(next, item) });
       if (recordHistory) {
         setHistory((entries) => [...entries.slice(-(HISTORY_LIMIT - 1)), draft]);
@@ -1708,7 +1701,6 @@ export function ArrangementEditorSheet({
     preview.stop();
     setPlaybackWindow(null);
     setPreviewError(null);
-    setFallbackNotice(false);
     const previous = history[history.length - 1];
     setHistory(history.slice(0, -1));
     setDraftState({
@@ -1896,7 +1888,18 @@ export function ArrangementEditorSheet({
   }, [closeBoundsEditor, isSaving, onOpenChange, onSave, preview, t]);
 
   const originalDurationSeconds = item.recording?.durationSeconds ?? null;
-  const showFallbackNotice = preview.isFallbackMode || fallbackNotice;
+  // Download progress for the current Recording; null keeps the indeterminate
+  // label. Byte counts are the engine's snapshot of the in-flight download.
+  const previewProgress = preview.progress;
+  const loadingPercent =
+    preview.status === "loading" &&
+    previewProgress !== null &&
+    previewProgress.totalBytes !== null &&
+    previewProgress.totalBytes > 0
+      ? Math.round(
+          (previewProgress.receivedBytes / previewProgress.totalBytes) * 100
+        )
+      : null;
   const songTitle = item.song?.title || t("browse.unknownSong");
 
   const metaParts: string[] = [];
@@ -2329,7 +2332,7 @@ export function ArrangementEditorSheet({
                     {isRailVisible && arrangementWindow && (
                       <p
                         className="text-[11px] leading-relaxed text-muted-foreground"
-                        data-testid="arrangement-preview-summary"
+                        data-testid="arrangement-audition-summary"
                       >
                         {arrangementSummary}
                       </p>
@@ -2376,7 +2379,7 @@ export function ArrangementEditorSheet({
                         </p>
                         <p
                           className="font-mono text-[11px] tabular-nums text-primary"
-                          data-testid="arrangement-preview-pass"
+                          data-testid="arrangement-audition-pass"
                         >
                           {reviewCompleted
                             ? t("arrangement.preview.completed")
@@ -2392,7 +2395,7 @@ export function ArrangementEditorSheet({
                       <div
                         role="group"
                         aria-label={t("arrangement.preview.timelineAria")}
-                        data-testid="arrangement-preview-timeline"
+                        data-testid="arrangement-audition-timeline"
                         className="relative h-12 touch-none overflow-hidden rounded-lg border border-border/70 bg-muted/40 select-none"
                         onPointerDown={handleStripPointerDown}
                         onPointerMove={handleStripPointerMove}
@@ -2468,7 +2471,7 @@ export function ArrangementEditorSheet({
                           aria-valuemax={Math.round(windowDurationSeconds)}
                           aria-valuenow={Math.round(windowPositionSeconds)}
                           aria-valuetext={`${formatTimecode(windowPositionSeconds)} / ${formatTimecode(windowDurationSeconds)}`}
-                          data-testid="arrangement-preview-playhead"
+                          data-testid="arrangement-audition-playhead"
                           onKeyDown={handlePlayheadKeyDown}
                           className="absolute inset-y-0 w-2 -translate-x-1/2 cursor-ew-resize bg-foreground/80 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           style={{
@@ -2499,7 +2502,7 @@ export function ArrangementEditorSheet({
                             ? t("arrangement.preview.pause")
                             : t("arrangement.preview.play")
                         }
-                        data-testid="arrangement-preview-play"
+                        data-testid="arrangement-audition-play"
                       >
                         {preview.status === "loading" ? (
                           <Loader2 className="size-3.5 animate-spin" />
@@ -2509,7 +2512,12 @@ export function ArrangementEditorSheet({
                           <Play className="size-3.5" />
                         )}
                         {preview.status === "loading"
-                          ? t("arrangement.preview.loading")
+                          ? loadingPercent !== null
+                            ? t("arrangement.preview.loadingProgress").replace(
+                                "{percent}",
+                                String(loadingPercent)
+                              )
+                            : t("arrangement.preview.loading")
                           : preview.status === "playing"
                             ? t("arrangement.preview.pause")
                             : t("arrangement.preview.play")}
@@ -2521,7 +2529,7 @@ export function ArrangementEditorSheet({
                         onClick={handleStop}
                         disabled={preview.status === "idle" || boundsEditorId !== null}
                         aria-label={t("arrangement.preview.stop")}
-                        data-testid="arrangement-preview-stop"
+                        data-testid="arrangement-audition-stop"
                       >
                         <Square className="size-3.5" />
                       </Button>
@@ -2536,22 +2544,14 @@ export function ArrangementEditorSheet({
                         role="status"
                         aria-live="polite"
                         className="truncate text-right"
-                        data-testid="arrangement-preview-phase"
+                        data-testid="arrangement-audition-phase"
                       >
                         {statusLabel}
                       </span>
                     </div>
 
-                    {showFallbackNotice && (
-                      <p
-                        className="text-[11px] leading-relaxed text-amber-600"
-                        data-testid="arrangement-fallback-notice"
-                      >
-                        {t("arrangement.preview.fallbackNotice")}
-                      </p>
-                    )}
                     {previewError && (
-                      <Alert variant="destructive" data-testid="arrangement-preview-error">
+                      <Alert variant="destructive" data-testid="arrangement-audition-error">
                         <AlertTriangle className="size-4" />
                         <AlertDescription>{previewError}</AlertDescription>
                       </Alert>

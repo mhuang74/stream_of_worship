@@ -37,6 +37,7 @@ import {
   ArrowLeft,
   MoreVertical,
   Play,
+  Headphones,
   RefreshCw,
   Edit,
   Copy,
@@ -73,6 +74,7 @@ export interface SongsetEditorProps {
   onEditArrangement?: (itemId: string) => void;
   onRender: () => void;
   onPlay: () => void;
+  onListen: () => void;
   onRetry: () => void;
   onUpdateDescription: (description: string) => Promise<void>;
   onRename: (name: string) => Promise<void>;
@@ -100,6 +102,7 @@ export function SongsetEditor({
   onEditArrangement,
   onRender,
   onPlay,
+  onListen,
   onUpdateDescription,
   onRename,
   onDuplicate,
@@ -355,7 +358,11 @@ export function SongsetEditor({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onPlay}>
                 <Play className="size-4 mr-2" />
-                {t("songsets.action.play")}
+                {t("songsets.action.worship")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onListen}>
+                <Headphones className="size-4 mr-2" />
+                {t("songsets.action.listen")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem

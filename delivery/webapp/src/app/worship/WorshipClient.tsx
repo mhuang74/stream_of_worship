@@ -19,6 +19,8 @@ import {
   downloadOfflineArtifacts,
   NoArtifactsError,
 } from "@/lib/offline/download-offline";
+import { unlockAudioContext } from "@/lib/audio/audio-context";
+import { ListenMixDialog } from "@/components/songset/ListenMixDialog";
 
 /**
  * /worship list (issue #211 follow-up descope): lists every songset with a
@@ -94,6 +96,10 @@ export function WorshipClient() {
   const [filter, setFilter] = useState<"ready" | "all">("ready");
   const [page, setPage] = useState(1);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [listeningSongset, setListeningSongset] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   // Offline boot: base rows from the IndexedDB index, works with zero
   // connectivity (the SW pre-cached this document).
@@ -224,7 +230,7 @@ export function WorshipClient() {
     };
   }, [rows]);
 
-  const handlePlay = useCallback(
+  const handleWorshipPlayback = useCallback(
     (id: string) => {
       // Cached ⇒ offline copy (cache-first controller boot): a full document
       // navigation is deterministic regardless of connectivity — the SW
@@ -239,6 +245,16 @@ export function WorshipClient() {
       router.push(`/songsets/${id}/play/controller`);
     },
     [rows, connectivity, router]
+  );
+
+  const handleListen = useCallback(
+    (id: string) => {
+      // Resume inside the click gesture (iOS/Chrome) before React state work.
+      unlockAudioContext();
+      const row = rows?.find((r) => r.id === id);
+      if (row) setListeningSongset({ id: row.id, name: row.name });
+    },
+    [rows]
   );
 
   const handleDownloadOffline = useCallback(
@@ -400,8 +416,9 @@ export function WorshipClient() {
           <SongsetRow
             key={row.id}
             {...row}
-            menuActions={["play", "downloadOffline", "removeOffline"]}
-            onPlay={() => handlePlay(row.id)}
+            menuActions={["worship", "listen", "downloadOffline", "removeOffline"]}
+            onWorshipPlayback={() => handleWorshipPlayback(row.id)}
+            onListen={() => handleListen(row.id)}
             onDownloadOffline={() => handleDownloadOffline(row.id)}
             isOfflineDownloadInProgress={downloadingId === row.id}
             onRemoveOffline={() => handleRemoveOffline(row.id)}
@@ -449,6 +466,17 @@ export function WorshipClient() {
             <ChevronRight className="size-4" />
           </Button>
         </nav>
+      )}
+      {listeningSongset && (
+        <ListenMixDialog
+          key={listeningSongset.id}
+          songsetId={listeningSongset.id}
+          songsetName={listeningSongset.name}
+          isOpen
+          onOpenChange={(open) => {
+            if (!open) setListeningSongset(null);
+          }}
+        />
       )}
     </div>
   );

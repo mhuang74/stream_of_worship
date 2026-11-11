@@ -622,6 +622,7 @@ describe("getSongsetEditorData", () => {
 
     expect(result).not.toBeNull();
     expect(result!.items).toHaveLength(0);
+    expect(result!.deletedItemCount).toBe(1);
   });
 
   it("computes renderState from snapshot fields", async () => {

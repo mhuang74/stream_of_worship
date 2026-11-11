@@ -148,21 +148,21 @@ describe("HomePageClient", () => {
     expect(screen.getByText("321")).toBeInTheDocument();
   });
 
-  it("renders recent songsets with play button only when fresh render exists", () => {
+  it("renders recent songsets with worship button only when fresh render exists", () => {
     render(<HomePageClient {...defaultProps} />);
     const cards = screen.getAllByTestId("dashboard-songset-card");
     expect(cards).toHaveLength(3);
-    const playButtons = screen.getAllByRole("button", { name: "Play" });
+    const playButtons = screen.getAllByRole("button", { name: "Worship" });
     expect(playButtons).toHaveLength(1); // only s1 has a fresh render
     const shareButtons = screen.getAllByRole("button", { name: "Share" });
     expect(shareButtons).toHaveLength(3);
   });
 
-  it("navigates to the play controller when play is clicked", async () => {
+  it("navigates to the play controller when worship is clicked", async () => {
     render(<HomePageClient {...defaultProps} />);
     // The handler awaits the offline-index read before navigating.
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      fireEvent.click(screen.getByRole("button", { name: "Worship" }));
     });
     expect(mockPush).toHaveBeenCalledWith("/songsets/s1/play/controller");
   });
@@ -181,7 +181,7 @@ describe("HomePageClient", () => {
     try {
       render(<HomePageClient {...defaultProps} />);
       await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "Play" }));
+        fireEvent.click(screen.getByRole("button", { name: "Worship" }));
       });
 
       expect(locationAssignMock).toHaveBeenCalledWith("/songsets/s1/play/controller");
@@ -215,7 +215,7 @@ describe("HomePageClient", () => {
     });
     try {
       render(<HomePageClient {...defaultProps} />);
-      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      fireEvent.click(screen.getByRole("button", { name: "Worship" }));
       await waitFor(() => {
         expect(locationAssignMock).toHaveBeenCalledWith(
           "/songsets/s1/play/controller"

@@ -36,7 +36,8 @@ describe("SongsetList", () => {
     error: null,
     onCreateSongset: vi.fn(),
     onRender: vi.fn(),
-    onPlay: vi.fn(),
+    onWorshipPlayback: vi.fn(),
+    onListen: vi.fn(),
     onRetry: vi.fn(),
     onRename: vi.fn(),
     onDuplicate: vi.fn(),
@@ -251,19 +252,41 @@ describe("SongsetList", () => {
       expect(onRender).toHaveBeenCalledWith("songset-1");
     });
 
-    it("calls onPlay when play is triggered", async () => {
-      const onPlay = vi.fn();
-      renderList({ onPlay });
+    it("calls onWorshipPlayback when worship is triggered", async () => {
+      const onWorshipPlayback = vi.fn();
+      renderList({ onWorshipPlayback });
       
       const menuButtons = screen.getAllByRole("button", { name: /open menu/i });
       fireEvent.click(menuButtons[0]);
       
       await waitFor(() => {
-        const playItems = screen.getAllByRole("menuitem", { name: /play/i });
-        fireEvent.click(playItems[0]);
+        const worshipItems = screen.getAllByRole("menuitem", { name: /worship/i });
+        fireEvent.click(worshipItems[0]);
       });
       
-      expect(onPlay).toHaveBeenCalledWith("songset-1");
+      expect(onWorshipPlayback).toHaveBeenCalledWith("songset-1");
+    });
+
+    it("calls onListen when listen is triggered", async () => {
+      const onListen = vi.fn();
+      renderList({ onListen });
+
+      const menuButtons = screen.getAllByRole("button", { name: /open menu/i });
+      fireEvent.click(menuButtons[0]);
+
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^listen$/i }));
+      });
+
+      expect(onListen).toHaveBeenCalledWith("songset-1");
+    });
+
+    it("does not render the row Listen button without an onListen handler", () => {
+      renderList({ onListen: undefined });
+
+      expect(
+        screen.queryByRole("button", { name: /^listen$/i })
+      ).not.toBeInTheDocument();
     });
 
     it("calls onShare when share is triggered", async () => {

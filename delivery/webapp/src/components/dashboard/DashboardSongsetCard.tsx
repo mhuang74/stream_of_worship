@@ -95,7 +95,7 @@ export function DashboardSongsetCard({
           {canPlayFreshRender && (
             <Button variant="default" size="sm" className="gap-1.5" onClick={() => onPlay(songset.id)}>
               <Play className="size-4" />
-              {t("songsets.action.play")}
+              {t("songsets.action.worship")}
             </Button>
           )}
           <Button

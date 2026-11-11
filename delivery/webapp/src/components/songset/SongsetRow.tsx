@@ -26,6 +26,7 @@ import {
   Edit,
   Copy,
   Play,
+  Headphones,
   RefreshCw,
   Share2,
   Trash2,
@@ -42,7 +43,8 @@ import {
 /** Kebab-menu items a row may show; default is the full management menu. */
 export type SongsetMenuAction =
   | "render"
-  | "play"
+  | "worship"
+  | "listen"
   | "downloadOffline"
   | "removeOffline";
 export interface SongsetRowProps {
@@ -60,7 +62,8 @@ export interface SongsetRowProps {
   renderErrorMessage?: string | null;
   failedAt?: Date | null;
   onRender?: () => void;
-  onPlay?: () => void;
+  onWorshipPlayback?: () => void;
+  onListen?: () => void;
   onRetry?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
@@ -76,7 +79,7 @@ export interface SongsetRowProps {
   themes?: string[];
   /**
    * Whitelist of kebab items to render. Undefined ⇒ full management menu
-   * (Rename/Duplicate/Render/Play/Share/Audio/Video/offline/Delete), the
+   * (Rename/Duplicate/Render/Worship/Listen/Share/Audio/Video/offline/Delete), the
    * /songsets behavior. Narrow lists (e.g. /worship's playback-focused menu)
    * pass only the actions they wire.
    */
@@ -98,7 +101,8 @@ export function SongsetRow({
   renderErrorMessage,
   failedAt,
   onRender,
-  onPlay,
+  onWorshipPlayback,
+  onListen,
   onRename,
   onDuplicate,
   onShare,
@@ -121,7 +125,7 @@ export function SongsetRow({
     !menuActions || menuActions.includes(action);
 
   const canPlayFreshRender =
-    renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onPlay);
+    renderState === "fresh" && Boolean(lastCompletedRenderJobId) && Boolean(onWorshipPlayback);
 
   // Download for Offline (issue #212 follow-up): fresh rows without a copy
   // get the plain item; stale rows get the re-download variant. Hidden when
@@ -184,10 +188,22 @@ export function SongsetRow({
                     variant="default"
                     size="sm"
                     className="shrink-0 gap-1.5"
-                    onClick={onPlay}
+                    onClick={onWorshipPlayback}
                   >
                     <Play className="size-4" />
-                    {t("songsets.action.play")}
+                    {t("songsets.action.worship")}
+                  </Button>
+                )}
+
+                {onListen && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={onListen}
+                  >
+                    <Headphones className="size-4" />
+                    {t("songsets.action.listen")}
                   </Button>
                 )}
 
@@ -222,10 +238,16 @@ export function SongsetRow({
                         {t("songsets.action.render")}
                       </DropdownMenuItem>
                     )}
-                    {showMenuItem("play") && (
-                      <DropdownMenuItem onClick={onPlay}>
+                    {showMenuItem("worship") && (
+                      <DropdownMenuItem onClick={onWorshipPlayback}>
                         <Play className="size-4 mr-2" />
-                        {t("songsets.action.play")}
+                        {t("songsets.action.worship")}
+                      </DropdownMenuItem>
+                    )}
+                    {showMenuItem("listen") && onListen && (
+                      <DropdownMenuItem onClick={onListen}>
+                        <Headphones className="size-4 mr-2" />
+                        {t("songsets.action.listen")}
                       </DropdownMenuItem>
                     )}
                     {showMenuItem("render") && (

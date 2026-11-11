@@ -118,6 +118,7 @@ describe("SongsetEditor", () => {
     onEditArrangement: vi.fn(),
     onRender: vi.fn(),
     onPlay: vi.fn(),
+    onListen: vi.fn(),
     onRetry: vi.fn(),
     onUpdateDescription: vi.fn().mockResolvedValue(undefined),
     onRename: vi.fn().mockResolvedValue(undefined),
@@ -187,7 +188,8 @@ describe("SongsetEditor", () => {
 
       await waitFor(() => {
         expect(screen.getByRole("menuitem", { name: /render/i })).toBeInTheDocument();
-        expect(screen.getByRole("menuitem", { name: /play/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /worship/i })).toBeInTheDocument();
+        expect(screen.getByRole("menuitem", { name: /^listen$/i })).toBeInTheDocument();
         expect(screen.getByRole("menuitem", { name: /edit description/i })).toBeInTheDocument();
         expect(screen.getByRole("menuitem", { name: /duplicate/i })).toBeInTheDocument();
         expect(screen.getByRole("menuitem", { name: /share/i })).toBeInTheDocument();
@@ -207,16 +209,44 @@ describe("SongsetEditor", () => {
       expect(onRender).toHaveBeenCalled();
     });
 
-    it("calls onPlay when play menu item clicked", async () => {
+    it("calls onPlay when worship menu item clicked", async () => {
       const onPlay = vi.fn();
       renderEditor({ onPlay });
 
       fireEvent.click(screen.getByRole("button", { name: /more options/i }));
       await waitFor(() => {
-        fireEvent.click(screen.getByRole("menuitem", { name: /^play$/i }));
+        fireEvent.click(screen.getByRole("menuitem", { name: /^worship$/i }));
       });
 
       expect(onPlay).toHaveBeenCalled();
+    });
+
+    it("places the Listen item directly after the Play/Worship item", async () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /^listen$/i })).toBeInTheDocument();
+      });
+
+      const labels = screen
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent?.trim() ?? "");
+      const worshipIndex = labels.findIndex((label) => /^worship$/i.test(label));
+      expect(worshipIndex).toBeGreaterThanOrEqual(0);
+      expect(labels[worshipIndex + 1]).toMatch(/^listen$/i);
+    });
+
+    it("calls onListen when the Listen menu item clicked", async () => {
+      const onListen = vi.fn();
+      renderEditor({ onListen });
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("menuitem", { name: /^listen$/i }));
+      });
+
+      expect(onListen).toHaveBeenCalled();
     });
 
     it("calls onEditArrangement when a row Arrange action is clicked", () => {
@@ -483,13 +513,13 @@ describe("SongsetEditor", () => {
       expect(onRender).toHaveBeenCalled();
     });
 
-    it("calls onPlay when play menu item clicked (fresh)", async () => {
+    it("calls onPlay when worship menu item clicked (fresh)", async () => {
       const onPlay = vi.fn();
       renderEditor({ onPlay });
 
       fireEvent.click(screen.getByRole("button", { name: /more options/i }));
       await waitFor(() => {
-        fireEvent.click(screen.getByRole("menuitem", { name: /^play$/i }));
+        fireEvent.click(screen.getByRole("menuitem", { name: /^worship$/i }));
       });
       expect(onPlay).toHaveBeenCalled();
     });
