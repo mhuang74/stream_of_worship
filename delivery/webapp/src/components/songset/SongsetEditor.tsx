@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { SongList, SongListItem } from "./SongList";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
 import { TransitionPanel, TransitionSettings } from "./TransitionPanel";
-import { RenderStatusBadge, RenderState } from "./RenderStatusBadge";
+import type { RenderState } from "./RenderStatusBadge";
 import { SONGSET_MAX_SONGS, SONGSET_MAX_DURATION_SECONDS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +28,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { ThemeLabel, toSongTheme } from "./ThemeLabel";
 import { Alert, AlertDescription, AlertTitle, AlertAction } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { formatClockDuration, formatShortDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import { toast } from "sonner";
@@ -51,6 +58,8 @@ import {
   Loader2,
   FileAudio,
   FileVideo,
+  Clock,
+  WifiOff,
 } from "lucide-react";
 
 export interface SongsetEditorProps {
@@ -58,6 +67,7 @@ export interface SongsetEditorProps {
     id: string;
     name: string;
     description: string | null;
+    createdAt: string;
     renderState: RenderState;
     isArtifactsStale?: boolean;
     latestRenderJobId: string | null;
@@ -91,6 +101,9 @@ export interface SongsetEditorProps {
   /** Slot for the offline download control (OfflineStatus), rendered by the
    * client host that owns the render-job state. */
   offlineStatusSlot?: React.ReactNode;
+  /** True when the offline copy exists, so the header metadata line shows the
+   * "Offline" badge. */
+  isOfflineAvailable?: boolean;
 }
 
 export function SongsetEditor({
@@ -116,9 +129,10 @@ export function SongsetEditor({
   highlightSongId,
   onHighlightConsumed,
   offlineStatusSlot,
+  isOfflineAvailable = false,
 }: SongsetEditorProps) {
   const backToList = useSongsetListBack();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [isStaleBannerDismissed, setIsStaleBannerDismissed] = useState(false);
   const [isEditDescriptionOpen, setIsEditDescriptionOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -317,6 +331,11 @@ export function SongsetEditor({
 
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-lg truncate">{songset.name}</h1>
+            {songset.description && (
+              <p className="text-sm text-muted-foreground line-clamp-2 break-words mt-0.5">
+                {songset.description}
+              </p>
+            )}
             {themes.length > 0 && (
               <div className="flex flex-wrap items-center gap-1 mt-1">
                 {themes.map((theme) => {
@@ -325,49 +344,58 @@ export function SongsetEditor({
                 })}
               </div>
             )}
-            <p className="text-xs text-muted-foreground">
-              {items.length} {t(items.length === 1 ? "songsets.unit.song" : "songsets.unit.songs")}
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                {items.length}{" "}
+                {t(items.length === 1 ? "songsets.unit.song" : "songsets.unit.songs")}
+              </span>
+              {!hasUnknownDuration && (
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="size-3" />
+                  {formatClockDuration(totalDurationSeconds)}
+                </span>
+              )}
               {isDurationOverLimit && (
-                <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500/50 text-xs">
+                <Badge variant="outline" className="text-amber-600 border-amber-500/50 text-xs">
                   {t("songsets.overDurationLimit")}
                 </Badge>
               )}
               {hasUnknownDuration && (
-                <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500/50 text-xs">
+                <Badge variant="outline" className="text-amber-600 border-amber-500/50 text-xs">
                   {t("arrangement.duration.unavailable")}
                 </Badge>
               )}
             </p>
           </div>
 
-          {/* Render status badge */}
-          <RenderStatusBadge
-            state={songset.renderState}
-            errorMessage={songset.renderErrorMessage}
-            failedAt={songset.failedAt ? new Date(songset.failedAt) : null}
-          />
-
-          <Button
-            variant="default"
-            size="sm"
-            className="shrink-0 gap-1.5"
-            onClick={onPlay}
-            disabled={!canWorship}
-            data-testid="songset-worship"
-            title={
-              canWorship
-                ? t("songsets.action.worship")
-                : `${t("songsets.action.worship")} — ${t("control.songsetNotRendered")}`
-            }
-            aria-label={
-              canWorship
-                ? t("songsets.action.worship")
-                : `${t("songsets.action.worship")} — ${t("control.songsetNotRendered")}`
-            }
-          >
-            <Play className="size-4" />
-            <span className="hidden sm:inline">{t("songsets.action.worship")}</span>
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* Span keeps the tooltip reachable over the disabled button. */}
+                <span className="inline-flex" data-testid="songset-worship-trigger">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={onPlay}
+                    disabled={!canWorship}
+                    data-testid="songset-worship"
+                    aria-label={
+                      canWorship
+                        ? t("songsets.action.worship")
+                        : t("control.songsetNotRendered")
+                    }
+                  >
+                    <Play className="size-4" />
+                    <span className="hidden sm:inline">{t("songsets.action.worship")}</span>
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-80 whitespace-normal">
+                {canWorship ? t("songsets.action.worship") : t("control.songsetNotRendered")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           <Button
             variant="outline"
@@ -463,6 +491,23 @@ export function SongsetEditor({
         </div>
       </header>
 
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pt-3 text-xs text-muted-foreground">
+        <span>
+          {t("songsets.createdPrefix")}
+          {formatShortDateTime(new Date(songset.createdAt), locale)}
+        </span>
+        <span>
+          {t("songsets.updatedPrefix")}
+          {formatShortDateTime(new Date(songset.updatedAt), locale)}
+        </span>
+        {isOfflineAvailable && (
+          <Badge variant="secondary" className="text-xs gap-1">
+            <WifiOff className="size-3" />
+            {t("songsets.badge.offline")}
+          </Badge>
+        )}
+      </div>
+
       {/* Offline download control (moved from the deleted Play screen,
           issue #211 follow-up Q16): download/refresh the offline copy. */}
       {offlineStatusSlot}
@@ -544,13 +589,6 @@ export function SongsetEditor({
 
       {/* Main content */}
       <main className="flex-1 p-4 pb-24">
-        {/* Description */}
-        {songset.description && (
-          <p className="text-sm text-muted-foreground mb-4">
-            {songset.description}
-          </p>
-        )}
-
         {/* Song list */}
         <SongList
           items={items}
