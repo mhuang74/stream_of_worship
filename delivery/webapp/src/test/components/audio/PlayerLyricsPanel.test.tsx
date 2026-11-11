@@ -144,6 +144,7 @@ describe("PlayerLyricsPanel", () => {
     mockUseSongLyrics.mockReturnValue({
       lrcContent: null,
       lines: null,
+      sections: null,
       loading: false,
       error: "Network error",
     });
@@ -151,6 +152,66 @@ describe("PlayerLyricsPanel", () => {
     render(<PlayerLyricsPanel recordingContentHash="abc123" />, "zh-Hant");
 
     expect(screen.getByText("歌詞載入失敗")).toBeInTheDocument();
+  });
+
+  it("groups lines under occurrence-numbered Section Labels in sung order", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: [
+        "[00:01.00]verse line",
+        "[00:21.00]chorus one line",
+        "[00:41.00]chorus two line",
+      ].join("\n"),
+      lines: null,
+      sections: [
+        { label: "verse", start: 0, end: 20 },
+        { label: "chorus", start: 20, end: 40 },
+        { label: "chorus", start: 40, end: 60 },
+      ],
+      loading: false,
+      error: null,
+    });
+
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    const headings = Array.from(document.querySelectorAll("[data-lyric-heading]")).map(
+      (node) => node.textContent
+    );
+    expect(headings).toEqual(["verse", "chorus 1", "chorus 2"]);
+    // Headings are not rows: indices and click-to-seek still see lyric lines.
+    expect(
+      Array.from(document.querySelectorAll("[data-lyric-index]")).map((node) =>
+        node.getAttribute("data-lyric-index")
+      )
+    ).toEqual(["0", "1", "2"]);
+  });
+
+  it("renders a flat list when the Recording has no sections", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: "[00:01.00]first\n[00:05.00]second",
+      lines: null,
+      sections: null,
+      loading: false,
+      error: null,
+    });
+
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    expect(document.querySelectorAll("[data-lyric-heading]")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-lyric-index]")).toHaveLength(2);
+  });
+
+  it("keeps the unsynced fallback flat even when sections are known", () => {
+    mockUseSongLyrics.mockReturnValue({
+      lrcContent: null,
+      lines: ["plain one", "plain two"],
+      sections: [{ label: "verse", start: 0, end: 20 }],
+      loading: false,
+      error: null,
+    });
+
+    render(<PlayerLyricsPanel recordingContentHash="abc123" />);
+
+    expect(document.querySelectorAll("[data-lyric-heading]")).toHaveLength(0);
   });
 });
 

@@ -66,16 +66,87 @@ describe("GET /api/lyrics/[recordingContentHash]", () => {
     expect(res.status).toBe(401);
   });
 
-  it("(a) override path returns lrcContent", async () => {
+  it("(a) override path returns lrcContent and the Recording's sections", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
     mockQueryUserLrcOverrides.mockResolvedValue({ lrcContent: sampleLrc });
+    // The Recording is read even though the override wins: its sections head
+    // the lyric list on every branch.
+    mockSelect.mockReturnValueOnce(
+      selectChain([
+        {
+          hashPrefix: "ab",
+          lrcStatus: "missing",
+          songId: "song-1",
+          sections: JSON.stringify([
+            { label: "verse", start: 0, end: 20 },
+            { label: "chorus", start: 20, end: 40 },
+          ]),
+        },
+      ])
+    );
 
     const res = await GET(makeRequest("hash123"), mockParams("hash123"));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.lrcContent).toBe(sampleLrc);
     expect(data.lines).toBeNull();
-    expect(mockSelect).not.toHaveBeenCalled();
+    expect(data.sections).toEqual([
+      { label: "verse", start: 0, end: 20 },
+      { label: "chorus", start: 20, end: 40 },
+    ]);
+    expect(mockSelect).toHaveBeenCalled();
+  });
+
+  it("(a2) override path still resolves sections when the Recording is gone", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockQueryUserLrcOverrides.mockResolvedValue({ lrcContent: sampleLrc });
+    mockSelect.mockReturnValueOnce(selectChain([]));
+
+    const res = await GET(makeRequest("hash123"), mockParams("hash123"));
+    const data = await res.json();
+    expect(data.lrcContent).toBe(sampleLrc);
+    expect(data.sections).toBeNull();
+  });
+
+  it("serves sections alongside the canonical R2 LRC", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockQueryUserLrcOverrides.mockResolvedValue(undefined);
+    mockSelect.mockReturnValueOnce(
+      selectChain([
+        {
+          hashPrefix: "ab",
+          lrcStatus: "ready",
+          songId: "song-1",
+          sections: JSON.stringify([{ label: "verse", start: 0, end: 30 }]),
+        },
+      ])
+    );
+    mockCreateR2ClientFromEnv.mockReturnValue({
+      getLrcSignedUrl: vi.fn().mockResolvedValue({ url: "https://r2.example.com/lyrics.lrc" }),
+    });
+    mockFetch.mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue(sampleLrc) });
+
+    const data = await (await GET(makeRequest("hash123"), mockParams("hash123"))).json();
+    expect(data.lrcContent).toBe(sampleLrc);
+    expect(data.sections).toEqual([{ label: "verse", start: 0, end: 30 }]);
+  });
+
+  it("returns sections: null when the Recording's section JSON is malformed", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue(sessionUser as any);
+    mockQueryUserLrcOverrides.mockResolvedValue(undefined);
+    mockSelect
+      .mockReturnValueOnce(
+        selectChain([
+          { hashPrefix: "ab", lrcStatus: "missing", songId: "song-1", sections: "not json {{" },
+        ])
+      )
+      .mockReturnValueOnce(
+        selectChain([{ lyricsLines: JSON.stringify(["still served"]), lyricsRaw: null }])
+      );
+
+    const data = await (await GET(makeRequest("hash123"), mockParams("hash123"))).json();
+    expect(data.lines).toEqual(["still served"]);
+    expect(data.sections).toBeNull();
   });
 
   it("(b) lrcStatus='missing' skips R2 and returns lines from lyrics_lines", async () => {

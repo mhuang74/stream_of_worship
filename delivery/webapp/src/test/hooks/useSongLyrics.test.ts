@@ -22,6 +22,7 @@ describe("useSongLyrics", () => {
 
     expect(result.current.lrcContent).toBeNull();
     expect(result.current.lines).toBeNull();
+    expect(result.current.sections).toBeNull();
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
@@ -29,14 +30,24 @@ describe("useSongLyrics", () => {
 
   it("(a) loading → success transitions", async () => {
     mockFetch.mockResolvedValue(
-      new Response(JSON.stringify({ lrcContent: "[00:01.00]Hello", lines: null }), {
-        status: 200,
-      })
+      new Response(
+        JSON.stringify({
+          lrcContent: "[00:01.00]Hello",
+          lines: null,
+          sections: [
+            { label: "verse", start: 0, end: 20 },
+            { label: "chorus", start: 20, end: 40 },
+            { label: "chorus", start: 40, end: 60 },
+          ],
+        }),
+        { status: 200 }
+      )
     );
 
     const { result } = renderHook(() => useSongLyrics("hash123"));
 
     expect(result.current.loading).toBe(true);
+    expect(result.current.sections).toBeNull();
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -45,6 +56,24 @@ describe("useSongLyrics", () => {
     expect(result.current.lrcContent).toBe("[00:01.00]Hello");
     expect(result.current.lines).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(result.current.sections).toEqual([
+      { label: "verse", start: 0, end: 20 },
+      { label: "chorus", start: 20, end: 40 },
+      { label: "chorus", start: 40, end: 60 },
+    ]);
+  });
+
+  it("renders flat when the response omits sections", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ lrcContent: "plain", lines: null }), { status: 200 })
+    );
+
+    const { result } = renderHook(() => useSongLyrics("hash-no-sections"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.sections).toBeNull();
   });
 
   it("(b) error state", async () => {
@@ -61,13 +90,19 @@ describe("useSongLyrics", () => {
     expect(result.current.error).not.toBeNull();
     expect(result.current.lrcContent).toBeNull();
     expect(result.current.lines).toBeNull();
+    expect(result.current.sections).toBeNull();
   });
 
   it("(c) module-scoped cache: second expansion of same contentHash does not refetch", async () => {
     mockFetch.mockResolvedValue(
-      new Response(JSON.stringify({ lrcContent: "cached lyrics", lines: null }), {
-        status: 200,
-      })
+      new Response(
+        JSON.stringify({
+          lrcContent: "cached lyrics",
+          lines: null,
+          sections: [{ label: "verse", start: 0, end: 20 }],
+        }),
+        { status: 200 }
+      )
     );
 
     const { result, unmount } = renderHook(() => useSongLyrics("hash-cached"));
@@ -84,6 +119,8 @@ describe("useSongLyrics", () => {
 
     expect(result2.current.lrcContent).toBe("cached lyrics");
     expect(result2.current.loading).toBe(false);
+    // Headings survive a cache hit: the sections ride along with the text.
+    expect(result2.current.sections).toEqual([{ label: "verse", start: 0, end: 20 }]);
     expect(mockFetch).not.toHaveBeenCalled();
   });
 

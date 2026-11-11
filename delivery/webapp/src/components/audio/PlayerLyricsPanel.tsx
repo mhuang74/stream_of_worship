@@ -7,6 +7,7 @@ import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { LyricsFeedbackRow, type LyricsSituationKind } from "@/components/audio/LyricsFeedbackRow";
 import { CURSOR_LEAD_SECONDS, LyricsLinesPanel } from "@/components/audio/LyricsLinesPanel";
 import { parseLRC, isValidLRC, findCurrentLyricIndex, type LRCLine } from "@/lib/render/lrc-parser";
+import { headingForPositions } from "@/lib/section-labels";
 import { useLocale } from "@/hooks/useLocale";
 
 interface PlayerLyricsPanelProps {
@@ -14,12 +15,19 @@ interface PlayerLyricsPanelProps {
 }
 
 export function PlayerLyricsPanel({ recordingContentHash }: PlayerLyricsPanelProps) {
-  const { lrcContent, lines, loading, error } = useSongLyrics(recordingContentHash);
+  const { lrcContent, lines, sections, loading, error } = useSongLyrics(recordingContentHash);
   const { t } = useLocale();
   const { currentTime, seek } = useAudioPlayer();
   const parsed: LRCLine[] | null = useMemo(
     () => (lrcContent !== null && isValidLRC(lrcContent) ? parseLRC(lrcContent) : null),
     [lrcContent]
+  );
+  // Section Label headings come from the Recording's own sections, looked up
+  // at each line's position in the Recording. Unsynced and raw fallbacks never
+  // reach this path: they render `children`, so they stay flat.
+  const headings = useMemo(
+    () => (parsed ? headingForPositions(sections, parsed.map((line) => line.timeSeconds)) : null),
+    [parsed, sections]
   );
   const globalLines = useMemo(
     () =>
@@ -33,11 +41,12 @@ export function PlayerLyricsPanel({ recordingContentHash }: PlayerLyricsPanelPro
   );
   const viewLines = useMemo(
     () =>
-      globalLines?.map((line) => ({
+      globalLines?.map((line, index) => ({
         text: line.text,
         timeSeconds: line.globalTimeSeconds,
+        heading: headings?.[index] ?? undefined,
       })) ?? null,
-    [globalLines]
+    [globalLines, headings]
   );
   const activeIndex = globalLines
     ? findCurrentLyricIndex(globalLines, currentTime + CURSOR_LEAD_SECONDS)
