@@ -165,6 +165,9 @@ export function SongsetEditor({
   const isDurationOverLimit =
     !hasUnknownDuration && totalDurationSeconds > SONGSET_MAX_DURATION_SECONDS;
   const themes = [...new Set(items.map((i) => i.recording?.theme).filter(Boolean))] as string[];
+  // Worship playback requires a completed render. A stale render still has a
+  // completed job, so stale is enabled by construction.
+  const canWorship = Boolean(songset.lastCompletedRenderJobId);
 
   // Handle back navigation
   const handleBack = () => {
@@ -343,6 +346,41 @@ export function SongsetEditor({
             errorMessage={songset.renderErrorMessage}
             failedAt={songset.failedAt ? new Date(songset.failedAt) : null}
           />
+
+          <Button
+            variant="default"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={onPlay}
+            disabled={!canWorship}
+            data-testid="songset-worship"
+            title={
+              canWorship
+                ? t("songsets.action.worship")
+                : `${t("songsets.action.worship")} — ${t("control.songsetNotRendered")}`
+            }
+            aria-label={
+              canWorship
+                ? t("songsets.action.worship")
+                : `${t("songsets.action.worship")} — ${t("control.songsetNotRendered")}`
+            }
+          >
+            <Play className="size-4" />
+            <span className="hidden sm:inline">{t("songsets.action.worship")}</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={onListen}
+            data-testid="songset-listen"
+            title={t("songsets.action.listen")}
+            aria-label={t("songsets.action.listen")}
+          >
+            <Headphones className="size-4" />
+            <span className="hidden sm:inline">{t("songsets.action.listen")}</span>
+          </Button>
 
           {/* Overflow menu */}
           <DropdownMenu>

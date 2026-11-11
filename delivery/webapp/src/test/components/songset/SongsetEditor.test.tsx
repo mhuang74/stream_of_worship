@@ -4,6 +4,7 @@ import { renderWithLocale, renderWithLocale as render } from "@/test/render";
 import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { RenderState } from "@/components/songset/RenderStatusBadge";
 import { SongListItem } from "@/components/songset/SongList";
+import { messages } from "@/lib/i18n/messages";
 import { saveSongsetListState } from "@/lib/songset-list-state";
 
 // Mock next/navigation
@@ -178,6 +179,88 @@ describe("SongsetEditor", () => {
     it("has overflow menu", () => {
       renderEditor();
       expect(screen.getByRole("button", { name: /more options/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("header playback actions", () => {
+    const notRenderedText = messages.en["control.songsetNotRendered"];
+    const renderStates: RenderState[] = ["unrendered", "rendering", "fresh", "stale", "failed"];
+
+    it("enables worship for a fresh render with a completed job and calls onPlay", () => {
+      const onPlay = vi.fn();
+      renderEditor({
+        onPlay,
+        songset: { ...mockSongset, renderState: "fresh", lastCompletedRenderJobId: "job-1" },
+      });
+
+      const worship = screen.getByTestId("songset-worship");
+      expect(worship).toBeEnabled();
+      expect(worship).toHaveAttribute("title", "Worship");
+      expect(worship).toHaveAttribute("aria-label", "Worship");
+
+      fireEvent.click(worship);
+      expect(onPlay).toHaveBeenCalledTimes(1);
+    });
+
+    it("enables worship for a stale render because a completed job still exists", () => {
+      renderEditor({
+        songset: { ...mockSongset, renderState: "stale", lastCompletedRenderJobId: "job-1" },
+      });
+
+      expect(screen.getByTestId("songset-worship")).toBeEnabled();
+    });
+
+    it.each(["unrendered", "rendering", "failed"] as RenderState[])(
+      "disables worship for renderState %s with the not-rendered reason",
+      (renderState) => {
+        const onPlay = vi.fn();
+        renderEditor({
+          onPlay,
+          songset: { ...mockSongset, renderState, lastCompletedRenderJobId: null },
+        });
+
+        const worship = screen.getByTestId("songset-worship");
+        expect(worship).toBeDisabled();
+        expect(worship.getAttribute("title")).toContain(notRenderedText);
+        expect(worship.getAttribute("aria-label")).toContain(notRenderedText);
+
+        fireEvent.click(worship);
+        expect(onPlay).not.toHaveBeenCalled();
+      }
+    );
+
+    it("disables worship when there is no completed render job", () => {
+      renderEditor({
+        songset: { ...mockSongset, renderState: "fresh", lastCompletedRenderJobId: null },
+      });
+
+      const worship = screen.getByTestId("songset-worship");
+      expect(worship).toBeDisabled();
+      expect(worship.getAttribute("title")).toContain(notRenderedText);
+      expect(worship.getAttribute("aria-label")).toContain(notRenderedText);
+    });
+
+    it.each(renderStates)("keeps listen enabled for renderState %s", (renderState) => {
+      renderEditor({
+        songset: { ...mockSongset, renderState, lastCompletedRenderJobId: null },
+      });
+
+      expect(screen.getByTestId("songset-listen")).toBeEnabled();
+    });
+
+    it("calls onListen when the header listen button is clicked", () => {
+      const onListen = vi.fn();
+      renderEditor({
+        onListen,
+        songset: { ...mockSongset, renderState: "unrendered", lastCompletedRenderJobId: null },
+      });
+
+      const listen = screen.getByTestId("songset-listen");
+      expect(listen).toHaveAttribute("title", "Listen");
+      expect(listen).toHaveAttribute("aria-label", "Listen");
+
+      fireEvent.click(listen);
+      expect(onListen).toHaveBeenCalledTimes(1);
     });
   });
 
