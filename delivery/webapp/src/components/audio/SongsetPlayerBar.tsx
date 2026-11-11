@@ -6,7 +6,7 @@
  * lives in `SongsetListenContext`; this component only renders it.
  */
 
-import { useId } from "react";
+import { type KeyboardEvent, type PointerEvent, useRef } from "react";
 import {
   AlignLeft,
   Headphones,
@@ -18,13 +18,15 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { useLocale } from "@/hooks/useLocale";
 import { useSongsetListen } from "@/contexts/SongsetListenContext";
 import { findTimelineItemIndex } from "@/lib/arrangements";
 import { cn } from "@/lib/utils";
 import { SongsetLyricsPanel } from "./SongsetLyricsPanel";
 import { useLyricsPullup } from "./useLyricsPullup";
+
+/** Boundary snap distance for pointer seeks, in CSS pixels. */
+const SEEK_SNAP_PX = 8;
 
 /** `m:ss` for the seek readout; minutes are unbounded. */
 function formatTime(seconds: number): string {
@@ -66,7 +68,7 @@ export function SongsetPlayerBar() {
     available: items.length > 0,
     panelId: "songset-lyrics-panel",
   });
-  const seekLabelId = useId();
+  const seekBarRef = useRef<HTMLDivElement>(null);
 
   const clampedPosition =
     totalSeconds > 0 ? Math.min(Math.max(timelinePositionSeconds, 0), totalSeconds) : 0;
@@ -74,6 +76,15 @@ export function SongsetPlayerBar() {
   const currentItem = items[currentIndex] ?? items[0] ?? null;
   const currentTitle = currentItem?.song?.title ?? t("songsets.listen.untitled");
   const currentClips = timeline.items[currentIndex]?.clips ?? [];
+  const segments = timeline.items.map((item, index) => ({
+    item,
+    index,
+    start: item.startSeconds,
+    end:
+      index + 1 < timeline.items.length
+        ? timeline.items[index + 1]!.startSeconds
+        : totalSeconds,
+  }));
 
   const hardError =
     loadErrorKey === "notFound"
@@ -141,6 +152,69 @@ export function SongsetPlayerBar() {
     subtitle = `${t("songsets.listen.currentItem")} · ${currentTitle}`;
   }
 
+  const resolveSeek = (clientX: number) => {
+    const rect = seekBarRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const x = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+    const seconds = (x / rect.width) * totalSeconds;
+    const snapSeconds = (SEEK_SNAP_PX / rect.width) * totalSeconds;
+    const boundary = timeline.items.find(
+      (timelineItem) => Math.abs(timelineItem.startSeconds - seconds) <= snapSeconds,
+    );
+    seek(boundary ? boundary.startSeconds : seconds);
+  };
+
+  const handleSeekPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resolveSeek(event.clientX);
+  };
+
+  const handleSeekPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      resolveSeek(event.clientX);
+    }
+  };
+
+  const handleSeekPointerRelease = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handleSeekKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    let next: number;
+    switch (event.key) {
+      case "ArrowLeft":
+        next = clampedPosition - 5;
+        break;
+      case "ArrowRight":
+        next = clampedPosition + 5;
+        break;
+      case "ArrowDown":
+        next = clampedPosition - 10;
+        break;
+      case "ArrowUp":
+        next = clampedPosition + 10;
+        break;
+      case "PageDown":
+        next = clampedPosition - 60;
+        break;
+      case "PageUp":
+        next = clampedPosition + 60;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = totalSeconds;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    seek(Math.min(Math.max(next, 0), totalSeconds));
+  };
+
   return (
     <div
       className={cn(
@@ -172,6 +246,7 @@ export function SongsetPlayerBar() {
               key={currentItem?.id ?? "empty"}
               contentHash={currentItem?.recording?.contentHash ?? null}
               clips={currentClips}
+              sections={currentItem?.recording?.sections ?? null}
               positionSeconds={clampedPosition}
               onSeek={seek}
             />
@@ -179,55 +254,59 @@ export function SongsetPlayerBar() {
         )}
       </div>
 
-      {/* Item markers: one segment per Songset Item */}
-      {timeline.items.length > 1 && (
+      {/* Proportional seek bar: one segment per Songset Item */}
+      <div className="w-full pt-2 lg:pt-3">
         <div
-          role="group"
-          aria-label={t("songsets.listen.markersAria")}
-          data-testid="songset-markers"
-          className="flex w-full items-center gap-1 px-3 pt-2"
-        >
-          {timeline.items.map((timelineItem, index) => {
-            const markerTitle =
-              items.find((item) => item.id === timelineItem.itemId)?.song?.title ??
-              t("songsets.listen.untitled");
-            return (
-              <button
-                key={timelineItem.itemId}
-                type="button"
-                data-testid="songset-marker"
-                aria-label={markerTitle}
-                title={markerTitle}
-                onClick={() => seek(timelineItem.startSeconds)}
-                className={cn(
-                  "h-2 flex-1 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
-                  index === currentIndex ? "bg-primary" : "bg-primary/30 hover:bg-primary/60",
-                )}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {/* Seek bar (full width, taller for touch) */}
-      <div className="w-full px-3 pt-2 lg:pt-3">
-        <span id={seekLabelId} className="sr-only">
-          {t("songsets.listen.seekAria")}
-        </span>
-        <Slider
-          value={[clampedPosition]}
-          min={0}
-          max={totalSeconds > 0 ? totalSeconds : 1}
-          step={1}
-          disabled={!canSeek}
-          aria-labelledby={seekLabelId}
+          ref={seekBarRef}
+          role="slider"
+          tabIndex={canSeek ? 0 : -1}
           data-testid="songset-seek"
-          className="w-full"
-          onValueChange={(value) => {
-            const next = Array.isArray(value) ? value[0] : value;
-            if (Number.isFinite(next)) seek(next);
-          }}
-        />
+          aria-label={t("songsets.listen.seekAria")}
+          aria-valuemin={0}
+          aria-valuemax={totalSeconds}
+          aria-valuenow={clampedPosition}
+          aria-valuetext={`${formatTime(clampedPosition)} / ${formatTime(totalSeconds)}`}
+          aria-disabled={!canSeek}
+          className={cn(
+            "relative h-6 w-full touch-none select-none px-3",
+            !canSeek && "opacity-50 cursor-not-allowed",
+          )}
+          onPointerDown={canSeek ? handleSeekPointerDown : undefined}
+          onPointerMove={canSeek ? handleSeekPointerMove : undefined}
+          onPointerUp={canSeek ? handleSeekPointerRelease : undefined}
+          onPointerCancel={canSeek ? handleSeekPointerRelease : undefined}
+          onKeyDown={canSeek ? handleSeekKeyDown : undefined}
+        >
+          <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+            {totalSeconds > 0 &&
+              segments.map(({ item, index, start, end }) => (
+                <div
+                  key={item.itemId}
+                  data-testid="songset-seek-segment"
+                  data-item-id={item.itemId}
+                  data-active={index === currentIndex || undefined}
+                  className={cn(
+                    "absolute inset-y-0",
+                    index === currentIndex ? "bg-primary" : "bg-primary/30",
+                  )}
+                  style={{
+                    left: `${(start / totalSeconds) * 100}%`,
+                    width: `${((end - start) / totalSeconds) * 100}%`,
+                  }}
+                >
+                  {index > 0 && item.crossfadeSeconds > 0 && (
+                    <div
+                      data-testid="songset-seek-transition"
+                      className="absolute inset-y-0 left-0 bg-foreground/20"
+                      style={{
+                        width: `${(item.crossfadeSeconds / totalSeconds) * 100}%`,
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 px-3 pb-2 pt-1 lg:px-4 lg:pb-3">

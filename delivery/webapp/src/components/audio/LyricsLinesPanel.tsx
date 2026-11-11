@@ -19,6 +19,11 @@ export const CURSOR_LEAD_SECONDS = 0.3;
 export interface LyricsLineView {
   text: string;
   timeSeconds: number;
+  /**
+   * Section Label heading rendered above this line, or undefined. Headings are
+   * not rows: they take no index and are never a seek target.
+   */
+  heading?: string;
 }
 
 export interface LyricsLinesPanelProps {
@@ -66,37 +71,46 @@ export function LyricsLinesPanel({
           {lines.map((line, i) => {
             const isActive = i === activeIndex;
             return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onLineSelect(i)}
-                data-lyric-index={i}
-                data-active={isActive || undefined}
-                className={cn(
-                  "flex flex-col w-full text-left px-2 py-1 rounded-md",
-                  "md:flex-row md:items-baseline md:gap-2",
-                  isActive && "font-medium",
-                  !isActive && "hover:bg-accent"
+              <div key={i}>
+                {line.heading != null && (
+                  <p
+                    className="px-2 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    data-lyric-heading
+                  >
+                    {line.heading}
+                  </p>
                 )}
-                style={
-                  isActive
-                    ? {
-                        backgroundColor: THEME_PHASE_COLORS[1].bg,
-                        color: THEME_PHASE_COLORS[1].text,
-                      }
-                    : undefined
-                }
-              >
-                <span
+                <button
+                  type="button"
+                  onClick={() => onLineSelect(i)}
+                  data-lyric-index={i}
+                  data-active={isActive || undefined}
                   className={cn(
-                    "font-mono text-xs block md:w-16 md:shrink-0",
-                    isActive ? "opacity-80" : "text-muted-foreground"
+                    "flex flex-col w-full text-left px-2 py-1 rounded-md",
+                    "md:flex-row md:items-baseline md:gap-2",
+                    isActive && "font-medium",
+                    !isActive && "hover:bg-accent"
                   )}
+                  style={
+                    isActive
+                      ? {
+                          backgroundColor: THEME_PHASE_COLORS[1].bg,
+                          color: THEME_PHASE_COLORS[1].text,
+                        }
+                      : undefined
+                  }
                 >
-                  {formatTimestamp(line.timeSeconds)}
-                </span>
-                <span className="text-sm break-words block">{line.text}</span>
-              </button>
+                  <span
+                    className={cn(
+                      "font-mono text-xs block md:w-16 md:shrink-0",
+                      isActive ? "opacity-80" : "text-muted-foreground"
+                    )}
+                  >
+                    {formatTimestamp(line.timeSeconds)}
+                  </span>
+                  <span className="text-sm break-words block">{line.text}</span>
+                </button>
+              </div>
             );
           })}
         </div>
