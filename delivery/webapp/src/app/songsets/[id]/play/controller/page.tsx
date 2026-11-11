@@ -1,12 +1,16 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import { usePlaybackCore, AuthRedirectError } from "@/hooks/usePlaybackCore";
 import { useLocale } from "@/hooks/useLocale";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
+import { chapterLineHeadings } from "@/lib/render/chapter-sections";
+import { toListenTimelineSources, type ListenSongsetItemPayload } from "@/lib/arrangements-listen";
+import type { TimelineItemSource } from "@/lib/arrangements";
 import {
   resolveOfflinePlayback,
   type OfflineMediaKind,
@@ -19,6 +23,7 @@ interface SongsetData {
   name: string;
   renderState: "unrendered" | "rendering" | "fresh" | "stale" | "failed";
   latestRenderJobId: string | null;
+  items?: (ListenSongsetItemPayload & { position: number })[];
 }
 
 // Connectivity for the boot hint is a render-time read of the shared
@@ -32,7 +37,9 @@ interface SongsetData {
 async function loadChapters(
   renderJobId: string,
   isCancelled: () => boolean,
-  setChapters: (chapters: Chapter[]) => void
+  setChapters: (chapters: Chapter[]) => void,
+  setChapterHeadings: (headings: (string | null)[][] | null) => void,
+  headingSources: TimelineItemSource[] | null
 ): Promise<void> {
   try {
     const response = await fetch(`/api/r2/artifact/${renderJobId}/chapters.json`);
@@ -40,6 +47,12 @@ async function loadChapters(
     const manifest = normalizeChaptersManifest(await response.json());
     if (isCancelled()) return;
     setChapters(manifest.chapters);
+    // Section Label headings map each line's global second back through the
+    // current Song Arrangement; null (flat sheet) whenever that cannot be done
+    // safely — see lib/render/chapter-sections.ts.
+    setChapterHeadings(
+      headingSources ? chapterLineHeadings(manifest.chapters, headingSources) : null
+    );
   } catch (e) {
     console.error("Failed to load chapters:", e);
   }
@@ -52,6 +65,10 @@ export default function ControllerPage() {
   const songsetId = params.id as string;
   const connectivity = useConnectivity();
   const offlineNow = connectivity === "offline";
+  // Section Label headings for the lyric sheet (issue #306). Null = flat list:
+  // the render is stale/rendering/failed, the chapters do not line up with the
+  // timeline, or the payload has no Items. Computed once the manifest lands.
+  const [chapterHeadings, setChapterHeadings] = useState<(string | null)[][] | null>(null);
 
   const core = usePlaybackCore({
     bootKey: songsetId,
@@ -98,9 +115,7 @@ export default function ControllerPage() {
         throw new Error(t("control.failedToLoadSongset"));
       }
 
-      const songsetData: SongsetData & {
-        items?: { position: number; recording?: { contentHash: string } | null }[];
-      } = await songsetResponse.json();
+      const songsetData: SongsetData = await songsetResponse.json();
       if (isCancelled()) return;
 
       ctx.setTitle(songsetData.name);
@@ -115,6 +130,13 @@ export default function ControllerPage() {
       setChapterRecordingHashes(
         sortedItems.map((item) => item?.recording?.contentHash ?? null)
       );
+
+      // Section Label headings need the current Song Arrangement: the chapters
+      // manifest only carries global times. A stale Render describes a previous
+      // arrangement, so its global times cannot be mapped back — flat sheet.
+      const headingSources: TimelineItemSource[] | null =
+        songsetData.renderState === "fresh" ? toListenTimelineSources(sortedItems) : null;
+      if (headingSources === null) setChapterHeadings(null);
 
       // Check if render artifacts exist
       if (!songsetData.latestRenderJobId) {
@@ -163,7 +185,13 @@ export default function ControllerPage() {
 
       // Load chapters via the proxy URL — independently of the media boot.
       if (jobData.chaptersR2Key) {
-        void loadChapters(jobData.id, isCancelled, setChapters);
+        void loadChapters(
+          jobData.id,
+          isCancelled,
+          setChapters,
+          setChapterHeadings,
+          headingSources
+        );
       }
     },
   });
@@ -214,6 +242,7 @@ export default function ControllerPage() {
       {...(media.kind === "audio" ? { audioSrc: media.src } : { videoSrc: media.src })}
       chapters={core.chapters}
       chapterRecordingHashes={core.chapterRecordingHashes}
+      chapterLineHeadings={chapterHeadings}
       isOfflineMedia={media.isOffline}
       onMediaError={core.handleMediaError}
       isPresentationActive={core.isPresentationActive}

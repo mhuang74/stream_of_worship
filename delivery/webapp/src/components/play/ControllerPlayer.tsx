@@ -88,6 +88,14 @@ interface ControllerPlayerBaseProps {
    * anonymous share-controller variant.
    */
   chapterRecordingHashes?: (string | null)[];
+  /**
+   * Section Label headings per chapter line (issue #306): `[chapterIndex]`
+   * holds one entry per line of that chapter, `null` for lines with no
+   * heading. Omitted or `null` renders every chapter as a flat list — the
+   * share controller and the offline boot never pass it, and a Render that
+   * does not describe the current Song Arrangement yields `null`.
+   */
+  chapterLineHeadings?: (string | null)[][] | null;
   className?: string;
 }
 
@@ -184,6 +192,7 @@ export function ControllerPlayer({
   onMediaError,
   exitRoute,
   chapterRecordingHashes,
+  chapterLineHeadings,
   castAvailability,
   isCastConnecting,
   onSendToTV,
@@ -1617,6 +1626,7 @@ export function ControllerPlayer({
         onJumpToLine={handleJumpToLine}
         isOpen={isLyricsOpen}
         onOpenChange={setIsLyricsOpen}
+        chapterLineHeadings={chapterLineHeadings}
         currentRecordingContentHash={
           (currentSong.fromPlayback ? chapterRecordingHashes?.[currentSong.index] : null) ?? null
         }

@@ -527,6 +527,125 @@ describe("ControllerPage (songset)", () => {
         null,
       ]);
     });
+
+    it("passes Section Label headings per chapter line for a fresh Render", async () => {
+      const songset = {
+        ...SONGSET_RESPONSE,
+        renderState: "fresh" as const,
+        items: [
+          {
+            id: "item-0",
+            position: 0,
+            recordingHashPrefix: "hash-a",
+            arrangementSteps: null,
+            gapBeats: null,
+            crossfadeEnabled: null,
+            crossfadeDurationSeconds: null,
+            song: { title: "Amazing Grace" },
+            recording: {
+              contentHash: "hash-a",
+              tempoBpm: null,
+              durationSeconds: 180,
+              sections: [
+                { label: "verse", start: 0, end: 90 },
+                { label: "chorus", start: 90, end: 180 },
+              ],
+              beats: null,
+            },
+          },
+        ],
+      };
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(songset) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({ ...RENDER_JOB_RESPONSE, chaptersR2Key: "chapters/test.json" }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(SIGNED_URL_RESPONSE) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              chapters: [
+                {
+                  position: 0,
+                  songTitle: "Amazing Grace",
+                  startSeconds: 0,
+                  endSeconds: 180,
+                  lines: [
+                    { text: "verse line", startSeconds: 10 },
+                    { text: "chorus line", startSeconds: 100 },
+                  ],
+                },
+              ],
+            }),
+        });
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(lastControllerProps?.chapterLineHeadings).toEqual([["verse", "chorus"]]);
+      });
+    });
+
+    it("passes null headings for a stale Render, whose chapters describe an old arrangement", async () => {
+      const songset = {
+        ...SONGSET_RESPONSE,
+        renderState: "stale" as const,
+        items: [
+          {
+            id: "item-0",
+            position: 0,
+            recordingHashPrefix: "hash-a",
+            arrangementSteps: null,
+            gapBeats: null,
+            crossfadeEnabled: null,
+            crossfadeDurationSeconds: null,
+            song: { title: "Amazing Grace" },
+            recording: {
+              contentHash: "hash-a",
+              tempoBpm: null,
+              durationSeconds: 180,
+              sections: [{ label: "verse", start: 0, end: 180 }],
+              beats: null,
+            },
+          },
+        ],
+      };
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(songset) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({ ...RENDER_JOB_RESPONSE, chaptersR2Key: "chapters/test.json" }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(SIGNED_URL_RESPONSE) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              chapters: [
+                {
+                  position: 0,
+                  songTitle: "Amazing Grace",
+                  startSeconds: 0,
+                  endSeconds: 180,
+                  lines: [{ text: "verse line", startSeconds: 10 }],
+                },
+              ],
+            }),
+        });
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chapters-count")).toHaveTextContent("1");
+      });
+      expect(lastControllerProps?.chapterLineHeadings).toBeNull();
+    });
   });
 
   describe("authentication", () => {

@@ -30,6 +30,13 @@ export interface LyricJumpListProps {
    * variant omits it entirely.
    */
   currentRecordingContentHash?: string | null;
+  /**
+   * Section Label heading per line, indexed by chapter then line (issue #306);
+   * `null` entries continue the previous heading. Omitted or `null` renders the
+   * sheet flat. Headings are not rows: they take no index and are never a jump
+   * target.
+   */
+  chapterLineHeadings?: (string | null)[][] | null;
   className?: string;
 }
 
@@ -41,6 +48,7 @@ export function LyricJumpList({
   isOpen,
   onOpenChange,
   currentRecordingContentHash,
+  chapterLineHeadings,
   className,
 }: LyricJumpListProps) {
   const { t } = useLocale();
@@ -220,36 +228,47 @@ export function LyricJumpList({
                         {chapter.lines.map((line, lineIndex) => {
                           const isActive = lineIndex === currentLineIndex;
                           const isPastLine = lineIndex < currentLineIndex;
+                          // Headings never shift a line's index or jump target.
+                          const heading = chapterLineHeadings?.[chapterIndex]?.[lineIndex] ?? null;
 
                           return (
-                            <button
-                              key={lineIndex}
-                              className={cn(
-                                "w-full text-left px-3 py-2 rounded transition-all",
-                                !isActive &&
-                                  (isPastLine
-                                    ? "text-white/40"
-                                    : "text-white/70 hover:bg-white/5")
+                            <div key={lineIndex}>
+                              {heading != null && (
+                                <p
+                                  className="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-white/50"
+                                  data-lyric-heading
+                                >
+                                  {heading}
+                                </p>
                               )}
-                              data-active={isActive || undefined}
-                              data-lyric-row={`${chapterIndex}-${lineIndex}`}
-                              style={
-                                isActive
-                                  ? {
-                                      backgroundColor: CURSOR_COLORS.bg,
-                                      color: CURSOR_COLORS.text,
-                                    }
-                                  : undefined
-                              }
-                              onClick={() =>
-                                onJumpToLine(chapterIndex, lineIndex)
-                              }
-                            >
-                              <p className="text-sm truncate">{line.text}</p>
-                              <p className={cn("text-xs", isActive ? "opacity-80" : "text-white/40")}>
-                                {formatTime(line.startSeconds)}
-                              </p>
-                            </button>
+                              <button
+                                className={cn(
+                                  "w-full text-left px-3 py-2 rounded transition-all",
+                                  !isActive &&
+                                    (isPastLine
+                                      ? "text-white/40"
+                                      : "text-white/70 hover:bg-white/5")
+                                )}
+                                data-active={isActive || undefined}
+                                data-lyric-row={`${chapterIndex}-${lineIndex}`}
+                                style={
+                                  isActive
+                                    ? {
+                                        backgroundColor: CURSOR_COLORS.bg,
+                                        color: CURSOR_COLORS.text,
+                                      }
+                                    : undefined
+                                }
+                                onClick={() =>
+                                  onJumpToLine(chapterIndex, lineIndex)
+                                }
+                              >
+                                <p className="text-sm truncate">{line.text}</p>
+                                <p className={cn("text-xs", isActive ? "opacity-80" : "text-white/40")}>
+                                  {formatTime(line.startSeconds)}
+                                </p>
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
