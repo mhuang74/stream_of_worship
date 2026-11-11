@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import type { CastTransportResult, CastMedia } from "@/hooks/useCast";
 import type { OfflineSongsetRecord } from "@/lib/offline/offline-index";
@@ -418,6 +418,39 @@ describe("ControllerPage (songset)", () => {
       await waitFor(() => {
         expect(screen.getByText(/go back/i)).toBeInTheDocument();
       });
+    });
+
+    it("returns Go Back to the songset page after the not-rendered error", async () => {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            ...SONGSET_RESPONSE,
+            renderState: "unrendered",
+            latestRenderJobId: null,
+          }),
+      });
+
+      render(<ControllerPage />);
+
+      const goBack = await screen.findByRole("button", { name: /go back/i });
+      fireEvent.click(goBack);
+
+      expect(mockPush).toHaveBeenCalledWith("/songsets/test-songset");
+    });
+
+    it("returns Go Back to the songsets list when the songset is gone", async () => {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+
+      render(<ControllerPage />);
+
+      const goBack = await screen.findByRole("button", { name: /go back/i });
+      fireEvent.click(goBack);
+
+      expect(mockPush).toHaveBeenCalledWith("/songsets");
     });
   });
 

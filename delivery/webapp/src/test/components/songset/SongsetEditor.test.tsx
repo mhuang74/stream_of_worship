@@ -264,6 +264,48 @@ describe("SongsetEditor", () => {
     });
   });
 
+  describe("overflow menu worship action", () => {
+    const openOverflow = async () => {
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /^render$/i })).toBeInTheDocument();
+      });
+    };
+
+    it("disables Worship until a render has completed", async () => {
+      const onPlay = vi.fn();
+      renderEditor({
+        onPlay,
+        songset: { ...mockSongset, renderState: "unrendered", lastCompletedRenderJobId: null },
+      });
+      await openOverflow();
+
+      const item = screen.getByRole("menuitem", { name: /worship/i });
+      expect(item).toHaveAttribute("data-disabled");
+      expect(item.getAttribute("aria-label")).toContain(
+        messages.en["control.songsetNotRendered"]
+      );
+
+      fireEvent.click(item);
+      expect(onPlay).not.toHaveBeenCalled();
+    });
+
+    it("keeps Worship enabled for a stale render with a completed job", async () => {
+      const onPlay = vi.fn();
+      renderEditor({
+        onPlay,
+        songset: { ...mockSongset, renderState: "stale", lastCompletedRenderJobId: "job-1" },
+      });
+      await openOverflow();
+
+      const item = screen.getByRole("menuitem", { name: /worship/i });
+      expect(item).not.toHaveAttribute("data-disabled");
+
+      fireEvent.click(item);
+      expect(onPlay).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("overflow menu", () => {
     it("opens menu when clicked", async () => {
       renderEditor();
