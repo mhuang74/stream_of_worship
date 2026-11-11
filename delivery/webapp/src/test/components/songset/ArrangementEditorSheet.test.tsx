@@ -276,6 +276,33 @@ describe("ArrangementEditorSheet", () => {
     expect(within(rows[1]).getByText("Chorus pickup")).toBeInTheDocument();
   });
 
+  it("keeps a late line and a dropped-section pickup with their own components", () => {
+    // Source section 10–20 s (Chorus) is dropped, so no Step tiles the 10 s or
+    // 20 s boundary: the line 0.3 s after the first Step's end still belongs to
+    // it, and the line 0.2 s before the second Step's start is its pickup.
+    lyrics.lrcContent = "[00:10.30]Late tail\n[00:19.80]Dropped pickup\n";
+    const saved = {
+      version: 1,
+      steps: [
+        { sectionIndex: 0, label: "Verse", startSeconds: 0, endSeconds: 10 },
+        { sectionIndex: 2, label: "Verse", startSeconds: 20, endSeconds: 30 },
+      ],
+    };
+    renderSheet({
+      item: makeItem({
+        arrangementSteps: JSON.stringify(saved),
+        arrangedDurationSeconds: 20,
+        arrangementAnalysisAvailable: true,
+      }),
+    });
+
+    const rows = screen.getAllByTestId("arrangement-draft-step");
+    expect(within(rows[0]).getByText("Late tail")).toBeInTheDocument();
+    expect(within(rows[0]).queryByText("Dropped pickup")).toBeNull();
+    expect(within(rows[1]).getByText("Dropped pickup")).toBeInTheDocument();
+    expect(within(rows[1]).queryByText("Late tail")).toBeNull();
+  });
+
   it("labels a component without lyric lines as instrumental", () => {
     // Lyrics start after the intro, so the Intro Step has no lines of its own.
     lyrics.lrcContent =

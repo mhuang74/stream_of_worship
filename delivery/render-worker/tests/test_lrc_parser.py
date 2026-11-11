@@ -239,6 +239,37 @@ class TestRemapLrcToClips:
         result = remap_lrc_to_clips(local_lines, (_clip(0.0, 10.0, 0.0),), "My Song Title")
         assert result[0].title == "My Song Title"
 
+    def test_pickup_kept_when_preceding_section_is_omitted(self):
+        # The 10–20 s section was dropped, so no clip ends at the 20 s boundary
+        # the pickup is sung into; ownership tolerates 0.5 s and the clip that
+        # starts there keeps the line, at its first frame.
+        local_lines = [LRCLine(time_seconds=19.8, text="pickup")]
+        result = remap_lrc_to_clips(local_lines, (_clip(20.0, 30.0, 0.0),), "Song")
+        assert [(line.text, line.global_time_seconds) for line in result] == [("pickup", 0.0)]
+
+    def test_late_line_stays_with_its_clip_inside_its_target_window(self):
+        # 10.3 s is 0.3 s after the first clip's end and nowhere near the second
+        # clip's start: the line belongs to the first clip, clamped just inside
+        # its target window so the highlight never leaks into the next Item.
+        local_lines = [LRCLine(time_seconds=10.3, text="late")]
+        clips = (_clip(0.0, 10.0, 0.0), _clip(20.0, 30.0, 10.0))
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert [line.text for line in result] == ["late"]
+        assert result[0].global_time_seconds == pytest.approx(9.999)
+
+    def test_line_on_shared_boundary_belongs_to_the_later_clip(self):
+        local_lines = [LRCLine(time_seconds=10.0, text="boundary")]
+        clips = (_clip(0.0, 10.0, 0.0), _clip(10.0, 20.0, 10.0))
+        result = remap_lrc_to_clips(local_lines, clips, "Song")
+        assert [(line.text, line.global_time_seconds) for line in result] == [
+            ("boundary", 10.0)
+        ]
+
+    def test_line_more_than_tolerance_outside_every_clip_is_dropped(self):
+        local_lines = [LRCLine(time_seconds=10.6, text="omitted")]
+        clips = (_clip(0.0, 10.0, 0.0), _clip(20.0, 30.0, 10.0))
+        assert remap_lrc_to_clips(local_lines, clips, "Song") == []
+
     def test_stable_sort_by_global_time(self):
         local_lines = [LRCLine(time_seconds=2.0, text="a")]
         clips = (_clip(0.0, 5.0, 20.0), _clip(0.0, 5.0, 0.0))

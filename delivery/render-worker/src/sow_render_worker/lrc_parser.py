@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -26,9 +28,54 @@ _LRC_PATTERN = re.compile(r"\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)")
 _VALID_LRC_PATTERN = re.compile(r"\[\d{2}:\d{2}\.\d{2,3}\]")
 
 # Section bounds are beat-snapped while LRC onsets come from forced
-# alignment. A line this far before a clip's source start belongs to that
-# clip. Must stay equal to the webapp's LYRIC_BOUNDARY_TOLERANCE_SECONDS.
+# alignment. A line this far from a clip's source bounds is a candidate for
+# that clip; the nearest start wins. Must stay equal to the webapp's
+# LYRIC_BOUNDARY_TOLERANCE_SECONDS.
 LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5
+_OWNER_EPSILON = 1e-9
+
+SourceWindow = tuple[float, float]
+
+
+def _nearest_start_owner(
+    windows: Sequence[SourceWindow],
+    time_seconds: float,
+    tolerance: float = LYRIC_BOUNDARY_TOLERANCE_SECONDS,
+) -> int:
+    """
+    Index of the window that owns ``time_seconds``, or -1.
+
+    Mirrors the webapp's ``nearestStartOwnerIndex``: a window is a candidate
+    when the time falls inside ``[start - tolerance, end + tolerance)``; among
+    candidates the nearest *start* wins, ties resolving to the greater start,
+    then the greater end, then the lowest index. Zero-length windows are never
+    candidates.
+    """
+    best = -1
+    best_distance = float("inf")
+    for index, (start, end) in enumerate(windows):
+        if not end > start:
+            continue
+        if time_seconds < start - tolerance:
+            continue
+        if time_seconds >= end + tolerance:
+            continue
+        distance = abs(time_seconds - start)
+        if best == -1 or distance < best_distance - _OWNER_EPSILON:
+            best = index
+            best_distance = distance
+            continue
+        if abs(distance - best_distance) > _OWNER_EPSILON:
+            continue
+        current_start, current_end = windows[best]
+        if start > current_start + _OWNER_EPSILON:
+            best = index
+        elif (
+            abs(start - current_start) <= _OWNER_EPSILON
+            and end > current_end + _OWNER_EPSILON
+        ):
+            best = index
+    return best
 
 
 def parse_lrc(lrc_content: str) -> list[LRCLine]:
@@ -56,74 +103,63 @@ def remap_lrc_to_clips(
     """
     Remap local LRC lines through arranged clips onto the item timeline.
 
-    For every clip, include each LRC line whose local timestamp falls inside the
-    clip's source window.
-
-    Section bounds are beat-snapped while lyric onsets come from forced
-    alignment, so a pickup line starts a fraction of a second before the section
-    it is sung into: a clip accepts lines from ``source_start -
-    LYRIC_BOUNDARY_TOLERANCE_SECONDS``, and the same shift decides which clip
-    owns a lyric in the webapp's arrangement sheet.
-
-    A clip gives up its own final tolerance only when another clip starts at its
-    ``source_end`` and is itself longer than the tolerance, so the pickup has an
-    owner. Otherwise — the last Step, an omitted section, the single full-file
-    clip used by an unarranged render — it keeps its own tail instead of
-    dropping those lyrics. Consecutive clips therefore tile their shared
-    boundary: no line is emitted twice and none disappears at the ends.
+    Ownership is decided globally by :func:`_nearest_start_owner` over every
+    clip's source window, exactly as the webapp's ``linesForSourceRange`` does:
+    a line is a candidate for every window whose bounds it is within
+    ``LYRIC_BOUNDARY_TOLERANCE_SECONDS`` of, and the window with the nearest
+    start keeps it. A pickup sung just before a Step therefore lands on that
+    Step even when the section between them was omitted from the arrangement,
+    and a line just after a Step's end still belongs to that Step (its phrase is
+    sung into that section, and the cut may clip its audio). Consecutive clips
+    tile their shared boundary: no line is emitted twice and none disappears.
 
     A line's global timestamp is the clip's target start plus its offset into
-    the source range, clamped to the clip's target start so a pre-start pickup
-    lands on the clip's first frame rather than the preceding item. Repeated
-    steps repeat their lyrics at new target times; lines from omitted source
-    ranges never appear. Blank Gap Placeholder lines inside a clip's window are
-    retained.
+    the source range, clamped to ``[clip.start_time_seconds,
+    clip.start_time_seconds + span - 0.001]``: a pre-start pickup lands on the
+    clip's first frame rather than the preceding item, and a late line within
+    tolerance never highlights inside the next Item. Repeated steps repeat their
+    lyrics at new target times; lines from omitted source ranges never appear.
+    Blank Gap Placeholder lines inside a clip's window are retained.
 
     Lines are stably sorted by global timestamp (per-clip output is already
     ordered, and clips are processed in arrangement order).
     """
+    windows: list[SourceWindow] = [
+        (clip.source_start_seconds, clip.source_end_seconds)
+        for clip in clips
+        if clip.source_end_seconds > clip.source_start_seconds
+    ]
+    owners = [_nearest_start_owner(windows, line.time_seconds) for line in local_lines]
     remapped: list[GlobalLRCLine] = []
     for clip in clips:
         span = clip.source_end_seconds - clip.source_start_seconds
-        accepts_pickup = any(
-            other is not clip
-            and abs(other.source_end_seconds - clip.source_start_seconds)
-            <= LYRIC_BOUNDARY_TOLERANCE_SECONDS
-            and other.source_end_seconds - other.source_start_seconds
-            > LYRIC_BOUNDARY_TOLERANCE_SECONDS
-            for other in clips
-        )
-        gives_up_tail = span > LYRIC_BOUNDARY_TOLERANCE_SECONDS and any(
-            other is not clip
-            and abs(other.source_start_seconds - clip.source_end_seconds)
-            <= LYRIC_BOUNDARY_TOLERANCE_SECONDS
-            for other in clips
-        )
-        window_start = (
-            clip.source_start_seconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
-            if accepts_pickup
-            else clip.source_start_seconds
-        )
-        window_end = (
-            clip.source_end_seconds - LYRIC_BOUNDARY_TOLERANCE_SECONDS
-            if gives_up_tail
-            else clip.source_end_seconds
-        )
-        for line in local_lines:
-            if window_start <= line.time_seconds < window_end:
-                remapped.append(
-                    GlobalLRCLine(
-                        text=line.text,
-                        local_time_seconds=line.time_seconds,
-                        global_time_seconds=max(
-                            clip.start_time_seconds,
-                            clip.start_time_seconds
-                            + line.time_seconds
-                            - clip.source_start_seconds,
-                        ),
-                        title=title,
-                    )
+        if not span > 0:
+            continue
+        for line, owner in zip(local_lines, owners, strict=True):
+            if owner < 0:
+                continue
+            owner_start, owner_end = windows[owner]
+            if not (
+                math.isclose(owner_start, clip.source_start_seconds, abs_tol=1e-9)
+                and math.isclose(owner_end, clip.source_end_seconds, abs_tol=1e-9)
+            ):
+                continue
+            global_time = max(
+                clip.start_time_seconds,
+                clip.start_time_seconds + line.time_seconds - clip.source_start_seconds,
+            )
+            # A late line within tolerance is owned by this clip; keep it inside
+            # the clip's own target window so the highlight never leaks into the
+            # next Item.
+            global_time = min(global_time, clip.start_time_seconds + span - 0.001)
+            remapped.append(
+                GlobalLRCLine(
+                    text=line.text,
+                    local_time_seconds=line.time_seconds,
+                    global_time_seconds=global_time,
+                    title=title,
                 )
+            )
     remapped.sort(key=lambda line: line.global_time_seconds)
     return remapped
 
