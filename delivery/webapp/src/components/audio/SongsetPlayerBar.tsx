@@ -28,6 +28,20 @@ import { useLyricsPullup } from "./useLyricsPullup";
 /** Boundary snap distance for pointer seeks, in CSS pixels. */
 const SEEK_SNAP_PX = 8;
 
+/**
+ * Categorical hues for the seek strip, indexed by timeline order. The hue is
+ * index-stable, so the strip reads as N Songs at a glance; the ramp repeats
+ * past six Items.
+ */
+const ITEM_HUES = [
+  "var(--songset-item-1)",
+  "var(--songset-item-2)",
+  "var(--songset-item-3)",
+  "var(--songset-item-4)",
+  "var(--songset-item-5)",
+  "var(--songset-item-6)",
+] as const;
+
 /** `m:ss` for the seek readout; minutes are unbounded. */
 function formatTime(seconds: number): string {
   const whole = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
@@ -85,6 +99,11 @@ export function SongsetPlayerBar() {
         ? timeline.items[index + 1]!.startSeconds
         : totalSeconds,
   }));
+
+  const playedFraction = (start: number, end: number) => {
+    if (totalSeconds <= 0 || end <= start) return 0;
+    return Math.min(1, Math.max(0, (clampedPosition - start) / (end - start)));
+  };
 
   const hardError =
     loadErrorKey === "notFound"
@@ -277,34 +296,67 @@ export function SongsetPlayerBar() {
           onPointerCancel={canSeek ? handleSeekPointerRelease : undefined}
           onKeyDown={canSeek ? handleSeekKeyDown : undefined}
         >
-          <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-            {totalSeconds > 0 &&
-              segments.map(({ item, index, start, end }) => (
-                <div
-                  key={item.itemId}
-                  data-testid="songset-seek-segment"
-                  data-item-id={item.itemId}
-                  data-active={index === currentIndex || undefined}
-                  className={cn(
-                    "absolute inset-y-0",
-                    index === currentIndex ? "bg-primary" : "bg-primary/30",
-                  )}
-                  style={{
-                    left: `${(start / totalSeconds) * 100}%`,
-                    width: `${((end - start) / totalSeconds) * 100}%`,
-                  }}
-                >
-                  {index > 0 && item.crossfadeSeconds > 0 && (
+          <div className="relative h-2 w-full">
+            <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+              {totalSeconds > 0 &&
+                segments.map(({ item, index, start, end }) => {
+                  const hue = ITEM_HUES[index % ITEM_HUES.length]!;
+                  const played = playedFraction(start, end);
+                  const isCurrent = index === currentIndex;
+                  return (
                     <div
-                      data-testid="songset-seek-transition"
-                      className="absolute inset-y-0 left-0 bg-foreground/20"
+                      key={item.itemId}
+                      data-testid="songset-seek-segment"
+                      data-item-id={item.itemId}
+                      data-active={isCurrent || undefined}
+                      className="absolute inset-y-0"
                       style={{
-                        width: `${(item.crossfadeSeconds / totalSeconds) * 100}%`,
+                        left: `${(start / totalSeconds) * 100}%`,
+                        width: `${((end - start) / totalSeconds) * 100}%`,
                       }}
-                    />
-                  )}
-                </div>
-              ))}
+                    >
+                      <div
+                        data-testid="songset-seek-segment-hue"
+                        aria-hidden="true"
+                        className={cn("absolute inset-0", isCurrent ? "opacity-50" : "opacity-30")}
+                        style={{ backgroundColor: hue }}
+                      />
+                      <div
+                        data-testid="songset-seek-segment-played"
+                        aria-hidden="true"
+                        className="absolute inset-y-0 left-0"
+                        style={{ width: `${played * 100}%`, backgroundColor: hue }}
+                      />
+                      {index > 0 && item.crossfadeSeconds > 0 && (
+                        <div
+                          data-testid="songset-seek-transition"
+                          className="absolute inset-y-0 left-0 border-l border-foreground/50 bg-foreground/20"
+                          style={{
+                            width: `${(item.crossfadeSeconds / totalSeconds) * 100}%`,
+                          }}
+                        />
+                      )}
+                      {index > 0 && (
+                        <div
+                          aria-hidden="true"
+                          className="absolute inset-y-0 left-0 w-px bg-background"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+            {totalSeconds > 0 && (
+              <div
+                data-testid="songset-seek-playhead"
+                aria-hidden="true"
+                className="pointer-events-none absolute -top-1 -bottom-1 z-10 -translate-x-1/2"
+                style={{ left: `${(clampedPosition / totalSeconds) * 100}%` }}
+              >
+                <div className="absolute inset-y-0 left-1/2 w-[3px] -translate-x-1/2 rounded-full bg-foreground shadow-[0_0_0_1.5px_var(--background)]" />
+                <div className="absolute left-1/2 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground" />
+              </div>
+            )}
           </div>
         </div>
       </div>

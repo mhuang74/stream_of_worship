@@ -399,5 +399,6 @@ Caveats:
   only. A flat list is always the fallback when sections, chapters or the current Song Arrangement
   are unavailable — a wrong label never is.
 - The audition dock has exactly one seek control: a proportional strip where each Item's segment is
-  as wide as its share of the Songset timeline, the crossfade is drawn at the incoming Item's start,
-  and exactly one segment is active. The per-song marker strip and the separate slider are gone.
+  as wide as its share of the Songset timeline and keeps its own index-stable hue (`--songset-item-*`,
+  so the strip reads as N Songs), the played part of every segment is filled to the playhead marker,
+  the crossfade is drawn at the incoming Item's start, and exactly one segment is active.
