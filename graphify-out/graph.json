@@ -1629,32 +1629,6 @@
       "source_location": "L147"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog",
-      "label": "FeedbackDialog",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": "feedbackdialog",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L318"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog",
-      "label": "SadFeedbackDialog",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": "sadfeedbackdialog",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L387"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_detail_panel_componentdetailpanel",
       "label": "ComponentDetailPanel",
       "_callable": true,
@@ -7141,6 +7115,32 @@
       "source_location": "L171"
     },
     {
+      "id": "delivery_render_worker_src_sow_render_worker_config_configerror",
+      "label": "ConfigError",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 291,
+      "community_name": "load_config",
+      "file_type": "code",
+      "norm_label": "configerror",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L5"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig",
+      "label": "RenderWorkerConfig",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 291,
+      "community_name": "load_config",
+      "file_type": "code",
+      "norm_label": "renderworkerconfig",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L10"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_r2_backup_hashingreader",
       "label": "HashingReader",
       "_callable": true,
@@ -7297,19 +7297,6 @@
       "source_location": "L31"
     },
     {
-      "id": "delivery_webapp_src_components_render_renderform_previousrenderjobdata",
-      "label": "PreviousRenderJobData",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 30,
-      "community_name": "cn",
-      "file_type": "code",
-      "norm_label": "previousrenderjobdata",
-      "source_file": "delivery/webapp/src/components/render/RenderForm.tsx",
-      "source_location": "L59"
-    },
-    {
       "id": "delivery_webapp_src_components_render_renderform_renderformprops",
       "label": "RenderFormProps",
       "_callable": true,
@@ -7359,7 +7346,7 @@
       "file_type": "code",
       "norm_label": "arrangementwindow",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L793"
+      "source_location": "L785"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_draftinit",
@@ -7372,7 +7359,7 @@
       "file_type": "code",
       "norm_label": "draftinit",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L725"
+      "source_location": "L717"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_draftproblem",
@@ -7385,7 +7372,7 @@
       "file_type": "code",
       "norm_label": "draftproblem",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L734"
+      "source_location": "L726"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_playbackwindow",
@@ -7398,7 +7385,7 @@
       "file_type": "code",
       "norm_label": "playbackwindow",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L806"
+      "source_location": "L798"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_stripband",
@@ -7411,7 +7398,7 @@
       "file_type": "code",
       "norm_label": "stripband",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L880"
+      "source_location": "L872"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_stripgesture",
@@ -7424,7 +7411,7 @@
       "file_type": "code",
       "norm_label": "stripgesture",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L810"
+      "source_location": "L802"
     },
     {
       "id": "delivery_webapp_src_components_songset_transitionpanel_transitionpanelprops",
@@ -7492,32 +7479,6 @@
       "source_location": "L36"
     },
     {
-      "id": "delivery_render_worker_src_sow_render_worker_config_configerror",
-      "label": "ConfigError",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 301,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "configerror",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L5"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig",
-      "label": "RenderWorkerConfig",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 301,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "renderworkerconfig",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L10"
-    },
-    {
       "id": "delivery_render_worker_src_sow_render_worker_db_renderjob",
       "label": "RenderJob",
       "_callable": true,
@@ -7568,6 +7529,19 @@
       "norm_label": "renderartifacts",
       "source_file": "delivery/render-worker/src/sow_render_worker/uploader.py",
       "source_location": "L33"
+    },
+    {
+      "id": "delivery_webapp_src_components_render_renderform_previousrenderjobdata",
+      "label": "PreviousRenderJobData",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 305,
+      "community_name": "renderWithLocale",
+      "file_type": "code",
+      "norm_label": "previousrenderjobdata",
+      "source_file": "delivery/webapp/src/components/render/RenderForm.tsx",
+      "source_location": "L59"
     },
     {
       "id": "delivery_android_app_src_main_java_org_streamofworship_android_feature_share_androidshareintents_renderartifactkind",
@@ -7862,7 +7836,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "modalwhisperclient",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -7875,7 +7849,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "modalwhisperconfigerror",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -7888,7 +7862,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "modalwhispererror",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -9526,7 +9500,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "modalstemseparatorclient",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -9539,7 +9513,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "modalstemseparatorconfigerror",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -9552,7 +9526,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "modalstemseparatorerror",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -11246,7 +11220,7 @@
       "file_type": "code",
       "norm_label": "activeclipref",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L854"
+      "source_location": "L846"
     },
     {
       "id": "delivery_webapp_src_hooks_usesonglyrics_cachedresult",
@@ -11704,6 +11678,19 @@
       "source_location": "L103"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog",
+      "label": "FeedbackDialog",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": "feedbackdialog",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L318"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_playbackbar",
       "label": "PlaybackBar",
       "_callable": true,
@@ -11728,6 +11715,19 @@
       "norm_label": "previewbanner",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L154"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog",
+      "label": "SadFeedbackDialog",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": "sadfeedbackdialog",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L387"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_statusindicator",
@@ -18451,6 +18451,54 @@
       "source_location": "L233"
     },
     {
+      "id": "delivery_webapp_public_sw_artifact_serving_artifactcachekeyforurl",
+      "label": "artifactCacheKeyForUrl()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "artifactcachekeyforurl()",
+      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "source_location": "L27"
+    },
+    {
+      "id": "delivery_webapp_public_sw_artifact_serving_artifacthandler",
+      "label": "artifactHandler()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "artifacthandler()",
+      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "source_location": "L120"
+    },
+    {
+      "id": "delivery_webapp_public_sw_artifact_serving_parserangeheader",
+      "label": "parseRangeHeader()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "parserangeheader()",
+      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "source_location": "L44"
+    },
+    {
+      "id": "delivery_webapp_public_sw_artifact_serving_rangeresponsefrom",
+      "label": "rangeResponseFrom()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "rangeresponsefrom()",
+      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "source_location": "L67"
+    },
+    {
       "id": "delivery_webapp_src_app_share_token_page_formatduration",
       "label": "formatDuration()",
       "_callable": true,
@@ -18979,6 +19027,18 @@
       "source_location": "L23"
     },
     {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test_memorycache",
+      "label": "memoryCache()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "memorycache()",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
+      "source_location": "L25"
+    },
+    {
       "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test_makecachemock",
       "label": "makeCacheMock()",
       "_callable": true,
@@ -19181,6 +19241,54 @@
       "norm_label": "setserviceworkercontrolling()",
       "source_file": "delivery/webapp/src/test/lib/offline/share-offline-playback.test.ts",
       "source_location": "L16"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_artifactrequest",
+      "label": "artifactRequest()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "artifactrequest()",
+      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
+      "source_location": "L44"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_fullbodyresponse",
+      "label": "fullBodyResponse()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "fullbodyresponse()",
+      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
+      "source_location": "L48"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_makecachemock",
+      "label": "makeCacheMock()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "makecachemock()",
+      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
+      "source_location": "L21"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_makecachesmock",
+      "label": "makeCachesMock()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "makecachesmock()",
+      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
+      "source_location": "L40"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_proxy_get_proxy_pool",
@@ -21139,184 +21247,112 @@
       "source_location": "L1719"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_cancel",
-      "label": ".action_cancel()",
+      "id": "lab_poc_scripts_bpm_agreement_report_chart_consensus_radius_hist",
+      "label": "chart_consensus_radius_hist()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".action_cancel()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L383"
+      "norm_label": "chart_consensus_radius_hist()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L594"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_happy",
-      "label": ".action_happy()",
+      "id": "lab_poc_scripts_bpm_agreement_report_chart_disputed_strip",
+      "label": "chart_disputed_strip()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".action_happy()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L358"
+      "norm_label": "chart_disputed_strip()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L639"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_resolve_all",
-      "label": ".action_resolve_all()",
+      "id": "lab_poc_scripts_bpm_agreement_report_chart_method_deviation_box",
+      "label": "chart_method_deviation_box()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".action_resolve_all()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L378"
+      "norm_label": "chart_method_deviation_box()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L616"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_retract",
-      "label": ".action_retract()",
+      "id": "lab_poc_scripts_bpm_agreement_report_chart_v5_cps_bar",
+      "label": "chart_v5_cps_bar()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".action_retract()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L368"
+      "norm_label": "chart_v5_cps_bar()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L421"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_sad",
-      "label": ".action_sad()",
+      "id": "lab_poc_scripts_bpm_agreement_report_chart_v5_delta_histogram",
+      "label": "chart_v5_delta_histogram()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".action_sad()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L361"
+      "norm_label": "chart_v5_delta_histogram()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L329"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_compose",
-      "label": ".compose()",
+      "id": "lab_poc_scripts_bpm_agreement_report_chart_v5_error_scatter",
+      "label": "chart_v5_error_scatter()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".compose()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L342"
+      "norm_label": "chart_v5_error_scatter()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L371"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_format_feedback_row",
-      "label": "_format_feedback_row()",
+      "id": "lab_poc_scripts_bpm_agreement_report_make_fig",
+      "label": "_make_fig()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": "_format_feedback_row()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L273"
+      "norm_label": "_make_fig()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L310"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_cancel",
-      "label": ".action_cancel()",
+      "id": "lab_poc_scripts_bpm_agreement_report_octave_corrected_diff",
+      "label": "octave_corrected_diff()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".action_cancel()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L451"
+      "norm_label": "octave_corrected_diff()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L153"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_1",
-      "label": ".action_reason_1()",
+      "id": "lab_poc_scripts_bpm_agreement_report_save_base64",
+      "label": "_save_base64()",
       "_callable": true,
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": ".action_reason_1()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L439"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_2",
-      "label": ".action_reason_2()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": ".action_reason_2()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L442"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_3",
-      "label": ".action_reason_3()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": ".action_reason_3()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L445"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_4",
-      "label": ".action_reason_4()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": ".action_reason_4()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L448"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_choose_reason",
-      "label": "._choose_reason()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": "._choose_reason()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L419"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_on_input_submitted",
-      "label": ".on_input_submitted()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": ".on_input_submitted()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L423"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_submit",
-      "label": "._submit()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": "._submit()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L432"
+      "norm_label": "_save_base64()",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L316"
     },
     {
       "id": "lab_poc_scripts_generate_transitions_create_simple_crossfade",
@@ -29767,6 +29803,18 @@
       "source_location": "L1039"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_handle_feedback_submission",
+      "label": "._handle_feedback_submission()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 186,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "._handle_feedback_submission()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1667"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_has_unsaved_changes",
       "label": "._has_unsaved_changes()",
       "_callable": true,
@@ -29909,6 +29957,18 @@
       "norm_label": "._on_playback_state()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L975"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_resize",
+      "label": ".on_resize()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 186,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": ".on_resize()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1174"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_unmount",
@@ -32491,18 +32551,6 @@
       "source_location": "L32"
     },
     {
-      "id": "delivery_webapp_src_components_songset_songsetlist_songsetlist",
-      "label": "SongsetList()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 2,
-      "community_name": "SongsetEditorClient.tsx",
-      "file_type": "code",
-      "norm_label": "songsetlist()",
-      "source_file": "delivery/webapp/src/components/songset/SongsetList.tsx",
-      "source_location": "L67"
-    },
-    {
       "id": "delivery_webapp_src_hooks_useconnectivity_defaultprobe",
       "label": "defaultProbe()",
       "_callable": true,
@@ -34699,18 +34747,6 @@
       "source_location": "L539"
     },
     {
-      "id": "lab_poc_scripts_experiment_lrc_signals_stats",
-      "label": "_stats()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 209,
-      "community_name": "experiment_lrc_signals.py",
-      "file_type": "code",
-      "norm_label": "_stats()",
-      "source_file": "lab/poc-scripts/experiment_lrc_signals.py",
-      "source_location": "L844"
-    },
-    {
       "id": "lab_poc_scripts_experiment_lrc_signals_stem_duration",
       "label": "stem_duration()",
       "_callable": true,
@@ -35345,6 +35381,18 @@
       "norm_label": "getpublicaudiourl()",
       "source_file": "delivery/webapp/src/lib/r2/public-url.ts",
       "source_location": "L3"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_makesongs",
+      "label": "makeSongs()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "useLocaleContext",
+      "file_type": "code",
+      "norm_label": "makesongs()",
+      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
+      "source_location": "L35"
     },
     {
       "id": "delivery_webapp_src_test_app_listen_listenclient_test_makesong",
@@ -43735,112 +43783,28 @@
       "source_location": "L81"
     },
     {
-      "id": "delivery_webapp_public_sw_artifact_serving_artifactcachekeyforurl",
-      "label": "artifactCacheKeyForUrl()",
+      "id": "delivery_render_worker_src_sow_render_worker_config_load_config",
+      "label": "load_config()",
       "_callable": true,
       "_origin": "ast",
       "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
+      "community_name": "load_config",
       "file_type": "code",
-      "norm_label": "artifactcachekeyforurl()",
-      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
-      "source_location": "L27"
+      "norm_label": "load_config()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L36"
     },
     {
-      "id": "delivery_webapp_public_sw_artifact_serving_artifacthandler",
-      "label": "artifactHandler()",
+      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig_from_env",
+      "label": ".from_env()",
       "_callable": true,
       "_origin": "ast",
       "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
+      "community_name": "load_config",
       "file_type": "code",
-      "norm_label": "artifacthandler()",
-      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
-      "source_location": "L120"
-    },
-    {
-      "id": "delivery_webapp_public_sw_artifact_serving_parserangeheader",
-      "label": "parseRangeHeader()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "parserangeheader()",
-      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
-      "source_location": "L44"
-    },
-    {
-      "id": "delivery_webapp_public_sw_artifact_serving_rangeresponsefrom",
-      "label": "rangeResponseFrom()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "rangeresponsefrom()",
-      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
-      "source_location": "L67"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test_memorycache",
-      "label": "memoryCache()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "memorycache()",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
-      "source_location": "L25"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_artifactrequest",
-      "label": "artifactRequest()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "artifactrequest()",
-      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
-      "source_location": "L44"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_fullbodyresponse",
-      "label": "fullBodyResponse()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "fullbodyresponse()",
-      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
-      "source_location": "L48"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_makecachemock",
-      "label": "makeCacheMock()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "makecachemock()",
-      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
-      "source_location": "L21"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_makecachesmock",
-      "label": "makeCachesMock()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "makecachesmock()",
-      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
-      "source_location": "L40"
+      "norm_label": ".from_env()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L19"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_r2_backup_hashingreader_close",
@@ -43925,6 +43889,18 @@
       "norm_label": "kmeans_3()",
       "source_file": "lab/poc-scripts/bpm_agreement_report.py",
       "source_location": "L197"
+    },
+    {
+      "id": "lab_poc_scripts_experiment_lrc_signals_stats",
+      "label": "_stats()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 293,
+      "community_name": "error_vs_stored",
+      "file_type": "code",
+      "norm_label": "_stats()",
+      "source_file": "lab/poc-scripts/experiment_lrc_signals.py",
+      "source_location": "L844"
     },
     {
       "id": "delivery_webapp_src_test_api_share_token_cast_expiry_test_makeparams",
@@ -45211,30 +45187,6 @@
       "source_location": "L27"
     },
     {
-      "id": "delivery_render_worker_src_sow_render_worker_config_load_config",
-      "label": "load_config()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 301,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "load_config()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L36"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig_from_env",
-      "label": ".from_env()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 301,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": ".from_env()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L19"
-    },
-    {
       "id": "delivery_render_worker_src_sow_render_worker_db_complete_render_job",
       "label": "complete_render_job()",
       "_callable": true,
@@ -45739,6 +45691,18 @@
       "source_location": "L6"
     },
     {
+      "id": "delivery_webapp_src_components_songset_songsetlist_songsetlist",
+      "label": "SongsetList()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 305,
+      "community_name": "renderWithLocale",
+      "file_type": "code",
+      "norm_label": "songsetlist()",
+      "source_file": "delivery/webapp/src/components/songset/SongsetList.tsx",
+      "source_location": "L67"
+    },
+    {
       "id": "delivery_webapp_src_components_system_buildstamp_buildstamp",
       "label": "BuildStamp()",
       "_callable": true,
@@ -45749,30 +45713,6 @@
       "norm_label": "buildstamp()",
       "source_file": "delivery/webapp/src/components/system/BuildStamp.tsx",
       "source_location": "L7"
-    },
-    {
-      "id": "delivery_webapp_src_components_ui_sonner_toaster",
-      "label": "Toaster()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "toaster()",
-      "source_file": "delivery/webapp/src/components/ui/sonner.tsx",
-      "source_location": "L7"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_makesongs",
-      "label": "makeSongs()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "makesongs()",
-      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
-      "source_location": "L35"
     },
     {
       "id": "delivery_webapp_src_test_app_header_avatar_test_renderheader",
@@ -48367,24 +48307,12 @@
       "source_location": "L1"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_looks_like_oversize_payload",
-      "label": "looks_like_oversize_payload()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "looks_like_oversize_payload",
-      "file_type": "code",
-      "norm_label": "looks_like_oversize_payload()",
-      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
-      "source_location": "L42"
-    },
-    {
       "id": "ops_analysis_service_src_sow_analysis_services_modal_whisper_client_modalwhisperclient_get_instance",
       "label": "._get_instance()",
       "_callable": true,
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "._get_instance()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -48396,7 +48324,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": ".__init__()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -48408,7 +48336,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": ".is_configured()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -48420,7 +48348,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": ".transcribe()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -55255,18 +55183,6 @@
       "source_location": "L969"
     },
     {
-      "id": "lab_poc_scripts_bpm_agreement_report_chart_consensus_radius_hist",
-      "label": "chart_consensus_radius_hist()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "chart_consensus_radius_hist()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L594"
-    },
-    {
       "id": "lab_poc_scripts_bpm_agreement_report_chart_cps_bpm_diagonal_bars",
       "label": "chart_cps_bpm_diagonal_bars()",
       "_callable": true,
@@ -55289,66 +55205,6 @@
       "norm_label": "chart_cps_vs_bpm_scatter()",
       "source_file": "lab/poc-scripts/bpm_agreement_report.py",
       "source_location": "L898"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_chart_disputed_strip",
-      "label": "chart_disputed_strip()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "chart_disputed_strip()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L639"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_chart_method_deviation_box",
-      "label": "chart_method_deviation_box()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "chart_method_deviation_box()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L616"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_chart_v5_cps_bar",
-      "label": "chart_v5_cps_bar()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "chart_v5_cps_bar()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L421"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_chart_v5_delta_histogram",
-      "label": "chart_v5_delta_histogram()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "chart_v5_delta_histogram()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L329"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_chart_v5_error_scatter",
-      "label": "chart_v5_error_scatter()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "chart_v5_error_scatter()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L371"
     },
     {
       "id": "lab_poc_scripts_bpm_agreement_report_count_data_rows",
@@ -55445,42 +55301,6 @@
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/bpm_agreement_report.py",
       "source_location": "L1103"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_make_fig",
-      "label": "_make_fig()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "_make_fig()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L310"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_octave_corrected_diff",
-      "label": "octave_corrected_diff()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "octave_corrected_diff()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L153"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_save_base64",
-      "label": "_save_base64()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "code",
-      "norm_label": "_save_base64()",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L316"
     },
     {
       "id": "lab_poc_scripts_bpm_agreement_report_section_b_tables",
@@ -55891,28 +55711,16 @@
       "source_location": "L1048"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_handle_feedback_submission",
-      "label": "._handle_feedback_submission()",
+      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_looks_like_oversize_payload",
+      "label": "looks_like_oversize_payload()",
       "_callable": true,
       "_origin": "ast",
-      "community": 508,
-      "community_name": "._handle_feedback_submission",
+      "community": 51,
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
-      "norm_label": "._handle_feedback_submission()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1667"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_on_resize",
-      "label": ".on_resize()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 509,
-      "community_name": ".on_resize",
-      "file_type": "code",
-      "norm_label": ".on_resize()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1174"
+      "norm_label": "looks_like_oversize_payload()",
+      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
+      "source_location": "L42"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_services_modal_stem_separator_client_modalstemseparatorclient_get_instance",
@@ -55920,7 +55728,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "._get_instance()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -55932,7 +55740,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": ".__init__()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -55944,7 +55752,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "._invoke()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -55956,7 +55764,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": ".is_configured()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -55968,7 +55776,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "._read_audio()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -55980,7 +55788,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": ".remove_reverb()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -55992,7 +55800,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": ".separate_stems()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -56004,7 +55812,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "._write_stem()",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -64231,6 +64039,18 @@
       "source_location": "L44"
     },
     {
+      "id": "delivery_webapp_src_components_ui_sonner_toaster",
+      "label": "Toaster()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "toaster()",
+      "source_file": "delivery/webapp/src/components/ui/sonner.tsx",
+      "source_location": "L7"
+    },
+    {
       "id": "delivery_webapp_src_contexts_localecontext_localeprovider",
       "label": "LocaleProvider()",
       "_callable": true,
@@ -65752,7 +65572,7 @@
       "file_type": "code",
       "norm_label": "activecliprefs()",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L864"
+      "source_location": "L856"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_activelyricindex",
@@ -65776,7 +65596,7 @@
       "file_type": "code",
       "norm_label": "arrangementeditorsheet()",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L892"
+      "source_location": "L884"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_arrangementtodraft",
@@ -65800,7 +65620,7 @@
       "file_type": "code",
       "norm_label": "beatseconds()",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L823"
+      "source_location": "L815"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_buildtransitionwindow",
@@ -65812,7 +65632,7 @@
       "file_type": "code",
       "norm_label": "buildtransitionwindow()",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L832"
+      "source_location": "L824"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_createdraftstep",
@@ -65836,7 +65656,7 @@
       "file_type": "code",
       "norm_label": "derivedraftinit()",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L762"
+      "source_location": "L754"
     },
     {
       "id": "delivery_webapp_src_components_songset_arrangementeditorsheet_draftkey",
@@ -65884,7 +65704,7 @@
       "file_type": "code",
       "norm_label": "validatedraftproblem()",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L741"
+      "source_location": "L733"
     },
     {
       "id": "delivery_webapp_src_hooks_usesonglyrics_clearlyricscache",
@@ -67399,6 +67219,78 @@
       "source_location": "L111"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_cancel",
+      "label": ".action_cancel()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_cancel()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L383"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_happy",
+      "label": ".action_happy()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_happy()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L358"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_resolve_all",
+      "label": ".action_resolve_all()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_resolve_all()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L378"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_retract",
+      "label": ".action_retract()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_retract()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L368"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_action_sad",
+      "label": ".action_sad()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_sad()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L361"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_compose",
+      "label": ".compose()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".compose()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L342"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_feedbackdialog_init",
       "label": ".__init__()",
       "_callable": true,
@@ -67409,6 +67301,18 @@
       "norm_label": ".__init__()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L337"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_format_feedback_row",
+      "label": "_format_feedback_row()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": "_format_feedback_row()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L273"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_lrceditorscreen_compose",
@@ -67531,6 +67435,78 @@
       "source_location": "L161"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_cancel",
+      "label": ".action_cancel()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_cancel()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L451"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_1",
+      "label": ".action_reason_1()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_reason_1()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L439"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_2",
+      "label": ".action_reason_2()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_reason_2()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L442"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_3",
+      "label": ".action_reason_3()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_reason_3()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L445"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_action_reason_4",
+      "label": ".action_reason_4()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".action_reason_4()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L448"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_choose_reason",
+      "label": "._choose_reason()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": "._choose_reason()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L419"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_compose",
       "label": ".compose()",
       "_callable": true,
@@ -67553,6 +67529,30 @@
       "norm_label": ".__init__()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L403"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_on_input_submitted",
+      "label": ".on_input_submitted()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": ".on_input_submitted()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L423"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_sadfeedbackdialog_submit",
+      "label": "._submit()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": "._submit()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L432"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_statusindicator_init",
@@ -75941,6 +75941,28 @@
       "source_location": "L1"
     },
     {
+      "id": "delivery_webapp_public_sw_artifact_serving",
+      "label": "sw-artifact-serving.js",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "sw-artifact-serving.js",
+      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_public_sw_artifact_serving_artifact_file_type",
+      "label": "ARTIFACT_FILE_TYPE",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "artifact_file_type",
+      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "source_location": "L15"
+    },
+    {
       "id": "delivery_webapp_src_app_share_token_page",
       "label": "[token]/page.tsx",
       "_origin": "ast",
@@ -76293,6 +76315,39 @@
       "source_location": "L1"
     },
     {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test",
+      "label": "artifact-cache-sw-parity.test.ts",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "artifact-cache-sw-parity.test.ts",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test_sw_module_path",
+      "label": "SW_MODULE_PATH",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "sw_module_path",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
+      "source_location": "L20"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test_sw_script_path",
+      "label": "SW_SCRIPT_PATH",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "sw_script_path",
+      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
+      "source_location": "L21"
+    },
+    {
       "id": "delivery_webapp_src_test_lib_offline_artifact_cache_test",
       "label": "artifact-cache.test.ts",
       "_origin": "ast",
@@ -76480,6 +76535,28 @@
       "source_location": "L11"
     },
     {
+      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test",
+      "label": "sw-artifact-serving.test.ts",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "code",
+      "norm_label": "sw-artifact-serving.test.ts",
+      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_public_sw_artifact_serving_js_docref_rfc_9110",
+      "label": "RFC-9110",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "concept",
+      "norm_label": "rfc-9110",
+      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "source_location": "L62"
+    },
+    {
       "id": "delivery_webapp_src_app_share_token_page_tsx_docref_adr_0009",
       "label": "ADR-0009",
       "_origin": "ast",
@@ -76555,6 +76632,17 @@
       "norm_label": "adr-0009",
       "source_file": "delivery/webapp/src/test/lib/offline/share-offline-playback.test.ts",
       "source_location": "L127"
+    },
+    {
+      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_ts_docref_rfc_9110",
+      "label": "RFC-9110",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "artifact-cache.ts",
+      "file_type": "concept",
+      "norm_label": "rfc-9110",
+      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
+      "source_location": "L440"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_youtube",
@@ -78981,59 +79069,92 @@
       "source_location": "L191"
     },
     {
-      "id": "modalscreen",
-      "label": "ModalScreen",
+      "id": "figure",
+      "label": "Figure",
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "code",
-      "norm_label": "modalscreen",
+      "norm_label": "figure",
       "source_file": "",
       "source_location": ""
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_submitted",
-      "label": "Submitted",
+      "id": "lab_poc_scripts_bpm_agreement_report_rationale_154",
+      "label": "Minimum absolute difference considering octave shifts of b.",
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
-      "file_type": "code",
-      "norm_label": "submitted",
-      "source_file": "",
-      "source_location": ""
+      "community_name": "_save_base64",
+      "file_type": "rationale",
+      "norm_label": "minimum absolute difference considering octave shifts of b.",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L154"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_274",
-      "label": "Format one feedback row for display in the bar/dialog.",
+      "id": "lab_poc_scripts_bpm_agreement_report_rationale_330",
+      "label": "Overlay histograms of err_v5_raw \u2212 err_v4_raw and err_v5_oct \u2212 err_v4_oct.\u2026",
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "rationale",
-      "norm_label": "format one feedback row for display in the bar/dialog.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L274"
+      "norm_label": "overlay histograms of err_v5_raw \u2212 err_v4_raw and err_v5_oct \u2212 err_v4_oct....",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L330"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_319",
-      "label": "Lyrics feedback dialog: view rows, add Happy/Sad, retract, resolve. Result\u2026",
+      "id": "lab_poc_scripts_bpm_agreement_report_rationale_372",
+      "label": "Scatter: x = v4 octave-corrected error, y = v5 octave-corrected error. Points\u2026",
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "rationale",
-      "norm_label": "lyrics feedback dialog: view rows, add happy/sad, retract, resolve. result...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L319"
+      "norm_label": "scatter: x = v4 octave-corrected error, y = v5 octave-corrected error. points...",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L372"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_388",
-      "label": "Sad feedback step: pick a reason, then an optional note. Result: ``(\"sad\",\u2026",
+      "id": "lab_poc_scripts_bpm_agreement_report_rationale_422",
+      "label": "Grouped bars: per CPS bucket (k-means), mean \u0394error (oct) and v5 win-rate %.",
       "_origin": "ast",
       "community": 137,
-      "community_name": "SadFeedbackDialog",
+      "community_name": "_save_base64",
       "file_type": "rationale",
-      "norm_label": "sad feedback step: pick a reason, then an optional note. result: ``(\"sad\",...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L388"
+      "norm_label": "grouped bars: per cps bucket (k-means), mean \u03b4error (oct) and v5 win-rate %.",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L422"
+    },
+    {
+      "id": "lab_poc_scripts_bpm_agreement_report_rationale_595",
+      "label": "Histogram of per-song radius (max \u2212 min of octave-normalized BPMs). Vertical\u2026",
+      "_origin": "ast",
+      "community": 137,
+      "community_name": "_save_base64",
+      "file_type": "rationale",
+      "norm_label": "histogram of per-song radius (max \u2212 min of octave-normalized bpms). vertical...",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L595"
+    },
+    {
+      "id": "lab_poc_scripts_bpm_agreement_report_rationale_617",
+      "label": "Box plot: per-method distribution of |normalized_bpm \u2212 consensus_median|.",
+      "_origin": "ast",
+      "community": 137,
+      "community_name": "_save_base64",
+      "file_type": "rationale",
+      "norm_label": "box plot: per-method distribution of |normalized_bpm \u2212 consensus_median|.",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L617"
+    },
+    {
+      "id": "lab_poc_scripts_bpm_agreement_report_rationale_640",
+      "label": "Strip plot for top-10 most-disputed songs. Horizontal lines per song; per-\u2026",
+      "_origin": "ast",
+      "community": 137,
+      "community_name": "_save_base64",
+      "file_type": "rationale",
+      "norm_label": "strip plot for top-10 most-disputed songs. horizontal lines per song; per-...",
+      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
+      "source_location": "L640"
     },
     {
       "id": "lab_poc_scripts_generate_transitions",
@@ -79388,18 +79509,6 @@
       "source_location": ""
     },
     {
-      "id": "ops_analysis_service_readme_api_endpoints",
-      "label": "API Endpoints",
-      "_origin": "ast",
-      "community": 140,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "api endpoints",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L175"
-    },
-    {
       "id": "ops_analysis_service_readme_architecture",
       "label": "Architecture",
       "_origin": "ast",
@@ -79436,18 +79545,6 @@
       "source_location": "L553"
     },
     {
-      "id": "ops_analysis_service_readme_check_job_status",
-      "label": "Check Job Status",
-      "_origin": "ast",
-      "community": 140,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "check job status",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L267"
-    },
-    {
       "id": "ops_analysis_service_readme_component_analysis_v5",
       "label": "Component Analysis (v5)",
       "_origin": "ast",
@@ -79458,6 +79555,18 @@
       "norm_label": "component analysis (v5)",
       "source_file": "ops/analysis-service/README.md",
       "source_location": "L525"
+    },
+    {
+      "id": "ops_analysis_service_readme_dashscope_qwen3_asr_setup_optional",
+      "label": "DashScope Qwen3 ASR Setup (Optional)",
+      "_origin": "ast",
+      "community": 140,
+      "community_name": "Stream of Worship - Analysis Service",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "dashscope qwen3 asr setup (optional)",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L436"
     },
     {
       "id": "ops_analysis_service_readme_development",
@@ -79506,6 +79615,30 @@
       "norm_label": "forced alignment on modal",
       "source_file": "ops/analysis-service/README.md",
       "source_location": "L342"
+    },
+    {
+      "id": "ops_analysis_service_readme_get_an_api_key",
+      "label": "Get an API Key",
+      "_origin": "ast",
+      "community": 140,
+      "community_name": "Stream of Worship - Analysis Service",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "get an api key",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L440"
+    },
+    {
+      "id": "ops_analysis_service_readme_how_it_works",
+      "label": "How It Works",
+      "_origin": "ast",
+      "community": 140,
+      "community_name": "Stream of Worship - Analysis Service",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "how it works",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L450"
     },
     {
       "id": "ops_analysis_service_readme_license",
@@ -79616,40 +79749,16 @@
       "source_location": "L1"
     },
     {
-      "id": "ops_analysis_service_readme_submit_analysis_job",
-      "label": "Submit Analysis Job",
+      "id": "ops_analysis_service_readme_tuning",
+      "label": "Tuning",
       "_origin": "ast",
       "community": 140,
       "community_name": "Stream of Worship - Analysis Service",
       "file_type": "document",
       "node_kind": "heading",
-      "norm_label": "submit analysis job",
+      "norm_label": "tuning",
       "source_file": "ops/analysis-service/README.md",
-      "source_location": "L188"
-    },
-    {
-      "id": "ops_analysis_service_readme_submit_lrc_generation_job",
-      "label": "Submit LRC Generation Job",
-      "_origin": "ast",
-      "community": 140,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "submit lrc generation job",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L204"
-    },
-    {
-      "id": "ops_analysis_service_readme_submit_stem_separation_job",
-      "label": "Submit Stem Separation Job",
-      "_origin": "ast",
-      "community": 140,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "submit stem separation job",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L223"
+      "source_location": "L460"
     },
     {
       "id": "ops_analysis_service_readme_v5_options_opt_in",
@@ -86112,15 +86221,15 @@
       "source_location": "L35"
     },
     {
-      "id": "delivery_marketing_package_devdependencies_testing_library_react",
-      "label": "@testing-library/react",
+      "id": "delivery_marketing_package_devdependencies_tailwindcss",
+      "label": "tailwindcss",
       "_origin": "ast",
       "community": 173,
       "community_name": "devDependencies",
       "file_type": "code",
-      "norm_label": "@testing-library/react",
+      "norm_label": "tailwindcss",
       "source_file": "delivery/marketing/package.json",
-      "source_location": "L26"
+      "source_location": "L39"
     },
     {
       "id": "delivery_marketing_package_devdependencies_testing_library_user_event",
@@ -86200,15 +86309,15 @@
       "source_location": "L35"
     },
     {
-      "id": "delivery_marketing_package_json_testing_library_react",
-      "label": "@testing-library/react",
+      "id": "delivery_marketing_package_json_tailwindcss",
+      "label": "tailwindcss",
       "_origin": "ast",
       "community": 173,
       "community_name": "devDependencies",
       "file_type": "concept",
-      "norm_label": "@testing-library/react",
+      "norm_label": "tailwindcss",
       "source_file": "delivery/marketing/package.json",
-      "source_location": "L26"
+      "source_location": "L39"
     },
     {
       "id": "delivery_marketing_package_json_testing_library_user_event",
@@ -88612,6 +88721,17 @@
       "source_location": ""
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_resize",
+      "label": "Resize",
+      "_origin": "ast",
+      "community": 186,
+      "community_name": "LRCEditorScreen",
+      "file_type": "code",
+      "norm_label": "resize",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_rowhighlighted",
       "label": "RowHighlighted",
       "_origin": "ast",
@@ -88665,6 +88785,17 @@
       "norm_label": "open the lyrics feedback dialog (hotkey f).",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L1619"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_1668",
+      "label": "Apply a FeedbackDialog result; never crash the editor on errors.",
+      "_origin": "ast",
+      "community": 186,
+      "community_name": "LRCEditorScreen",
+      "file_type": "rationale",
+      "norm_label": "apply a feedbackdialog result; never crash the editor on errors.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L1668"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_1731",
@@ -91684,17 +91815,6 @@
       "source_location": "L8"
     },
     {
-      "id": "delivery_webapp_src_test_components_songset_songsetlist_test",
-      "label": "SongsetList.test.tsx",
-      "_origin": "ast",
-      "community": 2,
-      "community_name": "SongsetEditorClient.tsx",
-      "file_type": "code",
-      "norm_label": "songsetlist.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/songset/SongsetList.test.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "delivery_webapp_src_test_hooks_useconnectivity_test",
       "label": "useConnectivity.test.ts",
       "_origin": "ast",
@@ -94240,6 +94360,50 @@
       "norm_label": "song-card-data.ts",
       "source_file": "delivery/webapp/src/lib/song-card-data.ts",
       "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test",
+      "label": "FavoritesClient.test.tsx",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "useLocaleContext",
+      "file_type": "code",
+      "norm_label": "favoritesclient.test.tsx",
+      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_mockpause",
+      "label": "mockPause",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "useLocaleContext",
+      "file_type": "code",
+      "norm_label": "mockpause",
+      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
+      "source_location": "L20"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_mockplay",
+      "label": "mockPlay",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "useLocaleContext",
+      "file_type": "code",
+      "norm_label": "mockplay",
+      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
+      "source_location": "L19"
+    },
+    {
+      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_mockreplace",
+      "label": "mockReplace",
+      "_origin": "ast",
+      "community": 21,
+      "community_name": "useLocaleContext",
+      "file_type": "code",
+      "norm_label": "mockreplace",
+      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
+      "source_location": "L7"
     },
     {
       "id": "delivery_webapp_src_test_app_listen_listenclient_test",
@@ -106071,92 +106235,26 @@
       "source_location": "L8"
     },
     {
-      "id": "delivery_webapp_public_sw_artifact_serving",
-      "label": "sw-artifact-serving.js",
+      "id": "delivery_render_worker_src_sow_render_worker_config",
+      "label": "sow_render_worker/config.py",
       "_origin": "ast",
       "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
+      "community_name": "load_config",
       "file_type": "code",
-      "norm_label": "sw-artifact-serving.js",
-      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
+      "norm_label": "sow_render_worker/config.py",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_public_sw_artifact_serving_artifact_file_type",
-      "label": "ARTIFACT_FILE_TYPE",
+      "id": "delivery_render_worker_src_sow_render_worker_config_py_exception",
+      "label": "Exception",
       "_origin": "ast",
       "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
+      "community_name": "load_config",
       "file_type": "code",
-      "norm_label": "artifact_file_type",
-      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
-      "source_location": "L15"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test",
-      "label": "artifact-cache-sw-parity.test.ts",
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "artifact-cache-sw-parity.test.ts",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test_sw_module_path",
-      "label": "SW_MODULE_PATH",
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "sw_module_path",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
-      "source_location": "L20"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_artifact_cache_sw_parity_test_sw_script_path",
-      "label": "SW_SCRIPT_PATH",
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "sw_script_path",
-      "source_file": "delivery/webapp/src/test/lib/offline/artifact-cache-sw-parity.test.ts",
-      "source_location": "L21"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test",
-      "label": "sw-artifact-serving.test.ts",
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "code",
-      "norm_label": "sw-artifact-serving.test.ts",
-      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_public_sw_artifact_serving_js_docref_rfc_9110",
-      "label": "RFC-9110",
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "concept",
-      "norm_label": "rfc-9110",
-      "source_file": "delivery/webapp/public/sw-artifact-serving.js",
-      "source_location": "L62"
-    },
-    {
-      "id": "delivery_webapp_src_test_lib_offline_sw_artifact_serving_test_ts_docref_rfc_9110",
-      "label": "RFC-9110",
-      "_origin": "ast",
-      "community": 291,
-      "community_name": "artifact-cache-sw-parity.test.ts",
-      "file_type": "concept",
-      "norm_label": "rfc-9110",
-      "source_file": "delivery/webapp/src/test/lib/offline/sw-artifact-serving.test.ts",
-      "source_location": "L440"
+      "norm_label": "exception",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_r2_backup_rationale_110",
@@ -107548,17 +107646,6 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_test_components_render_renderform_test",
-      "label": "RenderForm.test.tsx",
-      "_origin": "ast",
-      "community": 30,
-      "community_name": "cn",
-      "file_type": "code",
-      "norm_label": "renderform.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/render/RenderForm.test.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "delivery_webapp_src_test_components_songset_transitionpanel_test",
       "label": "TransitionPanel.test.tsx",
       "_origin": "ast",
@@ -107660,28 +107747,6 @@
       "community_name": "pipeline.py",
       "file_type": "code",
       "norm_label": "assetfetcher",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config",
-      "label": "sow_render_worker/config.py",
-      "_origin": "ast",
-      "community": 301,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "sow_render_worker/config.py",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_py_exception",
-      "label": "Exception",
-      "_origin": "ast",
-      "community": 301,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "exception",
       "source_file": "",
       "source_location": ""
     },
@@ -108077,17 +108142,6 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_components_ui_sonner",
-      "label": "sonner.tsx",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "sonner.tsx",
-      "source_file": "delivery/webapp/src/components/ui/sonner.tsx",
-      "source_location": "L1"
-    },
-    {
       "id": "delivery_webapp_src_lib_build_info",
       "label": "build-info.ts",
       "_origin": "ast",
@@ -108119,50 +108173,6 @@
       "norm_label": "build_commit_hash",
       "source_file": "delivery/webapp/src/lib/build-info.ts",
       "source_location": "L4"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test",
-      "label": "FavoritesClient.test.tsx",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "favoritesclient.test.tsx",
-      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_mockpause",
-      "label": "mockPause",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "mockpause",
-      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
-      "source_location": "L20"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_mockplay",
-      "label": "mockPlay",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "mockplay",
-      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
-      "source_location": "L19"
-    },
-    {
-      "id": "delivery_webapp_src_test_app_favorites_favoritesclient_test_mockreplace",
-      "label": "mockReplace",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "mockreplace",
-      "source_file": "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx",
-      "source_location": "L7"
     },
     {
       "id": "delivery_webapp_src_test_app_header_avatar_test",
@@ -108528,92 +108538,15 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test",
-      "label": "SemanticSearch.test.tsx",
+      "id": "delivery_webapp_src_test_components_render_renderform_test",
+      "label": "RenderForm.test.tsx",
       "_origin": "ast",
       "community": 305,
       "community_name": "renderWithLocale",
       "file_type": "code",
-      "norm_label": "semanticsearch.test.tsx",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "norm_label": "renderform.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/render/RenderForm.test.tsx",
       "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_defaultprops",
-      "label": "defaultProps",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "defaultprops",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
-      "source_location": "L98"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_hymnsfilter",
-      "label": "hymnsFilter",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "hymnsfilter",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
-      "source_location": "L102"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mockfetch",
-      "label": "mockFetch",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "mockfetch",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
-      "source_location": "L50"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mockgetpublicaudiourl",
-      "label": "mockGetPublicAudioUrl",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "mockgetpublicaudiourl",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
-      "source_location": "L44"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mockplay",
-      "label": "mockPlay",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "mockplay",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
-      "source_location": "L11"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mocksongs",
-      "label": "mockSongs",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "mocksongs",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
-      "source_location": "L53"
-    },
-    {
-      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_worshipfilter",
-      "label": "worshipFilter",
-      "_origin": "ast",
-      "community": 305,
-      "community_name": "renderWithLocale",
-      "file_type": "code",
-      "norm_label": "worshipfilter",
-      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
-      "source_location": "L103"
     },
     {
       "id": "delivery_webapp_src_test_components_settings_accountsettings_test",
@@ -108713,6 +108646,17 @@
       "norm_label": "captureddndcontextids",
       "source_file": "delivery/webapp/src/test/components/songset/SongList.test.tsx",
       "source_location": "L7"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_songset_songsetlist_test",
+      "label": "SongsetList.test.tsx",
+      "_origin": "ast",
+      "community": 305,
+      "community_name": "renderWithLocale",
+      "file_type": "code",
+      "norm_label": "songsetlist.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/songset/SongsetList.test.tsx",
+      "source_location": "L1"
     },
     {
       "id": "delivery_webapp_src_test_components_system_buildstamp_dev_fallback_test",
@@ -112724,33 +112668,11 @@
       "source_location": "L19"
     },
     {
-      "id": "baseexception",
-      "label": "BaseException",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "looks_like_oversize_payload",
-      "file_type": "code",
-      "norm_label": "baseexception",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry",
-      "label": "modal_retry.py",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "looks_like_oversize_payload",
-      "file_type": "code",
-      "norm_label": "modal_retry.py",
-      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
-      "source_location": "L1"
-    },
-    {
       "id": "ops_analysis_service_src_sow_analysis_services_modal_whisper_client",
       "label": "modal_whisper_client.py",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "modal_whisper_client.py",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -112761,7 +112683,7 @@
       "label": "Any",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "any",
       "source_file": "",
@@ -112772,7 +112694,7 @@
       "label": "Exception",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "exception",
       "source_file": "",
@@ -112783,51 +112705,18 @@
       "label": "Path",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "code",
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_rationale_1",
-      "label": "Shared Modal error classification for the sow-analysis Modal clients. Used by\u2026",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "looks_like_oversize_payload",
-      "file_type": "rationale",
-      "norm_label": "shared modal error classification for the sow-analysis modal clients. used by...",
-      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_rationale_13",
-      "label": "# NOTE: modal.exception has NO\u2026",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "looks_like_oversize_payload",
-      "file_type": "rationale",
-      "norm_label": "# note: modal.exception has no...",
-      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
-      "source_location": "L13"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_rationale_43",
-      "label": "Blob-upload 413s surface as RemoteError/InternalFailure, not RequestSizeError.",
-      "_origin": "ast",
-      "community": 34,
-      "community_name": "looks_like_oversize_payload",
-      "file_type": "rationale",
-      "norm_label": "blob-upload 413s surface as remoteerror/internalfailure, not requestsizeerror.",
-      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
-      "source_location": "L43"
-    },
-    {
       "id": "ops_analysis_service_src_sow_analysis_services_modal_whisper_client_rationale_1",
       "label": "Modal Whisper client \u2014 faster-whisper transcription hosted on Modal. Mirrors\u2026",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "rationale",
       "norm_label": "modal whisper client \u2014 faster-whisper transcription hosted on modal. mirrors...",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -112838,7 +112727,7 @@
       "label": "Transcribe audio bytes on Modal; returns the container's result dict.",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "rationale",
       "norm_label": "transcribe audio bytes on modal; returns the container's result dict.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -112849,7 +112738,7 @@
       "label": "Raised when a Modal Whisper invocation fails.",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "rationale",
       "norm_label": "raised when a modal whisper invocation fails.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -112860,7 +112749,7 @@
       "label": "Modal is not configured, or the deployed app/class is unreachable.",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "rationale",
       "norm_label": "modal is not configured, or the deployed app/class is unreachable.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -112871,7 +112760,7 @@
       "label": "Async client for the sow-whisper Modal app.",
       "_origin": "ast",
       "community": 34,
-      "community_name": "looks_like_oversize_payload",
+      "community_name": "modal_whisper_client.py",
       "file_type": "rationale",
       "norm_label": "async client for the sow-whisper modal app.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_whisper_client.py",
@@ -115107,6 +114996,17 @@
       "source_location": "L42"
     },
     {
+      "id": "ops_analysis_service_src_sow_analysis_storage_cache",
+      "label": "storage/cache.py",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "CacheManager",
+      "file_type": "code",
+      "norm_label": "storage/cache.py",
+      "source_file": "ops/analysis-service/src/sow_analysis/storage/cache.py",
+      "source_location": "L1"
+    },
+    {
       "id": "ops_analysis_service_src_sow_analysis_storage_cache_py_path",
       "label": "Path",
       "_origin": "ast",
@@ -115116,6 +115016,28 @@
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_storage_init",
+      "label": "storage/__init__.py",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "CacheManager",
+      "file_type": "code",
+      "norm_label": "storage/__init__.py",
+      "source_file": "ops/analysis-service/src/sow_analysis/storage/__init__.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_storage_cache_rationale_1",
+      "label": "Local disk cache for analysis results.",
+      "_origin": "ast",
+      "community": 38,
+      "community_name": "CacheManager",
+      "file_type": "rationale",
+      "norm_label": "local disk cache for analysis results.",
+      "source_file": "ops/analysis-service/src/sow_analysis/storage/cache.py",
+      "source_location": "L1"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_storage_cache_rationale_111",
@@ -115349,26 +115271,75 @@
       "source_location": "L96"
     },
     {
-      "id": "delivery_marketing_package_devdependencies_tailwindcss",
-      "label": "tailwindcss",
+      "id": "ops_analysis_service_src_sow_analysis_storage_init_rationale_1",
+      "label": "Storage layer for R2 and local cache.",
       "_origin": "ast",
-      "community": 380,
-      "community_name": "tailwindcss",
-      "file_type": "code",
-      "norm_label": "tailwindcss",
-      "source_file": "delivery/marketing/package.json",
-      "source_location": "L39"
+      "community": 38,
+      "community_name": "CacheManager",
+      "file_type": "rationale",
+      "norm_label": "storage layer for r2 and local cache.",
+      "source_file": "ops/analysis-service/src/sow_analysis/storage/__init__.py",
+      "source_location": "L1"
     },
     {
-      "id": "delivery_marketing_package_json_tailwindcss",
-      "label": "tailwindcss",
+      "id": "ops_analysis_service_readme_api_endpoints",
+      "label": "API Endpoints",
       "_origin": "ast",
       "community": 380,
-      "community_name": "tailwindcss",
-      "file_type": "concept",
-      "norm_label": "tailwindcss",
-      "source_file": "delivery/marketing/package.json",
-      "source_location": "L39"
+      "community_name": "API Endpoints",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "api endpoints",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L175"
+    },
+    {
+      "id": "ops_analysis_service_readme_check_job_status",
+      "label": "Check Job Status",
+      "_origin": "ast",
+      "community": 380,
+      "community_name": "API Endpoints",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "check job status",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L267"
+    },
+    {
+      "id": "ops_analysis_service_readme_submit_analysis_job",
+      "label": "Submit Analysis Job",
+      "_origin": "ast",
+      "community": 380,
+      "community_name": "API Endpoints",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "submit analysis job",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L188"
+    },
+    {
+      "id": "ops_analysis_service_readme_submit_lrc_generation_job",
+      "label": "Submit LRC Generation Job",
+      "_origin": "ast",
+      "community": 380,
+      "community_name": "API Endpoints",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "submit lrc generation job",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L204"
+    },
+    {
+      "id": "ops_analysis_service_readme_submit_stem_separation_job",
+      "label": "Submit Stem Separation Job",
+      "_origin": "ast",
+      "community": 380,
+      "community_name": "API Endpoints",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "submit stem separation job",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L223"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_services_catalog_rationale_103",
@@ -122287,63 +122258,26 @@
       "source_location": "L450"
     },
     {
-      "id": "ops_analysis_service_readme_dashscope_qwen3_asr_setup_optional",
-      "label": "DashScope Qwen3 ASR Setup (Optional)",
+      "id": "delivery_webapp_package_dependencies_better_auth",
+      "label": "better-auth",
       "_origin": "ast",
       "community": 499,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "dashscope qwen3 asr setup (optional)",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L436"
-    },
-    {
-      "id": "ops_analysis_service_readme_get_an_api_key",
-      "label": "Get an API Key",
-      "_origin": "ast",
-      "community": 499,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "get an api key",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L440"
-    },
-    {
-      "id": "ops_analysis_service_readme_how_it_works",
-      "label": "How It Works",
-      "_origin": "ast",
-      "community": 499,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "how it works",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L450"
-    },
-    {
-      "id": "ops_analysis_service_readme_tuning",
-      "label": "Tuning",
-      "_origin": "ast",
-      "community": 499,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "tuning",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L460"
-    },
-    {
-      "id": "figure",
-      "label": "Figure",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
+      "community_name": "better-auth",
       "file_type": "code",
-      "norm_label": "figure",
-      "source_file": "",
-      "source_location": ""
+      "norm_label": "better-auth",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L33"
+    },
+    {
+      "id": "better_auth",
+      "label": "better-auth",
+      "_origin": "ast",
+      "community": 499,
+      "community_name": "better-auth",
+      "file_type": "concept",
+      "norm_label": "better-auth",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L33"
     },
     {
       "id": "lab_poc_scripts_bpm_agreement_report",
@@ -122388,17 +122322,6 @@
       "norm_label": "bpm agreement report \u2014 v5 lineage + consensus + cps\u00d7bpm crosstab. three focused...",
       "source_file": "lab/poc-scripts/bpm_agreement_report.py",
       "source_location": "L1"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_rationale_154",
-      "label": "Minimum absolute difference considering octave shifts of b.",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "rationale",
-      "norm_label": "minimum absolute difference considering octave shifts of b.",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L154"
     },
     {
       "id": "lab_poc_scripts_bpm_agreement_report_rationale_163",
@@ -122456,39 +122379,6 @@
       "source_location": "L234"
     },
     {
-      "id": "lab_poc_scripts_bpm_agreement_report_rationale_330",
-      "label": "Overlay histograms of err_v5_raw \u2212 err_v4_raw and err_v5_oct \u2212 err_v4_oct.\u2026",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "rationale",
-      "norm_label": "overlay histograms of err_v5_raw \u2212 err_v4_raw and err_v5_oct \u2212 err_v4_oct....",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L330"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_rationale_372",
-      "label": "Scatter: x = v4 octave-corrected error, y = v5 octave-corrected error. Points\u2026",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "rationale",
-      "norm_label": "scatter: x = v4 octave-corrected error, y = v5 octave-corrected error. points...",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L372"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_rationale_422",
-      "label": "Grouped bars: per CPS bucket (k-means), mean \u0394error (oct) and v5 win-rate %.",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "rationale",
-      "norm_label": "grouped bars: per cps bucket (k-means), mean \u03b4error (oct) and v5 win-rate %.",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L422"
-    },
-    {
       "id": "lab_poc_scripts_bpm_agreement_report_rationale_481",
       "label": "Build Section B tables.",
       "_origin": "ast",
@@ -122498,39 +122388,6 @@
       "norm_label": "build section b tables.",
       "source_file": "lab/poc-scripts/bpm_agreement_report.py",
       "source_location": "L481"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_rationale_595",
-      "label": "Histogram of per-song radius (max \u2212 min of octave-normalized BPMs). Vertical\u2026",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "rationale",
-      "norm_label": "histogram of per-song radius (max \u2212 min of octave-normalized bpms). vertical...",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L595"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_rationale_617",
-      "label": "Box plot: per-method distribution of |normalized_bpm \u2212 consensus_median|.",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "rationale",
-      "norm_label": "box plot: per-method distribution of |normalized_bpm \u2212 consensus_median|.",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L617"
-    },
-    {
-      "id": "lab_poc_scripts_bpm_agreement_report_rationale_640",
-      "label": "Strip plot for top-10 most-disputed songs. Horizontal lines per song; per-\u2026",
-      "_origin": "ast",
-      "community": 5,
-      "community_name": "bpm_agreement_report.py",
-      "file_type": "rationale",
-      "norm_label": "strip plot for top-10 most-disputed songs. horizontal lines per song; per-...",
-      "source_file": "lab/poc-scripts/bpm_agreement_report.py",
-      "source_location": "L640"
     },
     {
       "id": "lab_poc_scripts_bpm_agreement_report_rationale_688",
@@ -122874,26 +122731,26 @@
       "source_location": "L507"
     },
     {
-      "id": "delivery_webapp_package_dependencies_zod",
-      "label": "zod",
+      "id": "delivery_marketing_package_devdependencies_testing_library_react",
+      "label": "@testing-library/react",
       "_origin": "ast",
       "community": 505,
-      "community_name": "zod",
+      "community_name": "@testing-library/react",
       "file_type": "code",
-      "norm_label": "zod",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L49"
+      "norm_label": "@testing-library/react",
+      "source_file": "delivery/marketing/package.json",
+      "source_location": "L26"
     },
     {
-      "id": "zod",
-      "label": "zod",
+      "id": "delivery_marketing_package_json_testing_library_react",
+      "label": "@testing-library/react",
       "_origin": "ast",
       "community": 505,
-      "community_name": "zod",
+      "community_name": "@testing-library/react",
       "file_type": "concept",
-      "norm_label": "zod",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L49"
+      "norm_label": "@testing-library/react",
+      "source_file": "delivery/marketing/package.json",
+      "source_location": "L26"
     },
     {
       "id": "lab_sow_app_src_sow_lab_app_screens_songset_editor_rationale_625",
@@ -122918,33 +122775,33 @@
       "source_location": "L1049"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_1668",
-      "label": "Apply a FeedbackDialog result; never crash the editor on errors.",
+      "id": "baseexception",
+      "label": "BaseException",
       "_origin": "ast",
-      "community": 508,
-      "community_name": "._handle_feedback_submission",
-      "file_type": "rationale",
-      "norm_label": "apply a feedbackdialog result; never crash the editor on errors.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
-      "source_location": "L1668"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_resize",
-      "label": "Resize",
-      "_origin": "ast",
-      "community": 509,
-      "community_name": ".on_resize",
+      "community": 51,
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
-      "norm_label": "resize",
+      "norm_label": "baseexception",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry",
+      "label": "modal_retry.py",
+      "_origin": "ast",
+      "community": 51,
+      "community_name": "looks_like_oversize_payload",
+      "file_type": "code",
+      "norm_label": "modal_retry.py",
+      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
+      "source_location": "L1"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_services_modal_stem_separator_client",
       "label": "modal_stem_separator_client.py",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "modal_stem_separator_client.py",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -122955,7 +122812,7 @@
       "label": "Any",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "any",
       "source_file": "",
@@ -122966,7 +122823,7 @@
       "label": "Exception",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "exception",
       "source_file": "",
@@ -122977,18 +122834,51 @@
       "label": "Path",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "code",
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
     },
     {
+      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_rationale_1",
+      "label": "Shared Modal error classification for the sow-analysis Modal clients. Used by\u2026",
+      "_origin": "ast",
+      "community": 51,
+      "community_name": "looks_like_oversize_payload",
+      "file_type": "rationale",
+      "norm_label": "shared modal error classification for the sow-analysis modal clients. used by...",
+      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_rationale_13",
+      "label": "# NOTE: modal.exception has NO\u2026",
+      "_origin": "ast",
+      "community": 51,
+      "community_name": "looks_like_oversize_payload",
+      "file_type": "rationale",
+      "norm_label": "# note: modal.exception has no...",
+      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
+      "source_location": "L13"
+    },
+    {
+      "id": "ops_analysis_service_src_sow_analysis_services_modal_retry_rationale_43",
+      "label": "Blob-upload 413s surface as RemoteError/InternalFailure, not RequestSizeError.",
+      "_origin": "ast",
+      "community": 51,
+      "community_name": "looks_like_oversize_payload",
+      "file_type": "rationale",
+      "norm_label": "blob-upload 413s surface as remoteerror/internalfailure, not requestsizeerror.",
+      "source_file": "ops/analysis-service/src/sow_analysis/services/modal_retry.py",
+      "source_location": "L43"
+    },
+    {
       "id": "ops_analysis_service_src_sow_analysis_services_modal_stem_separator_client_rationale_1",
       "label": "Modal stem-separation client \u2014 audio-separator hosted on Modal. Mirrors\u2026",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "modal stem-separation client \u2014 audio-separator hosted on modal. mirrors...",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -122999,7 +122889,7 @@
       "label": "Run two-stage stem separation on Modal. Returns: Tuple of (vocals_dry_path,\u2026",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "run two-stage stem separation on modal. returns: tuple of (vocals_dry_path,...",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -123010,7 +122900,7 @@
       "label": "Run Stage 2 only (de-reverb) on Modal; callers ignore the second element.",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "run stage 2 only (de-reverb) on modal; callers ignore the second element.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -123021,7 +122911,7 @@
       "label": "Write a returned stem atomically; falsy payload means \"stage produced nothing\".",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "write a returned stem atomically; falsy payload means \"stage produced nothing\".",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -123032,7 +122922,7 @@
       "label": "Call one remote method with the shared retry ladder.",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "call one remote method with the shared retry ladder.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -123043,7 +122933,7 @@
       "label": "Raised when a Modal stem-separation invocation fails.",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "raised when a modal stem-separation invocation fails.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -123054,7 +122944,7 @@
       "label": "Modal is not configured, or the deployed app/class is unreachable.",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "modal is not configured, or the deployed app/class is unreachable.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -123065,7 +122955,7 @@
       "label": "Async client for the sow-stems Modal app.",
       "_origin": "ast",
       "community": 51,
-      "community_name": "ModalStemSeparatorClient",
+      "community_name": "looks_like_oversize_payload",
       "file_type": "rationale",
       "norm_label": "async client for the sow-stems modal app.",
       "source_file": "ops/analysis-service/src/sow_analysis/services/modal_stem_separator_client.py",
@@ -125067,28 +124957,6 @@
       "source_location": "L818"
     },
     {
-      "id": "ops_analysis_service_src_sow_analysis_storage_cache",
-      "label": "storage/cache.py",
-      "_origin": "ast",
-      "community": 58,
-      "community_name": "R2Client",
-      "file_type": "code",
-      "norm_label": "storage/cache.py",
-      "source_file": "ops/analysis-service/src/sow_analysis/storage/cache.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_storage_init",
-      "label": "storage/__init__.py",
-      "_origin": "ast",
-      "community": 58,
-      "community_name": "R2Client",
-      "file_type": "code",
-      "norm_label": "storage/__init__.py",
-      "source_file": "ops/analysis-service/src/sow_analysis/storage/__init__.py",
-      "source_location": "L1"
-    },
-    {
       "id": "ops_analysis_service_src_sow_analysis_storage_r2",
       "label": "storage/r2.py",
       "_origin": "ast",
@@ -125131,28 +124999,6 @@
       "norm_label": "path",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_storage_cache_rationale_1",
-      "label": "Local disk cache for analysis results.",
-      "_origin": "ast",
-      "community": 58,
-      "community_name": "R2Client",
-      "file_type": "rationale",
-      "norm_label": "local disk cache for analysis results.",
-      "source_file": "ops/analysis-service/src/sow_analysis/storage/cache.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "ops_analysis_service_src_sow_analysis_storage_init_rationale_1",
-      "label": "Storage layer for R2 and local cache.",
-      "_origin": "ast",
-      "community": 58,
-      "community_name": "R2Client",
-      "file_type": "rationale",
-      "norm_label": "storage layer for r2 and local cache.",
-      "source_file": "ops/analysis-service/src/sow_analysis/storage/__init__.py",
-      "source_location": "L1"
     },
     {
       "id": "ops_analysis_service_src_sow_analysis_storage_r2_rationale_1",
@@ -133451,6 +133297,17 @@
       "source_location": "L7"
     },
     {
+      "id": "delivery_webapp_src_components_ui_sonner",
+      "label": "sonner.tsx",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "sonner.tsx",
+      "source_file": "delivery/webapp/src/components/ui/sonner.tsx",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_contexts_localecontext",
       "label": "LocaleContext.tsx",
       "_origin": "ast",
@@ -133977,6 +133834,94 @@
       "norm_label": "mocksession",
       "source_file": "delivery/webapp/src/test/components/layout/Header.test.tsx",
       "source_location": "L7"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test",
+      "label": "SemanticSearch.test.tsx",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "semanticsearch.test.tsx",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_defaultprops",
+      "label": "defaultProps",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "defaultprops",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L98"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_hymnsfilter",
+      "label": "hymnsFilter",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "hymnsfilter",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L102"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mockfetch",
+      "label": "mockFetch",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "mockfetch",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L50"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mockgetpublicaudiourl",
+      "label": "mockGetPublicAudioUrl",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "mockgetpublicaudiourl",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L44"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mockplay",
+      "label": "mockPlay",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "mockplay",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L11"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_mocksongs",
+      "label": "mockSongs",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "mocksongs",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L53"
+    },
+    {
+      "id": "delivery_webapp_src_test_components_search_semanticsearch_test_worshipfilter",
+      "label": "worshipFilter",
+      "_origin": "ast",
+      "community": 83,
+      "community_name": "i18n/messages.ts",
+      "file_type": "code",
+      "norm_label": "worshipfilter",
+      "source_file": "delivery/webapp/src/test/components/search/SemanticSearch.test.tsx",
+      "source_location": "L103"
     },
     {
       "id": "delivery_webapp_src_test_components_settings_settingsform_test",
@@ -135222,17 +135167,6 @@
       "source_location": "L24"
     },
     {
-      "id": "delivery_webapp_package_dependencies_better_auth",
-      "label": "better-auth",
-      "_origin": "ast",
-      "community": 89,
-      "community_name": "dependencies",
-      "file_type": "code",
-      "norm_label": "better-auth",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L33"
-    },
-    {
       "id": "delivery_webapp_package_dependencies_class_variance_authority",
       "label": "class-variance-authority",
       "_origin": "ast",
@@ -135365,6 +135299,17 @@
       "source_location": "L32"
     },
     {
+      "id": "delivery_webapp_package_dependencies_zod",
+      "label": "zod",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "zod",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L49"
+    },
+    {
       "id": "aws_sdk_client_s3",
       "label": "@aws-sdk/client-s3",
       "_origin": "ast",
@@ -135396,17 +135341,6 @@
       "norm_label": "@base-ui/react",
       "source_file": "delivery/webapp/package.json",
       "source_location": "L24"
-    },
-    {
-      "id": "better_auth",
-      "label": "better-auth",
-      "_origin": "ast",
-      "community": 89,
-      "community_name": "dependencies",
-      "file_type": "concept",
-      "norm_label": "better-auth",
-      "source_file": "delivery/webapp/package.json",
-      "source_location": "L33"
     },
     {
       "id": "delivery_webapp_package_json_class_variance_authority",
@@ -135539,6 +135473,17 @@
       "norm_label": "@vercel/speed-insights",
       "source_file": "delivery/webapp/package.json",
       "source_location": "L32"
+    },
+    {
+      "id": "zod",
+      "label": "zod",
+      "_origin": "ast",
+      "community": 89,
+      "community_name": "dependencies",
+      "file_type": "concept",
+      "norm_label": "zod",
+      "source_file": "delivery/webapp/package.json",
+      "source_location": "L49"
     },
     {
       "id": "delivery_webapp_src_components_audio_lyricslinespanel",
@@ -137136,6 +137081,17 @@
       "source_location": "L94"
     },
     {
+      "id": "modalscreen",
+      "label": "ModalScreen",
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": "modalscreen",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_composeresult",
       "label": "ComposeResult",
       "_origin": "ast",
@@ -137198,6 +137154,17 @@
       "community_name": ".__init__",
       "file_type": "code",
       "norm_label": "static",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_submitted",
+      "label": "Submitted",
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "code",
+      "norm_label": "submitted",
       "source_file": "",
       "source_location": ""
     },
@@ -137266,6 +137233,39 @@
       "norm_label": "set the trailing activity segment (\"\" = omitted) and re-render. survives...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
       "source_location": "L189"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_274",
+      "label": "Format one feedback row for display in the bar/dialog.",
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "rationale",
+      "norm_label": "format one feedback row for display in the bar/dialog.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L274"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_319",
+      "label": "Lyrics feedback dialog: view rows, add Happy/Sad, retract, resolve. Result\u2026",
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "rationale",
+      "norm_label": "lyrics feedback dialog: view rows, add happy/sad, retract, resolve. result...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L319"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_rationale_388",
+      "label": "Sad feedback step: pick a reason, then an optional note. Result: ``(\"sad\",\u2026",
+      "_origin": "ast",
+      "community": 99,
+      "community_name": ".__init__",
+      "file_type": "rationale",
+      "norm_label": "sad feedback step: pick a reason, then an optional note. result: ``(\"sad\",...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/editor/screen.py",
+      "source_location": "L388"
     },
     {
       "id": "lrcworkererror",
@@ -151165,18 +151165,6 @@
     },
     {
       "source": "delivery_webapp_src_components_songset_arrangementeditorsheet_arrangementeditorsheet",
-      "target": "delivery_webapp_src_lib_section_labels_abbreviatedsectionlabel",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1000",
-      "weight": 1.0
-    },
-    {
-      "source": "delivery_webapp_src_components_songset_arrangementeditorsheet_arrangementeditorsheet",
       "target": "delivery_webapp_src_hooks_usesonglyrics_usesonglyrics",
       "relation": "calls",
       "_origin": "ast",
@@ -151184,7 +151172,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1037",
+      "source_location": "L1029",
       "weight": 1.0
     },
     {
@@ -151196,7 +151184,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1040",
+      "source_location": "L1032",
       "weight": 1.0
     },
     {
@@ -151208,7 +151196,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1040",
+      "source_location": "L1032",
       "weight": 1.0
     },
     {
@@ -151220,7 +151208,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1088",
+      "source_location": "L1080",
       "weight": 1.0
     },
     {
@@ -151232,7 +151220,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1105",
+      "source_location": "L1097",
       "weight": 1.0
     },
     {
@@ -151244,7 +151232,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1135",
+      "source_location": "L1127",
       "weight": 1.0
     },
     {
@@ -151256,7 +151244,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1154",
+      "source_location": "L1146",
       "weight": 1.0
     },
     {
@@ -151268,7 +151256,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1164",
+      "source_location": "L1156",
       "weight": 1.0
     },
     {
@@ -151280,7 +151268,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1187",
+      "source_location": "L1179",
       "weight": 1.0
     },
     {
@@ -151292,7 +151280,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1241",
+      "source_location": "L1233",
       "weight": 1.0
     },
     {
@@ -151304,7 +151292,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1270",
+      "source_location": "L1262",
       "weight": 1.0
     },
     {
@@ -151316,7 +151304,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1386",
+      "source_location": "L1378",
       "weight": 1.0
     },
     {
@@ -151328,7 +151316,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1688",
+      "source_location": "L1680",
       "weight": 1.0
     },
     {
@@ -151340,7 +151328,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1694",
+      "source_location": "L1686",
       "weight": 1.0
     },
     {
@@ -151352,7 +151340,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1754",
+      "source_location": "L1746",
       "weight": 1.0
     },
     {
@@ -151364,7 +151352,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1935",
+      "source_location": "L1927",
       "weight": 1.0
     },
     {
@@ -151376,7 +151364,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L1960",
+      "source_location": "L1952",
       "weight": 1.0
     },
     {
@@ -151388,7 +151376,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L2163",
+      "source_location": "L2155",
       "weight": 1.0
     },
     {
@@ -151400,7 +151388,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L2352",
+      "source_location": "L2344",
       "weight": 1.0
     },
     {
@@ -151412,7 +151400,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L2664",
+      "source_location": "L2656",
       "weight": 1.0
     },
     {
@@ -151424,7 +151412,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L905",
+      "source_location": "L897",
       "weight": 1.0
     },
     {
@@ -151436,7 +151424,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L946",
+      "source_location": "L938",
       "weight": 1.0
     },
     {
@@ -151448,7 +151436,19 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L955",
+      "source_location": "L947",
+      "weight": 1.0
+    },
+    {
+      "source": "delivery_webapp_src_components_songset_arrangementeditorsheet_arrangementeditorsheet",
+      "target": "delivery_webapp_src_lib_section_labels_abbreviatedsectionlabel",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
+      "source_location": "L992",
       "weight": 1.0
     },
     {
@@ -151520,7 +151520,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L841",
+      "source_location": "L833",
       "weight": 1.0
     },
     {
@@ -151532,7 +151532,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L763",
+      "source_location": "L755",
       "weight": 1.0
     },
     {
@@ -151544,7 +151544,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L766",
+      "source_location": "L758",
       "weight": 1.0
     },
     {
@@ -151556,7 +151556,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L769",
+      "source_location": "L761",
       "weight": 1.0
     },
     {
@@ -151568,7 +151568,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L776",
+      "source_location": "L768",
       "weight": 1.0
     },
     {
@@ -151592,7 +151592,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L583",
+      "source_location": "L576",
       "weight": 1.0
     },
     {
@@ -151604,7 +151604,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L751",
+      "source_location": "L743",
       "weight": 1.0
     },
     {
@@ -151616,7 +151616,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L752",
+      "source_location": "L744",
       "weight": 1.0
     },
     {
@@ -206696,7 +206696,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L855",
+      "source_location": "L847",
       "weight": 1.0
     },
     {
@@ -206708,7 +206708,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L856",
+      "source_location": "L848",
       "weight": 1.0
     },
     {
@@ -294728,7 +294728,7 @@
       "confidence_score": 1.0,
       "context": "type",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L806",
+      "source_location": "L798",
       "weight": 1.0
     },
     {
@@ -309213,7 +309213,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L725",
+      "source_location": "L717",
       "weight": 1.0
     },
     {
@@ -309224,7 +309224,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L734",
+      "source_location": "L726",
       "weight": 1.0
     },
     {
@@ -309235,7 +309235,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L741",
+      "source_location": "L733",
       "weight": 1.0
     },
     {
@@ -309246,7 +309246,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L762",
+      "source_location": "L754",
       "weight": 1.0
     },
     {
@@ -309257,7 +309257,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L793",
+      "source_location": "L785",
       "weight": 1.0
     },
     {
@@ -309268,7 +309268,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L806",
+      "source_location": "L798",
       "weight": 1.0
     },
     {
@@ -309279,7 +309279,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L810",
+      "source_location": "L802",
       "weight": 1.0
     },
     {
@@ -309290,7 +309290,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L823",
+      "source_location": "L815",
       "weight": 1.0
     },
     {
@@ -309301,7 +309301,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L832",
+      "source_location": "L824",
       "weight": 1.0
     },
     {
@@ -309312,7 +309312,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L854",
+      "source_location": "L846",
       "weight": 1.0
     },
     {
@@ -309323,7 +309323,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L864",
+      "source_location": "L856",
       "weight": 1.0
     },
     {
@@ -309334,7 +309334,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L880",
+      "source_location": "L872",
       "weight": 1.0
     },
     {
@@ -309345,7 +309345,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L892",
+      "source_location": "L884",
       "weight": 1.0
     },
     {
@@ -408188,7 +408188,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx",
-      "source_location": "L783",
+      "source_location": "L775",
       "weight": 1.0
     },
     {
@@ -419898,5 +419898,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "f39ebf5790e64d39a22c3dd0f039ce1fa4bdd375"
+  "built_at_commit": "b78d2b7699ae63fe37f590717bc9298c43685ff9"
 }
