@@ -1506,9 +1506,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1794415567.3010118,
-    "seen": 1794416133.188352,
-    "ast_hash": "feaa5d16f7d1881841e571831fa92fe9",
+    "mtime": 1794484398.6530461,
+    "seen": 1794484603.8886287,
+    "ast_hash": "7e6a137fa38e6125957e3e5d3e2e0e26",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/BpmRangeMultiSelect.tsx": {
@@ -2046,9 +2046,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/arrangement.ts": {
-    "mtime": 1794396505.3336473,
-    "seen": 1794396559.0715024,
-    "ast_hash": "530b7f0e20d735b5067d9797b02340ba",
+    "mtime": 1794484400.0850456,
+    "seen": 1794484603.894773,
+    "ast_hash": "2994e281cd2ffe1a3f18e674f417fdf3",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/audio.ts": {
@@ -2868,9 +2868,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/ArrangementEditorSheet.test.tsx": {
-    "mtime": 1794413718.3078,
-    "seen": 1794414238.0570009,
-    "ast_hash": "aa6b25af4f0c1e9b340610156cf4ce13",
+    "mtime": 1794484408.1660423,
+    "seen": 1794484603.9042137,
+    "ast_hash": "b5b6c6113da694ce4912f13e798c1aea",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/BrowseSheet.test.tsx": {
@@ -5892,9 +5892,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/section-labels.ts": {
-    "mtime": 1794414945.3641152,
-    "seen": 1794416133.2110064,
-    "ast_hash": "e37e967f5809cf6388934117bc6aed95",
+    "mtime": 1794484393.1100485,
+    "seen": 1794484603.8981156,
+    "ast_hash": "65e668e3207d314f83d80515e21a72bc",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/render/chapter-sections.test.ts": {
@@ -5904,9 +5904,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/section-labels.test.ts": {
-    "mtime": 1794414957.2501447,
-    "seen": 1794416133.2385235,
-    "ast_hash": "20c3b11d175ed7c4b79399d3b5e43aa9",
+    "mtime": 1794484405.1750436,
+    "seen": 1794484603.9103425,
+    "ast_hash": "dd96da5d3cd710a6854310dd1bf2882b",
     "semantic_hash": ""
   }
 }
