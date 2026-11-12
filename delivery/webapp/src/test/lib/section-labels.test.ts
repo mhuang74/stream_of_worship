@@ -81,6 +81,38 @@ describe("buildSectionHeadings", () => {
     expect(abbreviatedSectionLabel(" Chorus ", 2)).toBe("C2");
     expect(abbreviatedSectionLabel("pre-chorus", 1)).toBeNull();
   });
+
+  it("abbreviates a label that already carries its own number, keeping that number", () => {
+    // Stored analysis carries both shapes: `verse` repeated, and `verse 1`…`verse 5`.
+    const sections: RecordingSection[] = [
+      { label: "verse 1", start: 0, end: 10 },
+      { label: "chorus", start: 10, end: 20 },
+      { label: "verse 2", start: 20, end: 30 },
+    ];
+    expect(buildSectionHeadings(sections).map((h) => h.shortLabel)).toEqual([
+      "V1",
+      "C1",
+      "V2",
+    ]);
+    // displayLabel still shows the stored label; only the strip abbreviates.
+    expect(buildSectionHeadings(sections).map((h) => h.displayLabel)).toEqual([
+      "verse 1",
+      "chorus",
+      "verse 2",
+    ]);
+    expect(abbreviatedSectionLabel("verse 2", 1)).toBe("V2");
+  });
+
+  it("numbers a bare label by its vocabulary-key occurrence beside pre-numbered ones", () => {
+    const sections: RecordingSection[] = [
+      { label: "chorus 1", start: 0, end: 10 },
+      { label: "chorus", start: 10, end: 20 },
+    ];
+    expect(buildSectionHeadings(sections).map((h) => h.shortLabel)).toEqual([
+      "C1",
+      "C2",
+    ]);
+  });
 });
 
 describe("sectionIndexAtPosition", () => {
