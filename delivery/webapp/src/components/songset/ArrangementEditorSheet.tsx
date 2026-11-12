@@ -563,13 +563,6 @@ function SortableStepBlock({
     transition,
     isDragging,
   } = useSortable({ id: entry.id, disabled });
-  const activeLineRef = useRef<HTMLParagraphElement | null>(null);
-
-  useEffect(() => {
-    if (activeLineIndex < 0) return;
-    activeLineRef.current?.scrollIntoView?.({ block: "nearest" });
-  }, [activeLineIndex]);
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -703,7 +696,6 @@ function SortableStepBlock({
               return (
                 <p
                   key={key}
-                  ref={active ? activeLineRef : undefined}
                   data-testid="arrangement-lyric-line"
                   data-active={active ? "true" : undefined}
                   className={cn(
