@@ -544,11 +544,10 @@ describe("ArrangementEditorSheet", () => {
       "Whole arrangement · 3 components"
     );
     const bands = within(strip).getAllByRole("button");
-    expect(bands.map((band) => band.textContent)).toEqual([
-      "Verse 1",
-      "Chorus",
-      "Verse 2",
-    ]);
+    expect(bands.map((band) => band.textContent)).toEqual(["V1", "C1", "V2"]);
+    // The full label stays the accessible name and the hover tooltip.
+    expect(bands[0]).toHaveAttribute("aria-label", "Verse 1");
+    expect(bands[0]).toHaveAttribute("title", "Verse 1");
     // A lone item has no neighbour, so no lead-in or lead-out claims appear.
     expect(screen.queryByTestId("arrangement-next-opening-notice")).toBeNull();
 
@@ -590,6 +589,11 @@ describe("ArrangementEditorSheet", () => {
       screen.getByText("Prev Song · Full song → Amazing Grace · Verse 1")
     ).toBeInTheDocument();
 
+    const strip = screen.getByTestId("arrangement-audition-timeline");
+    const bands = within(strip).getAllByRole("button");
+    expect(bands[0].textContent).toBe("← Prev Song");
+    expect(bands[0]).toHaveAttribute("title", "Prev Song");
+
     fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(27);
   });
@@ -612,6 +616,12 @@ describe("ArrangementEditorSheet", () => {
       "aria-valuemax",
       "34"
     );
+
+    const strip = screen.getByTestId("arrangement-audition-timeline");
+    const bands = within(strip).getAllByRole("button");
+    const last = bands[bands.length - 1];
+    expect(last.textContent).toBe("Opening → Next Song");
+    expect(last).toHaveAttribute("title", "Next Song · Opening");
 
     fireEvent.click(screen.getByTestId("arrangement-audition-play"));
     expect(preview.controller.startAtSeconds).toHaveBeenCalledWith(0);

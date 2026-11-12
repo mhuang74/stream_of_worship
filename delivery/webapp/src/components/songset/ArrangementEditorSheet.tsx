@@ -74,7 +74,7 @@ import type {
   TimelineClip,
   TimelineItemSource,
 } from "@/lib/arrangements";
-import { buildSectionHeadings } from "@/lib/section-labels";
+import { abbreviatedSectionLabel, buildSectionHeadings } from "@/lib/section-labels";
 import type { SongListItem } from "./SongList";
 import {
   AlertTriangle,
@@ -881,7 +881,10 @@ interface StripBand {
   key: string;
   kind: "previous" | "step" | "next";
   clipIndex: number | null;
+  /** Full label: the band's tooltip and accessible name. */
   label: string;
+  /** Compact text drawn inside the band. */
+  shortLabel: string;
   startSeconds: number;
   endSeconds: number;
 }
@@ -979,6 +982,29 @@ export function ArrangementEditorSheet({
       }
       return (
         occurrenceByIndex.get(entry.step.sectionIndex)?.displayLabel ??
+        entry.step.label
+      );
+    },
+    [draft, occurrenceByIndex, t]
+  );
+
+  const shortLabelForDraftIndex = useCallback(
+    (index: number): string | null => {
+      const entry = draft[index];
+      if (!entry) return null;
+      if (entry.step.sectionIndex === null) {
+        // The inferred Intro is a synthetic Intro (0 → first sung line), so it
+        // takes the Intro abbreviation; the full "Intro (inferred)" text stays
+        // the band's tooltip and accessible name.
+        return (
+          abbreviatedSectionLabel("intro", 1) ??
+          t("arrangement.intro.inferredShort")
+        );
+      }
+      // A step whose source section is missing from the current (stale or
+      // unreadable) analysis falls back to its stored label, unnumbered.
+      return (
+        occurrenceByIndex.get(entry.step.sectionIndex)?.shortLabel ??
         entry.step.label
       );
     },
@@ -2028,6 +2054,10 @@ export function ArrangementEditorSheet({
           kind: "previous",
           clipIndex: null,
           label: previousTitle,
+          shortLabel: t("arrangement.preview.stripPrevious").replace(
+            "{song}",
+            previousTitle
+          ),
           startSeconds: windowStart,
           endSeconds: end,
         });
@@ -2042,6 +2072,7 @@ export function ArrangementEditorSheet({
         kind: "step",
         clipIndex: index,
         label: labelForDraftIndex(index) ?? "",
+        shortLabel: shortLabelForDraftIndex(index) ?? "",
         startSeconds: start,
         endSeconds: end,
       });
@@ -2054,6 +2085,9 @@ export function ArrangementEditorSheet({
           kind: "next",
           clipIndex: null,
           label: `${nextSongTitle} · ${t("arrangement.preview.opening")}`,
+          shortLabel: t("arrangement.preview.stripNextOpening")
+            .replace("{label}", t("arrangement.preview.opening"))
+            .replace("{song}", nextSongTitle),
           startSeconds: start,
           endSeconds: windowEnd,
         });
@@ -2066,6 +2100,7 @@ export function ArrangementEditorSheet({
     nextSongTitle,
     nextTimelineItem,
     previousTitle,
+    shortLabelForDraftIndex,
     songTimelineItem,
     t,
   ]);
@@ -2422,11 +2457,13 @@ export function ArrangementEditorSheet({
                               data-band-start-seconds={band.startSeconds}
                               data-clip-index={band.clipIndex ?? undefined}
                               onClick={handleBandClick}
+                              title={band.label}
+                              aria-label={band.label}
                               className={cn(bandClass, "text-left")}
                               style={style}
                             >
                               <span className="truncate px-1 text-[10px]">
-                                {band.label}
+                                {band.shortLabel}
                               </span>
                               {band.key === activeBandKey && (
                                 <div

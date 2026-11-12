@@ -6,6 +6,10 @@
 // the Songset audition pullup and the Worship controller sheet — derives its
 // text here, so two surfaces can never number the same Recording differently
 // (issues #304–#306).
+//
+// The Arrange sheet's preview strip is the one exception in presentation only:
+// its band text uses `shortLabel` (numbered abbreviation) while every other
+// surface keeps `displayLabel`.
 
 import type { RecordingSection } from "@/lib/arrangements";
 
@@ -18,6 +22,34 @@ export interface SectionHeading {
    * `chorus` alone, but `chorus 1`, `chorus 2` when a second chorus exists.
    */
   displayLabel: string;
+  /**
+   * The preview strip's compact label: an abbreviation always numbered by
+   * source occurrence (`V1`, `C1`), or `displayLabel` outside the vocabulary.
+   */
+  shortLabel: string;
+}
+
+/** Compact strip vocabulary; any other label keeps its full display label. */
+const SECTION_ABBREVIATIONS: Record<string, string> = {
+  intro: "I",
+  verse: "V",
+  chorus: "C",
+  bridge: "B",
+  outro: "O",
+  tag: "T",
+};
+
+/**
+ * Compact band label for a known section label, always numbered by source
+ * occurrence (`V1`, `C1`, `C2`); null for labels outside the vocabulary.
+ * Analysis labels arrive verbatim and may be capitalized ("Verse").
+ */
+export function abbreviatedSectionLabel(
+  label: string,
+  occurrence: number
+): string | null {
+  const abbreviation = SECTION_ABBREVIATIONS[label.trim().toLowerCase()];
+  return abbreviation ? `${abbreviation}${occurrence}` : null;
 }
 
 /** One heading per Recording section, in section order; `[]` without sections. */
@@ -34,10 +66,14 @@ export function buildSectionHeadings(
     const occurrence = (seen.get(section.label) ?? 0) + 1;
     seen.set(section.label, occurrence);
     const repeated = (totals.get(section.label) ?? 0) > 1;
+    const displayLabel = repeated
+      ? `${section.label} ${occurrence}`
+      : section.label;
     return {
       index,
       section,
-      displayLabel: repeated ? `${section.label} ${occurrence}` : section.label,
+      displayLabel,
+      shortLabel: abbreviatedSectionLabel(section.label, occurrence) ?? displayLabel,
     };
   });
 }
