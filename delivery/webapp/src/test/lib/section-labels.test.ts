@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  abbreviatedSectionLabel,
   buildSectionHeadings,
   headingForPositions,
   sectionIndexAtPosition,
@@ -46,6 +47,39 @@ describe("buildSectionHeadings", () => {
   it("returns nothing without section data", () => {
     expect(buildSectionHeadings(null)).toEqual([]);
     expect(buildSectionHeadings([])).toEqual([]);
+  });
+
+  it("short-labels known sections by abbreviation and source occurrence, always numbered", () => {
+    const sections: RecordingSection[] = [
+      { label: "Verse", start: 0, end: 10 },
+      { label: "Chorus", start: 10, end: 20 },
+      { label: "Verse", start: 20, end: 30 },
+      { label: "Bridge", start: 30, end: 40 },
+    ];
+    expect(buildSectionHeadings(sections).map((h) => h.shortLabel)).toEqual([
+      "V1",
+      "C1",
+      "V2",
+      "B1",
+    ]);
+  });
+
+  it("keeps an unknown label's short label equal to its display label", () => {
+    const sections: RecordingSection[] = [
+      { label: "Instrumental", start: 0, end: 10 },
+      { label: "Solo", start: 10, end: 20 },
+      { label: "Solo", start: 20, end: 30 },
+    ];
+    expect(buildSectionHeadings(sections).map((h) => h.shortLabel)).toEqual([
+      "Instrumental",
+      "Solo 1",
+      "Solo 2",
+    ]);
+  });
+
+  it("matches the abbreviation vocabulary case-insensitively and returns null otherwise", () => {
+    expect(abbreviatedSectionLabel(" Chorus ", 2)).toBe("C2");
+    expect(abbreviatedSectionLabel("pre-chorus", 1)).toBeNull();
   });
 });
 

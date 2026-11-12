@@ -96,6 +96,8 @@ export const arrangementBundle = bundle({
     "arrangement.preview.pausedAt": "Paused: {song} · {label}",
     "arrangement.preview.crossfade":
       "Crossfade: {fromSong} · {fromLabel} → {toSong} · {toLabel}",
+    "arrangement.preview.stripPrevious": "← {song}",
+    "arrangement.preview.stripNextOpening": "{label} → {song}",
 
     // Bounds editing (a temporary Apply/Cancel transaction).
     "arrangement.bounds.edited": "Edited",
@@ -231,6 +233,8 @@ export const arrangementBundle = bundle({
     "arrangement.preview.playingAt": "正在播放：{song}・{label}",
     "arrangement.preview.pausedAt": "已暫停：{song}・{label}",
     "arrangement.preview.crossfade": "交叉淡化：{fromSong}・{fromLabel} → {toSong}・{toLabel}",
+    "arrangement.preview.stripPrevious": "← {song}",
+    "arrangement.preview.stripNextOpening": "{label} → {song}",
 
     // Bounds editing (a temporary Apply/Cancel transaction).
     "arrangement.bounds.edited": "已調整",
