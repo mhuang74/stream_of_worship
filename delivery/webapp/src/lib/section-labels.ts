@@ -40,16 +40,32 @@ const SECTION_ABBREVIATIONS: Record<string, string> = {
 };
 
 /**
- * Compact band label for a known section label, always numbered by source
- * occurrence (`V1`, `C1`, `C2`); null for labels outside the vocabulary.
- * Analysis labels arrive verbatim and may be capitalized ("Verse").
+ * Split a label into its vocabulary key and the source's own ordering number.
+ * Analysis emits both shapes — a bare `verse`, repeated, and a pre-numbered
+ * `verse 2` (the aligner normalizes `verse 1`…`verse 5`, but sections stored
+ * before that pass keep the number in the label).
+ */
+function parseSectionLabel(label: string): { base: string; number: number | null } {
+  const trimmed = label.trim();
+  const numbered = /^(.*?)\s*(\d+)$/.exec(trimmed);
+  if (numbered) {
+    return { base: numbered[1]!.toLowerCase(), number: Number(numbered[2]) };
+  }
+  return { base: trimmed.toLowerCase(), number: null };
+}
+
+/**
+ * Compact band label for a known section label, always numbered (`V1`, `C1`,
+ * `C2`); null for labels outside the vocabulary. A label that carries its own
+ * number keeps it (`verse 2` → `V2`); otherwise `occurrence` numbers it.
  */
 export function abbreviatedSectionLabel(
   label: string,
   occurrence: number
 ): string | null {
-  const abbreviation = SECTION_ABBREVIATIONS[label.trim().toLowerCase()];
-  return abbreviation ? `${abbreviation}${occurrence}` : null;
+  const { base, number } = parseSectionLabel(label);
+  const abbreviation = SECTION_ABBREVIATIONS[base];
+  return abbreviation ? `${abbreviation}${number ?? occurrence}` : null;
 }
 
 /** One heading per Recording section, in section order; `[]` without sections. */
@@ -62,9 +78,15 @@ export function buildSectionHeadings(
     totals.set(section.label, (totals.get(section.label) ?? 0) + 1);
   }
   const seen = new Map<string, number>();
+  // Short labels number by vocabulary key, not by raw label, so `verse 1` and
+  // `verse` count as one run rather than two first occurrences.
+  const seenByBase = new Map<string, number>();
   return sections.map((section, index) => {
     const occurrence = (seen.get(section.label) ?? 0) + 1;
     seen.set(section.label, occurrence);
+    const { base } = parseSectionLabel(section.label);
+    const baseOccurrence = (seenByBase.get(base) ?? 0) + 1;
+    seenByBase.set(base, baseOccurrence);
     const repeated = (totals.get(section.label) ?? 0) > 1;
     const displayLabel = repeated
       ? `${section.label} ${occurrence}`
@@ -73,7 +95,8 @@ export function buildSectionHeadings(
       index,
       section,
       displayLabel,
-      shortLabel: abbreviatedSectionLabel(section.label, occurrence) ?? displayLabel,
+      shortLabel:
+        abbreviatedSectionLabel(section.label, baseOccurrence) ?? displayLabel,
     };
   });
 }
