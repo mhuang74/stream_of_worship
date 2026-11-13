@@ -243,10 +243,17 @@ describe("FavoritesClient playback", () => {
     expect(playButtons).toHaveLength(2);
   });
 
-  it("plays a song via the signed-url fallback when no public URL is available", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ url: "https://signed.example/audio.mp3" }),
+  it("plays a song via the signed-url fallback when the cache path fails", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/signed-url") {
+        return {
+          ok: true,
+          json: async () => ({ url: "https://signed.example/audio.mp3" }),
+        };
+      }
+      // The same-origin proxy is the cache path: fail it so the streaming
+      // fallback is what plays.
+      return { ok: false, status: 500 };
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -288,15 +295,15 @@ describe("FavoritesClient playback", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows a loading spinner while resolving the signed URL", async () => {
-    let resolveFetch: (value: unknown) => void;
-    const fetchMock = vi.fn().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        })
-    );
+  it("shows a loading spinner while the recording's bytes load", async () => {
+    const deferred = Promise.withResolvers<unknown>();
+    const fetchMock = vi.fn(() => deferred.promise);
     vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(URL, "createObjectURL", {
+      value: vi.fn(() => "blob:favorites-audio"),
+      configurable: true,
+      writable: true,
+    });
 
     render(
       <FavoritesClient
@@ -313,14 +320,22 @@ describe("FavoritesClient playback", () => {
       expect(screen.getByTestId("song-play-button").querySelector(".animate-spin")).toBeInTheDocument();
     });
 
-    resolveFetch!({
+    deferred.resolve({
       ok: true,
-      json: async () => ({ url: "https://signed.example/audio.mp3" }),
+      status: 200,
+      headers: {
+        get: (name: string) => (name === "content-length" ? "8" : null),
+      },
+      body: null,
+      arrayBuffer: async () => new ArrayBuffer(8),
     });
 
     await waitFor(() => {
-      expect(mockPlay).toHaveBeenCalled();
+      expect(mockPlay).toHaveBeenCalledWith(
+        expect.objectContaining({ src: "blob:favorites-audio" })
+      );
     });
+    Reflect.deleteProperty(URL, "createObjectURL");
     vi.unstubAllGlobals();
   });
 

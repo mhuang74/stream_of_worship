@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
+import { resolveSongAudioSrc } from "@/lib/audio/audio-bytes-cache";
 import { getPublicAudioUrl } from "@/lib/r2/public-url";
 import { toast } from "sonner";
 
@@ -24,11 +25,36 @@ interface UseSongPlaybackOptions {
 }
 
 /**
+ * Cached blob URL when the Recording's bytes are reachable through the
+ * same-origin proxy; otherwise the streaming URL this hook always used
+ * (public bucket, then a freshly signed URL). Never throws for a
+ * cache-path failure: playback must not regress on a surface that used to
+ * stream straight from the network.
+ */
+async function resolvePlaybackSrc(hashPrefix: string): Promise<string> {
+  try {
+    return await resolveSongAudioSrc(hashPrefix);
+  } catch {
+    const publicUrl = getPublicAudioUrl(hashPrefix);
+    if (publicUrl) return publicUrl;
+    const res = await fetch("/api/signed-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hashPrefix, fileType: "audio" }),
+    });
+    if (!res.ok) throw new Error("Failed to get audio URL");
+    const data = (await res.json()) as { url: string };
+    return data.url;
+  }
+}
+
+/**
  * Shared song-preview playback logic used by song lists, browse sheets,
  * semantic search results, and the favorites page. Resolves a song id to a
- * playable recording, prefers the public R2 URL, and falls back to a signed
- * URL from `/api/signed-url`. Tracks the currently playing song so callers can
- * highlight the active card and toggle play/pause on re-click.
+ * playable recording, plays it from the shared audio byte cache (falling back
+ * to the public R2 URL, then a signed URL), and tracks the currently playing
+ * song so callers can highlight the active card and toggle play/pause on
+ * re-click.
  */
 export function useSongPlayback({
   resolveSong,
@@ -56,46 +82,20 @@ export function useSongPlayback({
         }
       }
 
+      // A second click while the bytes load must not start a second load.
+      if (previewLoadingSongId === songId) return;
+
       const recording = song.recording;
-      const publicUrl = getPublicAudioUrl(recording.hashPrefix);
-
-      if (publicUrl) {
-        play({
-          id: `song-${songId}`,
-          title: song.title,
-          artist: song.artist,
-          src: publicUrl,
-          type: "song",
-          duration: recording.durationSeconds ?? undefined,
-          recordingContentHash: recording.contentHash,
-          songId,
-          originSongsetId,
-        });
-        setPlayingSongId(songId);
-        return;
-      }
-
       setPreviewLoadingSongId(songId);
 
       try {
-        const res = await fetch("/api/signed-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hashPrefix: recording.hashPrefix,
-            fileType: "audio",
-          }),
-        });
-
-        if (!res.ok) throw new Error("Failed to get audio URL");
-
-        const data = await res.json();
+        const src = await resolvePlaybackSrc(recording.hashPrefix);
 
         play({
           id: `song-${songId}`,
           title: song.title,
           artist: song.artist,
-          src: data.url,
+          src,
           type: "song",
           duration: recording.durationSeconds ?? undefined,
           recordingContentHash: recording.contentHash,
@@ -115,6 +115,7 @@ export function useSongPlayback({
       playingSongId,
       currentTrack,
       playerState.isPlaying,
+      previewLoadingSongId,
       play,
       pause,
       originSongsetId,
@@ -123,17 +124,17 @@ export function useSongPlayback({
     ]
   );
 
-  // Clear the now-playing highlight shortly after playback stops.
+  // Clear the now-playing highlight shortly after playback stops. The timer
+  // is only scheduled while a highlight is actually pending, so a callback
+  // queued before a play starts can never clear the new track's highlight.
   useEffect(() => {
-    if (!currentTrack || !playerState.isPlaying) {
-      const timeout = setTimeout(() => {
-        if (!currentTrack || !playerState.isPlaying) {
-          setPlayingSongId(null);
-        }
-      }, 200);
-      return () => clearTimeout(timeout);
-    }
-  }, [currentTrack, playerState.isPlaying]);
+    if (playingSongId === null) return;
+    if (currentTrack && playerState.isPlaying) return;
+    const timeout = setTimeout(() => {
+      setPlayingSongId(null);
+    }, 200);
+    return () => clearTimeout(timeout);
+  }, [currentTrack, playingSongId, playerState.isPlaying]);
 
   const reset = useCallback(() => {
     setPlayingSongId(null);

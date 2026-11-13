@@ -24,6 +24,12 @@ import {
 } from "@/lib/arrangements";
 import { getAudioContext } from "@/lib/audio/audio-context";
 import {
+  fetchAudioBytes,
+  recordingAudioUrl,
+  sharedAudioBytesCache,
+  type AudioBytesCache,
+} from "@/lib/audio/audio-bytes-cache";
+import {
   incomingEnvelope,
   outgoingEnvelope,
   scheduleEnvelope,
@@ -59,6 +65,8 @@ export interface SongsetAudioSessionOptions {
   tickIntervalMs?: number;
   /** Soft target for retained clip PCM; default 480 s (issue #296). */
   retainedBudgetSeconds?: number;
+  /** Byte cache shared across sessions; defaults to the process-wide cache. */
+  audioBytesCache?: AudioBytesCache;
 }
 
 export interface SongsetAudioSession {
@@ -66,7 +74,10 @@ export interface SongsetAudioSession {
   readonly totalSeconds: number;
   play(): Promise<void>;
   pause(): void;
+  /** Halts playback and rewinds, keeping decoded clips for replay. */
   stop(): void;
+  /** Terminal teardown: releases decoded clips and listeners. */
+  destroy(): void;
   seek(seconds: number): void;
   startAtSeconds(seconds: number): Promise<void>;
   getTimelinePositionSeconds(): number;
@@ -75,9 +86,6 @@ export interface SongsetAudioSession {
   getError(): SongsetAudioError | null;
   onStateChange(listener: () => void): () => void;
 }
-
-const DEFAULT_AUDIO_URL_FOR = (hashPrefix: string) =>
-  `/api/recordings/${hashPrefix}/audio`;
 
 const DEFAULT_TICK_INTERVAL_MS = 200;
 
@@ -163,49 +171,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/**
- * Default fetch: stream bytes so progress can drive the Listen dialog's
- * loading copy. Falls back to `arrayBuffer()` when the environment exposes no
- * readable body (tests, older runtimes).
- */
-async function defaultFetchArrayBuffer(
-  url: string,
-  onProgress: (receivedBytes: number, totalBytes: number | null) => void,
-): Promise<ArrayBuffer> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const totalBytes = Number(response.headers.get("content-length")) || null;
-  const body = response.body;
-  if (body === null) {
-    onProgress(0, totalBytes);
-    const buffer = await response.arrayBuffer();
-    onProgress(buffer.byteLength, totalBytes);
-    return buffer;
-  }
-
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let receivedBytes = 0;
-  onProgress(0, totalBytes);
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    chunks.push(value);
-    receivedBytes += value.byteLength;
-    onProgress(receivedBytes, totalBytes);
-  }
-
-  const buffer = new ArrayBuffer(receivedBytes);
-  const output = new Uint8Array(buffer);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return buffer;
-}
-
 interface StoredClip {
   buffer: AudioBuffer;
   startSeconds: number;
@@ -224,9 +189,10 @@ export function createSongsetAudioSession(
   const timeline = buildArrangementTimeline(items);
   const totalSeconds = timeline.totalSeconds;
   const itemCount = timeline.items.length;
-  const audioUrlFor = options.audioUrlFor ?? DEFAULT_AUDIO_URL_FOR;
+  const audioUrlFor = options.audioUrlFor ?? recordingAudioUrl;
   const createAudioContext = options.createAudioContext ?? getAudioContext;
-  const fetchArrayBuffer = options.fetchArrayBuffer ?? defaultFetchArrayBuffer;
+  const fetchArrayBuffer = options.fetchArrayBuffer ?? fetchAudioBytes;
+  const audioBytesCache = options.audioBytesCache ?? sharedAudioBytesCache;
   const tickIntervalMs = options.tickIntervalMs ?? DEFAULT_TICK_INTERVAL_MS;
   const configuredBudgetSeconds = options.retainedBudgetSeconds;
   const retainedBudgetSeconds =
@@ -560,16 +526,20 @@ export function createSongsetAudioSession(
     notify();
 
     try {
-      const data = await fetchArrayBuffer(url, (receivedBytes, totalBytes) => {
-        const current = getProgress();
-        if (inert || current === null) return;
-        progress = {
-          ...current,
-          receivedBytes,
-          totalBytes: totalBytes ?? current.totalBytes,
-        };
-        notifyProgressThrottled();
-      });
+      const data = await audioBytesCache.load(
+        item.recordingHashPrefix,
+        (onProgress) => fetchArrayBuffer(url, onProgress),
+        (receivedBytes, totalBytes) => {
+          const current = getProgress();
+          if (inert || current === null) return;
+          progress = {
+            ...current,
+            receivedBytes,
+            totalBytes: totalBytes ?? current.totalBytes,
+          };
+          notifyProgressThrottled();
+        },
+      );
       if (inert) return;
       const decodingProgress = getProgress();
       if (decodingProgress !== null) {
@@ -788,6 +758,21 @@ export function createSongsetAudioSession(
 
   function stop(): void {
     if (inert) return;
+    playing = false;
+    awaitingDecode = false;
+    startedAtContextTime = null;
+    position = 0;
+    startPosition = 0;
+    playbackGeneration += 1;
+    teardownGraph();
+    stopTicker();
+    progress = null;
+    error = null;
+    notify();
+  }
+
+  function destroy(): void {
+    if (inert) return;
     inert = true;
     playing = false;
     awaitingDecode = false;
@@ -845,6 +830,7 @@ export function createSongsetAudioSession(
     play,
     pause,
     stop,
+    destroy,
     seek,
     startAtSeconds,
     getTimelinePositionSeconds,

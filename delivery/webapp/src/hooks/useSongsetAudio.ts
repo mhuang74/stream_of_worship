@@ -7,8 +7,10 @@
  * created on the first `play`, torn down on
  * `itemsKey` change (`JSON.stringify(items)`), on `active=false`, and on
  * unmount; `player.stop()` runs before the session starts; errors flow through
- * a latest-ref and are reported once per distinct error object. The new engine
- * adds byte-level `progress`, which is snapshotted on every state change.
+ * a latest-ref and are reported once per distinct error object. `stop()` only
+ * rewinds: the session keeps its decoded clips so replay needs neither
+ * network nor decode. The new engine adds byte-level `progress`, which is
+ * snapshotted on every state change.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -121,12 +123,14 @@ export function useSongsetAudio(
   const reportedErrorRef = useRef<SongsetAudioError | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const playInFlightRef = useRef<Promise<void> | null>(null);
+  const stoppedRef = useRef(false);
 
   /** Resource teardown only — callable from effects (never writes state). */
   const teardown = useCallback(() => {
+    stoppedRef.current = true;
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
-    sessionRef.current?.stop();
+    sessionRef.current?.destroy();
     sessionRef.current = null;
     reportedErrorRef.current = null;
     pendingSeekRef.current = null;
@@ -139,6 +143,7 @@ export function useSongsetAudio(
       reportedErrorRef.current = null;
       unsubscribeRef.current = session.onStateChange(() => {
         if (sessionRef.current !== session) return;
+        if (stoppedRef.current) return;
         const failure = session.getError();
         if (failure && reportedErrorRef.current !== failure) {
           reportedErrorRef.current = failure;
@@ -205,6 +210,9 @@ export function useSongsetAudio(
       pendingSeekRef.current = pending ?? previousPosition;
       session = null;
     }
+    // Re-arm: a previous Stop (or the teardown above) marked this stopped, so
+    // this play's own notifications must count again.
+    stoppedRef.current = false;
     if (!session) {
       session = createSongsetAudioSession(items);
       attachSession(session, itemsKey);
@@ -227,6 +235,7 @@ export function useSongsetAudio(
         await currentSession.play();
       } catch (err) {
         if (sessionRef.current !== currentSession) return;
+        if (stoppedRef.current) return;
         // Contained rejection: a throwing play() must surface as a reported
         // failure, never an unhandled rejection stuck on "loading".
         const failure: SongsetAudioError = currentSession.getError() ?? {
@@ -249,6 +258,7 @@ export function useSongsetAudio(
         throw err;
       }
       if (sessionRef.current !== currentSession) return;
+      if (stoppedRef.current) return;
       const failure = currentSession.getError();
       setState({
         key: itemsKey,
@@ -275,6 +285,9 @@ export function useSongsetAudio(
   const pause = useCallback(() => {
     const session = sessionRef.current;
     if (!session) return;
+    // A paused session that was stopped stays idle: the retained session is
+    // for replay, not for resurrecting a paused view.
+    if (stoppedRef.current) return;
     session.pause();
     const failure = session.getError();
     setState((previous) => {
@@ -289,10 +302,15 @@ export function useSongsetAudio(
     });
   }, [itemsKey]);
 
+  // Stop keeps the session (and its decoded clips) so the next play neither
+  // refetches nor redecodes; only teardown releases it.
   const stop = useCallback(() => {
-    teardown();
+    stoppedRef.current = true;
+    pendingSeekRef.current = null;
+    playInFlightRef.current = null;
+    sessionRef.current?.stop();
     setState(idleState(itemsKey));
-  }, [itemsKey, teardown]);
+  }, [itemsKey]);
 
   const seek = useCallback(
     (seconds: number) => {

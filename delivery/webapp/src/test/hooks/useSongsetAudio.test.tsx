@@ -87,6 +87,9 @@ function makeFakeSession(totalSeconds = 200): FakeSession {
     stop: vi.fn(() => {
       playing = false;
     }),
+    destroy: vi.fn(() => {
+      playing = false;
+    }),
     seek: vi.fn((seconds: number) => {
       position = seconds;
     }),
@@ -218,7 +221,7 @@ describe("useSongsetAudio", () => {
       active: true,
       onPreviewError: vi.fn(),
     });
-    expect(fake.session.stop).toHaveBeenCalled();
+    expect(fake.session.destroy).toHaveBeenCalled();
     expect(result.current.status).toBe("idle");
     await runPlay(result);
     expect(mocks.createSession).toHaveBeenCalledTimes(2);
@@ -232,7 +235,7 @@ describe("useSongsetAudio", () => {
       active: true,
       onPreviewError: vi.fn(),
     });
-    expect(fake.session.stop).not.toHaveBeenCalled();
+    expect(fake.session.destroy).not.toHaveBeenCalled();
     expect(result.current.status).toBe("playing");
   });
 
@@ -244,7 +247,7 @@ describe("useSongsetAudio", () => {
       active: false,
       onPreviewError: vi.fn(),
     });
-    expect(fake.session.stop).toHaveBeenCalled();
+    expect(fake.session.destroy).toHaveBeenCalled();
     expect(result.current.status).toBe("idle");
     expect(result.current.progress).toBeNull();
     await runPlay(result);
@@ -263,7 +266,7 @@ describe("useSongsetAudio", () => {
     const { result, unmount } = renderAudio();
     await runPlay(result);
     unmount();
-    expect(fake.session.stop).toHaveBeenCalled();
+    expect(fake.session.destroy).toHaveBeenCalled();
   });
 
   it("forwards a session error once per distinct object", async () => {
@@ -439,7 +442,7 @@ describe("useSongsetAudio", () => {
       await result.current.retry();
     });
 
-    expect(fake.session.stop).toHaveBeenCalled();
+    expect(fake.session.destroy).toHaveBeenCalled();
     expect(mocks.createSession).toHaveBeenCalledTimes(2);
     expect(nextFake.session.seek).toHaveBeenCalledWith(73);
     expect(nextFake.session.seek.mock.invocationCallOrder[0]).toBeLessThan(
@@ -449,5 +452,49 @@ describe("useSongsetAudio", () => {
     expect(result.current.status).toBe("playing");
     expect(result.current.errorMessage).toBeNull();
     expect(result.current.progress).toBeNull();
+  });
+
+  it("keeps the session on stop so replay reuses decoded clips", async () => {
+    const { result } = renderAudio();
+    await runPlay(result);
+
+    act(() => {
+      result.current.stop();
+    });
+    expect(fake.session.stop).toHaveBeenCalledTimes(1);
+    expect(fake.session.destroy).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("idle");
+    expect(result.current.timelinePositionSeconds).toBe(0);
+
+    await runPlay(result);
+    expect(mocks.createSession).toHaveBeenCalledTimes(1);
+    expect(fake.session.play).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe("playing");
+  });
+
+  it("ignores a play that settles after stop", async () => {
+    const { result, onPreviewError } = renderAudio();
+    const deferred = Promise.withResolvers<void>();
+    fake.session.play = vi.fn(() => deferred.promise);
+
+    let playPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      playPromise = result.current.play();
+    });
+    expect(result.current.status).toBe("loading");
+
+    act(() => {
+      result.current.stop();
+    });
+    expect(result.current.status).toBe("idle");
+
+    // The session's play settles after Stop: it must not repaint the state.
+    await act(async () => {
+      deferred.resolve();
+      await playPromise;
+    });
+    expect(result.current.status).toBe("idle");
+    expect(result.current.errorMessage).toBeNull();
+    expect(onPreviewError).not.toHaveBeenCalled();
   });
 });
