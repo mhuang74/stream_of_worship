@@ -353,7 +353,7 @@ function BoundsEditorPopover({
   return (
     <Popover open={open} onOpenChange={(next) => (next ? onOpen() : onClose())}>
       <PopoverTrigger
-        className="ml-auto flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[11px] tabular-nums text-muted-foreground hover:bg-muted"
+        className="flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[11px] tabular-nums text-muted-foreground hover:bg-muted"
         aria-label={t("arrangement.bounds.rangeAria").replace("{label}", displayLabel)}
         data-testid={`arrangement-bounds-trigger-${index}`}
       >
@@ -584,7 +584,7 @@ function SortableStepBlock({
         entry.step.sectionIndex === null ? "inferred-intro" : String(entry.step.sectionIndex)
       }
     >
-      <div className="flex items-center gap-1.5 px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1.5">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -599,7 +599,7 @@ function SortableStepBlock({
         <span className="w-4 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
           {index + 1}
         </span>
-        <span className="min-w-0 shrink-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-foreground/75 uppercase">
+        <span className="min-w-0 flex-1 truncate rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-foreground/75 uppercase">
           {displayLabel}
         </span>
         {entry.step.manualBounds === true && (
@@ -630,45 +630,47 @@ function SortableStepBlock({
           onApply={(step) => onBoundsApply(entry.id, step)}
           onAudition={onAuditionBounds}
         />
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn("shrink-0 px-1.5", isPlaying && "text-primary")}
-          onClick={() => onReviewTransition(index)}
-          disabled={disabled || isLast}
-          aria-label={t("arrangement.preview.reviewTransitionAria")
-            .replaceAll("{fromLabel}", displayLabel)
-            .replaceAll("{toLabel}", nextLabel)
-            .replaceAll("{beats}", String(TRANSITION_REVIEW_BEATS))}
-          data-testid={`arrangement-review-transition-${index}`}
-        >
-          <Play className="size-4" />
-          <span className="hidden text-[11px] sm:inline">
-            {t("arrangement.preview.reviewTransition")}
-          </span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          onClick={() => onDuplicate(entry.id)}
-          disabled={disabled}
-          aria-label={`${t("arrangement.action.duplicateAria")} ${displayLabel}`}
-          data-testid={`arrangement-duplicate-${index}`}
-        >
-          <Copy className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          onClick={() => onRemove(entry.id)}
-          disabled={disabled}
-          aria-label={`${t("arrangement.action.removeAria")} ${displayLabel}`}
-          data-testid={`arrangement-remove-${index}`}
-        >
-          <Trash2 className="size-4 text-destructive" />
-        </Button>
+        <div className="flex w-full shrink-0 items-center justify-end gap-1 md:w-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("shrink-0 px-1.5", isPlaying && "text-primary")}
+            onClick={() => onReviewTransition(index)}
+            disabled={disabled || isLast}
+            aria-label={t("arrangement.preview.reviewTransitionAria")
+              .replaceAll("{fromLabel}", displayLabel)
+              .replaceAll("{toLabel}", nextLabel)
+              .replaceAll("{beats}", String(TRANSITION_REVIEW_BEATS))}
+            data-testid={`arrangement-review-transition-${index}`}
+          >
+            <Play className="size-4" />
+            <span className="hidden text-[11px] sm:inline">
+              {t("arrangement.preview.reviewTransition")}
+            </span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            onClick={() => onDuplicate(entry.id)}
+            disabled={disabled}
+            aria-label={`${t("arrangement.action.duplicateAria")} ${displayLabel}`}
+            data-testid={`arrangement-duplicate-${index}`}
+          >
+            <Copy className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            onClick={() => onRemove(entry.id)}
+            disabled={disabled}
+            aria-label={`${t("arrangement.action.removeAria")} ${displayLabel}`}
+            data-testid={`arrangement-remove-${index}`}
+          >
+            <Trash2 className="size-4 text-destructive" />
+          </Button>
+        </div>
       </div>
 
       <div className="border-t border-border/60 px-3 py-2">
