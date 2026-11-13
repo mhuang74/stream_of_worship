@@ -56,6 +56,7 @@ import type { SongsetAudioError } from "@/hooks/useSongsetAudio";
 import {
   isValidLRC,
   linesForSourceRange,
+  lyricBoundaryToleranceSeconds,
   parseLRC,
   type LRCLine,
 } from "@/lib/render/lrc-parser";
@@ -1226,6 +1227,7 @@ export function ArrangementEditorSheet({
       )
     : 0;
 
+  const lyricToleranceSeconds = lyricBoundaryToleranceSeconds(item.recording?.tempoBpm);
   const blockLyrics = useMemo(
     () =>
       draft.map((entry) =>
@@ -1234,11 +1236,12 @@ export function ArrangementEditorSheet({
               parsedLyrics,
               entry.step.startSeconds,
               entry.step.endSeconds,
-              draft.map((other) => other.step)
+              draft.map((other) => other.step),
+              lyricToleranceSeconds
             )
           : []
       ),
-    [draft, parsedLyrics]
+    [draft, lyricToleranceSeconds, parsedLyrics]
   );
 
   // Clips map 1:1 to draft steps, so the clip index is the component index.

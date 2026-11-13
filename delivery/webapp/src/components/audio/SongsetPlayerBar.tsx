@@ -266,6 +266,7 @@ export function SongsetPlayerBar() {
               contentHash={currentItem?.recording?.contentHash ?? null}
               clips={currentClips}
               sections={currentItem?.recording?.sections ?? null}
+              tempoBpm={currentItem?.recording?.tempoBpm ?? null}
               positionSeconds={clampedPosition}
               onSeek={seek}
             />

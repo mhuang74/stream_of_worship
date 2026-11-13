@@ -5,7 +5,12 @@
 // `@/lib/db/...` import (or Drizzle/server code) into the client bundle.
 
 import type { RecordingSection, TimelineClip, TimelineItemSource } from "@/lib/arrangements";
-import { linesForSourceRange, type GlobalLRCLine, type LRCLine } from "@/lib/render/lrc-parser";
+import {
+  linesForSourceRange,
+  lyricBoundaryToleranceSeconds,
+  type GlobalLRCLine,
+  type LRCLine,
+} from "@/lib/render/lrc-parser";
 
 export interface ListenSongsetItemPayload {
   id: string;
@@ -53,17 +58,19 @@ export interface SongsetLyricLine extends GlobalLRCLine {
  * Each clip takes its own lines via linesForSourceRange with the Item's other
  * clips as siblings (the same ownership the render worker and the Arrangement
  * Editor apply), then each line is shifted by the clip's timeline offset.
- * A pickup line that precedes its Step (LYRIC_BOUNDARY_TOLERANCE_SECONDS)
- * clamps to the clip start so it is highlighted at the boundary, and a late
- * line within the same tolerance clamps just inside the clip end, so a
- * highlight never bleeds into the next Item — the same clamp the render
- * worker's remap_lrc_to_clips applies.
+ * Ownership tolerance is two beats at the Item's Recording tempo, so a pickup
+ * line that precedes its Step clamps to the clip start and is still highlighted
+ * at the boundary; a late line within the same tolerance clamps just inside the
+ * clip end, so a highlight never bleeds into the next Item — the same clamp the
+ * render worker's remap_lrc_to_clips applies.
  */
 export function toSongsetLyricLines(
   clips: readonly TimelineClip[],
   lines: readonly LRCLine[],
+  tempoBpm: number | null,
 ): SongsetLyricLine[] {
   if (clips.length === 0) return [];
+  const toleranceSeconds = lyricBoundaryToleranceSeconds(tempoBpm);
   const siblings = clips.map((clip) => ({
     startSeconds: clip.sourceStartSeconds,
     endSeconds: clip.sourceEndSeconds,
@@ -75,6 +82,7 @@ export function toSongsetLyricLines(
       clip.sourceStartSeconds,
       clip.sourceEndSeconds,
       siblings,
+      toleranceSeconds,
     );
     for (const line of assigned) {
       // `TimelineClip.endSeconds` is `startSeconds + (sourceEnd - sourceStart)`

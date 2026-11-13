@@ -25,7 +25,7 @@ function lines(times: number[]): LRCLine[] {
 describe("toSongsetLyricLines", () => {
   it("assigns every line to exactly one tiled clip and offsets it onto the timeline", () => {
     const clips = [clip(0, 10, 0), clip(10, 20, 10)];
-    const result = toSongsetLyricLines(clips, lines([0, 5, 10, 15]));
+    const result = toSongsetLyricLines(clips, lines([0, 5, 10, 15]), null);
 
     expect(result.map((line) => line.text)).toEqual([
       "line-0",
@@ -43,7 +43,7 @@ describe("toSongsetLyricLines", () => {
 
   it("offsets a non-zero clip start by the arranged offset, not the recording time", () => {
     const clips = [clip(10, 20, 100)];
-    const result = toSongsetLyricLines(clips, lines([12, 18]));
+    const result = toSongsetLyricLines(clips, lines([12, 18]), null);
 
     expect(result.map((line) => line.localTimeSeconds)).toEqual([12, 18]);
     expect(result.map((line) => line.timelineSeconds)).toEqual([102, 108]);
@@ -52,7 +52,7 @@ describe("toSongsetLyricLines", () => {
   it("clamps a pickup that precedes its Step to the clip start", () => {
     const clips = [clip(0, 10, 0), clip(10, 20, 10)];
     // 9.8 is a pickup sung into the second Step (the first gives up its tail).
-    const result = toSongsetLyricLines(clips, lines([9.8]));
+    const result = toSongsetLyricLines(clips, lines([9.8]), null);
 
     expect(result).toHaveLength(1);
     expect(result[0].text).toBe("line-9.8");
@@ -67,7 +67,7 @@ describe("toSongsetLyricLines", () => {
     // the 0–10 s clip on the timeline, so an unclamped 10.3 s line would
     // highlight 0.3 s inside the next Step.
     const clips = [clip(0, 10, 0), clip(20, 30, 10)];
-    const result = toSongsetLyricLines(clips, lines([10.3]));
+    const result = toSongsetLyricLines(clips, lines([10.3]), null);
 
     expect(result).toHaveLength(1);
     // Heading lookup follows the highlight: it stays just inside the played
@@ -80,7 +80,7 @@ describe("toSongsetLyricLines", () => {
 
   it("keeps a pickup whose preceding section was dropped, at the Step's start", () => {
     const clips = [clip(0, 10, 0), clip(20, 30, 10)];
-    const result = toSongsetLyricLines(clips, lines([19.8]));
+    const result = toSongsetLyricLines(clips, lines([19.8]), null);
 
     expect(result).toHaveLength(1);
     expect(result[0].localTimeSeconds).toBe(20);
@@ -89,7 +89,7 @@ describe("toSongsetLyricLines", () => {
 
   it("shows the same line under two identical repeated Steps", () => {
     const clips = [clip(10, 20, 0), clip(10, 20, 20)];
-    const result = toSongsetLyricLines(clips, lines([15]));
+    const result = toSongsetLyricLines(clips, lines([15]), null);
 
     expect(result.map((line) => line.timelineSeconds)).toEqual([5, 25]);
   });
@@ -98,7 +98,7 @@ describe("toSongsetLyricLines", () => {
     // Two Items whose timeline ranges overlap (crossfade): item two starts at
     // 50 while item one still runs to 60.
     const secondItemClips = [clip(0, 20, 50)];
-    const result = toSongsetLyricLines(secondItemClips, lines([5, 15]));
+    const result = toSongsetLyricLines(secondItemClips, lines([5, 15]), null);
 
     expect(result.map((line) => line.timelineSeconds)).toEqual([55, 65]);
     result.forEach((line) => {
@@ -107,7 +107,7 @@ describe("toSongsetLyricLines", () => {
   });
 
   it("returns nothing for an Item without clips", () => {
-    expect(toSongsetLyricLines([], lines([1, 2, 3]))).toEqual([]);
+    expect(toSongsetLyricLines([], lines([1, 2, 3]), null)).toEqual([]);
   });
 
   it("heads a within-tolerance late line with a section the cut plays, agreeing with the controller sheet", () => {
@@ -117,12 +117,31 @@ describe("toSongsetLyricLines", () => {
     // be the chorus this cut plays, which is also what the controller sheet's
     // chapterLineHeadings derives from the same clamp.
     const clips = [clip(34.86, 59.13, 0)];
-    const result = toSongsetLyricLines(clips, lines([59.3]));
+    const result = toSongsetLyricLines(clips, lines([59.3]), null);
 
     expect(result).toHaveLength(1);
     // 1 ms inside the clip end, so the half-open section lookup stays in the
     // chorus rather than landing on the following interlude's start.
     expect(result[0].localTimeSeconds).toBeCloseTo(59.129, 6);
     expect(result[0].localTimeSeconds).toBeLessThan(59.13);
+  });
+
+  it("keeps a one-beat pickup at the Item's tempo and clamps it to the clip start", () => {
+    // Reported song (hereforyou at 86.13281 BPM): the first chorus Step starts
+    // at 0.70 s while its first line is sung at 0.01 s — one beat earlier, so
+    // the fixed 0.5 s bound dropped it from the Listen panel.
+    const chorus: LRCLine[] = [
+      { timeSeconds: 0.01, text: "To You our hearts are open" },
+      { timeSeconds: 2.82, text: "Nothing here is hidden" },
+    ];
+    const result = toSongsetLyricLines([clip(0.7, 22.04, 0)], chorus, 86.13281);
+
+    expect(result.map((line) => line.text)).toEqual([
+      "To You our hearts are open",
+      "Nothing here is hidden",
+    ]);
+    // The pickup is sung before the cut starts, so it lands on the first frame.
+    expect(result[0].timelineSeconds).toBe(0);
+    expect(result[1].timelineSeconds).toBeCloseTo(2.12, 6);
   });
 });
