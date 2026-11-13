@@ -6,6 +6,7 @@ import {
   type SongsetAudioSession,
   type SongsetAudioSessionOptions,
 } from "@/lib/audio/songset-audio";
+import { createAudioBytesCache } from "@/lib/audio/audio-bytes-cache";
 import type { TimelineItemSource } from "@/lib/arrangements";
 
 // ---------------------------------------------------------------------------
@@ -288,6 +289,7 @@ function buildSession(
   const session = createSongsetAudioSession(items, {
     createAudioContext: () => context.context,
     fetchArrayBuffer,
+    audioBytesCache: options.audioBytesCache ?? createAudioBytesCache({ maxBytes: 1 << 20 }),
     ...options,
   });
   sessions.push(session);
@@ -299,7 +301,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const session of sessions) session.stop();
+  for (const session of sessions) session.destroy();
   sessions = [];
   vi.clearAllTimers();
   vi.useRealTimers();
@@ -568,7 +570,7 @@ describe("songset audio prepare lifecycle", () => {
     expect(session.getProgress()).toBeNull();
     session.pause();
     expect(session.getProgress()).toBeNull();
-    session.stop();
+    session.destroy();
     expect(session.getProgress()).toBeNull();
   });
 
@@ -596,13 +598,14 @@ describe("songset audio prepare lifecycle", () => {
 
     await session.play();
     expect(session.getError()).toBeNull();
-    expect(fetchArrayBuffer).toHaveBeenCalledTimes(2);
+    // The bytes of the failed prepare stay cached, so the retry only re-decodes.
+    expect(fetchArrayBuffer).toHaveBeenCalledTimes(1);
     expect(context.buffers).toHaveLength(1);
 
     session.pause();
     await session.play();
     // The successful prepare is memoized: no refetch, no re-decode, no new copy.
-    expect(fetchArrayBuffer).toHaveBeenCalledTimes(2);
+    expect(fetchArrayBuffer).toHaveBeenCalledTimes(1);
     expect(context.decodeAudioData).toHaveBeenCalledTimes(2);
     expect(context.buffers).toHaveLength(1);
   });
@@ -637,7 +640,7 @@ describe("songset audio transport", () => {
     await session.play();
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(7, 6);
 
-    session.stop();
+    session.destroy();
     expect(context.close).not.toHaveBeenCalled();
     expect(context.suspend).not.toHaveBeenCalled();
     expect(session.getTimelinePositionSeconds()).toBe(0);
@@ -648,7 +651,7 @@ describe("songset audio transport", () => {
     session.seek(50);
     await session.startAtSeconds(80);
     session.pause();
-    session.stop();
+    session.destroy();
     await vi.advanceTimersByTimeAsync(1_000);
     expect(context.resume).toHaveBeenCalledTimes(2);
     expect(context.sources).toHaveLength(sourceCount);
@@ -733,14 +736,15 @@ describe("songset audio retained budget", () => {
     session.seek(5);
     await vi.advanceTimersByTimeAsync(0);
     await flushMicrotasks();
+    // Re-preparing the evicted item re-decodes from the byte cache, so the
+    // network is untouched.
     expect(urls.map(hashFromUrl)).toEqual([
       "hash-a",
       "hash-b",
       "hash-c",
       "hash-d",
-      "hash-a",
     ]);
-    session.stop();
+    session.destroy();
   });
 
   it("never evicts the current or later items and tolerates an over-budget target", async () => {
@@ -768,7 +772,7 @@ describe("songset audio retained budget", () => {
     await vi.advanceTimersByTimeAsync(0);
     await flushMicrotasks();
     expect(urls).toHaveLength(3);
-    session.stop();
+    session.destroy();
   });
 
   it("prepares and plays an item longer than the budget without looping or rejecting", async () => {
@@ -791,7 +795,7 @@ describe("songset audio retained budget", () => {
     await vi.advanceTimersByTimeAsync(200);
     expect(session.isPlaying()).toBe(false);
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(600, 6);
-    session.stop();
+    session.destroy();
   });
 });
 
@@ -871,7 +875,7 @@ describe("songset audio seek hardening", () => {
 
     context.currentTime = 7;
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(17, 6);
-    session.stop();
+    session.destroy();
   });
 
   it("restarts when play follows a pause during startup preparation", async () => {
@@ -887,7 +891,7 @@ describe("songset audio seek hardening", () => {
 
     expect(session.isPlaying()).toBe(true);
     expect(session.getError()).toBeNull();
-    session.stop();
+    session.destroy();
   });
 
   it("does not additively schedule a prepared item during a frozen seek", async () => {
@@ -916,7 +920,7 @@ describe("songset audio seek hardening", () => {
       when: 10,
       duration: 2,
     });
-    session.stop();
+    session.destroy();
   });
 
   it("ignores a stale seek decode after another seek", async () => {
@@ -941,7 +945,7 @@ describe("songset audio seek hardening", () => {
     expect(context.sources).toHaveLength(sourcesAfterSecondSeek);
     context.currentTime = 1;
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(5, 6);
-    session.stop();
+    session.destroy();
   });
 
   it("ignores a seek decode that settles after pause", async () => {
@@ -966,7 +970,7 @@ describe("songset audio seek hardening", () => {
     expect(session.isPlaying()).toBe(false);
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(15, 6);
     expect(context.sources).toHaveLength(sourcesAfterPause);
-    session.stop();
+    session.destroy();
   });
 
   it("prepares the target in the background on a paused seek without playing", async () => {
@@ -1001,7 +1005,7 @@ describe("songset audio seek hardening", () => {
     expect(session.isPlaying()).toBe(true);
     expect(session.getTimelinePositionSeconds()).toBeCloseTo(15, 6);
     expect(fetchArrayBuffer).toHaveBeenCalledTimes(2);
-    session.stop();
+    session.destroy();
   });
 
   it("retries a seek prepare after a decode rejection without a terminal failure state", async () => {
@@ -1041,11 +1045,11 @@ describe("songset audio seek hardening", () => {
       offset: 5,
       duration: 5,
     });
-    expect(urls).toHaveLength(3); // a, failed b, retried b
-    session.stop();
+    expect(urls).toHaveLength(2); // a, then b once: the retry hits the byte cache
+    session.destroy();
   });
 
-  it("releases retained clips on stop and ignores late decodes", async () => {
+  it("destroys retained clips and ignores late decodes", async () => {
     const { fetchArrayBuffer, pending } = pendingSecondItemFetch();
     const { session, context } = buildSession(tenSecondPair(), {
       fetchArrayBuffer,
@@ -1058,7 +1062,7 @@ describe("songset audio seek hardening", () => {
     const buffersBeforeStop = context.buffers.length;
     const sourcesBeforeStop = context.sources.length;
 
-    session.stop();
+    session.destroy();
     expect(session.getTimelinePositionSeconds()).toBe(0);
     expect(session.isPlaying()).toBe(false);
     expect(session.getProgress()).toBeNull();
@@ -1076,11 +1080,78 @@ describe("songset audio seek hardening", () => {
     await session.play();
     session.seek(5);
     session.pause();
-    session.stop();
+    session.destroy();
     await vi.advanceTimersByTimeAsync(1_000);
     expect(context.buffers).toHaveLength(buffersBeforeStop);
     expect(context.sources).toHaveLength(sourcesBeforeStop);
     expect(context.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops to a replayable state, keeping decoded clips", async () => {
+    const { fetchArrayBuffer, pending } = pendingSecondItemFetch();
+    const { session, context } = buildSession(tenSecondPair(), {
+      fetchArrayBuffer,
+    });
+
+    await session.play();
+    session.seek(15);
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+    const sourcesBeforeStop = context.sources.length;
+
+    session.stop();
+    expect(session.getTimelinePositionSeconds()).toBe(0);
+    expect(session.isPlaying()).toBe(false);
+    expect(session.getProgress()).toBeNull();
+    expect(session.getError()).toBeNull();
+
+    // The pending second item's decode lands but schedules nothing while
+    // stopped.
+    pending.get("/api/recordings/hash-b/audio")!(new ArrayBuffer(8));
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+    expect(context.sources).toHaveLength(sourcesBeforeStop);
+
+    // Replay is decode- and fetch-free: the retained clip is simply
+    // rescheduled from the rewound position.
+    await session.play();
+    expect(session.isPlaying()).toBe(true);
+    expect(session.getTimelinePositionSeconds()).toBeCloseTo(0, 6);
+    expect(fetchArrayBuffer).toHaveBeenCalledTimes(2);
+    expect(context.decodeAudioData).toHaveBeenCalledTimes(2);
+    expect(context.sources.length).toBeGreaterThan(sourcesBeforeStop);
+    expect(context.sources.at(-1)!.starts).toHaveLength(1);
+  });
+
+  it("reuses cached bytes across sessions", async () => {
+    const audioBytesCache = createAudioBytesCache();
+    const fetchArrayBuffer = vi.fn(
+      async (
+        _url: string,
+        onProgress: (received: number, total: number | null) => void,
+      ) => {
+        onProgress(8, 8);
+        return new ArrayBuffer(8);
+      },
+    );
+
+    const first = buildSession([arrangedSource("a")], {
+      fetchArrayBuffer,
+      audioBytesCache,
+    });
+    await first.session.play();
+    first.session.destroy();
+
+    const second = buildSession([arrangedSource("a")], {
+      fetchArrayBuffer,
+      audioBytesCache,
+    });
+    await second.session.play();
+
+    expect(fetchArrayBuffer).toHaveBeenCalledTimes(1);
+    expect(first.context.decodeAudioData).toHaveBeenCalledTimes(1);
+    expect(second.context.decodeAudioData).toHaveBeenCalledTimes(1);
+    expect(second.context.sources).toHaveLength(2);
   });
 });
 
@@ -1164,6 +1235,7 @@ describe("songset audio errors", () => {
     const context = makeFakeContext();
     const session = createSongsetAudioSession([source({ itemId: "a" })], {
       createAudioContext: () => context.context,
+      audioBytesCache: createAudioBytesCache(),
     });
     sessions.push(session);
     const progress: Array<SongsetAudioProgress | null> = [];
