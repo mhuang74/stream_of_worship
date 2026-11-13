@@ -26,6 +26,9 @@ class FakeItem:
     song_title: str | None
     song_id: str
     recording_hash_prefix: str | None
+    # Mirrors `SongsetItem.tempo_bpm`; None keeps the pre-tempo 0.5 s lyric
+    # ownership bound these cases were written against.
+    tempo_bpm: float | None = None
 
 
 @dataclass

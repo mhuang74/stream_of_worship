@@ -209,13 +209,31 @@ export function getLyricsTimeRange(
 }
 
 /**
- * Section bounds are beat-snapped while LRC onsets come from forced alignment,
- * so a phrase can start a few tens of ms before (or end a few tens of ms
- * after) the section it is sung into. A line within this distance of a
- * window's bounds is a candidate for that window; the nearest start wins.
- * The render worker's remap_lrc_to_clips applies the identical rule.
+ * Beats of source audio a lyric onset may sit outside a Step's bounds before
+ * ownership is refused. Section bounds are beat-snapped while LRC onsets come
+ * from forced alignment, so a pickup phrase can start up to a beat or two
+ * before the section it is sung into.
  */
-export const LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5;
+export const LYRIC_BOUNDARY_TOLERANCE_BEATS = 2;
+
+/**
+ * Tolerance used when the Recording has no usable tempo (no analysis), i.e. the
+ * pre-tempo fixed bound.
+ */
+export const FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5;
+
+/** Two beats at the Recording's tempo, or the fixed fallback without one. */
+export function lyricBoundaryToleranceSeconds(
+  tempoBpm: number | null | undefined
+): number {
+  if (tempoBpm === null || tempoBpm === undefined) {
+    return FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS;
+  }
+  if (!Number.isFinite(tempoBpm) || tempoBpm <= 0) {
+    return FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS;
+  }
+  return (LYRIC_BOUNDARY_TOLERANCE_BEATS * 60) / tempoBpm;
+}
 
 /** A half-open `[startSeconds, endSeconds)` run of the source recording. */
 export interface TimeWindow {
@@ -235,11 +253,14 @@ const OWNER_EPSILON = 1e-9;
  * into, and a line *inside* a section still belongs to that section. Ties
  * resolve to the greater start, then the greater end, then the lowest index.
  * Windows with `endSeconds <= startSeconds` are never candidates.
+ *
+ * `tolerance` is the tempo-derived bound a caller gets from
+ * {@link lyricBoundaryToleranceSeconds}; it defaults to the no-tempo fallback.
  */
 export function nearestStartOwnerIndex(
   windows: readonly TimeWindow[],
   timeSeconds: number,
-  tolerance: number = LYRIC_BOUNDARY_TOLERANCE_SECONDS
+  tolerance: number = FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS
 ): number {
   let best = -1;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -272,9 +293,10 @@ export function nearestStartOwnerIndex(
  * LRC lines belonging to one Step's source range.
  *
  * Ownership is decided globally by {@link nearestStartOwnerIndex}: a line is a
- * candidate for every window whose bounds it is within
- * `LYRIC_BOUNDARY_TOLERANCE_SECONDS` of, and the window with the nearest start
- * keeps it. A pickup sung just before a Step therefore lands on that Step even
+ * candidate for every window whose bounds it is within `toleranceSeconds` of,
+ * and the window with the nearest start keeps it. `toleranceSeconds` is two
+ * beats at the Recording's tempo ({@link lyricBoundaryToleranceSeconds}).
+ * A pickup sung just before a Step therefore lands on that Step even
  * when the section between them was omitted from the arrangement, and a line
  * just after a Step's end still belongs to that Step (its phrase is sung into
  * that section, and the cut may clip its audio). Consecutive Steps tile: with
@@ -285,13 +307,16 @@ export function nearestStartOwnerIndex(
  * @param endSeconds - Source end of the Step
  * @param siblings - Every Step in the same draft. Omit for a standalone range
  *   with no neighbours.
+ * @param toleranceSeconds - How far outside a Step's bounds an onset may sit and
+ *   still belong to it: two beats at the Recording's tempo.
  * @returns The subset of lines assigned to this Step
  */
 export function linesForSourceRange(
   lines: LRCLine[],
   startSeconds: number,
   endSeconds: number,
-  siblings: ReadonlyArray<TimeWindow> = []
+  siblings: ReadonlyArray<TimeWindow> = [],
+  toleranceSeconds: number = FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS
 ): LRCLine[] {
   if (!(endSeconds > startSeconds)) return [];
   const windows: TimeWindow[] = siblings.filter((w) => w.endSeconds > w.startSeconds);
@@ -300,7 +325,7 @@ export function linesForSourceRange(
     Math.abs(w.endSeconds - endSeconds) <= OWNER_EPSILON;
   if (!windows.some(sameWindow)) windows.push({ startSeconds, endSeconds });
   return lines.filter((line) => {
-    const owner = nearestStartOwnerIndex(windows, line.timeSeconds);
+    const owner = nearestStartOwnerIndex(windows, line.timeSeconds, toleranceSeconds);
     return owner >= 0 && sameWindow(windows[owner]!);
   });
 }

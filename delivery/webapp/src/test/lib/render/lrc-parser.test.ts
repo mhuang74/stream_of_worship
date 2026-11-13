@@ -8,6 +8,7 @@ import {
   isValidLRC,
   getLyricsTimeRange,
   linesForSourceRange,
+  lyricBoundaryToleranceSeconds,
 } from "@/lib/render/lrc-parser";
 import { LRCLine, GlobalLRCLine } from "@/lib/render/lrc-parser";
 
@@ -491,6 +492,9 @@ describe("getLyricsTimeRange", () => {
 });
 
 describe("linesForSourceRange", () => {
+  // The pre-tempo bound these cases were written against; tempo-aware cases
+  // pass their own tempo-derived tolerance instead.
+  const FALLBACK_TOLERANCE = lyricBoundaryToleranceSeconds(null);
   const REAL = [
     { startSeconds: 27.37, endSeconds: 53.33 },
     { startSeconds: 53.33, endSeconds: 80.8 },
@@ -506,10 +510,14 @@ describe("linesForSourceRange", () => {
     // Real numbers from the 讚美之泉 recording: the verse is 27.37–53.33 while
     // the line after it starts at 53.30, 30 ms before the boundary.
     expect(
-      linesForSourceRange(lines, 27.37, 53.33, REAL).map((line) => line.text)
+      linesForSourceRange(lines, 27.37, 53.33, REAL, FALLBACK_TOLERANCE).map(
+        (line) => line.text
+      )
     ).toEqual(["a", "b"]);
     expect(
-      linesForSourceRange(lines, 53.33, 80.8, REAL).map((line) => line.text)
+      linesForSourceRange(lines, 53.33, 80.8, REAL, FALLBACK_TOLERANCE).map(
+        (line) => line.text
+      )
     ).toEqual(["c", "d"]);
   });
 
@@ -517,8 +525,8 @@ describe("linesForSourceRange", () => {
     // A line in the handing-over window appears in the accepting range only.
     const boundary: LRCLine[] = [{ timeSeconds: 53.3, text: "c" }];
     const spans = [
-      linesForSourceRange(boundary, 27.37, 53.33, REAL),
-      linesForSourceRange(boundary, 53.33, 80.8, REAL),
+      linesForSourceRange(boundary, 27.37, 53.33, REAL, FALLBACK_TOLERANCE),
+      linesForSourceRange(boundary, 53.33, 80.8, REAL, FALLBACK_TOLERANCE),
     ];
     expect(spans.flat().map((line) => line.text)).toEqual(["c"]);
   });
@@ -536,8 +544,12 @@ describe("linesForSourceRange", () => {
       { timeSeconds: 0.4, text: "intro line" },
     ];
     const spans = [
-      linesForSourceRange(stubLines, 0, 0.21, stubs).map((line) => line.text),
-      linesForSourceRange(stubLines, 0.21, 15.91, stubs).map((line) => line.text),
+      linesForSourceRange(stubLines, 0, 0.21, stubs, FALLBACK_TOLERANCE).map(
+        (line) => line.text
+      ),
+      linesForSourceRange(stubLines, 0.21, 15.91, stubs, FALLBACK_TOLERANCE).map(
+        (line) => line.text
+      ),
     ];
     expect(spans).toEqual([["opening"], ["intro line"]]);
   });
@@ -547,15 +559,25 @@ describe("linesForSourceRange", () => {
     // so nothing can inherit its final half second — the line must stay.
     const tail: LRCLine[] = [{ timeSeconds: 29.8, text: "last line" }];
     expect(
-      linesForSourceRange(tail, 0, 30, [{ startSeconds: 0, endSeconds: 30 }]).map(
-        (line) => line.text
-      )
+      linesForSourceRange(
+        tail,
+        0,
+        30,
+        [{ startSeconds: 0, endSeconds: 30 }],
+        FALLBACK_TOLERANCE
+      ).map((line) => line.text)
     ).toEqual(["last line"]);
     expect(
-      linesForSourceRange(tail, 0, 30, [
-        { startSeconds: 0, endSeconds: 30 },
-        { startSeconds: 20, endSeconds: 25 },
-      ]).map((line) => line.text)
+      linesForSourceRange(
+        tail,
+        0,
+        30,
+        [
+          { startSeconds: 0, endSeconds: 30 },
+          { startSeconds: 20, endSeconds: 25 },
+        ],
+        FALLBACK_TOLERANCE
+      ).map((line) => line.text)
     ).toEqual(["last line"]);
   });
 
@@ -565,12 +587,22 @@ describe("linesForSourceRange", () => {
       { startSeconds: 5.5, endSeconds: 10 },
     ];
     expect(
-      linesForSourceRange([{ timeSeconds: 5.0, text: "x" }], 0, 5.5, neighbours)
+      linesForSourceRange(
+        [{ timeSeconds: 5.0, text: "x" }],
+        0,
+        5.5,
+        neighbours,
+        FALLBACK_TOLERANCE
+      )
     ).toEqual([]);
     expect(
-      linesForSourceRange([{ timeSeconds: 5.0, text: "x" }], 5.5, 10, neighbours).map(
-        (line) => line.text
-      )
+      linesForSourceRange(
+        [{ timeSeconds: 5.0, text: "x" }],
+        5.5,
+        10,
+        neighbours,
+        FALLBACK_TOLERANCE
+      ).map((line) => line.text)
     ).toEqual(["x"]);
   });
 
@@ -583,8 +615,8 @@ describe("linesForSourceRange", () => {
       { startSeconds: 20, endSeconds: 30 },
     ];
     const pickup: LRCLine[] = [{ timeSeconds: 19.8, text: "pickup" }];
-    expect(linesForSourceRange(pickup, 20, 30, steps)).toEqual(pickup);
-    expect(linesForSourceRange(pickup, 0, 10, steps)).toEqual([]);
+    expect(linesForSourceRange(pickup, 20, 30, steps, FALLBACK_TOLERANCE)).toEqual(pickup);
+    expect(linesForSourceRange(pickup, 0, 10, steps, FALLBACK_TOLERANCE)).toEqual([]);
   });
 
   it("keeps a late line with the Step it was sung into and not the next one", () => {
@@ -593,8 +625,8 @@ describe("linesForSourceRange", () => {
       { startSeconds: 20, endSeconds: 30 },
     ];
     const late: LRCLine[] = [{ timeSeconds: 10.3, text: "late" }];
-    expect(linesForSourceRange(late, 0, 10, steps)).toEqual(late);
-    expect(linesForSourceRange(late, 20, 30, steps)).toEqual([]);
+    expect(linesForSourceRange(late, 0, 10, steps, FALLBACK_TOLERANCE)).toEqual(late);
+    expect(linesForSourceRange(late, 20, 30, steps, FALLBACK_TOLERANCE)).toEqual([]);
   });
 
   it("shows a line exactly on a shared boundary once, under the later Step", () => {
@@ -603,8 +635,10 @@ describe("linesForSourceRange", () => {
       { startSeconds: 10, endSeconds: 20 },
     ];
     const boundary: LRCLine[] = [{ timeSeconds: 10, text: "boundary" }];
-    expect(linesForSourceRange(boundary, 0, 10, steps)).toEqual([]);
-    expect(linesForSourceRange(boundary, 10, 20, steps)).toEqual(boundary);
+    expect(linesForSourceRange(boundary, 0, 10, steps, FALLBACK_TOLERANCE)).toEqual([]);
+    expect(linesForSourceRange(boundary, 10, 20, steps, FALLBACK_TOLERANCE)).toEqual(
+      boundary
+    );
   });
 
   it("shows the same line under two identical repeated Steps", () => {
@@ -613,7 +647,9 @@ describe("linesForSourceRange", () => {
       { startSeconds: 10, endSeconds: 20 },
     ];
     const repeated: LRCLine[] = [{ timeSeconds: 15, text: "chorus" }];
-    expect(linesForSourceRange(repeated, 10, 20, steps)).toEqual(repeated);
+    expect(linesForSourceRange(repeated, 10, 20, steps, FALLBACK_TOLERANCE)).toEqual(
+      repeated
+    );
   });
 
   it("drops a line more than the tolerance outside every Step", () => {
@@ -622,13 +658,55 @@ describe("linesForSourceRange", () => {
       { startSeconds: 20, endSeconds: 30 },
     ];
     const gone: LRCLine[] = [{ timeSeconds: 10.6, text: "omitted" }];
-    expect(linesForSourceRange(gone, 0, 10, steps)).toEqual([]);
-    expect(linesForSourceRange(gone, 20, 30, steps)).toEqual([]);
+    expect(linesForSourceRange(gone, 0, 10, steps, FALLBACK_TOLERANCE)).toEqual([]);
+    expect(linesForSourceRange(gone, 20, 30, steps, FALLBACK_TOLERANCE)).toEqual([]);
   });
 
   it("returns no lines for an empty or inverted range", () => {
     const single: LRCLine[] = [{ timeSeconds: 5.0, text: "x" }];
-    expect(linesForSourceRange(single, 5, 5, [])).toEqual([]);
-    expect(linesForSourceRange(single, 5, 4, [])).toEqual([]);
+    expect(linesForSourceRange(single, 5, 5, [], FALLBACK_TOLERANCE)).toEqual([]);
+    expect(linesForSourceRange(single, 5, 4, [], FALLBACK_TOLERANCE)).toEqual([]);
+  });
+
+  it("scales the tolerance to the Recording tempo", () => {
+    expect(lyricBoundaryToleranceSeconds(86.13281)).toBeCloseTo(1.3931973, 6);
+    expect(lyricBoundaryToleranceSeconds(60)).toBe(2);
+    expect(lyricBoundaryToleranceSeconds(null)).toBe(FALLBACK_TOLERANCE);
+    expect(lyricBoundaryToleranceSeconds(0)).toBe(FALLBACK_TOLERANCE);
+    expect(lyricBoundaryToleranceSeconds(Number.NaN)).toBe(FALLBACK_TOLERANCE);
+  });
+
+  it("keeps a one-beat pickup at the first Step with a two-beat tolerance", () => {
+    // Reported song (hereforyou at 86.13281 BPM): the first chorus Step starts
+    // at 0.70 s while its first line is sung at 0.01 s — one beat earlier, so
+    // the fixed 0.5 s bound dropped it and only the second chorus showed it.
+    const steps = [
+      { startSeconds: 0.7, endSeconds: 22.04 },
+      { startSeconds: 22.04, endSeconds: 69.33 },
+    ];
+    const chorus: LRCLine[] = [
+      { timeSeconds: 0.01, text: "To You our hearts are open" },
+      { timeSeconds: 2.82, text: "Nothing here is hidden" },
+    ];
+    const tolerance = lyricBoundaryToleranceSeconds(86.13281);
+    expect(linesForSourceRange(chorus, 0.7, 22.04, steps, tolerance)).toEqual(chorus);
+    expect(linesForSourceRange(chorus, 22.04, 69.33, steps, tolerance)).toEqual([]);
+    expect(
+      linesForSourceRange(chorus, 0.7, 22.04, steps, FALLBACK_TOLERANCE).map(
+        (line) => line.text
+      )
+    ).toEqual(["Nothing here is hidden"]);
+  });
+
+  it("owns a two-beat pickup at a slow tempo", () => {
+    const steps = [
+      { startSeconds: 0, endSeconds: 10 },
+      { startSeconds: 20, endSeconds: 30 },
+    ];
+    const pickup: LRCLine[] = [{ timeSeconds: 19.0, text: "pickup" }];
+    const tolerance = lyricBoundaryToleranceSeconds(60);
+    expect(linesForSourceRange(pickup, 20, 30, steps, tolerance)).toEqual(pickup);
+    expect(linesForSourceRange(pickup, 0, 10, steps, tolerance)).toEqual([]);
+    expect(linesForSourceRange(pickup, 20, 30, steps, FALLBACK_TOLERANCE)).toEqual([]);
   });
 });

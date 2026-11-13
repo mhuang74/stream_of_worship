@@ -25,6 +25,8 @@ export interface SongsetLyricsPanelProps {
   clips: TimelineClip[];
   /** The Recording's detected sections; headings are looked up through them. */
   sections: RecordingSection[] | null;
+  /** The Recording's tempo; lyric ownership tolerance is two of its beats. */
+  tempoBpm: number | null;
   /** Current Songset timeline position, in seconds. */
   positionSeconds: number;
   onSeek: (timelineSeconds: number) => void;
@@ -34,6 +36,7 @@ export function SongsetLyricsPanel({
   contentHash,
   clips,
   sections,
+  tempoBpm,
   positionSeconds,
   onSeek,
 }: SongsetLyricsPanelProps) {
@@ -45,8 +48,8 @@ export function SongsetLyricsPanel({
     [lrcContent],
   );
   const songsetLines = useMemo(
-    () => (parsed ? toSongsetLyricLines(clips, parsed) : null),
-    [clips, parsed],
+    () => (parsed ? toSongsetLyricLines(clips, parsed, tempoBpm) : null),
+    [clips, parsed, tempoBpm],
   );
   const activeIndex = songsetLines
     ? findCurrentLyricIndex(songsetLines, positionSeconds + CURSOR_LEAD_SECONDS)

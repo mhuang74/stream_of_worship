@@ -9,6 +9,7 @@ from sow_render_worker.lrc_parser import (
     get_lyrics_time_range,
     group_lyrics_by_song,
     is_valid_lrc,
+    lyric_boundary_tolerance,
     parse_lrc,
     remap_lrc_to_clips,
 )
@@ -112,6 +113,15 @@ def _clip(
         source_end_seconds=source_end,
         start_time_seconds=target_start,
     )
+
+
+class TestLyricBoundaryTolerance:
+    def test_tolerance_follows_tempo(self):
+        assert lyric_boundary_tolerance(86.13281) == pytest.approx(1.3931973193490377)
+        assert lyric_boundary_tolerance(60) == 2.0
+        assert lyric_boundary_tolerance(None) == 0.5
+        assert lyric_boundary_tolerance(0) == 0.5
+        assert lyric_boundary_tolerance(float("nan")) == 0.5
 
 
 class TestRemapLrcToClips:
@@ -275,6 +285,34 @@ class TestRemapLrcToClips:
         clips = (_clip(0.0, 5.0, 20.0), _clip(0.0, 5.0, 0.0))
         result = remap_lrc_to_clips(local_lines, clips, "Song")
         assert [line.global_time_seconds for line in result] == [2.0, 22.0]
+
+    def test_one_beat_pickup_owned_by_first_clip(self):
+        # Reported song (hereforyou at 86.13281 BPM): the first chorus clip
+        # starts at 0.70 s while its first line is sung at 0.01 s — one beat
+        # earlier — so the fixed 0.5 s bound dropped it from the frames while
+        # the second chorus kept the identical line.
+        local_lines = [
+            LRCLine(time_seconds=0.01, text="To You our hearts are open"),
+            LRCLine(time_seconds=2.82, text="Nothing here is hidden"),
+        ]
+        clips = (_clip(0.7, 22.04, 0.0), _clip(22.04, 69.33, 21.34))
+        result = remap_lrc_to_clips(local_lines, clips, "Song", tempo_bpm=86.13281)
+        assert [(line.text, line.global_time_seconds) for line in result] == [
+            ("To You our hearts are open", 0.0),
+            ("Nothing here is hidden", pytest.approx(2.12)),
+        ]
+        # The pre-tempo fallback still refuses the one-beat pickup.
+        assert [line.text for line in remap_lrc_to_clips(local_lines, clips, "Song")] == [
+            "Nothing here is hidden"
+        ]
+
+    def test_two_beat_pickup_belongs_to_next_clip(self):
+        local_lines = [LRCLine(time_seconds=19.0, text="pickup")]
+        clips = (_clip(0.0, 10.0, 0.0), _clip(20.0, 30.0, 20.0))
+        result = remap_lrc_to_clips(local_lines, clips, "Song", tempo_bpm=60)
+        assert [(line.text, line.global_time_seconds) for line in result] == [("pickup", 20.0)]
+        # 19.0 s is exactly two beats before 20.0 s; the fallback's 0.5 s drops it.
+        assert remap_lrc_to_clips(local_lines, clips, "Song") == []
 
 
 class TestEstimateLastLyricDuration:

@@ -132,7 +132,9 @@ def generate_chapters_manifest(
                         text=line.text,
                         start_seconds=line.global_time_seconds,
                     )
-                    for line in remap_lrc_to_clips(local_lyrics, segment.clips, title)
+                    for line in remap_lrc_to_clips(
+                        local_lyrics, segment.clips, title, tempo_bpm=segment.item.tempo_bpm
+                    )
                 ]
         except Exception:
             logger.warning("Failed to parse LRC for hash_prefix %s", hash_prefix, exc_info=True)

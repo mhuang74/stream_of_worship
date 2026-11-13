@@ -191,7 +191,9 @@ class VideoEngine:
             title = segment.item.song_title or (
                 str(segment.item.song_id) if segment.item.song_id else f"song-{i}"
             )
-            remapped_lyrics = remap_lrc_to_clips(local_lyrics, segment.clips, title)
+            remapped_lyrics = remap_lrc_to_clips(
+                local_lyrics, segment.clips, title, tempo_bpm=segment.item.tempo_bpm
+            )
             all_lyrics.extend(remapped_lyrics)
 
             segment_end = segment.start_time_seconds + segment.duration_seconds

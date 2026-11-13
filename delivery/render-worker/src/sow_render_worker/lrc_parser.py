@@ -27,20 +27,29 @@ class GlobalLRCLine:
 _LRC_PATTERN = re.compile(r"\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)")
 _VALID_LRC_PATTERN = re.compile(r"\[\d{2}:\d{2}\.\d{2,3}\]")
 
-# Section bounds are beat-snapped while LRC onsets come from forced
-# alignment. A line this far from a clip's source bounds is a candidate for
-# that clip; the nearest start wins. Must stay equal to the webapp's
-# LYRIC_BOUNDARY_TOLERANCE_SECONDS.
-LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5
+#: Beats of source audio a lyric onset may sit outside a clip's bounds.
+#: Section bounds are beat-snapped while LRC onsets come from forced
+#: alignment, so a pickup phrase can start up to a beat or two before the
+#: section it is sung into.
+LYRIC_BOUNDARY_TOLERANCE_BEATS = 2.0
+#: Tolerance when the item has no usable tempo; the pre-tempo fixed bound.
+FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS = 0.5
 _OWNER_EPSILON = 1e-9
 
 SourceWindow = tuple[float, float]
 
 
+def lyric_boundary_tolerance(tempo_bpm: float | None) -> float:
+    """Two beats at ``tempo_bpm``, or the fixed fallback without a usable tempo."""
+    if tempo_bpm is None or not math.isfinite(tempo_bpm) or tempo_bpm <= 0:
+        return FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS
+    return (LYRIC_BOUNDARY_TOLERANCE_BEATS * 60.0) / tempo_bpm
+
+
 def _nearest_start_owner(
     windows: Sequence[SourceWindow],
     time_seconds: float,
-    tolerance: float = LYRIC_BOUNDARY_TOLERANCE_SECONDS,
+    tolerance: float = FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS,
 ) -> int:
     """
     Index of the window that owns ``time_seconds``, or -1.
@@ -49,7 +58,9 @@ def _nearest_start_owner(
     when the time falls inside ``[start - tolerance, end + tolerance)``; among
     candidates the nearest *start* wins, ties resolving to the greater start,
     then the greater end, then the lowest index. Zero-length windows are never
-    candidates.
+    candidates. ``tolerance`` is the tempo-derived bound
+    :func:`lyric_boundary_tolerance` supplies; the default is the no-tempo
+    fallback.
     """
     best = -1
     best_distance = float("inf")
@@ -99,6 +110,7 @@ def remap_lrc_to_clips(
     local_lines: list[LRCLine],
     clips: tuple[AudioClipInfo, ...],
     title: str,
+    tempo_bpm: float | None = None,
 ) -> list[GlobalLRCLine]:
     """
     Remap local LRC lines through arranged clips onto the item timeline.
@@ -106,12 +118,13 @@ def remap_lrc_to_clips(
     Ownership is decided globally by :func:`_nearest_start_owner` over every
     clip's source window, exactly as the webapp's ``linesForSourceRange`` does:
     a line is a candidate for every window whose bounds it is within
-    ``LYRIC_BOUNDARY_TOLERANCE_SECONDS`` of, and the window with the nearest
-    start keeps it. A pickup sung just before a Step therefore lands on that
-    Step even when the section between them was omitted from the arrangement,
-    and a line just after a Step's end still belongs to that Step (its phrase is
-    sung into that section, and the cut may clip its audio). Consecutive clips
-    tile their shared boundary: no line is emitted twice and none disappears.
+    ``lyric_boundary_tolerance(tempo_bpm)`` (two beats at the Recording's tempo)
+    of, and the window with the nearest start keeps it. A pickup sung just
+    before a Step therefore lands on that Step even when the section between
+    them was omitted from the arrangement, and a line just after a Step's end
+    still belongs to that Step (its phrase is sung into that section, and the
+    cut may clip its audio). Consecutive clips tile their shared boundary: no
+    line is emitted twice and none disappears.
 
     A line's global timestamp is the clip's target start plus its offset into
     the source range, clamped to ``[clip.start_time_seconds,
@@ -129,7 +142,8 @@ def remap_lrc_to_clips(
         for clip in clips
         if clip.source_end_seconds > clip.source_start_seconds
     ]
-    owners = [_nearest_start_owner(windows, line.time_seconds) for line in local_lines]
+    tolerance = lyric_boundary_tolerance(tempo_bpm)
+    owners = [_nearest_start_owner(windows, line.time_seconds, tolerance) for line in local_lines]
     remapped: list[GlobalLRCLine] = []
     for clip in clips:
         span = clip.source_end_seconds - clip.source_start_seconds
