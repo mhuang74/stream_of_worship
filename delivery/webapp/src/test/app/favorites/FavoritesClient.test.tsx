@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { FavoritesClient } from "@/app/favorites/FavoritesClient";
 import type { SongCardData } from "@/components/songset/SongCard";
+import {
+  clearSongAudioSrc,
+  sharedAudioBytesCache,
+} from "@/lib/audio/audio-bytes-cache";
 
 const mockReplace = vi.fn();
 
@@ -54,11 +58,19 @@ function makeSongs(count: number): SongCardData[] {
 }
 
 describe("FavoritesClient pagination", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockReplace.mockClear();
     mockPlay.mockClear();
     mockPause.mockClear();
     vi.stubGlobal("scrollTo", vi.fn());
+    // Playback bytes and blob URLs are module-level: without a reset a test
+    // that warmed a Recording would make a later one skip its fetch.
+    await sharedAudioBytesCache.clear();
+    clearSongAudioSrc();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(URL, "createObjectURL");
   });
 
   it("renders numbered page buttons for total > pageSize", () => {
