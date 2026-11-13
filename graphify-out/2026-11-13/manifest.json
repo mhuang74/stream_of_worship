@@ -1506,9 +1506,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1794484398.6530461,
-    "seen": 1794484603.8886287,
-    "ast_hash": "7e6a137fa38e6125957e3e5d3e2e0e26",
+    "mtime": 1794525289.3471723,
+    "seen": 1794525379.493926,
+    "ast_hash": "e2a27a412b5ec8adfad911d9ec833104",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/BpmRangeMultiSelect.tsx": {
@@ -2046,8 +2046,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/arrangement.ts": {
-    "mtime": 1794484400.0850456,
-    "seen": 1794484603.894773,
+    "mtime": 1794484811.4733045,
+    "seen": 1794525379.5004086,
     "ast_hash": "2994e281cd2ffe1a3f18e674f417fdf3",
     "semantic_hash": ""
   },
@@ -2868,8 +2868,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/ArrangementEditorSheet.test.tsx": {
-    "mtime": 1794484408.1660423,
-    "seen": 1794484603.9042137,
+    "mtime": 1794484811.4743044,
+    "seen": 1794525379.5108109,
     "ast_hash": "b5b6c6113da694ce4912f13e798c1aea",
     "semantic_hash": ""
   },
@@ -5892,8 +5892,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/section-labels.ts": {
-    "mtime": 1794484652.82894,
-    "seen": 1794484757.755643,
+    "mtime": 1794484812.1303113,
+    "seen": 1794525379.504057,
     "ast_hash": "2e3b31a679fd17e1abec8a0d7a835519",
     "semantic_hash": ""
   },
@@ -5904,8 +5904,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/section-labels.test.ts": {
-    "mtime": 1794484654.8729389,
-    "seen": 1794484757.770179,
+    "mtime": 1794484812.1303113,
+    "seen": 1794525379.517204,
     "ast_hash": "38d4ca0f98547f445d462cbd5c7d7f06",
     "semantic_hash": ""
   }
