@@ -1260,9 +1260,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/songsets/[id]/play/controller/page.tsx": {
-    "mtime": 1794434275.1025183,
-    "seen": 1794434950.6009672,
-    "ast_hash": "eeca088477b6982bf52f5e5764ca66c2",
+    "mtime": 1794653175.0057824,
+    "seen": 1794653399.2066774,
+    "ast_hash": "5a7a6e4913ce47c713240cbf07364235",
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/songsets/[id]/play/projection/page.tsx": {
@@ -2610,9 +2610,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/app/controller-page.test.tsx": {
-    "mtime": 1794434405.4047337,
-    "seen": 1794434950.6183343,
-    "ast_hash": "c0994942cd0a3fafb0272137f5919eb9",
+    "mtime": 1794653180.098783,
+    "seen": 1794653399.224917,
+    "ast_hash": "a0930cc56a114ed477a2b2e68f5a155b",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx": {
