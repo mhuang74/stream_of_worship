@@ -1152,9 +1152,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/layout.tsx": {
-    "mtime": 1794353673.474147,
-    "seen": 1794360906.7311423,
-    "ast_hash": "348a50e482dcd3608ce5e7417798a8bc",
+    "mtime": 1794632785.8671439,
+    "seen": 1794633088.2177749,
+    "ast_hash": "467f93f4564ff650cdcdef995df7a2db",
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/listen/ListenClient.tsx": {
@@ -2070,9 +2070,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/core.ts": {
-    "mtime": 1794353674.768149,
-    "seen": 1794360906.7314382,
-    "ast_hash": "bfa6285591c2c5786eb5e11d74f258f6",
+    "mtime": 1794632785.8531437,
+    "seen": 1794633088.2328315,
+    "ast_hash": "1983452aff445796730ee0f6106dcf03",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/favorites.ts": {
@@ -5490,9 +5490,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/DEPLOY-VERCEL.md": {
-    "mtime": 1794353679.4181557,
-    "seen": 1794360906.7334316,
-    "ast_hash": "08822c79b0f8695b02e569ecaff603af",
+    "mtime": 1794632836.596299,
+    "seen": 1794633088.2765744,
+    "ast_hash": "dce0b94439d4166ca949b61cc24b5342",
     "semantic_hash": ""
   },
   "delivery/webapp/README.md": {
@@ -5925,6 +5925,30 @@
     "mtime": 1794532304.7721848,
     "seen": 1794585967.2848878,
     "ast_hash": "b1eca4aae84dbefad339be467d7708ba",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/components/layout/DeploymentBanner.tsx": {
+    "mtime": 1794632780.537127,
+    "seen": 1794633088.2218773,
+    "ast_hash": "fba6ab6f776e6240252ee44500df35c8",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/lib/deployment-env.ts": {
+    "mtime": 1794632780.5321271,
+    "seen": 1794633088.2318954,
+    "ast_hash": "6d7ef409ee3765ff4dd8e62c55f19f1c",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/test/components/layout/DeploymentBanner.test.tsx": {
+    "mtime": 1794632789.508155,
+    "seen": 1794633088.2422264,
+    "ast_hash": "a73e2bbb3fe0b7475a27f516516caed8",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/test/lib/deployment-env.test.ts": {
+    "mtime": 1794632789.505155,
+    "seen": 1794633088.248419,
+    "ast_hash": "dfcc1a70f82aebd6b95fd30bbb25e8fc",
     "semantic_hash": ""
   }
 }
