@@ -256,6 +256,39 @@ export interface TimeWindow {
 const OWNER_EPSILON = 1e-9;
 
 /**
+ * Whether `window` is a candidate owner for one line: its onset is at or after
+ * `start - tolerance`, and either the onset is more than `tolerance` before the
+ * window's end (sung inside the cut regardless of when its display ends) or the
+ * line's display end is within `tolerance` of the end (the window covers the
+ * display). Zero-length windows are never candidates.
+ */
+function isOwnerCandidate(
+  window: TimeWindow,
+  timeSeconds: number,
+  lineEndSeconds: number,
+  tolerance: number
+): boolean {
+  if (!(window.endSeconds > window.startSeconds)) return false;
+  if (timeSeconds < window.startSeconds - tolerance) return false;
+  if (
+    timeSeconds >= window.endSeconds - tolerance &&
+    lineEndSeconds >= window.endSeconds + tolerance
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Whether two windows begin at the same source time. A repeated Step shares its
+ * start with its twin even after either end is nudged, and both sing the same
+ * region, so ownership must not be exclusive between them.
+ */
+function sameSourceStart(a: TimeWindow, b: TimeWindow): boolean {
+  return Math.abs(a.startSeconds - b.startSeconds) <= OWNER_EPSILON;
+}
+
+/**
  * Index of the window that owns a lyric line, or -1.
  *
  * A window is a candidate when the line's onset `timeSeconds` is at or after
@@ -275,7 +308,9 @@ const OWNER_EPSILON = 1e-9;
  * starts a fraction before the section it is sung into, and a line *inside* a
  * section still belongs to that section. Ties resolve to the greater start,
  * then the greater end, then the lowest index. Windows with
- * `endSeconds <= startSeconds` are never candidates.
+ * `endSeconds <= startSeconds` are never candidates. Windows that begin at the
+ * same source time are never exclusive: the caller decides inclusion by start,
+ * so a repeated range and its twin both display the line.
  *
  * `tolerance` is the tempo-derived bound a caller gets from
  * {@link lyricBoundaryToleranceSeconds}; it defaults to the no-tempo fallback.
@@ -290,14 +325,7 @@ export function nearestStartOwnerIndex(
   let bestDistance = Number.POSITIVE_INFINITY;
   for (let index = 0; index < windows.length; index += 1) {
     const window = windows[index]!;
-    if (!(window.endSeconds > window.startSeconds)) continue;
-    if (timeSeconds < window.startSeconds - tolerance) continue;
-    if (
-      timeSeconds >= window.endSeconds - tolerance &&
-      lineEndSeconds >= window.endSeconds + tolerance
-    ) {
-      continue;
-    }
+    if (!isOwnerCandidate(window, timeSeconds, lineEndSeconds, tolerance)) continue;
     const distance = Math.abs(timeSeconds - window.startSeconds);
     if (best === -1 || distance < bestDistance - OWNER_EPSILON) {
       best = index;
@@ -331,8 +359,16 @@ export function nearestStartOwnerIndex(
  * unless the Step covers its display: a line starting at or just after the
  * Step's end is sung after the cut and is never played. A line starting more
  * than two beats before the end is always kept, so a cut that ends inside an
- * instrumental gap keeps its last line. Consecutive Steps tile: with
- * `end_i == start_{i+1}` no line is owned twice and none silently disappears.
+ * instrumental gap keeps its last line.
+ *
+ * A Step keeps a line when its own window is a candidate for it **and** the
+ * owner's start equals its own start, so a Step shows only what its own cut
+ * plays and a trimmed repeat never inherits a line past its own end.
+ * Consecutive Steps tile: with `end_i == start_{i+1}` no line is owned twice
+ * and none silently disappears — a shared boundary pickup appears once, under
+ * the later Step. A repeated Step shows its lines again even when its own end
+ * differs from its twin's, because a repeat is the same source region and
+ * ownership is not exclusive between windows that begin together.
  *
  * @param lines - Parsed LRC lines for the whole recording, sorted ascending by
  *   `timeSeconds` as {@link parseLRC} returns them
@@ -352,19 +388,23 @@ export function linesForSourceRange(
   toleranceSeconds: number = FALLBACK_LYRIC_BOUNDARY_TOLERANCE_SECONDS
 ): LRCLine[] {
   if (!(endSeconds > startSeconds)) return [];
+  const self: TimeWindow = { startSeconds, endSeconds };
   const windows: TimeWindow[] = siblings.filter((w) => w.endSeconds > w.startSeconds);
+  // Exact-identity dedupe only: a same-start sibling with a different end must
+  // not replace the requested window, or a trimmed Step would lose the lines
+  // between its own end and the sibling's.
   const sameWindow = (w: TimeWindow) =>
-    Math.abs(w.startSeconds - startSeconds) <= OWNER_EPSILON &&
-    Math.abs(w.endSeconds - endSeconds) <= OWNER_EPSILON;
-  if (!windows.some(sameWindow)) windows.push({ startSeconds, endSeconds });
+    sameSourceStart(w, self) && Math.abs(w.endSeconds - endSeconds) <= OWNER_EPSILON;
+  if (!windows.some(sameWindow)) windows.push(self);
   const lineEnds = lyricLineEndSeconds(lines);
   return lines.filter((line, index) => {
-    const owner = nearestStartOwnerIndex(
-      windows,
-      line.timeSeconds,
-      lineEnds[index]!,
-      toleranceSeconds
-    );
-    return owner >= 0 && sameWindow(windows[owner]!);
+    const lineEnd = lineEnds[index]!;
+    // A Step shows only what its own cut plays (the same two-beat slack as any
+    // other Step), then accepts a line another Step owns only when that Step
+    // begins where this one does: a repeated Step is the same source region, so
+    // the twin's greater end must not take the section's lines away from it.
+    if (!isOwnerCandidate(self, line.timeSeconds, lineEnd, toleranceSeconds)) return false;
+    const owner = nearestStartOwnerIndex(windows, line.timeSeconds, lineEnd, toleranceSeconds);
+    return owner >= 0 && sameSourceStart(windows[owner]!, self);
   });
 }

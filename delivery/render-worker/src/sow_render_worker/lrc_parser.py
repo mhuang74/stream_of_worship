@@ -59,6 +59,29 @@ def lyric_line_end_seconds(lines: Sequence[LRCLine]) -> list[float]:
     ]
 
 
+def _is_owner_candidate(
+    start: float,
+    end: float,
+    time_seconds: float,
+    line_end_seconds: float,
+    tolerance: float,
+) -> bool:
+    """Whether ``(start, end)`` is a candidate owner for one line.
+
+    Mirrors the webapp's ``isOwnerCandidate``: zero-length windows never are; a
+    line's onset must be at or after ``start - tolerance``, and either it is more
+    than ``tolerance`` before the window's end or its display end is within
+    ``tolerance`` of that end.
+    """
+    if not end > start:
+        return False
+    if time_seconds < start - tolerance:
+        return False
+    if time_seconds >= end - tolerance and line_end_seconds >= end + tolerance:
+        return False
+    return True
+
+
 def _nearest_start_owner(
     windows: Sequence[SourceWindow],
     time_seconds: float,
@@ -84,18 +107,16 @@ def _nearest_start_owner(
 
     Among candidates the nearest *start* wins, ties resolving to the greater
     start, then the greater end, then the lowest index. Zero-length windows are
-    never candidates. ``tolerance`` is the tempo-derived bound
+    never candidates. Windows that begin at the same source time are never
+    exclusive: the caller decides inclusion by source start, so a repeated clip
+    and its twin both display the line. ``tolerance`` is the tempo-derived bound
     :func:`lyric_boundary_tolerance` supplies; the default is the no-tempo
     fallback.
     """
     best = -1
     best_distance = float("inf")
     for index, (start, end) in enumerate(windows):
-        if not end > start:
-            continue
-        if time_seconds < start - tolerance:
-            continue
-        if time_seconds >= end - tolerance and line_end_seconds >= end + tolerance:
+        if not _is_owner_candidate(start, end, time_seconds, line_end_seconds, tolerance):
             continue
         distance = abs(time_seconds - start)
         if best == -1 or distance < best_distance - _OWNER_EPSILON:
@@ -152,6 +173,10 @@ def remap_lrc_to_clips(
     starting at or just after the clip's end is sung after the cut and is never
     played. A line starting more than two beats before the end is always kept,
     so a clip that ends inside an instrumental gap keeps its last line.
+
+    A clip keeps a line when its own window is a candidate for it and the
+    owner's start equals its own start, so a clip emits only what its own cut
+    plays and a trimmed repeat never inherits a line past its own end.
     Consecutive clips tile their shared boundary: no line is emitted twice and
     none disappears.
 
@@ -160,8 +185,10 @@ def remap_lrc_to_clips(
     clip.start_time_seconds + span - 0.001]``: a pre-start pickup lands on the
     clip's first frame rather than the preceding item, and a kept line never
     highlights past the clip's own target window. Repeated steps repeat their
-    lyrics at new target times; lines from omitted source ranges never appear.
-    Blank Gap Placeholder lines inside a clip's window are retained.
+    lyrics at new target times — a repeated clip keeps every line its own cut
+    plays even when its end differs from its twin's; lines from omitted source
+    ranges never appear. Blank Gap Placeholder lines inside a clip's window are
+    retained.
 
     Lines are stably sorted by global timestamp (per-clip output is already
     ordered, and clips are processed in arrangement order).
@@ -182,13 +209,24 @@ def remap_lrc_to_clips(
         span = clip.source_end_seconds - clip.source_start_seconds
         if not span > 0:
             continue
-        for line, owner in zip(local_lines, owners, strict=True):
+        for index, (line, owner) in enumerate(zip(local_lines, owners, strict=True)):
             if owner < 0:
                 continue
-            owner_start, owner_end = windows[owner]
-            if not (
-                math.isclose(owner_start, clip.source_start_seconds, abs_tol=1e-9)
-                and math.isclose(owner_end, clip.source_end_seconds, abs_tol=1e-9)
+            # A clip shows only what its own cut plays, produced by the same
+            # two-beat slack as any other clip.
+            if not _is_owner_candidate(
+                clip.source_start_seconds,
+                clip.source_end_seconds,
+                line.time_seconds,
+                line_ends[index],
+                tolerance,
+            ):
+                continue
+            # A repeated clip shares its source start with its twin even after
+            # either end is nudged; both sing the same region, so the twin's
+            # greater end must not take the section's lines away from this clip.
+            if not math.isclose(
+                clip.source_start_seconds, windows[owner][0], abs_tol=_OWNER_EPSILON
             ):
                 continue
             global_time = max(
