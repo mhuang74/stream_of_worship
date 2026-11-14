@@ -164,6 +164,35 @@ class TestRemapLrcToClips:
             ("line at 11", 21.0),
         ]
 
+    def test_repeated_clip_with_a_different_end_keeps_its_lyrics(self):
+        # Here I Bow, 68 BPM: the saved arrangement repeats Chorus 4 at 217.50 s
+        # with two different manual ends. The longer twin won every line, so the
+        # shorter clip rendered with no lyrics at all.
+        local_lines = [
+            LRCLine(time_seconds=217.6, text="So here I bow to lift You high"),
+            LRCLine(time_seconds=226.3, text="Jesus be glorified"),
+            LRCLine(time_seconds=232.37, text="In all things, for all my life"),
+            LRCLine(time_seconds=238.91, text="I am Yours, forever Yours"),
+        ]
+        clips = (
+            _clip(217.5, 245.6, 0.0),
+            _clip(217.5, 246.7, 28.1),
+        )
+        result = remap_lrc_to_clips(local_lines, clips, "Here I Bow", tempo_bpm=68)
+        assert [line.text for line in result] == [
+            "So here I bow to lift You high",
+            "Jesus be glorified",
+            "In all things, for all my life",
+            "I am Yours, forever Yours",
+            "So here I bow to lift You high",
+            "Jesus be glorified",
+            "In all things, for all my life",
+            "I am Yours, forever Yours",
+        ]
+        assert [line.global_time_seconds for line in result] == pytest.approx(
+            [0.1, 8.8, 14.87, 21.41, 28.2, 36.9, 42.97, 49.51]
+        )
+
     def test_omitted_range_contributes_no_lines(self):
         local_lines = [
             LRCLine(time_seconds=1.0, text="kept"),

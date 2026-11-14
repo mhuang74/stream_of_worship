@@ -652,6 +652,46 @@ describe("linesForSourceRange", () => {
     );
   });
 
+  it("shows both Steps of a repeated section whose duplicate end was nudged", () => {
+    // Here I Bow, 68 BPM (tolerance 1.7647 s): the saved arrangement holds
+    // Chorus 4 twice, both starting at 217.50 s with different manual ends.
+    // The greater end wins the ownership tie, so the shorter Step used to get
+    // no lines at all and the sheet labelled a sung section "instrumental".
+    const steps = [
+      { startSeconds: 217.5, endSeconds: 245.6 },
+      { startSeconds: 217.5, endSeconds: 246.7 },
+    ];
+    const repeated: LRCLine[] = [
+      { timeSeconds: 217.6, text: "So here I bow to lift You high" },
+      { timeSeconds: 226.3, text: "Jesus be glorified" },
+      { timeSeconds: 232.37, text: "In all things, for all my life" },
+      { timeSeconds: 238.91, text: "I am Yours, forever Yours" },
+    ];
+    const tolerance = lyricBoundaryToleranceSeconds(68);
+    expect(linesForSourceRange(repeated, 217.5, 245.6, steps, tolerance)).toEqual(repeated);
+    expect(linesForSourceRange(repeated, 217.5, 246.7, steps, tolerance)).toEqual(repeated);
+  });
+
+  it("drops a line the shorter repeat's own cut does not play", () => {
+    const steps = [
+      { startSeconds: 217.5, endSeconds: 245.6 },
+      { startSeconds: 217.5, endSeconds: 246.7 },
+    ];
+    const late: LRCLine[] = [
+      { timeSeconds: 238.91, text: "I am Yours, forever Yours" },
+      { timeSeconds: 246.0, text: "next line" },
+      { timeSeconds: 248.0, text: "display of the next line" },
+      { timeSeconds: 260.0, text: "far away" },
+    ];
+    const tolerance = lyricBoundaryToleranceSeconds(68);
+    expect(
+      linesForSourceRange(late, 217.5, 245.6, steps, tolerance).map((line) => line.text)
+    ).toEqual(["I am Yours, forever Yours"]);
+    expect(
+      linesForSourceRange(late, 217.5, 246.7, steps, tolerance).map((line) => line.text)
+    ).toEqual(["I am Yours, forever Yours", "next line"]);
+  });
+
   it("drops a line more than the tolerance outside every Step", () => {
     const steps = [
       { startSeconds: 0, endSeconds: 10 },
