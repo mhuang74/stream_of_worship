@@ -684,9 +684,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/lrc_parser.py": {
-    "mtime": 1794656728.8513923,
-    "seen": 1794657050.8836443,
-    "ast_hash": "9cf789b2d17e5740cacb405771c22180",
+    "mtime": 1794658261.020601,
+    "seen": 1794658617.2231166,
+    "ast_hash": "cd1856b3d8e10bac37ed74043d786210",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/pipeline.py": {
@@ -2304,9 +2304,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/lrc-parser.ts": {
-    "mtime": 1794656720.5423813,
-    "seen": 1794657050.9102407,
-    "ast_hash": "50539e87b877fc87c89ba8c862fe9996",
+    "mtime": 1794658248.1245935,
+    "seen": 1794658617.2431524,
+    "ast_hash": "033242a5f81aec320fac04897f837030",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/lyrics-display.ts": {
@@ -3336,9 +3336,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/render/lrc-parser.test.ts": {
-    "mtime": 1794656737.824404,
-    "seen": 1794657050.928547,
-    "ast_hash": "755153aa59bda01a28a42ee6447b28da",
+    "mtime": 1794658250.831595,
+    "seen": 1794658617.256324,
+    "ast_hash": "435ac649bcc141f2b7bb40abb282b8b3",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/render/render-defaults.test.ts": {
