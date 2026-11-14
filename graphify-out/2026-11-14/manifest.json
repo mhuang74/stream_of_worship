@@ -684,9 +684,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/lrc_parser.py": {
-    "mtime": 1794532968.2131948,
-    "seen": 1794533086.8646717,
-    "ast_hash": "b424b2ba8c835eee7e5215bde83481ed",
+    "mtime": 1794656728.8513923,
+    "seen": 1794657050.8836443,
+    "ast_hash": "9cf789b2d17e5740cacb405771c22180",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/pipeline.py": {
@@ -2304,9 +2304,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/lrc-parser.ts": {
-    "mtime": 1794532696.9734633,
-    "seen": 1794533086.917696,
-    "ast_hash": "daef96f433f07e157dfca6bfacb921cd",
+    "mtime": 1794656720.5423813,
+    "seen": 1794657050.9102407,
+    "ast_hash": "50539e87b877fc87c89ba8c862fe9996",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/render/lyrics-display.ts": {
@@ -2868,9 +2868,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/ArrangementEditorSheet.test.tsx": {
-    "mtime": 1794484811.4743044,
-    "seen": 1794525379.5108109,
-    "ast_hash": "b5b6c6113da694ce4912f13e798c1aea",
+    "mtime": 1794657101.763799,
+    "seen": 1794657592.4561772,
+    "ast_hash": "f0b8f7ad3ec6866b802924d0cf80a7ee",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/songset/BrowseSheet.test.tsx": {
@@ -3336,9 +3336,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/render/lrc-parser.test.ts": {
-    "mtime": 1794532755.3701596,
-    "seen": 1794533086.9493034,
-    "ast_hash": "9b1f2d9078ec482952eed9488ea8b153",
+    "mtime": 1794656737.824404,
+    "seen": 1794657050.928547,
+    "ast_hash": "755153aa59bda01a28a42ee6447b28da",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/render/render-defaults.test.ts": {
@@ -5790,9 +5790,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/arrangements-listen.ts": {
-    "mtime": 1794532701.508439,
-    "seen": 1794533086.905708,
-    "ast_hash": "759f2bbd5c430bbd8483d244965f1be7",
+    "mtime": 1794656723.4333851,
+    "seen": 1794657050.9031074,
+    "ast_hash": "c4a97a654fc488ed50da9f3de7cdb14d",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/audio/audio-context.ts": {
