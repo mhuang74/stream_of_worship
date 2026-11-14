@@ -62,7 +62,7 @@ vi.mock("@/lib/offline/download-share-offline", () => ({
 }));
 
 import ControllerPage from "@/app/songsets/[id]/play/controller/page";
-import { setConnectivityProbe } from "@/hooks/useConnectivity";
+import { probeConnectivity, setConnectivityProbe } from "@/hooks/useConnectivity";
 import ShareControllerPage from "@/app/share/[token]/play/controller/page";
 import SharePage from "@/app/share/[token]/page";
 
@@ -455,6 +455,36 @@ describe("ControllerPage (songset)", () => {
   });
 
   describe("success state", () => {
+    it("returns Back to the Songset Editor of this songset when online", async () => {
+      setConnectivityProbe(() => Promise.resolve(true));
+      await probeConnectivity();
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+      expect(lastControllerProps?.exitRoute).toBe("/songsets/test-songset");
+
+      setConnectivityProbe(null);
+    });
+
+    it("returns Back to /worship when connectivity is not confirmed online", async () => {
+      setConnectivityProbe(() => Promise.resolve(false));
+      await probeConnectivity();
+      songsetSuccessFetches();
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+      expect(lastControllerProps?.exitRoute).toBe("/worship");
+
+      setConnectivityProbe(null);
+    });
+
     it("renders ControllerPlayer when data loaded", async () => {
       songsetSuccessFetches();
 
@@ -738,6 +768,15 @@ describe("ControllerPage (songset)", () => {
       // Tests that simulate an unreachable server inject a failing probe via
       // the connectivity seam; the default must not leak into other suites.
       setConnectivityProbe(null);
+    });
+
+    it("returns Back to /worship while offline", async () => {
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("controller-player")).toBeInTheDocument();
+      });
+      expect(lastControllerProps?.exitRoute).toBe("/worship");
     });
 
     it("boots from the index with the proxy media source and zero API fetches", async () => {

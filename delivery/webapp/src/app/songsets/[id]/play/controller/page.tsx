@@ -65,6 +65,14 @@ export default function ControllerPage() {
   const songsetId = params.id as string;
   const connectivity = useConnectivity();
   const offlineNow = connectivity === "offline";
+  // Where the player's Back button goes: the Songset Editor of this set when
+  // the app is positively online; /worship otherwise. The editor is a
+  // server-rendered, auth/DB-backed page that redirects itself to /worship
+  // offline (useOfflineRedirect) and whose RSC navigation dead-ends offline —
+  // and "not positively online" (Unknown) fails toward offline, mirroring the
+  // editor → controller gate in SongsetEditorClient.handleWorshipPlayback.
+  const controllerExitRoute =
+    connectivity !== "online" ? "/worship" : `/songsets/${songsetId}`;
   // Section Label headings for the lyric sheet (issue #306). Null = flat list:
   // the render is stale/rendering/failed, the chapters do not line up with the
   // timeline, or the payload has no Items. Computed once the manifest lands.
@@ -240,10 +248,7 @@ export default function ControllerPage() {
   return (
     <ControllerPlayer
       playerId={songsetId}
-      // Booted via the SW controller document the page cannot know its
-      // origin; the offline list is the canonical exit (issue #211
-      // follow-up, Q5).
-      exitRoute="/worship"
+      exitRoute={controllerExitRoute}
       {...(media.kind === "audio" ? { audioSrc: media.src } : { videoSrc: media.src })}
       chapters={core.chapters}
       chapterRecordingHashes={core.chapterRecordingHashes}
