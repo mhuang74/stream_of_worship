@@ -314,6 +314,59 @@ class TestRemapLrcToClips:
         # 19.0 s is exactly two beats before 20.0 s; the fallback's 0.5 s drops it.
         assert remap_lrc_to_clips(local_lines, clips, "Song") == []
 
+    def test_following_section_first_line_not_pulled_into_clip_end(self):
+        # Here I Bow, 68 BPM (tolerance 1.7647 s), saved bridge 130.55–159.68 s.
+        # The line at 159.67 s is the next bridge's first line: its display runs
+        # to 166.46 s, more than two beats past the end, so the cut never plays
+        # it. 130.44 s clamps to the clip start.
+        local_lines = [
+            LRCLine(time_seconds=130.44, text="God here and now, be lifted high"),
+            LRCLine(time_seconds=138.71, text="Right here and now, be glorified"),
+            LRCLine(time_seconds=145.6, text="God of Heaven and Earth"),
+            LRCLine(time_seconds=149.13, text="God who brought me back to life"),
+            LRCLine(time_seconds=152.41, text="I am Yours, forever Yours"),
+            LRCLine(time_seconds=159.67, text="God here and now, be lifted high"),
+            LRCLine(time_seconds=166.46, text="Right here and now, be glorified"),
+        ]
+        result = remap_lrc_to_clips(local_lines, (_clip(130.55, 159.68, 0.0),), "Song", tempo_bpm=68)
+        assert [(line.text, line.global_time_seconds) for line in result] == [
+            ("God here and now, be lifted high", 0.0),
+            ("Right here and now, be glorified", pytest.approx(8.16)),
+            ("God of Heaven and Earth", pytest.approx(15.05)),
+            ("God who brought me back to life", pytest.approx(18.58)),
+            ("I am Yours, forever Yours", pytest.approx(21.86)),
+        ]
+
+    def test_last_line_kept_when_clip_ends_inside_instrumental_gap(self):
+        local_lines = [
+            LRCLine(time_seconds=92.33, text="There is a King who bore the scars of healing"),
+            LRCLine(time_seconds=99.88, text="So here I bow to lift You high"),
+        ]
+        result = remap_lrc_to_clips(local_lines, (_clip(92.33, 98.0, 0.0),), "Song", tempo_bpm=68)
+        assert [(line.text, line.global_time_seconds) for line in result] == [
+            ("There is a King who bore the scars of healing", 0.0)
+        ]
+
+    def test_end_kept_only_while_display_fits_inside_tolerance(self):
+        clips = (_clip(0.0, 10.0, 0.0),)
+        # The line at 9.9 s is displayed until 10.4 s, inside the 0.5 s slack.
+        covered = [
+            LRCLine(time_seconds=9.9, text="covered"),
+            LRCLine(time_seconds=10.4, text="next"),
+            LRCLine(time_seconds=20.0, text="later"),
+        ]
+        assert [
+            (line.text, line.global_time_seconds)
+            for line in remap_lrc_to_clips(covered, clips, "Song")
+        ] == [("covered", pytest.approx(9.9))]
+        # Displayed until 10.6 s, past the slack: the whole tail is refused.
+        cut = [
+            LRCLine(time_seconds=9.9, text="cut"),
+            LRCLine(time_seconds=10.6, text="next"),
+            LRCLine(time_seconds=20.0, text="later"),
+        ]
+        assert remap_lrc_to_clips(cut, clips, "Song") == []
+
 
 class TestEstimateLastLyricDuration:
     def _make_lyrics(self, times_and_texts):

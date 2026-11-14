@@ -60,9 +60,13 @@ export interface SongsetLyricLine extends GlobalLRCLine {
  * Editor apply), then each line is shifted by the clip's timeline offset.
  * Ownership tolerance is two beats at the Item's Recording tempo, so a pickup
  * line that precedes its Step clamps to the clip start and is still highlighted
- * at the boundary; a late line within the same tolerance clamps just inside the
- * clip end, so a highlight never bleeds into the next Item — the same clamp the
- * render worker's remap_lrc_to_clips applies.
+ * at the boundary. At the end the following LRC line's timestamp decides: a
+ * line is kept only while its display ends within the tolerance of the Step, so
+ * the next section's first line is not sung in this cut and is dropped — except
+ * that a line starting more than two beats before the end is always kept, so a
+ * clip ending inside an instrumental gap keeps its last line. A kept line never
+ * highlights past the clip end, the same clamp the render worker's
+ * remap_lrc_to_clips applies.
  */
 export function toSongsetLyricLines(
   clips: readonly TimelineClip[],

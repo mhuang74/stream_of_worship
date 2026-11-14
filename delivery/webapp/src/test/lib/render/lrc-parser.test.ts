@@ -709,4 +709,76 @@ describe("linesForSourceRange", () => {
     expect(linesForSourceRange(pickup, 0, 10, steps, tolerance)).toEqual([]);
     expect(linesForSourceRange(pickup, 20, 30, steps, FALLBACK_TOLERANCE)).toEqual([]);
   });
+
+  it("does not pull the following section's first line into the end of a Step", () => {
+    // Here I Bow, 68 BPM (tolerance 1.7647 s), saved bridge 130.55–159.68 s.
+    // The line at 159.67 s is the next bridge's first line: its display runs
+    // to 166.46 s, more than two beats past the end, so the cut never plays it.
+    const bridge = [{ startSeconds: 130.55, endSeconds: 159.68 }];
+    const bridgeLines: LRCLine[] = [
+      { timeSeconds: 130.44, text: "God here and now, be lifted high" },
+      { timeSeconds: 138.71, text: "Right here and now, be glorified" },
+      { timeSeconds: 145.6, text: "God of Heaven and Earth" },
+      { timeSeconds: 149.13, text: "God who brought me back to life" },
+      { timeSeconds: 152.41, text: "I am Yours, forever Yours" },
+      { timeSeconds: 159.67, text: "God here and now, be lifted high" },
+      { timeSeconds: 166.46, text: "Right here and now, be glorified" },
+    ];
+    expect(
+      linesForSourceRange(bridgeLines, 130.55, 159.68, bridge, lyricBoundaryToleranceSeconds(68)).map(
+        (line) => line.text
+      )
+    ).toEqual([
+      "God here and now, be lifted high",
+      "Right here and now, be glorified",
+      "God of Heaven and Earth",
+      "God who brought me back to life",
+      "I am Yours, forever Yours",
+    ]);
+  });
+
+  it("keeps the last line when the Step ends inside an instrumental gap", () => {
+    const steps = [{ startSeconds: 92.33, endSeconds: 98.0 }];
+    const gapLines: LRCLine[] = [
+      { timeSeconds: 92.33, text: "There is a King who bore the scars of healing" },
+      { timeSeconds: 99.88, text: "So here I bow to lift You high" },
+    ];
+    expect(
+      linesForSourceRange(gapLines, 92.33, 98.0, steps, lyricBoundaryToleranceSeconds(68)).map(
+        (line) => line.text
+      )
+    ).toEqual(["There is a King who bore the scars of healing"]);
+  });
+
+  it("keeps a line on the end only while its display fits inside the tolerance", () => {
+    const step = [{ startSeconds: 0, endSeconds: 10 }];
+    // The line at 9.9 s is displayed until 10.4 s, inside the 0.5 s slack.
+    expect(
+      linesForSourceRange(
+        [
+          { timeSeconds: 9.9, text: "covered" },
+          { timeSeconds: 10.4, text: "next" },
+          { timeSeconds: 20, text: "later" },
+        ],
+        0,
+        10,
+        step,
+        FALLBACK_TOLERANCE
+      ).map((line) => line.text)
+    ).toEqual(["covered"]);
+    // Displayed until 10.6 s, past the slack: the whole tail is refused.
+    expect(
+      linesForSourceRange(
+        [
+          { timeSeconds: 9.9, text: "cut" },
+          { timeSeconds: 10.6, text: "next" },
+          { timeSeconds: 20, text: "later" },
+        ],
+        0,
+        10,
+        step,
+        FALLBACK_TOLERANCE
+      )
+    ).toEqual([]);
+  });
 });
