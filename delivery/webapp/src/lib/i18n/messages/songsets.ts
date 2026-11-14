@@ -54,6 +54,7 @@ export const songsetsBundle = bundle({
 
     // Actions (shared across row/editor/list)
     "songsets.action.render": "Render",
+    "songsets.action.cancelRender": "Cancel render",
     "songsets.action.worship": "Worship",
     "songsets.action.listen": "Listen",
     "songsets.action.rename": "Rename",
@@ -219,6 +220,7 @@ export const songsetsBundle = bundle({
 
     // Actions (shared across row/editor/list)
     "songsets.action.render": "渲染",
+    "songsets.action.cancelRender": "取消渲染",
     "songsets.action.worship": "敬拜",
     "songsets.action.listen": "試聽",
     "songsets.action.rename": "重新命名",

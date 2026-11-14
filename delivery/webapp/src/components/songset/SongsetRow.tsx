@@ -33,6 +33,7 @@ import {
   AlertTriangle,
   WifiOff,
   CloudOff,
+  XCircle,
   Music,
   Clock,
   Download,
@@ -62,6 +63,10 @@ export interface SongsetRowProps {
   renderErrorMessage?: string | null;
   failedAt?: Date | null;
   onRender?: () => void;
+  /** Present ⇒ the kebab shows "Cancel render" instead of "Render" while a
+   * job is active. */
+  onCancelRender?: () => void;
+  isCancellingRender?: boolean;
   onWorshipPlayback?: () => void;
   onListen?: () => void;
   onRetry?: () => void;
@@ -101,6 +106,8 @@ export function SongsetRow({
   renderErrorMessage,
   failedAt,
   onRender,
+  onCancelRender,
+  isCancellingRender = false,
   onWorshipPlayback,
   onListen,
   onRename,
@@ -237,10 +244,20 @@ export function SongsetRow({
                     )}
                     <DropdownMenuSeparator />
                     {showMenuItem("render") && (
-                      <DropdownMenuItem onClick={onRender}>
-                        <RefreshCw className="size-4 mr-2" />
-                        {t("songsets.action.render")}
-                      </DropdownMenuItem>
+                      renderState === "rendering" && onCancelRender ? (
+                        <DropdownMenuItem
+                          onClick={onCancelRender}
+                          disabled={isCancellingRender}
+                        >
+                          <XCircle className="size-4 mr-2" />
+                          {t("songsets.action.cancelRender")}
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem onClick={onRender}>
+                          <RefreshCw className="size-4 mr-2" />
+                          {t("songsets.action.render")}
+                        </DropdownMenuItem>
+                      )
                     )}
                     {showMenuItem("worship") && (
                       <DropdownMenuItem

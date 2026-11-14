@@ -4,6 +4,7 @@ import { renderWithLocale as render } from "@/test/render";
 import type { SongListItem } from "@/components/songset/SongList";
 import type { TransitionSettings } from "@/components/songset/TransitionPanel";
 import { SongsetEditorClient } from "@/app/songsets/[id]/SongsetEditorClient";
+import { toast } from "sonner";
 
 const shell = vi.hoisted(() => ({
   push: vi.fn(),
@@ -23,7 +24,7 @@ vi.mock("@/lib/offline/offline-index", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
 // The preview transport requires the shared player; the save path only stops it.
@@ -61,9 +62,10 @@ vi.mock("@/contexts/SongsetListenContext", () => ({
  */
 vi.mock("@/components/songset/SongsetEditor", () => ({
   SongsetEditor: (props: {
-    songset: { updatedAt: string };
+    songset: { updatedAt: string; renderState: string };
     items: SongListItem[];
     onListen: () => void;
+    onCancelRender?: () => void;
     onUpdateTransition: (
       itemId: string,
       settings: TransitionSettings
@@ -74,8 +76,14 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
     return (
       <div>
         <span data-testid="shell-updated-at">{props.songset.updatedAt}</span>
+        <span data-testid="shell-render-state">{props.songset.renderState}</span>
         <span data-testid="shell-gap">{item?.gapBeats}</span>
         <span data-testid="shell-arrangement">{item?.arrangementSteps}</span>
+        <button
+          type="button"
+          data-testid="shell-cancel-render"
+          onClick={() => props.onCancelRender?.()}
+        />
         <button
           type="button"
           data-testid="shell-listen"
@@ -265,5 +273,49 @@ describe("SongsetEditorClient arrangement save", () => {
     expect(screen.getByTestId("arrangement-save-error")).not.toHaveTextContent(
       /failed to fetch/i
     );
+  });
+
+  it("reports the API's reason when the render job can no longer be cancelled", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        return Promise.resolve(
+          jsonResponse({ error: "Cannot cancel job with status: completed" }, false)
+        );
+      }
+      // The watch poll that runs while renderState is "rendering".
+      return Promise.resolve(
+        jsonResponse({
+          id: "job-1",
+          status: "running",
+          errorMessage: null,
+          mp3R2Key: null,
+          mp4R2Key: null,
+          chaptersR2Key: null,
+          estimatedTotalSeconds: null,
+        })
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <SongsetEditorClient
+        songsetId="songset-1"
+        initialData={{
+          ...initialData(),
+          renderState: "rendering" as const,
+          latestRenderJobId: "job-1",
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("shell-cancel-render"));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Cannot cancel job with status: completed"
+      )
+    );
+    // A refused cancel leaves the in-flight render on screen.
+    expect(screen.getByTestId("shell-render-state")).toHaveTextContent("rendering");
   });
 });

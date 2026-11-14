@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { renderJobs, songsets } from "@/db/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { eq, and, lt, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { normalizeFontFamily } from "@/lib/constants";
 import { getSongsetRenderMetrics } from "@/lib/db/songsets";
@@ -354,10 +354,26 @@ export async function cancelRenderJob(
       status: "cancelled",
       updatedAt: now,
     })
-    .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId)))
+    .where(
+      and(
+        eq(renderJobs.id, id),
+        eq(renderJobs.userId, userId),
+        // The read above is not a lock: the worker can complete or fail the
+        // job in between. Matching the statuses in the write keeps a cancel
+        // from overwriting a terminal row.
+        inArray(renderJobs.status, ["queued", "running"])
+      )
+    )
     .returning();
 
-  if (!updated) return null;
+  if (!updated) {
+    // Zero rows: the job moved to a terminal status (or vanished) after the
+    // read. Re-read so the route reports what actually happened rather than
+    // the status the read saw.
+    const current = await getRenderJob(id, userId);
+    if (!current) return null;
+    throw new Error(`Cannot cancel job with status: ${current.status}`);
+  }
 
   return mapRowToRenderJob(updated);
 }

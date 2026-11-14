@@ -16,7 +16,7 @@ export const renderBundle = bundle({
 
     // Render page toasts
     "render.toast.alreadyInProgress": "A render job is already in progress",
-    "render.toast.started": "Render started",
+    "render.toast.started": "Render started — track or cancel it from the songset menu",
     "render.toast.cancelled": "Render cancelled",
     "render.toast.failedToStart": "Failed to start render",
     "render.toast.failedToCancel": "Failed to cancel",
@@ -100,18 +100,6 @@ export const renderBundle = bundle({
     "render.compare.titleCardOff": "Off",
     "render.compare.estimatedPrefix": "~",
 
-    // RenderSubmitted
-    "render.submitted.title": "Render Started",
-    "render.submitted.estimatedTime": "Estimated time",
-    "render.submitted.estimatedMinutes": "minutes",
-    "render.submitted.estimatedPrefix": "~",
-    "render.submitted.leavePage":
-      "You can leave this page. Check your songset later for the result.",
-    "render.submitted.authExpired":
-      "Your session has expired. Sign in again to see the render result — the render is still running.",
-    "render.submitted.submittedAt": "Submitted at",
-    "render.submitted.cancel": "Cancel Render",
-
     // RenderComplete
     "render.complete.title": "Render Complete!",
     "render.complete.description": "is ready for playback",
@@ -137,6 +125,10 @@ export const renderBundle = bundle({
     "render.badge.stale": "Needs re-render",
     "render.badge.failed": "Render failed",
 
+    // Render progress line (SongsetEditor metadata row)
+    "render.status.estimatedPrefix": "~",
+    "render.status.estimatedMinutes": "minutes",
+
     // Render admission — a saved Song arrangement no longer matches the
     // Recording's analysis (render-jobs 409 / failed render tooltip). Mirrors
     // arrangements.ts ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE.
@@ -152,7 +144,7 @@ export const renderBundle = bundle({
 
     // Render page toasts
     "render.toast.alreadyInProgress": "已經有渲染在進行了",
-    "render.toast.started": "已開始渲染",
+    "render.toast.started": "已開始渲染——可在歌曲組選單中追蹤或取消",
     "render.toast.cancelled": "已取消渲染",
     "render.toast.failedToStart": "渲染啟動失敗，請再試一次",
     "render.toast.failedToCancel": "取消失敗",
@@ -230,17 +222,6 @@ export const renderBundle = bundle({
     "render.compare.titleCardOff": "關閉",
     "render.compare.estimatedPrefix": "約 ",
 
-    // RenderSubmitted
-    "render.submitted.title": "已開始渲染",
-    "render.submitted.estimatedTime": "預估時間",
-    "render.submitted.estimatedMinutes": "分鐘",
-    "render.submitted.estimatedPrefix": "約 ",
-    "render.submitted.leavePage": "可以先離開這頁，晚點再回來看結果就好。",
-    "render.submitted.authExpired":
-      "你的登入已經過期，請重新登入查看渲染結果——渲染仍在進行中。",
-    "render.submitted.submittedAt": "送出時間",
-    "render.submitted.cancel": "取消渲染",
-
     // RenderComplete
     "render.complete.title": "渲染完成！",
     "render.complete.description": "已經可以播放了",
@@ -265,6 +246,10 @@ export const renderBundle = bundle({
     "render.badge.fresh": "已渲染",
     "render.badge.stale": "建議重新渲染",
     "render.badge.failed": "渲染失敗",
+
+    // Render progress line (SongsetEditor metadata row)
+    "render.status.estimatedPrefix": "約 ",
+    "render.status.estimatedMinutes": "分鐘",
 
     // Render admission — saved arrangement no longer matches analysis
     "render.error.arrangementRepairOrReset":

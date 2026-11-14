@@ -363,6 +363,72 @@ describe("SongsetRow", () => {
     });
   });
 
+  describe("cancel render menu item", () => {
+    const openMenuAndSettle = async () => {
+      fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+      });
+    };
+
+    it("replaces Render with Cancel render while a job is active", async () => {
+      renderRow({
+        renderState: "rendering" as RenderState,
+        lastCompletedRenderJobId: null,
+        onCancelRender: vi.fn(),
+      });
+      await openMenuAndSettle();
+
+      expect(screen.getByRole("menuitem", { name: /cancel render/i })).toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /^render$/i })).not.toBeInTheDocument();
+    });
+
+    it("calls onCancelRender when clicked", async () => {
+      const onCancelRender = vi.fn();
+      renderRow({
+        renderState: "rendering" as RenderState,
+        lastCompletedRenderJobId: null,
+        onCancelRender,
+      });
+      await openMenuAndSettle();
+
+      fireEvent.click(screen.getByRole("menuitem", { name: /cancel render/i }));
+
+      expect(onCancelRender).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables Cancel render while the request is in flight", async () => {
+      renderRow({
+        renderState: "rendering" as RenderState,
+        lastCompletedRenderJobId: null,
+        onCancelRender: vi.fn(),
+        isCancellingRender: true,
+      });
+      await openMenuAndSettle();
+
+      expect(screen.getByRole("menuitem", { name: /cancel render/i })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
+    });
+
+    it("keeps Render for a songset that is not rendering", async () => {
+      renderRow({ renderState: "fresh" as RenderState, onCancelRender: vi.fn() });
+      await openMenuAndSettle();
+
+      expect(screen.getByRole("menuitem", { name: /^render$/i })).toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /cancel render/i })).not.toBeInTheDocument();
+    });
+
+    it("falls back to Render while rendering when no cancel handler is wired", async () => {
+      renderRow({ renderState: "rendering" as RenderState, lastCompletedRenderJobId: null });
+      await openMenuAndSettle();
+
+      expect(screen.getByRole("menuitem", { name: /^render$/i })).toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: /cancel render/i })).not.toBeInTheDocument();
+    });
+  });
+
   describe("offline badge stale tint", () => {
     it("tints the offline badge amber when artifacts are stale", () => {
       const { container } = renderRow({

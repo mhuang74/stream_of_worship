@@ -326,6 +326,14 @@ export interface SongsetDetail extends SongsetListItem {
   deletedItemCount: number;
 }
 
+/**
+ * `getSongsetEditorData` payload. The editor alone needs the in-flight render's
+ * estimate, to show "Rendering · ~N minutes" without a second round trip.
+ */
+export interface SongsetEditorData extends SongsetDetail {
+  latestRenderJobEstimatedTotalSeconds: number | null;
+}
+
 export interface RenderJobSummary {
   id: string;
   status: string;
@@ -732,7 +740,7 @@ export async function listSongsetSummaries(
 export async function getSongsetEditorData(
   id: string,
   userId: number
-): Promise<SongsetDetail | null> {
+): Promise<SongsetEditorData | null> {
   return timePageLoad("getSongsetEditorData", async () => {
     const [row] = await db
       .select({
@@ -746,6 +754,7 @@ export async function getSongsetEditorData(
         lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
         latestJobStatus: renderJobs.status,
         latestJobCompletedAt: renderJobs.completedAt,
+        latestJobEstimatedTotalSeconds: renderJobs.estimatedTotalSeconds,
         renderErrorMessage: renderJobs.errorMessage,
         latestJobStartedAt: renderJobs.startedAt,
         latestJobCreatedAt: renderJobs.createdAt,
@@ -912,6 +921,7 @@ export async function getSongsetEditorData(
           )
         ) || null,
       renderState,
+      latestRenderJobEstimatedTotalSeconds: row.latestJobEstimatedTotalSeconds ?? null,
       renderErrorMessage:
         renderState === "failed" ? sanitizeRenderErrorMessage(row.renderErrorMessage) : null,
       failedAt: renderState === "failed" ? failedAt : null,

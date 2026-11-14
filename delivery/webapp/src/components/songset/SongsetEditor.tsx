@@ -53,6 +53,7 @@ import {
   AlertTriangle,
   AlertCircle,
   X,
+  XCircle,
   Monitor,
   Plus,
   Loader2,
@@ -75,6 +76,8 @@ export interface SongsetEditorProps {
     lastCompletedRenderJobId: string | null;
     renderErrorMessage?: string | null;
     failedAt?: string | null;
+    /** Estimated render duration of the in-flight job, in seconds. */
+    latestRenderJobEstimatedTotalSeconds?: number | null;
     updatedAt: string;
   };
   items: SongListItem[];
@@ -83,6 +86,10 @@ export interface SongsetEditorProps {
   onUpdateTransition: (itemId: string, settings: TransitionSettings) => Promise<void>;
   onEditArrangement?: (itemId: string) => void;
   onRender: () => void;
+  /** Present ⇒ the kebab shows "Cancel render" instead of "Render" while a
+   * job is active. */
+  onCancelRender?: () => void;
+  isCancellingRender?: boolean;
   onPlay: () => void;
   onListen: () => void;
   onRetry: () => void;
@@ -114,6 +121,8 @@ export function SongsetEditor({
   onUpdateTransition,
   onEditArrangement,
   onRender,
+  onCancelRender,
+  isCancellingRender = false,
   onPlay,
   onListen,
   onUpdateDescription,
@@ -418,10 +427,17 @@ export function SongsetEditor({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={onRender} disabled={hasUnknownDuration}>
-                <RefreshCw className="size-4 mr-2" />
-                {t("songsets.action.render")}
-              </DropdownMenuItem>
+              {songset.renderState === "rendering" && onCancelRender ? (
+                <DropdownMenuItem onClick={onCancelRender} disabled={isCancellingRender}>
+                  <XCircle className="size-4 mr-2" />
+                  {t("songsets.action.cancelRender")}
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={onRender} disabled={hasUnknownDuration}>
+                  <RefreshCw className="size-4 mr-2" />
+                  {t("songsets.action.render")}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={onPlay}
                 disabled={!canWorship}
@@ -500,6 +516,16 @@ export function SongsetEditor({
           {t("songsets.updatedPrefix")}
           {formatShortDateTime(new Date(songset.updatedAt), locale)}
         </span>
+        {songset.renderState === "rendering" && (
+          <span className="inline-flex items-center gap-1" data-testid="render-progress">
+            <Loader2 className="size-3 animate-spin" />
+            {songset.latestRenderJobEstimatedTotalSeconds
+              ? `${t("render.badge.rendering")} · ${t("render.status.estimatedPrefix")}${Math.ceil(
+                  songset.latestRenderJobEstimatedTotalSeconds / 60
+                )} ${t("render.status.estimatedMinutes")}`
+              : t("render.badge.rendering")}
+          </span>
+        )}
         {isOfflineAvailable && (
           <Badge variant="secondary" className="text-xs gap-1">
             <WifiOff className="size-3" />

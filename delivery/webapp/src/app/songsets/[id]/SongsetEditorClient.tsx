@@ -25,6 +25,9 @@ import { removeOfflineSongset } from "@/lib/offline/offline-index";
 import { OfflineStatus } from "@/components/play/OfflineStatus";
 import { unlockAudioContext } from "@/lib/audio/audio-context";
 import { useSongsetListen } from "@/contexts/SongsetListenContext";
+import { useRenderJobWatch, type RenderJobSnapshot } from "@/hooks/useRenderJobWatch";
+import { isOfflineSupportedOnCurrentDevice } from "@/lib/offline/artifact-cache";
+import { downloadOfflineArtifacts, NoArtifactsError } from "@/lib/offline/download-offline";
 
 /** R2 keys the offline download needs, fetched from the render job. */
 interface RenderJobR2Keys {
@@ -67,6 +70,7 @@ interface ApiSongset {
   renderErrorMessage: string | null;
   failedAt: string | null;
   isArtifactsStale?: boolean;
+  latestRenderJobEstimatedTotalSeconds: number | null;
 }
 
 interface ApiSongsetItem {
@@ -117,6 +121,7 @@ interface ApiResponse {
   renderErrorMessage: string | null;
   failedAt: string | null;
   isArtifactsStale?: boolean;
+  latestRenderJobEstimatedTotalSeconds: number | null;
   items: ApiSongsetItem[];
 }
 
@@ -308,6 +313,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     renderErrorMessage: initialData.renderErrorMessage,
     failedAt: initialData.failedAt,
     isArtifactsStale: initialData.isArtifactsStale,
+    latestRenderJobEstimatedTotalSeconds: initialData.latestRenderJobEstimatedTotalSeconds,
   }));
   const [items, setItems] = useState<SongListItem[]>(() => initialData.items.map(toSongListItem));
   // Offline index record (client-only): cached ⇒ offline-copy play entry.
@@ -359,6 +365,189 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const [shareDialogOpen, setShareDialogOpen] = useState(searchParams.get("share") === "true");
   const autoOpenDoneRef = useRef(false);
   const isShare = searchParams.get("share") === "true";
+
+  // ---- In-flight render -------------------------------------------------
+  // The editor is the render screen's destination now (the /render page
+  // redirects here while a job is active), so it owns the completion watch.
+  const [isCancellingRender, setIsCancellingRender] = useState(false);
+  // True between a Cancel tap and the DELETE settling, so a poll tick landing
+  // in that window cannot report our own cancellation as a failure.
+  const isCancellingRef = useRef(false);
+  // The auto-cache switch lives in settings (settings page owns it). An
+  // unreadable setting counts as off — nobody should discover a surprise
+  // hundred-megabyte download. Kept in a ref, not state: nothing renders from
+  // it, and the completion callback must see the value the moment the fetch
+  // lands rather than after a re-render.
+  const offlineAutoCacheRef = useRef(false);
+  useEffect(() => {
+    if (songset?.renderState !== "rendering") return;
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { settings?: { offlineAutoCache?: boolean } } | null) => {
+        if (!cancelled && data) {
+          offlineAutoCacheRef.current = data.settings?.offlineAutoCache === true;
+        }
+      })
+      .catch(() => {
+        offlineAutoCacheRef.current = false;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [songset?.latestRenderJobId, songset?.renderState]);
+
+  const handleRenderComplete = useCallback(
+    (job: RenderJobSnapshot) => {
+      toast.success(t("render.toast.completed"));
+      // Local patch, not router.refresh(): the state above is prop-seeded once
+      // and never re-synced, so the editor would otherwise keep showing the
+      // in-flight status until a full reload.
+      setSongset((prev) =>
+        prev
+          ? {
+              ...prev,
+              renderState: "fresh" as RenderState,
+              isArtifactsStale: false,
+              renderErrorMessage: null,
+              failedAt: null,
+              latestRenderJobId: job.id,
+              lastCompletedRenderJobId: job.id,
+              latestRenderJobEstimatedTotalSeconds: null,
+            }
+          : prev
+      );
+      // Refresh the offline control's keys: the mount-time fetch saw a running
+      // job, so its artifact keys were all null.
+      setRenderJobR2Keys({
+        id: job.id,
+        mp3R2Key: job.mp3R2Key,
+        mp4R2Key: job.mp4R2Key,
+        chaptersR2Key: job.chaptersR2Key,
+      });
+
+      // Auto-cache is tab-contingent: the render worker writes the database
+      // directly, so a completed job is only observable from a live page that
+      // is polling for it.
+      if (!offlineAutoCacheRef.current) return;
+      if (!job.mp3R2Key && !job.mp4R2Key) return;
+      if (!isOfflineSupportedOnCurrentDevice() || !("caches" in window)) return;
+
+      // Fire-and-forget: a worship video is hundreds of megabytes, and the
+      // page is already done telling the user what happened.
+      downloadOfflineArtifacts({
+        songsetId,
+        songsetName: songset?.name ?? "",
+        renderJobId: job.id,
+      })
+        .then(() => {
+          setIsOfflineAvailable(true);
+          toast.success(t("audio.offline.downloaded"));
+        })
+        .catch((error: unknown) => {
+          console.error("Auto-cache error:", error);
+          toast.error(
+            error instanceof NoArtifactsError
+              ? t("audio.offline.noArtifacts")
+              : t("audio.offline.downloadFailed")
+          );
+        });
+    },
+    [songset?.name, songsetId, t]
+  );
+
+  const handleRenderFailed = useCallback(
+    (job: RenderJobSnapshot) => {
+      // A poll tick can observe the cancelled status while our own DELETE is in
+      // flight; the cancel path owns that transition (and its toast).
+      if (isCancellingRef.current) return;
+      toast.error(t("render.toast.failed"));
+      setSongset((prev) =>
+        prev
+          ? {
+              ...prev,
+              renderState: "failed" as RenderState,
+              renderErrorMessage: job.errorMessage,
+              failedAt: new Date().toISOString(),
+              isArtifactsStale: false,
+              latestRenderJobEstimatedTotalSeconds: null,
+            }
+          : prev
+      );
+    },
+    [t]
+  );
+
+  const handleRenderCancelled = useCallback(() => {
+    // The local cancel path owns the toast and the patch; a poll tick that
+    // observes the flip is just confirmation.
+    if (isCancellingRef.current) return;
+    setSongset((prev) =>
+      prev
+        ? {
+            ...prev,
+            renderState: "unrendered" as RenderState,
+            latestRenderJobId: null,
+            renderErrorMessage: null,
+            failedAt: null,
+            isArtifactsStale: false,
+            latestRenderJobEstimatedTotalSeconds: null,
+          }
+        : prev
+    );
+  }, []);
+
+  // The poll hit 401/403: the session expired and can never observe this job's
+  // completion. The job itself is fine — the render worker writes the database
+  // directly — so only the toast marks the state change (issue #210).
+  const handleRenderAuthExpired = useCallback(() => {
+    toast.error(t("render.toast.authExpired"));
+  }, [t]);
+
+  useRenderJobWatch({
+    jobId: songset?.latestRenderJobId ?? null,
+    enabled: songset?.renderState === "rendering",
+    onCompleted: handleRenderComplete,
+    onFailed: handleRenderFailed,
+    onCancelled: handleRenderCancelled,
+    onAuthExpired: handleRenderAuthExpired,
+  });
+
+  const handleCancelRender = useCallback(async () => {
+    const jobId = songset?.latestRenderJobId;
+    if (!jobId || isCancellingRef.current) return;
+    setIsCancellingRender(true);
+    isCancellingRef.current = true;
+    try {
+      const response = await fetch(`/api/render-jobs/${jobId}`, { method: "DELETE" });
+      if (!response.ok) {
+        // 400 carries the job's actual terminal status, 404 means the row is
+        // gone. That reason is the only actionable thing the user can get, so
+        // prefer it over a fixed string.
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || t("render.toast.failedToCancelJob"));
+      }
+      toast.info(t("render.toast.cancelled"));
+      setSongset((prev) =>
+        prev
+          ? {
+              ...prev,
+              renderState: "unrendered" as RenderState,
+              latestRenderJobId: null,
+              renderErrorMessage: null,
+              failedAt: null,
+              isArtifactsStale: false,
+              latestRenderJobEstimatedTotalSeconds: null,
+            }
+          : prev
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("render.toast.failedToCancelJob"));
+    } finally {
+      isCancellingRef.current = false;
+      setIsCancellingRender(false);
+    }
+  }, [songset?.latestRenderJobId, t]);
 
   useEffect(() => {
     if (isNew && !autoOpenDoneRef.current && items.length === 0) {
@@ -880,6 +1069,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         onUpdateTransition={handleUpdateTransition}
         onEditArrangement={setEditingArrangementItemId}
         onRender={handleRender}
+        onCancelRender={handleCancelRender}
+        isCancellingRender={isCancellingRender}
         onPlay={handleWorshipPlayback}
         onListen={handleListen}
         onRetry={handleRetry}

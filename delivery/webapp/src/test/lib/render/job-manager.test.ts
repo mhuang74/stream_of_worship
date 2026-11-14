@@ -706,6 +706,45 @@ describe("cancelRenderJob", () => {
       "Cannot cancel job with status: cancelled"
     );
   });
+
+  it("does not overwrite a job that completed during the cancel", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockReset();
+    vi.mocked(db.query.renderJobs.findFirst)
+      .mockResolvedValueOnce({ ...mockRenderJob, status: "running" })
+      .mockResolvedValueOnce({ ...mockRenderJob, status: "completed" });
+
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    await expect(cancelRenderJob(1, "mock-job-id")).rejects.toThrow(
+      "Cannot cancel job with status: completed"
+    );
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when the job disappears during the cancel", async () => {
+    vi.mocked(db.query.renderJobs.findFirst).mockReset();
+    vi.mocked(db.query.renderJobs.findFirst)
+      .mockResolvedValueOnce({ ...mockRenderJob, status: "running" })
+      .mockResolvedValueOnce(null);
+
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    });
+    vi.mocked(db.update).mockImplementation(mockUpdate as any);
+
+    await expect(cancelRenderJob(1, "mock-job-id")).resolves.toBeNull();
+  });
 });
 
 describe("startRenderJob", () => {
