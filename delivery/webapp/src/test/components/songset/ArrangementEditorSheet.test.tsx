@@ -278,9 +278,13 @@ describe("ArrangementEditorSheet", () => {
 
   it("keeps a late line and a dropped-section pickup with their own components", () => {
     // Source section 10–20 s (Chorus) is dropped, so no Step tiles the 10 s or
-    // 20 s boundary: the line 0.3 s after the first Step's end still belongs to
-    // it, and the line 0.2 s before the second Step's start is its pickup.
-    lyrics.lrcContent = "[00:10.30]Late tail\n[00:19.80]Dropped pickup\n";
+    // 20 s boundary. The 10.30 s line is displayed only until the next line at
+    // 10.40 s, inside the tolerance past the first Step's end, so that Step
+    // keeps it; the 10.40 s line is displayed into the dropped section and
+    // appears nowhere, and the line 0.2 s before the second Step's start is its
+    // pickup.
+    lyrics.lrcContent =
+      "[00:10.30]Late tail\n[00:10.40]Dropped chorus line\n[00:19.80]Dropped pickup\n";
     const saved = {
       version: 1,
       steps: [
@@ -298,6 +302,7 @@ describe("ArrangementEditorSheet", () => {
 
     const rows = screen.getAllByTestId("arrangement-draft-step");
     expect(within(rows[0]).getByText("Late tail")).toBeInTheDocument();
+    expect(screen.queryByText("Dropped chorus line")).toBeNull();
     expect(within(rows[0]).queryByText("Dropped pickup")).toBeNull();
     expect(within(rows[1]).getByText("Dropped pickup")).toBeInTheDocument();
     expect(within(rows[1]).queryByText("Late tail")).toBeNull();
