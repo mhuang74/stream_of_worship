@@ -22,6 +22,10 @@ export const core = bundle({
     // Build info
     "build.info": "and all the trees of the field shall clap their hands",
 
+    // Deployment indicator
+    "deployment.preview": "Preview — non-production",
+    "deployment.development": "Development — non-production",
+
     // Home page
     "home.title": "Stream of Worship",
     "home.subtitle":
@@ -253,6 +257,10 @@ export const core = bundle({
 
     // Build info
     "build.info": "田野的樹木也都拍掌",
+
+    // Deployment indicator
+    "deployment.preview": "預覽版本 — 非正式環境",
+    "deployment.development": "開發版本 — 非正式環境",
 
     // Home page
     "home.title": "Stream of Worship",

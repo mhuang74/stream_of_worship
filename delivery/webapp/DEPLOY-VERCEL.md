@@ -293,6 +293,35 @@ scope, so `main` deploys continue using the Production-scoped settings. Vercel
 also supports **branch-scoped** Preview values that override generic Preview ones
 — the clean fix when two branches need different pinned origins simultaneously.
 
+### Non-production indicator (banner)
+
+Every deployment whose `NEXT_PUBLIC_VERCEL_ENV` is not exactly `production`
+renders a full-width amber strip above the header — on every route, and it is
+not dismissible. The strip is suppressed on the congregation-facing projection
+routes (`/songsets/:id/play/projection`, `/share/:token/play/projection`).
+Production renders nothing.
+
+| `NEXT_PUBLIC_VERCEL_ENV` | Strip |
+|---|---|
+| `production` | absent |
+| `preview` | `PREVIEW — NON-PRODUCTION · <commit>` |
+| `development`, unset, or any other value | `DEVELOPMENT — NON-PRODUCTION · <commit>` |
+
+This relies on Vercel's **Automatically expose System Environment Variables**
+project setting (Settings → Environment Variables) being enabled.
+`NEXT_PUBLIC_VERCEL_ENV` is a system variable — not one added with
+`vercel env add` — and it is baked into the client bundle at build time, so
+toggling the setting requires a fresh deploy.
+
+Failure mode, deliberately: if that setting is off, or the deployment is not on
+Vercel at all, the variable is absent and the strip appears. A false alarm on
+production is preferred over a deployment silently looking like production. The
+fix is the project setting or the deploy hook's target environment — do **not**
+add a hand-set `NEXT_PUBLIC_APP_ENV` fallback.
+
+Detection lives in `src/lib/deployment-env.ts`; the strip itself is
+`src/components/layout/DeploymentBanner.tsx`, mounted in `src/app/layout.tsx`.
+
 ---
 
 ## Troubleshooting
