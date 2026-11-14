@@ -1506,9 +1506,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1794532699.3294506,
-    "seen": 1794533086.8942058,
-    "ast_hash": "2c6c06a833bb3b429e6cdc18f64dc4b2",
+    "mtime": 1794585858.7457113,
+    "seen": 1794585967.2652736,
+    "ast_hash": "9eb72104eb481611677f3abc7968e89b",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/BpmRangeMultiSelect.tsx": {
@@ -2616,9 +2616,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/app/favorites/FavoritesClient.test.tsx": {
-    "mtime": 1794533102.6106746,
-    "seen": 1794533179.7678757,
-    "ast_hash": "2d538eefc12768112decd94d2021ace4",
+    "mtime": 1794533212.169288,
+    "seen": 1794585967.2784724,
+    "ast_hash": "1d4c4d5275d31b05172da681719ea506",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/app/header-avatar.test.tsx": {
@@ -5913,6 +5913,18 @@
     "mtime": 1794532001.9826362,
     "seen": 1794533086.941498,
     "ast_hash": "56528d6a7a79ac1e7d096117ab1ee1ed",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/lib/audio/audio-bytes-cache.ts": {
+    "mtime": 1794532299.9452283,
+    "seen": 1794585967.2699356,
+    "ast_hash": "eadc44bf5207baf8f252dbb741dfa6e1",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/test/lib/audio/audio-bytes-cache.test.ts": {
+    "mtime": 1794532304.7721848,
+    "seen": 1794585967.2848878,
+    "ast_hash": "b1eca4aae84dbefad339be467d7708ba",
     "semantic_hash": ""
   }
 }
