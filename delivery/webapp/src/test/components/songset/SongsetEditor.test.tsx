@@ -46,6 +46,7 @@ describe("SongsetEditor", () => {
     latestRenderJobId: "job-1",
     lastFailedRenderJobId: null,
     lastCompletedRenderJobId: "job-1",
+    latestRenderJobEstimatedTotalSeconds: null,
     updatedAt: "2024-01-15T10:30:00Z",
   };
 
@@ -195,7 +196,9 @@ describe("SongsetEditor", () => {
       expect(screen.getByText("Duration unavailable")).toBeInTheDocument();
     });
 
-    it.each(["fresh", "unrendered", "rendering", "stale"] as RenderState[])(
+    // The editor shows no RenderStatusBadge. `rendering` is excluded because it
+    // now has its own status line (see "in-flight render status line").
+    it.each(["fresh", "unrendered", "stale"] as RenderState[])(
       "renders no render-state badge for %s",
       (renderState) => {
         renderEditor({
@@ -386,6 +389,43 @@ describe("SongsetEditor", () => {
       });
 
       expect(onRender).toHaveBeenCalled();
+    });
+
+    it("replaces Render with Cancel render while a job is active", async () => {
+      const onRender = vi.fn();
+      const onCancelRender = vi.fn();
+      renderEditor({
+        songset: { ...mockSongset, renderState: "rendering" as RenderState },
+        onRender,
+        onCancelRender,
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /cancel render/i })).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole("menuitem", { name: /^render$/i })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("menuitem", { name: /cancel render/i }));
+      expect(onCancelRender).toHaveBeenCalledTimes(1);
+      expect(onRender).not.toHaveBeenCalled();
+    });
+
+    it("disables Cancel render while the request is in flight", async () => {
+      renderEditor({
+        songset: { ...mockSongset, renderState: "rendering" as RenderState },
+        onCancelRender: vi.fn(),
+        isCancellingRender: true,
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /more options/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("menuitem", { name: /cancel render/i })).toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+      });
     });
 
     it("calls onPlay when worship menu item clicked", async () => {
@@ -716,6 +756,70 @@ describe("SongsetEditor", () => {
       });
       expect(onRender).toHaveBeenCalled();
     });
+  });
+
+  describe("in-flight render status line", () => {
+    it("shows the estimated minutes from the job", () => {
+      renderEditor({
+        songset: {
+          ...mockSongset,
+          renderState: "rendering" as RenderState,
+          lastCompletedRenderJobId: null,
+          latestRenderJobEstimatedTotalSeconds: 600,
+        },
+      });
+
+      expect(screen.getByTestId("render-progress")).toHaveTextContent(
+        "Rendering · ~10 minutes"
+      );
+    });
+
+    it("degrades to the bare label when the job has no estimate", () => {
+      renderEditor({
+        songset: {
+          ...mockSongset,
+          renderState: "rendering" as RenderState,
+          lastCompletedRenderJobId: null,
+          latestRenderJobEstimatedTotalSeconds: null,
+        },
+      });
+
+      expect(screen.getByTestId("render-progress")).toHaveTextContent("Rendering");
+    });
+
+    it("translates the line in zh-Hant", () => {
+      renderWithLocale(
+        <SongsetEditor
+          {...defaultProps}
+          songset={{
+            ...mockSongset,
+            renderState: "rendering" as RenderState,
+            lastCompletedRenderJobId: null,
+            latestRenderJobEstimatedTotalSeconds: 600,
+          }}
+        />,
+        "zh-Hant"
+      );
+
+      expect(screen.getByTestId("render-progress")).toHaveTextContent(
+        "渲染中 · 約 10 分鐘"
+      );
+    });
+
+    it.each(["fresh", "unrendered", "stale", "failed"] as RenderState[])(
+      "shows nothing for renderState %s",
+      (renderState) => {
+        renderEditor({
+          songset: {
+            ...mockSongset,
+            renderState,
+            latestRenderJobEstimatedTotalSeconds: 600,
+          },
+        });
+
+        expect(screen.queryByTestId("render-progress")).not.toBeInTheDocument();
+      }
+    );
   });
 
   describe("render failure alert", () => {

@@ -35,11 +35,17 @@ export default async function RenderPage({
   const latestJob = serializeJob(data.latestJob);
   const previousCompletedJob = serializeJob(data.previousCompletedJob);
 
+  // A job that is already queued/running belongs on the editor: that page owns
+  // the in-flight state (status line, cancel, completion toast). This form only
+  // starts jobs.
+  if (latestJob?.status === "queued" || latestJob?.status === "running") {
+    redirect(`/songsets/${id}`);
+  }
+
   return (
     <RenderPageClient
       songsetId={id}
       initialSongset={data.songset}
-      initialLatestJob={latestJob}
       initialPreviousCompletedJob={previousCompletedJob}
       initialRenderData={buildInitialRenderData(
         latestJob as unknown as Record<string, unknown> | null,

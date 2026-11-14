@@ -42,6 +42,9 @@ interface SongsetListProps {
   error?: string | null;
   onCreateSongset?: (name: string, description?: string) => Promise<void>;
   onRender?: (id: string) => void;
+  /** Non-optional in the /songsets list: every row can cancel its own job. */
+  onCancelRender?: (id: string) => void;
+  cancellingRenderIds?: string[];
   onWorshipPlayback?: (id: string) => void;
   onListen?: (id: string) => void;
   onRetry?: (id: string) => void;
@@ -70,6 +73,8 @@ export function SongsetList({
   error = null,
   onCreateSongset,
   onRender,
+  onCancelRender,
+  cancellingRenderIds,
   onWorshipPlayback,
   onListen,
   onRetry,
@@ -353,6 +358,8 @@ export function SongsetList({
             key={songset.id}
             {...songset}
             onRender={() => onRender?.(songset.id)}
+            onCancelRender={() => onCancelRender?.(songset.id)}
+            isCancellingRender={cancellingRenderIds?.includes(songset.id) ?? false}
             onWorshipPlayback={() => onWorshipPlayback?.(songset.id)}
             onListen={onListen ? () => onListen(songset.id) : undefined}
             onRetry={() => onRetry?.(songset.id)}

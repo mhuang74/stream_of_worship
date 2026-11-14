@@ -32,6 +32,7 @@ export default async function SongsetEditorPage({
         createdAt: songset.createdAt.toISOString(),
         updatedAt: songset.updatedAt.toISOString(),
         renderState: songset.renderState,
+        latestRenderJobEstimatedTotalSeconds: songset.latestRenderJobEstimatedTotalSeconds,
         itemCount: songset.itemCount,
         durationSeconds: songset.durationSeconds,
         latestRenderJobId: songset.latestRenderJobId,

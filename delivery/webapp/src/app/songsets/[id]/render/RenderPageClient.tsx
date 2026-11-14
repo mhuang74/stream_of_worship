@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
@@ -9,23 +9,12 @@ import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets"
 import type { RenderFormData } from "@/components/render/RenderForm"
-import type { RenderCompletionJob } from "@/components/render/RenderSubmitted"
-import { isOfflineSupportedOnCurrentDevice } from "@/lib/offline/artifact-cache"
-import {
-  downloadOfflineArtifacts,
-  NoArtifactsError,
-} from "@/lib/offline/download-offline"
 import { useLocale } from "@/hooks/useLocale"
 import { useSongsetListBack } from "@/hooks/useSongsetListBack"
 
 const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((m) => ({ default: m.RenderForm })), {
   loading: () => <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-12 w-40" /></div>,
 })
-const RenderSubmitted = dynamic(() => import("@/components/render/RenderSubmitted").then((m) => ({ default: m.RenderSubmitted })), {
-  loading: () => <Skeleton className="h-32 w-full" />,
-})
-
-type RenderScreenState = "form" | "submitted"
 
 type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed"
 
@@ -63,17 +52,20 @@ interface RenderJobData {
 interface RenderPageClientProps {
   songsetId: string
   initialSongset: SongsetData
-  initialLatestJob: RenderJobData | null
   initialPreviousCompletedJob: RenderJobData | null
   initialRenderData: Partial<RenderFormData>
   currentSongCount?: number
   currentSongsetDurationSeconds?: number | null
 }
 
+/**
+ * Render form host. Submitting hands the job to the editor page, which owns the
+ * in-flight state (status line, cancel, completion toast); a job that is already
+ * running never reaches this component — the page redirects it away.
+ */
 export function RenderPageClient({
   songsetId,
   initialSongset,
-  initialLatestJob,
   initialPreviousCompletedJob,
   initialRenderData,
   currentSongCount,
@@ -83,37 +75,15 @@ export function RenderPageClient({
   const backToList = useSongsetListBack()
   const { t } = useLocale()
 
-  const hasActiveJob =
-    initialLatestJob?.status === "running" || initialLatestJob?.status === "queued"
-  const [screenState, setScreenState] = useState<RenderScreenState>(
-    hasActiveJob ? "submitted" : "form"
-  )
   const [songset] = useState<SongsetData | null>(initialSongset)
-  const [jobId, setJobId] = useState<string | null>(initialLatestJob?.id ?? null)
-  const [jobData] = useState<RenderJobData | null>(
-    initialLatestJob?.status === "completed" ? initialLatestJob : null
-  )
   const [previousCompletedJob] = useState<RenderJobData | null>(initialPreviousCompletedJob)
   const [initialData] = useState<Partial<RenderFormData> | undefined>(initialRenderData)
   const isLoading = false
   const error: string | null = null
-  const [estimatedMinutes, setEstimatedMinutes] = useState(
-    initialLatestJob?.estimatedTotalSeconds
-      ? Math.ceil(initialLatestJob.estimatedTotalSeconds / 60)
-      : 5
-  )
-  const [isCancelling, setIsCancelling] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  // The auto-cache switch lives in settings (settings page owns it). Read once
-  // the submitted screen is up; an unreadable setting counts as off — nobody
-  // should discover a surprise hundred-megabyte download. Kept in a ref, not
-  // state: nothing renders from it, and the completion callback must see the
-  // value the moment the fetch lands rather than after a re-render.
-  const offlineAutoCacheRef = useRef(false)
-  // True between a Cancel tap and the DELETE settling, so a poll tick that
-  // lands in that window cannot report the cancellation as a failure.
-  const isCancellingRef = useRef(false)
 
+  // Both success and an already-in-progress 409 land on the editor: that is
+  // where the job is tracked and cancelled.
   const handleSubmit = useCallback(
     async (formData: RenderFormData) => {
       setIsSubmitting(true)
@@ -143,15 +113,11 @@ export function RenderPageClient({
           if (response.status === 409) {
             const data = await response.json()
             if (data.jobId) {
-              setJobId(data.jobId)
-              if (data.estimatedTotalSeconds) {
-                setEstimatedMinutes(Math.ceil(data.estimatedTotalSeconds / 60))
-              }
-              setScreenState("submitted")
               const configSummary = []
               if (data.config?.audioEnabled) configSummary.push(t("render.toast.config.audio"))
               if (data.config?.videoEnabled) configSummary.push(t("render.toast.config.video"))
               toast.info(`${t("render.toast.alreadyInProgress")} (${configSummary.join(" + ")})`)
+              router.replace(`/songsets/${songsetId}`)
             } else if (
               data.code === "ARRANGEMENT_ANALYSIS_UNAVAILABLE" ||
               data.code === "ARRANGEMENT_STALE" ||
@@ -169,13 +135,10 @@ export function RenderPageClient({
           throw new Error(errorData.error || t("render.toast.failedToCreateJob"))
         }
 
-        const job = await response.json()
-        setJobId(job.id)
-        if (job.estimatedTotalSeconds) {
-          setEstimatedMinutes(Math.ceil(job.estimatedTotalSeconds / 60))
-        }
-        setScreenState("submitted")
         toast.success(t("render.toast.started"))
+        // replace, not push: Back must not return to a form for a job that is
+        // already away.
+        router.replace(`/songsets/${songsetId}`)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : t("render.toast.failedToStart"))
       } finally {
@@ -184,96 +147,6 @@ export function RenderPageClient({
     },
     [songsetId, router, t]
   )
-
-  const handleCancel = useCallback(async () => {
-    if (!jobId || isCancelling) return
-    setIsCancelling(true)
-    isCancellingRef.current = true
-    try {
-      const response = await fetch(`/api/render-jobs/${jobId}`, { method: "DELETE" })
-      if (!response.ok) {
-        throw new Error(t("render.toast.failedToCancelJob"))
-      }
-      setScreenState("form")
-      setJobId(null)
-      toast.info(t("render.toast.cancelled"))
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("render.toast.failedToCancel"))
-    } finally {
-      isCancellingRef.current = false
-      setIsCancelling(false)
-    }
-  }, [jobId, isCancelling, t])
-
-  useEffect(() => {
-    if (screenState !== "submitted" || !jobId) return
-
-    let cancelled = false
-    fetch("/api/settings")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { settings?: { offlineAutoCache?: boolean } } | null) => {
-        if (!cancelled && data) {
-          offlineAutoCacheRef.current = data.settings?.offlineAutoCache === true
-        }
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [screenState, jobId])
-
-  const handleRenderComplete = useCallback(
-    (job: RenderCompletionJob) => {
-      // Auto-cache is tab-contingent: the render worker writes the database
-      // directly, so a completed job is only observable from a live page that
-      // is polling for it. Closing the render page before completion means no
-      // auto-cache — the songset list's download/manual path stays the fallback.
-      toast.success(t("render.toast.completed"))
-
-      if (!offlineAutoCacheRef.current) return
-      if (!job.mp3R2Key && !job.mp4R2Key) return
-      if (!isOfflineSupportedOnCurrentDevice() || !("caches" in window)) return
-
-      // Fire-and-forget: a worship video is hundreds of megabytes, and the
-      // screen is already done telling the user what happened.
-      downloadOfflineArtifacts({
-        songsetId,
-        songsetName: songset?.name ?? "",
-        renderJobId: job.id,
-      })
-        .then(() => {
-          toast.success(t("audio.offline.downloaded"))
-        })
-        .catch((error: unknown) => {
-          console.error("Auto-cache error:", error)
-          toast.error(
-            error instanceof NoArtifactsError
-              ? t("audio.offline.noArtifacts")
-              : t("audio.offline.downloadFailed")
-          )
-        })
-    },
-    [songset, songsetId, t]
-  )
-
-  const handleRenderFailed = useCallback(() => {
-    // A poll tick can observe the cancelled status while our own DELETE is in
-    // flight; the cancel path owns that transition (and its toast).
-    if (isCancellingRef.current) return
-    toast.error(t("render.toast.failed"))
-    setScreenState("form")
-    setJobId(null)
-  }, [t])
-
-  // The poll hit 401/403: the session expired and can never observe this
-  // job's completion. The job itself is fine — the render worker writes the
-  // database directly — so the submitted screen stays put with its own
-  // message; the toast just makes sure the state change is noticed (issue
-  // #210). No server-side hook: completion stays client-soft (ADR-0002).
-  const handleAuthExpired = useCallback(() => {
-    toast.error(t("render.toast.authExpired"))
-  }, [t])
 
   if (isLoading) {
     return (
@@ -325,51 +198,36 @@ export function RenderPageClient({
 
       {/* Main content */}
       <main className="p-4 pb-24">
-        {screenState === "form" && (
-          <RenderForm
-            songsetId={songsetId}
-            markedLineCount={songset.markedLineCount}
-            songsetName={songset.name}
-            songTitles={songset.songTitles}
-            initialData={initialData}
-            onSubmit={handleSubmit}
-            onCancel={() => router.push(`/songsets/${songsetId}`)}
-            isSubmitting={isSubmitting}
-                  previousRenderJob={
-                    previousCompletedJob
-                      ? {
-                          id: previousCompletedJob.id,
-                          createdAt: previousCompletedJob.createdAt,
-                          template: previousCompletedJob.template,
-                          fontFamily: previousCompletedJob.fontFamily,
-                          fontSizePreset: previousCompletedJob.fontSizePreset,
-                          includeTitleCard: previousCompletedJob.includeTitleCard,
-                          titleCardDurationSeconds:
-                            previousCompletedJob.titleCardDurationSeconds ?? undefined,
-                          resolution: previousCompletedJob.resolution,
-                          totalDurationSeconds: previousCompletedJob.totalDurationSeconds,
-                          songCount: previousCompletedJob.songCount,
-                          songsetDurationSeconds: previousCompletedJob.songsetDurationSeconds,
-                        }
-                      : undefined
-                  }
-                  currentSongCount={currentSongCount ?? songset.songTitles.length}
-                  currentSongsetDurationSeconds={currentSongsetDurationSeconds ?? songset.durationSeconds}
-          />
-        )}
-
-        {screenState === "submitted" && jobId && (
-          <RenderSubmitted
-            jobId={jobId}
-            onComplete={handleRenderComplete}
-            onFailed={handleRenderFailed}
-            onAuthExpired={handleAuthExpired}
-            estimatedMinutes={estimatedMinutes}
-            onCancel={handleCancel}
-            isCancelling={isCancelling}
-            submittedAt={jobData?.createdAt}
-          />
-        )}
+        <RenderForm
+          songsetId={songsetId}
+          markedLineCount={songset.markedLineCount}
+          songsetName={songset.name}
+          songTitles={songset.songTitles}
+          initialData={initialData}
+          onSubmit={handleSubmit}
+          onCancel={() => router.push(`/songsets/${songsetId}`)}
+          isSubmitting={isSubmitting}
+          previousRenderJob={
+            previousCompletedJob
+              ? {
+                  id: previousCompletedJob.id,
+                  createdAt: previousCompletedJob.createdAt,
+                  template: previousCompletedJob.template,
+                  fontFamily: previousCompletedJob.fontFamily,
+                  fontSizePreset: previousCompletedJob.fontSizePreset,
+                  includeTitleCard: previousCompletedJob.includeTitleCard,
+                  titleCardDurationSeconds:
+                    previousCompletedJob.titleCardDurationSeconds ?? undefined,
+                  resolution: previousCompletedJob.resolution,
+                  totalDurationSeconds: previousCompletedJob.totalDurationSeconds,
+                  songCount: previousCompletedJob.songCount,
+                  songsetDurationSeconds: previousCompletedJob.songsetDurationSeconds,
+                }
+              : undefined
+          }
+          currentSongCount={currentSongCount ?? songset.songTitles.length}
+          currentSongsetDurationSeconds={currentSongsetDurationSeconds ?? songset.durationSeconds}
+        />
       </main>
     </div>
   )

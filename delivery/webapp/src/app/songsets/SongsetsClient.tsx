@@ -120,6 +120,8 @@ export function SongsetsClient({
   const [committedSearch, setCommittedSearch] = useState(initialSearch);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [offlineDownloadId, setOfflineDownloadId] = useState<string | null>(null);
+  /** Songset ids whose DELETE is in flight (disables the kebab item). */
+  const [cancellingRenderIds, setCancellingRenderIds] = useState<string[]>([]);
   const [shareTarget, setShareTarget] = useState<{
     id: string; name: string; durationSeconds: number | null;
   } | null>(null);
@@ -244,6 +246,36 @@ export function SongsetsClient({
   const handleRender = useCallback((id: string) => {
     router.push(`/songsets/${id}/render`);
   }, [router]);
+
+  // Cancel is best-effort: the DELETE flips the job's status and the worker
+  // aborts at its next phase boundary. The list re-reads the server-derived
+  // renderState afterwards (cancelled ⇒ unrendered), so no local patching.
+  const handleCancelRender = useCallback(
+    async (id: string) => {
+      const jobId = songsets.find((songset) => songset.id === id)?.latestRenderJobId;
+      if (!jobId) return;
+
+      setCancellingRenderIds((prev) => [...prev, id]);
+      try {
+        const response = await fetch(`/api/render-jobs/${jobId}`, { method: "DELETE" });
+        if (!response.ok) {
+          // The 400/404 body names the reason the cancel was refused; fall back
+          // to the localized string only when the body carries none.
+          const data = (await response.json().catch(() => null)) as { error?: string } | null;
+          toast.error(data?.error || t("render.toast.failedToCancelJob"));
+        } else {
+          toast.info(t("render.toast.cancelled"));
+        }
+        refreshSongsets();
+      } catch {
+        toast.error(t("render.toast.failedToCancelJob"));
+        refreshSongsets();
+      } finally {
+        setCancellingRenderIds((prev) => prev.filter((candidate) => candidate !== id));
+      }
+    },
+    [songsets, refreshSongsets, t]
+  );
 
   const handleWorshipPlayback = useCallback(
     (id: string) => {
@@ -478,6 +510,8 @@ export function SongsetsClient({
         error={error}
         onCreateSongset={handleCreateSongset}
         onRender={handleRender}
+        onCancelRender={handleCancelRender}
+        cancellingRenderIds={cancellingRenderIds}
         onWorshipPlayback={handleWorshipPlayback}
         onListen={handleListen}
         onRetry={handleRetry}
