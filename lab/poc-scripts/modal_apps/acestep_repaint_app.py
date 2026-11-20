@@ -1,4 +1,4 @@
-"""Modal app hosting ACE-Step 1.5 repaint for the audio-imprinting POC.
+"""Modal app hosting ACE-Step 1.5 repaint for the seam-inpaint POC.
 
 Given source audio that already contains the real recordings on both sides of a
 seam plus digital silence where the seam is, `repaint` regenerates only the
