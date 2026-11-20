@@ -93,6 +93,10 @@ FILL_FADE_SECONDS = 0.005
 # A raw take with nothing to trim is not a usable drum performance.
 SILENCE_PEAK_FLOOR = 0.001
 FIRST_ONSET_TARGET_MS = 50.0
+# Below this a sample counts as digital silence (~-80 dBFS, under PCM16 dither).
+SILENCE_FLOOR = 1e-4
+# Window for the measured beat-two energy peak: the target beat ±50 ms.
+BEAT_TWO_WINDOW_MS = 50.0
 # Grid correction is refused outside this stretch range; anything further is a
 # different performance, not a timing fix.
 STRETCH_RATIO_MIN = 0.5
@@ -289,6 +293,39 @@ def correct_timing(
     return np.ascontiguousarray(corrected, dtype=np.float32), correction
 
 
+def trailing_silence_ms(fill: np.ndarray) -> float:
+    """Dead air after the fill's last non-silent sample, in ms."""
+    mono = np.abs(fill.mean(axis=1))
+    material = np.flatnonzero(mono > SILENCE_FLOOR)
+    if material.size == 0:
+        return round(fill.shape[0] / SR * 1000.0, 2)
+    return round((fill.shape[0] - 1 - int(material[-1])) / SR * 1000.0, 2)
+
+
+def beat_two_peak_ms(fill: np.ndarray, beat_samples: int) -> Optional[float]:
+    """Where the fill's loudest sample inside the beat-two window actually is.
+
+    Detected onsets backtrack to the start of an attack; a slow swell therefore
+    reports a later energy peak than its onset. This measures the audio, so a
+    time-stretched fill's alignment can be checked without trusting `times[1]`.
+    """
+    radius = int(BEAT_TWO_WINDOW_MS / 1000.0 * SR)
+    low = max(0, beat_samples - radius)
+    high = min(fill.shape[0], beat_samples + radius)
+    if high <= low:
+        return None
+    mono = np.abs(fill.mean(axis=1))
+    return round((low + int(np.argmax(mono[low:high]))) / SR * 1000.0, 2)
+
+
+def timing_metrics(fill: np.ndarray, beat_samples: int) -> dict[str, Any]:
+    """Every timing field the report shows for one written fill."""
+    metrics = onset_metrics(fill, beat_samples)
+    metrics["trailing_silence_ms"] = trailing_silence_ms(fill)
+    metrics["beat_two_peak_ms"] = beat_two_peak_ms(fill, beat_samples)
+    return metrics
+
+
 def onset_metrics(fill: np.ndarray, beat_samples: int) -> dict[str, Any]:
     """Onset / leading-silence / beat-two metrics for one written fill."""
     onsets = detect_onsets(fill)
@@ -450,7 +487,7 @@ def run_reference(
     fill = np.ascontiguousarray(reference_fill, dtype=np.float32)
     clip = run2["clip"]
     metrics = measure(fill, clip, levels_db[0], levels_db[1], False)
-    metrics.update(onset_metrics(fill, beat_samples))
+    metrics.update(timing_metrics(fill, beat_samples))
     record["metrics"] = metrics
     write_variant_audio(out_dir, record, fill, clip)
     montage_path = out_dir / "montages" / f"{REFERENCE_RAW_ID}.flac"
@@ -491,7 +528,12 @@ def run_new_raw(
         print(f"  skip {variant_id} (clip exists; --force to regenerate)", flush=True)
         previous = json.loads((out_dir / "variants" / f"{variant_id}.json").read_text())
         fill = read_flac(out_dir / "fills" / f"{variant_id}.flac")
-        return previous, fill, detect_onsets(fill)
+        clip = read_flac(out_dir / "clips" / f"{variant_id}.flac")
+        peak_limited = bool((previous.get("metrics") or {}).get("peak_limited"))
+        metrics = measure(fill, clip, levels_db[0], levels_db[1], peak_limited)
+        metrics.update(timing_metrics(fill, beat_samples))
+        previous["metrics"] = metrics
+        return finish(out_dir, previous), fill, detect_onsets(fill)
 
     if dry_run:
         record["status"] = "dry_run"
@@ -535,7 +577,7 @@ def run_new_raw(
         if onsets.size == 0:
             raise RuntimeError("no drum onset detected")
         metrics = measure(written_fill, clip, levels_db[0], levels_db[1], peak_limited)
-        metrics.update(onset_metrics(written_fill, beat_samples))
+        metrics.update(timing_metrics(written_fill, beat_samples))
         record["metrics"] = metrics
         write_variant_audio(out_dir, record, written_fill, clip)
         record["status"] = "ok"
@@ -587,7 +629,7 @@ def run_derived(
     peak_limited = bool((parent.get("metrics") or {}).get("peak_limited"))
     clip, written_fill = build_clip(parts, corrected, FILL_FADE_SECONDS)
     metrics = measure(written_fill, clip, levels_db[0], levels_db[1], peak_limited)
-    metrics.update(onset_metrics(written_fill, beat_samples))
+    metrics.update(timing_metrics(written_fill, beat_samples))
     record["metrics"] = metrics
     write_variant_audio(out_dir, record, written_fill, clip)
     record["status"] = "ok"
@@ -746,6 +788,8 @@ def metrics_line(record: dict[str, Any]) -> str:
         f"second onset {fmt(metrics.get('second_onset_ms'))}",
         f"leading silence {fmt(metrics.get('leading_silence_ms'))}",
         f"beat-two error {signed(metrics.get('beat_two_error_ms'))}",
+        f"beat-two peak {fmt(metrics.get('beat_two_peak_ms'))}",
+        f"trailing silence {fmt(metrics.get('trailing_silence_ms'))}",
         f"fill RMS {fmt(metrics.get('fill_rms_db'), 'dB')}",
         f"peak {fmt(metrics.get('fill_peak'), '', 4)}",
         f"clip {fmt(metrics.get('clip_duration_seconds'), 's', 3)}",
@@ -792,6 +836,29 @@ def report_html(records: list[dict[str, Any]], run2: dict[str, Any], seed_base: 
         "intact; grid time-stretches so beat two lands on the beat and may smear transients. "
         "Both are rendered for every take so the artifacts can be rejected by ear. Metrics are "
         "recorded, not used for selection."
+    )
+    # Dead air at the fill's end is the model's decay, carried through by trim
+    # (which pads to 61,431 frames) — never the splice. Say it with numbers.
+    reference_raw = next((r for r in records if r["id"] == REFERENCE_RAW_ID), None)
+    reference_trim = next((r for r in records if r["id"] == "run2-s7003__trim"), None)
+    raw_trail = ((reference_raw or {}).get("metrics") or {}).get("trailing_silence_ms")
+    trim_trail = ((reference_trim or {}).get("metrics") or {}).get("trailing_silence_ms")
+    new_trails = [
+        (r.get("metrics") or {}).get("trailing_silence_ms")
+        for r in records
+        if r["version"] == "raw" and r["id"].startswith("sa3__")
+    ]
+    new_trails = [value for value in new_trails if value is not None]
+    ends = (
+        f"Measured end-of-gap dead air: run2 raw {fmt(raw_trail)}, run2 trimmed {fmt(trim_trail)}"
+        + (
+            f", new raw takes {fmt(min(new_trails))}–{fmt(max(new_trails))}"
+            if new_trails
+            else ""
+        )
+        + ". trim zero-pads the end to fill 1.393 s, so that silence sits immediately before "
+        "the incoming downbeat and is reported per row as trailing silence — it is the fill's "
+        "own decay, not the splice."
     )
 
     sections: list[str] = []
@@ -858,6 +925,7 @@ def report_html(records: list[dict[str, Any]], run2: dict[str, Any], seed_base: 
   <h1>{html.escape(title)}</h1>
   <p class="sub">{html.escape(diagnosis)}</p>
   <p class="sub">{html.escape(caveat)}</p>
+  <p class="sub">{html.escape(ends)}</p>
   <p class="sub">Each clip is 7 s of the outgoing song, its last 8 arranged seconds, the fill,
   the incoming song's first 8 s, then 7 s more (31.393 s). The fill player isolates the
   1.393 s gap. Seeds are {seed_base + 1}–{seed_base + 3} per prompt.</p>
