@@ -392,4 +392,3 @@ class AceStepSeamBase:
     ) -> dict:
         """Repaint the hole of `audio_bytes` with the base checkpoint (32 steps + ADG)."""
         return _repaint(self, audio_bytes, filename, request, reference_bytes)
-
