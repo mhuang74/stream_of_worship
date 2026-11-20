@@ -1,16 +1,16 @@
 # Graph Report - sow_feature_branch_2  (2026-11-20)
 
 ## Corpus Check
-- 1003 files · ~935,951 words
+- 1003 files · ~935,953 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 11911 nodes · 24716 edges · 488 communities (391 shown, 97 thin omitted)
+- 11911 nodes · 24716 edges · 490 communities (393 shown, 97 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 1034 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `46e20c20`
+- Built from commit: `916bcce9`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -68,7 +68,7 @@
 - SongCandidate
 - SongsetEditorClient.tsx
 - HistoryScreen
-- gen_audio_imprint.py
+- gen_audio_inpaint.py
 - ReadOnlyClient
 - ._guard_active_edit
 - createSowPlayerView
@@ -297,6 +297,7 @@
 - deployment.test.ts
 - .add_transition
 - Binding
+- SettingsForm.tsx
 - capture-email/route.ts
 - schema.ts
 - Managing Lakebase Search with Drizzle
@@ -310,7 +311,7 @@
 - RotatingProxyConfig
 - share-token-cast-expiry.test.ts
 - Full-Text Search with BM25 Ranking
-- useRenderJobWatch.test.ts
+- _save_base64
 - Setup Flow
 - Troubleshooting and Neon-Specific Performance
 - Offline Playback e2e Harness (issue #210)
@@ -339,7 +340,7 @@
 - ._cell_value
 - AdminConfig
 - VideoExoPlayerFactoryTest.kt
-- chart_disputed_strip
+- octave_normalize
 - extract_video_metadata
 - SongsetItemWithDetails
 - editor/autosave.py
@@ -372,6 +373,7 @@
 - export_to_lrc
 - test_ogg_write
 - preflight.sh
+- parse_proxy_pool
 - normalize_pinyin
 - .__init__
 - _is_retryable_poll_error
@@ -512,7 +514,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (488 total, 97 thin omitted)
+## Communities (490 total, 97 thin omitted)
 
 ### Community 0 - "arrangements.ts"
 Cohesion: 0.07
@@ -531,12 +533,12 @@ Cohesion: 0.07
 Nodes (24): datetime, Path, R2Client, R2/S3 storage client for audio and result files. Credentials read from…, Initialize R2 client. Args: bucket: R2 bucket name endpoint_url: R2 endpoint URL, Download audio from R2 to local path. Args: s3_url:…, Upload stem files to R2. Uploads: bass.wav, drums.wav, other.wav, vocals.wav…, Upload analysis.json to R2. Args: hash_prefix: Content hash prefix for the path… (+16 more)
 
 ### Community 4 - "UserClient"
-Cohesion: 0.07
-Nodes (21): LoginScreen, AppState, ComposeResult, RowSelected, Screen, Pick-a-user screen, shown at TUI startup., Initialize the login screen. Args: state: Application state. user_client:…, Create a User from a ``"user"`` table row. Args: row: Row tuple in column… (+13 more)
+Cohesion: 0.06
+Nodes (23): AppConfig, Initialize the application. Args: config: Application configuration, LoginScreen, AppState, ComposeResult, RowSelected, Screen, Pick-a-user screen, shown at TUI startup. (+15 more)
 
 ### Community 5 - "bpm_agreement_report.py"
-Cohesion: 0.10
-Nodes (46): Figure, bpm_bucket_kmeans(), bpm_bucket_nominal(), build_crosstab_text(), build_html_report(), chart_consensus_radius_hist(), chart_cps_bpm_diagonal_bars(), chart_cps_vs_bpm_scatter() (+38 more)
+Cohesion: 0.11
+Nodes (37): bpm_bucket_kmeans(), bpm_bucket_nominal(), build_crosstab_text(), build_html_report(), chart_cps_bpm_diagonal_bars(), chart_cps_vs_bpm_scatter(), chart_v5_cps_bar(), chart_v5_error_scatter() (+29 more)
 
 ### Community 6 - "score_lrc_quality.py"
 Cohesion: 0.05
@@ -567,8 +569,8 @@ Cohesion: 0.18
 Nodes (10): Path, Song, Loads and manages song catalog from JSON files., Compute a simple compatibility score between two songs. This is a placeholder…, Initialize catalog loader. Args: audio_folder: Path to folder containing audio…, Return the number of loaded songs., Load songs from a JSON file (output from poc_analysis_allinone.py). Args:…, Get all songs sorted alphabetically by filename. (+2 more)
 
 ### Community 13 - "settings/page.tsx"
-Cohesion: 0.05
-Nodes (30): DEFAULT_SETTINGS, fetchSettings(), SettingsPage(), loadSettings(), RenderForm, RenderJobData, RenderPageClient(), RenderPageClientProps (+22 more)
+Cohesion: 0.06
+Nodes (28): DEFAULT_SETTINGS, fetchSettings(), SettingsPage(), loadSettings(), RenderForm, RenderJobData, RenderPageClient(), RenderPageClientProps (+20 more)
 
 ### Community 14 - "ShareViewModelTest.kt"
 Cohesion: 0.20
@@ -596,7 +598,7 @@ Nodes (20): FullscreenPlaybackOverlays(), Modifier, OfflinePlaybackBanner(), Pla
 
 ### Community 20 - "AudioPlayerContext.tsx"
 Cohesion: 0.04
-Nodes (64): AudioPlayerBar(), LyricsErrorFallback(), GlobalAudioPlayerProps, PlaybarRouteGuard(), PlayerDock(), LocateSongsetsPopover(), LyricsErrorBoundary, Props (+56 more)
+Nodes (54): AudioPlayerBar(), LyricsErrorFallback(), GlobalAudioPlayerProps, PlaybarRouteGuard(), PlayerDock(), LocateSongsetsPopover(), LyricsErrorBoundary, Props (+46 more)
 
 ### Community 21 - ".current_file"
 Cohesion: 0.40
@@ -635,8 +637,8 @@ Cohesion: 0.05
 Nodes (43): { GET, POST }, addFavoriteSchema, GET(), POST(), DELETE(), DELETE(), GET(), POST() (+35 more)
 
 ### Community 30 - "useLocaleContext"
-Cohesion: 0.05
-Nodes (88): FavoritesClient(), ShareDialog, LoginPage(), handleSubmit(), validate(), RegisterPage(), handleSubmit(), validate() (+80 more)
+Cohesion: 0.06
+Nodes (68): FavoritesClient(), LoginPage(), handleSubmit(), validate(), RegisterPage(), handleSubmit(), validate(), ResetPasswordForm() (+60 more)
 
 ### Community 31 - "QuotaWaiter"
 Cohesion: 0.15
@@ -647,8 +649,8 @@ Cohesion: 0.12
 Nodes (8): CountingPlaybackRepository, FakePlaybackRepository, FakePlayerController, PlaybackManifest, TestScope, PlayerViewModelTest, RecordingPlayerController, SignedUrlResponse
 
 ### Community 33 - "Header.tsx"
-Cohesion: 0.05
-Nodes (46): geistMono, geistSans, metadata, NOTE: server component — this page verifies the token, performs the Brevo, ValidatedPage(), GlobalAudioPlayer(), BottomNav(), DeploymentBanner() (+38 more)
+Cohesion: 0.06
+Nodes (36): geistMono, geistSans, metadata, GlobalAudioPlayer(), BottomNav(), DeploymentBanner(), Header(), LanguageSwitcher() (+28 more)
 
 ### Community 34 - "youtube_transcript.py"
 Cohesion: 0.06
@@ -664,7 +666,7 @@ Nodes (22): AutoJoinPolicy, Capability, cast.framework, CastContext, CastContext
 
 ### Community 37 - "constants.ts"
 Cohesion: 0.04
-Nodes (97): FavoritesClientProps, DiscoveryResponse, DiscoverySong, ListenClient(), ListenClientProps, ListenSongData, BrowseSheet, CatalogSearch() (+89 more)
+Nodes (90): FavoritesClientProps, DiscoveryResponse, DiscoverySong, ListenClient(), ListenClientProps, ListenSongData, CatalogSearch(), CatalogSearchMode (+82 more)
 
 ### Community 38 - "CacheManager"
 Cohesion: 0.08
@@ -688,7 +690,7 @@ Nodes (6): R2Client, AssetFetcher, AssetFetcherOptions, mockFetch, mockGetAudioS
 
 ### Community 43 - "ExportService"
 Cohesion: 0.04
-Nodes (45): AppConfig, Initialize the application. Args: config: Application configuration, ExportProgressScreen, AppState, ComposeResult, Pressed, Screen, Update UI with progress (called from main thread). Args: progress: Current… (+37 more)
+Nodes (43): ExportProgressScreen, AppState, ComposeResult, Pressed, Screen, Update UI with progress (called from main thread). Args: progress: Current…, Handle button presses., Screen for showing export progress. (+35 more)
 
 ### Community 44 - "AppConfig"
 Cohesion: 0.03
@@ -720,13 +722,13 @@ Nodes (57): main(), _draft_to_proposal(), DraftItem, JudgeItem, JudgeRanking, Pr
 
 ### Community 51 - "SongsetEditorClient.tsx"
 Cohesion: 0.03
-Nodes (100): HomePageClient(), HomePageClientProps, ApiResponse, ApiSongset, applySavedArrangement(), ArrangementEditorSheet, hasRecordingAnalysis(), readArrangementDetail() (+92 more)
+Nodes (107): HomePageClient(), HomePageClientProps, ApiResponse, ApiSongset, applySavedArrangement(), ArrangementEditorSheet, hasRecordingAnalysis(), readArrangementDetail() (+99 more)
 
 ### Community 52 - "HistoryScreen"
 Cohesion: 0.05
 Nodes (26): Highlighted, Switch to a named screen. Args: screen_name: Name of the screen to switch to, Handle app mount event., Create a screen instance by name. Args: screen_name: Name of the screen…, HistoryScreen, Screen, Selected, Submitted (+18 more)
 
-### Community 53 - "gen_audio_imprint.py"
+### Community 53 - "gen_audio_inpaint.py"
 Cohesion: 0.07
 Nodes (64): apply_join_fades(), assemble(), author_captions(), boundary_seam(), build_montage(), build_request(), bytes_from_array(), call_repaint() (+56 more)
 
@@ -847,8 +849,8 @@ Cohesion: 0.11
 Nodes (27): _atomic_write(), build_report_url(), _context_table(), _event_body(), _format_value(), _is_primitive(), _json_default(), LLMTrace (+19 more)
 
 ### Community 83 - "i18n/messages.ts"
-Cohesion: 0.05
-Nodes (44): chipsForSituation(), LyricsFeedbackRow(), LyricsFeedbackRowProps, LyricsSituationKind, StatCard(), StatCardProps, LABEL_KEY, formatBytes() (+36 more)
+Cohesion: 0.06
+Nodes (41): chipsForSituation(), LyricsFeedbackRow(), LyricsFeedbackRowProps, LyricsSituationKind, StatCard(), StatCardProps, LABEL_KEY, FeedbackRating (+33 more)
 
 ### Community 84 - "lrc.py"
 Cohesion: 0.05
@@ -1007,8 +1009,8 @@ Cohesion: 0.14
 Nodes (10): Module-level rate limiter for YouTube transcript API calls. Provides four…, Lazily initialize asyncio primitives on first use., Check if the circuit breaker is currently open. If the cooldown has expired,…, Open the circuit breaker for the configured cooldown period., Reset the circuit breaker on a successful request., Sleep if the last request was too recent (min-interval throttle). Uses an…, Execute a YouTube API call through the rate limiter. Args: fn: Synchronous…, Public accessor — also performs cooldown-expiry reset (see _is_circuit_open). (+2 more)
 
 ### Community 123 - "youtube.py"
-Cohesion: 0.10
-Nodes (28): choose_proxy(), get_proxy_pool(), get_proxy_retries(), parse_proxy_pool(), ProxyConfigError, RuntimeError, Rotating proxy support for YouTube requests. Parses ``SOW_YOUTUBE_PROXY``,…, Pick one proxy URL from ``pool`` at random. (+20 more)
+Cohesion: 0.13
+Nodes (21): choose_proxy(), get_proxy_pool(), get_proxy_retries(), Rotating proxy support for YouTube requests. Parses ``SOW_YOUTUBE_PROXY``,…, Pick one proxy URL from ``pool`` at random., Return the expanded proxy pool from ``SOW_YOUTUBE_PROXY``. Returns ``None``…, Return the per-operation attempt budget from ``SOW_YOUTUBE_PROXY_RETRIES``.…, _cleanup_transcript_line() (+13 more)
 
 ### Community 124 - "SongWithRecording"
 Cohesion: 0.09
@@ -1352,7 +1354,7 @@ Nodes (13): Autoscaling, Branching, Connection Pooling, Gotchas, Instant Restore
 
 ### Community 209 - "experiment_lrc_signals.py"
 Cohesion: 0.12
-Nodes (39): compute_dtw_signal(), compute_signals_for_song(), download_r2(), dtw_path_stats(), embed_framewise(), _get_expected_tone_slopes(), LineSignals, _load_embedder() (+31 more)
+Nodes (38): compute_dtw_signal(), compute_signals_for_song(), download_r2(), dtw_path_stats(), embed_framewise(), _get_expected_tone_slopes(), LineSignals, _load_embedder() (+30 more)
 
 ### Community 210 - "chapters.ts"
 Cohesion: 0.13
@@ -1432,7 +1434,7 @@ Nodes (36): cache_file_name(), canonical_line_snap(), _combined_score(), compute
 
 ### Community 230 - "cn"
 Cohesion: 0.04
-Nodes (83): ContainingSongset, formatTime(), LyricsReviewSheet(), LyricsReviewSheetProps, TABS, TabType, formatDurationSafe(), isDifferent() (+75 more)
+Nodes (97): BrowseSheet, ContainingSongset, formatTime(), LyricsReviewSheet(), LyricsReviewSheetProps, TABS, TabType, formatDurationSafe() (+89 more)
 
 ### Community 231 - "job-manager.ts"
 Cohesion: 0.08
@@ -1464,7 +1466,7 @@ Nodes (49): get_modal_analyzer_client(), ModalAnalyzerClient, ModalAnalyzerConfi
 
 ### Community 238 - "AceStepRepaint"
 Cohesion: 0.20
-Nodes (7): AceStepRepaint, cls, enter, method, Modal app hosting ACE-Step 1.5 repaint for the audio-imprinting POC. Given…, # NOTE: deliberately NO retries= — the client owns retries so GPU runs cannot, Repaint `request["repaint_start"]`..`["repaint_end"]` of the given audio.…
+Nodes (7): AceStepRepaint, cls, enter, method, Modal app hosting ACE-Step 1.5 repaint for the seam-inpaint POC. Given source…, # NOTE: deliberately NO retries= — the client owns retries so GPU runs cannot, Repaint `request["repaint_start"]`..`["repaint_end"]` of the given audio.…
 
 ### Community 239 - "generate_all_variants"
 Cohesion: 0.18
@@ -1630,6 +1632,10 @@ Nodes (4): TransitionRecord, Enter modify mode with a transition's parameters., 
 Cohesion: 0.22
 Nodes (5): Binding, work, Run the blocking R2 stale-session check off the event loop., Main-thread continuation of ``_check_r2_worker``., ValidationResult
 
+### Community 282 - "SettingsForm.tsx"
+Cohesion: 0.06
+Nodes (42): ShareDialog, ShareDialog, ShareDialog, LyricsEditor(), LyricsEditorProps, FONT_PRESETS, GAP_BEATS_OPTIONS, isIOSLessThan174() (+34 more)
+
 ### Community 283 - "capture-email/route.ts"
 Cohesion: 0.06
 Nodes (45): allowedOrigins(), captureEmailSchema, corsHeaders(), DELETE(), GET(), OPTIONS(), POST(), PUT() (+37 more)
@@ -1663,8 +1669,8 @@ Cohesion: 0.33
 Nodes (3): Any, Convert Song to dictionary. Returns: Dictionary representation of the song., Convert Recording to dictionary. Returns: Dictionary representation of the…
 
 ### Community 293 - "error_vs_stored"
-Cohesion: 0.40
-Nodes (5): error_vs_stored(), kmeans_3(), ndarray, K-means 3-cluster on a 1-D array. Returns ``(labels, sorted_centers, cutoffs)``…, Compute raw + octave-corrected error metrics vs stored BPM. Returns dict with…
+Cohesion: 0.33
+Nodes (6): error_vs_stored(), kmeans_3(), ndarray, K-means 3-cluster on a 1-D array. Returns ``(labels, sorted_centers, cutoffs)``…, Compute raw + octave-corrected error metrics vs stored BPM. Returns dict with…, _stats()
 
 ### Community 295 - "share-token-cast-expiry.test.ts"
 Cohesion: 0.15
@@ -1674,9 +1680,9 @@ Nodes (9): activeShare, completedJob, mockCreateR2Client, mockFindFirstJob, mock
 Cohesion: 0.33
 Nodes (6): Full-Text Search with BM25 Ranking, Prepare and Index Text, Query and Interpret Scores, Set Parameters at Build Time or Per Query, Set the Candidate Limit, Use Prefilter Selectively
 
-### Community 297 - "useRenderJobWatch.test.ts"
-Cohesion: 0.29
-Nodes (6): RENDER_JOB_POLL_INTERVAL_MS, RenderJobSnapshot, useRenderJobWatch(), UseRenderJobWatchOptions, flush(), tick()
+### Community 297 - "_save_base64"
+Cohesion: 0.24
+Nodes (11): Figure, chart_consensus_radius_hist(), chart_disputed_strip(), chart_method_deviation_box(), chart_v5_delta_histogram(), _make_fig(), Overlay histograms of err_v5_raw − err_v4_raw and err_v5_oct − err_v4_oct.…, Histogram of per-song radius (max − min of octave-normalized BPMs). Vertical… (+3 more)
 
 ### Community 298 - "Setup Flow"
 Cohesion: 0.33
@@ -1708,7 +1714,7 @@ Nodes (5): ai_ke_yi_zai_geng_duo_yi_dian_dian_241 —, Cross-song signal compari
 
 ### Community 305 - "renderWithLocale"
 Cohesion: 0.03
-Nodes (66): ForgotPasswordPage(), handleSubmit(), validate(), ResetPasswordPage(), CURSOR_COLORS, LyricJumpList(), PlaybackControls(), PlaybackControlsProps (+58 more)
+Nodes (61): ForgotPasswordPage(), handleSubmit(), validate(), ResetPasswordPage(), CURSOR_COLORS, LyricJumpList(), PlaybackControls(), PlaybackControlsProps (+53 more)
 
 ### Community 306 - "poc_analysis.py"
 Cohesion: 0.31
@@ -1766,9 +1772,9 @@ Nodes (71): _display_stats(), _get_db_client(), init_db(), _mask_url(), command,
 Cohesion: 0.28
 Nodes (9): DefaultRenderersFactory, createVideoRenderersFactory(), Context, VideoExoPlayerFactory, privateBoolean(), privateField(), privateInt(), `video renderers factory enables decoder fallback`() (+1 more)
 
-### Community 326 - "chart_disputed_strip"
-Cohesion: 0.33
-Nodes (6): chart_disputed_strip(), octave_normalize(), per_song_consensus(), Shift *bpm* by 2^k into the ``[lo, hi)`` range. Returns ``(normalized_value,…, For each song, octave-normalize each method's BPM to [60,160). Computes…, Strip plot for top-10 most-disputed songs. Horizontal lines per song; per-…
+### Community 326 - "octave_normalize"
+Cohesion: 0.50
+Nodes (4): octave_normalize(), per_song_consensus(), Shift *bpm* by 2^k into the ``[lo, hi)`` range. Returns ``(normalized_value,…, For each song, octave-normalize each method's BPM to [60,160). Computes…
 
 ### Community 327 - "extract_video_metadata"
 Cohesion: 0.50
@@ -1865,6 +1871,10 @@ Nodes (3): Signal summary, Top-10 lines to spot-check, ye_su_de_ming_246 —
 ### Community 356 - "wo_yao_kan_jian_146 —"
 Cohesion: 0.67
 Nodes (3): Signal summary, Top-10 lines to spot-check, wo_yao_kan_jian_146 —
+
+### Community 360 - "parse_proxy_pool"
+Cohesion: 0.29
+Nodes (7): parse_proxy_pool(), ProxyConfigError, RuntimeError, Raised when ``SOW_YOUTUBE_PROXY`` is well-formed enough to parse but invalid.…, Expand a proxy URL with a port range into a list of proxy URLs. Supports…, Redact userinfo credentials from a proxy URL for logging. Keeps scheme +…, redact_proxy_url()
 
 ### Community 363 - ".__init__"
 Cohesion: 0.22
@@ -1972,7 +1982,7 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `SowApiClientFactory` connect `AndroidSecureSessionCookieStore` to `SowNavGraph.kt`, `AuthScreens.kt`, `ApiException`, `Json`?**
   _High betweenness centrality (0.298) - this node is a cross-community bridge._
-- **Why does `ArtifactSizes` connect `RenderViewModelTest.kt` to `useLocaleContext`?**
+- **Why does `ArtifactSizes` connect `RenderViewModelTest.kt` to `SettingsForm.tsx`?**
   _High betweenness centrality (0.274) - this node is a cross-community bridge._
 - **Why does `FakeRenderRepository` connect `ShareViewModelTest.kt` to `RenderViewModelTest.kt`?**
   _High betweenness centrality (0.164) - this node is a cross-community bridge._
