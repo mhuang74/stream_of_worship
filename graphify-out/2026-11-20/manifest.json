@@ -3869,12 +3869,6 @@
     "ast_hash": "e0766d71f3b2460344caf90469280dfe",
     "semantic_hash": ""
   },
-  "lab/poc-scripts/gen_audio_imprint.py": {
-    "mtime": 1795138553.3603566,
-    "seen": 1795139236.0959916,
-    "ast_hash": "a7dacec139d0111cba4cc5e5e310e33e",
-    "semantic_hash": ""
-  },
   "lab/poc-scripts/gen_clean_vocal_stem.py": {
     "mtime": 1794668658.1420467,
     "seen": 1795138397.7767122,
@@ -3978,9 +3972,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/modal_apps/acestep_repaint_app.py": {
-    "mtime": 1795137739.7805285,
-    "seen": 1795138397.77674,
-    "ast_hash": "23ae4df506ce5fa655f7008a3e75c0bc",
+    "mtime": 1795159379.570492,
+    "seen": 1795159516.184441,
+    "ast_hash": "57a71abd9a78211dac176876baf7739d",
     "semantic_hash": ""
   },
   "lab/poc-scripts/poc_analysis.py": {
@@ -5562,9 +5556,9 @@
     "semantic_hash": ""
   },
   "CONTEXT.md": {
-    "mtime": 1795136452.3103912,
-    "seen": 1795138397.7772381,
-    "ast_hash": "3f5f936788b4cad7c46861c0fb17ef21",
+    "mtime": 1795159379.579492,
+    "seen": 1795159516.206,
+    "ast_hash": "b650c6628a7579de466c08df4caef5f8",
     "semantic_hash": ""
   },
   "DEVELOPER.md": {
@@ -5961,6 +5955,12 @@
     "mtime": 1794668655.5710402,
     "seen": 1795138397.7773478,
     "ast_hash": "80eecebbb41d09455891fd7bd38c8acd",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/gen_audio_inpaint.py": {
+    "mtime": 1795159375.1914947,
+    "seen": 1795159516.183467,
+    "ast_hash": "176be64af8236569db2ec718ac5bb339",
     "semantic_hash": ""
   }
 }
