@@ -80,9 +80,9 @@ _Avoid_: generation, version, attempt (a job may fail before producing a take)
 The durable, idempotent record of one paid attempt that produces or recovers a Glue Take for a Junction: its reserved quota row, immutable take id/ordinal/seed, provider-contact state, and phase machine (ADR-0014). A Glue Job is idempotent per `clientRequestId` and is the only thing that authorizes a provider request.
 _Avoid_: generation, task, request, paid job
 
-**Audio Imprint**:
-Newly generated music that occupies the seam between two adjacent songs, produced by conditioning a music model on the recorded material immediately before and after that seam. An Audio Imprint replaces the silent gap rather than fading one recording into the other, and leaves both songs' arranged material intact.
-_Avoid_: AI transition, generated bridge, stitch
+**Seam Inpaint**:
+Newly generated music that occupies the seam between two adjacent songs, produced by conditioning a music model on the recorded material immediately before and after that seam. A Seam Inpaint replaces the silent gap rather than fading one recording into the other, and leaves both songs' arranged material intact.
+_Avoid_: AI transition, generated bridge, stitch, audio imprint
 
 **Boundary Key**:
 The musical key a Song leaves through (its exit component) or arrives through (its entry component) — the transition between adjacent songs is judged on exit(A) vs entry(B), falling back to whole-Song key when a boundary component is missing.
