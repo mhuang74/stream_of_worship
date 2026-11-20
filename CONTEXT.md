@@ -48,6 +48,10 @@ _Avoid_: 詩歌集 (old mechanical zh-Hant UI term; replaced by 敬拜歌單 per
 The changeover between adjacent songs in a Songset, controlled by five parameters: gapBeats, crossfadeEnabled, crossfadeDurationSeconds, keyShiftSemitones, and tempoRatio.
 _Avoid_: crossfade, segue, bridge
 
+**Audio Imprint**:
+Newly generated music that occupies the seam between two adjacent songs, produced by conditioning a music model on the recorded material immediately before and after that seam. An Audio Imprint replaces the silent gap rather than fading one recording into the other, and leaves both songs' arranged material intact.
+_Avoid_: AI transition, generated bridge, stitch
+
 **Boundary Key**:
 The musical key a Song leaves through (its exit component) or arrives through (its entry component) — the transition between adjacent songs is judged on exit(A) vs entry(B), falling back to whole-Song key when a boundary component is missing.
 _Avoid_: component key, per-section key
