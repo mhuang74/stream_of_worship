@@ -267,6 +267,7 @@ def apply_join_fades(clip: np.ndarray, joins: Iterable[int]) -> None:
 class SongsetItem:
     position: int
     song_id: str
+    title: str
     hash_prefix: str
     gap_beats: int
     crossfade_enabled: bool
@@ -407,11 +408,12 @@ def fetch_songset(
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT position, song_id, recording_hash_prefix, gap_beats, crossfade_enabled,
-                   arrangement_steps
-              FROM songset_items
-             WHERE songset_id = %s
-             ORDER BY position
+            SELECT i.position, i.song_id, s.title, i.recording_hash_prefix, i.gap_beats,
+                   i.crossfade_enabled, i.arrangement_steps
+              FROM songset_items i
+              JOIN songs s ON s.id = i.song_id
+             WHERE i.songset_id = %s
+             ORDER BY i.position
             """,
             (songset_id,),
         )
@@ -423,10 +425,11 @@ def fetch_songset(
             SongsetItem(
                 position=int(row[0]),
                 song_id=str(row[1]),
-                hash_prefix=str(row[2]),
-                gap_beats=int(row[3] or 0),
-                crossfade_enabled=bool(row[4]),
-                steps=load_arrangement_steps(row[5]),
+                title=str(row[2]),
+                hash_prefix=str(row[3]),
+                gap_beats=int(row[4] or 0),
+                crossfade_enabled=bool(row[5]),
+                steps=load_arrangement_steps(row[6]),
             )
             for row in item_rows
         ]
@@ -578,8 +581,10 @@ def boundary_seam(
     detail = {
         "kind": "boundary",
         "left_song": a_item.song_id,
+        "left_title": a_item.title,
         "left_hash": a_item.hash_prefix,
         "right_song": b_item.song_id,
+        "right_title": b_item.title,
         "right_hash": b_item.hash_prefix,
         "boundary_left_seconds": a_end,
         "boundary_right_seconds": b_start,
@@ -1075,33 +1080,37 @@ def assemble(
         base_gain = 10.0 ** ((target_mean - hole_level) / 20.0)
         tilt = gain_ramp(hole.shape[0], a_level - target_mean, b_level - target_mean)
         hole *= (base_gain * tilt)[:, None]
-    hole_level_after = rms_db(hole)
 
     head = seam.head()
     tail = seam.tail()
 
     # Prefer trimming the generated hole over scaling the real recordings: the
     # untouched song material must stay sample-identical to the source. Only a
-    # recording that is itself over the ceiling forces a whole-clip scale.
+    # recording that is itself over the ceiling forces a whole-clip scale, which
+    # is applied to every part so the written bridge matches the written clip.
     untouched_peak = max(
         peak_level(head),
         peak_level(tail),
         peak_level(body[: montage.hole_start]),
         peak_level(body[montage.hole_end :]),
     )
-    clip_scale = 1.0
     peak_limit = "none"
     if untouched_peak > PEAK_CEILING:
         clip_scale = PEAK_CEILING / max(untouched_peak, peak_level(hole))
         peak_limit = "clip"
+        head = head * clip_scale
+        tail = tail * clip_scale
+        body = body * clip_scale
     elif peak_level(hole) > PEAK_CEILING:
         hole *= PEAK_CEILING / peak_level(hole)
         peak_limit = "hole"
 
+    # Measure the level of the audio that is actually written, i.e. after both
+    # the seam gain and the peak guard.
+    hole_level_after = rms_db(body[montage.hole_start : montage.hole_end])
+
     clip = np.ascontiguousarray(np.concatenate([head, body, tail], axis=0))
     apply_join_fades(clip, (head.shape[0], head.shape[0] + body.shape[0]))
-    if clip_scale != 1.0:
-        clip *= clip_scale
     peak_after = peak_level(clip)
 
     write_flac(out_dir / "clips" / f"{variant.id}.flac", clip)
@@ -1122,7 +1131,9 @@ def assemble(
         "a_rms_db": round(a_level, 2),
         "b_rms_db": round(b_level, 2),
         "hole_level_db_before": round(hole_level, 2) if np.isfinite(hole_level) else None,
-        "hole_level_db_after": round(hole_level_after, 2) if np.isfinite(hole_level_after) else None,
+        "hole_level_db_after": (
+            round(hole_level_after, 2) if np.isfinite(hole_level_after) else None
+        ),
         "hole_target_mean_db": round(target_mean, 2) if np.isfinite(target_mean) else None,
         "probe_rms_db": {
             "a_tail": round(rms_db(body[montage.hole_start - probe : montage.hole_start]), 2),
@@ -1174,9 +1185,11 @@ def report_html(seams: dict[str, Seam], records: list[dict[str, Any]], songset_i
     subtitle_bits = [f"songset {songset_id}"]
     if boundary:
         detail = boundary.detail
+        left_label = detail.get("left_title") or detail["left_song"]
+        right_label = detail.get("right_title") or detail["right_song"]
         subtitle_bits.append(
-            f"{html.escape(str(detail['left_song']))} ({html.escape(str(detail['left_key']))}) into "
-            f"{html.escape(str(detail['right_song']))} ({html.escape(str(detail['right_key']))})"
+            f"{html.escape(str(left_label))} ({html.escape(str(detail['left_key']))}) into "
+            f"{html.escape(str(right_label))} ({html.escape(str(detail['right_key']))})"
         )
         if detail.get("left_energy_db") is not None and detail.get("right_energy_db") is not None:
             subtitle_bits.append(
@@ -1221,17 +1234,16 @@ def report_html(seams: dict[str, Seam], records: list[dict[str, Any]], songset_i
             if ok:
                 players = (
                     f'<div class="players"><span>clip</span>'
-                    f'<audio controls preload="none" src="{clip}"></audio>'
-                    f'<span>bridge</span>'
-                    f'<audio controls preload="none" src="{bridge}"></audio></div>'
+                    f'<audio controls preload="metadata" src="{clip}"></audio>'
+                    f"<span>bridge</span>"
+                    f'<audio controls preload="metadata" src="{bridge}"></audio></div>'
                 )
             elif record["status"] == "dry_run":
                 players = '<p class="meta">dry run — no audio generated</p>'
             else:
                 players = f'<p class="error">failed: {html.escape(str(record.get("error")))}</p>'
             seeds = record.get("seeds") or []
-            cards.append(
-                f"""
+            cards.append(f"""
       <article class="card">
         <h3>{html.escape(record['id'])}</h3>
         <p class="meta">arc {html.escape(record['arc'])} · treatment
@@ -1243,8 +1255,7 @@ def report_html(seams: dict[str, Seam], records: list[dict[str, Any]], songset_i
           <p><strong>left</strong> {html.escape(record['captions']['left'])}</p>
           <p><strong>right</strong> {html.escape(record['captions']['right'])}</p>
         </details>
-      </article>"""
-            )
+      </article>""")
         sections.append(
             f"<section><h2>{html.escape(group_title)}</h2><div class=\"grid\">{''.join(cards)}</div></section>"
         )
