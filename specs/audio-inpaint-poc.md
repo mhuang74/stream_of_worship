@@ -1,10 +1,10 @@
-# Plan: Audio Imprinting POC — ACE-Step 1.5 repaint seams for songset hbWfCccGxN_JLQGBEqmdu
+# Plan: Audio Inpainting POC — ACE-Step 1.5 repaint seams for songset hbWfCccGxN_JLQGBEqmdu
 
 ## Context
 
 Build a throwaway POC that generates **replacement seam music** between the two songs of songset
 `hbWfCccGxN_JLQGBEqmdu` ("Small Group Morning Fortress"), plus one intra-song component seam, so the user
-can listen to AI-generated alternatives and validate the idea of "audio imprinting": new music spliced into
+can listen to AI-generated alternatives and validate the idea of "audio inpainting": new music spliced into
 the seam, conditioned on the real recordings on both sides (repaint), replacing the current 1.39 s of silence.
 
 Wavespeed's `ace-step-1.5` is text-only (`tags`, `lyrics`, `duration`, `seed` — no audio input; the
@@ -101,7 +101,7 @@ GPU work (no silent fallbacks).
 In `lab/poc-scripts/pyproject.toml` under `[project.optional-dependencies]` add:
 
 ```toml
-audio_imprint = [
+audio_inpaint = [
     "modal>=1.2.6,<2",
     "openai>=1.40.0",
     "librosa>=0.10.0",
@@ -115,7 +115,7 @@ audio_imprint = [
 
 ### Step 3 — POC script: read the songset, fetch audio
 
-Create `lab/poc-scripts/gen_audio_imprint.py` (single file, `argparse`, no new package). Reuse, do not
+Create `lab/poc-scripts/gen_audio_inpaint.py` (single file, `argparse`, no new package). Reuse, do not
 re-invent:
 
 - DB: `psycopg.connect(os.environ["SOW_DATABASE_URL"])` (read-only `SELECT`s; the DSN already carries the
@@ -240,7 +240,7 @@ Idempotency: skip a variant when `<out>/clips/<id>.flac` exists unless `--force`
 CLI (exact flags — no others):
 
 ```
---songset hbWfCccGxN_JLQGBEqmdu   --out lab/poc-scripts/output/audio-imprint/run1
+--songset hbWfCccGxN_JLQGBEqmdu   --out lab/poc-scripts/output/audio-inpaint/run1
 --arcs keep-intensity,settle-then-lift,quiet-interlude
 --lengths 8,16                    --treatments inst,texture
 --seed 4242                       --force        --refresh-captions
@@ -253,7 +253,7 @@ CLI (exact flags — no others):
 
 Gain: measure `rms_db = 20*log10(rms)` over the last 4 s of the A montage part and the first 4 s of the B
 montage part (these regions are untouched by repaint). Apply a linear-in-dB ramp across the hole from the A
-level to the B level, computed on 10 ms frames and linearly interpolated per sample. This is the "imprint":
+level to the B level, computed on 10 ms frames and linearly interpolated per sample. This is the seam inpaint:
 A's level hands over to B's level through generated music instead of through 1.39 s of silence.
 
 Assemble `<out>/clips/<id>.flac` = `A_source_window[:7 s]` + repainted montage (`8+N+8` s) + `B_source_window[7 s:]`,
@@ -296,11 +296,9 @@ query yields nothing, log a warning and skip the intra variants (boundary varian
 Add to `CONTEXT.md` under `### Songset & Transitions`, immediately after **Transition**:
 
 ```markdown
-**Audio Imprint**:
-Newly generated music that occupies the seam between two adjacent songs, produced by conditioning a music
-model on the recorded material immediately before and after that seam. An Audio Imprint replaces the silent
-gap rather than fading one recording into the other, and leaves both songs' arranged material intact.
-_Avoid_: AI transition, generated bridge, stitch
+**Seam Inpaint**:
+Newly generated music that occupies the seam between two adjacent songs, produced by conditioning a music model on the recorded material immediately before and after that seam. A Seam Inpaint replaces the silent gap rather than fading one recording into the other, and leaves both songs' arranged material intact.
+_Avoid_: AI transition, generated bridge, stitch, audio imprint
 ```
 
 No ADR: the decision is reversible (POC, nothing in production consumes it).
@@ -314,8 +312,8 @@ gitignored — do not force-add it.
 ## Critical files & anchors
 
 - `lab/poc-scripts/modal_apps/acestep_repaint_app.py` — new; only GPU boundary; deploy/pin/bootstrapping.
-- `lab/poc-scripts/gen_audio_imprint.py` — new; all DB/R2/DSP/orchestration/report logic.
-- `lab/poc-scripts/pyproject.toml:34-140` — `[project.optional-dependencies]`, add `audio_imprint`.
+- `lab/poc-scripts/gen_audio_inpaint.py` — new; all DB/R2/DSP/orchestration/report logic.
+- `lab/poc-scripts/pyproject.toml:34-140` — `[project.optional-dependencies]`, add `audio_inpaint`.
 - `ops/admin-cli/src/stream_of_worship/admin/services/r2.py:112,419` — `R2Client`, `download_audio`.
 - `ops/analysis-service/modal_apps/stem_separator_app.py:38-56` — the `@app.cls(...)` shape to copy
   (`gpu="L4"`, volumes, `max_containers`, `timeout`, `startup_timeout`, deliberate absence of `retries=`).
@@ -327,7 +325,7 @@ Prerequisites for every command: `cd /home/mhuang/Development/sow_feature_branch
 
 1. **App deploys**: `uv run --no-project --with 'modal>=1.2.6,<2' modal deploy lab/poc-scripts/modal_apps/acestep_repaint_app.py`
    → then `modal app list` shows `sow-acestep-poc` `deployed`.
-2. **Preflight**: `uv run --project lab/poc-scripts --extra audio_imprint python lab/poc-scripts/gen_audio_imprint.py --songset hbWfCccGxN_JLQGBEqmdu --out lab/poc-scripts/output/audio-imprint/run1 --dry-run`
+2. **Preflight**: `uv run --project lab/poc-scripts --extra audio_inpaint python lab/poc-scripts/gen_audio_inpaint.py --songset hbWfCccGxN_JLQGBEqmdu --out lab/poc-scripts/output/audio-inpaint/run1 --dry-run`
    → `montages/` holds `boundary__keep-intensity__8s__inst.flac` (24.0 s), `…__16s__inst.flac` (32.0 s),
    `intra__…__8s__inst.flac` (24.0 s); `captions.json` has 18 keys (non-empty, ≤300 chars); `clips/` empty;
    zero Modal calls; log line `intra pair: verse1 -> chorus1, delta=3.94 dB`.
@@ -338,10 +336,10 @@ Prerequisites for every command: `cd /home/mhuang/Development/sow_feature_branch
    `"status": "ok"`.
 4. **Full run**: drop the narrowing flags (keep the same `--out`) → 15 variants, 30 calls, `index.json` has 15
    `"status": "ok"` entries with clip durations in {38.0, 46.0} s; total GPU wall time and cold start logged.
-5. **Listenable proof**: serve `python3 -m http.server 8765 --directory lab/poc-scripts/output/audio-imprint/run1`
+5. **Listenable proof**: serve `python3 -m http.server 8765 --directory lab/poc-scripts/output/audio-inpaint/run1`
    and open `http://127.0.0.1:8765/report.html` in a browser tab: 15 clip players + 15 bridge players render,
    each `<audio>` reports a finite `duration` (no 404s), and the page groups Boundary 8 s / 16 s / Intra.
-6. **Glossary**: `grep -n "Audio Imprint" CONTEXT.md` returns the new entry.
+6. **Glossary**: `grep -n "Seam Inpaint" CONTEXT.md` returns the new entry.
 
 ## Assumptions & contingencies
 
@@ -366,7 +364,7 @@ Prerequisites for every command: `cd /home/mhuang/Development/sow_feature_branch
 ## Status: delivered (2026-11-20)
 
 Delivered on branch `audio_imprint_poc`: `lab/poc-scripts/modal_apps/acestep_repaint_app.py`,
-`lab/poc-scripts/gen_audio_imprint.py`, the `audio_imprint` extra, and the **Audio Imprint** glossary entry
+`lab/poc-scripts/gen_audio_inpaint.py`, the `audio_inpaint` extra, and the **Seam Inpaint** glossary entry
 in `CONTEXT.md`.
 
 Departures from the plan as written:

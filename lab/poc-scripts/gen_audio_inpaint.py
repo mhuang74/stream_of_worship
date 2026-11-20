@@ -1,4 +1,4 @@
-"""Audio imprinting POC — generate replacement seam music with ACE-Step 1.5 repaint.
+"""Seam Inpaint POC — generate replacement seam music with ACE-Step 1.5 repaint.
 
 For every seam of a Songset this script builds a montage from the real recordings
 on both sides plus a hole of digital silence where the seam is, asks the deployed
@@ -20,9 +20,9 @@ Outputs under `--out`:
     report.html self-contained listening page
 
 Usage:
-    uv run --project lab/poc-scripts --extra audio_imprint \\
-        python lab/poc-scripts/gen_audio_imprint.py \\
-        --songset hbWfCccGxN_JLQGBEqmdu --out lab/poc-scripts/output/audio-imprint/run1 --dry-run
+    uv run --project lab/poc-scripts --extra audio_inpaint \\
+        python lab/poc-scripts/gen_audio_inpaint.py \\
+        --songset hbWfCccGxN_JLQGBEqmdu --out lab/poc-scripts/output/audio-inpaint/run1 --dry-run
 
 Prerequisites: `SOW_DATABASE_URL`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`,
 `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY`, `MODAL_TOKEN_ID`,
@@ -981,7 +981,7 @@ def run_variant(
         }
         return record
 
-    workdir = Path(tempfile.mkdtemp(prefix=f"imprint-{variant.id}-"))
+    workdir = Path(tempfile.mkdtemp(prefix=f"inpaint-{variant.id}-"))
     try:
         left_request = build_request(
             variant,
@@ -1047,7 +1047,7 @@ def run_variant(
 
 def bytes_from_array(samples: np.ndarray) -> bytes:
     """Encode samples as FLAC bytes for upload (kept lossless; the model resamples itself)."""
-    with tempfile.TemporaryDirectory(prefix="imprint-encode-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="inpaint-encode-") as tmp:
         path = Path(tmp) / "montage.flac"
         write_flac(path, samples)
         return path.read_bytes()
@@ -1181,7 +1181,7 @@ def write_index(
 def report_html(seams: dict[str, Seam], records: list[dict[str, Any]], songset_id: str) -> str:
     boundary = seams.get("boundary")
     intra = seams.get("intra")
-    title = "Audio Imprint POC"
+    title = "Seam Inpaint POC"
     subtitle_bits = [f"songset {songset_id}"]
     if boundary:
         detail = boundary.detail
@@ -1304,7 +1304,7 @@ def report_html(seams: dict[str, Seam], records: list[dict[str, Any]], songset_i
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate audio-imprint seam clips with ACE-Step repaint"
+        description="Generate audio-inpaint seam clips with ACE-Step repaint"
     )
     parser.add_argument("--songset", required=True, help="songset id to bridge")
     parser.add_argument("--out", required=True, help="output directory for this run")
