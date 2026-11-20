@@ -196,6 +196,8 @@ Edit `lab/poc-scripts/modal_apps/acestep_repaint_app.py`:
    `shift=float(request.get("shift", 3.0))`.
    Forward all six to `GenerationParams`. Turbo keeps 3.0 (upstream recommendation); the client sends
    `shift=1.0` for the base model (upstream default; 3.0 is recommended only for turbo).
+   *(As built: the two `repaint_*_crossfade*` fields are dead — the pinned handler overwrites them with
+   `_resolve_repaint_config(mode, strength)`. See the crossfade departure under Status.)*
 4. Add a second class `AceStepSeamBase` with the same `@app.cls(...)` decorator, `DIT_CONFIG =
    "acestep-v15-base"`, and a `@modal.enter` that calls `_bootstrap(self, DIT_CONFIG, True)`; its
    `repaint` method is identical to `AceStepRepaint.repaint` (share the body through a module-level
@@ -277,6 +279,9 @@ Requests:
   `use_adg=False`, `bpm=86`, `keyscale="C Major"`, `instrumental=True`, `lyrics="[Instrumental]"`,
   `duration=montage_seconds`, `repaint_start=8.0`, `repaint_end=9.393`, `seed`, caption from
   `ACESTEP_CAPTIONS`, `repaint_wav_crossfade_sec=0.05`, `repaint_latent_crossfade_frames=10`.
+  *(As built: those two knobs never reach the sampler; the request sends `repaint_mode="balanced"` and
+  `repaint_strength=0.5`, whose resolved effect is 0.5 injection / 12 latent frames / 0.025 s wav
+  crossfade. See Status.)*
 - ACE-Step base: same request with `inference_steps=32`, `guidance_scale=7.0`, `use_adg=True`.
 - Both ACE-Step classes receive `reference_bytes` = FLAC of the reference montage
   `A[61.85:71.85] + B[0.7:10.7] + B[112.387:122.387]` (3 × 10 s), resampled to **48 kHz** and
