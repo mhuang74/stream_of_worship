@@ -24,9 +24,13 @@ an optional `reference_bytes` upload: `handle.reference_audio` samples three
 10 s segments (front/middle/back) from it, so a file of exactly 30.0 s at 48 kHz
 makes that choice deterministic (`random.randint(0, 0)`), and the client pads the
 reference to exactly 1,440,000 samples before upload. Quality knobs
-(`inference_steps`, `guidance_scale`, `use_adg`, `shift`,
-`repaint_wav_crossfade_sec`, `repaint_latent_crossfade_frames`) are read from the
-request dict with upstream defaults so the old contract still works.
+(`inference_steps`, `guidance_scale`, `use_adg`, `shift`) are read from the
+request dict with upstream defaults so the old contract still works. Repaint
+splicing is controlled by `repaint_mode` / `repaint_strength`: the pinned
+handler overwrites any explicit `repaint_wav_crossfade_sec` /
+`repaint_latent_crossfade_frames` with `_resolve_repaint_config(mode, strength)`,
+so the response `meta` records the resolved injection ratio, latent crossfade
+frames and wav crossfade — the values that actually ran.
 """
 
 import modal
@@ -287,6 +291,17 @@ def _repaint(
                     f"{info.frames} frames at {info.samplerate} Hz"
                 )
 
+        # `GenerationParams` carries the repaint knobs and the wrapper forwards them to
+        # the handler, which derives the real crossfades from (mode, strength) via
+        # `_resolve_repaint_config`. The explicit `repaint_*_crossfade*` fields exist on
+        # the dataclass but are overwritten downstream, so they are not sent at all.
+        repaint_mode = str(request.get("repaint_mode", "balanced"))
+        repaint_strength = float(request.get("repaint_strength", 0.5))
+        from acestep.core.generation.handler.generate_music import _resolve_repaint_config
+
+        injection_ratio, latent_frames, wav_crossfade = _resolve_repaint_config(
+            repaint_mode, repaint_strength
+        )
         params = self.generation_params(
             task_type="repaint",
             src_audio=str(src_path),
@@ -306,7 +321,6 @@ def _repaint(
             guidance_scale=float(request.get("guidance_scale", 7.0)),
             use_adg=bool(request.get("use_adg", False)),
             reference_audio=str(reference_path) if reference_path else None,
-            repaint_latent_crossfade_frames=int(request.get("repaint_latent_crossfade_frames", 10)),
             repaint_mode=repaint_mode,
             repaint_strength=repaint_strength,
             thinking=False,
@@ -334,7 +348,9 @@ def _repaint(
         print(
             f"[sow-acestep] repaint {start:.3f}-{end:.3f}s seed={seed} "
             f"model={self.dit_config} steps={params.inference_steps} shift={shift} "
-            f"reference={requested_reference} caption={request['caption'][:60]!r} "
+            f"reference={requested_reference} repaint={repaint_mode}/{repaint_strength} "
+            f"effective={injection_ratio}/{latent_frames}/{wav_crossfade} "
+            f"caption={request['caption'][:60]!r} "
             f"in {time.time() - started:.1f}s",
             flush=True,
         )
@@ -352,8 +368,13 @@ def _repaint(
                 "guidance_scale": float(params.guidance_scale),
                 "use_adg": bool(params.use_adg),
                 "reference_audio": requested_reference,
-                "repaint_wav_crossfade_sec": float(params.repaint_wav_crossfade_sec),
-                "repaint_latent_crossfade_frames": int(params.repaint_latent_crossfade_frames),
+                "repaint_mode": repaint_mode,
+                "repaint_strength": repaint_strength,
+                "repaint_effective": {
+                    "injection_ratio": float(injection_ratio),
+                    "latent_crossfade_frames": int(latent_frames),
+                    "wav_crossfade_sec": float(wav_crossfade),
+                },
                 "elapsed_seconds": round(time.time() - started, 3),
             },
         }
