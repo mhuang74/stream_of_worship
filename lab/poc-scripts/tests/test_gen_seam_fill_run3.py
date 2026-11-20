@@ -144,3 +144,29 @@ def test_unknown_mode_is_rejected() -> None:
     fill = fill_with_hits(FIRST, SECOND)
     with pytest.raises(ValueError, match="unknown correction mode"):
         run3.correct_timing(fill, np.array([FIRST, SECOND]), BEAT, "stretch")
+
+
+def test_trailing_silence_measures_the_end_pad_trim_creates() -> None:
+    # Content up to a point, then nothing: that gap is the dead air trim's
+    # end-pad leaves immediately before the incoming downbeat.
+    fill = fill_with_hits(FIRST, SECOND)
+    corrected, _ = run3.correct_timing(fill, np.array([FIRST, SECOND]), BEAT, "trim")
+    last_material = SECOND - FIRST + BURST - 1
+    expected = round((FILL - 1 - last_material) / SR * 1000.0, 2)
+    assert run3.trailing_silence_ms(corrected) == expected
+    # A fill whose material runs to the last frame has no trailing silence.
+    full = fill_with_hits(FIRST)
+    full[FILL - 1, :] = 0.5
+    assert run3.trailing_silence_ms(full) == 0.0
+    # An all-silent fill reports its whole duration, never a negative or fake value.
+    silent = np.zeros((FILL, 2), dtype=np.float32)
+    assert run3.trailing_silence_ms(silent) == round(FILL / SR * 1000.0, 2)
+
+
+def test_beat_two_peak_finds_the_hit_inside_the_window() -> None:
+    fill = fill_with_hits(FIRST, BEAT)
+    position = run3.beat_two_peak_ms(fill, BEAT)
+    assert position is not None
+    assert position == pytest.approx(BEAT / SR * 1000.0, abs=20.0)
+    # Nothing inside the window: the field is absent rather than invented.
+    assert run3.beat_two_peak_ms(fill_with_hits(FIRST), FILL + BEAT) is None
