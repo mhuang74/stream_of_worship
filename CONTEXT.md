@@ -84,6 +84,14 @@ _Avoid_: generation, task, request, paid job
 Newly generated music that occupies the seam between two adjacent songs, produced by conditioning a music model on the recorded material immediately before and after that seam. A Seam Inpaint replaces the silent gap rather than fading one recording into the other, and leaves both songs' arranged material intact.
 _Avoid_: AI transition, generated bridge, stitch, audio imprint
 
+**Seam Fill**:
+The audio that occupies the gap between two adjacent Songs in a rendered Songset. A Seam Fill is either real material taken from one of the two recordings (a Tail Extension) or newly generated music (a Seam Inpaint); it is not a fade between the Songs.
+_Avoid_: bridge, transition bed, stitch
+
+**Tail Extension**:
+A Seam Fill made by continuing the outgoing Song's own recording past its arrangement cut, so the listener hears that Song finish rather than silence or new music.
+_Avoid_: ring-out, outro pad, post-roll
+
 **Boundary Key**:
 The musical key a Song leaves through (its exit component) or arrives through (its entry component) — the transition between adjacent songs is judged on exit(A) vs entry(B), falling back to whole-Song key when a boundary component is missing.
 _Avoid_: component key, per-section key
