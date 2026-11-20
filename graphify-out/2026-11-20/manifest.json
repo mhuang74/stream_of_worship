@@ -3972,9 +3972,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/modal_apps/acestep_repaint_app.py": {
-    "mtime": 1795159379.570492,
-    "seen": 1795159516.184441,
-    "ast_hash": "57a71abd9a78211dac176876baf7739d",
+    "mtime": 1795178570.7249897,
+    "seen": 1795181505.6074936,
+    "ast_hash": "c5aae7abeb0f856dc06315da272de97a",
     "semantic_hash": ""
   },
   "lab/poc-scripts/poc_analysis.py": {
@@ -5556,9 +5556,9 @@
     "semantic_hash": ""
   },
   "CONTEXT.md": {
-    "mtime": 1795159379.579492,
-    "seen": 1795159516.206,
-    "ast_hash": "b650c6628a7579de466c08df4caef5f8",
+    "mtime": 1795178111.082081,
+    "seen": 1795181505.628101,
+    "ast_hash": "60f01090d547247759b9bbd827fc20a9",
     "semantic_hash": ""
   },
   "DEVELOPER.md": {
@@ -5961,6 +5961,18 @@
     "mtime": 1795159375.1914947,
     "seen": 1795159516.183467,
     "ast_hash": "176be64af8236569db2ec718ac5bb339",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/gen_seam_fill.py": {
+    "mtime": 1795181441.7968802,
+    "seen": 1795181505.6073086,
+    "ast_hash": "be04a8c2d80aac7c35ff73af824f78b6",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/modal_apps/sa3_inpaint_app.py": {
+    "mtime": 1795180809.4849203,
+    "seen": 1795181505.607496,
+    "ast_hash": "5893b938ac1dbc73c0c5ee13f2e3cc21",
     "semantic_hash": ""
   }
 }
