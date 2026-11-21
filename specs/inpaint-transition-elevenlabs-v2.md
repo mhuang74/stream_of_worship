@@ -121,6 +121,9 @@ glue_jobs
   dispatch_state        text, NOT NULL: pending | dispatched | failed | local
   dispatch_attempt      integer, NOT NULL default 0
   attempt_id            uuid, NOT NULL, unique per accepted dispatch attempt
+  pending_take_id       uuid, NULL until allocation, then immutable and UNIQUE
+  take_ordinal          integer, NULL until allocation, then immutable, >= 1
+  seed                  bigint, NULL until allocation, then immutable
   paid_reservation_id   uuid, NULL
   paid_reservation_state text, NULL: reserved | consumed | released
   provider_contacted    boolean, NOT NULL default false
@@ -180,6 +183,7 @@ render_jobs (add)
 Schema and lifecycle invariants:
 
 - The partial unique active-job index, not a read-then-write check, enforces one active Glue job per user. `active` is true only for queued/preparing/uploading/composing/storing-response/staging. `ready`, `failed`, `cancelled`, and `dispatch-failed` set it false in the same transaction as the terminal phase.
+- Job creation atomically allocates and persists `pending_take_id`, `take_ordinal`, and `seed` with the paid reservation. Once allocated, all three are immutable. Every worker attempt and restart uses those exact stored values; it must never generate a replacement id, ordinal, or seed. On successful staging, `resulting_take_id` equals `pending_take_id`, and the ready `glue_takes` row copies the persisted ordinal and seed. No `pending` take status is needed because the reservation lives on `glue_jobs` until the take row is inserted.
 - A paid reservation row and job creation are atomic. A consumed row remains the immutable quota ledger even if the provider fails. A released row has no `consumed_at` and does not count. `provider_contacted` becomes true immediately before the first upload or compose request can be sent; consumption is recorded in the same transition, before network I/O.
 - A take is effective only when Glue is enabled, the selected take is `ready`, its `user_id` is the Songset owner, and its stored descriptor text/key exactly equals the currently derived descriptor. `glue_active_take_id` alone never proves readiness.
 - Do not add v1's denormalized `glue_key` or `glue_seconds`. Every duration, list, editor, Listen, and render reader resolves the selected take. Descriptor changes make a take stale without deleting it; reverting inputs can make it effective again. There is no broad “clear all Glues” rule.
@@ -330,7 +334,7 @@ The route performs this sequence:
 3. Compute the v2 descriptor from server-side saved data. Refuse client-supplied descriptors, WAVs, `song_id`s, seeds, costs, or cache keys.
 4. Resolve the current take. For `initial`, if it is already selected and effective, return `200 {"status":"ready","takeId":"…","cached":true}` with no job. Otherwise atomically select the newest ready take for this user/current descriptor, bump item and Songset timestamps, and return the same free ready response. This path consumes no quota.
 5. For `new-take`, always prepare a new paid take even if another take is ready. For `initial` with no existing current ready take, prepare the initial job. Check the missing server API key and other configuration now, before reservation.
-6. In one serializable transaction: re-read the item snapshot and descriptor; atomically claim `(user_id, clientRequestId)` or return the original job if a racing request inserted it; lock the user's quota row, count consumed attempts in the rolling 24 hours, and reject at 5; insert the job and reservation, insert/claim the new take ordinal and cryptographically random seed, and rely on the partial active index to reject concurrent jobs. If another active job exists, return `409 GLUE_ACTIVE_JOB` identifying its Junction and job id rather than queueing surprise spend.
+6. In one serializable transaction: re-read the item snapshot and descriptor; atomically claim `(user_id, clientRequestId)` or return the original job if a racing request inserted it; lock the user's quota row, count consumed attempts in the rolling 24 hours, and reject at 5; insert the job and reservation, allocate and persist the new `pending_take_id`, next `take_ordinal`, and cryptographically random `seed`, and rely on the partial active index to reject concurrent jobs. If another active job exists, return `409 GLUE_ACTIVE_JOB` identifying its Junction and job id rather than queueing surprise spend.
 7. Commit, then dispatch `{kind:"glue.generate",jobId,songsetId,userId}` to the dedicated Glue queue. Return `202 {"jobId":"…","status":"queued"}`.
 8. If SQS dispatch fails after commit, transactionally mark `dispatch-failed`, set active false, release the paid reservation because no provider call occurred, increment the dispatch attempt/log the exception, and return retryable `503 GLUE_DISPATCH_FAILED`. Repeating the same `clientRequestId` creates a fresh dispatch record/attempt id for that original job without charge; it must not create another paid reservation or bypass the active-job index. A job already claimed by a worker is never reset by a late HTTP retry.
 
@@ -362,7 +366,7 @@ Generalize `src/lib/render/dispatcher.ts` and `src/lib/sqs/client.ts` without co
 - Local REST mode commits the same durable job and returns `202` immediately. Dispatch to the local worker asynchronously after commit; do not reuse the existing blocking REST invocation as a browser wait. A local dispatch failure follows the same `dispatch-failed` and free redispatch path. REST concurrency is development-only and does not weaken DB idempotency.
 - `lambda_handler.py` routes omitted/`render` kind to `execute_render_pipeline` and `glue.generate` to new `execute_glue_job`. Verify message `userId`/`songsetId` against the claimed DB job. Batch size remains 1; acknowledgement behavior must not convert an ambiguous paid phase into another provider call.
 
-`execute_glue_job` atomically claims a queued/dispatchable job and attempt id. A duplicate delivery or restart reads phase, attempt, provider-contact, upload, and raw-response state before doing anything:
+`execute_glue_job` atomically claims a queued/dispatchable job and attempt id. A duplicate delivery or restart reads phase, attempt, immutable `pending_take_id`/`take_ordinal`/`seed`, provider-contact, upload, and raw-response state before doing anything. Missing reserved identity fields on a paid job are a terminal invariant/configuration failure before provider contact, not permission to invent replacements:
 
 1. Re-fetch the current Songset Items, ownership/order, saved arrangements, Recording hashes/tempo, and item timestamps. Recompute the descriptor and compare it plus current selection rules to the persisted snapshot before the first paid call. Stale/cancelled jobs finish without spend and do not change the selected take.
 2. Resume free excerpt construction, cached upload lookup, raw-response verification, and staging from durable state.
@@ -716,7 +720,7 @@ Use fake provider transports and temporary/local R2/DB fixtures. Tests must fail
 - Quota races at the fifth/sixth job share one transactional result; cache hits and free restore do not consume quota; dispatch failure releases reservation and same-id redispatch is free.
 - One-active-job partial unique index under concurrent submissions; response identifies the active Junction. Provider concurrency configuration is capped at 2 independently of render.
 - Cached composition/current take, cached excerpts, and cached copyright rejection avoid the corresponding provider request. Per-user isolation denies every cross-user excerpt/take/job/audio access.
-- Duplicate SQS delivery before contact claims once; redelivery during ambiguous paid upload/compose makes no second provider call and records unknown outcome. Worker restart resumes only persisted safe stages.
+- Duplicate SQS delivery before contact claims once; redelivery during ambiguous paid upload/compose makes no second provider call and records unknown outcome. Worker restart before and after provider contact reuses the exact persisted pending take id, ordinal, and seed, and resumes only persisted safe stages.
 - Paid timeout/429/5xx/connection ambiguity produces `retryKind:"paid"` and no automatic retry. Entitlement/invalid plan/copyright are non-retryable in place.
 - Successful upload `song_id` persists before compose. Raw response R2 checksum/byte count persist before staging. Injected staging/QA/R2/DB failures offer free processing recovery and never compose again.
 - Try another preserves old takes and selection on failure; success creates/selects a new ordinal/seed. Earlier current-descriptor take restore is free. Stale-before-spend and cancellation-before-contact do not consume quota.
