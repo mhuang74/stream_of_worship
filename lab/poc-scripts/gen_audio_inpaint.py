@@ -2944,16 +2944,21 @@ def main(argv: Optional[list[str]] = None) -> int:
     write_index(out_dir, args, seams, records, references, started_iso, wall)
     (out_dir / "report.html").write_text(report_html(seams, records, args, references))
 
-    gpu_seconds = sum(
-        float((record.get("meta") or {}).get("elapsed_seconds") or 0.0) for record in records
-    )
+    # A gap take makes one call and copies its meta onto all three correction
+    # rows, so sum elapsed time over calls, not rows (`raw` and every bridge row).
+    calls = [
+        record
+        for record in records
+        if record.get("correction") in (None, "raw") and record.get("meta")
+    ]
+    gpu_seconds = sum(float(record["meta"].get("elapsed_seconds") or 0.0) for record in calls)
     ok = [record for record in records if record["status"] == "ok"]
     unavailable = [record for record in records if record["status"] == "unavailable"]
     failed = [record for record in records if record["status"] == "failed"]
     print(
         f"done: {len(ok)} ok, {len(unavailable)} unavailable, {len(failed)} failed, "
         f"{len(records)} records in {wall:.1f}s (gpu {gpu_seconds:.1f}s across "
-        f"{sum(1 for r in records if r.get('meta'))} calls)",
+        f"{len(calls)} calls)",
         flush=True,
     )
     for record in failed:
