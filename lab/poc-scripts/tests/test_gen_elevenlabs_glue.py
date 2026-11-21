@@ -7,6 +7,7 @@ import sys
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 import gen_elevenlabs_glue as glue_mod
 from gen_elevenlabs_glue import (
@@ -14,12 +15,15 @@ from gen_elevenlabs_glue import (
     SR,
     PlanOptions,
     apply_fades,
+    assemble_set,
     build_plan,
     ensure_upload,
     envelope_offset,
     evaluate_status,
     joint_metrics,
+    junction_indices,
     locate_glue,
+    mix_songset,
     pcm16_and_sha,
     plan_total_seconds,
     report_html,
@@ -375,59 +379,23 @@ def test_joint_metrics_flags_step_and_click() -> None:
 
 
 def _synthetic_index() -> dict:
-    files = {
-        "glue": "glues/beats-2.flac",
-        "generation": "glues/beats-2-generation.flac",
-        "seam": "seams/beats-2.flac",
-        "full": "full/beats-2.flac",
-    }
-    return {
-        "version": 1,
-        "run": "run1",
-        "songset_id": "hbWfCccGxN_JLQGBEqmdu",
-        "model_id": "music_v2_5",
-        "output_format": "pcm_44100",
-        "input": "full",
-        "credits_estimate": 5198,
-        "items": [
-            {
-                "position": 0,
-                "title": "Here I Bow",
-                "arranged_seconds": 146.51,
-                "tempo_bpm": 68.0,
-                "key": "D major",
-                "steps": 5,
-            },
-            {
-                "position": 1,
-                "title": "Here for You",
-                "arranged_seconds": 177.31,
-                "tempo_bpm": TEMPO,
-                "key": "C major",
-                "steps": 6,
-            },
-        ],
-        "seam": {"tempo_bpm": TEMPO, "beat_seconds": 0.6966, "baseline_gap_seconds": 1.3932},
-        "condition": {"mode": "b", "strength": "high", "seconds": 8.0},
-        "takes": [
-            {
-                "id": "beats-2",
-                "label": "beats-2 — 2 beats",
-                "beats": 2,
-                "status": "ok",
-                "target_seconds": 1.3932,
-                "generation_seconds": 3.0,
-                "generated_seconds": 2.998,
-                "trim": "tail",
-                "glue_seconds": 1.3932,
-                "metrics": {"r_a": 0.999, "r_b": 0.998, "lag_a": 3, "lag_b": -2},
-                "files": files,
-                "error": None,
-            },
-            {
-                "id": "beats-8",
-                "label": "beats-8 — 8 beats",
-                "beats": 8,
+    """A v2 index: 3 songs, 2 junctions, a full-set baseline and one full-set take."""
+
+    def take(junction: int, beats: int, status: str = "ok") -> dict:
+        name = f"beats-{beats}"
+        files = {
+            "glue": f"junctions/j{junction}/glues/{name}.flac",
+            "generation": f"junctions/j{junction}/glues/{name}-generation.flac",
+            "seam": f"junctions/j{junction}/seams/{name}.flac",
+            "full": f"junctions/j{junction}/full/{name}.flac",
+        }
+        if status == "failed":
+            return {
+                "id": f"j{junction}-{name}",
+                "take": name,
+                "label": f"{name} — {beats} beats",
+                "beats": beats,
+                "seed": 0,
                 "status": "failed",
                 "target_seconds": 5.5729,
                 "generation_seconds": 5.573,
@@ -436,17 +404,143 @@ def _synthetic_index() -> dict:
                 "metrics": {},
                 "files": {},
                 "error": "compose failed HTTP 500",
+            }
+        return {
+            "id": f"j{junction}-{name}",
+            "take": name,
+            "label": f"{name} — {beats} beats",
+            "beats": beats,
+            "seed": 0,
+            "status": "ok",
+            "target_seconds": 2.7864,
+            "generation_seconds": 3.0,
+            "generated_seconds": 2.998,
+            "trim": "tail",
+            "glue_seconds": 2.7864,
+            "summary": "seed 0 · glue located by plan",
+            "metrics": {"r_a": 0.999, "r_b": 0.998, "lag_a": 3, "lag_b": -2},
+            "files": files,
+            "reasons": [],
+            "error": None,
+        }
+
+    def baseline(junction: int, crossfade: bool) -> dict:
+        return {
+            "id": f"j{junction}-baseline",
+            "label": (
+                "baseline — 1.500 s crossfade"
+                if crossfade
+                else "baseline — 2 beats (1.393 s) of silence"
+            ),
+            "summary": (
+                "current render — production crossfade at this junction"
+                if crossfade
+                else "current render — production gap at this junction"
+            ),
+            "status": "ok",
+            "mode": "crossfade" if crossfade else "gap",
+            "gap_beats": 0.0 if crossfade else 2.0,
+            "gap_seconds": 0.0 if crossfade else 1.393197,
+            "crossfade_seconds": 1.5 if crossfade else 0.0,
+            "seconds": 13.5 if crossfade else 13.393197,
+            "peak_scaled": False,
+            "files": {
+                "seam": f"junctions/j{junction}/seams/baseline.flac",
+                "full": f"junctions/j{junction}/full/baseline.flac",
+            },
+        }
+
+    def junction(index: int, from_title: str, to_title: str, crossfade: bool) -> dict:
+        return {
+            "id": f"j{index}",
+            "index": index,
+            "from": {"position": index - 1, "song_id": f"song{index}", "title": from_title},
+            "to": {"position": index, "song_id": f"song{index + 1}", "title": to_title},
+            "tempo_bpm": TEMPO,
+            "beat_seconds": 0.696599,
+            "uploads": {
+                "a": {"song_id": "up-a", "sha256": "sha-a", "seconds": 12.0},
+                "b": {"song_id": "up-b", "sha256": "sha-b", "seconds": 12.0},
+            },
+            "baseline": baseline(index, crossfade),
+            "takes": [take(index, 4), take(index, 8, status="failed")],
+        }
+
+    return {
+        "version": 2,
+        "run": "run1",
+        "created_at": "2026-08-23T00:00:00+00:00",
+        "songset_id": "hbWfCccGxN_JLQGBEqmdu",
+        "model_id": "music_v2_5",
+        "output_format": "pcm_44100",
+        "input": "excerpt:12s",
+        "beats": [4],
+        "credits_estimate": 1620,
+        "items": [
+            {
+                "position": 0,
+                "song_id": "song0",
+                "title": "Here I Bow",
+                "hash_prefix": "hash0",
+                "arranged_seconds": 146.51,
+                "tempo_bpm": 68.0,
+                "key": "D major",
+                "steps": 5,
+                "file": "context/song-01-hash0.flac",
+            },
+            {
+                "position": 1,
+                "song_id": "song1",
+                "title": "Here for You",
+                "hash_prefix": "hash1",
+                "arranged_seconds": 177.31,
+                "tempo_bpm": TEMPO,
+                "key": "C major",
+                "steps": 6,
+                "file": "context/song-02-hash1.flac",
+            },
+            {
+                "position": 2,
+                "song_id": "song2",
+                "title": "Here Again",
+                "hash_prefix": "hash2",
+                "arranged_seconds": 150.0,
+                "tempo_bpm": 90.0,
+                "key": "G major",
+                "steps": 4,
+                "file": "context/song-03-hash2.flac",
             },
         ],
-        "baseline": {
-            "id": "baseline",
-            "label": "baseline — 2 beats (1.393 s) of silence",
-            "summary": "current render — 2-beat silence gap",
-            "status": "ok",
-            "beats": 2,
-            "glue_seconds": 1.3932,
-            "files": {"seam": "seams/baseline.flac", "full": "full/baseline.flac"},
+        "junctions": [
+            junction(1, "Here I Bow", "Here for You", crossfade=False),
+            junction(2, "Here for You", "Here Again", crossfade=True),
+        ],
+        "full_set": {
+            "baseline": {
+                "id": "full-set-baseline",
+                "kind": "full-set",
+                "label": "full set — baseline (production gaps/crossfades)",
+                "status": "ok",
+                "seconds": 812.4,
+                "files": {"full": "full-set/baseline.flac"},
+            },
+            "takes": [
+                {
+                    "id": "full-set-beats-4",
+                    "kind": "full-set",
+                    "label": "full set — beats-4",
+                    "beats": 4,
+                    "take": 1,
+                    "songs": 3,
+                    "junctions": 2,
+                    "seconds": 830.1,
+                    "status": "ok",
+                    "files": {"full": "full-set/beats-4.flac"},
+                }
+            ],
+            "skipped": None,
         },
+        "condition": {"mode": "b", "strength": "high", "seconds": 8.0},
     }
 
 
@@ -454,17 +548,34 @@ def test_report_contains_players_scores_and_localstorage() -> None:
     index = _synthetic_index()
     page = report_html(index)
 
-    for src in index["takes"][0]["files"].values():
+    first = index["junctions"][0]
+    for src in first["takes"][0]["files"].values():
         assert f'src="{src}"' in page
-    take_card = page.split('data-take-id="beats-2"', 1)[1].split("</article>", 1)[0]
+    take_card = page.split('data-take-id="j1-beats-4"', 1)[1].split("</article>", 1)[0]
     assert take_card.count("<audio") == 4
-    assert 'src="glues/beats-2-generation.flac"' in page
-    assert page.count('preload="none"') == 2  # full pair per take + baseline full
+    assert 'src="junctions/j1/glues/beats-4-generation.flac"' in page
 
-    # one score UI per card: the ok take, the failed take and the baseline
-    assert page.count('<input class="score-input" type="number" min="0" max="10" step="0.5">') == 3
-    assert page.count('class="vocals-input"') == 3
-    assert page.count('class="note-input"') == 3
+    # one section per junction, each with its baseline, takes and rankings
+    assert "Junction 1 —" in page and "Junction 2 —" in page
+    assert "Here I Bow" in page and "Here Again" in page
+    assert "Junction 1 ranking (score desc, unscored last)" in page
+    assert "Junction 2 ranking (score desc, unscored last)" in page
+    assert "2 beats (1.393 s) of silence" in page
+    assert "1.500 s crossfade" in page
+
+    # context cards for every item, plus the full-set section
+    for item in index["items"]:
+        assert f'src="{item["file"]}"' in page
+    full_card = page.split('data-take-id="full-set-beats-4"', 1)[1].split("</article>", 1)[0]
+    assert 'src="full-set/beats-4.flac"' in full_card
+    assert 'src="full-set/baseline.flac"' in page
+    assert "score-input" not in full_card, "a full-set listen is not a take vote"
+
+    # one score UI per take or baseline card (failed takes included, they are never dropped);
+    # none on the full-set cards
+    assert page.count('<input class="score-input" type="number" min="0" max="10" step="0.5">') == 6
+    assert page.count('class="vocals-input"') == 6
+    assert page.count('class="note-input"') == 6
 
     assert 'id="last-played"' in page
     assert "Last played: —" in page
@@ -473,13 +584,47 @@ def test_report_contains_players_scores_and_localstorage() -> None:
     for control in ("export-scores", "import-scores", "reset-scores", "import-file"):
         assert f'id="{control}"' in page
 
-    assert 'class="card"' in page and 'data-take-id="beats-2"' in page
-    assert "current render — 2-beat silence gap" in page
+    assert 'class="card"' in page
     assert "compose failed HTTP 500" in page  # failed takes are shown, never dropped
     assert "<th>score</th>" in page
+    assert page.count('<tbody data-sortable="0">') == 2, "one failed table per junction"
     # A minimal but valid HTML document with no external resources.
     assert page.startswith("<!doctype html>") and page.rstrip().endswith("</html>")
     assert "http://" not in page and "https://" not in page
+
+
+def test_report_says_why_a_full_set_is_missing() -> None:
+    index = _synthetic_index()
+    index["full_set"]["skipped"] = "junction subset selected (--junctions)"
+    page = report_html(index)
+    assert "full set not built: junction subset selected (--junctions)" in page
+
+
+def test_full_set_card_reports_an_unavailable_take() -> None:
+    index = _synthetic_index()
+    index["full_set"] = {
+        "baseline": {},
+        "takes": [
+            {
+                "id": "full-set-beats-4",
+                "kind": "full-set",
+                "label": "full set — beats-4",
+                "beats": 4,
+                "take": 1,
+                "songs": 3,
+                "junctions": 2,
+                "seconds": None,
+                "status": "unavailable",
+                "files": {},
+                "error": "take beats-4 not available at junction j2 (status failed)",
+            }
+        ],
+        "skipped": None,
+    }
+    page = report_html(index)
+    card = page.split('data-take-id="full-set-beats-4"', 1)[1].split("</article>", 1)[0]
+    assert "unavailable: take beats-4 not available at junction j2" in card
+    assert "<audio" not in card, "an unavailable full set has no audio to play"
 
 
 def test_fatal_api_response_exits_2(tmp_path, monkeypatch, capsys) -> None:
@@ -498,8 +643,9 @@ def test_fatal_api_response_exits_2(tmp_path, monkeypatch, capsys) -> None:
             song_id=f"song{position}",
             title=f"Title {position}",
             hash_prefix=f"hash{position}",
-            gap_beats=2,
+            gap_beats=2.0,
             crossfade_enabled=False,
+            crossfade_duration_seconds=None,
             steps=[{"startSeconds": 0.0, "endSeconds": 10.0}],
         )
 
@@ -567,11 +713,397 @@ def test_dry_run_does_not_call_network(tmp_path, monkeypatch, capsys) -> None:
     assert not out_root.exists()
 
     printed = capsys.readouterr().out
-    for expected in ("1.3932", "2.7864", "5.5728", "11.1456", "326.82", "329.39", "334.97"):
+    for expected in ("2.7864", "326.82", "j1/beats-4", "junction j1:"):
         assert expected in printed
-    assert "5198" in printed  # 4,857 upload + 341 generation at 15 credits/s
+    assert "4857" in printed  # 323.82 s of two full arranged sides at 15 credits/s
+    assert "est. credits: upload 4857 + generation 45 = 4902" in printed
     assert "<A_ID>" in printed and "<B_ID>" in printed
-    assert printed.count("plan beats-") == 4
-    assert printed.count('"chunks"') == 4
-    assert '"duration_ms": 5573' in printed
+    assert printed.count("plan j1/beats-") == 1
+    assert printed.count('"chunks"') == 1
+    assert '"duration_ms": 3000' in printed
     assert '"conditioning_ref"' in printed
+
+
+# ---------------------------------------------------------------------------
+# Multi-junction: selection, production-parity baseline, full-set assembly
+# ---------------------------------------------------------------------------
+
+
+def _item(
+    position: int,
+    gap_beats: float | None = 2.0,
+    crossfade_seconds: float | None = None,
+) -> glue_mod.SongsetItem:
+    return glue_mod.SongsetItem(
+        position=position,
+        song_id=f"song{position}",
+        title=f"Song {position}",
+        hash_prefix=f"hash{position}",
+        gap_beats=gap_beats,
+        crossfade_enabled=crossfade_seconds is not None,
+        crossfade_duration_seconds=crossfade_seconds,
+        steps=[{"startSeconds": 0.0, "endSeconds": 6.0}],
+    )
+
+
+def test_junction_indices_all_and_subset() -> None:
+    assert junction_indices(5, None) == [1, 2, 3, 4]
+    assert junction_indices(5, [3, 1, 3]) == [1, 3]
+    assert junction_indices(2, None) == [1]
+    with pytest.raises(SystemExit):
+        junction_indices(3, [3])
+    with pytest.raises(SystemExit):
+        junction_indices(3, [0])
+
+
+def test_mix_songset_gap_is_bit_exact_and_uses_gap_beats() -> None:
+    rng = np.random.default_rng(21)
+    a = (rng.standard_normal((SR, 2)) * 0.05).astype(np.float32)
+    b = (rng.standard_normal((2 * SR, 2)) * 0.05).astype(np.float32)
+
+    mixed, records = mix_songset([a, b], [_item(0, gap_beats=1.0)], [120.0])
+
+    gap = round(1.0 * 60.0 / 120.0 * SR)
+    assert gap == 22050, "the gap is whole beats of the incoming tempo"
+    expected = np.concatenate([a, np.zeros((gap, 2), np.float32), b], axis=0)
+    assert np.array_equal(mixed, expected), "a gap junction must not touch a single sample"
+
+    record = records[0]
+    assert record["mode"] == "gap"
+    assert record["gap_beats"] == 1.0
+    assert record["gap_seconds"] == pytest.approx(0.5, abs=1e-6)
+    assert record["crossfade_seconds"] == 0.0
+    assert record["start_seconds"] == pytest.approx((SR + gap) / SR, abs=1e-6)
+    assert record["peak_scaled"] is False
+
+
+def test_mix_songset_crossfade_matches_production() -> None:
+    rng = np.random.default_rng(23)
+    a = (rng.standard_normal((SR, 2)) * 0.05).astype(np.float32)
+    b = (rng.standard_normal((2 * SR, 2)) * 0.05).astype(np.float32)
+
+    mixed, records = mix_songset([a, b], [_item(0, gap_beats=2.0, crossfade_seconds=0.5)], [120.0])
+
+    cross = round(0.5 * SR)
+    assert mixed.shape[0] == a.shape[0] + b.shape[0] - cross
+    assert np.array_equal(mixed[: a.shape[0] - cross], a[: a.shape[0] - cross])
+    ramp_in = np.arange(cross, dtype=np.float32)[:, None] / np.float32(cross)
+    ramp_out = 1.0 - ramp_in
+    overlap = a[-cross:] * ramp_out + b[:cross] * ramp_in
+    assert np.allclose(mixed[a.shape[0] - cross : a.shape[0]], overlap, atol=1e-7)
+    assert np.array_equal(
+        mixed[a.shape[0] :], b[cross:]
+    ), "the incoming song must resume sample-identical after the overlap"
+
+    record = records[0]
+    assert record["mode"] == "crossfade"
+    assert record["crossfade_seconds"] == pytest.approx(0.5, abs=1e-6)
+    assert record["gap_seconds"] == 0.0, "a crossfade replaces the gap entirely"
+
+
+def test_assemble_set_keeps_every_song_sample_identical() -> None:
+    rng = np.random.default_rng(25)
+    songs = [
+        (rng.standard_normal((SR, 2)) * 0.05).astype(np.float32),
+        (rng.standard_normal((2 * SR, 2)) * 0.05).astype(np.float32),
+        (rng.standard_normal((SR // 2, 2)) * 0.05).astype(np.float32),
+    ]
+    glues = [_sine(1.4, 0.2, frequency=220.0), _sine(1.4, 0.15, frequency=330.0)]
+
+    assembled = assemble_set(songs, glues)
+
+    offset = 0
+    for index, song in enumerate(songs):
+        assert np.array_equal(assembled[offset : offset + song.shape[0]], song)
+        offset += song.shape[0]
+        if index < len(glues):
+            assert np.array_equal(assembled[offset : offset + glues[index].shape[0]], glues[index])
+            offset += glues[index].shape[0]
+    assert offset == assembled.shape[0]
+
+    with pytest.raises(ValueError):
+        assemble_set(songs, glues[:1])
+
+
+def test_fetch_songset_rejects_more_than_five_items() -> None:
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def execute(self, _sql, _params=None):
+            return None
+
+        def fetchall(self):
+            return [
+                (
+                    position,
+                    f"song{position}",
+                    f"Title {position}",
+                    f"hash{position}",
+                    2.0,
+                    0,
+                    None,
+                    json.dumps([{"startSeconds": 0.0, "endSeconds": 5.0}]),
+                )
+                for position in range(6)
+            ]
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    with pytest.raises(SystemExit) as exc:
+        glue_mod.fetch_songset(Connection(), "too-long")
+    assert "5" in str(exc.value)
+
+
+def test_dry_run_multi_junction(tmp_path, monkeypatch, capsys) -> None:
+    def explode(*_args, **_kwargs):
+        raise AssertionError("dry run must not touch the network, Postgres or R2")
+
+    monkeypatch.setattr(glue_mod, "compose", explode)
+    monkeypatch.setattr(glue_mod, "fetch_songset", explode)
+    monkeypatch.setattr(glue_mod, "ensure_source_audio", explode)
+
+    out_root = tmp_path / "out"
+    assert (
+        glue_mod.main(
+            [
+                "--dry-run",
+                "--dry-run-items",
+                "5",
+                "--beats",
+                "4",
+                "--upload-seconds",
+                "12",
+                "--out-root",
+                str(out_root),
+            ]
+        )
+        == 0
+    )
+    assert not out_root.exists()
+
+    printed = capsys.readouterr().out
+    for junction in range(1, 5):
+        assert f"junction j{junction}: Song {junction:02d}" in printed
+        assert f"baseline j{junction}: gap" in printed
+        assert f"plan j{junction}/beats-4:" in printed
+    assert printed.count('"chunks"') == 4
+    # 8 x 12 s uploaded = 1,440 credits. Generation is 184 rather than 180 because the 74 BPM
+    # stand-in song's 4-beat Glue is 3.243 s, above the API's 3 s floor.
+    assert "est. credits: upload 1440 + generation 184 = 1624" in printed
+
+
+def _wire_offline_run(monkeypatch, item_count: int) -> None:
+    """Fake Postgres/R2/ElevenLabs: a sample-exact compose response, no network, no credits."""
+    import types
+
+    uploads: dict[str, np.ndarray] = {}
+    songs = {
+        f"hash{index}": (
+            np.random.default_rng(100 + index).standard_normal((6 * SR, 2)) * 0.05
+        ).astype(np.float32)
+        for index in range(item_count)
+    }
+    items = [
+        glue_mod.SongsetItem(
+            position=index,
+            song_id=f"song{index}",
+            title=f"Title {index}",
+            hash_prefix=f"hash{index}",
+            gap_beats=2.0,
+            crossfade_enabled=False,
+            crossfade_duration_seconds=None,
+            steps=[{"startSeconds": 0.0, "endSeconds": 6.0}],
+        )
+        for index in range(item_count)
+    ]
+    recordings = {
+        prefix: glue_mod.Recording(
+            hash_prefix=prefix,
+            content_hash=None,
+            duration_seconds=12.0,
+            tempo_bpm=TEMPO,
+            musical_key="C",
+            musical_mode="major",
+            loudness_db=-14.0,
+        )
+        for prefix in songs
+    }
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    def fake_ensure_upload(key, samples, out_root, refresh, label):
+        song_id = f"up-{len(uploads) + 1}"
+        uploads[song_id] = np.ascontiguousarray(samples)
+        return {
+            "song_id": song_id,
+            "sha256": f"sha-{song_id}",
+            "seconds": round(samples.shape[0] / SR, 3),
+        }
+
+    def fake_compose(key, plan, output_format, seed):
+        a_chunk, glue_chunk, b_chunk = plan["chunks"]
+        a_part = glue_mod.slice_window(
+            uploads[a_chunk["song_id"]],
+            a_chunk["range"]["start_ms"] / 1000.0,
+            a_chunk["range"]["end_ms"] / 1000.0,
+        )
+        b_part = glue_mod.slice_window(
+            uploads[b_chunk["song_id"]],
+            b_chunk["range"]["start_ms"] / 1000.0,
+            b_chunk["range"]["end_ms"] / 1000.0,
+        )
+        frames = glue_chunk["duration_ms"] * SR // 1000
+        glue = (np.random.default_rng(seed + 7).standard_normal((frames, 2)) * 0.2).astype(
+            np.float32
+        )
+        # The returned references are sample-identical to the uploads, so the Glue is located
+        # by correlation exactly where the plan put it.
+        response = np.concatenate([a_part, glue, b_part], axis=0)
+        return np.round(np.clip(response, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+
+    monkeypatch.setattr(glue_mod, "fetch_songset", lambda conn, songset_id: (items, recordings))
+    monkeypatch.setattr(
+        glue_mod, "ensure_source_audio", lambda prefix, root, connect: songs[prefix]
+    )
+    monkeypatch.setattr(glue_mod, "arranged_audio", lambda audio, steps, label: audio)
+    monkeypatch.setattr(glue_mod, "ensure_upload", fake_ensure_upload)
+    monkeypatch.setattr(glue_mod, "compose", fake_compose)
+    for name in glue_mod.ENV_KEYS:
+        monkeypatch.setenv(name, "test-value")
+    monkeypatch.setitem(
+        sys.modules, "psycopg", types.SimpleNamespace(connect=lambda url: FakeConnection())
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "stream_of_worship.admin.services.r2",
+        types.SimpleNamespace(R2Client=lambda **_kwargs: object()),
+    )
+
+
+def _flac_frames(path) -> np.ndarray:
+    samples, rate = sf.read(str(path), dtype="float32", always_2d=True)
+    assert rate == SR
+    return samples
+
+
+def test_multi_junction_run_writes_full_set_and_index(tmp_path, monkeypatch) -> None:
+    _wire_offline_run(monkeypatch, 3)
+    out_root = tmp_path / "out"
+    assert (
+        glue_mod.main(
+            [
+                "--run-name",
+                "three",
+                "--out-root",
+                str(out_root),
+                "--beats",
+                "4",
+                "--upload-seconds",
+                "3",
+            ]
+        )
+        == 0
+    )
+    run_dir = out_root / "three"
+
+    for junction in (1, 2):
+        for relative in (
+            "glues/beats-4.flac",
+            "full/beats-4.flac",
+            "seams/beats-4.flac",
+            "full/baseline.flac",
+            "seams/baseline.flac",
+        ):
+            assert (run_dir / "junctions" / f"j{junction}" / relative).is_file(), relative
+    assert (run_dir / "full-set" / "beats-4.flac").is_file()
+    assert (run_dir / "full-set" / "baseline.flac").is_file()
+
+    index = json.loads((run_dir / "index.json").read_text())
+    assert index["version"] == 2
+    assert len(index["items"]) == 3 and len(index["junctions"]) == 2
+    assert [junction["id"] for junction in index["junctions"]] == ["j1", "j2"]
+    assert index["junctions"][0]["baseline"]["mode"] == "gap"
+    assert [take["id"] for take in index["junctions"][0]["takes"]] == ["j1-beats-4"]
+    full_take = index["full_set"]["takes"][0]
+    assert full_take["status"] == "ok" and full_take["beats"] == 4
+    assert full_take["junctions"] == 2 and full_take["songs"] == 3
+    assert index["full_set"]["skipped"] is None
+    take = index["junctions"][0]["takes"][0]
+    assert take["status"] != "failed", take["error"]
+
+    beat = 60.0 / TEMPO
+    glue_seconds = 4 * beat
+    gap_seconds = 2 * beat
+    glue_frames = round(glue_seconds * SR)
+    assert (_flac_frames(run_dir / "full-set" / "beats-4.flac").shape[0] / SR) == pytest.approx(
+        18.0 + 2 * glue_seconds, abs=1e-3
+    )
+    assert (_flac_frames(run_dir / "full-set" / "baseline.flac").shape[0] / SR) == pytest.approx(
+        18.0 + 2 * gap_seconds, abs=1e-3
+    )
+    assert (
+        _flac_frames(run_dir / "junctions" / "j1" / "full" / "beats-4.flac").shape[0] / SR
+    ) == pytest.approx(12.0 + glue_seconds, abs=1e-3)
+    assert (
+        _flac_frames(run_dir / "junctions" / "j1" / "full" / "baseline.flac").shape[0] / SR
+    ) == pytest.approx(12.0 + gap_seconds, abs=1e-3)
+
+    assembled = _flac_frames(run_dir / "full-set" / "beats-4.flac")
+    offset = 0
+    for position, item in enumerate(index["items"]):
+        song = _flac_frames(run_dir / item["file"])
+        assert np.array_equal(
+            assembled[offset : offset + song.shape[0]], song
+        ), f"{item['file']} was altered by the full-set assembly"
+        offset += song.shape[0]
+        if position < len(index["junctions"]):
+            offset += glue_frames
+
+    page = (run_dir / "report.html").read_text()
+    assert "Junction 1 —" in page and "Junction 2 —" in page
+    assert 'src="full-set/beats-4.flac"' in page
+    assert "http://" not in page and "https://" not in page
+
+
+def test_junction_subset_skips_glue_full_set(tmp_path, monkeypatch) -> None:
+    _wire_offline_run(monkeypatch, 3)
+    out_root = tmp_path / "out"
+    assert (
+        glue_mod.main(
+            [
+                "--run-name",
+                "subset",
+                "--out-root",
+                str(out_root),
+                "--beats",
+                "4",
+                "--upload-seconds",
+                "3",
+                "--junctions",
+                "2",
+            ]
+        )
+        == 0
+    )
+    run_dir = out_root / "subset"
+
+    assert (run_dir / "junctions" / "j2" / "glues" / "beats-4.flac").is_file()
+    assert not (run_dir / "junctions" / "j1").exists()
+    assert not (run_dir / "full-set" / "beats-4.flac").exists()
+    assert (run_dir / "full-set" / "baseline.flac").is_file()
+
+    index = json.loads((run_dir / "index.json").read_text())
+    assert [junction["index"] for junction in index["junctions"]] == [2]
+    assert index["full_set"]["skipped"] == "junction subset selected (--junctions)"
+    assert (run_dir / "report.html").read_text().count("full set not built:") == 1
