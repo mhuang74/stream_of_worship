@@ -110,3 +110,8 @@ In short: one repaint pass with a mask around the hole, recordings-sourced key/t
 arrangement made SA3 fade its hole in from digital silence), level staging anchored on
 the joints instead of means, real-audio handoffs at both ends, and model failures
 refused rather than spliced.
+
+## Implementation summary
+
+What changed and why, the measured results, the review surfaces and the verification:
+`reports/audio_inpaint_poc_impl_summary.md`.
