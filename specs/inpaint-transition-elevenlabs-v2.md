@@ -72,7 +72,7 @@ State-transition invariants:
 - `queued → preparing → uploading → composing → storing-response → staging → ready` is the successful new-take path. Cached excerpts skip only their own upload requests, not validation. Free staging recovery enters at `staging` after verifying the persisted raw response.
 - `takeMode: "initial"` with an already selected current ready take returns `ready` without a job. With another existing current ready take, it selects the newest such take and returns that free resolution without provider work.
 - Any nonterminal job can become `failed` with a stable code and retry classification. `ready` and `failed` are terminal for the job; per-Junction `stale` is subsequently derived when inputs change.
-- A stale or cancelled job discovered before the first provider request finishes without spend. A cancellation after the first provider request is recorded as cancellation requested, with the explicit paid/no-refund outcome; the worker checks it between stages and preserves any returned response before stopping.
+- A stale or cancelled job discovered before the first provider request finishes without spend. Cancellation is unavailable once provider contact has been marked; there is no post-contact `cancellation requested` state. Any in-flight paid request runs to its persisted outcome, and a successful response is still preserved.
 - A new job never deletes takes or cache objects. Only successful staging selects the new take, transactionally.
 
 ## 2. Domain, schema, and canonical audio
@@ -329,7 +329,7 @@ Request:
 
 The route performs this sequence:
 
-1. Authenticate and verify Songset ownership. Look up `(user_id, clientRequestId)` before any free resolution; an existing record returns its original job/status without another reservation, selection, or dispatch. For a new id, verify outgoing Item ownership, that the next visible Item is the recorded successor, Glue is enabled, and both arrangements are saved and valid against current analysis. Validate incoming tempo, beat choice, both arranged sides, and the 120-second generation cap before spend.
+1. Authenticate and verify Songset ownership. Look up `(user_id, clientRequestId)` before any free resolution. An existing non-`dispatch-failed` record returns its original job/status without another reservation, selection, or dispatch. An existing `dispatch-failed` record follows step 8 and the redispatch contract below: it re-dispatches the same job and immutable take/quota identity and returns `202`, never a new job. For a new id, verify outgoing Item ownership, that the next visible Item is the recorded successor, Glue is enabled, and both arrangements are saved and valid against current analysis. Validate incoming tempo, beat choice, both arranged sides, and the 120-second generation cap before spend.
 2. Compare both persisted `updated_at` values to `expectedFromUpdatedAt` and `expectedToUpdatedAt`. A mismatch is `409 GLUE_STALE_SNAPSHOT`, before a reservation or provider call.
 3. Compute the v2 descriptor from server-side saved data. Refuse client-supplied descriptors, WAVs, `song_id`s, seeds, costs, or cache keys.
 4. Resolve the current take. For `initial`, if it is already selected and effective, return `200 {"status":"ready","takeId":"…","cached":true}` with no job. Otherwise atomically select the newest ready take for this user/current descriptor, bump item and Songset timestamps, and return the same free ready response. This path consumes no quota.
@@ -339,6 +339,39 @@ The route performs this sequence:
 8. If SQS dispatch fails after commit, transactionally mark `dispatch-failed`, set active false, release the paid reservation because no provider call occurred, increment the dispatch attempt/log the exception, and return retryable `503 GLUE_DISPATCH_FAILED`. Repeating the same `clientRequestId` creates a fresh dispatch record/attempt id for that original job without charge; it must not create another paid reservation or bypass the active-job index. A job already claimed by a worker is never reset by a late HTTP retry.
 
 Validation errors include `GLUE_NOT_ENABLED`, `GLUE_NO_SUCCESSOR`, `GLUE_UNSAVED_DRAFT` where detectable, `GLUE_TEMPO_UNAVAILABLE`, `GLUE_ANALYSIS_UNAVAILABLE`, `GLUE_ARRANGEMENT_INVALID`, `GLUE_EXCERPT_TOO_SHORT`, `GLUE_DURATION_TOO_LONG`, `GLUE_DAILY_LIMIT`, and `GLUE_NOT_CONFIGURED`. No validation failure consumes quota.
+
+#### Generation quote
+
+`GET /api/songsets/[id]/glue-quote?fromItemId=<id>&takeMode=initial|new-take` authenticates the owner, validates the saved Junction/descriptor, and returns:
+
+```json
+{
+  "descriptorKey": "64-lowercase-hex",
+  "fromItemId": "item-a",
+  "toItemId": "item-b",
+  "expectedFromUpdatedAt": "2026-11-22T10:00:00.000Z",
+  "expectedToUpdatedAt": "2026-11-22T10:00:00.000Z",
+  "uncachedSides": [{"side": "A", "seconds": 12, "credits": 180}],
+  "generationSeconds": 3,
+  "uploadCredits": 180,
+  "generationCredits": 45,
+  "estimatedNewCredits": 225,
+  "quotaLimit": 5,
+  "quotaUsed": 2,
+  "quotaRemaining": 3,
+  "quotaResetAt": "2026-11-23T09:15:00.000Z"
+}
+```
+
+With both excerpts cached, `uncachedSides` is empty and `uploadCredits` is zero. `quotaResetAt` is the oldest relevant consumed-attempt expiry, or null when no consumed attempt bounds the next job. The response is advisory until job creation revalidates descriptor/cache/quota transactionally. The resolved payload carries the same quote fields for editor and preflight refresh; clients display server values and never calculate credits independently.
+
+#### Free redispatch and raw-response processing recovery
+
+`POST /api/glue-jobs/[id]/redispatch` accepts an empty JSON object. It authenticates the owner and permits only a persisted `dispatch-failed` job with `provider_contacted=false`. In one transaction it verifies the immutable job/take identity and that the reservation is released or still unconsumed; a released reservation is reactivated to `reserved` without inserting another ledger row. It sets phase `queued`, active true, allocates a fresh `attempt_id`, and records dispatch pending; it never creates another paid reservation or take. Commit, send the same `glue.generate` message, and return `202 {"jobId":"same-id","status":"queued","charged":false}`. On dispatch failure, return the job to `dispatch-failed`, clear active, release the still-unconsumed reservation, log the exception, and return retryable 503. Replays while queued return the original job without another message; only one dispatch attempt can transition a given `dispatch-failed` state. Repeating the original `POST /api/songsets/[id]/glue-jobs` with its `clientRequestId` delegates to this exact contract for `dispatch-failed` records.
+
+`POST /api/glue-jobs/[id]/retry-processing` accepts an empty JSON object. It authenticates the owner and permits only a failed/staging-interrupted job with a fully persisted raw-response R2 key, expected byte count, and SHA-256. The route verifies immutable response metadata, sets phase `staging`, clears error fields, sets active true, allocates a fresh attempt id, commits, and dispatches a message handled as **staging recovery only**. Return `202 {"jobId":"same-id","status":"staging","charged":false}`. It never allocates quota/take identity and never permits upload or compose. Repeated calls while active/ready return the current job idempotently. Dispatch failure leaves phase `staging`, sets `dispatch_state="failed"`, clears active, retains raw-response metadata and free retry kind, and returns retryable 503; a later retry-processing call redispatches that same staging attempt, and generic pre-contact redispatch must not route it back to generation. Missing/invalid response metadata returns `409 GLUE_RAW_RESPONSE_UNAVAILABLE`, never a provider call.
+
+`POST /api/glue-jobs/[id]/resume` accepts an empty JSON object for safe same-job continuation after a pre-contact dispatch/deadline failure, or after a persisted successful upload when compose was **definitely not sent**. Owner authentication, descriptor/snapshot/cancellation revalidation, and the current deadline gate run before a conditional active claim. Resume uses the same job, immutable take id/ordinal/seed, and existing paid reservation; it creates no additional quota row or slot. Persist a fresh attempt and phase derived only from durable success records, then return `202 {"jobId":"same-id","charged":false}`. Dispatch failure uses the same retryable failure path without resetting successful uploads. `GLUE_PROVIDER_UNKNOWN`, any ambiguous request, or missing proof that the next request was not sent returns `409 GLUE_RETRY_PAID`; only the original paid-generation POST with a **new** `clientRequestId` and explicit paid confirmation can proceed. Raw-response recovery continues to use `retry-processing`, never `resume`.
 
 #### `PATCH /api/songsets/[id]/items/[itemId]`
 
@@ -354,7 +387,7 @@ Mirror the existing render-job SSE route's authorization and polling pattern: qu
 
 #### Cancellation
 
-`POST /api/glue-jobs/[id]/cancel` is accepted only before `provider_contacted`. The route records cancellation atomically; the worker rechecks before every stage and before each provider request. After contact, return `409 GLUE_PAID_NOT_CANCELLABLE`; the UI states that the paid request cannot be cancelled or refunded. Worker checks between stages prevent later spend where possible, preserve returned bytes, and never report a refund.
+`POST /api/glue-jobs/[id]/cancel` uses an atomic conditional update that succeeds only with `provider_contacted=false` and a nonterminal phase. It sets `cancelled`, clears active, and releases the unconsumed reservation in the same transaction. The worker's first-provider-start transition is the competing atomic compare-and-set: it sets `provider_contacted=true` and consumes the reservation only while `provider_contacted=false` and phase is not `cancelled`. Exactly one transition can win; a start cannot slip past an accepted cancel, and a cancel cannot be accepted after a request may be sent. The worker rechecks the claimed state immediately before network I/O. After contact, cancellation returns `409 GLUE_PAID_NOT_CANCELLABLE`; the UI states that the paid request cannot be cancelled or refunded. There is no later cancellation-request flag.
 
 ### 2.4 Dispatch and durable worker execution
 
@@ -362,7 +395,7 @@ Generalize `src/lib/render/dispatcher.ts` and `src/lib/sqs/client.ts` without co
 
 - Production render messages remain on `SOW_SQS_QUEUE_URL`. Their existing `{jobId,songsetId,userId}` shape, with omitted `kind`, is interpreted as `render` for backward compatibility.
 - Glue messages use `SOW_GLUE_SQS_QUEUE_URL` and `{kind:"glue.generate",jobId,songsetId,userId}`. Add a separate SQS client/configuration path; do not switch queue URLs based on an untrusted message.
-- Deploy the same render-worker container image as a separate Glue Lambda and event-source mapping. Use batch size 1, reserved/maximum concurrency 2, Lambda timeout 1900 seconds, SQS visibility timeout 2100 seconds, and `maxReceiveCount` 3 with a DLQ. Visibility exceeds Lambda timeout. Render concurrency is not throttled by Glue work.
+- Deploy the same render-worker container image to a separate **AWS Lambda Managed Instances** function and SQS event-source mapping. Standard Lambda is not eligible: AWS currently caps standard functions at 1800 s, while Managed Instances support up to 5400 s for asynchronous/event-source invocations (`https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html`). Use batch size 1, reserved/maximum Glue worker concurrency 2, function timeout 1900 s, SQS visibility timeout 2100 s, and `maxReceiveCount` 3 with a DLQ. Visibility exceeds function timeout. Render concurrency is not throttled by Glue work.
 - Local REST mode commits the same durable job and returns `202` immediately. Dispatch to the local worker asynchronously after commit; do not reuse the existing blocking REST invocation as a browser wait. A local dispatch failure follows the same `dispatch-failed` and free redispatch path. REST concurrency is development-only and does not weaken DB idempotency.
 - `lambda_handler.py` routes omitted/`render` kind to `execute_render_pipeline` and `glue.generate` to new `execute_glue_job`. Verify message `userId`/`songsetId` against the claimed DB job. Batch size remains 1; acknowledgement behavior must not convert an ambiguous paid phase into another provider call.
 
@@ -370,7 +403,7 @@ Generalize `src/lib/render/dispatcher.ts` and `src/lib/sqs/client.ts` without co
 
 1. Re-fetch the current Songset Items, ownership/order, saved arrangements, Recording hashes/tempo, and item timestamps. Recompute the descriptor and compare it plus current selection rules to the persisted snapshot before the first paid call. Stale/cancelled jobs finish without spend and do not change the selected take.
 2. Resume free excerpt construction, cached upload lookup, raw-response verification, and staging from durable state.
-3. Before any provider request, atomically record provider contact and consume the reservation. Before each subsequent provider request, recheck cancellation and persisted phase.
+3. Before the first provider request, win the atomic provider-start compare-and-set described in §2.3, record provider contact, and consume the reservation. Before each subsequent provider request, recheck persisted phase and the execution deadline. Cancellation is no longer accepted after this transition.
 4. Persist every successful upload `song_id` before continuing. Never infer success from a log line or exception text.
 5. On compose success, store the immutable raw response in R2 and record checksum/byte count before decode/staging. A later crash resumes only from verified raw bytes.
 6. Heartbeat after every stage and blocking operation boundary. Terminal jobs leave the active index. Queued jobs with no dispatch/heartbeat remain recoverable by id; operators re-dispatch them without treating them as spent. Do not mark an abandoned queued job as a consumed provider attempt.
@@ -388,9 +421,12 @@ Generalize `src/lib/render/dispatcher.ts` and `src/lib/sqs/client.ts` without co
 | ElevenLabs compose read timeout | 1800 s, matching the measured POC budget. |
 | Compose response | Streaming cap 32 MiB; abort before overflow and fail safely. This covers 24 s references plus the 120 s maximum generated chunk in 44.1 kHz stereo PCM16. |
 | Generation length | Reject before spend if `max(3, beats × 60 / incomingTempo)` exceeds 120 s; ask for fewer beats. |
-| Glue Lambda / SQS visibility | 1900 s / 2100 s. |
+| Glue Managed Instances Lambda / SQS visibility | 1900 s / 2100 s. Standard Lambda's 1800 s maximum is insufficient and unsupported for Glue. |
+| Provider deadline reserve | Before each upload: 30 s connect + 900 s read + 60 s persistence margin = 990 s. Before compose: 30 s connect + 1800 s read + 60 s response-persistence margin = 1890 s. |
 | Quota | 5 consumed paid jobs per user per rolling 24 h, transactionally shared by concurrent submissions. |
 | User concurrency | One active Glue job per user via partial unique index; provider concurrency capped at 2 by the dedicated Lambda. |
+
+At invocation start and after every blocking stage, compute `remainingMs` from the Lambda deadline and persist a monotonic/job timestamp for diagnostics. Before each provider request, atomically gate the start on remaining time meeting its full reserve above; timeout values are also capped to the actual remaining budget. If insufficient before provider contact, fail `GLUE_EXECUTION_DEADLINE` with `retryKind:"free"`, release the unconsumed reservation, and permit same-job free `resume` after deployment/queue recovery. If insufficient before a later compose after a persisted successful upload, and compose was definitely not sent, fail `GLUE_EXECUTION_DEADLINE` with `retryKind:"free"` and permit same-job `resume`; the existing job retains its consumed quota slot and upload `song_id`. Do not send a request that the host is expected to kill. If an in-flight provider request reaches the deadline, it is `GLUE_PROVIDER_UNKNOWN`/`retryKind:"paid"`; never auto-retry. With a verified raw response, deadline failure during storage/staging remains free recovery.
 
 If deployment inspection proves reserved concurrency cannot be configured separately, keep the dedicated queue and enforce a provider concurrency limit of 2 in the Glue dispatcher/worker; never solve this by reducing render throughput. v2 assumes no ElevenLabs server idempotency key. If one becomes available, a later specification must define its persistence and reuse before implementation relies on it.
 
@@ -426,10 +462,10 @@ The credit figure is an exact estimate from current cache state and POC's measur
 
 | Failure or action | Automatic retry? | User retry and charge |
 |---|---|---|
-| Transient PostgreSQL failure | Up to 3 attempts with specified full jitter; use transactions/atomic claims. | Free if no paid request was sent; otherwise resume only durable safe stages. |
+| Transient PostgreSQL failure | Initial operation plus up to 3 retries with specified full jitter; use transactions/atomic claims. | Free if no paid request was sent; otherwise resume only durable safe stages. |
 | SQS dispatch failure | Bounded infrastructure retry in dispatcher; then `dispatch-failed`, release reservation. | Same `clientRequestId` redispatch is free and retryable; no new reservation. |
-| R2 source download, excerpt upload-to-cache, raw/staged R2 object upload | Up to 3 attempts with specified full jitter and integrity validation. | Free; never repeat provider compose to repair storage. |
-| Local FFmpeg/audio decode or local staging fault, where safe | Up to 3 bounded attempts; log each. | Free if no ambiguous paid request is repeated. |
+| R2 source download, excerpt upload-to-cache, raw/staged R2 object upload | Initial operation plus up to 3 retries with specified full jitter and integrity validation. | Free; never repeat provider compose to repair storage. |
+| Local FFmpeg/audio decode or local staging fault, where safe | Initial operation plus up to 3 bounded retries; log each. | Free if no ambiguous paid request is repeated. |
 | Cached excerpt | No upload. | Free; reuse persisted `song_id`. |
 | Cached copyright rejection | No upload. | Non-retryable in place; identical audio cannot incur another half-fee upload. Changing actual excerpt identity is a new validation decision, not a bypass of user quota. |
 | Provider entitlement/configuration or 401/402/403 | Never in place. | Non-retryable until operator/account correction; subsequent user action clearly requires confirmation if paid. |
@@ -475,6 +511,7 @@ Minimum stable codes and copy intent:
 | `GLUE_AUDIO_UNAVAILABLE` | This take could not be fetched/decoded; Retry audio for local playback. Render remains blocked. |
 | `GLUE_NOT_READY` | Render blocked; list every unresolved Junction and remedy. |
 | `GLUE_WORKER_FAILED` | Worker failed safely; include job id, phase, and applicable free/paid retry. |
+| `GLUE_EXECUTION_DEADLINE` | Execution budget was exhausted before a new request or during processing; offer only the persisted free/paid recovery classification. |
 
 ### 4.2 Structured logs
 
@@ -525,6 +562,19 @@ Create one server-side resolver that returns, per outgoing Item:
     reasons: string[];
   };
   activeJob: null | { id: string; phase: string; createdAt: string; startedAt: string | null };
+  quote: null | {
+    uncachedSides: { side: "A" | "B"; seconds: number; credits: number }[];
+    generationSeconds: number;
+    uploadCredits: number;
+    generationCredits: number;
+    estimatedNewCredits: number;
+  };
+  quotaLimit: number;
+  quotaUsed: number;
+  quotaRemaining: number;
+  quotaResetAt: string | null;
+  expectedFromUpdatedAt: string | null;
+  expectedToUpdatedAt: string | null;
   unavailableReason: null | "unsaved-draft" | "no-next" | "no-tempo" |
     "no-analysis" | "invalid-arrangement" | "quota" | "active-job";
 }
@@ -670,7 +720,7 @@ Update the worker README and deployment workflow/configuration with:
 
 - `SOW_ELEVENLABS_API_KEY` on the Glue Lambda/worker only, never exposed to browser code. Web validates configuration through a server-only preflight mechanism before reservation without revealing the key.
 - Existing `SOW_DATABASE_URL`, R2 bucket/endpoint/credentials, AWS region/credentials, and `SOW_SQS_QUEUE_URL` for render.
-- New `SOW_GLUE_SQS_QUEUE_URL`, separate Glue SQS queue and DLQ, event-source mapping batch size 1, `maxReceiveCount` 3, visibility 2100 s, Glue Lambda timeout 1900 s, and reserved/max concurrency 2.
+- New `SOW_GLUE_SQS_QUEUE_URL`, separate Glue SQS queue and DLQ, event-source mapping batch size 1, `maxReceiveCount` 3, visibility 2100 s, Glue Lambda Managed Instances function timeout 1900 s, and reserved/max concurrency 2. Deployment fails fast if it targets standard Lambda rather than the documented SQS-compatible Managed Instances host.
 - Existing REST settings for local mode, with asynchronous post-commit invocation and immediate browser `202`; the same DB job and SSE stream are used.
 - Binary-wheel dependency verification and a successful AMD64 Docker schema2 image build/push before deploying the shared image to both Lambdas. Deploy Glue and render functions to the same image version so arrangement/audio behavior remains aligned.
 
@@ -719,6 +769,9 @@ Use fake provider transports and temporary/local R2/DB fixtures. Tests must fail
 - Duplicate POST with the same `clientRequestId` returns original job with no second reservation; a fresh UUID is a distinct explicit intent. Concurrent duplicate POSTs cannot double-spend.
 - Quota races at the fifth/sixth job share one transactional result; cache hits and free restore do not consume quota; dispatch failure releases reservation and same-id redispatch is free.
 - One-active-job partial unique index under concurrent submissions; response identifies the active Junction. Provider concurrency configuration is capped at 2 independently of render.
+- Racing cancellation and first-provider-start transitions have exactly one winner; accepted cancellation has no provider call/spend, and post-contact cancellation returns 409 without changing job state.
+- Dispatch-failed POST replay and explicit redispatch reuse job/take/reservation identity without duplicate spend. Retry-processing requires verified raw bytes, is idempotent/free, and survives another dispatch failure without reaching generation. Quote fields match server cache/quota state and resolved payload.
+- Deadline gates prevent starting upload/compose without their full remaining budget; pre-contact and definitely-unsent pre-compose deadlines support free same-job resume, in-flight deadline is unknown/paid, and persisted-response staging deadline remains free. Deployment tests reject standard Lambda's insufficient timeout.
 - Cached composition/current take, cached excerpts, and cached copyright rejection avoid the corresponding provider request. Per-user isolation denies every cross-user excerpt/take/job/audio access.
 - Duplicate SQS delivery before contact claims once; redelivery during ambiguous paid upload/compose makes no second provider call and records unknown outcome. Worker restart before and after provider contact reuses the exact persisted pending take id, ordinal, and seed, and resumes only persisted safe stages.
 - Paid timeout/429/5xx/connection ambiguity produces `retryKind:"paid"` and no automatic retry. Entitlement/invalid plan/copyright are non-retryable in place.
@@ -762,7 +815,8 @@ Run the webapp targeted Vitest suites, then `pnpm test`, `pnpm lint`, and `pnpm 
 - `delivery/webapp/src/db/schema.ts` and generated `drizzle/` migration: takes, jobs, paid attempts, excerpts, selected-take pointer, render snapshots.
 - `delivery/webapp/src/lib/glue/descriptor.ts`, `resolve.ts`, `jobs.ts`, `quota.ts`, `client.ts`, `elevenlabs-config.ts`: canonical identity, shared resolution, transactions, browser JSON/SSE client, safe configuration preflight.
 - `delivery/webapp/src/app/api/songsets/[id]/glue-jobs/route.ts`: JSON-only 202 job creation/free initial resolution.
-- `delivery/webapp/src/app/api/glue-jobs/[id]/route.ts`, `events/route.ts`, `cancel/route.ts`: safe status, DB-polled SSE, pre-contact cancellation.
+- `delivery/webapp/src/app/api/songsets/[id]/glue-quote/route.ts`: exact server-computed new-credit and rolling-quota quote.
+- `delivery/webapp/src/app/api/glue-jobs/[id]/route.ts`, `events/route.ts`, `cancel/route.ts`, `redispatch/route.ts`, `retry-processing/route.ts`, `resume/route.ts`: safe status, DB-polled SSE, atomic pre-contact cancellation, and idempotent free recovery.
 - `delivery/webapp/src/app/api/songsets/[id]/items/[itemId]/route.ts`: enable/beats/free selected-take PATCH.
 - `delivery/webapp/src/app/api/glues/[takeId]/audio/route.ts`: owned immutable take streaming.
 - `delivery/webapp/src/lib/render/dispatcher.ts`, `src/lib/sqs/client.ts`, `src/lib/render/rest-client.ts`: kind-aware separate render/Glue dispatch and asynchronous local invocation.
