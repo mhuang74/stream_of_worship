@@ -1,4 +1,4 @@
-"""Modal app hosting Stable Audio 3 `small-music` inpainting for the seam-fill POC.
+"""Modal app hosting Stable Audio 3 inpainting (default: `medium`) for the seam POC.
 
 Given source audio that already contains the real recordings on both sides of a
 seam plus digital silence where the seam is, `inpaint` regenerates only the
@@ -11,39 +11,53 @@ Deploy (from the repo root, with MODAL_TOKEN_ID / MODAL_TOKEN_SECRET exported):
     uv run --no-project --with 'modal>=1.2.6,<2' \\
         modal deploy lab/poc-scripts/modal_apps/sa3_inpaint_app.py
 
-Two classes serve the same method: `Sa3Inpaint` on whatever GPU Modal has free
-(a pinned A10G request sat Pending in this workspace while other classes
-allocated; 433M params fit any 16 GB card) and `Sa3InpaintCpu`, a CPU fallback
-that loads fp32 — fp16 matmuls on CPU fail or crawl, which is why
-`StableAudioModel.from_pretrained` also forces `model_half=False` without CUDA.
+Model selection is a deploy-time constant, `SOW_SA3_MODEL` (default `medium`):
 
-Weights: the upstream checkpoint is gated on Hugging Face, so the volume is
+* `medium` — 1.4B params, SAME-Large autoencoder, 380 s max (the `sample_size`
+  argument below is what makes that true; the model default caps at 120 s), GPU only. The more
+  stable inpainter, and the reason this app exists: see the pinned repo's README,
+  "Stable Audio 3 Medium requires Flash Attention 2".
+* `small-music` — 433M params, SAME-Small, CPU-capable (that is what run2/run3
+  used).
+
+`Sa3Inpaint` runs on whatever GPU Modal has free (`SOW_SA3_GPU` pins a type; a
+pinned A10G request sat Pending in this workspace while other classes allocated).
+Flash Attention has kernels only for compute capability >= 8.0 (A100/A10G/L4/H100/
+H200), so a boot on an older card fails loudly instead of running T4 kernels that
+do not exist. `Sa3InpaintCpu` is the fp32 CPU fallback and is only defined for CPU
+capable models — flash-attn is CUDA only, so `medium` has no CPU path.
+
+Weights: the upstream checkpoints are gated on Hugging Face, so the volume is
 seeded from the unauthenticated ModelScope mirror of the same repo
-(`stabilityai/stable-audio-3-small-music`). `model_config.json` there names the
-text conditioner by HF `repo_id` + `subfolder`; at boot the prompt config is
+(`stabilityai/stable-audio-3-medium`). `model_config.json` there names the text
+conditioner by HF `repo_id` + `subfolder`; at boot the prompt config is
 rewritten to point at the local copy (`model_path` = volume dir, `subfolder`
 kept — `T5GemmaConditioner` does `load_from = model_path or repo_id or
 model_name` and passes `subfolder` to `from_pretrained`, which resolves a local
 directory). That is the only config edit; the diffusion config is used verbatim.
 
 Image: the upstream repo is not on PyPI, so it is cloned at a pinned commit and
-installed. Its own deps pin torch/torchaudio 2.7.1 and transformers >= 5.8;
-Flash Attention is optional (SDPA fallback) and only `medium` needs it, so it is
-not installed.
+installed. Its own deps pin torch/torchaudio 2.7.1 (cu126 wheels) and
+transformers >= 5.8. For flash-attn the image installs a prebuilt wheel that
+matches those three (cu126, torch 2.7, cp311) — `--no-deps`, so pip cannot swap
+the CUDA torch the repo pinned.
 """
 
 import json
+import os
 
 import modal
 
 APP_NAME = "sow-sa3-poc"
 VOLUME_NAME = "sow-sa3-models"
 MODEL_MOUNT = "/models"
-MODEL_DIR = "/models/sa3-small-music"
 REPO_DIR = "/opt/stable-audio-3"
 REPO_COMMIT = "790793b89ddceea612be9ce42ff6830d18f6fa57"
-MIRROR = "https://modelscope.cn/models/stabilityai/stable-audio-3-small-music/resolve/master"
-FILES = (
+
+# Both repos publish the same layout: the diffusion transformer, the SAME
+# autoencoder and every conditioner weight live in one `model.safetensors`, and
+# the text conditioner is a `t5gemma-b-b-ul2/` subfolder.
+MODEL_FILES = (
     "model.safetensors",
     "model_config.json",
     "t5gemma-b-b-ul2/config.json",
@@ -53,6 +67,42 @@ FILES = (
     "t5gemma-b-b-ul2/special_tokens_map.json",
     "t5gemma-b-b-ul2/tokenizer.model",
     "t5gemma-b-b-ul2/generation_config.json",
+)
+MODEL_VARIANTS = {
+    # 1.4B params, SAME-Large, 380 s max. GPU only: the DiT and the autoencoder
+    # configs both run `use_flash: true`, and flash-attn has no CPU path.
+    "medium": {
+        "repo": "stabilityai/stable-audio-3-medium",
+        "dir": "/models/sa3-medium",
+        "flash_attn": True,
+        "cpu_class": False,
+        # 9.2 GB fp32 checkpoint cast to fp16 at load: peak host RSS during the
+        # cast is the fp32 weights plus the half copy.
+        "memory_mib": 32768,
+    },
+    # 433M params, SAME-Small, 120 s max. CPU-capable (run2/run3's model).
+    "small-music": {
+        "repo": "stabilityai/stable-audio-3-small-music",
+        "dir": "/models/sa3-small-music",
+        "flash_attn": False,
+        "cpu_class": True,
+        "memory_mib": 16384,
+    },
+}
+MODEL_NAME = os.environ.get("SOW_SA3_MODEL", "medium")
+if MODEL_NAME not in MODEL_VARIANTS:
+    raise ValueError(f"SOW_SA3_MODEL={MODEL_NAME!r} is not one of {sorted(MODEL_VARIANTS)}")
+VARIANT = MODEL_VARIANTS[MODEL_NAME]
+MODEL_DIR = VARIANT["dir"]
+MIRROR = f"https://modelscope.cn/models/{VARIANT['repo']}/resolve/master"
+FILES = MODEL_FILES
+# Whatever GPU Modal has free; `SOW_SA3_GPU=A10G` (etc.) pins one type.
+GPU = os.environ.get("SOW_SA3_GPU", "any")
+# Prebuilt wheel for the repo's own pins: cu126 wheels of torch 2.7.1 on
+# python 3.11. Building flash-attn from source in the image takes ~30 min.
+FLASH_ATTN_WHEEL = (
+    "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/"
+    "v0.7.16/flash_attn-2.6.3+cu126torch2.7-cp311-cp311-linux_x86_64.whl"
 )
 REQUIRED_REQUEST_KEYS = (
     "prompt",
@@ -64,7 +114,12 @@ REQUIRED_REQUEST_KEYS = (
 )
 SAMPLE_RATE = 44100
 MIN_OUTPUT_SECONDS = 0.25
-MODEL_NAME = "small-music"
+# `StableAudioModel.generate` clamps the generation window to its `sample_size`
+# argument (default 5_292_032 frames = exactly 120.0 s at 44.1 kHz), so without
+# passing it every request longer than 120 s silently came back as 120 s of audio
+# and our hole (146.5 s in) landed in the zero padding. Medium is trained for
+# 380 s; refuse longer requests instead of returning a short file.
+MAX_SECONDS = 380.0
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -79,6 +134,12 @@ image = (
     )
     .env({"TOKENIZERS_PARALLELISM": "false"})
 )
+if VARIANT["flash_attn"]:
+    image = image.run_commands(
+        f'pip install --no-cache-dir --no-deps "{FLASH_ATTN_WHEEL}"',
+        'python -c "import flash_attn; from flash_attn import flash_attn_func, '
+        'flash_attn_varlen_func; print(flash_attn.__version__)"',
+    )
 
 model_volume = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
@@ -87,9 +148,9 @@ app = modal.App(APP_NAME)
 CLASS_KWARGS = dict(
     image=image,
     cpu=8.0,
-    memory=16384,
+    memory=VARIANT["memory_mib"],
     timeout=900,
-    startup_timeout=3600,  # a first boot includes the 3.5 GB weight download into the volume
+    startup_timeout=3600,  # a first boot downloads the checkpoint into the volume
     scaledown_window=300,
     max_containers=1,
     volumes={MODEL_MOUNT: model_volume},
@@ -138,6 +199,21 @@ def _bootstrap(handler, device: str, model_half: bool) -> None:
     started = time.time()
     model_dir = Path(MODEL_DIR)
     model_dir.mkdir(parents=True, exist_ok=True)
+
+    if VARIANT["flash_attn"] and device == "cuda":
+        # Flash Attention ships kernels for sm80+ only. Failing here is a loud,
+        # actionable error; failing later would be "no kernel image is available"
+        # from inside a matmul, after a 10 GB download.
+        import torch
+
+        capability = torch.cuda.get_device_capability()
+        if capability < (8, 0):
+            raise RuntimeError(
+                f"GPU {torch.cuda.get_device_name()} has compute capability {capability}, "
+                f"but {MODEL_NAME} needs flash-attn kernels (>= (8, 0)). Set SOW_SA3_GPU "
+                "to a supported type (e.g. A10G, L4, A100) and redeploy."
+            )
+        print(f"[sow-sa3] gpu {torch.cuda.get_device_name()} capability {capability}", flush=True)
 
     missing = [rel for rel in FILES if not _file_is_intact(model_dir / rel)]
     if missing:
@@ -293,12 +369,19 @@ def _inpaint(handler, audio_bytes: bytes, filename: str, request: dict) -> dict:
             f"seed={seed} steps={steps} prompt={prompt[:60]!r}",
             flush=True,
         )
+        if duration > MAX_SECONDS + 1e-6:
+            raise ValueError(
+                f"duration {duration:.3f}s exceeds the {MAX_SECONDS:.0f}s limit of "
+                f"{MODEL_NAME}; clamp the montage on the client"
+            )
+        sample_size = int(round(duration * SAMPLE_RATE))
         out = handler.sa.generate(
             inpaint_audio=(SAMPLE_RATE, wave),
             inpaint_mask_start_seconds=start,
             inpaint_mask_end_seconds=end,
             prompt=prompt,
             duration=duration,
+            sample_size=sample_size,
             duration_padding_sec=0.0,
             steps=steps,
             seed=seed,
@@ -342,7 +425,7 @@ def _inpaint(handler, audio_bytes: bytes, filename: str, request: dict) -> dict:
         }
 
 
-@app.cls(gpu="any", **CLASS_KWARGS)
+@app.cls(gpu=GPU, **CLASS_KWARGS)
 class Sa3Inpaint:
     @modal.enter()
     def bootstrap(self) -> None:
@@ -354,13 +437,15 @@ class Sa3Inpaint:
         return _inpaint(self, audio_bytes, filename, request)
 
 
-@app.cls(gpu=None, **CLASS_KWARGS)
-class Sa3InpaintCpu:
-    @modal.enter()
-    def bootstrap(self) -> None:
-        _bootstrap(self, "cpu", False)
+if VARIANT["cpu_class"]:
 
-    @modal.method()
-    def inpaint(self, audio_bytes: bytes, filename: str, request: dict) -> dict:
-        """Regenerate the masked span of `audio_bytes` on CPU (fp32)."""
-        return _inpaint(self, audio_bytes, filename, request)
+    @app.cls(gpu=None, **CLASS_KWARGS)
+    class Sa3InpaintCpu:
+        @modal.enter()
+        def bootstrap(self) -> None:
+            _bootstrap(self, "cpu", False)
+
+        @modal.method()
+        def inpaint(self, audio_bytes: bytes, filename: str, request: dict) -> dict:
+            """Regenerate the masked span of `audio_bytes` on CPU (fp32)."""
+            return _inpaint(self, audio_bytes, filename, request)
