@@ -22,9 +22,15 @@ beats-16 334.966 s — each equals `A + glue + B`. Samples outside the glue are 
 audio (asserted on every take, re-checked bit-exact on `full/beats-2.flac`).
 
 Cost of this run: **701 credits** (360 upload: two 12 s excerpts; 341 generation: four takes).
-Credit spent to get here, for the record: 1,099 for the rejected full-side upload (half of 2,198),
+Credits spent to get here, for the record: 1,099 for the rejected full-side upload (half of 2,198),
 360 for the excerpts, and 682 generation (the first pass ran before the locator fix, so the four
 composes were paid twice) — **≈2,141 credits total**.
+
+Compose responses are now cached by `(plan body, seed, format, take)` under
+`<out-root>/cache/responses/`, so the run above was regenerated after the metric fixes for **0
+credits** from run1's four paid responses. The take id is part of the key because the API is not
+reproducible: 2-beat and 4-beat takes send an *identical* plan body (both request a 3 s generation)
+and came back with different audio.
 
 ## Findings
 
@@ -62,30 +68,37 @@ the refs as conditioning. Consequences applied in the script:
 
 - the Glue is located by **plan geometry** (`glue_start = a_ref_samples`,
   `glue_end = glue_start + generation_ms`), because no sample-identical window exists to correlate;
-- position and length still hold exactly (`lag 0 samples`, seam length == plan length to within 14 ms
-  on the longest take, and the returned ref levels match), so geometry is safe;
+- position and length still hold: seam length matches the plan to within 14 ms, and the boundaries
+  are *measured*, not assumed — a ±1 s search on 50 ms energy blocks puts A's tail and B's head
+  within one block of the plan offset (reported per take as `measured_offset_a_ms`/`_b_ms`; all four
+  takes measure 0 ms at that resolution);
 - the region identity is now proven by a 50 ms energy-envelope correlation (floor 0.90) instead of
   wave correlation (floor 0.95, unreachable here);
 - `index.json` records `geometry: plan` plus both envelope numbers per take.
 
-### 4. Gain staging is required; one take still dips at the seam
+### 4. Gain staging is required; the A joint is where the glue's onset shows
 
 The glue is ramped in dB from A's exit level to B's entry level over 200 ms edges and faded 20 ms.
 Residuals after staging are ≤ 0.6 dB on every take (`edge_gain_db` spans −4.64 … +7.63 dB, i.e. the
-model's own exit/entry levels are far from the songs'). Joint metrics:
+model's own exit/entry levels are far from the songs'). Joint metrics are measured on the **mono
+mix** (they are named `a`/`b` for the A and B junctions — not stereo channels, which an earlier
+draft of this report mislabelled) and the 50 ms windows skip the deliberate fade:
 
-| Take | A joint step L/R | B joint step L/R | click ratio L/R | status |
+| Take | A joint step | B joint step | click ratio A/B | status |
 |---|---|---|---|---|
-| beats-2 | **−3.72** / +1.64 dB | — | 0.91 / 0.62 | check |
-| beats-4 | +0.74 / +0.44 dB | — | 0.92 / 0.62 | ok |
-| beats-8 | +2.04 / +0.78 dB | — | 0.83 / 0.61 | ok |
-| beats-16 | +2.08 / +1.42 dB | — | 0.67 / 0.62 | ok |
+| beats-2 | −2.29 dB | +2.50 dB | 0.91 / 0.62 | ok |
+| beats-4 | +2.20 dB | +1.01 dB | 0.92 / 0.62 | ok |
+| beats-8 | **+3.54 dB** | +0.36 dB | 0.83 / 0.61 | check |
+| beats-16 | **+3.55 dB** | −0.21 dB | 0.67 / 0.62 | check |
 
-beats-2 is flagged because the returned glue's **first 50 ms** on the left channel sits at −32.4 dB
-while A's last 50 ms sits at −25.6 dB (−6.8 dB), even though the 200 ms edge gain matched within
-0.2 dB. It is the re-rendered onset (an attack that starts quietly after the 20 ms fade), not a
-staging error: the same ramp yields +0.7 dB on beats-4. A crossfade at the joints, or a fade aligned
-to the glue's first onset, would remove it; neither is implemented in v1.
+Reading: the fade itself costs 1.35 dB over the first 50 ms, so measuring across it (as the first
+pass did) reported −3.72/+2.04/+2.08/+0.74 dB. With the fade excluded, the A junction shows the
+glue's own onset relative to A's tail: **−2.29 dB on beats-2** (the returned glue starts quietly —
+its pre-fade staged head is −27.8 dB against A's −25.6 dB, so this is content, not the fade) and
+**+3.5 dB on the 8- and 16-beat takes**, where the glue starts on an attack above A's decaying tail.
+The 200 ms edge gain still matches within 0.6 dB on all four; the flags are about the first
+milliseconds, which is exactly guide QA item 5's musical caution. A short crossfade at the joints,
+or a fade aligned to the glue's first onset, would remove both effects; neither is implemented in v1.
 
 Click ratios are all < 1 (the joint sample step is smaller than the local 99.99th percentile of
 sample diffs), i.e. no click discontinuity at either joint on any take.
@@ -109,7 +122,14 @@ project owner; v1 measured, it did not judge musicality.
 
 Verified on this host with headless Chrome at 1280 px: all 20 audio files serve 200 `audio/flac`,
 playback advances (`currentTime` 0.55 s of 5.573 s on beats-8), the last-played bar and card badge
-update, and the ranking table lists all five entries.
+update, and the ranking table lists all five entries. The per-card metrics line carries
+`geometry`, `envelope` and `offset`, and a flagged take names its junction (`A joint level step
+3.541 dB > 3 dB`), so a reader cannot mistake a re-rendered reference for a failed locator.
+
+Known limit of the envelope check: it is evaluated on a 3 s window (~60 blocks of 50 ms) at the
+glue's boundary, and returns 0.0 when either envelope has zero variance — a reference that is a
+constant-level drone therefore flags `check` even though nothing contradicts it. The 12 s regions
+measured above (0.96–0.99) are the corroborating evidence, not the gate.
 
 ## Reproduce
 

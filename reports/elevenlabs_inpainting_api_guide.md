@@ -269,14 +269,18 @@ The script prints items 1–4; item 5 is a human decision.
 
 1. **Duration.** `final` = `dur(A) + glue + dur(B)` ± 50 ms:
    `ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 final.wav`.
-2. **Refs are unchanged.** Correlation of the returned seam's first 3 s against A's tail excerpt,
-   and its last 3 s against B's head excerpt: r ≥ 0.95 (PCM expects ≈1.0; 320 kbps MP3 expects
-   ≥0.98). Report the lag; the script shifts the glue offset by it.
+2. **Refs are the same performances (they are not the same samples).** The API re-renders the ref
+   chunks ([measured](#measured-2026-11-21-paid-plan)), so waveform r ≥ 0.95 is unreachable — it is
+   informational only. Judge identity on the 50 ms energy envelope of the returned region against
+   the uploaded excerpt: r ≥ 0.90 on both sides. Take the glue window from the plan geometry
+   (`context_ms` … `context_ms + glue_ms`); the measured lag should be ≈0 and is not used to shift it.
 3. **No click.** Compare the largest sample-to-sample jump within ±5 ms of each joint against the
    99.99th percentile of jumps within ±1 s around it. Accept when the joint jump ≤ 2× the local
    percentile (the 20 ms fade normally guarantees this).
-4. **No level step.** 50 ms RMS before vs after each joint: |Δ| ≤ 3 dB. If larger, gain-match the
-   glue (or the song) before splicing.
+4. **No level step.** 50 ms RMS before vs after each joint: |Δ| ≤ 3 dB, measured *outside* the
+   20 ms fade (a fade alone reads as -1.35 dB at A's joint, because it legitimately removes energy).
+   A larger step means an attack at the glue's start or a real gain mismatch; gain-match or pick a
+   glue that does not start on an attack.
 5. **Musical fit.** The glue must not introduce a drum groove that fights B, and must not start
    with an attack over A's decaying chord. If it does, try V1–V4.
 
@@ -286,7 +290,7 @@ The script prints items 1–4; item 5 is a human decision.
 |---|---|---|---|
 | `unauthorized` / `missing_permissions` | 401 | key lacks the music or inpainting scope | new or scope-widened key |
 | upgrade / not-available message on upload | 401/403 | inpainting not on this workspace plan | plan change; not fixable in code |
-| upload rejected for copyright | 4xx (message mentions copyright) | content screening | half the cost is charged; use another source or fall back |
+| upload rejected for copyright | 4xx (message mentions copyright) | content screening | half the cost is charged; use another source or fall back to excerpts |
 | `422` with `detail[]` | 422 | bad plan fields (duration out of 3000–120000, missing styles, bad range) | read `detail[].loc` and fix the chunk |
 | `bad_composition_plan` / `bad_prompt` | 4xx | copyrighted artist or style references | response carries a `composition_plan_suggestion`; use plain descriptors |
 | `429` | 429 | rate or concurrency limit | music concurrency: Free 0, Starter/Creator/Pro 2, Scale/Business 5, Enterprise highest ([models](https://elevenlabs.io/docs/overview/models)); serialize requests |
@@ -464,6 +468,19 @@ def correlation(reference: np.ndarray, candidate: np.ndarray, max_lag: int = 409
     return best, best_lag
 
 
+def envelope_r(reference: np.ndarray, candidate: np.ndarray, window_s: float = 0.05) -> float:
+    """Correlation of 50 ms energy envelopes — the identity test for a re-rendered ref chunk."""
+    size = max(1, int(round(window_s * SAMPLE_RATE)))
+    n = min(len(reference), len(candidate)) // size
+    if n < 2:
+        return 0.0
+    a = np.sqrt(np.mean(reference[: n * size].reshape(n, size, -1) ** 2, axis=(1, 2)))
+    b = np.sqrt(np.mean(candidate[: n * size].reshape(n, size, -1) ** 2, axis=(1, 2)))
+    if a.std() == 0.0 or b.std() == 0.0:
+        return 0.0
+    return float(np.corrcoef(a, b)[0, 1])
+
+
 def joint_metrics(samples: np.ndarray, index: int) -> tuple[float, float, float]:
     mono = samples.mean(axis=1)
     diffs = np.abs(np.diff(mono))
@@ -565,16 +582,20 @@ def main() -> None:
     window = SAMPLE_RATE * 3
     r_a, lag_a = correlation(a_ref[:window], seam[:window])
     r_b, lag_b = correlation(b_ref[-window:], seam[-window:])
-    print(f"kept A tail: r={r_a:.4f} lag={lag_a} samples")
-    print(f"kept B head: r={r_b:.4f} lag={lag_b} samples")
-    if min(r_a, r_b) < 0.95:
-        print("WARNING: ref regions do not match the uploads; inspect the seam before trusting it")
+    print(f"waveform r: A {r_a:.4f} B {r_b:.4f} lag {lag_a}/{lag_b} (informational)")
 
+    # The ref chunks come back re-rendered, so the plan geometry places the glue and the envelope
+    # proves each returned region is the uploaded performance.
     # `seam` is always decoded to SAMPLE_RATE stereo, so indices are in 44.1 kHz frames.
-    start = int(round(context_ms / 1000.0 * SAMPLE_RATE)) + lag_a
+    start = int(round(context_ms / 1000.0 * SAMPLE_RATE))
     end = start + int(round(args.glue_seconds * SAMPLE_RATE))
     if start < 0 or end > len(seam):
         raise SystemExit(f"glue window [{start}, {end}] outside seam of {len(seam)} frames")
+    env_a = envelope_r(a_ref[:window], seam[max(0, start - window) : start])
+    env_b = envelope_r(b_ref[-window:], seam[end : end + window])
+    print(f"envelope r: A {env_a:.4f} B {env_b:.4f} (must be >= 0.90)")
+    if min(env_a, env_b) < 0.90:
+        raise SystemExit("returned refs are not the uploaded performances; do not trust this seam")
 
     glue_raw = work / "glue_raw.wav"
     run(
