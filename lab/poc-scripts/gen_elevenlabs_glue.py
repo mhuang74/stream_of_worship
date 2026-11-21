@@ -1,8 +1,9 @@
-"""ElevenLabs instrumental Glue POC — generate transition glue between two arranged songs.
+"""ElevenLabs instrumental Glue POC — generate instrumental Glue at every adjacent junction of
+a 2–5 song Songset.
 
-For a Songset's first Transition this script builds both *arranged* sides from Postgres + R2
-(every Arrangement Step in playback order, exactly what the render plays), uploads an excerpt of
-each arranged side to the ElevenLabs music API, composes one inpainting plan per Glue length
+For each adjacent junction the script builds both *arranged* sides from Postgres + R2 (every
+Arrangement Step in playback order, exactly what the render plays), uploads an excerpt of each
+arranged side to the ElevenLabs music API, composes one inpainting plan per Glue length
 
     [ A arranged ][ generated Glue ][ B arranged ]
 
@@ -11,23 +12,22 @@ incoming Song's Song Arrangement stay sample-identical; only the Glue is new aud
 
     final = A arranged + staged Glue + B arranged
 
-Glue lengths are whole beats of the *incoming* Song's tempo (2, 4, 8, 16 beats by default). The
-API floor is a 3 s generation chunk, so 2- and 4-beat takes ask for 3 s and keep the tail (the
-arrival into B); the untrimmed generation is kept for review.
+Glue lengths are whole beats of the *incoming* Song's tempo — 4 beats by default, and `--beats`
+takes several lengths (2,4,8,16 for the old sweep). The API floor is a 3 s generation chunk, so
+short takes ask for 3 s and keep the tail (the arrival into B); the untrimmed generation is kept
+for review. Every Glue take is also assembled into one full-set file per take, next to a
+production-parity baseline (real gaps / crossfades, raw PCM without loudnorm).
 
 Outputs under <out-root>/<run-name>:
 
-    cache/          downloaded mp3s and decoded 44.1 kHz wavs (shared by runs)
+    cache/          downloaded mp3s and decoded 44.1 kHz wavs (shared by runs; under <out-root>)
     uploads/        canonical 44.1 kHz stereo WAVs that were uploaded (content-addressed)
     uploads.json    full SHA-256 -> {song_id, seconds, format, uploaded_at} (shared by runs)
-    context/        a-arranged.flac, b-arranged.flac — the full arranged sides (splice sources)
-    plans/          the composition plan request body per take
-    responses/      raw API response bytes per take
-    glues/          <take>.flac (staged + faded) and <take>-generation.flac (untrimmed)
-    full/           full pair per take (and baseline.flac, the production silence gap)
-    seams/          15 s A + glue + 15 s B excerpt per take
-    index.json      every plan field, seed and measured metric
-    report.html     self-contained listening + scoring page
+    context/        song-01-<hash8>.flac ... — every arranged side (splice sources)
+    full-set/       <take>.flac (all junctions at that length) and baseline.flac
+    junctions/jN/   per junction: plans/ responses/ glues/ full/ seams/
+    index.json      every plan field, seed and measured metric, per junction and for the full set
+    report.html     self-contained listening + scoring page, one section per junction
 
 The API re-renders the reference chunks instead of inserting them (measured 2026-11-21: waveform
 correlation 0.25-0.47, 50 ms energy-envelope correlation 0.96-0.99), so the Glue is located by plan
@@ -37,12 +37,15 @@ Usage:
     uv run --project lab/poc-scripts --extra elevenlabs_glue \\
         python lab/poc-scripts/gen_elevenlabs_glue.py --run-name run1 --upload-seconds 12
     uv run --project lab/poc-scripts --extra elevenlabs_glue \\
-        python lab/poc-scripts/gen_elevenlabs_glue.py --dry-run
+        python lab/poc-scripts/gen_elevenlabs_glue.py --run-name run1 --junctions 1
+    uv run --project lab/poc-scripts --extra elevenlabs_glue \\
+        python lab/poc-scripts/gen_elevenlabs_glue.py --dry-run --dry-run-items 5
 
 Costs ElevenLabs credits: 15 credits per second uploaded plus 15 per second generated. Full
 arranged sides are 4,857 credits of upload and the copyright screen rejects them for commercial
 recordings (half the fee is still charged), so `--upload-seconds 12` — the vendor guide's recipe —
-uploads A's last and B's first 12 s instead: 360 + 341 credits for the same four takes.
+uploads A's last and B's first 12 s instead. A 5-song set has four junctions: 8 × 12 s of upload
+(1,440 credits) plus 4 × 3 s of generation (180) ≈ 1,620 credits at the default 4-beat Glue.
 
 Prerequisites: `ELEVENLABS_API_KEY`, `SOW_DATABASE_URL`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`,
 `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY` (read from /opt/sow/.env when unset) and
@@ -87,11 +90,19 @@ CORRELATION_FLOOR = 0.95
 ENVELOPE_FLOOR = 0.90
 ENVELOPE_SHIFT_SECONDS = 1.0
 MAX_SHORTFALL_SECONDS = 0.1
-BEATS = (2, 4, 8, 16)
+DEFAULT_BEATS = (4,)
+MAX_SONGS = 5  # mirrors delivery/webapp/src/lib/constants.ts SONGSET_MAX_SONGS
+DEFAULT_GAP_BEATS = 2.0  # mirrors calculate_gap_ms's NULL fallback in the render worker
 # Used only by --dry-run, which touches neither Postgres nor R2.
+# (arranged_ms, tempo_bpm) per simulated song, in playback order.
 DRY_RUN_TEMPO_BPM = 86.13281
-DRY_RUN_A_MS = 146510
-DRY_RUN_B_MS = 177310
+DRY_RUN_ITEMS = (
+    (146510, 68.0),
+    (177310, DRY_RUN_TEMPO_BPM),
+    (150000, 74.0),
+    (162000, 90.0),
+    (140000, 80.0),
+)
 ENV_KEYS = (
     "ELEVENLABS_API_KEY",
     "SOW_DATABASE_URL",
@@ -123,7 +134,7 @@ DEFAULT_NEGATIVE_STYLES = (
     "abrupt ending",
     "silence",
 )
-SUB_DIRS = ("context", "uploads", "plans", "responses", "glues", "full", "seams")
+SUB_DIRS = ("context", "uploads", "full-set", "junctions")
 
 
 class ApiFatalError(RuntimeError):
@@ -324,6 +335,27 @@ def beat_seconds(tempo_bpm: float) -> float:
     return 60.0 / tempo_bpm
 
 
+def junction_indices(item_count: int, requested: Sequence[int] | None) -> list[int]:
+    """1-based junction indices to process; None means all adjacent junctions.
+
+    Junction `j` joins item `j - 1` (outgoing) to item `j` (incoming), so a set of `n` songs has
+    `n - 1` junctions. An out-of-range request is an error, never silently clamped or widened.
+    """
+    if item_count < 2:
+        raise ValueError(f"a junction needs at least 2 songs, got {item_count}")
+    if requested is None:
+        return list(range(1, item_count))
+    selected = sorted(set(requested))
+    valid = range(1, item_count)
+    bad = [value for value in selected if value not in valid]
+    if bad:
+        raise SystemExit(
+            f"--junctions {','.join(str(value) for value in bad)} is outside 1..{item_count - 1} "
+            f"(a {item_count}-song set has {item_count - 1} junction(s))"
+        )
+    return selected
+
+
 @dataclass(frozen=True)
 class PlanOptions:
     """Everything that can vary in the generation chunk."""
@@ -425,12 +457,15 @@ def check_plan_total(total_seconds: float) -> None:
 
 @dataclass(frozen=True)
 class SongsetItem:
+    """One Songset item plus the transition parameters the render applies *before* it."""
+
     position: int
     song_id: str
     title: str
     hash_prefix: str
-    gap_beats: int
+    gap_beats: float | None
     crossfade_enabled: bool
+    crossfade_duration_seconds: float | None
     steps: list[dict[str, Any]]
 
 
@@ -486,7 +521,7 @@ def fetch_songset(conn, songset_id: str) -> tuple[list[SongsetItem], dict[str, R
         cur.execute(
             """
             SELECT i.position, i.song_id, s.title, i.recording_hash_prefix, i.gap_beats,
-                   i.crossfade_enabled, i.arrangement_steps
+                   i.crossfade_enabled, i.crossfade_duration_seconds, i.arrangement_steps
               FROM songset_items i
               JOIN songs s ON s.id = i.song_id
              WHERE i.songset_id = %s
@@ -497,6 +532,11 @@ def fetch_songset(conn, songset_id: str) -> tuple[list[SongsetItem], dict[str, R
         item_rows = cur.fetchall()
         if len(item_rows) < 2:
             raise RuntimeError(f"songset {songset_id} has {len(item_rows)} items; need >= 2")
+        if len(item_rows) > MAX_SONGS:
+            raise SystemExit(
+                f"songset {songset_id} has {len(item_rows)} items; the delivery limit is "
+                f"{MAX_SONGS} songs — trim it first"
+            )
 
         items = [
             SongsetItem(
@@ -504,9 +544,10 @@ def fetch_songset(conn, songset_id: str) -> tuple[list[SongsetItem], dict[str, R
                 song_id=str(row[1]),
                 title=str(row[2]),
                 hash_prefix=str(row[3]),
-                gap_beats=int(row[4] or 0),
+                gap_beats=float(row[4]) if row[4] is not None else None,
                 crossfade_enabled=bool(row[5]),
-                steps=load_arrangement_steps(row[6]),
+                crossfade_duration_seconds=float(row[6]) if row[6] is not None else None,
+                steps=load_arrangement_steps(row[7]),
             )
             for row in item_rows
         ]
@@ -1114,6 +1155,149 @@ def splice(a: np.ndarray, glue: np.ndarray, b: np.ndarray) -> np.ndarray:
     return stitched
 
 
+def mix_songset(
+    songs: Sequence[np.ndarray],
+    incoming: Sequence[SongsetItem],
+    tempos: Sequence[float],
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
+    """Song timeline exactly as the render worker mixes it (minus loudnorm).
+
+    `incoming[i]`/`tempos[i]` describe the junction before `songs[i + 1]`. A crossfade is
+    `min(crossfade_duration_seconds, incoming arranged seconds)` and replaces the gap entirely.
+    Mirrors `delivery/render-worker/src/sow_render_worker/audio_engine.py`: `calculate_gap_ms`,
+    `get_crossfade_ms`, `start = prev_end + gap - crossfade`, linear `afade` in/out, `amix
+    normalize=0`. Peak scaling above 0.99 keeps the written FLAC undistorted; production's
+    loudnorm is not emulated.
+    """
+    if not songs:
+        raise ValueError("mix_songset needs at least one song")
+    if len(incoming) != len(songs) - 1:
+        raise ValueError(
+            f"mix_songset needs {len(songs) - 1} junction parameter sets for {len(songs)} songs, "
+            f"got {len(incoming)}"
+        )
+    if len(tempos) != len(songs) - 1:
+        raise ValueError(
+            f"mix_songset needs {len(songs) - 1} tempos for {len(songs)} songs, got {len(tempos)}"
+        )
+    for index, tempo in enumerate(tempos):
+        if not tempo > 0:
+            raise ValueError(f"junction {index + 1}: tempo must be positive, got {tempo}")
+
+    starts = [0]
+    crosses = [0]
+    gap_frames: list[int] = []
+    gap_beats_of: list[float] = []
+    for index in range(1, len(songs)):
+        item = incoming[index - 1]
+        cross = 0
+        if item.crossfade_enabled and item.crossfade_duration_seconds:
+            cross = min(round(item.crossfade_duration_seconds * SR), songs[index].shape[0])
+        beats = item.gap_beats if item.gap_beats is not None else DEFAULT_GAP_BEATS
+        gap = 0 if cross else round(beats * 60.0 / tempos[index - 1] * SR)
+        starts.append(max(0, starts[index - 1] + songs[index - 1].shape[0] + gap - cross))
+        crosses.append(cross)
+        gap_frames.append(gap)
+        gap_beats_of.append(float(beats))
+
+    total = max(starts[index] + songs[index].shape[0] for index in range(len(songs)))
+    buffer = np.zeros((total, CHANNELS), dtype=np.float32)
+    for index, song in enumerate(songs):
+        segment = np.array(song, dtype=np.float32, copy=True)
+        fade_in = min(crosses[index], segment.shape[0])
+        if fade_in:
+            ramp_in = np.arange(fade_in, dtype=np.float32) / np.float32(crosses[index])
+            segment[:fade_in] *= ramp_in[:, None]
+        fade_out = min(crosses[index + 1], segment.shape[0]) if index + 1 < len(crosses) else 0
+        if fade_out:
+            ramp_out = 1.0 - np.arange(fade_out, dtype=np.float32) / np.float32(crosses[index + 1])
+            segment[-fade_out:] *= ramp_out[:, None]
+        start = starts[index]
+        buffer[start : start + segment.shape[0]] += segment
+
+    peak = peak_level(buffer)
+    scaled = peak > 0.99
+    if scaled:
+        buffer *= np.float32(0.99 / peak)
+
+    records = [
+        {
+            "mode": "crossfade" if crosses[index + 1] else "gap",
+            "gap_beats": gap_beats_of[index],
+            "gap_seconds": round(gap_frames[index] / SR, 6),
+            "crossfade_seconds": round(crosses[index + 1] / SR, 6),
+            "outgoing_seconds": round(songs[index].shape[0] / SR, 6),
+            "incoming_seconds": round(songs[index + 1].shape[0] / SR, 6),
+            "start_seconds": round(starts[index + 1] / SR, 6),
+            "peak_scaled": scaled,
+        }
+        for index in range(len(incoming))
+    ]
+    return np.ascontiguousarray(buffer), records
+
+
+def assemble_set(songs: Sequence[np.ndarray], glues: Sequence[np.ndarray]) -> np.ndarray:
+    """songs[0] + glues[0] + songs[1] + ... with every Song sample-identical."""
+    if len(glues) != len(songs) - 1:
+        raise ValueError(
+            f"assemble_set needs {len(songs) - 1} glues for {len(songs)} songs, got {len(glues)}"
+        )
+    parts: list[np.ndarray] = []
+    for index, song in enumerate(songs):
+        parts.append(song)
+        if index < len(glues):
+            parts.append(glues[index])
+    assembled = np.ascontiguousarray(np.concatenate(parts, axis=0))
+    offset = 0
+    for index, song in enumerate(songs):
+        if not np.array_equal(assembled[offset : offset + song.shape[0]], song):
+            raise RuntimeError(f"assemble invariant failed: song {index} was altered")
+        offset += song.shape[0]
+        if index < len(glues):
+            offset += glues[index].shape[0]
+    return assembled
+
+
+def junction_excerpt(
+    baseline: np.ndarray,
+    a_frames: int,
+    gap_frames: int,
+    crossfade_frames: int,
+    seconds: float = EXCERPT_SECONDS,
+) -> np.ndarray:
+    """The 2×EXCERPT_SECONDS window a listener needs to judge one junction baseline.
+
+    For a crossfade junction `gap_frames` is 0, so the window is `seconds` of A before the overlap,
+    the overlap, then `seconds` of B after it.
+    """
+    window = seconds_to_samples(seconds)
+    start = max(0, a_frames - window - crossfade_frames)
+    end = min(baseline.shape[0], a_frames + gap_frames + window)
+    if end <= start:
+        raise RuntimeError(f"empty junction excerpt window [{start}, {end}]")
+    return np.ascontiguousarray(baseline[start:end])
+
+
+def baseline_text(record: dict[str, Any]) -> str:
+    """What the production transition at this junction actually does, in plain numbers."""
+    if record.get("mode") == "crossfade":
+        return f"{_num(record.get('crossfade_seconds'))} s crossfade"
+    beats = record.get("gap_beats")
+    beats_value = DEFAULT_GAP_BEATS if beats is None else float(beats)
+    plural = "" if abs(beats_value - 1.0) < 1e-9 else "s"
+    gap = _num(record.get("gap_seconds"))
+    return f"{beats_value:g} beat{plural} ({gap} s) of silence"
+
+
+def baseline_label(record: dict[str, Any]) -> str:
+    return f"baseline — {baseline_text(record)}"
+
+
+def baseline_summary(record: dict[str, Any]) -> str:
+    kind = "crossfade" if record.get("mode") == "crossfade" else "gap"
+    return f"current render — production {kind} at this junction"
+
+
 def joint_metrics(
     samples: np.ndarray,
     index: int,
@@ -1463,7 +1647,7 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
     take_id = str(take.get("id"))
     files = take.get("files") or {}
     label = str(take.get("label") or take_id)
-    is_baseline = baseline or take_id == "baseline"
+    is_baseline = baseline or take_id.endswith("baseline")
     players: list[tuple[str, str]] = []
     if not is_baseline and files.get("glue"):
         players.append(("<span>Glue (spliced)</span>", _audio(str(files["glue"]), "glue")))
@@ -1485,6 +1669,7 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
     status = take.get("status")
     error = take.get("error")
     reasons = take.get("reasons") or []
+    metrics_line = baseline_text(take) if is_baseline else metric_text(take)
     detail = f'<p class="error">failed: {html.escape(str(error))}</p>' if error else ""
     if reasons and not error:
         detail += f'<p class="error">check: {html.escape("; ".join(str(r) for r in reasons))}</p>'
@@ -1493,7 +1678,7 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
   <h3>{html.escape(label)} <span class="badge" hidden>last played</span></h3>
   <p class="meta">status {html.escape(str(status))} · {html.escape(str(take.get('summary') or ''))}</p>
   <div class="players">{body}</div>
-  <p class="metrics">{html.escape(metric_text(take))}</p>
+  <p class="metrics">{html.escape(metrics_line)}</p>
   {detail}
   <div class="score-ui">
     <label>score 0–10</label>
@@ -1506,51 +1691,133 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
 </article>"""
 
 
-def ranking_table(takes: list[dict[str, Any]], failed: bool) -> str:
+def ranking_table(takes: list[dict[str, Any]], failed: bool, heading: str) -> str:
     rows: list[str] = []
     for order, take in enumerate(takes):
         take_id = html.escape(str(take.get("id")))
         label = html.escape(str(take.get("label") or take.get("id")))
         beats = _num(take.get("beats"), 0)
-        glue = _num(take.get("glue_seconds"))
+        glue = take.get("glue_seconds")
+        if glue is None:
+            glue = take.get("gap_seconds") or take.get("crossfade_seconds")
         rows.append(
             f'<tr class="rank-row" data-take-id="{take_id}" data-order="{order}" data-score="">'
-            f"<td>{label}</td><td>{beats}</td><td>{glue}</td>"
+            f"<td>{label}</td><td>{beats}</td><td>{_num(glue)}</td>"
             f'<td class="rank-score">—</td><td class="rank-vocals">—</td></tr>'
         )
-    title = "Failed takes" if failed else "Ranking (score desc, unscored last)"
     if not rows:
-        return f'<h2>{title}</h2><p class="meta">none</p>'
+        return f'<h2>{html.escape(heading)}</h2><p class="meta">none</p>'
     return (
-        f"<h2>{title}</h2><table><thead><tr><th>take</th><th>beats</th><th>glue s</th>"
-        f"<th>score</th><th>vocals</th></tr></thead>"
+        f"<h2>{html.escape(heading)}</h2><table><thead><tr><th>take</th><th>beats</th>"
+        f"<th>glue s</th><th>score</th><th>vocals</th></tr></thead>"
         f'<tbody data-sortable="{"0" if failed else "1"}">{"".join(rows)}</tbody></table>'
     )
 
 
+def context_card_html(item: dict[str, Any]) -> str:
+    """One arranged side as played — the reference every take at its junctions is judged on."""
+    title = str(item.get("title") or item.get("song_id"))
+    source = item.get("file")
+    player = (
+        _audio(str(source), "context", preload="none")
+        if source
+        else '<p class="meta">no audio written</p>'
+    )
+    return f"""<article class="card">
+  <h3>{html.escape(title)}</h3>
+  <p class="meta">arranged {_num(item.get('arranged_seconds'), 2)} s ·
+  {_num(item.get('tempo_bpm'), 5)} BPM · {html.escape(str(item.get('key')))} ·
+  {_num(item.get('steps'), 0)} steps</p>
+  <div class="players"><span>Arranged</span>{player}</div>
+</article>"""
+
+
+def full_set_card_html(entry: dict[str, Any]) -> str:
+    """A whole-set player card — no score UI, because a full-set listen is not a take vote."""
+    take_id = str(entry.get("id"))
+    label = str(entry.get("label") or take_id)
+    files = entry.get("files") or {}
+    status = str(entry.get("status"))
+    summary = str(entry.get("summary") or "")
+    seconds = entry.get("seconds")
+    players = (
+        f"<span>Full set</span>{_audio(str(files['full']), 'full-set', preload='none')}"
+        if files.get("full")
+        else '<p class="meta">no audio written</p>'
+    )
+    error = entry.get("error")
+    detail = f'<p class="error">unavailable: {html.escape(str(error))}</p>' if error else ""
+    meta = f"status {html.escape(status)}"
+    if seconds is not None:
+        meta += f" · {_num(seconds, 2)} s"
+    if summary:
+        meta += f" · {html.escape(summary)}"
+    return f"""<article class="card" data-take-id="{html.escape(take_id)}"
+  data-label="{html.escape(label)}">
+  <h3>{html.escape(label)} <span class="badge" hidden>last played</span></h3>
+  <p class="meta">{meta}</p>
+  <div class="players">{players}</div>
+  {detail}
+</article>"""
+
+
 def report_html(index: dict[str, Any]) -> str:
     run = str(index.get("run"))
-    seam = index.get("seam") or {}
     items = index.get("items") or []
-    takes = index.get("takes") or []
-    baseline = index.get("baseline") or {}
+    junctions = index.get("junctions") or []
+    full_set = index.get("full_set") or {}
     condition = index.get("condition") or {}
+    beats_text = ", ".join(str(beats) for beats in index.get("beats") or [])
     items_text = " · ".join(
         f"{item.get('title')} (arranged {_num(item.get('arranged_seconds'), 2)} s, "
-        f"{_num(item.get('tempo_bpm'), 2)} BPM, {item.get('key')})"
-        for item in items[:2]
+        f"{_num(item.get('tempo_bpm'), 5)} BPM, {item.get('key')})"
+        for item in items
     )
-    ok_takes = [take for take in takes if take.get("status") != "failed"]
-    failed_takes = [take for take in takes if take.get("status") == "failed"]
-    rankable = ok_takes + ([baseline] if baseline else [])
-    cards = "".join(card_html(take) for take in ok_takes)
-    failed_cards = "".join(card_html(take) for take in failed_takes)
-    baseline_card = card_html(baseline, baseline=True) if baseline else ""
-    failed_section = (
-        f'<section><h2>Failed</h2><div class="grid">{failed_cards}</div></section>'
-        if failed_cards
-        else ""
+    context_cards = "".join(context_card_html(item) for item in items)
+
+    full_baseline = full_set.get("baseline") or {}
+    full_takes = full_set.get("takes") or []
+    full_entries = ([full_baseline] if full_baseline else []) + full_takes
+    full_cards = "".join(full_set_card_html(entry) for entry in full_entries)
+    skipped = full_set.get("skipped")
+    full_note = (
+        f'<p class="meta">full set not built: {html.escape(str(skipped))}</p>' if skipped else ""
     )
+    full_section = (
+        f'<section><h2>Full set</h2>{full_note}<div class="grid">{full_cards}</div></section>'
+    )
+
+    sections: list[str] = []
+    for junction in junctions:
+        baseline = junction.get("baseline") or {}
+        if not baseline:
+            continue
+        takes = junction.get("takes") or []
+        ok_takes = [take for take in takes if take.get("status") != "failed"]
+        failed_takes = [take for take in takes if take.get("status") == "failed"]
+        number = junction.get("index")
+        uploads = junction.get("uploads") or {}
+        upload_a = (uploads.get("a") or {}).get("seconds")
+        upload_b = (uploads.get("b") or {}).get("seconds")
+        cards = card_html(baseline, baseline=True) + "".join(card_html(take) for take in ok_takes)
+        failed_cards = "".join(card_html(take) for take in failed_takes)
+        failed_block = (
+            f'<h3>Failed takes</h3><div class="grid">{failed_cards}</div>' if failed_cards else ""
+        )
+        rankable = ok_takes + [baseline]
+        sections.append(f"""<section id="junction-j{html.escape(str(number))}">
+  <h2>Junction {html.escape(str(number))} —
+  {html.escape(str((junction.get('from') or {}).get('title')))} →
+  {html.escape(str((junction.get('to') or {}).get('title')))}</h2>
+  <p class="meta">incoming tempo {_num(junction.get('tempo_bpm'), 5)} BPM · beat
+  {_num(junction.get('beat_seconds'), 5)} s · baseline {html.escape(baseline_text(baseline))} ·
+  upload A {_num(upload_a, 2)} s / B {_num(upload_b, 2)} s</p>
+  <div class="grid">{cards}</div>
+  {failed_block}
+  {ranking_table(rankable, False, f"Junction {number} ranking (score desc, unscored last)")}
+  {ranking_table(failed_takes, True, f"Junction {number} failed takes")}
+</section>""")
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1563,12 +1830,12 @@ def report_html(index: dict[str, Any]) -> str:
   <h1>ElevenLabs instrumental Glue — {html.escape(run)}</h1>
   <p class="sub">songset {html.escape(str(index.get('songset_id')))} ·
   {html.escape(items_text)}</p>
-  <p class="sub">beat {_num(seam.get('beat_seconds'), 5)} s at
-  {_num(seam.get('tempo_bpm'), 5)} BPM · model {html.escape(str(index.get('model_id')))} ·
+  <p class="sub">{len(items)} songs · {len(junctions)} junction(s) · beats
+  {html.escape(beats_text)} · model {html.escape(str(index.get('model_id')))} ·
   output {html.escape(str(index.get('output_format')))} · input
   {html.escape(str(index.get('input')))} · conditioning {html.escape(str(condition.get('mode')))}
   / {html.escape(str(condition.get('strength')))} / {_num(condition.get('seconds'), 1)} s ·
-  est. {_num(index.get('credits_estimate'), 0)} credits</p>
+  est. {_num(index.get('credits_estimate'), 0)} credits · baseline mix is raw PCM (no loudnorm)</p>
   <div id="last-played">Last played: —</div>
   <div class="toolbar">
     <button id="export-scores" type="button">Export scores</button>
@@ -1576,17 +1843,9 @@ def report_html(index: dict[str, Any]) -> str:
     <button id="reset-scores" type="button">Reset scores</button>
     <input id="import-file" type="file" accept="application/json" hidden>
   </div>
-  <section><h2>Context</h2><div class="grid">
-    <article class="card"><h3>A arranged</h3><div class="players">
-      <span>A arranged</span>{_audio("context/a-arranged.flac", "context")}</div></article>
-    <article class="card"><h3>B arranged</h3><div class="players">
-      <span>B arranged</span>{_audio("context/b-arranged.flac", "context")}</div></article>
-  </div></section>
-  {ranking_table(rankable, failed=False)}
-  {ranking_table(failed_takes, failed=True)}
-  <section><h2>Takes</h2><div class="grid">{cards}</div></section>
-  {failed_section}
-  <section><h2>Baseline</h2><div class="grid">{baseline_card}</div></section>
+  <section><h2>Context</h2><div class="grid">{context_cards}</div></section>
+  {full_section}
+  {"".join(sections)}
   <script>{JS}</script>
 </body>
 </html>
@@ -1614,10 +1873,24 @@ def _styles(text: str) -> list[str]:
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate instrumental Glues between two arranged songs (ElevenLabs)."
+        description=(
+            "Generate instrumental Glues at every adjacent junction of a 2–5 song Songset "
+            "(ElevenLabs)."
+        )
     )
-    parser.add_argument("--songset", default=DEFAULT_SONGSET, help="songset id")
-    parser.add_argument("--beats", type=_ints, default=list(BEATS), help="glue lengths in beats")
+    parser.add_argument("--songset", default=DEFAULT_SONGSET, help="songset id (2..5 items)")
+    parser.add_argument(
+        "--beats",
+        type=_ints,
+        default=list(DEFAULT_BEATS),
+        help="glue lengths in beats of the incoming tempo (default 4; try 2,4,8,16 to sweep)",
+    )
+    parser.add_argument(
+        "--junctions",
+        type=_ints,
+        default=None,
+        help="1-based junction indices (default: every adjacent junction)",
+    )
     parser.add_argument("--takes", type=int, default=1, help="takes per glue length")
     parser.add_argument("--seed-base", type=int, default=0, help="seed for take 0")
     parser.add_argument("--run-name", default="run1", help="run directory name")
@@ -1651,6 +1924,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--output-format", default="pcm_44100")
     parser.add_argument("--dry-run", action="store_true", help="print plans; no network, no writes")
+    parser.add_argument(
+        "--dry-run-items",
+        type=int,
+        choices=(2, 3, 4, 5),
+        default=2,
+        help="simulated songset size for --dry-run",
+    )
     parser.add_argument("--force", action="store_true", help="reuse a non-empty run directory")
     parser.add_argument("--refresh-uploads", action="store_true", help="ignore the upload cache")
     parser.add_argument(
@@ -1662,18 +1942,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def dry_run(args: argparse.Namespace) -> int:
-    """Print the take table and the plan bodies without touching Postgres, R2 or the API."""
-    tempo = DRY_RUN_TEMPO_BPM
-    specs = take_specs(args.beats, tempo)
-    if args.upload_seconds:
-        a_start_ms = 0
-        a_ref_ms = b_ref_ms = round(args.upload_seconds * 1000)
-    else:
-        a_ref_ms = DRY_RUN_A_MS
-        a_start_ms = (
-            max(0, a_ref_ms - round(args.context_seconds * 1000)) if args.context_seconds else 0
-        )
-        b_ref_ms = round(args.context_seconds * 1000) if args.context_seconds else DRY_RUN_B_MS
+    """Print the junction take tables and plan bodies without touching Postgres, R2 or the API."""
+    items = [
+        {
+            "title": f"Song {index + 1:02d}",
+            "arranged_ms": int(arranged_ms),
+            "tempo_bpm": float(tempo),
+        }
+        for index, (arranged_ms, tempo) in enumerate(DRY_RUN_ITEMS[: args.dry_run_items])
+    ]
+    try:
+        selected = junction_indices(len(items), args.junctions)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     opts = PlanOptions(
         glue_text=args.glue_text,
         positive_styles=tuple(args.positive_styles),
@@ -1682,52 +1963,114 @@ def dry_run(args: argparse.Namespace) -> int:
         condition_strength=args.condition_strength,
         condition_seconds=args.condition_seconds,
     )
-    totals: list[float] = []
+    tempos_text = ", ".join(f"{item['tempo_bpm']:g}" for item in items)
     print(
-        f"dry run: songset {args.songset}, tempo stand-in {tempo} BPM "
-        f"(beat {beat_seconds(tempo):.5f} s), A ref {a_start_ms}..{a_ref_ms} ms, "
-        f"B ref 0..{b_ref_ms} ms",
+        f"dry run: songset {args.songset}, {len(items)} simulated songs "
+        f"(tempo stand-ins {tempos_text} BPM), junctions "
+        f"{','.join(str(junction) for junction in selected)}, beats "
+        f"{','.join(str(beats) for beats in args.beats)}",
         flush=True,
     )
-    print(
-        f"{'beats':>5} {'target s':>9} {'gen s':>8} {'request ms':>11} {'trim':>5} "
-        f"{'plan total s':>13}",
-        flush=True,
-    )
-    for spec in specs:
-        total = plan_total_seconds(spec, a_start_ms, a_ref_ms, b_ref_ms)
-        check_plan_total(total)
-        totals.append(total)
+
+    upload_seconds = 0.0
+    generation_seconds = 0.0
+    junctions: list[dict[str, Any]] = []
+    for junction in selected:
+        a_item, b_item = items[junction - 1], items[junction]
+        tempo = b_item["tempo_bpm"]
+        a_ms, b_ms = a_item["arranged_ms"], b_item["arranged_ms"]
+        if args.upload_seconds:
+            a_start_ms = 0
+            a_ref_ms = b_ref_ms = round(args.upload_seconds * 1000)
+        else:
+            a_ref_ms = a_ms
+            a_start_ms = (
+                max(0, a_ref_ms - round(args.context_seconds * 1000)) if args.context_seconds else 0
+            )
+            b_ref_ms = round(args.context_seconds * 1000) if args.context_seconds else b_ms
+        specs = take_specs(args.beats, tempo)
+        for spec in specs:
+            try:
+                check_plan_total(plan_total_seconds(spec, a_start_ms, a_ref_ms, b_ref_ms))
+            except ValueError as exc:
+                raise SystemExit(f"junction j{junction}: {exc}") from exc
         print(
-            f"{spec.beats:>5} {spec.target_seconds:>9.4f} {spec.generation_seconds:>8.4f} "
-            f"{spec.duration_ms:>11} {spec.trim:>5} {total:>13.2f}",
+            f"junction j{junction}: {a_item['title']} ({a_ms / 1000.0:.2f} s) -> "
+            f"{b_item['title']} ({b_ms / 1000.0:.2f} s, {tempo} BPM, "
+            f"beat {beat_seconds(tempo):.5f} s)",
             flush=True,
         )
-    upload_seconds = (a_ref_ms - a_start_ms + b_ref_ms) / 1000.0
-    generation_seconds = sum(spec.generation_seconds for spec in specs) * args.takes
+        print(
+            f"baseline j{junction}: gap {DEFAULT_GAP_BEATS * beat_seconds(tempo):.3f} s "
+            f"(gap_beats {DEFAULT_GAP_BEATS:g})",
+            flush=True,
+        )
+        print(
+            f"{'beats':>5} {'target s':>9} {'gen s':>8} {'request ms':>11} {'trim':>5} "
+            f"{'plan total s':>13}",
+            flush=True,
+        )
+        for spec in specs:
+            total = plan_total_seconds(spec, a_start_ms, a_ref_ms, b_ref_ms)
+            print(
+                f"{spec.beats:>5} {spec.target_seconds:>9.4f} {spec.generation_seconds:>8.4f} "
+                f"{spec.duration_ms:>11} {spec.trim:>5} {total:>13.2f}",
+                flush=True,
+            )
+        upload_seconds += (a_ref_ms - a_start_ms + b_ref_ms) / 1000.0
+        generation_seconds += sum(spec.generation_seconds for spec in specs) * args.takes
+        junctions.append(
+            {
+                "index": junction,
+                "a_start_ms": a_start_ms,
+                "a_ref_ms": a_ref_ms,
+                "b_ref_ms": b_ref_ms,
+                "specs": specs,
+            }
+        )
+
     credits = (upload_seconds + generation_seconds) * CREDITS_PER_SECOND
     print(
         f"est. credits: upload {upload_seconds * CREDITS_PER_SECOND:.0f} + generation "
         f"{generation_seconds * CREDITS_PER_SECOND:.0f} = {credits:.0f}",
         flush=True,
     )
-    for spec in specs:
-        plan = build_plan("<A_ID>", "<B_ID>", a_start_ms, a_ref_ms, b_ref_ms, spec, opts)
-        print(f"plan beats-{spec.beats}:", flush=True)
-        print(json.dumps(plan, indent=2, ensure_ascii=False), flush=True)
+    for junction in junctions:
+        for spec in junction["specs"]:
+            plan = build_plan(
+                "<A_ID>",
+                "<B_ID>",
+                junction["a_start_ms"],
+                junction["a_ref_ms"],
+                junction["b_ref_ms"],
+                spec,
+                opts,
+            )
+            print(f"plan j{junction['index']}/beats-{spec.beats}:", flush=True)
+            print(json.dumps(plan, indent=2, ensure_ascii=False), flush=True)
     return 0
 
 
-def _take_index(spec: TakeSpec, take_number: int, takes: int) -> tuple[str, dict[str, str], str]:
-    take_id = f"beats-{spec.beats}" if takes == 1 else f"beats-{spec.beats}-t{take_number + 1}"
+def _take_index(
+    spec: TakeSpec, take_number: int, takes: int, junction: int
+) -> tuple[str, str, dict[str, str], str]:
+    """(display id, response-cache take id, files, label).
+
+    The cache take id keeps the pre-multi-junction strings (`beats-4` / `beats-4-t2`) so existing
+    paid responses in `cache/responses` still hit; the display id carries the junction and is what
+    the index, the HTML cards and `localStorage` use.
+    """
+    cache_take = f"beats-{spec.beats}" if takes == 1 else f"beats-{spec.beats}-t{take_number + 1}"
+    take_id = f"j{junction}-{cache_take}"
+    base = f"junctions/j{junction}"
     files = {
-        "glue": f"glues/{take_id}.flac",
-        "generation": f"glues/{take_id}-generation.flac",
-        "seam": f"seams/{take_id}.flac",
-        "full": f"full/{take_id}.flac",
+        "glue": f"{base}/glues/{cache_take}.flac",
+        "generation": f"{base}/glues/{cache_take}-generation.flac",
+        "seam": f"{base}/seams/{cache_take}.flac",
+        "full": f"{base}/full/{cache_take}.flac",
     }
-    label = f"{take_id} — {spec.beats} beat{'' if spec.beats == 1 else 's'}"
-    return take_id, files, label
+    label = f"{cache_take} — {spec.beats} beat{'' if spec.beats == 1 else 's'}"
+    return take_id, cache_take, files, label
 
 
 def _prepare_run_dir(run_dir: Path, force: bool) -> None:
@@ -1812,35 +2155,6 @@ def _execute_run(args: argparse.Namespace) -> int:
     print(f"songset {args.songset} -> {run_dir}", flush=True)
     with psycopg.connect(os.environ["SOW_DATABASE_URL"]) as conn:
         items, recordings = fetch_songset(conn, args.songset)
-    if len(items) > 2:
-        print(f"  warning: songset has {len(items)} items; using positions 0 and 1 only")
-    item_a, item_b = items[0], items[1]
-    rec_a, rec_b = recordings[item_a.hash_prefix], recordings[item_b.hash_prefix]
-    for item, recording in ((item_a, rec_a), (item_b, rec_b)):
-        print(
-            f"  item {item.position}: {item.song_id} [{item.hash_prefix}] "
-            f"{recording.duration_seconds:.2f}s {recording.tempo_bpm} BPM "
-            f"{recording.musical_key}/{recording.musical_mode} steps {len(item.steps)}",
-            flush=True,
-        )
-    if not rec_b.tempo_bpm:
-        raise SystemExit(f"recording {rec_b.hash_prefix} has no tempo_bpm; cannot size the glue")
-
-    source = {
-        item.hash_prefix: ensure_source_audio(item.hash_prefix, out_root, connect_r2)
-        for item in (item_a, item_b)
-    }
-    a = arranged_audio(source[item_a.hash_prefix], item_a.steps, "A")
-    b = arranged_audio(source[item_b.hash_prefix], item_b.steps, "B")
-    write_flac(run_dir / "context/a-arranged.flac", a)
-    write_flac(run_dir / "context/b-arranged.flac", b)
-    a_seconds = a.shape[0] / SR
-    b_seconds = b.shape[0] / SR
-    print(
-        f"  arranged A {a_seconds:.2f} s, arranged B {b_seconds:.2f} s "
-        f"(tempo {rec_b.tempo_bpm} BPM, beat {beat_seconds(rec_b.tempo_bpm):.5f} s)",
-        flush=True,
-    )
     if args.context_seconds and not 3.0 <= args.context_seconds <= 30.0:
         raise SystemExit("--context-seconds must be within 3..30 (or 0 for full arranged sides)")
     if args.upload_seconds and not 3.0 <= args.upload_seconds <= 30.0:
@@ -1848,49 +2162,64 @@ def _execute_run(args: argparse.Namespace) -> int:
     if args.upload_seconds and args.context_seconds:
         print("  note: --upload-seconds overrides --context-seconds", flush=True)
 
-    try:
-        a_upload, b_upload, a_start_ms, a_ref_ms, b_ref_ms = arrangement_windows(
-            a, b, args.context_seconds, args.upload_seconds
+    songs: list[np.ndarray] = []
+    tempos: list[float] = []
+    items_index: list[dict[str, Any]] = []
+    for position, item in enumerate(items, start=1):
+        recording = recordings[item.hash_prefix]
+        print(
+            f"  item {item.position}: {item.song_id} [{item.hash_prefix}] "
+            f"{recording.duration_seconds:.2f}s {recording.tempo_bpm} BPM "
+            f"{recording.musical_key}/{recording.musical_mode} steps {len(item.steps)}",
+            flush=True,
         )
+        if not recording.tempo_bpm:
+            raise SystemExit(
+                f"recording {item.hash_prefix} (item {item.position}) has no tempo_bpm; "
+                "cannot size the glue"
+            )
+        source = ensure_source_audio(item.hash_prefix, out_root, connect_r2)
+        song = arranged_audio(source, item.steps, f"item {position} ({item.title})")
+        relative = f"context/song-{position:02d}-{item.hash_prefix[:8]}.flac"
+        write_flac(run_dir / relative, song)
+        songs.append(song)
+        tempos.append(float(recording.tempo_bpm))
+        items_index.append(
+            {
+                "position": item.position,
+                "song_id": item.song_id,
+                "title": item.title,
+                "hash_prefix": item.hash_prefix,
+                "arranged_seconds": round(song.shape[0] / SR, 2),
+                "tempo_bpm": recording.tempo_bpm,
+                "key": f"{recording.musical_key} {recording.musical_mode}".strip(),
+                "steps": len(item.steps),
+                "file": relative,
+            }
+        )
+    try:
+        selected = junction_indices(len(items), args.junctions)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    specs = take_specs(args.beats, float(rec_b.tempo_bpm))
-    for spec in specs:
-        check_plan_total(plan_total_seconds(spec, a_start_ms, a_ref_ms, b_ref_ms))
-
-    upload_label_a = f"A arranged last {a_upload.shape[0] / SR:.2f} s"
-    upload_label_b = f"B arranged first {b_upload.shape[0] / SR:.2f} s"
-    upload_a = ensure_upload(key, a_upload, out_root, args.refresh_uploads, upload_label_a)
-    upload_b = ensure_upload(key, b_upload, out_root, args.refresh_uploads, upload_label_b)
-
-    generation_seconds = sum(spec.generation_seconds for spec in specs) * args.takes
-    credits_estimate = round(
-        (upload_a["seconds"] + upload_b["seconds"] + generation_seconds) * CREDITS_PER_SECOND
+    arranged_text = ", ".join(f"{entry['arranged_seconds']:.2f}" for entry in items_index)
+    print(
+        f"  {len(items)} songs ({arranged_text} s arranged) -> junctions "
+        f"{','.join(str(junction) for junction in selected)}, beats {list(args.beats)}",
+        flush=True,
     )
-    print(f"  est. total credits: {credits_estimate}", flush=True)
 
-    beat = beat_seconds(float(rec_b.tempo_bpm))
-    baseline_gap_seconds = 2.0 * beat
-    baseline_gap_samples = seconds_to_samples(baseline_gap_seconds)
-    silence = np.zeros((baseline_gap_samples, CHANNELS), dtype=np.float32)
+    baseline_mix, baseline_records = mix_songset(songs, items[1:], tempos[1:])
+    write_flac(run_dir / "full-set" / "baseline.flac", baseline_mix)
+    baseline_modes = ", ".join(
+        f"j{position + 1} {record['mode']}" for position, record in enumerate(baseline_records)
+    )
+    print(
+        f"  full-set baseline {baseline_mix.shape[0] / SR:.2f} s ({baseline_modes})",
+        flush=True,
+    )
 
-    items_index = [
-        {
-            "position": item.position,
-            "title": item.title,
-            "hash_prefix": item.hash_prefix,
-            "arranged_seconds": round(seconds, 2),
-            "tempo_bpm": recording.tempo_bpm,
-            "key": f"{recording.musical_key} {recording.musical_mode}".strip(),
-            "steps": len(item.steps),
-        }
-        for item, recording, seconds in (
-            (item_a, rec_a, a_seconds),
-            (item_b, rec_b, b_seconds),
-        )
-    ]
     index: dict[str, Any] = {
-        "version": 1,
+        "version": 2,
         "run": args.run_name,
         "created_at": started,
         "songset_id": args.songset,
@@ -1901,47 +2230,163 @@ def _execute_run(args: argparse.Namespace) -> int:
             if args.upload_seconds
             else ("windowed" if args.context_seconds else "full")
         ),
-        "items": items_index,
-        "seam": {
-            "tempo_bpm": float(rec_b.tempo_bpm),
-            "beat_seconds": round(beat, 5),
-            "baseline_gap_seconds": round(baseline_gap_seconds, 4),
-        },
-        "uploads": {
-            "a": {
-                "song_id": upload_a["song_id"],
-                "sha256": upload_a["sha256"],
-                "seconds": upload_a["seconds"],
-            },
-            "b": {
-                "song_id": upload_b["song_id"],
-                "sha256": upload_b["sha256"],
-                "seconds": upload_b["seconds"],
-            },
-        },
+        "beats": list(args.beats),
         "condition": {
             "mode": opts.condition,
             "strength": opts.condition_strength,
             "seconds": opts.condition_seconds if opts.condition == "b" else None,
         },
-        "credits_estimate": credits_estimate,
-        "takes": [],
-        "baseline": {
-            "id": "baseline",
-            "label": f"baseline — {round(baseline_gap_seconds / beat)} beats "
-            f"({baseline_gap_seconds:.3f} s) of silence",
-            "summary": "current render — 2-beat silence gap",
-            "status": "ok",
-            "beats": round(baseline_gap_seconds / beat),
-            "glue_seconds": round(baseline_gap_seconds, 4),
-            "files": {"seam": "seams/baseline.flac", "full": "full/baseline.flac"},
+        "credits_estimate": None,
+        "items": items_index,
+        "junctions": [],
+        "full_set": {
+            "baseline": {
+                "id": "full-set-baseline",
+                "kind": "full-set",
+                "label": "full set — baseline (production gaps/crossfades)",
+                "status": "ok",
+                "seconds": round(baseline_mix.shape[0] / SR, 4),
+                "files": {"full": "full-set/baseline.flac"},
+            },
+            "takes": [],
+            "skipped": None,
         },
     }
 
-    a_needle = a[-seconds_to_samples(NEEDLE_SECONDS) :]
-    b_needle = b[: seconds_to_samples(NEEDLE_SECONDS)]
-    context_a = a[-round(EDGE_SECONDS * SR) :]
-    context_b = b[: round(EDGE_SECONDS * SR)]
+    prepared: list[dict[str, Any]] = []
+    for junction in selected:
+        a_song, b_song = songs[junction - 1], songs[junction]
+        a_item, b_item = items[junction - 1], items[junction]
+        b_tempo = tempos[junction]
+        try:
+            a_upload, b_upload, a_start_ms, a_ref_ms, b_ref_ms = arrangement_windows(
+                a_song, b_song, args.context_seconds, args.upload_seconds
+            )
+        except ValueError as exc:
+            raise SystemExit(f"junction j{junction}: {exc}") from exc
+        specs = take_specs(args.beats, b_tempo)
+        for spec in specs:
+            try:
+                check_plan_total(plan_total_seconds(spec, a_start_ms, a_ref_ms, b_ref_ms))
+            except ValueError as exc:
+                raise SystemExit(f"junction j{junction}: {exc}") from exc
+        upload_a = ensure_upload(
+            key,
+            a_upload,
+            out_root,
+            args.refresh_uploads,
+            f"j{junction} A '{a_item.title}' last {a_upload.shape[0] / SR:.2f} s",
+        )
+        upload_b = ensure_upload(
+            key,
+            b_upload,
+            out_root,
+            args.refresh_uploads,
+            f"j{junction} B '{b_item.title}' first {b_upload.shape[0] / SR:.2f} s",
+        )
+        boundary = run_dir / "junctions" / f"j{junction}"
+        for sub in ("plans", "responses", "glues", "full", "seams"):
+            (boundary / sub).mkdir(parents=True, exist_ok=True)
+        junction_mix, junction_records = mix_songset([a_song, b_song], [b_item], [b_tempo])
+        record = junction_records[0]
+        write_flac(boundary / "full" / "baseline.flac", junction_mix)
+        write_flac(
+            boundary / "seams" / "baseline.flac",
+            junction_excerpt(
+                junction_mix,
+                a_song.shape[0],
+                seconds_to_samples(record["gap_seconds"]),
+                seconds_to_samples(record["crossfade_seconds"]),
+            ),
+        )
+        entry: dict[str, Any] = {
+            "id": f"j{junction}",
+            "index": junction,
+            "from": {
+                "position": a_item.position,
+                "song_id": a_item.song_id,
+                "title": a_item.title,
+                "hash_prefix": a_item.hash_prefix,
+            },
+            "to": {
+                "position": b_item.position,
+                "song_id": b_item.song_id,
+                "title": b_item.title,
+                "hash_prefix": b_item.hash_prefix,
+            },
+            "tempo_bpm": b_tempo,
+            "beat_seconds": round(beat_seconds(b_tempo), 6),
+            "uploads": {
+                "a": {
+                    "song_id": upload_a["song_id"],
+                    "sha256": upload_a["sha256"],
+                    "seconds": upload_a["seconds"],
+                },
+                "b": {
+                    "song_id": upload_b["song_id"],
+                    "sha256": upload_b["sha256"],
+                    "seconds": upload_b["seconds"],
+                },
+            },
+            "baseline": {
+                "id": f"j{junction}-baseline",
+                "label": baseline_label(record),
+                "summary": baseline_summary(record),
+                "status": "ok",
+                **record,
+                "seconds": round(junction_mix.shape[0] / SR, 6),
+                "files": {
+                    "seam": f"junctions/j{junction}/seams/baseline.flac",
+                    "full": f"junctions/j{junction}/full/baseline.flac",
+                },
+            },
+            "takes": [],
+        }
+        index["junctions"].append(entry)
+        prepared.append(
+            {
+                "index": junction,
+                "entry": entry,
+                "boundary": boundary,
+                "specs": specs,
+                "a_song": a_song,
+                "b_song": b_song,
+                "a_item": a_item,
+                "b_item": b_item,
+                "a_upload": upload_a,
+                "b_upload": upload_b,
+                "a_start_ms": a_start_ms,
+                "a_ref_ms": a_ref_ms,
+                "b_ref_ms": b_ref_ms,
+                "a_needle": a_song[-seconds_to_samples(NEEDLE_SECONDS) :],
+                "b_needle": b_song[: seconds_to_samples(NEEDLE_SECONDS)],
+                "context_a": a_song[-round(EDGE_SECONDS * SR) :],
+                "context_b": b_song[: round(EDGE_SECONDS * SR)],
+                "work": [
+                    (spec, take_number) for spec in specs for take_number in range(args.takes)
+                ],
+                "glues": {},
+            }
+        )
+        print(
+            f"  junction j{junction}: {a_item.title} -> {b_item.title} "
+            f"({b_tempo:g} BPM, beat {beat_seconds(b_tempo):.5f} s, {baseline_label(record)})",
+            flush=True,
+        )
+
+    upload_seconds = sum(
+        prep["a_upload"]["seconds"] + prep["b_upload"]["seconds"] for prep in prepared
+    )
+    generation_seconds = (
+        sum(spec.generation_seconds for prep in prepared for spec in prep["specs"]) * args.takes
+    )
+    credits_estimate = round((upload_seconds + generation_seconds) * CREDITS_PER_SECOND)
+    index["credits_estimate"] = credits_estimate
+    print(
+        f"  est. total credits: {credits_estimate} ({upload_seconds:.0f} s uploaded + "
+        f"{generation_seconds:.0f} s generated over {len(prepared)} junction(s))",
+        flush=True,
+    )
 
     def fatal(message: str) -> int:
         print(f"error: {message}", flush=True)
@@ -1950,12 +2395,18 @@ def _execute_run(args: argparse.Namespace) -> int:
         print(f"  partial artifacts in {run_dir}", flush=True)
         return 2
 
-    for spec in specs:
-        for take_number in range(args.takes):
-            take_id, files, label = _take_index(spec, take_number, args.takes)
+    for prep in prepared:
+        junction = prep["index"]
+        entry = prep["entry"]
+        boundary = prep["boundary"]
+        a_song = prep["a_song"]
+        b_song = prep["b_song"]
+        for spec, take_number in prep["work"]:
+            take_id, cache_take, files, label = _take_index(spec, take_number, args.takes, junction)
             seed = args.seed_base + take_number
             take: dict[str, Any] = {
                 "id": take_id,
+                "take": cache_take,
                 "label": label,
                 "beats": spec.beats,
                 "seed": seed,
@@ -1972,19 +2423,21 @@ def _execute_run(args: argparse.Namespace) -> int:
                 "reasons": [],
                 "error": None,
             }
-            index["takes"].append(take)
+            entry["takes"].append(take)
             plan = build_plan(
-                upload_a["song_id"],
-                upload_b["song_id"],
-                a_start_ms,
-                a_ref_ms,
-                b_ref_ms,
+                prep["a_upload"]["song_id"],
+                prep["b_upload"]["song_id"],
+                prep["a_start_ms"],
+                prep["a_ref_ms"],
+                prep["b_ref_ms"],
                 spec,
                 opts,
             )
-            plan_seconds = plan_total_seconds(spec, a_start_ms, a_ref_ms, b_ref_ms)
+            plan_seconds = plan_total_seconds(
+                spec, prep["a_start_ms"], prep["a_ref_ms"], prep["b_ref_ms"]
+            )
             body = {"model_id": MODEL_ID, "composition_plan": plan, "seed": seed}
-            (run_dir / "plans" / f"{take_id}.json").write_text(
+            (boundary / "plans" / f"{cache_take}.json").write_text(
                 json.dumps(body, indent=2, ensure_ascii=False) + "\n"
             )
             print(
@@ -1999,12 +2452,12 @@ def _execute_run(args: argparse.Namespace) -> int:
                     seed,
                     args.output_format,
                     cache_dir,
-                    take_id,
+                    cache_take,
                     args.refresh_responses,
                 )
                 suffix = args.output_format.split("_")[0] if "_" in args.output_format else "bin"
-                raw_path = run_dir / "responses" / f"{take_id}.{suffix}"
-                wav_path = run_dir / "responses" / f"{take_id}.wav"
+                raw_path = boundary / "responses" / f"{cache_take}.{suffix}"
+                wav_path = boundary / "responses" / f"{cache_take}.wav"
                 print(f"  {'reusing' if reused else 'composed'} response", flush=True)
                 try:
                     seam = decode_seam(raw, raw_path, wav_path, plan_seconds, args.output_format)
@@ -2012,17 +2465,17 @@ def _execute_run(args: argparse.Namespace) -> int:
                     print(f"  {exc}", flush=True)
                     fallback = "mp3_48000_320"
                     raw, reused = compose_cached(
-                        key, plan, seed, fallback, cache_dir, take_id, args.refresh_responses
+                        key, plan, seed, fallback, cache_dir, cache_take, args.refresh_responses
                     )
-                    raw_path = run_dir / "responses" / f"{take_id}.mp3"
+                    raw_path = boundary / "responses" / f"{cache_take}.mp3"
                     seam = decode_seam(raw, raw_path, wav_path, plan_seconds, fallback)
                     index["output_format"] = fallback
                 print(f"  seam {seam.shape[0] / SR:.3f} s (plan {plan_seconds:.3f} s)", flush=True)
                 alignment = locate_glue(
                     seam,
-                    a_needle,
-                    b_needle,
-                    (a_ref_ms - a_start_ms) * SR // 1000,
+                    prep["a_needle"],
+                    prep["b_needle"],
+                    (prep["a_ref_ms"] - prep["a_start_ms"]) * SR // 1000,
                     spec.generation_samples,
                 )
                 generated = np.ascontiguousarray(seam[alignment.glue_start : alignment.glue_end])
@@ -2030,25 +2483,26 @@ def _execute_run(args: argparse.Namespace) -> int:
                 glue = take_tail(generated, spec.target_samples)
                 glue_rms = rms_db(glue)
                 nonfinite = not bool(np.all(np.isfinite(glue)))
-                staged, stage_info = stage_edges(glue, context_a, context_b)
+                staged, stage_info = stage_edges(glue, prep["context_a"], prep["context_b"])
                 faded = apply_fades(staged)
                 write_flac(run_dir / files["glue"], faded)
-                full = splice(a, faded, b)
+                prep["glues"][(spec.beats, seed)] = faded
+                full = splice(a_song, faded, b_song)
                 write_flac(run_dir / files["full"], full)
                 seam_excerpt = np.ascontiguousarray(
                     np.concatenate(
                         [
-                            a[-seconds_to_samples(EXCERPT_SECONDS) :],
+                            a_song[-seconds_to_samples(EXCERPT_SECONDS) :],
                             faded,
-                            b[: seconds_to_samples(EXCERPT_SECONDS)],
+                            b_song[: seconds_to_samples(EXCERPT_SECONDS)],
                         ],
                         axis=0,
                     )
                 )
                 write_flac(run_dir / files["seam"], seam_excerpt)
                 fade_n = min(seconds_to_samples(FADE_SECONDS), faded.shape[0] // 2)
-                left = joint_metrics(full, a.shape[0], fade_after=fade_n)
-                right = joint_metrics(full, a.shape[0] + faded.shape[0], fade_before=fade_n)
+                left = joint_metrics(full, a_song.shape[0], fade_after=fade_n)
+                right = joint_metrics(full, a_song.shape[0] + faded.shape[0], fade_before=fade_n)
                 metrics = {
                     "generated_seconds": round(generated.shape[0] / SR, 4),
                     "glue_seconds": round(faded.shape[0] / SR, 4),
@@ -2094,30 +2548,80 @@ def _execute_run(args: argparse.Namespace) -> int:
             except ApiFatalError as exc:
                 take["status"] = "failed"
                 take["error"] = str(exc)
+                index["full_set"]["skipped"] = "aborted by a fatal API response"
                 return fatal(str(exc))
             except (RuntimeError, ValueError, OSError) as exc:
                 take["status"] = "failed"
                 take["error"] = str(exc)
                 print(f"  {take_id}: failed — {exc}", flush=True)
 
-    write_flac(run_dir / "full/baseline.flac", splice(a, silence, b))
-    write_flac(
-        run_dir / "seams/baseline.flac",
-        np.ascontiguousarray(
-            np.concatenate(
-                [
-                    a[-seconds_to_samples(EXCERPT_SECONDS) :],
-                    silence,
-                    b[: seconds_to_samples(EXCERPT_SECONDS)],
-                ],
-                axis=0,
-            )
-        ),
-    )
+    if len(selected) != len(items) - 1:
+        index["full_set"]["skipped"] = "junction subset selected (--junctions)"
+    else:
+        for beats in dict.fromkeys(args.beats):
+            for take_number in range(args.takes):
+                cache_take = (
+                    f"beats-{beats}" if args.takes == 1 else f"beats-{beats}-t{take_number + 1}"
+                )
+                seed = args.seed_base + take_number
+                missing = next(
+                    (prep["index"] for prep in prepared if (beats, seed) not in prep["glues"]),
+                    None,
+                )
+                relative = f"full-set/{cache_take}.flac"
+                full_entry: dict[str, Any] = {
+                    "id": f"full-set-{cache_take}",
+                    "kind": "full-set",
+                    "label": f"full set — {cache_take}",
+                    "beats": beats,
+                    "take": take_number + 1,
+                    "songs": len(items),
+                    "junctions": len(selected),
+                    "seconds": None,
+                    "status": "unavailable",
+                    "files": {},
+                    "error": None,
+                }
+                if missing is None:
+                    assembled = assemble_set(
+                        songs, [prep["glues"][(beats, seed)] for prep in prepared]
+                    )
+                    write_flac(run_dir / relative, assembled)
+                    full_entry["seconds"] = round(assembled.shape[0] / SR, 4)
+                    full_entry["status"] = "ok"
+                    full_entry["files"] = {"full": relative}
+                    print(
+                        f"full set {cache_take}: {full_entry['seconds']:.2f} s "
+                        f"({len(items)} songs, {len(selected)} junction(s))",
+                        flush=True,
+                    )
+                else:
+                    full_entry["error"] = (
+                        f"take {cache_take} not available at junction j{missing} (status failed)"
+                    )
+                    print(f"full set {cache_take}: unavailable — {full_entry['error']}", flush=True)
+                index["full_set"]["takes"].append(full_entry)
+
     _write_index(run_dir, index)
     (run_dir / "report.html").write_text(report_html(index))
-    statuses = {take["status"] for take in index["takes"]}
-    print(f"takes: {len(index['takes'])} ({', '.join(sorted(statuses)) or 'none'})", flush=True)
+    counts: dict[str, int] = {}
+    for prep in prepared:
+        for take in prep["entry"]["takes"]:
+            counts[take["status"]] = counts.get(take["status"], 0) + 1
+    total_takes = sum(counts.values())
+    print(
+        f"takes: {total_takes} "
+        f"({', '.join(f'{status} {count}' for status, count in sorted(counts.items())) or 'none'})",
+        flush=True,
+    )
+    if index["full_set"]["skipped"]:
+        print(f"full set: not built ({index['full_set']['skipped']})", flush=True)
+    else:
+        built = [entry for entry in index["full_set"]["takes"] if entry["status"] == "ok"]
+        print(
+            f"full set: {len(built)}/{len(index['full_set']['takes'])} take(s) built",
+            flush=True,
+        )
     print(f"artifacts: {run_dir}", flush=True)
     print(
         f"review: cd {run_dir} && python -m http.server 8092 "
