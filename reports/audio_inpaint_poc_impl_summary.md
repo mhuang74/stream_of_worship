@@ -159,8 +159,9 @@ one on 8090.
 | run2 / run3 (earlier SA3 gap) | `lab/poc-scripts/output/audio-inpaint/run{2,3}/report.html` | `http://127.0.0.1:8090/run2/report.html`, `…/run3/report.html` |
 
 Pages: the hub shows the run table, every bridge variant with both engines side by side, and
-every gap take with `raw`/`trim`/`grid` plus the measured refusal reason; each run's own
-`report.html` carries the 0–10 five-criterion scoring rubric. Regenerate the hub with:
+every gap take with `raw`/`trim`/`grid` plus the measured refusal reason. Each `run5*`
+`report.html` carries the 0–10 five-criterion scoring rubric; the `run1`/`run2`/`run3` pages
+predate it and are players only. Regenerate the hub with:
 
 ```bash
 uv run --project lab/poc-scripts --extra audio_inpaint \
@@ -173,9 +174,11 @@ The page is a view over the git-ignored runs; a clone cannot rebuild it.
 
 - `uv run --project lab/poc-scripts --extra audio_inpaint python -m pytest lab/poc-scripts/tests/test_gen_audio_inpaint.py lab/poc-scripts/tests/test_gen_seam_fill_run3.py -q`
   → 31 passed (21 new + 10 pre-existing).
-- Sample-exactness: `test_assemble_keeps_real_context_sample_identical` asserts the clip's
-  two 15 s sides equal the recordings' arranged audio sample for sample; a 16 s hole yields a
-  45.5 s clip (15 + 16 + 15 s minus the 0.5 s handoff) and the gap yields 31.393 s.
+- Sample-exactness and geometry: `test_assemble_keeps_real_context_sample_identical` asserts
+  the clip's two 15 s sides equal the recordings' arranged audio sample for sample, and pins
+  the splice lengths: 37.5 s for an 8 s hole (15 + 8 + 15 s minus the 0.5 s handoff) and
+  31.393 s for the gap (15 + 1.393 + 15 s, no handoff — B's downbeat must land exactly). The
+  16 s takes measure 45.5 s.
 - Every measured number in this summary and in `AUDIO_INPAINT_RUNS.md` was re-derived from
   `run5*/index.json`, not copied from logs.
 - Review page: browser check showed 210 unique `<audio>` elements with all 210 `src`s
