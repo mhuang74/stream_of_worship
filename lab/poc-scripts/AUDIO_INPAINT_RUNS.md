@@ -20,6 +20,9 @@ guide at the top of every report lists the measured proxy for each criterion.
 `build_review_index.py` writes the page above all of them — `output/audio-inpaint/index.html`
 (same server, `/index.html`): one row per run, every bridge variant with both engines side by
 side, and every gap take with `raw`/`trim`/`grid` plus the measured reason a take was refused.
+It reads each run's `index.json` and its `clips/`/`bridges/` files, so it only works on a machine
+holding the runs: the page is a view over those git-ignored artifacts, not something a clone can
+rebuild.
 
 ```bash
 uv run --project lab/poc-scripts --extra audio_inpaint \
