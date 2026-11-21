@@ -21,7 +21,10 @@ Full-pair durations: baseline 325.213 s, beats-2 325.213 s, beats-4 326.606 s, b
 beats-16 334.966 s — each equals `A + glue + B`. Samples outside the glue are the original arranged
 audio (asserted on every take, re-checked bit-exact on `full/beats-2.flac`).
 
-Cost: **701 credits** (360 upload: two 12 s excerpts; 341 generation: four takes).
+Cost of this run: **701 credits** (360 upload: two 12 s excerpts; 341 generation: four takes).
+Credit spent to get here, for the record: 1,099 for the rejected full-side upload (half of 2,198),
+360 for the excerpts, and 682 generation (the first pass ran before the locator fix, so the four
+composes were paid twice) — **≈2,141 credits total**.
 
 ## Findings
 
