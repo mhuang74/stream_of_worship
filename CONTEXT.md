@@ -48,6 +48,10 @@ _Avoid_: 詩歌集 (old mechanical zh-Hant UI term; replaced by 敬拜歌單 per
 The changeover between adjacent songs in a Songset, controlled by five parameters: gapBeats, crossfadeEnabled, crossfadeDurationSeconds, keyShiftSemitones, and tempoRatio.
 _Avoid_: crossfade, segue, bridge
 
+**Glue**:
+A generated instrumental segment inserted at a Transition so the outgoing Song's Song Arrangement and the incoming Song's Song Arrangement join without altering either. A Glue is generated audio; it never replaces recorded audio.
+_Avoid_: generated bridge, segue, fill
+
 **Boundary Key**:
 The musical key a Song leaves through (its exit component) or arrives through (its entry component) — the transition between adjacent songs is judged on exit(A) vs entry(B), falling back to whole-Song key when a boundary component is missing.
 _Avoid_: component key, per-section key
