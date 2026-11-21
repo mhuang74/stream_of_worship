@@ -77,7 +77,7 @@ NEEDLE_SECONDS = 3.0
 MAX_LAG = 8820  # 200 ms at 44.1 kHz
 WIDEN_LAG = SR  # 1 s, only when the default search misses
 WIDEN_THRESHOLD = 0.90
-COARSE_STEP = 16
+CORRELATION_FLOOR = 0.95
 BEATS = (2, 4, 8, 16)
 # Used only by --dry-run, which touches neither Postgres nor R2.
 DRY_RUN_TEMPO_BPM = 86.13281
@@ -738,13 +738,14 @@ def best_offset(
     haystack: np.ndarray,
     center: int,
     max_lag: int = MAX_LAG,
-    step: int = COARSE_STEP,
 ) -> tuple[float, int]:
-    """Best Pearson correlation of `needle` against haystack[s : s+len(needle)].
+    """Exact Pearson correlation of `needle` against haystack[s : s+len(needle)].
 
-    `s` is searched over `center ± max_lag` (16-sample coarse pass, then a ±step refine), so
-    `center` is the *expected start* of the needle inside the haystack. Returns (r, s); r is -1
-    when no candidate window fits inside the haystack.
+    Every offset in `center ± max_lag` is scored at sample resolution — the numerator is one FFT
+    cross-correlation over just the searched segment and the per-window mean/energy come from
+    cumulative sums, so there is no lag quantisation to miss the true peak. `center` is the
+    *expected start* of the needle inside the haystack. Returns (r, s); r is -1 when no candidate
+    window fits inside the haystack.
     """
     n = _mono(needle)
     width = int(n.shape[0])
@@ -756,29 +757,27 @@ def best_offset(
     if n_norm == 0.0:
         return -1.0, int(center)
 
-    def score(start: int) -> float:
-        window = h[start : start + width]
-        window = window - window.mean()
-        denom = n_norm * float(np.linalg.norm(window))
-        if denom == 0.0:
-            return 0.0
-        return float(np.dot(n, window) / denom)
-
     lo = max(0, int(center) - max_lag)
     hi = min(h.shape[0] - width, int(center) + max_lag)
     if hi < lo:
         return -1.0, int(center)
 
-    best_r, best_start = -2.0, lo
-    for start in range(lo, hi + 1, step):
-        r = score(start)
-        if r > best_r:
-            best_r, best_start = r, start
-    for start in range(max(lo, best_start - step), min(hi, best_start + step) + 1):
-        r = score(start)
-        if r > best_r:
-            best_r, best_start = r, start
-    return best_r, best_start
+    segment = h[lo : hi + width]
+    offsets = hi - lo + 1
+    size = 1 << math.ceil(math.log2(segment.shape[0] + width))
+    # irfft(rfft(segment) * conj(rfft(needle)))[k] = sum_i segment[k+i] * needle[i]
+    spectrum = np.fft.rfft(segment, size) * np.conj(np.fft.rfft(n, size))
+    numerator = np.fft.irfft(spectrum, size)[:offsets]
+    cumsum = np.concatenate(([0.0], np.cumsum(segment)))
+    cumsum_sq = np.concatenate(([0.0], np.cumsum(np.square(segment))))
+    window_sum = cumsum[width:] - cumsum[:-width]
+    window_sq = cumsum_sq[width:] - cumsum_sq[:-width]
+    variance = np.maximum(window_sq - np.square(window_sum) / width, 0.0)
+    denominator = n_norm * np.sqrt(variance)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        correlations = np.where(denominator > 0.0, numerator / denominator, 0.0)
+    best = int(np.argmax(correlations))
+    return float(correlations[best]), lo + best
 
 
 @dataclass(frozen=True)
@@ -945,6 +944,10 @@ def evaluate_status(metrics: dict[str, Any], splice_ok: bool) -> tuple[str, list
     if glue_rms is None or not math.isfinite(glue_rms) or glue_rms < -50.0:
         return "failed", [f"glue level {glue_rms} dBFS is below -50 dBFS"]
     reasons: list[str] = []
+    for key in ("r_a", "r_b"):
+        value = metrics.get(key)
+        if value is not None and value < CORRELATION_FLOOR:
+            reasons.append(f"{key} {value} < {CORRELATION_FLOOR} (reference not located)")
     for key in ("a_residual_db", "b_residual_db"):
         value = metrics.get(key)
         if value is not None and abs(value) > 6.0:

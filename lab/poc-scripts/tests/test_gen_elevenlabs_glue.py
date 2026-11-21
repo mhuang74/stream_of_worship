@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 
 import numpy as np
@@ -32,18 +33,6 @@ def _sine(seconds: float, amplitude: float, frequency: float = 440.0) -> np.ndar
     return np.ascontiguousarray(
         (amplitude * np.sin(2.0 * np.pi * frequency * t)).astype(np.float32)[:, None].repeat(2, 1)
     )
-
-
-def _music(seconds: float, seed: int, amplitude: float = 0.1) -> np.ndarray:
-    """Band-limited signal: a 16-sample shift keeps high correlation, unlike white noise."""
-    rng = np.random.default_rng(seed)
-    t = np.arange(round(seconds * SR), dtype=np.float64) / SR
-    signal = np.zeros_like(t)
-    for frequency in rng.uniform(90.0, 330.0, size=6):
-        signal += np.sin(2.0 * np.pi * frequency * t + rng.uniform(0, 2 * np.pi))
-    envelope = 0.6 + 0.4 * np.sin(2.0 * np.pi * 0.37 * t)
-    mono = (amplitude * signal / 3.0 * envelope).astype(np.float32)
-    return np.ascontiguousarray(mono[:, None].repeat(2, 1))
 
 
 def _rms_db(samples: np.ndarray) -> float:
@@ -119,8 +108,9 @@ def test_extract_glue_keeps_tail() -> None:
 
 
 def test_locate_refs_recovers_padding() -> None:
-    a = _music(4.0, seed=7)
-    b = _music(4.0, seed=8)
+    rng = np.random.default_rng(7)
+    a = (rng.standard_normal((SR * 4, 2)) * 0.1).astype(np.float32)
+    b = (rng.standard_normal((SR * 4, 2)) * 0.1).astype(np.float32)
     generated = _sine(3.0, 0.2, frequency=220.0)
     pad = round(0.007 * SR)  # 7 ms of codec padding at each end
     zero_pad = np.zeros((pad, 2), dtype=np.float32)
@@ -135,6 +125,23 @@ def test_locate_refs_recovers_padding() -> None:
     assert alignment.lag_b == pad
     assert np.array_equal(seam[alignment.glue_start : alignment.glue_end], generated)
     assert alignment.widened is False
+
+
+def test_best_offset_is_exact_off_grid() -> None:
+    """Broadband audio decorrelates within a few samples, so the search must not quantise lags."""
+    rng = np.random.default_rng(3)
+    needle = (rng.standard_normal((2 * SR, 2)) * 0.1).astype(np.float32)
+    for pad in (309, 9128 - 16 * 570 + 309):  # 309 and 317 samples: neither is a coarse-grid point
+        haystack = np.concatenate(
+            [
+                np.zeros((pad, 2), dtype=np.float32),
+                needle,
+                np.zeros((1000, 2), dtype=np.float32),
+            ]
+        )
+        r, start = glue_mod.best_offset(needle, haystack, pad + 40, max_lag=8820)
+        assert start == pad, f"expected exact start {pad}, got {start}"
+        assert r > 0.999
 
 
 def test_stage_edges_matches_joints_and_caps() -> None:
@@ -306,6 +313,74 @@ def test_report_contains_players_scores_and_localstorage() -> None:
     # A minimal but valid HTML document with no external resources.
     assert page.startswith("<!doctype html>") and page.rstrip().endswith("</html>")
     assert "http://" not in page and "https://" not in page
+
+
+def test_fatal_api_response_exits_2(tmp_path, monkeypatch, capsys) -> None:
+    import types
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    def item(position):
+        return glue_mod.SongsetItem(
+            position=position,
+            song_id=f"song{position}",
+            title=f"Title {position}",
+            hash_prefix=f"hash{position}",
+            gap_beats=2,
+            crossfade_enabled=False,
+            steps=[{"startSeconds": 0.0, "endSeconds": 10.0}],
+        )
+
+    recording = glue_mod.Recording(
+        hash_prefix="hash0",
+        content_hash=None,
+        duration_seconds=200.0,
+        tempo_bpm=TEMPO,
+        musical_key="C",
+        musical_mode="major",
+        loudness_db=-14.0,
+    )
+    monkeypatch.setattr(
+        glue_mod,
+        "fetch_songset",
+        lambda conn, songset_id: (
+            [item(0), item(1)],
+            {"hash0": recording, "hash1": recording},
+        ),
+    )
+    monkeypatch.setattr(
+        glue_mod, "ensure_source_audio", lambda prefix, root, connect: _sine(10.0, 0.1)
+    )
+    monkeypatch.setattr(glue_mod, "arranged_audio", lambda audio, steps, label: _sine(12.0, 0.1))
+
+    def forbidden(*_args, **_kwargs):
+        raise glue_mod.ApiFatalError(
+            "upload returned HTTP 402 (payment required): paid_plan_required"
+        )
+
+    monkeypatch.setattr(glue_mod, "ensure_upload", forbidden)
+    monkeypatch.setattr(glue_mod, "compose", forbidden)
+    for name in glue_mod.ENV_KEYS:
+        monkeypatch.setenv(name, "test-value")
+    monkeypatch.setitem(
+        sys.modules, "psycopg", types.SimpleNamespace(connect=lambda url: FakeConnection())
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "stream_of_worship.admin.services.r2",
+        types.SimpleNamespace(R2Client=lambda **_kwargs: object()),
+    )
+
+    out_root = tmp_path / "out"
+    assert glue_mod.main(["--run-name", "gate", "--out-root", str(out_root)]) == 2
+    failure = json.loads((out_root / "gate" / "failure.json").read_text())
+    assert "402" in failure["error"] and failure["run"] == "gate"
+    assert "error:" in capsys.readouterr().out
 
 
 def test_dry_run_does_not_call_network(tmp_path, monkeypatch, capsys) -> None:
