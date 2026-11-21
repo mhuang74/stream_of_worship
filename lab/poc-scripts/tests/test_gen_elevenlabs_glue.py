@@ -15,6 +15,7 @@ from gen_elevenlabs_glue import (
     PlanOptions,
     apply_fades,
     build_plan,
+    evaluate_status,
     joint_metrics,
     locate_glue,
     plan_total_seconds,
@@ -92,6 +93,34 @@ def test_plan_shape_vocal_negatives_and_conditioning() -> None:
     assert windowed["chunks"][2]["range"] == {"start_ms": 0, "end_ms": 30000}
 
 
+def test_arrangement_windows_picks_the_excerpt_per_side() -> None:
+    a = np.arange(20 * SR, dtype=np.float32)[:, None].repeat(2, 1)
+    b = np.arange(40 * SR, dtype=np.float32)[:, None].repeat(2, 1) + 1e6
+
+    a_up, b_up, a_start, a_ref, b_ref = glue_mod.arrangement_windows(a, b, 0.0, 12.0)
+    assert a_up.shape[0] == 12 * SR and b_up.shape[0] == 12 * SR
+    assert np.array_equal(a_up, a[-12 * SR :]), "A must be its last 12 s, the seam side"
+    assert np.array_equal(b_up, b[: 12 * SR]), "B must be its first 12 s, the seam side"
+    assert (a_start, a_ref, b_ref) == (0, 12000, 12000)
+    # the 3 s needle the alignment searches for still fits inside each uploaded window
+    assert a_up.shape[0] >= 3 * SR and b_up.shape[0] >= 3 * SR
+
+    a_full, b_full, a_start, a_ref, b_ref = glue_mod.arrangement_windows(a, b, 0.0, 0.0)
+    assert a_full is a and b_full is b
+    assert (a_start, a_ref, b_ref) == (0, 20000, 40000)
+
+    _a, _b, a_start, a_ref, b_ref = glue_mod.arrangement_windows(a, b, 30.0, 0.0)
+    assert (a_start, a_ref, b_ref) == (0, 20000, 30000), "windowed refs shift inside the upload"
+
+    _a, _b, a_start, a_ref, b_ref = glue_mod.arrangement_windows(
+        np.zeros((40 * SR, 2), np.float32), b, 30.0, 0.0
+    )
+    assert (a_start, a_ref, b_ref) == (10000, 40000, 30000), "A's window is its tail"
+
+    with pytest.raises(ValueError):
+        glue_mod.arrangement_windows(a, b, 0.0, 25.0)
+
+
 def test_extract_glue_keeps_tail() -> None:
     frames = 3 * SR
     ramp = np.linspace(-0.5, 0.5, frames, dtype=np.float32)[:, None].repeat(2, 1)
@@ -125,6 +154,60 @@ def test_locate_refs_recovers_padding() -> None:
     assert alignment.lag_b == pad
     assert np.array_equal(seam[alignment.glue_start : alignment.glue_end], generated)
     assert alignment.widened is False
+
+
+def _rerendered(source: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """Same performance envelope, unrelated waveform — what the API returns for a ref chunk."""
+    size = round(0.05 * SR)
+    mono = np.sqrt(np.mean(np.square(source, dtype=np.float64), axis=1))
+    blocks = mono[: mono.shape[0] // size * size].reshape(-1, size).mean(axis=1)
+    envelope = np.repeat(blocks, size)[: source.shape[0]][:, None]
+    return (rng.standard_normal(source.shape) * envelope).astype(np.float32)
+
+
+def _modulated(seconds: float, rng: np.random.Generator) -> np.ndarray:
+    """White noise under a slowly varying envelope, so the 50 ms energy carries identity."""
+    t = np.arange(round(seconds * SR), dtype=np.float64) / SR
+    env = 0.02 + 0.03 * np.abs(np.sin(2 * np.pi * 0.7 * t))
+    return (rng.standard_normal((env.shape[0], 2)) * env[:, None]).astype(np.float32)
+
+
+def test_locate_glue_uses_plan_geometry_when_refs_are_rerendered() -> None:
+    rng = np.random.default_rng(11)
+    a = _modulated(12.0, rng)
+    b = _modulated(12.0, rng)
+    generated = _sine(3.0, 0.2, frequency=220.0)
+    seam = np.concatenate([_rerendered(a, rng), generated, _rerendered(b, rng)])
+
+    alignment = locate_glue(seam, a[-3 * SR :], b[: 3 * SR], a.shape[0], generated.shape[0])
+    assert alignment.mode == "plan", "a re-rendered reference must fall back to plan geometry"
+    assert alignment.r_a < 0.95 and alignment.r_b < 0.95
+    assert alignment.glue_start == a.shape[0]
+    assert alignment.glue_end == a.shape[0] + generated.shape[0]
+    assert np.array_equal(seam[alignment.glue_start : alignment.glue_end], generated)
+    assert alignment.ref_envelope_r_a > 0.9 and alignment.ref_envelope_r_b > 0.9
+
+
+def test_status_in_plan_mode_judges_the_envelope_not_the_waveform() -> None:
+    base = {
+        "glue_rms_db": -20.0,
+        "geometry": "plan",
+        "r_a": 0.1,
+        "r_b": 0.2,
+        "ref_envelope_r_a": 0.99,
+        "ref_envelope_r_b": 0.98,
+        "joint": {},
+    }
+    assert evaluate_status(base, splice_ok=True) == ("ok", []), "waveform r is noise, not evidence"
+
+    status, reasons = evaluate_status({**base, "ref_envelope_r_b": 0.4}, splice_ok=True)
+    assert status == "check"
+    assert reasons[0].startswith("ref_envelope_r_b 0.4 <")
+
+    status, reasons = evaluate_status(
+        {**base, "geometry": "correlation", "r_a": 0.5}, splice_ok=True
+    )
+    assert status == "check" and "reference not located" in reasons[0]
 
 
 def test_best_offset_is_exact_off_grid() -> None:

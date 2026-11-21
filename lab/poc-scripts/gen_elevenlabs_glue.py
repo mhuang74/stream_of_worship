@@ -1,8 +1,8 @@
 """ElevenLabs instrumental Glue POC — generate transition glue between two arranged songs.
 
 For a Songset's first Transition this script builds both *arranged* sides from Postgres + R2
-(every Arrangement Step in playback order, exactly what the render plays), uploads each full
-arranged side once to the ElevenLabs music API, composes one inpainting plan per Glue length
+(every Arrangement Step in playback order, exactly what the render plays), uploads an excerpt of
+each arranged side to the ElevenLabs music API, composes one inpainting plan per Glue length
 
     [ A arranged ][ generated Glue ][ B arranged ]
 
@@ -20,7 +20,7 @@ Outputs under <out-root>/<run-name>:
     cache/          downloaded mp3s and decoded 44.1 kHz wavs (shared by runs)
     uploads/        canonical 44.1 kHz stereo WAVs that were uploaded (content-addressed)
     uploads.json    full SHA-256 -> {song_id, seconds, format, uploaded_at} (shared by runs)
-    context/        a-arranged.flac, b-arranged.flac — exactly what was uploaded
+    context/        a-arranged.flac, b-arranged.flac — the full arranged sides (splice sources)
     plans/          the composition plan request body per take
     responses/      raw API response bytes per take
     glues/          <take>.flac (staged + faded) and <take>-generation.flac (untrimmed)
@@ -29,14 +29,20 @@ Outputs under <out-root>/<run-name>:
     index.json      every plan field, seed and measured metric
     report.html     self-contained listening + scoring page
 
+The API re-renders the reference chunks instead of inserting them (measured 2026-11-21: waveform
+correlation 0.25-0.47, 50 ms energy-envelope correlation 0.96-0.99), so the Glue is located by plan
+geometry and the returned references are verified by envelope, never by wave correlation.
+
 Usage:
     uv run --project lab/poc-scripts --extra elevenlabs_glue \\
-        python lab/poc-scripts/gen_elevenlabs_glue.py --run-name run1
+        python lab/poc-scripts/gen_elevenlabs_glue.py --run-name run1 --upload-seconds 12
     uv run --project lab/poc-scripts --extra elevenlabs_glue \\
         python lab/poc-scripts/gen_elevenlabs_glue.py --dry-run
 
-Costs ElevenLabs credits: 15 credits per second uploaded (full arranged sides) plus 15 credits
-per second generated. The default run is 4,858 (uploads) + 1,363 (generation) = 6,221 credits.
+Costs ElevenLabs credits: 15 credits per second uploaded plus 15 per second generated. Full
+arranged sides are 4,857 credits of upload and the copyright screen rejects them for commercial
+recordings (half the fee is still charged), so `--upload-seconds 12` — the vendor guide's recipe —
+uploads A's last and B's first 12 s instead: 360 + 341 credits for the same four takes.
 
 Prerequisites: `ELEVENLABS_API_KEY`, `SOW_DATABASE_URL`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`,
 `SOW_R2_ACCESS_KEY_ID`, `SOW_R2_SECRET_ACCESS_KEY` (read from /opt/sow/.env when unset) and
@@ -78,6 +84,7 @@ MAX_LAG = 8820  # 200 ms at 44.1 kHz
 WIDEN_LAG = SR  # 1 s, only when the default search misses
 WIDEN_THRESHOLD = 0.90
 CORRELATION_FLOOR = 0.95
+ENVELOPE_FLOOR = 0.90
 BEATS = (2, 4, 8, 16)
 # Used only by --dry-run, which touches neither Postgres nor R2.
 DRY_RUN_TEMPO_BPM = 86.13281
@@ -363,6 +370,41 @@ def build_plan(
             {"song_id": b_id, "range": {"start_ms": 0, "end_ms": int(b_ref_ms)}},
         ]
     }
+
+
+def arrangement_windows(
+    a: np.ndarray,
+    b: np.ndarray,
+    context_seconds: float,
+    upload_seconds: float,
+) -> tuple[np.ndarray, np.ndarray, int, int, int]:
+    """What to upload per side and the plan ranges that reference it.
+
+    `upload_seconds > 0` uploads only A's last / B's first N seconds — the ElevenLabs guide's
+    recipe, and the only path the copyright screen accepts for commercial recordings. The plan
+    then references the whole uploaded window. `context_seconds > 0` keeps the full sides and
+    narrows the referenced ranges instead; 0 uploads and references everything.
+    """
+    a_ref_ms = round(a.shape[0] / SR * 1000)
+    b_ref_ms = round(b.shape[0] / SR * 1000)
+    if upload_seconds:
+        frames = seconds_to_samples(upload_seconds)
+        if frames > min(a.shape[0], b.shape[0]):
+            raise ValueError(
+                f"--upload-seconds {upload_seconds} exceeds an arranged side "
+                f"({a.shape[0] / SR:.2f} s / {b.shape[0] / SR:.2f} s)"
+            )
+        window_ms = round(upload_seconds * 1000)
+        return a[-frames:], b[:frames], 0, window_ms, window_ms
+    if context_seconds:
+        return (
+            a,
+            b,
+            max(0, a_ref_ms - round(context_seconds * 1000)),
+            a_ref_ms,
+            round(context_seconds * 1000),
+        )
+    return a, b, 0, a_ref_ms, b_ref_ms
 
 
 def plan_total_seconds(spec: TakeSpec, a_start_ms: int, a_ref_ms: int, b_ref_ms: int) -> float:
@@ -789,6 +831,30 @@ class Alignment:
     lag_a: int
     lag_b: int
     widened: bool
+    mode: str = "correlation"
+    ref_envelope_r_a: float | None = None
+    ref_envelope_r_b: float | None = None
+
+
+def envelope_correlation(
+    reference: np.ndarray, candidate: np.ndarray, window_seconds: float = 0.05
+) -> float:
+    """Correlation of 50 ms energy envelopes — the identity test for a re-rendered reference.
+
+    ElevenLabs re-renders the audio-reference chunks instead of inserting them verbatim (measured
+    2026-11-21: waveform r≈0 but envelope r=0.99), so wave correlation alone cannot tell a
+    faithful re-render from unrelated audio. The envelope can.
+    """
+    size = max(1, round(window_seconds * SR))
+    blocks = min(reference.shape[0], candidate.shape[0]) // size
+    if blocks < 2:
+        return 0.0
+    shape = (blocks, size)
+    left = np.sqrt(np.mean(np.square(_mono(reference)[: blocks * size].reshape(shape)), axis=1))
+    right = np.sqrt(np.mean(np.square(_mono(candidate)[: blocks * size].reshape(shape)), axis=1))
+    if left.std() == 0.0 or right.std() == 0.0:
+        return 0.0
+    return float(np.corrcoef(left, right)[0, 1])
 
 
 def locate_glue(
@@ -819,14 +885,25 @@ def locate_glue(
         if r_b_w > r_b:
             r_b, start_b = r_b_w, start_b_w
 
-    glue_start = int(start_a) + width
-    glue_end = int(start_b)
+    if min(r_a, r_b) >= CORRELATION_FLOOR:
+        glue_start = int(start_a) + width
+        glue_end = int(start_b)
+        mode = "correlation"
+    else:
+        # The references came back re-rendered, so there is no sample-identical window to find:
+        # the plan geometry is the authority (the seam's own length confirms it), and the region
+        # identity is proven by energy envelope instead of waveform.
+        glue_start = int(a_ref_samples)
+        glue_end = min(seam.shape[0], int(a_ref_samples) + int(generation_samples))
+        mode = "plan"
     if glue_end <= glue_start:
         raise RuntimeError(f"glue window [{glue_start}, {glue_end}] is empty")
     if glue_start < 0 or glue_end > seam.shape[0]:
         raise RuntimeError(
             f"glue window [{glue_start}, {glue_end}] outside seam of {seam.shape[0]}"
         )
+    speech_a = seam[max(0, glue_start - width) : glue_start]
+    speech_b = seam[glue_end : min(seam.shape[0], glue_end + width)]
     return Alignment(
         glue_start=glue_start,
         glue_end=glue_end,
@@ -835,6 +912,9 @@ def locate_glue(
         lag_a=glue_start - a_ref_samples,
         lag_b=glue_end - (a_ref_samples + generation_samples),
         widened=widened,
+        mode=mode,
+        ref_envelope_r_a=round(envelope_correlation(a_tail_needle, speech_a), 4),
+        ref_envelope_r_b=round(envelope_correlation(b_head_needle, speech_b), 4),
     )
 
 
@@ -944,10 +1024,18 @@ def evaluate_status(metrics: dict[str, Any], splice_ok: bool) -> tuple[str, list
     if glue_rms is None or not math.isfinite(glue_rms) or glue_rms < -50.0:
         return "failed", [f"glue level {glue_rms} dBFS is below -50 dBFS"]
     reasons: list[str] = []
-    for key in ("r_a", "r_b"):
-        value = metrics.get(key)
-        if value is not None and value < CORRELATION_FLOOR:
-            reasons.append(f"{key} {value} < {CORRELATION_FLOOR} (reference not located)")
+    if metrics.get("geometry") == "plan":
+        for key in ("ref_envelope_r_a", "ref_envelope_r_b"):
+            value = metrics.get(key)
+            if value is None or value < ENVELOPE_FLOOR:
+                reasons.append(
+                    f"{key} {value} < {ENVELOPE_FLOOR} (returned reference is not this performance)"
+                )
+    else:
+        for key in ("r_a", "r_b"):
+            value = metrics.get(key)
+            if value is not None and value < CORRELATION_FLOOR:
+                reasons.append(f"{key} {value} < {CORRELATION_FLOOR} (reference not located)")
     for key in ("a_residual_db", "b_residual_db"):
         value = metrics.get(key)
         if value is not None and abs(value) > 6.0:
@@ -1410,10 +1498,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--condition-seconds", type=float, default=8.0)
     parser.add_argument(
+        "--upload-seconds",
+        type=float,
+        default=0.0,
+        help="upload only A's last / B's first N seconds (0 = upload both full arranged sides)",
+    )
+    parser.add_argument(
         "--context-seconds",
         type=float,
         default=0.0,
-        help="upload/reference window per side (0 = full arranged side)",
+        help="reference window into the full uploaded sides (0 = whole side)",
     )
     parser.add_argument("--output-format", default="pcm_44100")
     parser.add_argument("--dry-run", action="store_true", help="print plans; no network, no writes")
@@ -1426,11 +1520,15 @@ def dry_run(args: argparse.Namespace) -> int:
     """Print the take table and the plan bodies without touching Postgres, R2 or the API."""
     tempo = DRY_RUN_TEMPO_BPM
     specs = take_specs(args.beats, tempo)
-    a_ref_ms = DRY_RUN_A_MS
-    a_start_ms = (
-        max(0, a_ref_ms - round(args.context_seconds * 1000)) if args.context_seconds else 0
-    )
-    b_ref_ms = round(args.context_seconds * 1000) if args.context_seconds else DRY_RUN_B_MS
+    if args.upload_seconds:
+        a_start_ms = 0
+        a_ref_ms = b_ref_ms = round(args.upload_seconds * 1000)
+    else:
+        a_ref_ms = DRY_RUN_A_MS
+        a_start_ms = (
+            max(0, a_ref_ms - round(args.context_seconds * 1000)) if args.context_seconds else 0
+        )
+        b_ref_ms = round(args.context_seconds * 1000) if args.context_seconds else DRY_RUN_B_MS
     opts = PlanOptions(
         glue_text=args.glue_text,
         positive_styles=tuple(args.positive_styles),
@@ -1596,20 +1694,25 @@ def _execute_run(args: argparse.Namespace) -> int:
     )
     if args.context_seconds and not 3.0 <= args.context_seconds <= 30.0:
         raise SystemExit("--context-seconds must be within 3..30 (or 0 for full arranged sides)")
+    if args.upload_seconds and not 3.0 <= args.upload_seconds <= 30.0:
+        raise SystemExit("--upload-seconds must be within 3..30")
+    if args.upload_seconds and args.context_seconds:
+        print("  note: --upload-seconds overrides --context-seconds", flush=True)
 
-    a_ref_ms = round(a_seconds * 1000)
-    a_start_ms = (
-        max(0, a_ref_ms - round(args.context_seconds * 1000)) if args.context_seconds else 0
-    )
-    b_ref_ms = (
-        round(args.context_seconds * 1000) if args.context_seconds else round(b_seconds * 1000)
-    )
+    try:
+        a_upload, b_upload, a_start_ms, a_ref_ms, b_ref_ms = arrangement_windows(
+            a, b, args.context_seconds, args.upload_seconds
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     specs = take_specs(args.beats, float(rec_b.tempo_bpm))
     for spec in specs:
         check_plan_total(plan_total_seconds(spec, a_start_ms, a_ref_ms, b_ref_ms))
 
-    upload_a = ensure_upload(key, a, out_root, args.refresh_uploads, "A arranged")
-    upload_b = ensure_upload(key, b, out_root, args.refresh_uploads, "B arranged")
+    upload_label_a = f"A arranged last {a_upload.shape[0] / SR:.2f} s"
+    upload_label_b = f"B arranged first {b_upload.shape[0] / SR:.2f} s"
+    upload_a = ensure_upload(key, a_upload, out_root, args.refresh_uploads, upload_label_a)
+    upload_b = ensure_upload(key, b_upload, out_root, args.refresh_uploads, upload_label_b)
 
     generation_seconds = sum(spec.generation_seconds for spec in specs) * args.takes
     credits_estimate = round(
@@ -1644,7 +1747,11 @@ def _execute_run(args: argparse.Namespace) -> int:
         "songset_id": args.songset,
         "model_id": MODEL_ID,
         "output_format": args.output_format,
-        "input": "windowed" if args.context_seconds else "full",
+        "input": (
+            f"excerpt:{args.upload_seconds:g}s"
+            if args.upload_seconds
+            else ("windowed" if args.context_seconds else "full")
+        ),
         "items": items_index,
         "seam": {
             "tempo_bpm": float(rec_b.tempo_bpm),
@@ -1787,6 +1894,9 @@ def _execute_run(args: argparse.Namespace) -> int:
                     "nonfinite": nonfinite,
                     "r_a": alignment.r_a,
                     "r_b": alignment.r_b,
+                    "geometry": alignment.mode,
+                    "ref_envelope_r_a": alignment.ref_envelope_r_a,
+                    "ref_envelope_r_b": alignment.ref_envelope_r_b,
                     "lag_a": alignment.lag_a,
                     "lag_b": alignment.lag_b,
                     "search_widened": alignment.widened,
@@ -1797,6 +1907,7 @@ def _execute_run(args: argparse.Namespace) -> int:
                     **stage_info,
                 }
                 take["metrics"] = metrics
+                take["summary"] = f"seed {seed} · glue located by {alignment.mode}"
                 take["generated_seconds"] = metrics["generated_seconds"]
                 take["glue_seconds"] = metrics["glue_seconds"]
                 status, reasons = evaluate_status(metrics, splice_ok=True)
@@ -1807,7 +1918,8 @@ def _execute_run(args: argparse.Namespace) -> int:
                 print(
                     f"  {take_id}: {status} glue {metrics['glue_seconds']:.3f} s, "
                     f"r_a {alignment.r_a:.3f} r_b {alignment.r_b:.3f}, "
-                    f"lags {alignment.lag_a}/{alignment.lag_b}, "
+                    f"envelope {alignment.ref_envelope_r_a:.3f}/{alignment.ref_envelope_r_b:.3f} "
+                    f"({alignment.mode}), lags {alignment.lag_a}/{alignment.lag_b}, "
                     f"joint steps {left['step_db']}/{right['step_db']} dB"
                     + (f" ({'; '.join(reasons)})" if reasons else ""),
                     flush=True,
