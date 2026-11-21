@@ -8,6 +8,7 @@ sample" a real assertion instead of a tolerance.
 
 from __future__ import annotations
 
+import argparse
 import json
 
 import numpy as np
@@ -164,6 +165,50 @@ def test_montage_carries_the_whole_arranged_audio() -> None:
     # The listening clip is the last/first 15 s of that arranged audio.
     assert np.array_equal(seam.a_clip_context(), seam.a_part()[-CONTEXT:])
     assert np.array_equal(seam.b_clip_context(), seam.b_part()[:CONTEXT])
+
+
+def test_whole_arrangement_is_the_default_input() -> None:
+    """The default upload is both songs' complete arranged audio, not a 15 s cap."""
+    args = gap.parse_args(["--songset", "s", "--out", "o"])
+    assert args.context_seconds == 0.0
+    seam = seam_at()
+    montage = gap.build_montage(seam, 8)
+    assert montage.a_context_seconds == pytest.approx(60.0, abs=1e-3)
+    assert montage.b_context_seconds == pytest.approx(115.0, abs=1e-3)
+    capped = gap.build_montage(seam, 8, 15)
+    assert capped.a_context_seconds == 15.0
+
+
+def test_report_shows_the_uploaded_whole_song_montage() -> None:
+    """Each variant card plays the file that was uploaded, plus the 15 s review clip."""
+    seam = seam_at()
+    record = {
+        "id": "v__base__s4242",
+        "variant_id": "boundary__keep-intensity__8s__inst",
+        "scope": "boundary",
+        "length_seconds": 8,
+        "status": "ok",
+        "engine": "base",
+        "align": "incoming",
+        "take": 0,
+        "seed": 4242,
+        "length_corrected": False,
+        "clip": "clips/v__base__s4242.flac",
+        "bridge": "bridges/v__base__s4242.flac",
+        "montage": "montages/v__c60s.flac",
+        "captions": {"caption": "x"},
+        "metrics": {
+            "montage_duration_seconds": 38.0,
+            "montage_context_seconds": {"a": 15.0, "b": 15.0},
+        },
+    }
+    args = argparse.Namespace(
+        mode="bridge", songset="s", engine="base", align="incoming", takes=1, steps=0
+    )
+    page = gap.report_html({"boundary": seam}, [record], args, {})
+    assert 'src="montages/v__c60s.flac"' in page
+    # The seam is 60 s / 115 s of arranged audio; the subtitle reports what was uploaded.
+    assert "input: arranged A 15.0 s + silence hole + arranged B 15.0 s" in page
 
 
 # ---------------------------------------------------------------------------
