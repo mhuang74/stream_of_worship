@@ -103,9 +103,9 @@ MAX_GAP_TRAILING_SILENCE_MS = 50.0
 HEAD_PAD_MAX_SECONDS = 3.0
 HEAD_PAD_LEAD_SECONDS = 0.15
 HEAD_PAD_FADE_SECONDS = 0.25
-# Context uploaded each side of the hole. `0` keeps the entire arrangement, which
-# is what the first arranged runs did; see build_montage for why it is not default.
-DEFAULT_CONTEXT_SECONDS = 15.0
+# Context uploaded each side of the hole. 0 (the default) uploads the entire
+# arranged audio of both songs; a positive value is the run5-era A/B cap.
+DEFAULT_CONTEXT_SECONDS = 0.0
 # `raw` is the model's fill untouched; `trim` drops the lead-in; `grid` puts the
 # next detected onset on beat two.
 GAP_CORRECTIONS = ("raw", "trim", "grid")
@@ -601,12 +601,13 @@ def build_montage(
 ) -> Montage:
     """The uploaded source: A part, N seconds of silence, B part.
 
-    `context_seconds` caps each side; `None` keeps the entire arranged audio.
-    The cap is not an optimization: on the 331.8 s arranged montage SA3 opens
-    every bridge with 1.0-1.5 s of digital silence (58-96 dB under the
-    surrounding music) because it regenerates the mask region from a noise level
-    set by the hole's position in a sequence 11x longer than its training window,
-    while the same hole inside a 38 s montage is musical from its first 250 ms.
+    `context_seconds` caps each side; `None`/0 (the default) keeps the entire arranged
+    audio, which is what both songs are conditioned on: 146.51 s + 177.31 s for this
+    songset. The cap survives only as an A/B knob. Two long-input behaviours are
+    expected and measured, never hidden: SA3 fades its hole in from up to ~1.5 s of
+    digital silence (assemble's head pad covers what it can and
+    `hole_head_pad_seconds`/`hole_dead_edge_seconds` report the rest), and a hole below
+    `SILENCE_RMS_FLOOR_DB` is still refused.
     """
     a_part = seam.a_part()
     b_part = seam.b_part()
@@ -1441,6 +1442,7 @@ def run_take(
     seed: int,
     seam: Seam,
     montage: Montage,
+    montage_bytes: bytes,
     caption: str,
     out_dir: Path,
     client,
@@ -1524,7 +1526,7 @@ def run_take(
         generated = call_engine(
             client,
             engine,
-            bytes_from_array(montage.samples),
+            montage_bytes,
             f"{take_id}-montage.flac",
             request,
             reference_bytes,
@@ -2466,6 +2468,7 @@ def metric_line(metrics: dict[str, Any]) -> str:
         f"join centroid {_num(centroid_joins.get('left'))}/{_num(centroid_joins.get('right'))} Hz · "
         f"edge gain {_num(gains.get('start'))}/{_num(gains.get('end'))} dB, "
         f"residual {_num(staged.get('start'))}/{_num(staged.get('end'))} dB, "
+        f"head pad {_num(metrics.get('hole_head_pad_seconds'))} s · "
         f"handoff {_num(metrics.get('hole_overlap_seconds'))} s · "
         f"peak {_num(metrics.get('peak'))} ({_num(metrics.get('peak_limit'))})"
     )
@@ -2490,7 +2493,7 @@ def players_block(record: dict[str, Any]) -> str:
     status = record.get("status")
     if status == "ok" and record.get("clip") and record.get("bridge"):
         return (
-            f'<div class="players"><span>clip</span>'
+            f'<div class="players"><span>clip — 15 s real A + generated hole + 15 s real B</span>'
             f'<audio controls preload="metadata" src="{html.escape(record["clip"])}"></audio>'
             f"<span>bridge</span>"
             f'<audio controls preload="metadata" src="{html.escape(record["bridge"])}"></audio></div>'
@@ -2525,6 +2528,18 @@ def context_section(seams: dict[str, Seam], references: dict[str, str], align: s
     )
 
 
+def input_player_block(record: dict[str, Any]) -> str:
+    """The montage that was uploaded: every arranged step of both songs + the hole."""
+    montage = str(record.get("montage") or "")
+    if not montage:
+        return ""
+    seconds = _num((record.get("metrics") or {}).get("montage_duration_seconds"))
+    return (
+        f'<div class="players"><span>input upload ({seconds} s)</span>'
+        f'<audio controls preload="none" src="{html.escape(montage)}"></audio></div>'
+    )
+
+
 def bridge_card(
     variant_id: str, records: list[dict[str, Any]]
 ) -> str:
@@ -2545,6 +2560,7 @@ def bridge_card(
     return (
         f'<article class="card"><h3>{html.escape(variant_id)}</h3>'
         f"<details><summary>caption</summary><p>{html.escape(caption)}</p></details>"
+        f"{input_player_block(first)}"
         f'<p class="meta">card weighted: <span class="card-total">—</span> / 10</p>'
         + "".join(rows)
         + "</article>"
@@ -2571,6 +2587,7 @@ def gap_card(raw_id: str, records: list[dict[str, Any]]) -> str:
     return (
         f'<article class="card"><h3>{html.escape(raw_id)}</h3>'
         f"<details><summary>caption</summary><p>{html.escape(caption)}</p></details>"
+        f"{input_player_block(records[0])}"
         f'<p class="meta">card weighted: <span class="card-total">—</span> / 10</p>'
         + "".join(rows)
         + "</article>"
@@ -2594,6 +2611,14 @@ def report_html(
 ) -> str:
     boundary = seams.get("boundary")
     engine = args.engine
+    uploaded = next(
+        (
+            (record.get("metrics") or {}).get("montage_context_seconds") or {}
+            for record in records
+            if (record.get("metrics") or {}).get("montage_context_seconds")
+        ),
+        {},
+    )
     subtitle_bits = [
         f"mode: {args.mode}",
         f"songset {args.songset}",
@@ -2611,6 +2636,11 @@ def report_html(
             f"({html.escape(str(detail['right_key']))}, {detail['bpm_right']} BPM)"
         )
         subtitle_bits.append(f"production gap {detail['production_gap_seconds']} s")
+        subtitle_bits.append(
+            f"input: arranged A "
+            f"{uploaded.get('a', boundary.a_part().shape[0] / SR):.1f} s + silence hole + "
+            f"arranged B {uploaded.get('b', boundary.b_part().shape[0] / SR):.1f} s"
+        )
         if detail.get("left_energy_db") is not None and detail.get("right_energy_db") is not None:
             subtitle_bits.append(
                 f"seam level {detail['left_energy_db']} dB to {detail['right_energy_db']} dB"
@@ -2720,7 +2750,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=DEFAULT_CONTEXT_SECONDS,
         help=(
             "seconds of arranged audio uploaded on each side of the hole; "
-            "0 uploads the entire arrangement"
+            "0 (default) uploads the entire arrangement"
         ),
     )
     parser.add_argument(
@@ -2916,9 +2946,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             seam = seams[variant.scope]
             caption = captions["captions"][variant.caption_key()]["caption"]
             montage = build_montage(seam, variant.length_seconds, context_seconds)
-            write_flac(
-                out_dir / "montages" / f"{variant.id}__{montage_key(montage)}.flac", montage.samples
-            )
+            montage_path = out_dir / "montages" / f"{variant.id}__{montage_key(montage)}.flac"
+            write_flac(montage_path, montage.samples)
+            montage_bytes = montage_path.read_bytes()
             for take_index in range(args.takes):
                 seed = args.seed + take_index
                 records.append(
@@ -2928,6 +2958,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                         seed,
                         seam,
                         montage,
+                        montage_bytes,
                         caption,
                         out_dir,
                         client,
