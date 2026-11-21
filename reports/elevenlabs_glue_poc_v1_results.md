@@ -3,6 +3,7 @@
 Run 2026-11-21 against songset `hbWfCccGxN_JLQGBEqmdu` with a paid ElevenLabs plan.
 Script: `lab/poc-scripts/gen_elevenlabs_glue.py` (`--upload-seconds 12`, `model_id` `music_v2_5`,
 `output_format` `pcm_44100`). Artifacts: `lab/poc-scripts/output/elevenlabs-glue/run1/`.
+Implementation and plan deviations: `reports/elevenlabs_glue_poc_impl_summary.md`.
 
 A = "Here I Bow" arranged 146.51 s (68.0 BPM, D major, 5 steps).
 B = "Here For You" arranged 177.31 s (86.13281 BPM, C major, 6 steps). Beat = 0.69660 s (B's tempo).
