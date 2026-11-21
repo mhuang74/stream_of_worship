@@ -15,11 +15,15 @@ from gen_elevenlabs_glue import (
     PlanOptions,
     apply_fades,
     build_plan,
+    ensure_upload,
+    envelope_offset,
     evaluate_status,
     joint_metrics,
     locate_glue,
+    pcm16_and_sha,
     plan_total_seconds,
     report_html,
+    response_key,
     splice,
     stage_edges,
     take_specs,
@@ -132,8 +136,12 @@ def test_extract_glue_keeps_tail() -> None:
     assert np.array_equal(kept, ramp[-target:])
     assert kept[0, 0] == pytest.approx(ramp[-target, 0])
 
+    # A response a few ms short of the plan keeps the whole paid take (flagged by the caller)...
+    short = take_tail(ramp, frames + round(0.013 * SR))
+    assert np.array_equal(short, ramp), "13 ms short: keep everything returned"
+    # ...but a real shortfall still fails the take instead of silently shipping a stub.
     with pytest.raises(RuntimeError):
-        take_tail(ramp, frames + 1)
+        take_tail(ramp, frames + round(0.5 * SR))
 
 
 def test_locate_refs_recovers_padding() -> None:
@@ -165,6 +173,14 @@ def _rerendered(source: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     return (rng.standard_normal(source.shape) * envelope).astype(np.float32)
 
 
+def _unique_envelope(seconds: float, rng: np.random.Generator) -> np.ndarray:
+    """Block-wise random envelope: an unambiguous 50 ms fingerprint for offset searches."""
+    size = round(0.05 * SR)
+    frames = round(seconds * SR) // size * size
+    blocks = rng.uniform(0.01, 0.06, size=(frames // size, 1))
+    return (rng.standard_normal((frames, 2)) * np.repeat(blocks, size, axis=0)).astype(np.float32)
+
+
 def _modulated(seconds: float, rng: np.random.Generator) -> np.ndarray:
     """White noise under a slowly varying envelope, so the 50 ms energy carries identity."""
     t = np.arange(round(seconds * SR), dtype=np.float64) / SR
@@ -186,6 +202,74 @@ def test_locate_glue_uses_plan_geometry_when_refs_are_rerendered() -> None:
     assert alignment.glue_end == a.shape[0] + generated.shape[0]
     assert np.array_equal(seam[alignment.glue_start : alignment.glue_end], generated)
     assert alignment.ref_envelope_r_a > 0.9 and alignment.ref_envelope_r_b > 0.9
+
+
+def test_envelope_offset_measures_a_shifted_reference() -> None:
+    rng = np.random.default_rng(5)
+    a = _unique_envelope(4.0, rng)
+    lead = (rng.standard_normal((round(0.25 * SR), 2)) * 0.05).astype(np.float32)
+    seam = np.concatenate([lead, _rerendered(a, rng), np.zeros((SR * 2, 2), np.float32)])
+
+    # the needle is A's last 3 s; it truly starts 250 ms into the seam, the search starts 500 ms
+    # earlier, so the measured offset must be +500 ms (the caller searches around plan geometry)
+    true_start = round(0.25 * SR) + a.shape[0] - 3 * SR
+    offset, r = envelope_offset(a[-3 * SR :], seam, true_start - round(0.5 * SR))
+    assert abs(offset - round(0.5 * SR)) <= 0.05 * SR, f"offset {offset} not within a block"
+    assert r > 0.9
+
+
+def test_plan_geometry_follows_the_measured_boundary() -> None:
+    rng = np.random.default_rng(17)
+    a = _unique_envelope(12.0, rng)
+    b = _unique_envelope(12.0, rng)
+    generated = _sine(3.0, 0.2, frequency=220.0)
+    # the returned seam starts 100 ms late on A's ref and ends 100 ms late on B's
+    lead = (rng.standard_normal((round(0.1 * SR), 2)) * 0.02).astype(np.float32)
+    seam = np.concatenate([lead, _rerendered(a, rng), generated, _rerendered(b, rng)])
+
+    alignment = locate_glue(seam, a[-3 * SR :], b[: 3 * SR], a.shape[0], generated.shape[0])
+    assert alignment.mode == "plan"
+    assert 50.0 <= alignment.measured_offset_a_ms <= 150.0
+    # B follows the generation, so the same 100 ms lead shifts its boundary too
+    assert 50.0 <= alignment.measured_offset_b_ms <= 150.0
+
+
+def test_joint_metrics_skips_the_deliberate_fade() -> None:
+    tail = _sine(1.0, 0.5)
+    glue = _sine(0.5, 0.5 * 0.3162)  # 10 dB quieter than the outgoing material
+    full = np.concatenate([tail, apply_fades(glue), tail])
+    fade_n = min(round(0.02 * SR), glue.shape[0] // 2)
+
+    with_fade = joint_metrics(full, tail.shape[0])["step_db"]
+    without = joint_metrics(full, tail.shape[0], fade_after=fade_n)["step_db"]
+    assert with_fade < -1.0, "the fade itself must not be read as a level match"
+    assert without == pytest.approx(20 * np.log10(0.3), abs=0.6)
+
+
+def test_cached_copyright_rejection_is_not_retried(tmp_path) -> None:
+    rng = np.random.default_rng(9)
+    samples = (rng.standard_normal((SR, 2)) * 0.05).astype(np.float32)
+    _, sha = pcm16_and_sha(samples)
+    (tmp_path / "uploads.json").write_text(
+        json.dumps({sha: {"rejected": "upload rejected for copyright (HTTP 400)", "at": "t"}})
+    )
+    with pytest.raises(glue_mod.ApiFatalError) as exc:
+        ensure_upload("no-key-needed", samples, tmp_path, refresh=False, label="A")
+    assert "copyright" in str(exc.value)
+
+
+def test_response_key_separates_plans_seeds_formats_and_takes() -> None:
+    plan = [{"song_id": "x", "range": {"start_ms": 0, "end_ms": 12000}}]
+    base = response_key(plan, 0, "pcm_44100", "beats-2")
+    assert base == response_key(list(plan), 0, "pcm_44100", "beats-2"), "key must be stable"
+    keys = {
+        base,
+        response_key(plan, 1, "pcm_44100", "beats-2"),
+        response_key(plan, 0, "mp3_48000_320", "beats-2"),
+        # identical plan bodies at 2 and 4 beats returned different audio: never share one
+        response_key(plan, 0, "pcm_44100", "beats-4"),
+    }
+    assert len(keys) == 4
 
 
 def test_status_in_plan_mode_judges_the_envelope_not_the_waveform() -> None:

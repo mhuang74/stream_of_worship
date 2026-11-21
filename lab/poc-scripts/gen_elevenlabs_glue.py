@@ -85,6 +85,8 @@ WIDEN_LAG = SR  # 1 s, only when the default search misses
 WIDEN_THRESHOLD = 0.90
 CORRELATION_FLOOR = 0.95
 ENVELOPE_FLOOR = 0.90
+ENVELOPE_SHIFT_SECONDS = 1.0
+MAX_SHORTFALL_SECONDS = 0.1
 BEATS = (2, 4, 8, 16)
 # Used only by --dry-run, which touches neither Postgres nor R2.
 DRY_RUN_TEMPO_BPM = 86.13281
@@ -675,11 +677,20 @@ def ensure_upload(
     refresh: bool,
     label: str,
 ) -> dict[str, Any]:
-    """Upload one full arranged side once; reuse the cached song_id afterwards."""
+    """Upload one arranged side once; reuse the cached song_id afterwards.
+
+    A copyright screening rejection is cached too, keyed by the same audio hash: a rerun must not
+    silently pay the half fee again. `--refresh-uploads` clears it deliberately.
+    """
     _, sha = pcm16_and_sha(samples)
     cache = load_uploads(out_root)
     if not refresh and sha in cache:
         entry = dict(cache[sha])
+        if entry.get("rejected"):
+            raise ApiFatalError(
+                f"{label} was rejected earlier ({entry['rejected']} at {entry.get('at')}); "
+                "pass --refresh-uploads to retry (a retry costs credits)"
+            )
         print(
             f"  reusing upload for {label}: song_id {entry['song_id']} "
             f"({entry['seconds']:.2f} s, {entry.get('format', 'wav')})",
@@ -697,7 +708,17 @@ def ensure_upload(
         f"  uploading {label} {seconds:.2f} s -> est. {seconds * CREDITS_PER_SECOND:.0f} credits",
         flush=True,
     )
-    song_id, used_format = upload_song(key, wav_path, mp3_path)
+    try:
+        song_id, used_format = upload_song(key, wav_path, mp3_path)
+    except ApiFatalError as exc:
+        if "copyright" in str(exc).lower():
+            cache[sha] = {
+                "rejected": str(exc),
+                "at": datetime.now(UTC).isoformat(timespec="seconds"),
+            }
+            save_uploads(out_root, cache)
+            print("  rejection cached; a rerun will not retry this audio", flush=True)
+        raise
     entry = {
         "song_id": song_id,
         "seconds": round(seconds, 3),
@@ -713,6 +734,48 @@ def ensure_upload(
 # ---------------------------------------------------------------------------
 # Response decoding
 # ---------------------------------------------------------------------------
+
+
+def response_key(plan: dict[str, Any], seed: int, output_format: str, take_id: str) -> str:
+    """Cache key for one paid compose: the request *and* the take it belongs to.
+
+    The take id is part of the key because the same body at 2 and 4 beats returned different audio
+    on 2026-11-21 even with a fixed seed — the API is not reproducible, so two takes must never share
+    a cached response.
+    """
+    body = json.dumps(
+        {
+            "model_id": MODEL_ID,
+            "plan": plan,
+            "seed": seed,
+            "output_format": output_format,
+            "take": take_id,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def compose_cached(
+    key: str,
+    plan: dict[str, Any],
+    seed: int,
+    output_format: str,
+    cache_dir: Path,
+    take_id: str,
+    refresh: bool = False,
+) -> tuple[bytes, bool]:
+    """Compose once per (plan, seed, format, take); a paid response is never bought twice."""
+    path = cache_dir / f"{response_key(plan, seed, output_format, take_id)}.bin"
+    if refresh and path.is_file():
+        path.unlink()
+    if path.is_file():
+        return path.read_bytes(), True
+    raw = compose(key, plan, output_format, seed)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(raw)
+    return raw, False
 
 
 def decode_seam(
@@ -834,6 +897,14 @@ class Alignment:
     mode: str = "correlation"
     ref_envelope_r_a: float | None = None
     ref_envelope_r_b: float | None = None
+    measured_offset_a_ms: float = 0.0
+    measured_offset_b_ms: float = 0.0
+
+
+def block_envelope(samples: np.ndarray, size: int, blocks: int) -> np.ndarray:
+    """RMS of each `size`-frame block of the mono mix."""
+    shaped = _mono(samples)[: blocks * size].reshape(blocks, size)
+    return np.sqrt(np.mean(np.square(shaped), axis=1))
 
 
 def envelope_correlation(
@@ -849,12 +920,46 @@ def envelope_correlation(
     blocks = min(reference.shape[0], candidate.shape[0]) // size
     if blocks < 2:
         return 0.0
-    shape = (blocks, size)
-    left = np.sqrt(np.mean(np.square(_mono(reference)[: blocks * size].reshape(shape)), axis=1))
-    right = np.sqrt(np.mean(np.square(_mono(candidate)[: blocks * size].reshape(shape)), axis=1))
+    left = block_envelope(reference, size, blocks)
+    right = block_envelope(candidate, size, blocks)
     if left.std() == 0.0 or right.std() == 0.0:
         return 0.0
     return float(np.corrcoef(left, right)[0, 1])
+
+
+def envelope_offset(
+    reference: np.ndarray,
+    seam: np.ndarray,
+    expected_start: int,
+    max_shift_seconds: float = ENVELOPE_SHIFT_SECONDS,
+    window_seconds: float = 0.05,
+) -> tuple[int, float]:
+    """Where `reference`'s energy envelope actually starts, searched ±max_shift_seconds.
+
+    Plan geometry places the glue, but a returned seam can be a few ms off; this measures that
+    offset at 50 ms resolution instead of assuming it away. Returns (offset_samples, r).
+    """
+    size = max(1, round(window_seconds * SR))
+    blocks = reference.shape[0] // size
+    if blocks < 2:
+        return 0, 0.0
+    ref_env = block_envelope(reference, size, blocks)
+    if ref_env.std() == 0.0:
+        return 0, 0.0
+    span = blocks * size
+    max_step = max(1, round(max_shift_seconds / window_seconds))
+    best_r, best_offset = -2.0, 0
+    for step in range(-max_step, max_step + 1):
+        start = expected_start + step * size
+        if start < 0 or start + span > seam.shape[0]:
+            continue
+        env = block_envelope(seam[start : start + span], size, blocks)
+        if env.std() == 0.0:
+            continue
+        r = float(np.corrcoef(ref_env, env)[0, 1])
+        if r > best_r:
+            best_r, best_offset = r, step * size
+    return best_offset, round(best_r, 6)
 
 
 def locate_glue(
@@ -891,11 +996,15 @@ def locate_glue(
         mode = "correlation"
     else:
         # The references came back re-rendered, so there is no sample-identical window to find:
-        # the plan geometry is the authority (the seam's own length confirms it), and the region
-        # identity is proven by energy envelope instead of waveform.
+        # plan geometry places the glue, and the energy envelope then measures how far the returned
+        # regions actually sit (a response can be a few ms short of the plan).
+        mode = "plan"
         glue_start = int(a_ref_samples)
         glue_end = min(seam.shape[0], int(a_ref_samples) + int(generation_samples))
-        mode = "plan"
+        offset_a, _ = envelope_offset(a_tail_needle, seam, glue_start - width)
+        offset_b, _ = envelope_offset(b_head_needle, seam, glue_end)
+        glue_start = max(0, glue_start + offset_a)
+        glue_end = min(seam.shape[0], glue_end + offset_b)
     if glue_end <= glue_start:
         raise RuntimeError(f"glue window [{glue_start}, {glue_end}] is empty")
     if glue_start < 0 or glue_end > seam.shape[0]:
@@ -915,15 +1024,31 @@ def locate_glue(
         mode=mode,
         ref_envelope_r_a=round(envelope_correlation(a_tail_needle, speech_a), 4),
         ref_envelope_r_b=round(envelope_correlation(b_head_needle, speech_b), 4),
+        measured_offset_a_ms=round((glue_start - int(a_ref_samples)) / SR * 1000.0, 3),
+        measured_offset_b_ms=round(
+            (glue_end - min(seam.shape[0], int(a_ref_samples) + int(generation_samples)))
+            / SR
+            * 1000.0,
+            3,
+        ),
     )
 
 
 def take_tail(generated: np.ndarray, target_samples: int) -> np.ndarray:
-    """The kept slice of a generation: the last target_samples (arrival into B)."""
+    """The kept slice of a generation: the last target_samples (arrival into B).
+
+    Responses can come back a few ms short of the plan. Discarding the take would throw away a paid
+    generation, so a shortfall up to MAX_SHORTFALL_SECONDS keeps everything returned (the Transition
+    loses those milliseconds from its start) and the caller records the shortfall in the metrics.
+    """
     if generated.shape[0] < target_samples:
-        raise RuntimeError(
-            f"generation of {generated.shape[0]} samples is shorter than {target_samples}"
-        )
+        shortfall = target_samples - generated.shape[0]
+        if shortfall > round(MAX_SHORTFALL_SECONDS * SR):
+            raise RuntimeError(
+                f"generation of {generated.shape[0]} samples is shorter than {target_samples} "
+                f"by {shortfall / SR * 1000.0:.1f} ms (limit {MAX_SHORTFALL_SECONDS * 1000.0:.0f} ms)"
+            )
+        return np.ascontiguousarray(generated)
     return np.ascontiguousarray(generated[-target_samples:])
 
 
@@ -989,8 +1114,18 @@ def splice(a: np.ndarray, glue: np.ndarray, b: np.ndarray) -> np.ndarray:
     return stitched
 
 
-def joint_metrics(samples: np.ndarray, index: int) -> dict[str, Any]:
-    """Largest sample jump within ±5 ms vs the local 99.99th percentile, plus a 50 ms RMS step."""
+def joint_metrics(
+    samples: np.ndarray,
+    index: int,
+    fade_before: int = 0,
+    fade_after: int = 0,
+) -> dict[str, Any]:
+    """Largest sample jump within ±5 ms vs the local 99.99th percentile, plus a 50 ms RMS step.
+
+    The step windows skip the deliberate 20 ms fade (`fade_before` at a glue→original junction,
+    `fade_after` at an original→glue junction); otherwise a perfect level match still reads -1.35 dB
+    because the fade itself removes energy.
+    """
     mono = _mono(samples)
     diffs = np.abs(np.diff(mono))
     lo = max(1, index - SR)
@@ -999,8 +1134,8 @@ def joint_metrics(samples: np.ndarray, index: int) -> dict[str, Any]:
     jump = float(jump_window.max()) if jump_window.size else 0.0
     local = float(np.percentile(diffs[lo:hi], 99.99)) if hi > lo else 0.0
     window = int(0.05 * SR)
-    before = mono[max(0, index - window) : index]
-    after = mono[index : index + window]
+    before = mono[max(0, index - fade_before - window) : max(0, index - fade_before)]
+    after = mono[index + fade_after : index + fade_after + window]
     if before.size == 0 or after.size == 0:
         step_db = 0.0
     else:
@@ -1040,14 +1175,14 @@ def evaluate_status(metrics: dict[str, Any], splice_ok: bool) -> tuple[str, list
         value = metrics.get(key)
         if value is not None and abs(value) > 6.0:
             reasons.append(f"|{key}| {value} dB > 6 dB")
-    for side in ("left", "right"):
-        joint = metrics.get("joint", {}).get(side) or {}
+    for name, label in (("a", "A joint"), ("b", "B joint")):
+        joint = metrics.get("joint", {}).get(name) or {}
         step = joint.get("step_db")
         if step is not None and abs(step) > 3.0:
-            reasons.append(f"{side} level step {step} dB > 3 dB")
+            reasons.append(f"{label} level step {step} dB > 3 dB")
         ratio = joint.get("jump_ratio")
         if ratio is not None and ratio > 2.0:
-            reasons.append(f"{side} click {ratio}x local 99.99th percentile")
+            reasons.append(f"{label} click {ratio}x local 99.99th percentile")
     return ("check" if reasons else "ok"), reasons
 
 
@@ -1298,15 +1433,20 @@ def _audio(src: str, kind: str, preload: str = "metadata") -> str:
 def metric_text(take: dict[str, Any]) -> str:
     metrics = take.get("metrics") or {}
     joint = metrics.get("joint") or {}
-    left = joint.get("left") or {}
-    right = joint.get("right") or {}
+    left = joint.get("a") or {}
+    right = joint.get("b") or {}
     gains = metrics.get("edge_gain_db") or [None, None]
     return (
         f"target {_num(take.get('target_seconds'))} s · requested "
         f"{_num(take.get('generation_seconds'))} s · generated "
         f"{_num(metrics.get('generated_seconds'))} s · trim {take.get('trim')} · "
         f"glue {_num(take.get('glue_seconds'))} s · "
+        f"geometry {metrics.get('geometry') or '—'} · "
         f"r_a {_num(metrics.get('r_a'))} / r_b {_num(metrics.get('r_b'))} · "
+        f"envelope {_num(metrics.get('ref_envelope_r_a'))} / "
+        f"{_num(metrics.get('ref_envelope_r_b'))} · "
+        f"offset {_num(metrics.get('measured_offset_a_ms'), 1)} / "
+        f"{_num(metrics.get('measured_offset_b_ms'), 1)} ms · "
         f"lag_a {_num(metrics.get('lag_a'), 0)} / lag_b {_num(metrics.get('lag_b'), 0)} samples · "
         f"Δ {_num(metrics.get('duration_delta_ms'), 1)} ms · "
         f"edge gain {_num(gains[0], 2)}/{_num(gains[1], 2)} dB · "
@@ -1513,6 +1653,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="print plans; no network, no writes")
     parser.add_argument("--force", action="store_true", help="reuse a non-empty run directory")
     parser.add_argument("--refresh-uploads", action="store_true", help="ignore the upload cache")
+    parser.add_argument(
+        "--refresh-responses",
+        action="store_true",
+        help="compose again instead of reusing a cached response (costs credits)",
+    )
     return parser.parse_args(argv)
 
 
@@ -1843,16 +1988,28 @@ def _execute_run(args: argparse.Namespace) -> int:
                 flush=True,
             )
             try:
-                raw = compose(key, plan, args.output_format, seed)
+                cache_dir = out_root / "cache" / "responses"
+                raw, reused = compose_cached(
+                    key,
+                    plan,
+                    seed,
+                    args.output_format,
+                    cache_dir,
+                    take_id,
+                    args.refresh_responses,
+                )
                 suffix = args.output_format.split("_")[0] if "_" in args.output_format else "bin"
                 raw_path = run_dir / "responses" / f"{take_id}.{suffix}"
                 wav_path = run_dir / "responses" / f"{take_id}.wav"
+                print(f"  {'reusing' if reused else 'composed'} response", flush=True)
                 try:
                     seam = decode_seam(raw, raw_path, wav_path, plan_seconds, args.output_format)
                 except SeamDecodeError as exc:
                     print(f"  {exc}", flush=True)
                     fallback = "mp3_48000_320"
-                    raw = compose(key, plan, fallback, seed)
+                    raw, reused = compose_cached(
+                        key, plan, seed, fallback, cache_dir, take_id, args.refresh_responses
+                    )
                     raw_path = run_dir / "responses" / f"{take_id}.mp3"
                     seam = decode_seam(raw, raw_path, wav_path, plan_seconds, fallback)
                     index["output_format"] = fallback
@@ -1885,8 +2042,9 @@ def _execute_run(args: argparse.Namespace) -> int:
                     )
                 )
                 write_flac(run_dir / files["seam"], seam_excerpt)
-                left = joint_metrics(full, a.shape[0])
-                right = joint_metrics(full, a.shape[0] + faded.shape[0])
+                fade_n = min(seconds_to_samples(FADE_SECONDS), faded.shape[0] // 2)
+                left = joint_metrics(full, a.shape[0], fade_after=fade_n)
+                right = joint_metrics(full, a.shape[0] + faded.shape[0], fade_before=fade_n)
                 metrics = {
                     "generated_seconds": round(generated.shape[0] / SR, 4),
                     "glue_seconds": round(faded.shape[0] / SR, 4),
@@ -1903,7 +2061,12 @@ def _execute_run(args: argparse.Namespace) -> int:
                     "duration_delta_ms": round(
                         (generated.shape[0] - spec.generation_samples) / SR * 1000.0, 3
                     ),
-                    "joint": {"left": left, "right": right},
+                    "generation_short_ms": round(
+                        max(0, spec.target_samples - glue.shape[0]) / SR * 1000.0, 3
+                    ),
+                    "measured_offset_a_ms": alignment.measured_offset_a_ms,
+                    "measured_offset_b_ms": alignment.measured_offset_b_ms,
+                    "joint": {"a": left, "b": right},
                     **stage_info,
                 }
                 take["metrics"] = metrics
