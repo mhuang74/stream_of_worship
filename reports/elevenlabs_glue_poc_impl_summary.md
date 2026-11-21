@@ -54,7 +54,8 @@ response exits 2 and leaves `failure.json` (cleared on a later `--force` reuse).
 | Plan geometry places the Glue exactly | ±1 s envelope search measures each boundary (`measured_offset_a_ms`, `_b_ms`) | A response can be a few ms off plan; every take measured 0 ms at 50 ms resolution |
 | (not planned) | `cache/responses/` keyed by `(plan body, seed, format, take)`; `--refresh-responses` bypasses it | Compose is paid and not reproducible: 2- and 4-beat takes send an identical body and returned different audio, so the take id must be in the key |
 | (not planned) | Copyright rejections cached in `uploads.json` by audio hash; a rerun refuses unless `--refresh-uploads` | Prevents silently re-paying the half fee |
-| Plan totals 326.82 / 326.82 / 329.39 / 334.97 s | Plan totals 27.00 / 27.00 / 29.57 / 35.15 s; full pairs 325.213 / 326.606 / 329.393 / 334.966 s | The plan's totals assumed full-side refs and a 2-beat baseline; with 12 s refs the plan is short, and the full pair is what the numbers describe |
+| Plan totals 326.82 / 326.82 / 329.39 / 334.97 s | Plan totals 27.00 / 27.00 / 29.57 / 35.15 s | The totals are refs + generation; with 12 s refs instead of 146.51/177.31 s the plan is short. Full-pair length does not depend on the refs: it is `A + glue + B`, i.e. 325.213 s for the 2-beat baseline plus `target − 1.3932` per longer take |
+| Growth of the full pair: the plan's verification expected 325.21 / 325.61 / 328.39 / 333.97 s | Measured 325.213 / 326.606 / 329.393 / 334.966 s | The plan's expectations were arithmetically wrong (≈1 s short from 4 beats on, not one glue length); the measured values satisfy `A + glue + B` to the sample, so the splice is right and the older expectations were not |
 
 New flags relative to the plan: `--upload-seconds`, `--refresh-responses`. `--refresh-uploads` now
 also clears a cached rejection.
