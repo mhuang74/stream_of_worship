@@ -12,7 +12,7 @@ Every chunk is one of two objects ([compose reference](https://elevenlabs.io/doc
 
 | Chunk | JSON shape | Effect |
 |---|---|---|
-| Audio reference chunk | `{"song_id": "...", "range": {"start_ms": 0, "end_ms": 12000}}` | inserts that slice of a stored song **unchanged** |
+| Audio reference chunk | `{"song_id": "...", "range": {"start_ms": 0, "end_ms": 12000}}` | **re-renders** that slice of a stored song (not a byte-exact insert — see [Measured](#measured-2026-11-21-paid-plan)) |
 | Generation chunk | `{"text": "...", "duration_ms": 8000, "positive_styles": [...]}` | generates new audio |
 
 A stored `song_id` comes from either `POST /v1/music/upload` (your own audio) or a generation
@@ -36,9 +36,29 @@ Gluing two different songs is that same three-chunk shape with two different `so
    stands out from local content.
 
 Why discard the returned refs: the ref chunks exist to give the model real audio on both sides of
-the generated chunk. Splicing the original files back keeps every second of the real recording
-sample-identical — the same principle as `reports/audio_inpaint_poc_impl_summary.md` — and avoids a
-second lossy encode of the songs.
+the generated chunk, and the API **does not hand them back unchanged** (see below). Splicing the
+original files back keeps every second of the real recording sample-identical — the same principle
+as `reports/audio_inpaint_poc_impl_summary.md` — and avoids a second lossy encode of the songs.
+
+## Measured (2026-11-21, paid plan)
+
+Run against a real songset (A = 146.51 s arranged, B = 177.31 s arranged, 86.13281 BPM); artifacts in
+`lab/poc-scripts/output/elevenlabs-glue/run1`, script `lab/poc-scripts/gen_elevenlabs_glue.py`.
+
+| Question | Result |
+|---|---|
+| Is inpainting enterprise-gated? | No — a paid subscription cleared `POST /v1/music/upload`. |
+| Does a commercial recording upload? | **Not whole.** 146.51 s of a real song → `HTTP 400 copyrighted_material_detected` ("still charged half price"). 12 s excerpts of the same arranged audio uploaded fine. |
+| Are ref chunks inserted unchanged? | **No.** Returned region vs uploaded excerpt: waveform Pearson r = 0.25–0.47, but 50 ms energy-envelope r = 0.96–0.99 and spectral-envelope r = 0.94–0.96. Same performance, re-rendered audio. |
+| Do the plan positions hold? | Yes, exactly. Returned seam length == plan length (27.000 s), glue sits at the declared offset (lag 0 samples), and the returned ref levels match the uploaded excerpts within 0.1 dB. |
+| `pcm_44100` layout | 16-bit little-endian stereo; byte count / (44100 × 4) == plan seconds. |
+| Cost | 12 s excerpts + 4 takes = **701 credits** (360 upload + 341 generation). Full sides would be 4,857 credits of upload and still be rejected. |
+
+Consequences for any consumer of this API: locate the generated glue by **plan geometry**
+(`glue_start = a_ref_samples`, `glue_end = glue_start + generation_ms`), never by wave correlation,
+and verify the returned region is the same performance with an energy-envelope correlation instead.
+A 20 ms fade plus a dB ramp applied to the glue is still required: the returned glue's first 50 ms can
+sit 3–7 dB below the outgoing song's last 50 ms even when the 200 ms edge gain matches.
 
 ## Credentials
 
@@ -609,18 +629,17 @@ if __name__ == "__main__":
 
 ## Unverified / verify first
 
-1. **Inpainting is enterprise-gated.** Stated by the official skill reference and MCP server, not by
-   the API reference page. The first `POST /v1/music/upload` is the decisive test.
-2. **Two different `song_id`s in one plan.** The schema allows a `song_id` per chunk and the guide
-   is titled "Edit and combine sections of existing songs", but no official example uses two
-   distinct songs. The QA cross-correlation and duration checks prove whether the layout held.
-3. **Upload acceptance.** Accepted formats, maximum duration, and maximum file size are not
-   documented. The recipe uses 44.1 kHz stereo WAV; if upload rejects the file, try
-   `ffmpeg -i in.wav -b:a 320k out.mp3` and re-upload.
-4. **`pcm_44100` payload layout.** Documented only as a format name; bit depth and channel count
-   are not. The script infers 16-bit mono/stereo from the byte count and exits with a clear message
-   otherwise; `mp3_48000_320` is the fallback.
+1. ~~Inpainting is enterprise-gated.~~ Answered: a paid subscription cleared the upload call.
+2. ~~Two different `song_id`s in one plan.~~ Answered: it works, but the returned refs are
+   re-rendered rather than inserted — see [Measured](#measured-2026-11-21-paid-plan).
+3. **Upload acceptance.** A 12 s 44.1 kHz stereo WAV was accepted and a full 146.51 s arranged side
+   was rejected by the copyright screen (half the fee charged). Maximum duration and file size for
+   *non-commercial* audio remain undocumented; the recipe uses excerpts for exactly this reason.
+4. ~~`pcm_44100` payload layout.~~ Answered: 16-bit little-endian stereo, duration matching the plan.
 5. **`song-id` header on `/v1/music`.** Verified in the JS SDK for `/v1/music/detailed`; assumed
    identical for `/v1/music`, and the API docs say the id is returned in response headers.
 6. **`composition_plan_suggestion` / `bad_prompt` details** come from the official skill reference,
    not the OpenAPI error schema.
+7. **Copyright-screen behaviour.** How the screen decides, whether a second rejection costs the same
+   half fee again, and whether instrumental-only excerpts pass more often were not explored (one
+   rejection, then excerpts).
