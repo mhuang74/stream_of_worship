@@ -31,15 +31,17 @@ uv run --project lab/poc-scripts --extra audio_inpaint \
 
 ## Runs
 
-| run | mode | engine | model | records | what it is |
-|---|---|---|---|---|---|
-| `run1` | bridge | base | `acestep-v15-base` | delivered | the original 2-pass half-hole run; kept as the defect reference |
-| `run2` | gap | sa3 | `sa3-small-music` | delivered | Stable Audio 3 on the 1.393 s production gap |
-| `run3` | gap | sa3 | `sa3-small-music` | delivered | run2 plus onset-based `trim`/`grid` timing correction |
-| `run5-arranged` | bridge | base | `acestep-v15-base` | 45 (45 ok) | boundary 8 s and 16 s bridges (15 s context), intra 8 s bridges (8 s context) |
-| `run5-arranged-sa3` | bridge | sa3 | `sa3-medium` | 45 (45 ok) | same geometry on Stable Audio 3 medium |
-| `run5-gap` | gap | base | `acestep-v15-base` | 18 (13 ok) | the 2-beat gap, `raw`/`trim`/`grid` per take |
-| `run5-gap-sa3` | gap | sa3 | `sa3-medium` | 14 (2 ok) | same, on SA3 medium |
+| run | mode | engine | model | records | wall | GPU | what it is |
+|---|---|---|---|---|---|---|---|
+| `run1` | bridge | base | `acestep-v15-base` | 15 (15 ok) | 542.7 s | — | the original 2-pass half-hole run; kept as the defect reference |
+| `run2` | gap | sa3 | `sa3-small-music` | 14 (14 ok) | — | — | Stable Audio 3 on the 1.393 s production gap |
+| `run3` | gap | sa3 | `sa3-small-music` | 21 (20 ok) | — | — | run2 plus onset-based `trim`/`grid` timing correction |
+| `run5-arranged` | bridge | base | `acestep-v15-base` | 45 (45 ok) | 801.0 s | 378.3 s | boundary 8 s and 16 s bridges (15 s context), intra 8 s bridges (8 s context) |
+| `run5-arranged-sa3` | bridge | sa3 | `sa3-medium` | 45 (45 ok) | 376.0 s | 42.0 s | same geometry on Stable Audio 3 medium |
+| `run6-full-arranged` | bridge | base | `acestep-v15-base` | 45 (45 ok) | 3404.7 s | 2674.8 s | whole arranged-song input (146.51 s + 177.31 s); boundary 8/16 s + intra 8 s |
+| `run6-full-arranged-sa3` | bridge | sa3 | `sa3-medium` | 45 (45 ok) | 787.1 s | 147.6 s | same whole-song input on SA3 medium; a dead head on 24 of the 36 boundary takes, head pad 0.15–3.0 s |
+| `run5-gap` | gap | base | `acestep-v15-base` | 18 (13 ok) | 117.0 s | 45.0 s | the 2-beat gap, `raw`/`trim`/`grid` per take |
+| `run5-gap-sa3` | gap | sa3 | `sa3-medium` | 14 (2 ok) | 98.8 s | 5.6 s | same, on SA3 medium |
 
 A gap take makes one model call and writes up to three records (`raw`, `trim`, `grid`);
 a take that fails at the raw stage writes one, which is why `run5-gap-sa3` has 14
@@ -60,8 +62,9 @@ resumes; `--force` regenerates every take. `--lengths` defaults to `8,16`, `--ta
 
 `--mode gap` forces `align=incoming`; the gap is two beats at B's 86.13281 BPM
 (1.393 s = 61,431 frames). `--context-seconds N` sets how much arranged audio is
-uploaded each side (default 15; `0` uploads the entire arrangement). The intra seam has
-only 8 s of arranged audio per side, so its montages record 8 s even at the 15 s default.
+uploaded each side (default 0: the whole arranged audio on each side). The intra seam
+has only 8 s of arranged audio per side, so its montages record 8 s even at the
+whole-song default.
 
 ## Bridges: 45 takes each (boundary 8 s and 16 s holes at 15 s context, intra 8 s at 8 s)
 
@@ -106,10 +109,19 @@ shipped as reported dead air and this run refuses above 50 ms.
 ## What changed to get here
 
 In short: one repaint pass with a mask around the hole, recordings-sourced key/tempo, a
-30 s style reference, a bounded 15 s context per side (feeding the whole 331.8 s
-arrangement made SA3 fade its hole in from digital silence), level staging anchored on
+30 s style reference, a context cap per side — 15 s in run5, lifted in run6 once A's own
+post-seam audio was measured to cover SA3's fade-in (see below) — level staging anchored on
 the joints instead of means, real-audio handoffs at both ends, and model failures
 refused rather than spliced.
+
+`run6` lifts that cap and its table rows and report links carry the measured long-input
+behaviour: ACE-Step base gains nothing and stays clean (head pad 0.15 s — the bare lead, no
+dead head — on every boundary take), while SA3 opens the hole from digital silence on 24 of
+the 36 boundary takes: 0.55–1.05 s on 6 of the 18 8 s holes, and 1.3–2.85 s on all 18 16 s
+holes. The head pad replaces that head with A's own post-seam continuation (dead head plus a
+0.15 s lead), so `dead edge 0.0` describes the padded head. Six 16 s takes sit at the 3.0 s
+`HEAD_PAD_MAX_SECONDS` ceiling — A's audio runs out there — so any residue past 3.0 s is not
+measured; the per-take `head pad` and `dead edge` numbers in each report are that finding.
 
 ## Implementation summary
 
