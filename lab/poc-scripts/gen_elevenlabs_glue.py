@@ -1737,6 +1737,10 @@ def _prepare_run_dir(run_dir: Path, force: bool) -> None:
         )
     for sub in SUB_DIRS:
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
+    stale_failure = run_dir / "failure.json"
+    if force and stale_failure.is_file():
+        # a reused run directory must not keep reporting the previous attempt's fatal error
+        stale_failure.unlink()
 
 
 def _write_index(run_dir: Path, index: dict[str, Any]) -> None:
