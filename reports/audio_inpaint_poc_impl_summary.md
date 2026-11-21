@@ -2,7 +2,8 @@
 
 Branch `audio_imprint_poc` (name kept from the earlier imprint prototype), pushed to
 `origin`. Commits: `e194d849` (implementation), `25f7a973` (run record + GPU accounting),
-`a4ffb2d1` (review page), `4242a56e` (review-page caveat).
+`a4ffb2d1` (review page), `4242a56e` (review-page caveat). HTML rendering of this document:
+`reports/audio_inpaint_poc_impl_summary.html` (a snapshot — the markdown is the source).
 
 Goal: make a seam between two songs sound continuous by generating only the music that is
 missing, while every second of real recording stays sample-identical in the output. Two
