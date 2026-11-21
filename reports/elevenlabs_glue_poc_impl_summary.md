@@ -7,6 +7,11 @@ CONTEXT), `75902e87` (exact seam search), `448f254f` (paid-plan run + re-render 
 facts live in `reports/elevenlabs_inpainting_api_guide.md` (its "Measured" section). This document
 covers what was built and where it departs from the approved plan.
 
+> Superseded layout: the v1 run covers one pair (items 0 → 1, `BEATS` 2/4/8/16). The script now
+> processes every adjacent junction of a 2–5 song Songset (`--junctions`, default 4-beat Glue,
+> per-junction artifacts plus one full-set file per take); the numbers below are untouched
+> measurement history for the single-pair layout, not the current output layout.
+
 Deliverable: `lab/poc-scripts/gen_elevenlabs_glue.py` (2,127 lines) with
 `lab/poc-scripts/tests/test_gen_elevenlabs_glue.py` (577 lines, 19 offline tests), the
 `elevenlabs_glue` extra, and the `Glue` glossary entry in `CONTEXT.md`.
