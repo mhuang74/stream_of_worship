@@ -14,8 +14,17 @@ cd lab/poc-scripts/output/audio-inpaint/run5-arranged && python -m http.server 8
 # then http://localhost:8090/report.html
 ```
 
-Each take is scored 0–10 on five weighted criteria in the page itself; the guide at the
-top of every report lists the measured proxy for each criterion.
+Each take is scored 0–10 on five weighted criteria in the run's own `report.html`; the
+guide at the top of every report lists the measured proxy for each criterion.
+
+`build_review_index.py` writes the page above all of them — `output/audio-inpaint/index.html`
+(same server, `/index.html`): one row per run, every bridge variant with both engines side by
+side, and every gap take with `raw`/`trim`/`grid` plus the measured reason a take was refused.
+
+```bash
+uv run --project lab/poc-scripts --extra audio_inpaint \
+  python lab/poc-scripts/build_review_index.py --root lab/poc-scripts/output/audio-inpaint
+```
 
 ## Runs
 
@@ -80,10 +89,11 @@ ACE-Step base fills it; SA3 medium does not.
 | SA3, all corrections | 2 / 12 | +16.6, +39.8 ms | 0–0.02 ms (ok); 58 ms (refused) |
 
 For a gap the right join is expected to be *positive*: the fill's last hit decays into
-B's downbeat, so `join_rms_jump_db.right` reads +0.7 … +23.9 dB on the ok rows and that
-is the transition, not a defect. The gate here is trailing dead air (refused above 50 ms)
-and unstaged residue, not the step: a fill that stops 90 ms before the downbeat leaves a
-hole in the music, while a fill whose tail rings 20 dB under a downbeat is a drum fill.
+B's downbeat, so `join_rms_jump_db.right` reads −0.4 … +23.9 dB on the ok rows (SA3's
+single ok `grid` row is the −0.4) and that is the transition, not a defect. The gate
+here is trailing dead air (refused above 50 ms) and unstaged residue, not the step: a
+fill that stops 90 ms before the downbeat leaves a hole in the music, while a fill
+whose tail rings 20 dB under a downbeat is a drum fill.
 
 SA3's refusals are its own output: 2 fills came back as −66 dB RMS silence and 9 could
 not be staged (residual 17–42 dB after an 18 dB edge ramp). The `grid` refusals are the
