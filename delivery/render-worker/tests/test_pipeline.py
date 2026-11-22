@@ -14,6 +14,7 @@ from sow_render_worker.audio_engine import (
     SongsetItem,
 )
 from sow_render_worker.asset_fetcher import AssetFetcher
+from sow_render_worker.r2_client import R2Client
 from sow_render_worker.chapters import ChaptersManifest, Chapter
 from sow_render_worker.db import RenderJob, RenderProgress
 from sow_render_worker.pipeline import (
@@ -604,7 +605,10 @@ class TestExecuteRenderPipeline:
         job_dir = tmp_path / "job_abc123"
         job_dir.mkdir()
         (job_dir / "output.mp4").write_bytes(b"in-progress")
-        fetcher = AssetFetcher(temp_dir=str(tmp_path))
+        fetcher = AssetFetcher(
+            temp_dir=str(tmp_path),
+            r2_client=MagicMock(spec=R2Client),
+        )
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.start_render_job", return_value=None), \

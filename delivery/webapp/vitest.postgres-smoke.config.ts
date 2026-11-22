@@ -10,6 +10,12 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      // server-only's throwing entry must be stubbed in Vitest; Next keeps the
+      // real guard because this alias is test-only.
+      {
+        find: /^server-only$/,
+        replacement: path.resolve(__dirname, "./src/test/server-only-stub.ts"),
+      },
       // Regex alias: matches "@/db" exactly, NOT "@/db/schema".
       // This lets the test client intercept `import { db } from "@/db"`
       // while `import { songs } from "@/db/schema"` still resolves normally.

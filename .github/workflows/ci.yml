@@ -97,4 +97,16 @@ jobs:
           sudo cp fonts/*.ttf /usr/share/fonts/truetype/vendor/
           ls -l /usr/share/fonts/truetype/vendor/
 
+      - name: Install FFmpeg
+        run: |
+          # Pin the static build to the version in delivery/render-worker/Dockerfile
+          # so CI encodes with the same libmp3lame/libx264 as production.
+          curl --max-time 120 -fsSL -o /tmp/ffmpeg.tar.xz \
+            https://johnvansickle.com/ffmpeg/releases/ffmpeg-7.0.2-amd64-static.tar.xz
+          sudo tar -xJ --strip-components=1 -C /usr/local/bin \
+            --wildcards "ffmpeg-7.0.2-amd64-static/ffmpeg" "ffmpeg-7.0.2-amd64-static/ffprobe" \
+            -f /tmp/ffmpeg.tar.xz
+          rm -f /tmp/ffmpeg.tar.xz
+          ffmpeg -version && ffprobe -version
+
       - run: PYTHONPATH=src pytest tests/ -v

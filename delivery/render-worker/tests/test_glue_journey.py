@@ -614,7 +614,9 @@ class TestGlueRenderJourney:
                 job_id=JOB_ID,
                 glue_windows=result.glue_windows,
             )
-        assert video.duration_seconds == pytest.approx(33.0)
+        # video.duration_seconds comes from the same ffprobe reading of the MP3
+        # above, so it carries the same encoder padding tolerance.
+        assert video.duration_seconds == pytest.approx(33.0, abs=0.05)
         assert encode.call_args.kwargs["glue_windows"] == tuple(windows)
         encoded_lyrics = encode.call_args.args[4]
         assert [
