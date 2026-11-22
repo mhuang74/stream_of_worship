@@ -442,8 +442,26 @@ recovery is documented in `docs/glue-operator-runbook.md`, keyed by
 The Lambda execution role needs:
 
 - `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on the render jobs queue
+- `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on `sow-glue-jobs`
 - `s3:GetObject`, `s3:PutObject`, `s3:HeadObject`, `s3:DeleteObject` on the R2 bucket (if using IAM-compatible endpoint)
 - `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` for pulling the container image
+- `logs:CreateLogStream`, `logs:PutLogEvents` on the `sow-glue-worker` log group
+
+The deploying principal (local admin profile or the GitHub deploy role) needs,
+in addition to the above:
+
+- `lambda:GetFunctionConfiguration`, `lambda:GetFunction`, `lambda:ListFunctions`
+- `lambda:CreateFunction`, `lambda:UpdateFunctionCode`, `lambda:UpdateFunctionConfiguration`
+- `lambda:PublishVersion`, `lambda:PutFunctionScalingConfig`
+- `lambda:ListEventSourceMappings`, `lambda:CreateEventSourceMapping`, `lambda:UpdateEventSourceMapping`
+- `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`
+  on `sow-glue-jobs` and `sow-glue-jobs-dlq`
+- `iam:PassRole` for the Glue worker execution role
+- `logs:DescribeLogGroups`, `logs:CreateLogGroup`, `logs:PutMetricFilter`
+- `cloudwatch:PutMetricAlarm`
+- `ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage`,
+  `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`
+  for image pushes
 
 ## Error Handling
 

@@ -594,13 +594,14 @@ describe("useSongsetAudio local AI-transition fallback", () => {
     });
     expect(fetchMock).toHaveBeenCalledWith("/api/glues/take-1/audio", {
       cache: "no-store",
+      headers: { Range: "bytes=0-0" },
     });
     // Failed retry leaves the fallback and timing alone.
     expect(result.current.glueFailures).toHaveLength(1);
     expect(result.current.timeline.totalSeconds).toBe(302);
     expect(mocks.createSession.mock.calls.length).toBe(createCallsAfterFailure);
 
-    fetchMock.mockResolvedValue(new Response("wav", { status: 200 }));
+    fetchMock.mockResolvedValue(new Response("wav", { status: 206 }));
     await act(async () => {
       await result.current.retryGlueAudio("take-1");
       await Promise.resolve();

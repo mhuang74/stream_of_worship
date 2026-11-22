@@ -3,12 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Assert the wire body and queue URL without touching AWS: the SDK classes are
 // replaced, and SendMessageCommand keeps its input for inspection.
 const sentCommands = vi.hoisted(() => [] as Array<{ QueueUrl: string; MessageBody: string }>);
+// Every constructed client's region, so a test can prove which env var wins.
+const clientRegions = vi.hoisted(() => [] as string[]);
 const sendMock = vi.hoisted(() =>
   vi.fn(async (): Promise<{ MessageId?: string }> => ({ MessageId: "message-1" }))
 );
 
 vi.mock("@aws-sdk/client-sqs", () => ({
   SQSClient: class {
+    constructor(config: { region?: string }) {
+      clientRegions.push(config.region ?? "");
+    }
+
     async send(command: unknown): Promise<unknown> {
       return sendMock(command);
     }
@@ -31,6 +37,7 @@ import {
 describe("Glue SQS client", () => {
   beforeEach(() => {
     sentCommands.length = 0;
+    clientRegions.length = 0;
     sendMock.mockClear();
     vi.unstubAllEnvs();
   });
@@ -47,10 +54,32 @@ describe("Glue SQS client", () => {
     );
 
     vi.stubEnv("SOW_AWS_REGION", "");
+    vi.stubEnv("SOW_GLUE_AWS_REGION", "");
     vi.stubEnv("SOW_GLUE_SQS_QUEUE_URL", "https://sqs.example/glue");
     expect(() => createGlueSQSClientFromEnv()).toThrow(
-      "SOW_AWS_REGION environment variable is required for Glue SQS client"
+      "SOW_GLUE_AWS_REGION or SOW_AWS_REGION environment variable is required for Glue SQS client"
     );
+  });
+
+  it("signs with SOW_GLUE_AWS_REGION before the render queue region", async () => {
+    vi.stubEnv("SOW_AWS_REGION", "us-east-1");
+    vi.stubEnv("SOW_GLUE_AWS_REGION", "us-west-2");
+    vi.stubEnv("SOW_GLUE_SQS_QUEUE_URL", "https://sqs.us-west-2.amazonaws.com/1/glue");
+    vi.stubEnv("SOW_AWS_ACCESS_KEY_ID", "key");
+    vi.stubEnv("SOW_AWS_SECRET_ACCESS_KEY", "secret");
+
+    const client = createGlueSQSClientFromEnv();
+    await client.sendMessage({
+      kind: "glue.generate",
+      jobId: "job-1",
+      songsetId: "songset-1",
+      userId: 7,
+    });
+
+    // A signature for us-east-1 against a us-west-2 queue URL is rejected, so
+    // the send region must follow the Glue queue, not the render queue.
+    expect(clientRegions).toEqual(["us-west-2"]);
+    expect(String(sentCommands[0].QueueUrl)).toContain("us-west-2");
   });
 
   it("uses the Glue queue URL, never the render queue URL", async () => {

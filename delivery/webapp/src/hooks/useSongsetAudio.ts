@@ -461,7 +461,12 @@ export function useSongsetAudio(
     async (takeId: string) => {
       if (!glueFailures.some((failure) => failure.takeId === takeId)) return;
       try {
-        const response = await fetch(glueAudioUrl(takeId), { cache: "no-store" });
+        // Probe with a one-byte range: the proxy forwards Range, so a reachable
+        // take answers 206 without streaming the whole staged WAV.
+        const response = await fetch(glueAudioUrl(takeId), {
+          cache: "no-store",
+          headers: { Range: "bytes=0-0" },
+        });
         if (!response.ok) return;
         void response.body?.cancel().catch(() => undefined);
       } catch {

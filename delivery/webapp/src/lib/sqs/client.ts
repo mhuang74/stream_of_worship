@@ -139,7 +139,10 @@ export class GlueSQSClient {
 }
 
 export function createGlueSQSClientFromEnv(): GlueSQSClient {
-  const region = process.env.SOW_AWS_REGION;
+  // The Glue worker deploys beside the render worker region, which can differ
+  // from the render job queue's region; signing must use the queue's own
+  // region or SendMessage 403s against the URL.
+  const region = process.env.SOW_GLUE_AWS_REGION ?? process.env.SOW_AWS_REGION;
   const queueUrl = process.env.SOW_GLUE_SQS_QUEUE_URL;
   const endpoint = process.env.SOW_SQS_ENDPOINT_URL;
   const accessKeyId = process.env.SOW_AWS_ACCESS_KEY_ID;
@@ -147,7 +150,7 @@ export function createGlueSQSClientFromEnv(): GlueSQSClient {
 
   if (!region) {
     throw new Error(
-      "SOW_AWS_REGION environment variable is required for Glue SQS client"
+      "SOW_GLUE_AWS_REGION or SOW_AWS_REGION environment variable is required for Glue SQS client"
     );
   }
 
