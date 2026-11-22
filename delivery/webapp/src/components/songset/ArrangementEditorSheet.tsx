@@ -1297,32 +1297,69 @@ export function ArrangementEditorSheet({
   // The quote endpoint is owner-scoped and computes every credit value; the
   // rail never computes credits. Each response is stored with the request key
   // it answers, so a value for another Junction or beat count is never shown.
+  //
+  // A read replica can answer a request issued right after the beat PATCH with
+  // the row as it was before that write, which describes a different descriptor
+  // and therefore different credits. The response names its `descriptorKey`, so
+  // a value that does not describe the saved junction is retried briefly and,
+  // failing that, never displayed.
+  const expectedGlueDescriptorKey = displayGlue?.descriptorKey ?? null;
   useEffect(() => {
     if (glueQuoteRequestKey === null || !songsetId) return;
     const requestKey = glueQuoteRequestKey;
     let cancelled = false;
     const controller = new AbortController();
     void (async () => {
+      const QUOTE_MATCH_ATTEMPTS = 6;
+      const QUOTE_MATCH_DELAY_MS = 300;
       try {
-        const response = await fetch(
-          `/api/songsets/${encodeURIComponent(songsetId)}/glue-quote?fromItemId=${encodeURIComponent(item.id)}&takeMode=initial`,
-          { signal: controller.signal }
-        );
-        const body = (await response.json().catch(() => null)) as
-          | (GlueQuoteResponse & { code?: unknown })
-          | null;
-        if (cancelled) return;
-        if (!response.ok) {
-          setGlueQuote(null);
-          setGlueQuoteError({
-            requestKey,
-            code:
-              body && typeof body.code === "string" ? body.code : "GLUE_UNKNOWN",
-          });
+        for (let attempt = 0; attempt < QUOTE_MATCH_ATTEMPTS; attempt += 1) {
+          if (attempt > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, QUOTE_MATCH_DELAY_MS)
+            );
+            if (cancelled) return;
+          }
+          // The URL is stable across a beat change, so a default-cached GET
+          // answered the next request with the previous beat count's credits.
+          // Quota and credits are per-saved-state facts: always revalidate.
+          const response = await fetch(
+            `/api/songsets/${encodeURIComponent(songsetId)}/glue-quote?fromItemId=${encodeURIComponent(item.id)}&takeMode=initial`,
+            { signal: controller.signal, cache: "no-store" }
+          );
+          const body = (await response.json().catch(() => null)) as
+            | (GlueQuoteResponse & { code?: unknown; descriptorKey?: unknown })
+            | null;
+          if (cancelled) return;
+          if (!response.ok) {
+            setGlueQuote(null);
+            setGlueQuoteError({
+              requestKey,
+              code:
+                body && typeof body.code === "string"
+                  ? body.code
+                  : "GLUE_UNKNOWN",
+            });
+            return;
+          }
+          const answeredDescriptor =
+            body && typeof body.descriptorKey === "string"
+              ? body.descriptorKey
+              : null;
+          if (
+            expectedGlueDescriptorKey !== null &&
+            answeredDescriptor !== null &&
+            answeredDescriptor !== expectedGlueDescriptorKey
+          ) {
+            continue;
+          }
+          setGlueQuote({ requestKey, quote: body as GlueQuoteResponse });
+          setGlueQuoteError(null);
           return;
         }
-        setGlueQuote({ requestKey, quote: body as GlueQuoteResponse });
-        setGlueQuoteError(null);
+        // Every answer described a state this rail is no longer showing.
+        setGlueQuote(null);
+        setGlueQuoteError({ requestKey, code: "GLUE_QUOTE_STALE" });
       } catch (error) {
         if (
           cancelled ||
@@ -1341,7 +1378,7 @@ export function ArrangementEditorSheet({
       cancelled = true;
       controller.abort();
     };
-  }, [glueQuoteRequestKey, songsetId, item.id]);
+  }, [glueQuoteRequestKey, songsetId, item.id, expectedGlueDescriptorKey]);
 
   const updateGlue = useCallback(
     async (patch: {

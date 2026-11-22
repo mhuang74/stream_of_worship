@@ -232,6 +232,54 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     );
   });
 
+  it("requests the quote without a browser cache so a beat change cannot replay the old credits", async () => {
+    renderSheet({});
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const init = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[1] as RequestInit | undefined)
+      .find((options) => options?.cache !== undefined);
+    expect(init?.cache).toBe("no-store");
+  });
+
+  it("never shows credits computed for a different descriptor", async () => {
+    const staleQuote = { ...QUOTE, descriptorKey: "b".repeat(64) };
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => {
+        calls += 1;
+        // The first answer describes the pre-PATCH junction; the retry sees the
+        // saved one.
+        return { ok: true, json: async () => (calls === 1 ? staleQuote : QUOTE) };
+      })
+    );
+    renderSheet({});
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    const quote = await screen.findByTestId("arrangement-glue-quote");
+    expect(quote.textContent).toContain("405 new credits");
+    expect(calls).toBeGreaterThan(1);
+  });
+
+  it("surfaces a quote error instead of numbers for a junction it cannot confirm", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({ ...QUOTE, descriptorKey: "b".repeat(64) }),
+      }))
+    );
+    // With a resolved junction the rail knows which descriptor the answer must
+    // describe; a replica that keeps returning the previous one is never shown.
+    renderSheet({
+      items: [makeItem({ glueEnabled: true, glue: junction() }), successor()],
+    });
+    expect(
+      await screen.findByText(/Could not load the AI transition details/, {}, { timeout: 5000 })
+    ).toBeTruthy();
+    expect(screen.queryByTestId("arrangement-glue-quote")).toBeNull();
+  });
+
   it("shows the selected AI transition and its plain-language check warning", async () => {
     renderSheet({
       items: [

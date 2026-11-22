@@ -103,7 +103,12 @@ function normalizeApiError(body: unknown, httpStatus: number): GlueApiError {
 
 async function glueRequest<T>(url: string, init?: RequestInit): Promise<GlueApiResult<T>> {
   try {
-    const response = await fetch(url, init);
+    // Glue endpoints answer with saved state that changes under a stable URL
+    // (job phase, credits for the same Junction and beat count). A default
+    // browser-cached GET would replay the previous body — a stale phase or the
+    // previous beat count's credits — so reads always revalidate. Mutations
+    // keep their explicit methods.
+    const response = await fetch(url, { cache: "no-store", ...init });
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       return { ok: false, error: normalizeApiError(body, response.status) };

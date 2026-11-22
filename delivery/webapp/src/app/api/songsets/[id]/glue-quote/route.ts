@@ -4,6 +4,11 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { getGlueQuote, GlueQuoteError } from "@/lib/glue/quote";
 
+// Credits and quota are per-saved-state facts for the same URL (a beat change
+// keeps `fromItemId`), so no cache layer may answer a later request with the
+// previous beat count's numbers.
+export const dynamic = "force-dynamic";
+
 const querySchema = z.object({
   fromItemId: z.string().min(1),
   takeMode: z.enum(["initial", "new-take"]).default("initial"),

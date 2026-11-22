@@ -53,6 +53,13 @@ export default async function SongsetEditorPage({
           tempoRatio: item.tempoRatio ?? 1,
           markedLineCount: item.markedLineCount,
           arrangementSteps: item.arrangementSteps,
+          // Glue state is server-derived (spec §5.1): the editor renders the
+          // saved switch/beats and the resolved junction so a reload, a second
+          // tab, or a render preflight sees the same selection. Omitting these
+          // made every reload read the switch as off.
+          glueEnabled: item.glueEnabled,
+          glueBeats: item.glueBeats,
+          glue: item.glue,
           song: item.song,
           recording: item.recording
             ? {
