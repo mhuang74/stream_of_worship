@@ -347,3 +347,239 @@ class TestCachingWorkflow:
         assert Path(result1).read_bytes() == b"audio1"
         assert Path(result2).read_bytes() == b"audio2"
         assert mock_r2.get_audio_signed_url.call_count == 2
+
+
+class TestDownloadGlue:
+    """Glue take downloads validate immutable length/SHA before atomic rename."""
+
+    DATA = b"RIFF" + b"\x00" * 120 + b"GLUE-STAGED-WAV"
+    R2_KEY = "glues/1/descriptor/take-1111.wav"
+
+    def _response(self, data: bytes = DATA, status: int = 200, content_length=None):
+        response = MagicMock()
+        response.status = status
+        response.headers = {
+            "Content-Length": str(len(data) if content_length is None else content_length)
+        }
+        response.stream.return_value = [data[:17], data[17:]]
+        return response
+
+    def _fetcher(self, tmp_path, r2_client=None):
+        cache_dir = str(tmp_path / "cache")
+        temp_dir = str(tmp_path / "temp")
+        fetcher = _make_fetcher(
+            cache_dir=cache_dir,
+            temp_dir=temp_dir,
+            r2_client=r2_client or _make_mock_r2_client(),
+        )
+        mock_http = MagicMock()
+        fetcher._http = mock_http
+        return fetcher, mock_http, Path(cache_dir), Path(temp_dir)
+
+    def _expected_sha(self):
+        import hashlib
+
+        return hashlib.sha256(self.DATA).hexdigest()
+
+    def _download(self, fetcher, **overrides):
+        kwargs = dict(
+            expected_bytes=len(self.DATA),
+            expected_sha256=self._expected_sha(),
+            cache_key="glue-take-1",
+        )
+        kwargs.update(overrides)
+        return fetcher.download_glue(self.R2_KEY, **kwargs)
+
+    def test_success_validates_length_and_sha_then_atomically_replaces(self, tmp_path):
+        import os
+
+        from unittest.mock import patch
+
+        fetcher, mock_http, cache_dir, temp_dir = self._fetcher(tmp_path)
+        mock_http.request.return_value = self._response()
+        fetcher._r2_client.generate_signed_url.return_value = "https://signed/x.wav"
+
+        replace_calls = []
+        real_replace = os.replace
+
+        def _recording_replace(src, dst):
+            replace_calls.append((str(src), str(dst)))
+            assert Path(src).read_bytes() == self.DATA
+            return real_replace(src, dst)
+
+        with patch("sow_render_worker.asset_fetcher.os.replace", side_effect=_recording_replace):
+            result = self._download(fetcher)
+
+        assert Path(result) == cache_dir / "glue-take-1.wav"
+        assert Path(result).read_bytes() == self.DATA
+        assert len(replace_calls) == 1
+        assert list(temp_dir.glob("*.part")) == []
+        fetcher._r2_client.generate_signed_url.assert_called_once()
+        assert fetcher._r2_client.generate_signed_url.call_args[0][0] == self.R2_KEY
+        mock_http.request.assert_called_once()
+
+    def test_truncated_cached_file_is_never_a_cache_hit(self, tmp_path):
+        fetcher, mock_http, cache_dir, _ = self._fetcher(tmp_path)
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "glue-take-1.wav").write_bytes(self.DATA[:10])
+        mock_http.request.return_value = self._response()
+
+        result = self._download(fetcher)
+
+        assert Path(result).read_bytes() == self.DATA
+        mock_http.request.assert_called_once()
+
+    def test_corrupt_cached_file_with_right_size_is_never_a_cache_hit(self, tmp_path):
+        fetcher, mock_http, cache_dir, _ = self._fetcher(tmp_path)
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "glue-take-1.wav").write_bytes(b"x" * len(self.DATA))
+        mock_http.request.return_value = self._response()
+
+        result = self._download(fetcher)
+
+        assert Path(result).read_bytes() == self.DATA
+        mock_http.request.assert_called_once()
+
+    def test_valid_cached_file_is_a_hit_without_a_request(self, tmp_path):
+        fetcher, mock_http, cache_dir, _ = self._fetcher(tmp_path)
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "glue-take-1.wav").write_bytes(self.DATA)
+
+        result = self._download(fetcher)
+
+        assert Path(result).read_bytes() == self.DATA
+        mock_http.request.assert_not_called()
+
+    def test_checksum_mismatch_raises_and_leaves_no_cache_file(self, tmp_path):
+        from sow_render_worker.asset_fetcher import GlueDownloadError
+
+        fetcher, mock_http, cache_dir, temp_dir = self._fetcher(tmp_path)
+        mock_http.request.return_value = self._response(data=b"X" * len(self.DATA))
+
+        with pytest.raises(GlueDownloadError) as excinfo:
+            self._download(fetcher)
+
+        assert excinfo.value.code == "GLUE_AUDIO_UNAVAILABLE"
+        assert "checksum" in str(excinfo.value).lower()
+        assert list(cache_dir.glob("*.wav")) == []
+        assert list(temp_dir.glob("*.part")) == []
+        assert mock_http.request.call_count == 1
+
+    def test_length_mismatch_raises_and_leaves_no_cache_file(self, tmp_path):
+        from sow_render_worker.asset_fetcher import GlueDownloadError
+
+        fetcher, mock_http, cache_dir, temp_dir = self._fetcher(tmp_path)
+        mock_http.request.return_value = self._response()
+
+        with pytest.raises(GlueDownloadError, match="length"):
+            self._download(fetcher, expected_bytes=len(self.DATA) + 1)
+
+        assert list(cache_dir.glob("*.wav")) == []
+        assert list(temp_dir.glob("*.part")) == []
+
+    def test_missing_object_is_not_retried(self, tmp_path):
+        from sow_render_worker.asset_fetcher import GlueDownloadError
+
+        fetcher, mock_http, _, _ = self._fetcher(tmp_path)
+        mock_http.request.return_value = self._response(status=404)
+
+        with pytest.raises(GlueDownloadError) as excinfo:
+            self._download(fetcher)
+
+        assert excinfo.value.code == "GLUE_AUDIO_UNAVAILABLE"
+        assert mock_http.request.call_count == 1
+
+    def test_retries_transient_failure_with_full_jitter_and_succeeds(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        import logging
+
+        from unittest.mock import patch
+
+        fetcher, mock_http, _, _ = self._fetcher(tmp_path)
+        mock_http.request.side_effect = [OSError("connection reset"), self._response()]
+
+        delays: list[tuple[float, float]] = []
+        sleeps: list[float] = []
+
+        def fake_uniform(low, high):
+            delays.append((low, high))
+            return high
+
+        monkeypatch.setattr("sow_render_worker.asset_fetcher.random.uniform", fake_uniform)
+        monkeypatch.setattr("sow_render_worker.asset_fetcher.time.sleep", sleeps.append)
+
+        with caplog.at_level(logging.WARNING, logger="sow_render_worker.asset_fetcher"):
+            result = self._download(fetcher)
+
+        assert Path(result).read_bytes() == self.DATA
+        assert delays == [(0, 1.0)]
+        assert sleeps == [1.0]
+        assert "retry attempt 1" in caplog.text
+        assert mock_http.request.call_count == 2
+
+    def test_jitter_caps_are_one_two_and_four_seconds(self, tmp_path, monkeypatch):
+        from sow_render_worker.asset_fetcher import GlueDownloadError
+
+        fetcher, mock_http, _, _ = self._fetcher(tmp_path)
+        mock_http.request.side_effect = OSError("down")
+
+        delays: list[tuple[float, float]] = []
+        sleeps: list[float] = []
+
+        def fake_uniform(low, high):
+            delays.append((low, high))
+            return 0.0
+
+        monkeypatch.setattr("sow_render_worker.asset_fetcher.random.uniform", fake_uniform)
+        monkeypatch.setattr("sow_render_worker.asset_fetcher.time.sleep", sleeps.append)
+
+        with pytest.raises(GlueDownloadError):
+            self._download(fetcher)
+
+        assert delays == [(0, 1.0), (0, 2.0), (0, 4.0)]
+        assert sleeps == [0.0, 0.0, 0.0]
+        assert mock_http.request.call_count == 4
+
+    def test_exhausted_retries_raise_distinct_error(self, tmp_path, monkeypatch):
+        from sow_render_worker.asset_fetcher import GlueDownloadError
+
+        fetcher, mock_http, cache_dir, _ = self._fetcher(tmp_path)
+        mock_http.request.side_effect = OSError("down")
+        monkeypatch.setattr("sow_render_worker.asset_fetcher.time.sleep", lambda _: None)
+
+        with pytest.raises(GlueDownloadError) as excinfo:
+            self._download(fetcher)
+
+        assert excinfo.value.code == "GLUE_AUDIO_UNAVAILABLE"
+        assert "exhausted" in str(excinfo.value).lower()
+        assert list(cache_dir.glob("*.wav")) == []
+        assert mock_http.request.call_count == 4
+
+    def test_connect_and_read_timeouts_are_configured_separately(self, tmp_path):
+        fetcher, mock_http, _, _ = self._fetcher(tmp_path)
+        mock_http.request.return_value = self._response()
+
+        self._download(fetcher)
+
+        timeout = mock_http.request.call_args.kwargs["timeout"]
+        assert timeout.connect_timeout == 30
+        assert timeout.read_timeout == 300
+
+    def test_error_message_does_not_leak_signed_url_or_secrets(self, tmp_path, monkeypatch):
+        from sow_render_worker.asset_fetcher import GlueDownloadError
+
+        fetcher, mock_http, _, _ = self._fetcher(tmp_path)
+        mock_http.request.side_effect = OSError(
+            "https://signed-url.example.com/x.wav?X-Amz-Signature=super-secret failed"
+        )
+        monkeypatch.setattr("sow_render_worker.asset_fetcher.time.sleep", lambda _: None)
+
+        with pytest.raises(GlueDownloadError) as excinfo:
+            self._download(fetcher)
+
+        message = str(excinfo.value)
+        assert "https://" not in message
+        assert "X-Amz" not in message
+        assert "super-secret" not in message
+        assert "signed-url.example.com" not in message

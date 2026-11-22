@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import subprocess
+import wave
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -63,6 +65,30 @@ class AudioSegmentInfo:
 
 
 @dataclass(frozen=True)
+class GlueClip:
+    """One staged Glue take to insert at an incoming item's junction.
+
+    ``seconds`` is the staged (measured) duration used for placement; the
+    staged WAV is authoritative and must match it within
+    :data:`GLUE_SECONDS_EPSILON`.
+    """
+
+    path: str
+    take_id: str
+    seconds: float
+    checksum: str
+
+
+@dataclass(frozen=True)
+class GlueWindow:
+    """Uncovered timeline span occupied by staged Glue audio before an item."""
+
+    to_item_id: str
+    start_seconds: float
+    end_seconds: float
+
+
+@dataclass(frozen=True)
 class ExportResult:
     output_path: str
     total_duration_seconds: float
@@ -70,6 +96,46 @@ class ExportResult:
     sample_rate: int = 44100
     channels: int = 2
     lead_in_seconds: float = 0.0
+    glue_windows: tuple[GlueWindow, ...] = field(default_factory=tuple)
+
+
+GLUE_SECONDS_EPSILON = 0.05
+
+
+class GlueClipError(ValueError):
+    """A staged Glue clip cannot be placed on the mix timeline.
+
+    A missing/unreadable/mismatched clip is a hard render failure; there is no
+    ordinary-gap fallback.
+    """
+
+    code = "GLUE_NOT_READY"
+
+
+def _validate_glue_clip(clip: GlueClip, *, to_item_id: str) -> None:
+    if not math.isfinite(clip.seconds) or clip.seconds <= 0:
+        raise GlueClipError(
+            f"Glue audio for item {to_item_id} has non-positive duration"
+        )
+    path = Path(clip.path)
+    try:
+        with wave.open(str(path), "rb") as wav:
+            sample_rate = wav.getframerate()
+            frames = wav.getnframes()
+    except (OSError, wave.Error, EOFError) as exc:
+        raise GlueClipError(
+            f"Glue audio for item {to_item_id} is missing or unreadable"
+        ) from exc
+    if sample_rate <= 0:
+        raise GlueClipError(
+            f"Glue audio for item {to_item_id} has an invalid sample rate"
+        )
+    actual_seconds = frames / sample_rate
+    if abs(actual_seconds - clip.seconds) > GLUE_SECONDS_EPSILON:
+        raise GlueClipError(
+            f"Glue audio for item {to_item_id} duration {actual_seconds:.3f}s "
+            f"does not match staged seconds {clip.seconds:.3f}s"
+        )
 
 
 class AssetFetcherProtocol(Protocol):
@@ -289,10 +355,13 @@ def generate_songset_audio(
     channels: int = 2,
     job_id: str | None = None,
     lead_in_resolver: Callable[[tuple[AudioSegmentInfo, ...]], float] | None = None,
+    glue_clips: dict[str, GlueClip] | None = None,
 ) -> ExportResult:
     if not items:
         raise ValueError("Cannot generate audio for empty songset")
 
+    glue_clips = glue_clips or {}
+    glue_windows: list[GlueWindow] = []
     segments: list[AudioSegmentInfo] = []
     current_time_ms = 0
     total_steps = len(items) * 2
@@ -343,9 +412,14 @@ def generate_songset_audio(
                 job_id or "unknown", i + 1, duration_ms / 1000.0,
             )
 
+        glue_clip: GlueClip | None = None
+        if i > 0 and item.id in glue_clips:
+            glue_clip = glue_clips[item.id]
+            _validate_glue_clip(glue_clip, to_item_id=item.id)
+
         gap_ms = 0
         crossfade_ms = 0
-        if i > 0:
+        if i > 0 and glue_clip is None:
             gap_ms = calculate_gap_ms(item, item.tempo_bpm)
             crossfade_ms = min(get_crossfade_ms(item), duration_ms)
 
@@ -354,7 +428,14 @@ def generate_songset_audio(
             job_id or "unknown", i + 1, duration_ms / 1000.0, gap_ms, crossfade_ms,
         )
 
-        start_time_ms = 0 if i == 0 else max(0, current_time_ms + gap_ms - crossfade_ms)
+        glue_start_ms: float | None = None
+        if i == 0:
+            start_time_ms = 0
+        elif glue_clip is not None:
+            glue_start_ms = current_time_ms
+            start_time_ms = current_time_ms + glue_clip.seconds * 1000.0
+        else:
+            start_time_ms = max(0, current_time_ms + gap_ms - crossfade_ms)
 
         # Clips join directly inside an item: each clip starts where the
         # previous one ended, with no gap or fade.
@@ -390,6 +471,33 @@ def generate_songset_audio(
             clips=tuple(clips),
         )
         segments.append(segment_info)
+
+        if glue_clip is not None and glue_start_ms is not None:
+            glue_windows.append(
+                GlueWindow(
+                    to_item_id=item.id,
+                    start_seconds=glue_start_ms / 1000.0,
+                    end_seconds=start_time_ms / 1000.0,
+                )
+            )
+            audio_files.append(
+                {
+                    "path": glue_clip.path,
+                    "item": None,
+                    "gap_ms": 0,
+                    "crossfade_ms": 0,
+                    "duration_ms": glue_clip.seconds * 1000.0,
+                    "start_ms": glue_start_ms,
+                    "clips": [
+                        {
+                            "path": glue_clip.path,
+                            "source_start_seconds": 0.0,
+                            "source_end_seconds": glue_clip.seconds,
+                            "start_time_seconds": glue_start_ms / 1000.0,
+                        }
+                    ],
+                }
+            )
 
         current_time_ms = start_time_ms + duration_ms
         audio_files.append(
@@ -483,12 +591,14 @@ def generate_songset_audio(
         sample_rate=sample_rate,
         channels=channels,
         lead_in_seconds=lead_in_seconds,
+        glue_windows=tuple(glue_windows),
     )
 
 
 def calculate_total_duration(
     items: list[SongsetItem],
     asset_fetcher: AssetFetcherProtocol,
+    glue_clips: dict[str, GlueClip] | None = None,
 ) -> float:
     """Total mix duration: the last item's end on the arranged timeline.
 
@@ -499,6 +609,7 @@ def calculate_total_duration(
     duration, so the total is taken from the end point the mix actually
     reaches.
     """
+    glue_clips = glue_clips or {}
     previous_end_ms = 0
     max_end_ms: float = 0
 
@@ -521,6 +632,10 @@ def calculate_total_duration(
 
         if i == 0:
             start_ms = 0
+        elif item.id in glue_clips:
+            glue_clip = glue_clips[item.id]
+            _validate_glue_clip(glue_clip, to_item_id=item.id)
+            start_ms = previous_end_ms + glue_clip.seconds * 1000.0
         else:
             gap_ms = calculate_gap_ms(item, item.tempo_bpm)
             crossfade_ms = min(get_crossfade_ms(item), duration_ms)
