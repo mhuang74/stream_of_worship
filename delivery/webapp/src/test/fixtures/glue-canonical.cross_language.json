@@ -1,0 +1,181 @@
+{
+  "descriptors": [
+    {
+      "name": "pinned-basic",
+      "input": {
+        "beats": 4,
+        "toTempoBpm": 120,
+        "from": {
+          "contentHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "steps": [
+            [
+              0,
+              12
+            ]
+          ]
+        },
+        "to": {
+          "contentHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+          "steps": [
+            [
+              0,
+              120
+            ]
+          ]
+        }
+      },
+      "canonicalJson": "{\"v\":2,\"model\":\"music_v2_5\",\"promptVersion\":2,\"excerptSeconds\":12,\"beats\":4,\"toTempoBpm\":120,\"from\":{\"contentHash\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0\",\"steps\":[[0,12]]},\"to\":{\"contentHash\":\"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\",\"steps\":[[0,120]]}}",
+      "key": "5e0d13ac268778bf5ec5d619834562b5706027ab82da141cc3aad241b8987651"
+    },
+    {
+      "name": "null-steps",
+      "input": {
+        "beats": 4,
+        "toTempoBpm": 120,
+        "from": {
+          "contentHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "steps": [
+            [
+              0,
+              12
+            ]
+          ]
+        },
+        "to": {
+          "contentHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+          "steps": null
+        }
+      },
+      "canonicalJson": "{\"v\":2,\"model\":\"music_v2_5\",\"promptVersion\":2,\"excerptSeconds\":12,\"beats\":4,\"toTempoBpm\":120,\"from\":{\"contentHash\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0\",\"steps\":[[0,12]]},\"to\":{\"contentHash\":\"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\",\"steps\":null}}",
+      "key": "25fd441dbdaec56e7cb79cb9779c1fca5f87a61b4fa36b84e79f340e7acb0f87"
+    },
+    {
+      "name": "fractional",
+      "input": {
+        "beats": 8,
+        "toTempoBpm": 127.35,
+        "from": {
+          "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "steps": [
+            [
+              0,
+              6.5
+            ],
+            [
+              6.5,
+              2.75
+            ]
+          ]
+        },
+        "to": {
+          "contentHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "steps": [
+            [
+              0,
+              12
+            ],
+            [
+              12,
+              4.125
+            ]
+          ]
+        }
+      },
+      "canonicalJson": "{\"v\":2,\"model\":\"music_v2_5\",\"promptVersion\":2,\"excerptSeconds\":12,\"beats\":8,\"toTempoBpm\":127.35,\"from\":{\"contentHash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"steps\":[[0,6.5],[6.5,2.75]]},\"to\":{\"contentHash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"steps\":[[0,12],[12,4.125]]}}",
+      "key": "fccae960cfef4824eb16ee9790798543d7d3e9a0f792c66b48c0d8121e284edd"
+    },
+    {
+      "name": "half-up-sixth-decimal",
+      "input": {
+        "beats": 2,
+        "toTempoBpm": 90,
+        "from": {
+          "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "steps": [
+            [
+              0,
+              1.0000005
+            ]
+          ]
+        },
+        "to": {
+          "contentHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "steps": null
+        }
+      },
+      "canonicalJson": "{\"v\":2,\"model\":\"music_v2_5\",\"promptVersion\":2,\"excerptSeconds\":12,\"beats\":2,\"toTempoBpm\":90,\"from\":{\"contentHash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"steps\":[[0,1.000001]]},\"to\":{\"contentHash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"steps\":null}}",
+      "key": "9da6a123923a80fa38faeadf01d1813f55103626d4d1b42bfd00a78b3bb45cc0"
+    },
+    {
+      "name": "steps-forward",
+      "input": {
+        "beats": 4,
+        "toTempoBpm": 100,
+        "from": {
+          "contentHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "steps": [
+            [
+              0,
+              12
+            ],
+            [
+              12,
+              3
+            ]
+          ]
+        },
+        "to": {
+          "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "steps": [
+            [
+              0,
+              20
+            ],
+            [
+              20,
+              4
+            ]
+          ]
+        }
+      },
+      "canonicalJson": "{\"v\":2,\"model\":\"music_v2_5\",\"promptVersion\":2,\"excerptSeconds\":12,\"beats\":4,\"toTempoBpm\":100,\"from\":{\"contentHash\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0\",\"steps\":[[0,12],[12,3]]},\"to\":{\"contentHash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"steps\":[[0,20],[20,4]]}}",
+      "key": "206985a75ae27c173723031e548475e572878f980261ebf06736a444814913f8"
+    },
+    {
+      "name": "steps-reversed",
+      "input": {
+        "beats": 4,
+        "toTempoBpm": 100,
+        "from": {
+          "contentHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "steps": [
+            [
+              12,
+              3
+            ],
+            [
+              0,
+              12
+            ]
+          ]
+        },
+        "to": {
+          "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "steps": [
+            [
+              20,
+              4
+            ],
+            [
+              0,
+              20
+            ]
+          ]
+        }
+      },
+      "canonicalJson": "{\"v\":2,\"model\":\"music_v2_5\",\"promptVersion\":2,\"excerptSeconds\":12,\"beats\":4,\"toTempoBpm\":100,\"from\":{\"contentHash\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0\",\"steps\":[[12,3],[0,12]]},\"to\":{\"contentHash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"steps\":[[20,4],[0,20]]}}",
+      "key": "47e89f1a4d2b1b7ea2156ca6c73f520d86dda1c296eca36da665fc15583d8483"
+    }
+  ],
+  "excerpts": []
+}
