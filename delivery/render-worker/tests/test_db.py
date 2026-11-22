@@ -9,19 +9,37 @@ from sow_render_worker.db import (
     STALE_JOB_THRESHOLD_SECONDS,
     LIKELY_DEAD_THRESHOLD_SECONDS,
     TOTAL_PHASES,
+    GLUE_ACTIVE_PHASES,
+    GLUE_CLAIM_STALE_SECONDS,
+    GLUE_TERMINAL_PHASES,
+    GlueExcerpt,
+    GlueJob,
+    GlueTake,
     RenderJob,
     RenderProgress,
     _normalize_font_family,
+    claim_glue_job,
     complete_render_job,
     fail_render_job,
+    finish_glue_job,
     get_connection,
+    get_glue_excerpt,
+    get_glue_job,
+    get_glue_take_for_descriptor,
     get_phase_index,
     get_render_job,
+    heartbeat_glue_job,
+    insert_glue_take,
+    read_songset_items_for_glue,
     reclaim_likely_dead_job,
     reclaim_stale_job,
+    record_provider_contact,
     recover_orphaned_jobs,
+    set_glue_job_dispatch_failed,
+    set_glue_phase,
     start_render_job,
     update_render_progress,
+    upsert_glue_excerpt,
 )
 
 
@@ -892,3 +910,592 @@ class TestReclaimLikelyDeadJob:
         cursor.fetchone.return_value = reclaimed_row
         result = reclaim_likely_dead_job(conn, "job_abc123", 42)
         assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# Glue (AI transition) helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_glue_job_row(**overrides) -> dict:
+    defaults = {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "user_id": 42,
+        "songset_id": "ss_001",
+        "from_item_id": "item-a",
+        "to_item_id": "item-b",
+        "client_request_id": "22222222-2222-4222-8222-222222222222",
+        "take_mode": "initial",
+        "descriptor_key": "a" * 64,
+        "descriptor_json": '{"v":2}',
+        "expected_from_updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "expected_to_updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "phase": "queued",
+        "active": True,
+        "dispatch_state": "pending",
+        "dispatch_attempt": 0,
+        "attempt_id": "33333333-3333-4333-8333-333333333333",
+        "pending_take_id": "44444444-4444-4444-8444-444444444444",
+        "take_ordinal": 1,
+        "seed": 123456789,
+        "paid_reservation_id": None,
+        "paid_reservation_state": None,
+        "provider_contacted": False,
+        "provider_phase": None,
+        "provider_status": None,
+        "retry_kind": None,
+        "resulting_take_id": None,
+        "active_take_id": None,
+        "raw_response_r2_key": None,
+        "raw_response_sha256": None,
+        "raw_response_bytes": None,
+        "error_code": None,
+        "error_detail": None,
+        "heartbeat_at": None,
+        "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "started_at": None,
+        "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "finished_at": None,
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+def _make_glue_take_row(**overrides) -> dict:
+    defaults = {
+        "id": "55555555-5555-4555-8555-555555555555",
+        "user_id": 42,
+        "descriptor_key": "a" * 64,
+        "descriptor_json": '{"v":2}',
+        "ordinal": 1,
+        "seed": 123456789,
+        "status": "ready",
+        "r2_key": "glues/42/take.wav",
+        "seconds": 2.786,
+        "raw_response_r2_key": None,
+        "raw_response_sha256": None,
+        "raw_response_bytes": None,
+        "metrics_json": "{}",
+        "reasons_json": "[]",
+        "error_code": None,
+        "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+def _make_glue_excerpt_row(**overrides) -> dict:
+    defaults = {
+        "user_id": 42,
+        "logical_key": "b" * 64,
+        "version": 2,
+        "side": "A",
+        "seconds": 12.0,
+        "content_hash": "c" * 64,
+        "canonical_steps_json": None,
+        "audio_sha256": None,
+        "elevenlabs_song_id": None,
+        "phase": "constructed",
+        "rejection_code": None,
+        "safe_failure_detail": None,
+        "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+class TestGlueConstants:
+    def test_active_phases(self):
+        assert GLUE_ACTIVE_PHASES == (
+            "queued",
+            "preparing",
+            "uploading",
+            "composing",
+            "storing-response",
+            "staging",
+        )
+
+    def test_terminal_phases(self):
+        assert GLUE_TERMINAL_PHASES == ("ready", "failed", "cancelled", "dispatch-failed")
+
+    def test_claim_stale_threshold(self):
+        assert GLUE_CLAIM_STALE_SECONDS == 120
+
+
+class TestGlueDataclasses:
+    def test_glue_job_defaults(self):
+        job = GlueJob(
+            id="j1",
+            user_id=42,
+            songset_id="ss1",
+            from_item_id="a",
+            to_item_id="b",
+            client_request_id="req",
+            take_mode="initial",
+            descriptor_key="d" * 64,
+            descriptor_json="{}",
+            phase="queued",
+            active=True,
+            dispatch_state="pending",
+            attempt_id="att",
+            pending_take_id="take",
+            take_ordinal=1,
+            seed=7,
+        )
+        assert job.dispatch_attempt == 0
+        assert job.provider_contacted is False
+        assert job.resulting_take_id is None
+
+    def test_glue_take_defaults(self):
+        take = GlueTake(
+            id="t1",
+            user_id=42,
+            descriptor_key="d" * 64,
+            descriptor_json="{}",
+            ordinal=1,
+            seed=7,
+            status="ready",
+        )
+        assert take.metrics_json == "{}"
+        assert take.reasons_json == "[]"
+        assert take.r2_key is None
+
+    def test_glue_excerpt_defaults(self):
+        excerpt = GlueExcerpt(
+            user_id=42,
+            logical_key="k" * 64,
+            side="A",
+            seconds=12.0,
+            content_hash="c" * 64,
+            phase="constructed",
+        )
+        assert excerpt.version == 2
+        assert excerpt.audio_sha256 is None
+
+    def test_row_converter_normalizes_uuid_ids(self):
+        from uuid import UUID
+
+        row = _make_glue_job_row(
+            id=UUID("11111111-1111-4111-8111-111111111111"),
+            pending_take_id=UUID("44444444-4444-4444-8444-444444444444"),
+        )
+        from sow_render_worker.db import _row_to_glue_job
+
+        job = _row_to_glue_job(row)
+        assert job.id == "11111111-1111-4111-8111-111111111111"
+        assert job.pending_take_id == "44444444-4444-4444-8444-444444444444"
+
+
+class TestGetGlueJob:
+    def test_found(self):
+        row = _make_glue_job_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        job = get_glue_job(conn, row["id"], 42)
+        assert job is not None
+        assert job.id == row["id"]
+        assert job.phase == "queued"
+        sql = cursor.execute.call_args[0][0]
+        assert "SELECT * FROM glue_jobs" in sql
+        assert "WHERE id = %s AND user_id = %s" in sql
+
+    def test_parameterized(self):
+        row = _make_glue_job_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        get_glue_job(conn, row["id"], 42)
+        assert cursor.execute.call_args[0][1] == (row["id"], 42)
+
+    def test_not_found(self):
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        assert get_glue_job(conn, "missing", 42) is None
+
+
+class TestClaimGlueJob:
+    def test_claims_queued_job(self):
+        row = _make_glue_job_row(phase="preparing")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        job, claimed_now = claim_glue_job(conn, row["id"], 42)
+        assert claimed_now is True
+        assert job is not None
+        assert job.phase == "preparing"
+        sql = cursor.execute.call_args[0][0]
+        assert "UPDATE glue_jobs" in sql
+        assert "phase = ANY(%s)" in sql
+        assert "heartbeat_at IS NULL OR heartbeat_at < %s" in sql
+        assert "RETURNING *" in sql
+
+    def test_claim_parameters(self):
+        row = _make_glue_job_row(phase="preparing")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        claim_glue_job(conn, row["id"], 42)
+        params = cursor.execute.call_args[0][1]
+        assert params[0] == "queued"
+        assert params[1] == "preparing"
+        assert row["id"] in params
+        assert 42 in params
+        assert list(GLUE_ACTIVE_PHASES) in params
+        assert params[-1] is not None  # stale-before timestamp
+
+    def test_duplicate_delivery_does_not_reclaim(self):
+        row = _make_glue_job_row(phase="composing")
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.side_effect = [None, row]
+        job, claimed_now = claim_glue_job(conn, row["id"], 42)
+        assert claimed_now is False
+        assert job is not None
+        assert job.phase == "composing"
+        assert cursor.execute.call_count == 2
+        assert "SELECT * FROM glue_jobs" in cursor.execute.call_args_list[1][0][0]
+
+    def test_missing_job(self):
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.side_effect = [None, None]
+        job, claimed_now = claim_glue_job(conn, "missing", 42)
+        assert job is None
+        assert claimed_now is False
+
+
+class TestSetGluePhase:
+    def test_updates_phase_and_fields(self):
+        row = _make_glue_job_row(phase="uploading")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        job = set_glue_phase(
+            conn,
+            row["id"],
+            42,
+            "uploading",
+            provider_phase="upload-a",
+            dispatch_state="dispatched",
+        )
+        assert job is not None
+        sql = cursor.execute.call_args[0][0]
+        assert "provider_phase = %s" in sql
+        assert "dispatch_state = %s" in sql
+        assert "updated_at = %s" in sql
+        assert "AND active" in sql
+        assert "RETURNING *" in sql
+        params = cursor.execute.call_args[0][1]
+        assert "uploading" in params
+        assert "upload-a" in params
+        assert row["id"] in params
+
+    def test_sets_active_explicitly(self):
+        row = _make_glue_job_row(phase="staging")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        set_glue_phase(conn, row["id"], 42, "staging", active=True)
+        sql = cursor.execute.call_args[0][0]
+        assert "active = %s" in sql
+
+    def test_unknown_field_raises(self):
+        conn, _ = _make_mock_conn()
+        with pytest.raises(ValueError, match="Unknown glue_jobs fields"):
+            set_glue_phase(conn, "j1", 42, "preparing", status="ready")
+        conn.cursor.assert_not_called()
+
+    def test_not_found(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert set_glue_phase(conn, "j1", 42, "preparing") is None
+
+
+class TestHeartbeatGlueJob:
+    def test_returns_true_when_updated(self):
+        conn, cursor = _make_mock_conn(fetchone_result={"id": "j1"})
+        assert heartbeat_glue_job(conn, "j1", 42) is True
+        sql = cursor.execute.call_args[0][0]
+        assert "heartbeat_at = %s" in sql
+        assert "AND active" in sql
+
+    def test_returns_false_when_no_active_job(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert heartbeat_glue_job(conn, "j1", 42) is False
+
+
+class TestRecordProviderContact:
+    def test_success_consumes_reservation(self):
+        conn, cursor = _make_mock_conn(fetchone_result={"id": "j1"})
+        assert record_provider_contact(conn, "j1", 42, "compose") is True
+
+        job_sql, job_params = cursor.execute.call_args_list[0][0]
+        assert "provider_contacted = true" in job_sql
+        assert "paid_reservation_state = %s" in job_sql
+        assert "phase = %s" in job_sql
+        assert "provider_phase = %s" in job_sql
+        assert "provider_contacted = false" in job_sql
+        assert "phase <> %s" in job_sql
+        assert "AND active" in job_sql
+        assert job_params[0] == "consumed"
+        assert job_params[1] == "composing"
+        assert job_params[2] == "compose"
+        assert job_params[-1] == "cancelled"
+
+        attempt_sql, attempt_params = cursor.execute.call_args_list[1][0]
+        assert "UPDATE glue_paid_attempts" in attempt_sql
+        assert "state = %s" in attempt_sql
+        assert "consumed_at = %s" in attempt_sql
+        assert attempt_params[0] == "consumed"
+        conn.commit.assert_called_once()
+        conn.rollback.assert_not_called()
+
+    def test_upload_phases_map_to_uploading(self):
+        for provider_phase in ("upload-a", "upload-b"):
+            conn, cursor = _make_mock_conn(fetchone_result={"id": "j1"})
+            assert record_provider_contact(conn, "j1", 42, provider_phase) is True
+            assert cursor.execute.call_args_list[0][0][1][1] == "uploading"
+
+    def test_cas_loser_consumes_nothing(self):
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        assert record_provider_contact(conn, "j1", 42, "compose") is False
+        assert cursor.execute.call_count == 1
+        conn.rollback.assert_called_once()
+        conn.commit.assert_not_called()
+
+    def test_rejects_unknown_provider_phase(self):
+        conn, cursor = _make_mock_conn()
+        with pytest.raises(ValueError, match="Unknown provider phase"):
+            record_provider_contact(conn, "j1", 42, "transcode")
+        cursor.execute.assert_not_called()
+
+    def test_restores_autocommit(self):
+        conn, _ = _make_mock_conn(fetchone_result={"id": "j1"})
+        conn.autocommit = True
+        record_provider_contact(conn, "j1", 42, "compose")
+        assert conn.autocommit is True
+
+
+class TestSetGlueJobDispatchFailed:
+    def test_sets_terminal_dispatch_failed(self):
+        row = _make_glue_job_row(phase="dispatch-failed", active=False)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        job = set_glue_job_dispatch_failed(conn, row["id"], 42)
+        assert job is not None
+        sql, params = cursor.execute.call_args[0]
+        assert "phase = %s" in sql
+        assert "active = %s" in sql
+        assert "dispatch_state = %s" in sql
+        assert "error_code = %s" in sql
+        assert "phase = ANY(%s)" in sql
+        assert "RETURNING *" in sql
+        assert params[0] == "dispatch-failed"
+        assert params[1] is False
+        assert params[2] == "failed"
+        assert params[3] == "GLUE_DISPATCH_FAILED"
+        assert params[4] == "free"
+        assert params[-1] == ["queued", "dispatch-failed"]
+
+    def test_attempt_guard(self):
+        row = _make_glue_job_row(phase="dispatch-failed", active=False)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        set_glue_job_dispatch_failed(conn, row["id"], 42, attempt_id="att-1")
+        sql, params = cursor.execute.call_args[0]
+        assert "AND attempt_id = %s" in sql
+        assert params[-1] == "att-1"
+        assert params[-2] == ["queued", "dispatch-failed"]
+        assert params[-3] == 42
+        assert params[-4] == row["id"]
+
+    def test_not_found(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert set_glue_job_dispatch_failed(conn, "j1", 42) is None
+
+
+class TestFinishGlueJob:
+    def test_terminal_clears_active(self):
+        row = _make_glue_job_row(phase="failed", active=False)
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        job = finish_glue_job(
+            conn,
+            row["id"],
+            42,
+            phase="failed",
+            error_code="GLUE_PROVIDER_UNKNOWN",
+            retry_kind="paid",
+        )
+        assert job is not None
+        sql, params = cursor.execute.call_args[0]
+        assert "phase = %s, active = %s" in sql
+        assert "finished_at = %s" in sql
+        assert "RETURNING *" in sql
+        assert params[0] == "failed"
+        assert params[1] is False
+        assert params[2] == "GLUE_PROVIDER_UNKNOWN"
+        assert params[4] == "paid"
+
+    def test_not_found(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert finish_glue_job(conn, "j1", 42, phase="ready") is None
+
+
+class TestInsertGlueTake:
+    def test_inserts_all_columns(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        take = insert_glue_take(
+            conn,
+            take_id=row["id"],
+            user_id=42,
+            descriptor_key=row["descriptor_key"],
+            descriptor_json=row["descriptor_json"],
+            ordinal=1,
+            seed=123456789,
+            status="ready",
+            r2_key="glues/42/take.wav",
+            seconds=2.786,
+        )
+        assert take is not None
+        assert take.ordinal == 1
+        sql, params = cursor.execute.call_args[0]
+        assert "INSERT INTO glue_takes" in sql
+        assert "RETURNING *" in sql
+        assert row["id"] in params
+        assert 2.786 in params
+        assert params[-3] == "{}"  # metrics default
+        assert params[-2] == "[]"  # reasons default
+
+    def test_parameterized_descriptor_text(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        malicious = '{"v":2,"x":"\'; DROP TABLE glue_takes; --"}'
+        insert_glue_take(
+            conn,
+            take_id=row["id"],
+            user_id=42,
+            descriptor_key=row["descriptor_key"],
+            descriptor_json=malicious,
+            ordinal=1,
+            seed=1,
+            status="failed",
+        )
+        params = cursor.execute.call_args[0][1]
+        assert malicious in params
+
+
+class TestGetGlueTakeForDescriptor:
+    def test_defaults_to_earliest_ready_take(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        take = get_glue_take_for_descriptor(conn, 42, row["descriptor_key"])
+        assert take is not None
+        sql, params = cursor.execute.call_args[0]
+        assert "status = %s" in sql
+        assert params[-1] == "ready"
+        assert "ORDER BY ordinal ASC" in sql
+        assert "LIMIT 1" in sql
+
+    def test_newest_orders_by_created(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        get_glue_take_for_descriptor(conn, 42, row["descriptor_key"], newest=True)
+        sql = cursor.execute.call_args[0][0]
+        assert "ORDER BY created_at DESC" in sql
+
+    def test_exact_take_id_guard(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        get_glue_take_for_descriptor(
+            conn, 42, row["descriptor_key"], take_id=row["id"]
+        )
+        sql, params = cursor.execute.call_args[0]
+        assert "AND id = %s" in sql
+        assert row["id"] in params
+
+    def test_not_found(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert get_glue_take_for_descriptor(conn, 42, "d" * 64) is None
+
+
+class TestGlueExcerpts:
+    def test_get_found(self):
+        row = _make_glue_excerpt_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        excerpt = get_glue_excerpt(conn, 42, row["logical_key"])
+        assert excerpt is not None
+        assert excerpt.side == "A"
+        sql, params = cursor.execute.call_args[0]
+        assert "SELECT * FROM glue_excerpts" in sql
+        assert params == (42, row["logical_key"])
+
+    def test_get_not_found(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert get_glue_excerpt(conn, 42, "missing") is None
+
+    def test_upsert_uses_conflict_target(self):
+        row = _make_glue_excerpt_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        excerpt = upsert_glue_excerpt(
+            conn,
+            42,
+            row["logical_key"],
+            side="A",
+            seconds=12.0,
+            content_hash="c" * 64,
+            phase="uploaded",
+            audio_sha256="e" * 64,
+            elevenlabs_song_id="song-1",
+        )
+        assert excerpt is not None
+        sql, params = cursor.execute.call_args[0]
+        assert "INSERT INTO glue_excerpts" in sql
+        assert "ON CONFLICT (user_id, logical_key) DO UPDATE" in sql
+        assert "COALESCE(EXCLUDED.audio_sha256, glue_excerpts.audio_sha256)" in sql
+        assert "COALESCE(EXCLUDED.elevenlabs_song_id, glue_excerpts.elevenlabs_song_id)" in sql
+        assert "RETURNING *" in sql
+        assert "uploaded" in params
+        assert "song-1" in params
+
+    def test_upsert_rejection_is_a_negative_entry(self):
+        row = _make_glue_excerpt_row(phase="rejected", rejection_code="copyright")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        upsert_glue_excerpt(
+            conn,
+            42,
+            row["logical_key"],
+            side="B",
+            seconds=3.0,
+            content_hash="c" * 64,
+            phase="rejected",
+            rejection_code="copyright",
+            safe_failure_detail="provider rejected the excerpt",
+        )
+        params = cursor.execute.call_args[0][1]
+        assert "rejected" in params
+        assert "copyright" in params
+
+
+class TestReadSongsetItemsForGlue:
+    def test_selects_render_facts_plus_glue_columns(self):
+        row = {
+            "id": "item-a",
+            "position": 0,
+            "glue_enabled": False,
+            "glue_beats": 4,
+            "glue_active_take_id": None,
+            "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        }
+        conn, cursor = _make_mock_conn(fetchall_result=[row])
+        items = read_songset_items_for_glue(conn, "ss_001")
+        assert items == [row]
+        sql, params = cursor.execute.call_args[0]
+        for fragment in (
+            "si.glue_enabled",
+            "si.glue_beats",
+            "si.glue_active_take_id",
+            "si.updated_at",
+            "si.arrangement_steps",
+            "r.tempo_bpm",
+            "r.duration_seconds",
+            "r.sections",
+            "r.beats",
+            "r.content_hash AS recording_content_hash",
+            "s.title AS song_title",
+            "LEFT JOIN recordings r ON si.recording_hash_prefix = r.hash_prefix",
+            "LEFT JOIN songs s ON si.song_id = s.id",
+            "WHERE si.songset_id = %s",
+            "ORDER BY si.position",
+        ):
+            assert fragment in sql
+        assert params == ("ss_001",)
+
+    def test_returns_plain_dicts(self):
+        conn, cursor = _make_mock_conn(fetchall_result=[])
+        assert read_songset_items_for_glue(conn, "ss_001") == []

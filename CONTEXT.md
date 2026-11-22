@@ -52,9 +52,33 @@ _Avoid_: 詩歌集 (old mechanical zh-Hant UI term; replaced by 敬拜歌單 per
 The changeover between adjacent songs in a Songset, controlled by five parameters: gapBeats, crossfadeEnabled, crossfadeDurationSeconds, keyShiftSemitones, and tempoRatio.
 _Avoid_: crossfade, segue, bridge
 
+**Songset Item**:
+One Song's place in a Songset, owning its position, Recording choice, Transition parameters on the outgoing side, and optional Song Arrangement. Items are ordered by position; an item's successor is the next visible item, and an item is the only owner of the Junction that leaves it. Duplication copies an item's Glue settings but re-resolves its take against the copied Junction's descriptor.
+_Avoid_: entry, track, clip, slot
+
+**Junction**:
+The boundary owned by an outgoing Songset Item and its next visible incoming Item. A Junction is addressed by the outgoing item's id; the last item has no Junction. Only an effective Glue changes a Junction's ordinary gap and crossfade.
+_Avoid_: transition point, seam, boundary
+
 **Glue**:
-A generated instrumental segment inserted at a Transition so the outgoing Song's Song Arrangement and the incoming Song's Song Arrangement join without altering either. A Glue is generated audio; it never replaces recorded audio.
+A generated instrumental segment inserted at a Transition so the outgoing Song's Song Arrangement and the incoming Song's Song Arrangement join without altering either. A Glue is generated audio; it never replaces recorded audio. Its identity, takes, and durably queued generation are defined by ADR-0014; the user-facing English term is "AI transition".
 _Avoid_: generated bridge, segue, fill
+
+**Glue Descriptor**:
+The canonical content-addressed identity of one Junction's generation inputs: the v2 payload of model, prompt version, excerpt seconds, beats, incoming tempo, and both sides' Recording content hash and Arrangement Steps. Two Junctions with byte-identical canonical descriptor JSON share one descriptor key; titles, Lyrics, ids, locale, and labels never enter it.
+_Avoid_: glue key, cache key, hash
+
+**Glue Excerpt**:
+A worker-built canonical 12 s (or shorter when the side is shorter) arranged audio slice of one Junction side, cached per user by its logical excerpt key. An excerpt is upload input for the generation provider, not a take.
+_Avoid_: clip, sample, snippet
+
+**Glue Take**:
+One immutable generated-and-staged audio result for a Glue Descriptor, carrying an ordinal and the seed used for its paid attempt, and either `ready` with a staged WAV or `failed`. Takes are retained when their descriptor goes stale so earlier takes can be restored for free; a take is effective only while its stored descriptor still matches.
+_Avoid_: generation, version, attempt (a job may fail before producing a take)
+
+**Glue Job**:
+The durable, idempotent record of one paid attempt that produces or recovers a Glue Take for a Junction: its reserved quota row, immutable take id/ordinal/seed, provider-contact state, and phase machine (ADR-0014). A Glue Job is idempotent per `clientRequestId` and is the only thing that authorizes a provider request.
+_Avoid_: generation, task, request, paid job
 
 **Boundary Key**:
 The musical key a Song leaves through (its exit component) or arrives through (its entry component) — the transition between adjacent songs is judged on exit(A) vs entry(B), falling back to whole-Song key when a boundary component is missing.

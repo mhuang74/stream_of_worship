@@ -8,6 +8,7 @@ import {
   bigint,
   doublePrecision,
   timestamp,
+  uuid,
   index,
   unique,
   primaryKey,
@@ -219,6 +220,16 @@ export const songsetItems = pgTable("songset_items", {
   // JSON, which is kept verbatim for diagnostics and duplication.
   arrangementSteps: text("arrangement_steps"),
 
+  // Glue (AI transition) settings for this item's outgoing Junction.
+  // glueActiveTakeId alone never proves readiness: the take must still be a
+  // ready, owner-matching take whose stored descriptor equals the freshly
+  // derived one (see resolve.ts).
+  glueEnabled: boolean("glue_enabled").notNull().default(false),
+  glueBeats: integer("glue_beats").notNull().default(4),
+  glueActiveTakeId: uuid("glue_active_take_id").references(() => glueTakes.id, {
+    onDelete: "set null",
+  }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
@@ -273,6 +284,10 @@ export const renderJobs = pgTable("render_jobs", {
   songCount: integer("song_count"),
   songsetDurationSeconds: integer("songset_duration_seconds"),
 
+  // Immutable Glue snapshot pinned at render creation (JSON array). Later take
+  // selection must not change an in-progress render's bytes.
+  glueTransitions: text("glue_transitions"),
+
   // Output R2 keys (set when render completes)
   mp3R2Key: text("mp3_r2_key"),
   mp4R2Key: text("mp4_r2_key"),
@@ -285,6 +300,160 @@ export const renderJobs = pgTable("render_jobs", {
   index("idx_render_jobs_songset_created").on(t.songsetId, t.createdAt),
   index("idx_render_jobs_status_updated").on(t.status, t.updatedAt),
 ]);
+
+// ---------------------------------------------------------------------------
+// Glue (AI transition) tables — ADR-0014 / spec §2.1
+//
+// Primary keys are app-supplied UUIDs (crypto.randomUUID()); there is no
+// gen_random_uuid() default. Reads use explicit db.select() joins, so these
+// tables deliberately have no Drizzle relations() entries.
+// ---------------------------------------------------------------------------
+
+export const glueTakes = pgTable(
+  "glue_takes",
+  {
+    id: uuid("id").primaryKey(),
+    userId: bigint("user_id", { mode: "number" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    descriptorKey: text("descriptor_key").notNull(),
+    descriptorJson: text("descriptor_json").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    seed: bigint("seed", { mode: "number" }).notNull(),
+    status: text("status").notNull(),
+    r2Key: text("r2_key"),
+    seconds: doublePrecision("seconds"),
+    rawResponseR2Key: text("raw_response_r2_key"),
+    rawResponseSha256: text("raw_response_sha256"),
+    rawResponseBytes: bigint("raw_response_bytes", { mode: "number" }),
+    metricsJson: text("metrics_json").notNull().default("{}"),
+    reasonsJson: text("reasons_json").notNull().default("[]"),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique().on(t.userId, t.descriptorKey, t.ordinal),
+    index("idx_glue_takes_user_descriptor_status_created").on(
+      t.userId,
+      t.descriptorKey,
+      t.status,
+      t.createdAt.desc()
+    ),
+  ]
+);
+
+export const glueJobs = pgTable(
+  "glue_jobs",
+  {
+    id: uuid("id").primaryKey(),
+    userId: bigint("user_id", { mode: "number" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    songsetId: text("songset_id")
+      .notNull()
+      .references(() => songsets.id, { onDelete: "cascade" }),
+    fromItemId: text("from_item_id")
+      .notNull()
+      .references(() => songsetItems.id, { onDelete: "cascade" }),
+    toItemId: text("to_item_id")
+      .notNull()
+      .references(() => songsetItems.id, { onDelete: "cascade" }),
+    clientRequestId: uuid("client_request_id").notNull(),
+    takeMode: text("take_mode").notNull(),
+    descriptorKey: text("descriptor_key").notNull(),
+    descriptorJson: text("descriptor_json").notNull(),
+    expectedFromUpdatedAt: timestamp("expected_from_updated_at", {
+      withTimezone: true,
+    }).notNull(),
+    expectedToUpdatedAt: timestamp("expected_to_updated_at", {
+      withTimezone: true,
+    }).notNull(),
+    phase: text("phase").notNull(),
+    active: boolean("active").notNull(),
+    dispatchState: text("dispatch_state").notNull(),
+    dispatchAttempt: integer("dispatch_attempt").notNull().default(0),
+    attemptId: uuid("attempt_id").notNull(),
+    pendingTakeId: uuid("pending_take_id").notNull().unique(),
+    takeOrdinal: integer("take_ordinal").notNull(),
+    seed: bigint("seed", { mode: "number" }).notNull(),
+    paidReservationId: uuid("paid_reservation_id"),
+    paidReservationState: text("paid_reservation_state"),
+    providerContacted: boolean("provider_contacted").notNull().default(false),
+    providerPhase: text("provider_phase"),
+    providerStatus: integer("provider_status"),
+    retryKind: text("retry_kind"),
+    resultingTakeId: uuid("resulting_take_id").references(() => glueTakes.id, {
+      onDelete: "set null",
+    }),
+    activeTakeId: uuid("active_take_id").references(() => glueTakes.id, {
+      onDelete: "set null",
+    }),
+    rawResponseR2Key: text("raw_response_r2_key"),
+    rawResponseSha256: text("raw_response_sha256"),
+    rawResponseBytes: bigint("raw_response_bytes", { mode: "number" }),
+    errorCode: text("error_code"),
+    errorDetail: text("error_detail"),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    unique().on(t.userId, t.clientRequestId),
+    index("idx_glue_jobs_user_active_created").on(t.userId, t.active, t.createdAt.desc()),
+    index("idx_glue_jobs_phase_heartbeat").on(t.phase, t.heartbeatAt),
+    index("idx_glue_jobs_songset_from_created").on(
+      t.songsetId,
+      t.fromItemId,
+      t.createdAt.desc()
+    ),
+  ]
+);
+
+export const gluePaidAttempts = pgTable(
+  "glue_paid_attempts",
+  {
+    id: uuid("id").primaryKey(),
+    userId: bigint("user_id", { mode: "number" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    glueJobId: uuid("glue_job_id")
+      .notNull()
+      .unique()
+      .references(() => glueJobs.id, { onDelete: "cascade" }),
+    state: text("state").notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("idx_glue_paid_attempts_user_created").on(t.userId, t.createdAt.desc())]
+);
+
+export const glueExcerpts = pgTable(
+  "glue_excerpts",
+  {
+    userId: bigint("user_id", { mode: "number" })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    logicalKey: text("logical_key").notNull(),
+    version: integer("version").notNull().default(2),
+    side: text("side").notNull(),
+    seconds: doublePrecision("seconds").notNull(),
+    contentHash: text("content_hash").notNull(),
+    canonicalStepsJson: text("canonical_steps_json"),
+    audioSha256: text("audio_sha256"),
+    elevenlabsSongId: text("elevenlabs_song_id"),
+    phase: text("phase").notNull(),
+    rejectionCode: text("rejection_code"),
+    safeFailureDetail: text("safe_failure_detail"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.logicalKey] })]
+);
+
 
 // ---------------------------------------------------------------------------
 // New delivery/webapp table: song_embedding (pgvector for semantic search)
