@@ -65,7 +65,6 @@ export function LyricJumpList({
           text: line.text,
           localTimeSeconds: line.startSeconds,
           globalTimeSeconds: line.startSeconds,
-          title: "",
         }))
       ),
     [chapters]

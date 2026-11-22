@@ -1124,7 +1124,8 @@ describe("ArrangementEditorSheet", () => {
     expect(screen.queryByText(/saved arrangement is invalid or stale/i)).toBeNull();
     expect(screen.queryByText(/unavailable or stale/i)).toBeNull();
     expect(screen.queryByTestId("arrangement-save-error")).toBeNull();
-  });
+    // 64 draft rows take ~6 s to render under the shared runner, past the 5 s default.
+  }, 20_000);
 
   it("clears a surfaced preview error when a review starts", () => {
     renderSheet();

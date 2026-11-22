@@ -143,6 +143,45 @@ class SongsetsViewModelTest {
         }
 
     @Test
+    fun `add song appends past a position gap left by a delete`() =
+        runTest {
+            val songsets =
+                RecordingAddSongsetsRepository(
+                    detail = detail(listOf(item("item-1", 0), item("item-3", 2)))
+                )
+            val viewModel = detailViewModel(this, songsets)
+            viewModel.load()
+            advanceUntilIdle()
+
+            viewModel.addSong(song("song-new", duration = 60.0))
+            advanceUntilIdle()
+
+            // A delete leaves the stored gap; posting items.size (2) would collide with item-3.
+            assertEquals(listOf(3), songsets.addedPositions)
+            assertEquals(listOf(0, 2, 3), viewModel.uiState.value.songset?.items?.map { it.position })
+        }
+
+    @Test
+    fun `removing an item keeps the surviving positions`() =
+        runTest {
+            val songsets =
+                FakeSongsetsRepository(
+                    detail = detail(listOf(item("item-1", 0), item("item-2", 1), item("item-3", 2)))
+                )
+            val viewModel = detailViewModel(this, songsets)
+            viewModel.load()
+            advanceUntilIdle()
+
+            viewModel.removeItem("item-2")
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(0, 2),
+                viewModel.uiState.value.songset?.items?.map { it.position },
+            )
+        }
+
+    @Test
     fun `concurrent add song calls post distinct positions`() =
         runTest {
             val songsets = RecordingAddSongsetsRepository()
@@ -263,7 +302,9 @@ internal open class FakeSongsetsRepository(
     }
 }
 
-internal class RecordingAddSongsetsRepository : FakeSongsetsRepository() {
+internal class RecordingAddSongsetsRepository(
+    detail: SongsetDetail = detail(),
+) : FakeSongsetsRepository(detail = detail) {
     val addedPositions = mutableListOf<Int>()
 
     override suspend fun addItem(

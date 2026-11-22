@@ -268,9 +268,9 @@ class SongsetDetailViewModel(
 
     fun removeItem(itemId: String) {
         val previous = mutableState.value.songset ?: return
-        val nextItems = previous.items.filterNot { it.id == itemId }.mapIndexed { index, item ->
-            item.copy(position = index)
-        }
+        // Positions are an ordering key, not a dense index: the delete endpoint leaves a gap,
+        // so the optimistic list must not renumber or a later add would reuse a taken position.
+        val nextItems = previous.items.filterNot { it.id == itemId }
         mutableState.update { it.copy(songset = previous.withItemsMarkedStale(nextItems), error = null) }
         pendingOptimisticEdits.incrementAndGet()
         launchScope.launch {
@@ -431,7 +431,7 @@ class SongsetDetailViewModel(
                             songsetId = songsetId,
                             songId = song.id,
                             recordingHashPrefix = currentRecording?.hashPrefix,
-                            position = current.items.size,
+                            position = (current.items.maxOfOrNull { it.position + 1 } ?: 0),
                         )
                     }.onSuccess { item ->
                         val latest = mutableState.value.songset ?: current
