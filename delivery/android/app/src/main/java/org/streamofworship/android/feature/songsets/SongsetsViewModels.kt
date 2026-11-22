@@ -406,12 +406,12 @@ class SongsetDetailViewModel(
             return
         }
         // Serialize concurrent addSong invocations so two rapid taps do not both pass
-        // validation against the same snapshot and POST the same position to the server.
+        // validation against the same snapshot and exceed the song cap on the server.
         launchScope.launch {
             addSongMutex.withLock {
                 // Re-read latest state after acquiring the mutex and re-validate before posting
-                // so concurrent addSong calls do not both pass validation and POST the same
-                // position or exceed the song/duration cap.
+                // so concurrent addSong calls do not both pass validation or exceed the
+                // song/duration cap.
                 val current = mutableState.value.songset ?: return@withLock
                 val currentRecording = song.visibleRecordings.firstOrNull()
                 if (current.items.size >= SongsetMaxSongs) {
@@ -431,7 +431,6 @@ class SongsetDetailViewModel(
                             songsetId = songsetId,
                             songId = song.id,
                             recordingHashPrefix = currentRecording?.hashPrefix,
-                            position = (current.items.maxOfOrNull { it.position + 1 } ?: 0),
                         )
                     }.onSuccess { item ->
                         val latest = mutableState.value.songset ?: current

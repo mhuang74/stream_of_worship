@@ -224,7 +224,7 @@ export function SongCard({
                       variant="outline"
                       className="shrink-0 text-[10px] px-1 py-0 tabular-nums"
                       title={t("browse.inSongsetCount").replace("{count}", String(addedCount))}
-                      aria-label={t("browse.inSongsetCount").replace("{count}", String(addedCount))}
+                      role="status"
                       data-testid="add-button-count"
                     >
                       ×{addedCount}

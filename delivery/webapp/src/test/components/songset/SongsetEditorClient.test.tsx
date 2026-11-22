@@ -62,7 +62,12 @@ vi.mock("@/contexts/SongsetListenContext", () => ({
  */
 vi.mock("@/components/songset/SongsetEditor", () => ({
   SongsetEditor: (props: {
-    songset: { updatedAt: string; renderState: string };
+    songset: {
+      updatedAt: string;
+      renderState: string;
+      durationSeconds: number | null;
+      itemCount: number;
+    };
     items: SongListItem[];
     onListen: () => void;
     onCancelRender?: () => void;
@@ -71,13 +76,18 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
       settings: TransitionSettings
     ) => Promise<void>;
     onEditArrangement: (itemId: string) => void;
-    onDuplicateItem?: (itemId: string) => Promise<void>;
+    onDuplicateItem: (itemId: string) => Promise<void>;
+    onRemoveItem: (itemId: string) => Promise<void>;
+    isItemMutationPending?: boolean;
   }) => {
     const item = props.items[0];
     return (
       <div>
         <span data-testid="shell-updated-at">{props.songset.updatedAt}</span>
         <span data-testid="shell-render-state">{props.songset.renderState}</span>
+        <span data-testid="shell-duration">{props.songset.durationSeconds}</span>
+        <span data-testid="shell-item-count">{props.songset.itemCount}</span>
+        <span data-testid="shell-pending">{String(props.isItemMutationPending ?? false)}</span>
         <span data-testid="shell-gap">{item?.gapBeats}</span>
         <span data-testid="shell-arrangement">{item?.arrangementSteps}</span>
         <span data-testid="shell-positions">
@@ -86,7 +96,12 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
         <button
           type="button"
           data-testid="shell-duplicate-first"
-          onClick={() => void props.onDuplicateItem?.(item.id)}
+          onClick={() => void props.onDuplicateItem("item-1")}
+        />
+        <button
+          type="button"
+          data-testid="shell-remove-first"
+          onClick={() => void props.onRemoveItem("item-1")}
         />
         <button
           type="button"
@@ -228,6 +243,152 @@ describe("SongsetEditorClient duplicate item", () => {
     await waitFor(() =>
       expect(screen.getByTestId("shell-positions")).toHaveTextContent("0,1,3,5")
     );
+  });
+});
+
+describe("SongsetEditorClient Item mutation queue", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("starts a queued remove only after the in-flight duplicate settles", async () => {
+    const data = initialData();
+    const duplicate = Promise.withResolvers<Response>();
+    const calls: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/items/item-1/duplicate") && init?.method === "POST") {
+        calls.push("duplicate");
+        return duplicate.promise;
+      }
+      if (url.includes("/items?itemId=item-1") && init?.method === "DELETE") {
+        calls.push("delete");
+        return Promise.resolve(jsonResponse({ success: true }));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SongsetEditorClient songsetId="songset-1" initialData={data} />);
+
+    fireEvent.click(screen.getByTestId("shell-duplicate-first"));
+    fireEvent.click(screen.getByTestId("shell-remove-first"));
+
+    await waitFor(() => expect(calls).toEqual(["duplicate"]));
+    expect(screen.getByTestId("shell-pending")).toHaveTextContent("true");
+
+    duplicate.resolve(
+      jsonResponse({ ...data.items[0], id: "item-copy", position: 1 })
+    );
+
+    await waitFor(() => expect(calls).toEqual(["duplicate", "delete"]));
+    // The source is gone, so the copy the server persisted is the only Item left.
+    await waitFor(() => expect(screen.getByTestId("shell-positions")).toHaveTextContent("1"));
+    expect(screen.getByTestId("shell-pending")).toHaveTextContent("false");
+  });
+
+  it("keeps duplicate requests in order instead of interleaving them", async () => {
+    const data = initialData();
+    const first = Promise.withResolvers<Response>();
+    const second = Promise.withResolvers<Response>();
+    let duplicateCalls = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/items/item-1/duplicate") && init?.method === "POST") {
+        duplicateCalls += 1;
+        return duplicateCalls === 1 ? first.promise : second.promise;
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SongsetEditorClient songsetId="songset-1" initialData={data} />);
+
+    fireEvent.click(screen.getByTestId("shell-duplicate-first"));
+    fireEvent.click(screen.getByTestId("shell-duplicate-first"));
+
+    await waitFor(() => expect(duplicateCalls).toBe(1));
+
+    first.resolve(jsonResponse({ ...data.items[0], id: "item-copy-1", position: 1 }));
+    await waitFor(() => expect(duplicateCalls).toBe(2));
+
+    second.resolve(jsonResponse({ ...data.items[0], id: "item-copy-2", position: 1 }));
+    await waitFor(() =>
+      expect(screen.getByTestId("shell-positions")).toHaveTextContent("0,1,2")
+    );
+  });
+
+  it("recomputes the Songset duration from the resulting Items", async () => {
+    const data = initialData();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/items/item-1/duplicate") && init?.method === "POST") {
+        return Promise.resolve(
+          jsonResponse({
+            ...data.items[0],
+            id: "item-copy",
+            position: 1,
+            recording: { ...data.items[0].recording, durationSeconds: 30 },
+          })
+        );
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SongsetEditorClient songsetId="songset-1" initialData={data} />);
+    expect(screen.getByTestId("shell-duration")).toHaveTextContent("20");
+
+    fireEvent.click(screen.getByTestId("shell-duplicate-first"));
+
+    // 20s + the copy's 2-beat gap at 120 BPM (1s) + 30s; no crossfade.
+    await waitFor(() => expect(screen.getByTestId("shell-duration")).toHaveTextContent("51"));
+    expect(screen.getByTestId("shell-item-count")).toHaveTextContent("2");
+  });
+
+  it("adopts the authoritative Songset when the duplicated source vanished", async () => {
+    const data = initialData();
+    const remove = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/items?itemId=item-1") && init?.method === "DELETE") {
+        return remove.promise;
+      }
+      if (url.endsWith("/items/item-1/duplicate") && init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ ...data.items[0], id: "item-copy", position: 1 }));
+      }
+      if (url.endsWith("/api/songsets/songset-1")) {
+        return Promise.resolve(
+          jsonResponse({
+            ...data,
+            itemCount: 1,
+            durationSeconds: 40,
+            items: [{ ...data.items[0], id: "item-copy", position: 0 }],
+          })
+        );
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SongsetEditorClient songsetId="songset-1" initialData={data} />);
+
+    // The remove settles first, so the duplicate's own source is gone locally
+    // when its 201 lands; the persisted copy must not be dropped.
+    fireEvent.click(screen.getByTestId("shell-remove-first"));
+    fireEvent.click(screen.getByTestId("shell-duplicate-first"));
+    remove.resolve(jsonResponse({ success: true }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) => String(input).endsWith("/api/songsets/songset-1") && !init?.method
+        )
+      ).toBe(true)
+    );
+    await waitFor(() => expect(screen.getByTestId("shell-positions")).toHaveTextContent("0"));
+    expect(screen.getByTestId("shell-item-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("shell-duration")).toHaveTextContent("40");
   });
 });
 

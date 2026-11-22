@@ -57,6 +57,7 @@ interface TransactionDouble {
   selects: ReturnType<typeof vi.fn>;
   writes: Write[];
   whereClauses: unknown[];
+  locks: unknown[];
 }
 
 /** Transaction double whose selects resolve `rowSets` in call order. */
@@ -64,6 +65,7 @@ function installMutationTransaction(...rowSets: unknown[][]): TransactionDouble 
   const selects = vi.fn();
   const writes: Write[] = [];
   const whereClauses: unknown[] = [];
+  const locks: unknown[] = [];
   let callIndex = 0;
 
   selects.mockImplementation(() => {
@@ -73,7 +75,10 @@ function installMutationTransaction(...rowSets: unknown[][]): TransactionDouble 
       whereClauses.push(clause);
       return chain;
     });
-    chain.for = vi.fn(() => chain);
+    chain.for = vi.fn((mode: unknown) => {
+      locks.push(mode);
+      return chain;
+    });
     return chain;
   });
 
@@ -99,7 +104,7 @@ function installMutationTransaction(...rowSets: unknown[][]): TransactionDouble 
     callback({ select: selects, update, insert: txInsert })
   );
 
-  return { selects, writes, whereClauses };
+  return { selects, writes, whereClauses, locks };
 }
 
 /** Row shape selected by the source lookup inside the duplicate transaction. */
@@ -165,7 +170,7 @@ describe("duplicateSongsetItem", () => {
     vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
       copiedItemRow() as never
     );
-    const { writes } = installMutationTransaction(
+    const { writes, locks } = installMutationTransaction(
       [{ id: "songset-1" }],
       [sourceRow()],
       [siblingRow(), siblingRow({ id: "item-2", position: 2 })]
@@ -173,6 +178,8 @@ describe("duplicateSongsetItem", () => {
 
     const result = await duplicateSongsetItem("item-1", "songset-1", 1);
 
+    // The sibling cap/duration read and the shift share the parent-row lock.
+    expect(locks).toEqual(["update"]);
     const insert = writes.find((write) => write.kind === "insert");
     expect(insert?.table).toBe(songsetItems);
     expect(insert?.values).toMatchObject({
@@ -219,6 +226,41 @@ describe("duplicateSongsetItem", () => {
 
     const insert = writes.find((write) => write.kind === "insert");
     expect(insert?.values.arrangementSteps).toBe(source.arrangementSteps);
+  });
+
+  it("admits a copy that fits only in its persisted position", async () => {
+    // Persisted order A,A,B totals 1496s. Projecting the copy at the end
+    // (A,B,A) would charge A's 5s fade after B's 1496s end and refuse a
+    // Songset that actually fits under the 1500s cap.
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValueOnce(
+      copiedItemRow() as never
+    );
+    installMutationTransaction(
+      [{ id: "songset-1" }],
+      [sourceRow({ position: 0 })],
+      [
+        siblingRow({
+          id: "item-a",
+          position: 0,
+          durationSeconds: 10,
+          gapBeats: 0,
+          crossfadeEnabled: 1,
+          crossfadeDurationSeconds: 5,
+        }),
+        siblingRow({
+          id: "item-b",
+          position: 1,
+          durationSeconds: 1496,
+          gapBeats: 0,
+          crossfadeEnabled: 1,
+          crossfadeDurationSeconds: 60,
+        }),
+      ]
+    );
+
+    await expect(duplicateSongsetItem("item-a", "songset-1", 1)).resolves.toMatchObject({
+      id: "copied-item-id",
+    });
   });
 
   it("refuses a sixth item with SONGSET_FULL", async () => {

@@ -734,6 +734,42 @@ class TestGenerateVideo:
         assert result.height == 1080
         assert result.fps == 24
 
+    def _title_lines_for(self, tmp_path, segments):
+        output_path = str(tmp_path / "video.mp4")
+        fetcher = MockAssetFetcher(lrc_content="[00:00.00]Hello")
+        engine = VideoEngine(fetcher, include_title_card=True, songset_name="Worship Set")
+        audio_info = {
+            "duration_seconds": 60.0,
+            "duration_ms": 60000,
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+        ):
+            engine.generate_video("/tmp/audio.mp3", segments, output_path, job_id="test-job")
+
+        title_card_config = mock_encode.call_args[0][7]
+        return title_card_config.lines
+
+    def test_title_card_dedupes_repeated_items_of_one_song(self, tmp_path):
+        segments = [
+            _make_segment(item=_make_item(id="item-1", song_id="song-1", song_title="Same")),
+            _make_segment(item=_make_item(id="item-2", song_id="song-1", song_title="Same")),
+        ]
+
+        assert self._title_lines_for(tmp_path, segments) == ("Worship Set", "Same")
+
+    def test_title_card_keeps_distinct_songs_sharing_a_title(self, tmp_path):
+        segments = [
+            _make_segment(item=_make_item(id="item-1", song_id="song-1", song_title="Same")),
+            _make_segment(item=_make_item(id="item-2", song_id="song-2", song_title="Same")),
+        ]
+
+        assert self._title_lines_for(tmp_path, segments) == ("Worship Set", "Same", "Same")
+
     def test_arranged_clips_remap_and_repeat_lyrics(self, tmp_path):
         output_path = str(tmp_path / "video.mp4")
         lrc = "[00:01.00]line at 1\n[00:11.00]line at 11\n[00:21.00]line at 21"

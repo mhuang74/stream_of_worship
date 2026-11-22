@@ -314,6 +314,38 @@ describe("SongList", () => {
     });
   });
 
+  describe("item duplication", () => {
+    it("renders no duplicate control when the host supplies no callback", () => {
+      renderList();
+
+      expect(screen.queryByTestId("duplicate-item-item-1")).not.toBeInTheDocument();
+    });
+
+    it("calls the host callback with the Item id", () => {
+      const onDuplicateItem = vi.fn();
+      renderList({ onDuplicateItem });
+
+      fireEvent.click(screen.getByTestId("duplicate-item-item-1"));
+
+      expect(onDuplicateItem).toHaveBeenCalledWith("item-1");
+    });
+
+    it("disables duplicate and remove while another Item mutation is pending", () => {
+      renderList({ onDuplicateItem: vi.fn(), isItemMutationPending: true });
+
+      expect(screen.getByTestId("duplicate-item-item-1")).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: /remove amazing grace/i })
+      ).toBeDisabled();
+    });
+
+    it("disables duplicate while a render owns the Item order", () => {
+      renderList({ onDuplicateItem: vi.fn(), isDuplicateDisabled: true });
+
+      expect(screen.getByTestId("duplicate-item-item-1")).toBeDisabled();
+    });
+  });
+
   describe("drag and drop", () => {
     it("renders drag handles for each item", () => {
       renderList();

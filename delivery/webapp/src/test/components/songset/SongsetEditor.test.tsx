@@ -119,6 +119,7 @@ describe("SongsetEditor", () => {
     onRemoveItem: vi.fn().mockResolvedValue(undefined),
     onUpdateTransition: vi.fn().mockResolvedValue(undefined),
     onEditArrangement: vi.fn(),
+    onDuplicateItem: vi.fn().mockResolvedValue(undefined),
     onRender: vi.fn(),
     onPlay: vi.fn(),
     onListen: vi.fn(),
@@ -138,6 +139,37 @@ describe("SongsetEditor", () => {
   beforeEach(() => {
     mockRouterPush.mockClear();
     sessionStorage.clear();
+  });
+
+  describe("duplicate control", () => {
+    it("duplicates one Item occurrence through the required callback", async () => {
+      const onDuplicateItem = vi.fn().mockResolvedValue(undefined);
+      renderEditor({ onDuplicateItem });
+
+      fireEvent.click(screen.getByTestId(`duplicate-item-${mockItems[0].id}`));
+
+      await waitFor(() =>
+        expect(onDuplicateItem).toHaveBeenCalledWith(mockItems[0].id)
+      );
+    });
+
+    it("disables duplication while a render job is active", () => {
+      renderEditor({
+        songset: { ...mockSongset, renderState: "rendering" as RenderState },
+      });
+
+      expect(
+        screen.getByTestId(`duplicate-item-${mockItems[0].id}`)
+      ).toBeDisabled();
+    });
+
+    it("disables duplication while another Item mutation is pending", () => {
+      renderEditor({ isItemMutationPending: true });
+
+      expect(
+        screen.getByTestId(`duplicate-item-${mockItems[0].id}`)
+      ).toBeDisabled();
+    });
   });
 
   describe("app bar", () => {

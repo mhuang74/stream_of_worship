@@ -30,7 +30,7 @@ const SONGSET = {
   description: "Easter service",
   markedLineCount: 0,
   renderState: "unrendered" as const,
-  songTitles: [],
+  songs: [],
   lastCompletedRenderJobId: null,
   durationSeconds: null,
 }

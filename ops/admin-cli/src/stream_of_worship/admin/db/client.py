@@ -773,7 +773,7 @@ class DatabaseClient:
 
         1. Latest open sad feedback ``MAX(lyrics_feedback.updated_at)``,
            DESC NULLS LAST.
-        2. Songset appearances (``songset_items`` rows per song), DESC.
+        2. Songset appearances (distinct Songsets containing the song), DESC.
         3. Favorite count (``user_favorite_songs`` rows per song), DESC.
         4. Newest album ``MAX(songs.created_at)`` grouped by
            ``(album_name, album_series)`` — a documented proxy; no albums
@@ -847,7 +847,7 @@ class DatabaseClient:
                 FROM pool p
                 JOIN songs s ON s.id = p.song_id
                 LEFT JOIN (
-                    SELECT song_id, COUNT(*) AS appearances
+                    SELECT song_id, COUNT(DISTINCT songset_id) AS appearances
                     FROM songset_items
                     GROUP BY song_id
                 ) si ON si.song_id = p.song_id
@@ -1312,7 +1312,7 @@ class DatabaseClient:
         Ranking is the issue #260 cascade minus the feedback tier, ties
         broken by song id ascending:
 
-        1. Songset appearances (``songset_items`` rows per song), DESC.
+        1. Songset appearances (distinct Songsets containing the song), DESC.
         2. Favorite count (``user_favorite_songs`` rows per song), DESC.
         3. Newest album ``MAX(songs.created_at)`` grouped by
            ``(album_name, album_series)`` — a documented proxy; no albums
@@ -1365,7 +1365,7 @@ class DatabaseClient:
                 FROM pool p
                 JOIN songs s ON s.id = p.song_id
                 LEFT JOIN (
-                    SELECT song_id, COUNT(*) AS appearances
+                    SELECT song_id, COUNT(DISTINCT songset_id) AS appearances
                     FROM songset_items
                     GROUP BY song_id
                 ) si ON si.song_id = p.song_id

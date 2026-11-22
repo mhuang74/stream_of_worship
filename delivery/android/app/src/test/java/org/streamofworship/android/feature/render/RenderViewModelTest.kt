@@ -319,8 +319,7 @@ internal class FakeRenderSongsetsRepository(
         songsetId: String,
         songId: String,
         recordingHashPrefix: String?,
-        position: Int,
-    ): SongsetItem = item("new", position, 60.0)
+    ): SongsetItem = item("new", 0, 60.0)
 
     override suspend fun updateItemTransition(
         songsetId: String,

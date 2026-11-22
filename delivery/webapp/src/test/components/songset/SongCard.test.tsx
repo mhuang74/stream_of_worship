@@ -219,15 +219,20 @@ describe("SongCard", () => {
       });
     });
 
-    it("stays enabled and shows a count when the song is already in the songset", () => {
+    it("stays enabled and announces the occurrence count when already in the songset", () => {
       renderCard({ addedCount: 2 });
       const button = screen.getByTestId("add-song-button");
       expect(button).toBeEnabled();
-      expect(screen.getByTestId("add-button-count")).toHaveTextContent("×2");
-      expect(screen.getByTestId("add-button-count")).toHaveAttribute(
-        "aria-label",
-        "In songset ×2"
-      );
+      // The badge is a live status whose accessible name is its visible ×N text.
+      expect(screen.getByRole("status")).toHaveTextContent("×2");
+    });
+
+    it("updates the announced occurrence count as the Song is added again", () => {
+      const { rerender } = renderCard({ addedCount: 1 });
+      expect(screen.getByRole("status")).toHaveTextContent("×1");
+
+      rerender(<SongCard {...defaultProps} addedCount={2} />);
+      expect(screen.getByRole("status")).toHaveTextContent("×2");
     });
 
     it("renders no count badge for a song absent from the songset", () => {

@@ -95,7 +95,6 @@ data class DuplicateSongsetRequest(
 data class CreateSongsetItemRequest(
     val songId: String,
     val recordingHashPrefix: String? = null,
-    val position: Int,
     val gapBeats: Double? = null,
     val crossfadeEnabled: Int? = null,
     val crossfadeDurationSeconds: Double? = null,
@@ -108,7 +107,6 @@ data class UpdateSongsetItemRequest(
     val itemId: String,
     val songId: String? = null,
     val recordingHashPrefix: String? = null,
-    val position: Int? = null,
     val gapBeats: Double? = null,
     val crossfadeEnabled: Int? = null,
     val crossfadeDurationSeconds: Double? = null,

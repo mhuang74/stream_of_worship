@@ -143,7 +143,7 @@ class SongsetsViewModelTest {
         }
 
     @Test
-    fun `add song appends past a position gap left by a delete`() =
+    fun `add song adopts the server position past a delete gap`() =
         runTest {
             val songsets =
                 RecordingAddSongsetsRepository(
@@ -156,8 +156,9 @@ class SongsetsViewModelTest {
             viewModel.addSong(song("song-new", duration = 60.0))
             advanceUntilIdle()
 
-            // A delete leaves the stored gap; posting items.size (2) would collide with item-3.
-            assertEquals(listOf(3), songsets.addedPositions)
+            // A delete leaves the stored gap; the client posts no position and
+            // keeps the server-assigned one instead of renumbering locally.
+            assertEquals(listOf("song-new"), songsets.addedSongIds)
             assertEquals(listOf(0, 2, 3), viewModel.uiState.value.songset?.items?.map { it.position })
         }
 
@@ -182,7 +183,7 @@ class SongsetsViewModelTest {
         }
 
     @Test
-    fun `concurrent add song calls post distinct positions`() =
+    fun `concurrent add song calls are serialized`() =
         runTest {
             val songsets = RecordingAddSongsetsRepository()
             val viewModel = detailViewModel(this, songsets)
@@ -194,8 +195,8 @@ class SongsetsViewModelTest {
             viewModel.addSong(song("song-b", duration = 60.0))
             advanceUntilIdle()
 
-            assertEquals(2, songsets.addedPositions.size)
-            assertEquals(listOf(2, 3), songsets.addedPositions.sorted())
+            assertEquals(2, songsets.addedSongIds.size)
+            assertEquals(setOf("song-a", "song-b"), songsets.addedSongIds.toSet())
             assertEquals(4, viewModel.uiState.value.songset?.items?.size)
         }
 
@@ -284,8 +285,11 @@ internal open class FakeSongsetsRepository(
         songsetId: String,
         songId: String,
         recordingHashPrefix: String?,
-        position: Int,
-    ): SongsetItem = item("item-new", position, duration = 90.0).copy(songId = songId)
+    ): SongsetItem {
+        // Mirror the server: append after the highest persisted position.
+        val nextPosition = (detail.items.maxOfOrNull { it.position } ?: -1) + 1
+        return item("item-new-$songId", nextPosition, duration = 90.0).copy(songId = songId)
+    }
 
     override suspend fun updateItemTransition(
         songsetId: String,
@@ -305,16 +309,15 @@ internal open class FakeSongsetsRepository(
 internal class RecordingAddSongsetsRepository(
     detail: SongsetDetail = detail(),
 ) : FakeSongsetsRepository(detail = detail) {
-    val addedPositions = mutableListOf<Int>()
+    val addedSongIds = mutableListOf<String>()
 
     override suspend fun addItem(
         songsetId: String,
         songId: String,
         recordingHashPrefix: String?,
-        position: Int,
     ): SongsetItem {
-        addedPositions += position
-        return super.addItem(songsetId, songId, recordingHashPrefix, position)
+        addedSongIds += songId
+        return super.addItem(songsetId, songId, recordingHashPrefix)
     }
 }
 

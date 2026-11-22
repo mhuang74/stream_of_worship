@@ -24,7 +24,8 @@ interface SongsetData {
   description: string | null
   markedLineCount: number
   renderState: RenderState
-  songTitles: string[]
+  /** One entry per Item; the form dedupes by Song id for the preview. */
+  songs: { id: string; title: string }[]
   lastCompletedRenderJobId: string | null
   durationSeconds: number | null
 }
@@ -202,7 +203,7 @@ export function RenderPageClient({
           songsetId={songsetId}
           markedLineCount={songset.markedLineCount}
           songsetName={songset.name}
-          songTitles={songset.songTitles}
+          songs={songset.songs}
           initialData={initialData}
           onSubmit={handleSubmit}
           onCancel={() => router.push(`/songsets/${songsetId}`)}
@@ -225,7 +226,7 @@ export function RenderPageClient({
                 }
               : undefined
           }
-          currentSongCount={currentSongCount ?? songset.songTitles.length}
+          currentSongCount={currentSongCount ?? songset.songs.length}
           currentSongsetDurationSeconds={currentSongsetDurationSeconds ?? songset.durationSeconds}
         />
       </main>

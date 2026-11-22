@@ -42,7 +42,6 @@ interface SongsetsRepository {
         songsetId: String,
         songId: String,
         recordingHashPrefix: String?,
-        position: Int,
     ): SongsetItem
 
     suspend fun updateItemTransition(
@@ -109,15 +108,15 @@ class HttpSongsetsRepository(
         songsetId: String,
         songId: String,
         recordingHashPrefix: String?,
-        position: Int,
     ): SongsetItem =
         execute {
+            // Append position is server-owned: the API computes max(position) + 1
+            // under the Songset lock so concurrent appends cannot collide.
             api.addItem(
                 songsetId,
                 CreateSongsetItemRequest(
                     songId = songId,
                     recordingHashPrefix = recordingHashPrefix,
-                    position = position,
                 ),
             )
         }

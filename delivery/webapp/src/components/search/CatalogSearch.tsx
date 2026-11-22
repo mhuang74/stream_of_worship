@@ -305,6 +305,9 @@ export function CatalogSearch({
 
   const handleAddSong = useCallback(
     async (songOrId: string | SongCardData) => {
+      // The cards are disabled at the cap; guard the callback too so a queued
+      // tap or a custom renderer cannot append a sixth Item.
+      if (isSongsetFull) return;
       const songId = typeof songOrId === "string" ? songOrId : songOrId.id;
       if (addingSongIds.has(songId)) return;
 
@@ -332,7 +335,15 @@ export function CatalogSearch({
         });
       }
     },
-    [onAddSong, addingSongIds, results, songNotFoundMessage, songAddedMessage, failedToAddMessage]
+    [
+      isSongsetFull,
+      onAddSong,
+      addingSongIds,
+      results,
+      songNotFoundMessage,
+      songAddedMessage,
+      failedToAddMessage,
+    ]
   );
 
   const songCount = useCallback(
@@ -382,6 +393,7 @@ export function CatalogSearch({
     bpmRange: selectedBpm,
     themes: selectedThemes,
     showSearchButton: false,
+    isSongsetFull,
   });
 
   // Load albums + favorite ids on mount (action depends on mode).

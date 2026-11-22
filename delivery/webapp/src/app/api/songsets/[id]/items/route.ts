@@ -4,13 +4,13 @@ import {
   addSongsetItem,
   updateSongsetItem,
   deleteSongsetItem,
+  SongsetRenderValidationError,
 } from "@/lib/db/songsets";
 import { z } from "zod";
 
 const createSongsetItemSchema = z.object({
   songId: z.string().min(1),
   recordingHashPrefix: z.string().optional(),
-  position: z.number().int().min(0),
   gapBeats: z.number().optional(),
   crossfadeEnabled: z.number().int().min(0).max(1).optional(),
   crossfadeDurationSeconds: z.number().optional(),
@@ -22,7 +22,6 @@ const updateSongsetItemSchema = z.object({
   itemId: z.string().min(1),
   songId: z.string().min(1).optional(),
   recordingHashPrefix: z.string().optional(),
-  position: z.number().int().min(0).optional(),
   gapBeats: z.number().optional(),
   crossfadeEnabled: z.number().int().min(0).max(1).optional(),
   crossfadeDurationSeconds: z.number().optional(),
@@ -62,6 +61,13 @@ export async function POST(
 
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
+    if (error instanceof SongsetRenderValidationError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 409 }
+      );
+    }
+
     console.error("Error adding songset item:", error);
     return NextResponse.json(
       { error: "Failed to add songset item" },

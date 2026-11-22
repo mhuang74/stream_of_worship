@@ -10,7 +10,9 @@ from sow_render_worker.chapters import (
     ChapterLine,
     ChaptersManifest,
     _snake_to_camel,
+    base_song_title,
     build_chapters_from_segments,
+    chapter_titles,
     chapters_to_ffmpeg_metadata,
     dataclass_to_camel_case_dict,
     find_chapter_at_time,
@@ -838,3 +840,36 @@ class TestChaptersManifestRoundtrip:
                     f"{cls.__name__}.to_camel_case_dict() is missing field "
                     f"'{f.name}' (expected key '{expected_key}')"
                 )
+
+
+class TestChapterTitles:
+    def test_repeated_song_occurrences_get_occurrence_ordinals(self):
+        segments = [
+            FakeSegment(FakeItem("Amazing Grace", "song-1", None), 0.0, 10.0),
+            FakeSegment(FakeItem("Amazing Grace", "song-1", None), 10.0, 10.0),
+        ]
+
+        assert chapter_titles(segments) == ["Amazing Grace", "Amazing Grace (2)"]
+
+    def test_generated_suffix_collision_in_occurrence_order(self):
+        # The third Item's real title already looks like a generated label.
+        segments = [
+            FakeSegment(FakeItem("A", "song-1", None), 0.0, 10.0),
+            FakeSegment(FakeItem("A", "song-1", None), 10.0, 10.0),
+            FakeSegment(FakeItem("A (2)", "song-3", None), 20.0, 10.0),
+        ]
+
+        assert chapter_titles(segments) == ["A", "A (2)", "A (2) (2)"]
+
+    def test_generated_suffix_collision_before_occurrence(self):
+        segments = [
+            FakeSegment(FakeItem("A", "song-1", None), 0.0, 10.0),
+            FakeSegment(FakeItem("A (2)", "song-2", None), 10.0, 10.0),
+            FakeSegment(FakeItem("A", "song-1", None), 20.0, 10.0),
+        ]
+
+        assert chapter_titles(segments) == ["A", "A (2)", "A (3)"]
+
+    def test_base_song_title_falls_back_to_song_id_then_position(self):
+        assert base_song_title(FakeItem(None, "song-9", None), 0) == "song-9"
+        assert base_song_title(FakeItem(None, "", None), 4) == "Song 5"

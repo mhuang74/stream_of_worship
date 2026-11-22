@@ -47,7 +47,7 @@ interface RenderFormProps {
   initialData?: Partial<RenderFormData>
   markedLineCount?: number
   songsetName?: string
-  songTitles?: string[]
+  songs?: { id: string; title: string }[]
   onSubmit: (data: RenderFormData) => void
   onCancel: () => void
   isSubmitting?: boolean
@@ -93,7 +93,7 @@ export function RenderForm({
   initialData,
   markedLineCount = 0,
   songsetName,
-  songTitles,
+  songs,
   onSubmit,
   onCancel,
   isSubmitting = false,
@@ -102,6 +102,19 @@ export function RenderForm({
   currentSongsetDurationSeconds,
 }: RenderFormProps) {
   const { t } = useLocale()
+  // Mirror the render worker's title card: repeated Items of one Song collapse
+  // to the first occurrence, while two distinct Songs sharing a title both show.
+  const previewSongTitles = (() => {
+    if (!songs) return [] as string[]
+    const seenSongIds = new Set<string>()
+    const titles: string[] = []
+    for (const song of songs) {
+      if (!song.title || seenSongIds.has(song.id)) continue
+      seenSongIds.add(song.id)
+      titles.push(song.title)
+    }
+    return titles
+  })()
   const [formData, setFormData] = useState<RenderFormData>({
     audioEnabled: initialData?.audioEnabled ?? true,
     videoEnabled: initialData?.videoEnabled ?? true,
@@ -356,14 +369,17 @@ export function RenderForm({
                   />
                 </div>
 
-                {formData.titleCardLines.length === 0 && songTitles && songTitles.length > 0 && (
+                {formData.titleCardLines.length === 0 && previewSongTitles.length > 0 && (
                   <div className="rounded-md border border-dashed border-muted-foreground/25 bg-muted/50 p-3">
                     <p className="text-xs text-muted-foreground mb-1">{t("render.titleCard.defaultLines")}</p>
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">
+                    <p
+                      className="text-sm text-muted-foreground whitespace-pre-line"
+                      data-testid="title-card-preview"
+                    >
                       {songsetName || t("render.titleCard.worshipSet")}{"\n"}
                       {/* A Song occupying several Items is one title-card line,
                           matching the render worker's deduped title card. */}
-                      {Array.from(new Set(songTitles)).join("\n")}
+                      {previewSongTitles.join("\n")}
                     </p>
                   </div>
                 )}

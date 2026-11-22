@@ -29,6 +29,8 @@ export interface SemanticSearchCardArgs {
   isPlaying: boolean;
   isPreviewLoading: boolean;
   onPlay: (songId: string) => void;
+  /** Browse mode: the Songset is at its Item cap, so adding must be refused. */
+  disabled: boolean;
 }
 
 interface SemanticSearchProps {
@@ -42,6 +44,8 @@ interface SemanticSearchProps {
   themes?: SongTheme[];
   searchButtonClassName?: string;
   showSearchButton?: boolean;
+  /** Browse mode: at the Item cap, so every result card is add-disabled. */
+  isSongsetFull?: boolean;
   className?: string;
 }
 
@@ -56,6 +60,8 @@ interface UseSemanticSearchOptions {
   themes?: SongTheme[];
   searchButtonClassName?: string;
   showSearchButton?: boolean;
+  /** Browse mode: at the Item cap, so every result card is add-disabled. */
+  isSongsetFull?: boolean;
   /** Omit to get the built-in add-capable SongCard layout (BrowseSheet). */
   renderSongCard?: (args: SemanticSearchCardArgs) => ReactNode;
 }
@@ -71,6 +77,7 @@ export function useSemanticSearch({
   themes = [],
   searchButtonClassName,
   showSearchButton = true,
+  isSongsetFull = false,
   renderSongCard,
 }: UseSemanticSearchOptions) {
   const { t } = useLocale();
@@ -334,6 +341,7 @@ export function useSemanticSearch({
               isPlaying: playingSongId === song.id,
               isPreviewLoading: previewLoadingSongId === song.id,
               onPlay: handlePlaySong,
+              disabled: isSongsetFull,
             };
             return (
               <div key={song.id} className="relative">
@@ -346,6 +354,7 @@ export function useSemanticSearch({
                     onPlay={handlePlaySong}
                     addedCount={songCount(song.id)}
                     isAdding={isSongAdding(song.id)}
+                    disabled={isSongsetFull}
                     isPlaying={playingSongId === song.id}
                     isPreviewLoading={previewLoadingSongId === song.id}
                   />
