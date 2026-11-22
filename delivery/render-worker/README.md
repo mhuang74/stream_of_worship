@@ -157,6 +157,7 @@ Cloudflare R2 — stores rendered artifacts
 | `SOW_R2_ACCESS_KEY_ID` | R2 access key ID (also used at Docker build time) |
 | `SOW_R2_SECRET_ACCESS_KEY` | R2 secret access key (also used at Docker build time) |
 | `SOW_AWS_REGION` | AWS region for SQS and Lambda (default: `us-west-2`) |
+| `SOW_GLUE_AWS_REGION` | Optional webapp-side region for signing Glue queue sends; must match the `SOW_GLUE_SQS_QUEUE_URL` region and falls back to `SOW_AWS_REGION` when empty |
 | `SOW_SQS_QUEUE_URL` | SQS queue URL for render job messages |
 | `SOW_GLUE_SQS_QUEUE_URL` | SQS queue URL for Glue (AI transition) job messages — separate from the render queue |
 | `SOW_ELEVENLABS_API_KEY` | ElevenLabs key for paid Glue stages. Worker/server only: never `NEXT_PUBLIC_*`, never logged, never set on the render-worker function. Unset disables paid Glue with `GLUE_NOT_CONFIGURED` before reservation/spend |
