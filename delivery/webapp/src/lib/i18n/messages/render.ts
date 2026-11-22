@@ -126,6 +126,69 @@ export const renderBundle = bundle({
     "render.status.estimatedPrefix": "~",
     "render.status.estimatedMinutes": "minutes",
 
+    // RenderForm — AI-transition render preflight (spec §5.5)
+    "render.gluePreflight.heading": "AI transitions need attention",
+    "render.gluePreflight.body":
+      "Finish, retry, or turn off these AI transitions before rendering.",
+    "render.gluePreflight.retryFree": "Retry (free)",
+    "render.gluePreflight.retryPaid": "Try another (paid)",
+    "render.gluePreflight.openEditor": "Open editor",
+    "render.gluePreflight.disable": "Disable AI transitions and use ordinary transitions",
+    "render.gluePreflight.disableConfirmTitle": "Disable this AI transition?",
+    "render.gluePreflight.disableConfirmBody":
+      "This Songset will use the ordinary transition instead.",
+    "render.gluePreflight.disableConfirmAction":
+      "Disable and use ordinary transitions",
+    "render.gluePreflight.disableConfirmCancel": "Keep AI transition",
+    "render.gluePreflight.phaseLabel": "Status:",
+    "render.gluePreflight.jobLabel": "Job:",
+    "render.gluePreflight.retryFailed":
+      "Could not restart this AI transition. Try again.",
+    "render.gluePreflight.disableFailed":
+      "Could not disable this AI transition. Try again.",
+    "render.gluePreflight.reason.notReady": "This AI transition is not ready yet.",
+    "render.gluePreflight.reason.activeJob":
+      "An AI transition is still being created. Check back shortly.",
+    "render.gluePreflight.reason.staleSnapshot":
+      "The songs changed since this AI transition was created.",
+    "render.gluePreflight.reason.quotaExhausted":
+      "No paid AI transitions are left today.",
+    "render.gluePreflight.reason.tempoUnavailable":
+      "The next Song has no detected tempo yet.",
+    "render.gluePreflight.reason.notAnalyzed":
+      "Add section and beat analysis to this Song first.",
+    "render.gluePreflight.reason.arrangementInvalid":
+      "Fix the arrangement before making this AI transition.",
+    "render.gluePreflight.reason.unsavedDraft":
+      "Save your arrangement changes first.",
+    "render.gluePreflight.reason.workerFailed":
+      "The last AI transition attempt did not finish.",
+    "render.gluePreflight.reason.retryPaid":
+      "The last attempt could not be completed. Try another (paid).",
+    "render.gluePreflight.reason.retryFree":
+      "The last attempt can be finished for free. Retry.",
+    "render.gluePreflight.reason.providerUnknown":
+      "The AI transition service did not respond. Try another (paid) or open the editor.",
+    "render.gluePreflight.reason.entitlement":
+      "This account cannot use AI transitions.",
+    "render.gluePreflight.reason.plan": "This plan does not include AI transitions.",
+    "render.gluePreflight.reason.copyright":
+      "This recording cannot be used for an AI transition.",
+    "render.gluePreflight.reason.tooShort":
+      "This junction is too short for an AI transition.",
+    "render.gluePreflight.reason.audioUnavailable":
+      "The AI transition audio is unavailable. Try again.",
+    "render.gluePreflight.reason.executionDeadline":
+      "The last AI transition attempt ran out of time.",
+    "render.gluePreflight.reason.dispatchFailed":
+      "The AI transition could not be started. Retry (free).",
+    "render.gluePreflight.reason.inputsChanged":
+      "The songs changed. Open the editor to refresh this AI transition.",
+    "render.gluePreflight.reason.notConfigured":
+      "AI transitions are not available right now.",
+    "render.gluePreflight.reason.unknown":
+      "AI transitions are not available right now.",
+
     // Render admission — a saved Song arrangement no longer matches the
     // Recording's analysis (render-jobs 409 / failed render tooltip). Mirrors
     // arrangements.ts ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE.
@@ -244,6 +307,50 @@ export const renderBundle = bundle({
     // Render progress line (SongsetEditor metadata row)
     "render.status.estimatedPrefix": "約 ",
     "render.status.estimatedMinutes": "分鐘",
+
+    // RenderForm — AI 轉場渲染前檢查（規格 §5.5）
+    "render.gluePreflight.heading": "AI 轉場需要處理",
+    "render.gluePreflight.body":
+      "請先完成、重試或關閉以下 AI 轉場，才能開始渲染。",
+    "render.gluePreflight.retryFree": "免費重試",
+    "render.gluePreflight.retryPaid": "再試一次（付費）",
+    "render.gluePreflight.openEditor": "開啟編輯器",
+    "render.gluePreflight.disable": "關閉 AI 轉場，改用一般轉場",
+    "render.gluePreflight.disableConfirmTitle": "要關閉這個 AI 轉場嗎？",
+    "render.gluePreflight.disableConfirmBody": "這個敬拜歌單會改用一般轉場。",
+    "render.gluePreflight.disableConfirmAction": "關閉並改用一般轉場",
+    "render.gluePreflight.disableConfirmCancel": "保留 AI 轉場",
+    "render.gluePreflight.phaseLabel": "狀態：",
+    "render.gluePreflight.jobLabel": "工作：",
+    "render.gluePreflight.retryFailed": "無法重新開始這個 AI 轉場，請再試一次。",
+    "render.gluePreflight.disableFailed": "無法關閉這個 AI 轉場，請再試一次。",
+    "render.gluePreflight.reason.notReady": "這個 AI 轉場尚未完成。",
+    "render.gluePreflight.reason.activeJob": "AI 轉場仍在製作中，請稍後再試。",
+    "render.gluePreflight.reason.staleSnapshot":
+      "詩歌內容已變更，這個 AI 轉場需要重新整理。",
+    "render.gluePreflight.reason.quotaExhausted": "今天的付費 AI 轉場額度已用完。",
+    "render.gluePreflight.reason.tempoUnavailable": "下一首詩歌尚未偵測到速度。",
+    "render.gluePreflight.reason.notAnalyzed": "請先為這首詩歌加入段落與節拍分析。",
+    "render.gluePreflight.reason.arrangementInvalid":
+      "請先修正編排，再製作 AI 轉場。",
+    "render.gluePreflight.reason.unsavedDraft": "請先儲存編排變更。",
+    "render.gluePreflight.reason.workerFailed": "上一次 AI 轉場沒有完成。",
+    "render.gluePreflight.reason.retryPaid":
+      "上一次無法完成，請再試一次（付費）。",
+    "render.gluePreflight.reason.retryFree": "上一次可以免費完成，請重試。",
+    "render.gluePreflight.reason.providerUnknown":
+      "AI 轉場服務沒有回應，請再試一次（付費）或開啟編輯器。",
+    "render.gluePreflight.reason.entitlement": "這個帳號無法使用 AI 轉場。",
+    "render.gluePreflight.reason.plan": "目前的方案不包含 AI 轉場。",
+    "render.gluePreflight.reason.copyright": "這首錄音無法用於 AI 轉場。",
+    "render.gluePreflight.reason.tooShort": "這個銜接點太短，無法製作 AI 轉場。",
+    "render.gluePreflight.reason.audioUnavailable": "AI 轉場音訊無法取得，請再試一次。",
+    "render.gluePreflight.reason.executionDeadline": "上一次 AI 轉場逾時。",
+    "render.gluePreflight.reason.dispatchFailed": "無法開始 AI 轉場，請免費重試。",
+    "render.gluePreflight.reason.inputsChanged":
+      "詩歌內容已變更，請開啟編輯器重新整理這個 AI 轉場。",
+    "render.gluePreflight.reason.notConfigured": "目前無法使用 AI 轉場。",
+    "render.gluePreflight.reason.unknown": "目前無法使用 AI 轉場。",
 
     // Render admission — saved arrangement no longer matches analysis
     "render.error.arrangementRepairOrReset":

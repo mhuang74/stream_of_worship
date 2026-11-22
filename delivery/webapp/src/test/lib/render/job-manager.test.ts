@@ -11,6 +11,7 @@ import {
   recoverOrphanedJobs,
 } from "@/lib/render/job-manager";
 import { db } from "@/db";
+import { mutationDb } from "@/db/mutation-db";
 import { songsets } from "@/db/schema";
 import {
   SongsetRenderValidationError,
@@ -110,9 +111,34 @@ describe("getPhaseIndex", () => {
   });
 });
 
+/**
+ * `createRenderJob` freezes the Glue snapshot inside the Pool-backed
+ * transaction. The tx double delegates insert/update to the `db` mocks (so the
+ * existing assertions stay meaningful) and returns an empty item read, which
+ * short-circuits the snapshot builder when no Glue is enabled.
+ */
+function mockCreateTransaction(rows: unknown[][] = [[]]) {
+  let call = 0;
+  vi.mocked(mutationDb.transaction).mockImplementation((async (callback: any) => {
+    const chain = {
+      from: vi.fn().mockReturnThis(),
+      leftJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockImplementation(async () => rows[call++] ?? []),
+    };
+    const tx = {
+      select: vi.fn(() => chain),
+      insert: db.insert,
+      update: db.update,
+    };
+    return callback(tx);
+  }) as any);
+}
+
 describe("createRenderJob", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCreateTransaction();
   });
 
   it("creates job with default values", async () => {

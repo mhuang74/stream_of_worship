@@ -1,9 +1,14 @@
 import { db } from "@/db";
+import { mutationDb } from "@/db/mutation-db";
 import { renderJobs, songsets } from "@/db/schema";
 import { eq, and, lt, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { normalizeFontFamily } from "@/lib/constants";
-import { getSongsetRenderMetrics } from "@/lib/db/songsets";
+import {
+  createRenderGlueSnapshot,
+  getSongsetRenderMetrics,
+  requireGlueRenderReady,
+} from "@/lib/db/songsets";
 
 export type RenderPhase =
   | "preparing"
@@ -147,46 +152,58 @@ export async function createRenderJob(
   const id = nanoid();
   const now = new Date();
 
-  const [job] = await db
-    .insert(renderJobs)
-    .values({
-      id,
-      songsetId: input.songsetId,
-      userId,
-      status: "queued",
-      phase: "preparing",
-      phaseIndex: 0,
-      totalPhases: TOTAL_PHASES,
-      elapsedSeconds: 0,
-      estimatedTotalSeconds: null,
-      totalDurationSeconds: null,
-      startedAt: null,
-      template: input.template ?? "dark",
-      resolution: input.resolution ?? "720p",
-      audioEnabled: input.audioEnabled ?? true,
-      videoEnabled: input.videoEnabled ?? true,
-      fontSizePreset: input.fontSizePreset ?? "M",
-      fontFamily: input.fontFamily ?? "noto_serif_tc",
-      includeTitleCard: input.includeTitleCard ?? false,
-      titleCardDurationSeconds: input.titleCardDurationSeconds ?? null,
-      titleCardLines:
-        input.titleCardLines && input.titleCardLines.length > 0
-          ? JSON.stringify(input.titleCardLines)
-          : null,
-      songCount,
-      songsetDurationSeconds,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
+  // Revalidate the selected Glue takes and freeze their snapshot inside the
+  // same transaction that writes the job: a later take selection can never
+  // mutate an already-created job (spec §5.5).
+  const job = await mutationDb.transaction(async (tx) => {
+    const gluePlan = await createRenderGlueSnapshot(tx, input.songsetId, userId);
+    requireGlueRenderReady(input.songsetId, userId, gluePlan.preflight, "create");
 
-  await db
-    .update(songsets)
-    .set({
-      latestRenderJobId: id,
-      updatedAt: now,
-    })
-    .where(eq(songsets.id, input.songsetId));
+    const [inserted] = await tx
+      .insert(renderJobs)
+      .values({
+        id,
+        songsetId: input.songsetId,
+        userId,
+        status: "queued",
+        phase: "preparing",
+        phaseIndex: 0,
+        totalPhases: TOTAL_PHASES,
+        elapsedSeconds: 0,
+        estimatedTotalSeconds: null,
+        totalDurationSeconds: null,
+        startedAt: null,
+        template: input.template ?? "dark",
+        resolution: input.resolution ?? "720p",
+        audioEnabled: input.audioEnabled ?? true,
+        videoEnabled: input.videoEnabled ?? true,
+        fontSizePreset: input.fontSizePreset ?? "M",
+        fontFamily: input.fontFamily ?? "noto_serif_tc",
+        includeTitleCard: input.includeTitleCard ?? false,
+        titleCardDurationSeconds: input.titleCardDurationSeconds ?? null,
+        titleCardLines:
+          input.titleCardLines && input.titleCardLines.length > 0
+            ? JSON.stringify(input.titleCardLines)
+            : null,
+        glueTransitions:
+          gluePlan.snapshot.length > 0 ? JSON.stringify(gluePlan.snapshot) : null,
+        songCount,
+        songsetDurationSeconds,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    await tx
+      .update(songsets)
+      .set({
+        latestRenderJobId: id,
+        updatedAt: now,
+      })
+      .where(eq(songsets.id, input.songsetId));
+
+    return inserted;
+  });
 
   return mapRowToRenderJob(job);
 }

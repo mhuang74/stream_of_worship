@@ -9,21 +9,27 @@ import {
   recordings,
   userSettings,
   users,
+  glueJobs,
   glueTakes,
 } from "@/db/schema";
 import {
   loadResolvedGlueJunctions,
   loadResolvedGlueJunctionsForList,
   glueTakeSelectionError,
+  resolveGlueJunctions,
   takeRowFromDb,
+  type GlueJobRow,
   type GlueSelectionErrorCode,
   type GlueTakeRow,
   type ResolvedGlueJunction,
 } from "@/lib/glue/resolve";
+import { readGlueQuota } from "@/lib/glue/quota";
+import { logGlueEvent } from "@/lib/glue/log";
 import {
   deriveGlueJunction,
   loadGlueItemRows,
   type GlueJunctionDerivation,
+  type GlueResolverItem,
 } from "@/lib/glue/quote";
 import { eq, and, desc, gt, sql, asc, ilike, or, inArray, isNull, isNotNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -407,6 +413,8 @@ export interface RenderPageData {
   } | null;
   latestJob: RenderJobSummary | null;
   previousCompletedJob: RenderJobSummary | null;
+  /** Blocking AI-transition preflight; non-null disables the render form. */
+  gluePreflight?: GlueRenderPreflight | null;
 }
 
 function effectiveKeyFields(input: {
@@ -1071,6 +1079,7 @@ export async function getRenderPageData(
       .select({
         id: songsetItems.id,
         songId: songsetItems.songId,
+        position: songsetItems.position,
         songTitle: songs.title,
         markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
         recordingDeletedAt: recordings.deletedAt,
@@ -1098,6 +1107,7 @@ export async function getRenderPageData(
       .groupBy(
         songsetItems.id,
         songsetItems.songId,
+        songsetItems.position,
         songs.title,
         recordings.deletedAt,
         recordings.durationSeconds,
@@ -1117,6 +1127,20 @@ export async function getRenderPageData(
     const glueByItemId = new Map(
       glueJunctions.map((junction) => [junction.fromItemId, junction] as const)
     );
+    const gluePreflight = glueJunctions.some(
+      (junction) => junction.glueEnabled && junction.toItemId !== null
+    )
+      ? buildGlueRenderPreflight({
+          junctions: glueJunctions,
+          items: visibleItems.map((item) => ({
+            id: item.id,
+            position: item.position,
+            title: item.songTitle ?? null,
+          })),
+          jobs: await loadGlueRenderJobFacts(id, userId),
+        })
+      : null;
+    if (gluePreflight) reportGlueRenderPreflight(id, userId, gluePreflight);
     const latestItemUpdatedAt = visibleItems.reduce<Date | null>((latest, item) => {
       if (!latest || item.updatedAt > latest) return item.updatedAt;
       return latest;
@@ -1190,6 +1214,7 @@ export async function getRenderPageData(
         : null,
       latestJob: mapRenderJobSummary(latestJobRow),
       previousCompletedJob: mapRenderJobSummary(previousCompletedJobRow),
+      gluePreflight,
     };
   });
 }
@@ -2058,17 +2083,81 @@ export type SongsetRenderValidationCode =
   | "SONGSET_FULL"
   | "ARRANGEMENT_ANALYSIS_UNAVAILABLE"
   | "ARRANGEMENT_STALE"
-  | "ARRANGEMENT_INVALID";
+  | "ARRANGEMENT_INVALID"
+  | "GLUE_NOT_READY";
+
+/**
+ * One enabled-but-unavailable Glue Junction, ordered by the outgoing item's
+ * Songset position (spec §5.5). `reasonCode` is a stable machine code derived
+ * from the resolved Junction; the client localizes it.
+ */
+export interface GlueRenderPreflightGlue {
+  fromItemId: string;
+  toItemId: string;
+  fromTitle: string;
+  toTitle: string;
+  reasonCode: string;
+  jobId: string | null;
+  jobPhase: string | null;
+  retryKind: string | null;
+}
+
+/** Blocking render preflight payload (spec §5.5). */
+export interface GlueRenderPreflight {
+  code: "GLUE_NOT_READY";
+  glues: GlueRenderPreflightGlue[];
+}
+
+/**
+ * Frozen render snapshot entry written to `render_jobs.glue_transitions`
+ * (spec §5.5/C7). Field names and order are part of the worker contract.
+ */
+export interface RenderGlueSnapshotEntry {
+  from_item_id: string;
+  from_updated_at: string;
+  to_item_id: string;
+  to_updated_at: string;
+  take_id: string;
+  descriptor_key: string;
+  r2_key: string;
+  seconds: number;
+  sha256: string;
+}
+
+export interface RenderGluePlan {
+  preflight: GlueRenderPreflight | null;
+  snapshot: RenderGlueSnapshotEntry[];
+}
+
+export interface GlueRenderItemIdentity {
+  id: string;
+  position: number;
+  title: string | null;
+}
+
+export interface GlueRenderJobFact {
+  id: string;
+  fromItemId: string;
+  phase: string;
+  retryKind: string | null;
+  errorCode: string | null;
+  createdAt: Date;
+}
+
+export const GLUE_NOT_READY_MESSAGE =
+  "Finish or turn off the AI transitions before rendering.";
 
 /**
  * Typed admission/write failure shared by `updateSongArrangement` and the
  * render entry points. Analysis failures all carry the canonical
- * repair-or-reset message (spec §2.3/§2.7).
+ * repair-or-reset message (spec §2.3/§2.7). `GLUE_NOT_READY` carries the
+ * ordered preflight payload so the route and page can render the remedies.
  */
 export class SongsetRenderValidationError extends Error {
   constructor(
     readonly code: SongsetRenderValidationCode,
-    message: string = ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE
+    message: string = ARRANGEMENT_UNAVAILABLE_OR_STALE_MESSAGE,
+    readonly glue: GlueRenderPreflight | null = null
   ) {
     super(message);
     this.name = "SongsetRenderValidationError";
@@ -2083,6 +2172,401 @@ function analysisValidationError(code: ArrangementValidationCode): SongsetRender
   return new SongsetRenderValidationError(code);
 }
 
+// --- Glue render preflight + frozen snapshot (spec §5.5) -------------------
+
+const GLUE_RENDER_ACTIVE_STATES: Readonly<Record<string, true>> = {
+  queued: true,
+  preparing: true,
+  uploading: true,
+  composing: true,
+  "storing-response": true,
+  staging: true,
+};
+
+function latestGlueJobFacts(
+  jobs: readonly GlueRenderJobFact[]
+): Map<string, GlueRenderJobFact> {
+  const latest = new Map<string, GlueRenderJobFact>();
+  for (const job of jobs) {
+    const previous = latest.get(job.fromItemId);
+    if (!previous || job.createdAt.getTime() >= previous.createdAt.getTime()) {
+      latest.set(job.fromItemId, job);
+    }
+  }
+  return latest;
+}
+
+/**
+ * Stable machine reason for a blocked Junction. Derived from the resolved
+ * Junction's `state`/`unavailableReason` (the resolver's vocabulary) plus the
+ * latest `glue_jobs` row for job id/phase/retry kind; the client localizes it.
+ */
+function glueRenderReasonCode(
+  junction: ResolvedGlueJunction,
+  job: GlueRenderJobFact | null
+): string {
+  if (junction.state === "failed") {
+    if (job?.errorCode) return job.errorCode;
+    if (job?.retryKind === "paid") return "GLUE_RETRY_PAID";
+    if (job?.retryKind === "free") return "GLUE_RETRY_PROCESSING_FREE";
+    return "GLUE_WORKER_FAILED";
+  }
+  if (junction.state === "stale") return "GLUE_STALE_SNAPSHOT";
+  if (GLUE_RENDER_ACTIVE_STATES[junction.state]) return "GLUE_ACTIVE_JOB";
+  switch (junction.unavailableReason) {
+    case "quota":
+      return "GLUE_QUOTA_EXHAUSTED";
+    case "no-tempo":
+      return "GLUE_TEMPO_UNAVAILABLE";
+    case "no-analysis":
+      return "GLUE_NOT_ANALYZED";
+    case "invalid-arrangement":
+      return "GLUE_ARRANGEMENT_INVALID";
+    case "unsaved-draft":
+      return "GLUE_UNSAVED_DRAFT";
+    case "active-job":
+      return "GLUE_ACTIVE_JOB";
+    default:
+      return "GLUE_NOT_READY";
+  }
+}
+
+function gluePreflightEntry(
+  junction: ResolvedGlueJunction,
+  identities: ReadonlyMap<string, GlueRenderItemIdentity>,
+  latestJobs: ReadonlyMap<string, GlueRenderJobFact>
+): GlueRenderPreflightGlue {
+  const job = latestJobs.get(junction.fromItemId) ?? null;
+  const from = identities.get(junction.fromItemId);
+  const to = junction.toItemId ? identities.get(junction.toItemId) : undefined;
+  return {
+    fromItemId: junction.fromItemId,
+    toItemId: junction.toItemId ?? "",
+    fromTitle: from?.title ?? "Unknown Song",
+    toTitle: to?.title ?? "Unknown Song",
+    reasonCode: glueRenderReasonCode(junction, job),
+    jobId: junction.activeJob?.id ?? job?.id ?? null,
+    jobPhase: junction.activeJob?.phase ?? job?.phase ?? null,
+    retryKind: job?.retryKind ?? null,
+  };
+}
+
+/**
+ * Pure preflight payload builder: one entry per enabled Junction without an
+ * effective ready take, ordered by the outgoing item's Songset position.
+ */
+export function buildGlueRenderPreflight(args: {
+  junctions: readonly ResolvedGlueJunction[];
+  items: readonly GlueRenderItemIdentity[];
+  jobs: readonly GlueRenderJobFact[];
+}): GlueRenderPreflight | null {
+  const identities = new Map(args.items.map((item) => [item.id, item] as const));
+  const order = new Map(
+    [...args.items]
+      .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+      .map((item, index) => [item.id, index] as const)
+  );
+  const latestJobs = latestGlueJobFacts(args.jobs);
+  const glues = args.junctions
+    .filter(
+      (junction) =>
+        junction.glueEnabled &&
+        junction.toItemId !== null &&
+        !(junction.state === "ready" && junction.selectedTake !== null)
+    )
+    .sort(
+      (a, b) =>
+        (order.get(a.fromItemId) ?? Number.MAX_SAFE_INTEGER) -
+          (order.get(b.fromItemId) ?? Number.MAX_SAFE_INTEGER) ||
+        a.fromItemId.localeCompare(b.fromItemId)
+    )
+    .map((junction) => gluePreflightEntry(junction, identities, latestJobs));
+  return glues.length > 0 ? { code: "GLUE_NOT_READY", glues } : null;
+}
+
+function reportGlueRenderPreflight(
+  songsetId: string,
+  userId: number,
+  preflight: GlueRenderPreflight,
+  stage?: "create"
+): void {
+  logGlueEvent("glue.render.preflight.failed", {
+    songsetId,
+    userId,
+    junctions: preflight.glues.length,
+    reasonCodes: [...new Set(preflight.glues.map((glue) => glue.reasonCode))],
+    ...(stage ? { stage } : {}),
+  });
+}
+
+function rejectGlueRenderPreflight(
+  songsetId: string,
+  userId: number,
+  preflight: GlueRenderPreflight,
+  stage?: "create"
+): never {
+  reportGlueRenderPreflight(songsetId, userId, preflight, stage);
+  throw new SongsetRenderValidationError(
+    "GLUE_NOT_READY",
+    GLUE_NOT_READY_MESSAGE,
+    preflight
+  );
+}
+
+/** Visible items with the titles the render preflight panel needs. */
+export async function loadGlueRenderItemIdentities(
+  songsetId: string
+): Promise<GlueRenderItemIdentity[]> {
+  const rows = await db
+    .select({
+      id: songsetItems.id,
+      position: songsetItems.position,
+      title: songs.title,
+    })
+    .from(songsetItems)
+    .leftJoin(songs, eq(songsetItems.songId, songs.id))
+    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+    .where(and(eq(songsetItems.songsetId, songsetId), isNull(recordings.deletedAt)))
+    .orderBy(asc(songsetItems.position));
+  return rows.map((row) => ({
+    id: row.id,
+    position: row.position,
+    title: row.title ?? null,
+  }));
+}
+
+/** Latest-first job facts (job id/phase/retry kind) per outgoing item. */
+export async function loadGlueRenderJobFacts(
+  songsetId: string,
+  userId: number
+): Promise<GlueRenderJobFact[]> {
+  const rows = await db
+    .select({
+      id: glueJobs.id,
+      fromItemId: glueJobs.fromItemId,
+      phase: glueJobs.phase,
+      retryKind: glueJobs.retryKind,
+      errorCode: glueJobs.errorCode,
+      createdAt: glueJobs.createdAt,
+    })
+    .from(glueJobs)
+    .where(and(eq(glueJobs.songsetId, songsetId), eq(glueJobs.userId, userId)))
+    .orderBy(asc(glueJobs.createdAt));
+  return rows.map((row) => ({
+    id: row.id,
+    fromItemId: row.fromItemId,
+    phase: row.phase,
+    retryKind: row.retryKind,
+    errorCode: row.errorCode,
+    createdAt: row.createdAt,
+  }));
+}
+
+function glueJobRowForResolve(row: typeof glueJobs.$inferSelect): GlueJobRow {
+  return {
+    id: row.id,
+    userId: row.userId,
+    fromItemId: row.fromItemId,
+    toItemId: row.toItemId,
+    takeMode: row.takeMode,
+    descriptorKey: row.descriptorKey,
+    phase: row.phase,
+    active: row.active,
+    attemptId: row.attemptId,
+    providerContacted: row.providerContacted,
+    resultingTakeId: row.resultingTakeId,
+    activeTakeId: row.activeTakeId,
+    errorCode: row.errorCode,
+    errorDetail: row.errorDetail,
+    retryKind: row.retryKind,
+    createdAt: row.createdAt.toISOString(),
+    startedAt: row.startedAt ? row.startedAt.toISOString() : null,
+    finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
+    heartbeatAt: row.heartbeatAt ? row.heartbeatAt.toISOString() : null,
+  };
+}
+
+export type GlueRenderTransaction = Parameters<
+  Parameters<typeof mutationDb.transaction>[0]
+>[0];
+
+/**
+ * Transactional render admission + snapshot writer (spec §5.5). Re-reads the
+ * items, selected takes, and descriptor inputs inside the caller's transaction
+ * so the frozen entry timestamps are exactly what the worker will re-check.
+ * Returns the blocking preflight instead of throwing so the caller can log the
+ * `stage: "create"` event before rejecting.
+ */
+export async function createRenderGlueSnapshot(
+  tx: GlueRenderTransaction,
+  songsetId: string,
+  userId: number
+): Promise<RenderGluePlan> {
+  const rows = await tx
+    .select({
+      id: songsetItems.id,
+      position: songsetItems.position,
+      title: songs.title,
+      updatedAt: songsetItems.updatedAt,
+      glueEnabled: songsetItems.glueEnabled,
+      glueBeats: songsetItems.glueBeats,
+      glueActiveTakeId: songsetItems.glueActiveTakeId,
+      arrangementSteps: songsetItems.arrangementSteps,
+      contentHash: recordings.contentHash,
+      durationSeconds: recordings.durationSeconds,
+      tempoBpm: recordings.tempoBpm,
+      sections: recordings.sections,
+      beats: recordings.beats,
+      recordingDeletedAt: recordings.deletedAt,
+    })
+    .from(songsetItems)
+    .leftJoin(songs, eq(songsetItems.songId, songs.id))
+    .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+    .where(eq(songsetItems.songsetId, songsetId))
+    .orderBy(asc(songsetItems.position));
+
+  const visible = rows.filter((row) => !row.recordingDeletedAt);
+  if (!visible.some((row) => row.glueEnabled)) {
+    return { preflight: null, snapshot: [] };
+  }
+
+  const items: GlueResolverItem[] = visible.map((row) => ({
+    itemId: row.id,
+    position: row.position,
+    userId,
+    glueEnabled: row.glueEnabled,
+    glueBeats:
+      row.glueBeats === 2 || row.glueBeats === 8 || row.glueBeats === 16
+        ? row.glueBeats
+        : 4,
+    glueActiveTakeId: row.glueActiveTakeId,
+    updatedAt: row.updatedAt.toISOString(),
+    arrangementSteps: row.arrangementSteps,
+    recording:
+      row.contentHash === null
+        ? null
+        : {
+            contentHash: row.contentHash,
+            durationSeconds: row.durationSeconds,
+            tempoBpm: row.tempoBpm,
+            sections: parseRecordingSections(row.sections ?? null),
+            beats: parseRecordingBeats(row.beats ?? null),
+          },
+  }));
+
+  const selectedTakeIds = items
+    .map((item) => item.glueActiveTakeId)
+    .filter((takeId): takeId is string => takeId !== null);
+  const takeRows =
+    selectedTakeIds.length > 0
+      ? await tx.select().from(glueTakes).where(inArray(glueTakes.id, selectedTakeIds))
+      : [];
+  const jobRows = await tx
+    .select()
+    .from(glueJobs)
+    .where(and(eq(glueJobs.songsetId, songsetId), eq(glueJobs.userId, userId)))
+    .orderBy(asc(glueJobs.createdAt));
+
+  const quota = await readGlueQuota(userId);
+  const takes = takeRows.map(takeRowFromDb);
+  const jobs = jobRows.map(glueJobRowForResolve);
+  const junctions = resolveGlueJunctions({
+    items,
+    takes,
+    jobs,
+    quota,
+    cachedExcerptKeys: new Set<string>(),
+    rejectedExcerptKeys: new Set<string>(),
+  });
+
+  const identities: GlueRenderItemIdentity[] = visible.map((row) => ({
+    id: row.id,
+    position: row.position,
+    title: row.title ?? null,
+  }));
+  const jobFacts: GlueRenderJobFact[] = jobRows.map((row) => ({
+    id: row.id,
+    fromItemId: row.fromItemId,
+    phase: row.phase,
+    retryKind: row.retryKind,
+    errorCode: row.errorCode,
+    createdAt: row.createdAt,
+  }));
+  const preflight = buildGlueRenderPreflight({
+    junctions,
+    items: identities,
+    jobs: jobFacts,
+  });
+  if (preflight) return { preflight, snapshot: [] };
+
+  const identityById = new Map(identities.map((item) => [item.id, item] as const));
+  const rowById = new Map(visible.map((row) => [row.id, row] as const));
+  const takeById = new Map(takes.map((take) => [take.id, take] as const));
+  const snapshot: RenderGlueSnapshotEntry[] = [];
+
+  for (const junction of junctions) {
+    if (
+      !junction.glueEnabled ||
+      junction.toItemId === null ||
+      junction.state !== "ready" ||
+      junction.selectedTake === null
+    ) {
+      continue;
+    }
+    const selectedTake = junction.selectedTake;
+    const take = takeById.get(selectedTake.id);
+    const fromRow = rowById.get(junction.fromItemId);
+    const toRow = rowById.get(junction.toItemId);
+    const descriptorKey = junction.descriptorKey;
+    // Revalidate the immutable take row immediately before insert (spec §5.5).
+    if (
+      take === undefined ||
+      fromRow === undefined ||
+      toRow === undefined ||
+      descriptorKey === null ||
+      take.userId !== userId ||
+      take.status !== "ready" ||
+      take.r2Key === null ||
+      take.r2Key !== selectedTake.r2Key ||
+      take.descriptorKey !== descriptorKey ||
+      take.seconds === null ||
+      take.seconds <= 0 ||
+      take.audioSha256 === null
+    ) {
+      return {
+        preflight: {
+          code: "GLUE_NOT_READY",
+          glues: [gluePreflightEntry(junction, identityById, latestGlueJobFacts(jobFacts))],
+        },
+        snapshot: [],
+      };
+    }
+    snapshot.push({
+      from_item_id: junction.fromItemId,
+      from_updated_at: fromRow.updatedAt.toISOString(),
+      to_item_id: junction.toItemId,
+      to_updated_at: toRow.updatedAt.toISOString(),
+      take_id: take.id,
+      descriptor_key: descriptorKey,
+      r2_key: take.r2Key,
+      seconds: selectedTake.seconds,
+      sha256: take.audioSha256,
+    });
+  }
+
+  return { preflight: null, snapshot };
+}
+
+/** Throw the blocking preflight payload (logs the stable event first). */
+export function requireGlueRenderReady(
+  songsetId: string,
+  userId: number,
+  preflight: GlueRenderPreflight | null,
+  stage?: "create"
+): void {
+  if (preflight) rejectGlueRenderPreflight(songsetId, userId, preflight, stage);
+}
+
 /** Item columns every arrangement/duration computation reads. */
 const arrangementItemColumns = {
   id: songsetItems.id,
@@ -2095,6 +2579,7 @@ const arrangementItemColumns = {
   recordingSections: recordings.sections,
   recordingBeats: recordings.beats,
   recordingDeletedAt: recordings.deletedAt,
+  glueEnabled: songsetItems.glueEnabled,
 };
 
 /**
@@ -2284,10 +2769,37 @@ export async function getSongsetRenderMetrics(
     }
   }
 
+  const glueJunctions = items.some((row) => row.glueEnabled)
+    ? await loadResolvedGlueJunctions(songsetId, userId)
+    : [];
+  if (glueJunctions.some((junction) => junction.glueEnabled && junction.toItemId !== null)) {
+    requireGlueRenderReady(
+      songsetId,
+      userId,
+      buildGlueRenderPreflight({
+        junctions: glueJunctions,
+        items: await loadGlueRenderItemIdentities(songsetId),
+        jobs: await loadGlueRenderJobFacts(songsetId, userId),
+      })
+    );
+  }
+  const glueByItemId = new Map(
+    glueJunctions.map((junction) => [junction.fromItemId, junction] as const)
+  );
+
   return {
     items: items.map((row) => ({ id: row.id })),
     songCount: items.length,
-    songsetDurationSeconds: getSongsetDurationSeconds(items.map(toArrangementInput)),
+    songsetDurationSeconds: getSongsetDurationSeconds(
+      items.map((row) => {
+        const glue = glueByItemId.get(row.id);
+        return toArrangementInput({
+          ...row,
+          glueTakeId: glue?.selectedTake?.id ?? null,
+          glueSeconds: glue?.selectedTake?.seconds ?? null,
+        });
+      })
+    ),
   };
 }
 

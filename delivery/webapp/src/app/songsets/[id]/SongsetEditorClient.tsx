@@ -304,6 +304,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
   const highlightSongParam = searchParams.get("highlightSong");
+  const glueItemParam = searchParams.get("glueItem");
   const [highlightSongId, setHighlightSongId] = useState<string | null>(
     highlightSongParam
   );
@@ -611,6 +612,19 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     const query = next.toString();
     router.replace(`/songsets/${songsetId}${query ? `?${query}` : ""}`);
   }, [highlightSongParam, songsetId, searchParams, router]);
+
+  // Render-preflight "Open editor" lands here with the outgoing item id: open
+  // that item's arrangement sheet (where paid AI-transition actions live), then
+  // strip the ephemeral param.
+  useEffect(() => {
+    if (!glueItemParam) return;
+    const target = items.find((item) => item.id === glueItemParam);
+    if (target) setEditingArrangementItemId(target.id);
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("glueItem");
+    const query = next.toString();
+    router.replace(`/songsets/${songsetId}${query ? `?${query}` : ""}`);
+  }, [glueItemParam, items, songsetId, searchParams, router]);
 
   const touchUpdatedAt = useCallback(() => {
     const now = new Date().toISOString();
