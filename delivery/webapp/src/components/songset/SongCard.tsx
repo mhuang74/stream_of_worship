@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Music, Clock, Disc, Plus, Check, BadgeCheck, Play, Pause, Loader2 } from "lucide-react";
+import { Music, Clock, Disc, Plus, BadgeCheck, Play, Pause, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { FavoriteButton } from "./FavoriteButton";
@@ -40,7 +40,7 @@ interface SongCardProps {
   song: SongCardData;
   onAdd?: (songId: string) => void | Promise<void>;
   onPlay?: (songId: string) => void;
-  isAdded?: boolean;
+  addedCount?: number;
   isAdding?: boolean;
   isPlaying?: boolean;
   isPreviewLoading?: boolean;
@@ -55,7 +55,7 @@ export function SongCard({
   song,
   onAdd,
   onPlay,
-  isAdded = false,
+  addedCount = 0,
   isAdding = false,
   isPlaying = false,
   isPreviewLoading = false,
@@ -96,7 +96,7 @@ export function SongCard({
   ) ?? false;
 
   const handleAdd = async () => {
-    if (isAdded || isAdding || disabled || !onAdd) return;
+    if (isAdding || disabled || !onAdd) return;
     await onAdd(song.id);
   };
 
@@ -200,26 +200,37 @@ export function SongCard({
                 />
               )}
               {onAdd && (
-                <Button
-                  variant={isAdded ? "ghost" : "outline"}
-                  size="icon-sm"
-                  className={cn(
-                    "shrink-0 transition-opacity",
-                    !isHovered && !isAdded && "opacity-0 sm:opacity-100"
+                <>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className={cn(
+                      "shrink-0 transition-opacity",
+                      !isHovered && "opacity-0 sm:opacity-100"
+                    )}
+                    onClick={handleAdd}
+                    disabled={isAdding || disabled}
+                    aria-label={disabled ? t("browse.songsetFull") : t("browse.addToSongset")}
+                    data-testid="add-song-button"
+                  >
+                    {isAdding ? (
+                      <span className="size-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                  </Button>
+                  {addedCount > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 text-[10px] px-1 py-0 tabular-nums"
+                      title={t("browse.inSongsetCount").replace("{count}", String(addedCount))}
+                      aria-label={t("browse.inSongsetCount").replace("{count}", String(addedCount))}
+                      data-testid="add-button-count"
+                    >
+                      ×{addedCount}
+                    </Badge>
                   )}
-                  onClick={handleAdd}
-                  disabled={isAdded || isAdding || disabled}
-                  aria-label={isAdded ? t("browse.alreadyAdded") : disabled ? t("browse.songsetFull") : t("browse.addToSongset")}
-                  data-testid="add-song-button"
-                >
-                  {isAdding ? (
-                    <span className="size-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
-                  ) : isAdded ? (
-                    <Check className="size-4 text-green-500" />
-                  ) : (
-                    <Plus className="size-4" />
-                  )}
-                </Button>
+                </>
               )}
             </div>
           )}

@@ -21,7 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, Trash2, Music, Clock, ChevronRight, Play, Pause, Loader2, ListMusic } from "lucide-react";
+import { GripVertical, Trash2, Music, Clock, ChevronRight, Play, Pause, Loader2, ListMusic, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { useLocale } from "@/hooks/useLocale";
@@ -89,6 +89,7 @@ interface SongListProps {
   onRemove: (itemId: string) => void;
   onEditTransition?: (itemId: string) => void;
   onEditArrangement?: (itemId: string) => void;
+  onDuplicateItem?: (itemId: string) => void;
   readOnly?: boolean;
   className?: string;
   isRemoving?: boolean;
@@ -105,6 +106,7 @@ interface SortableSongItemProps {
   onRemove: (itemId: string) => void;
   onEditTransition?: (itemId: string) => void;
   onEditArrangement?: (itemId: string) => void;
+  onDuplicateItem?: (itemId: string) => void;
   readOnly?: boolean;
   isPlaying?: boolean;
   isPreviewLoading?: boolean;
@@ -124,6 +126,7 @@ function SortableSongItem({
   onRemove,
   onEditTransition,
   onEditArrangement,
+  onDuplicateItem,
   readOnly = false,
   isPlaying = false,
   isPreviewLoading = false,
@@ -336,6 +339,21 @@ function SortableSongItem({
               </Button>
             )}
 
+            {/* Duplicate button — the same Song may occupy several Items. */}
+            {!readOnly && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                onClick={() => onDuplicateItem?.(item.id)}
+                aria-label={t("songsets.action.duplicateItem")}
+                title={t("songsets.action.duplicateItem")}
+                data-testid={`duplicate-item-${item.id}`}
+              >
+                <Copy className="size-4" />
+              </Button>
+            )}
+
             {/* Remove button */}
             {!readOnly && (
               <div className="shrink-0 min-w-[32px] flex justify-end">
@@ -377,6 +395,7 @@ export function SongList({
   onRemove,
   onEditTransition,
   onEditArrangement,
+  onDuplicateItem,
   readOnly = false,
   className,
   isRemoving = false,
@@ -541,6 +560,7 @@ export function SongList({
               onRemove={onRemove}
               onEditTransition={onEditTransition}
               onEditArrangement={onEditArrangement}
+              onDuplicateItem={onDuplicateItem}
               readOnly={readOnly}
               isPlaying={playingSongId === item.songId}
               isPreviewLoading={previewLoadingSongId === item.songId}

@@ -695,6 +695,52 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     [songsetId, items, isRemoving, songset?.isArtifactsStale, songset?.renderState, songset?.renderErrorMessage, songset?.failedAt, t, touchUpdatedAt]
   );
 
+  // Handle item duplication — the same Song may occupy several Items.
+  const handleDuplicateItem = useCallback(
+    async (itemId: string) => {
+      const response = await fetch(`/api/songsets/${songsetId}/items/${itemId}/duplicate`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          (data as { error?: string }).error || t("songsets.error.duplicateItemFailed")
+        );
+      }
+      const item: ApiSongsetItem = data;
+      setItems((prev) => {
+        const index = prev.findIndex((entry) => entry.id === itemId);
+        if (index < 0) return prev;
+        // Mirror the server's write: the copy takes `source.position + 1` and
+        // every later Item shifts down one, so local positions stay equal to the
+        // persisted ones (gaps included) and the next append cannot collide.
+        const sourcePosition = prev[index].position;
+        const shifted = prev.map((entry) =>
+          entry.position > sourcePosition ? { ...entry, position: entry.position + 1 } : entry
+        );
+        return [
+          ...shifted.slice(0, index + 1),
+          toSongListItem(item),
+          ...shifted.slice(index + 1),
+        ];
+      });
+      setSongset((prev) =>
+        prev
+          ? {
+              ...prev,
+              itemCount: prev.itemCount + 1,
+              renderState: "stale" as RenderState,
+              isArtifactsStale: true,
+              renderErrorMessage: null,
+              failedAt: null,
+            }
+          : prev
+      );
+      touchUpdatedAt();
+    },
+    [songsetId, t, touchUpdatedAt]
+  );
+
   // Handle transition update
   const handleUpdateTransition = useCallback(
     async (itemId: string, settings: TransitionSettings) => {
@@ -996,7 +1042,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
 
   const handleAddSong = useCallback(
     async (song: SongCardData) => {
-      const nextPosition = items.length;
+      const nextPosition = items.reduce((max, item) => Math.max(max, item.position + 1), 0);
       const primaryRecording = song.recordings[0];
 
       const response = await fetch(`/api/songsets/${songsetId}/items`, {
@@ -1031,7 +1077,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       );
       touchUpdatedAt();
     },
-    [items.length, songsetId, t, touchUpdatedAt]
+    [items, songsetId, t, touchUpdatedAt]
   );
 
   const editingArrangementItem = editingArrangementItemId
@@ -1068,6 +1114,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         onRemoveItem={handleRemoveItem}
         onUpdateTransition={handleUpdateTransition}
         onEditArrangement={setEditingArrangementItemId}
+        onDuplicateItem={handleDuplicateItem}
         onRender={handleRender}
         onCancelRender={handleCancelRender}
         isCancellingRender={isCancellingRender}
@@ -1105,7 +1152,10 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         isOpen={isBrowseSheetOpen}
         onOpenChange={setIsBrowseSheetOpen}
         onAddSong={handleAddSong}
-        existingSongIds={items.map((item) => item.songId)}
+        existingSongCounts={items.reduce<Record<string, number>>((counts, item) => {
+          counts[item.songId] = (counts[item.songId] ?? 0) + 1;
+          return counts;
+        }, {})}
         itemCount={items.length}
       />
       {editingArrangementItem && (

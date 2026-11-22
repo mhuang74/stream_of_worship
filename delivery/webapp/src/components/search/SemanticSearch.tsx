@@ -33,9 +33,8 @@ export interface SemanticSearchCardArgs {
 
 interface SemanticSearchProps {
   onAddSong: (song: SongCardData) => Promise<void>;
-  existingSongIds?: string[];
+  existingSongCounts?: Record<string, number>;
   addingSongIds?: Set<string>;
-  addedSongIds?: Set<string>;
   onSwitchToSearchTab?: (query: string) => void;
   albums?: AlbumFilter[];
   keys?: string[];
@@ -48,9 +47,8 @@ interface SemanticSearchProps {
 
 interface UseSemanticSearchOptions {
   onAddSong: (song: SongCardData) => Promise<void>;
-  existingSongIds?: string[];
+  existingSongCounts?: Record<string, number>;
   addingSongIds?: Set<string>;
-  addedSongIds?: Set<string>;
   onSwitchToSearchTab?: (query: string) => void;
   albums?: AlbumFilter[];
   keys?: string[];
@@ -64,9 +62,8 @@ interface UseSemanticSearchOptions {
 
 export function useSemanticSearch({
   onAddSong,
-  existingSongIds = [],
+  existingSongCounts = {},
   addingSongIds = new Set(),
-  addedSongIds = new Set(),
   onSwitchToSearchTab,
   albums = [],
   keys = [],
@@ -237,9 +234,9 @@ export function useSemanticSearch({
     [handleSearch]
   );
 
-  const isSongAdded = useCallback(
-    (songId: string) => existingSongIds.includes(songId) || addedSongIds.has(songId),
-    [existingSongIds, addedSongIds]
+  const songCount = useCallback(
+    (songId: string) => existingSongCounts[songId] ?? 0,
+    [existingSongCounts]
   );
 
   const isSongAdding = useCallback(
@@ -347,7 +344,7 @@ export function useSemanticSearch({
                     song={song}
                     onAdd={() => onAddSong(song)}
                     onPlay={handlePlaySong}
-                    isAdded={isSongAdded(song.id)}
+                    addedCount={songCount(song.id)}
                     isAdding={isSongAdding(song.id)}
                     isPlaying={playingSongId === song.id}
                     isPreviewLoading={previewLoadingSongId === song.id}

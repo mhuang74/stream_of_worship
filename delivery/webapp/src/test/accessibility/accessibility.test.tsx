@@ -438,21 +438,23 @@ describe("Accessibility (Task 8.2)", () => {
   // SongCard
   describe("SongCard", () => {
     it("add button has descriptive aria-label when not yet added", () => {
-      render(<SongCard song={mockSongCard} onAdd={vi.fn()} isAdded={false} />);
+      render(<SongCard song={mockSongCard} onAdd={vi.fn()} addedCount={0} />);
       const addButton = screen.getByRole("button", { name: /add to songset/i });
       expect(addButton).toBeInTheDocument();
     });
 
-    it("add button has aria-label indicating already added", () => {
-      render(<SongCard song={mockSongCard} onAdd={vi.fn()} isAdded={true} />);
-      const addButton = screen.getByRole("button", { name: /already added/i });
+    it("add button stays enabled when the song is already in the songset", () => {
+      render(<SongCard song={mockSongCard} onAdd={vi.fn()} addedCount={2} />);
+      const addButton = screen.getByRole("button", { name: /add to songset/i });
       expect(addButton).toBeInTheDocument();
+      expect(addButton).toBeEnabled();
     });
 
-    it("add button is disabled when already added", () => {
-      render(<SongCard song={mockSongCard} onAdd={vi.fn()} isAdded={true} />);
-      const addButton = screen.getByRole("button", { name: /already added/i });
-      expect(addButton).toBeDisabled();
+    it("add button announces how many copies the songset holds", () => {
+      render(<SongCard song={mockSongCard} onAdd={vi.fn()} addedCount={2} />);
+      const count = screen.getByTestId("add-button-count");
+      expect(count).toHaveAttribute("aria-label", "In songset ×2");
+      expect(count).toHaveTextContent("×2");
     });
   });
 
@@ -520,7 +522,7 @@ describe("Accessibility (Task 8.2)", () => {
       isOpen: true,
       onOpenChange: vi.fn(),
       onAddSongs: vi.fn(),
-      existingSongIds: [],
+      existingSongCounts: {},
     };
 
     beforeEach(() => {

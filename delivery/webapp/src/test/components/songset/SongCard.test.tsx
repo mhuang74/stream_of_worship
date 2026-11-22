@@ -36,7 +36,7 @@ describe("SongCard", () => {
   const defaultProps = {
     song: mockSong,
     onAdd: vi.fn(),
-    isAdded: false,
+    addedCount: 0,
     isAdding: false,
   };
 
@@ -219,11 +219,33 @@ describe("SongCard", () => {
       });
     });
 
-    it("shows checkmark when song is already added", () => {
-      renderCard({ isAdded: true });
+    it("stays enabled and shows a count when the song is already in the songset", () => {
+      renderCard({ addedCount: 2 });
       const button = screen.getByTestId("add-song-button");
-      expect(button).toBeDisabled();
-      expect(button.querySelector("svg")).toHaveClass("text-green-500");
+      expect(button).toBeEnabled();
+      expect(screen.getByTestId("add-button-count")).toHaveTextContent("×2");
+      expect(screen.getByTestId("add-button-count")).toHaveAttribute(
+        "aria-label",
+        "In songset ×2"
+      );
+    });
+
+    it("renders no count badge for a song absent from the songset", () => {
+      renderCard({ addedCount: 0 });
+      expect(screen.queryByTestId("add-button-count")).not.toBeInTheDocument();
+    });
+
+    it("adds the same song twice in a row", async () => {
+      const onAdd = vi.fn().mockResolvedValue(undefined);
+      renderCard({ onAdd, addedCount: 1 });
+      const button = screen.getByTestId("add-song-button");
+
+      fireEvent.click(button);
+      await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+      fireEvent.click(button);
+      await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
+      expect(onAdd).toHaveBeenNthCalledWith(1, "song-1");
+      expect(onAdd).toHaveBeenNthCalledWith(2, "song-1");
     });
 
     it("shows loading spinner when isAdding is true", () => {
@@ -233,10 +255,6 @@ describe("SongCard", () => {
       expect(button.querySelector("span")).toHaveClass("animate-spin");
     });
 
-    it("disables button when song is added", () => {
-      renderCard({ isAdded: true });
-      expect(screen.getByTestId("add-song-button")).toBeDisabled();
-    });
 
     it("has correct aria-label for add button", () => {
       renderCard();
@@ -246,11 +264,19 @@ describe("SongCard", () => {
       );
     });
 
-    it("has correct aria-label when already added", () => {
-      renderCard({ isAdded: true });
+    it("keeps the add aria-label when the song is already in the songset", () => {
+      renderCard({ addedCount: 1 });
       expect(screen.getByTestId("add-song-button")).toHaveAttribute(
         "aria-label",
-        "Already added"
+        "Add to songset"
+      );
+    });
+
+    it("has correct aria-label when the songset is full", () => {
+      renderCard({ disabled: true });
+      expect(screen.getByTestId("add-song-button")).toHaveAttribute(
+        "aria-label",
+        "Songset full"
       );
     });
 

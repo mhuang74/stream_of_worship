@@ -108,7 +108,6 @@ export function toSongsetLyricLines(
         localTimeSeconds: clip.sourceStartSeconds + (timeline - clip.startSeconds),
         globalTimeSeconds: timeline,
         timelineSeconds: timeline,
-        title: "",
       });
     }
   }

@@ -155,7 +155,10 @@ export interface SongsetContainingSong {
   description: string | null;
   updatedAt: Date;
   itemCount: number;
-  songPosition: number;
+  /** How many Items in this Songset are the Song (>= 1). */
+  occurrenceCount: number;
+  /** Zero-based positions of every occurrence, ascending. */
+  positions: number[];
   isOrigin: boolean;
   owner: {
     id: number;
@@ -164,10 +167,9 @@ export interface SongsetContainingSong {
 }
 
 /**
- * Finds all songsets owned by `userId` that contain the given `songId`.
- * If a song appears multiple times in one songset, one row is returned per
- * occurrence, each with the correct `songPosition`. When `originSongsetId` is
- * provided, that songset is sorted first.
+ * Finds all songsets owned by `userId` that contain the given `songId`, one row
+ * per Songset with the number of occurrences and their positions. When
+ * `originSongsetId` is provided, that songset is sorted first.
  */
 export async function findSongsetsContainingSong(
   songId: string,
@@ -197,7 +199,8 @@ export async function findSongsetsContainingSong(
         description: songsets.description,
         updatedAt: songsets.updatedAt,
         itemCount: itemCountSubquery.count,
-        songPosition: songsetItems.position,
+        occurrenceCount: sql<number>`count(${songsetItems.id})::int`,
+        positions: sql<number[]>`array_agg(${songsetItems.position} order by ${songsetItems.position})`,
         ownerId: users.id,
         ownerName: users.name,
       })
@@ -211,6 +214,7 @@ export async function findSongsetsContainingSong(
           eq(songsetItems.songId, songId)
         )
       )
+      .groupBy(songsets.id, users.id, users.name, itemCountSubquery.count)
       .orderBy(desc(songsets.updatedAt))
       .limit(50);
 
@@ -228,7 +232,8 @@ export async function findSongsetsContainingSong(
       description: row.description,
       updatedAt: row.updatedAt,
       itemCount: Number(row.itemCount ?? 0),
-      songPosition: row.songPosition,
+      occurrenceCount: Number(row.occurrenceCount ?? 0),
+      positions: row.positions ?? [],
       isOrigin: row.id === originSongsetId,
       owner: {
         id: row.ownerId,
@@ -1430,6 +1435,127 @@ export async function addSongsetItem(
   return mapRelationalSongsetItem(item);
 }
 
+/**
+ * Copy one Songset Item into the same Songset immediately below itself,
+ * carrying the Song, the Recording, the Transition settings, and the Song
+ * Arrangement verbatim. A copy is a new occurrence, so the Songset Item cap
+ * and the duration limit both apply to it.
+ */
+export async function duplicateSongsetItem(
+  itemId: string,
+  songsetId: string,
+  userId: number
+): Promise<SongsetItemDetail | null> {
+  const insertedId = await mutationDb.transaction(async (tx) => {
+    // Parent-row lock serializes duplicate/append writes per Songset: the cap
+    // and duration admission read the siblings' persisted state.
+    const [ownedSongset] = await tx
+      .select({ id: songsets.id })
+      .from(songsets)
+      .where(and(eq(songsets.id, songsetId), eq(songsets.userId, userId)))
+      .for("update");
+
+    if (!ownedSongset) return null;
+
+    const [source] = await tx
+      .select({
+        songId: songsetItems.songId,
+        recordingHashPrefix: songsetItems.recordingHashPrefix,
+        position: songsetItems.position,
+        gapBeats: songsetItems.gapBeats,
+        crossfadeEnabled: songsetItems.crossfadeEnabled,
+        crossfadeDurationSeconds: songsetItems.crossfadeDurationSeconds,
+        keyShiftSemitones: songsetItems.keyShiftSemitones,
+        tempoRatio: songsetItems.tempoRatio,
+        arrangementSteps: songsetItems.arrangementSteps,
+      })
+      .from(songsetItems)
+      .where(and(eq(songsetItems.id, itemId), eq(songsetItems.songsetId, songsetId)))
+      .limit(1);
+
+    if (!source) return null;
+
+    const siblingRows = await tx
+      .select(arrangementItemColumns)
+      .from(songsetItems)
+      .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
+      .where(eq(songsetItems.songsetId, songsetId))
+      .orderBy(asc(songsetItems.position));
+
+    // A Recording with a deletedAt is invisible to renders, so it neither counts
+    // toward the cap nor contributes to the projected duration.
+    const visibleRows = siblingRows.filter((row) => !row.recordingDeletedAt);
+    if (visibleRows.length >= SONGSET_MAX_SONGS) {
+      throw new SongsetRenderValidationError(
+        "SONGSET_FULL",
+        `Songset already has maximum of ${SONGSET_MAX_SONGS} songs`
+      );
+    }
+
+    const sourceRow = siblingRows.find((row) => row.id === itemId);
+    const prospectiveTotalSeconds = getSongsetDurationSeconds([
+      ...visibleRows.map(toArrangementInput),
+      ...(sourceRow && !sourceRow.recordingDeletedAt ? [toArrangementInput(sourceRow)] : []),
+    ]);
+    if (
+      prospectiveTotalSeconds != null &&
+      prospectiveTotalSeconds > SONGSET_MAX_DURATION_SECONDS
+    ) {
+      throw new SongsetRenderValidationError(
+        "SONGSET_TOO_LONG",
+        `Songset exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes`
+      );
+    }
+
+    const now = new Date();
+    await tx
+      .update(songsetItems)
+      .set({ position: sql`${songsetItems.position} + 1`, updatedAt: now })
+      .where(
+        and(eq(songsetItems.songsetId, songsetId), gt(songsetItems.position, source.position))
+      );
+
+    const nextId = nanoid();
+    await tx.insert(songsetItems).values({
+      id: nextId,
+      songsetId,
+      songId: source.songId,
+      recordingHashPrefix: source.recordingHashPrefix,
+      position: source.position + 1,
+      gapBeats: source.gapBeats,
+      crossfadeEnabled: source.crossfadeEnabled,
+      crossfadeDurationSeconds: source.crossfadeDurationSeconds,
+      keyShiftSemitones: source.keyShiftSemitones,
+      tempoRatio: source.tempoRatio,
+      arrangementSteps: source.arrangementSteps,
+    });
+    await tx.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+
+    return nextId;
+  });
+
+  if (!insertedId) return null;
+
+  const inserted = await db.query.songsetItems.findFirst({
+    where: eq(songsetItems.id, insertedId),
+    with: {
+      song: true,
+      recording: {
+        with: {
+          lyricMarks: {
+            columns: { id: true },
+            where: eq(lyricMarks.userId, userId),
+          },
+        },
+      },
+    },
+  });
+
+  if (!inserted) return null;
+
+  return mapRelationalSongsetItem(inserted);
+}
+
 export async function updateSongsetItem(
   itemId: string,
   songsetId: string,
@@ -1556,6 +1682,7 @@ export async function deleteSongsetItem(
 export type SongsetRenderValidationCode =
   | "SONGSET_NOT_FOUND"
   | "SONGSET_TOO_LONG"
+  | "SONGSET_FULL"
   | "ARRANGEMENT_ANALYSIS_UNAVAILABLE"
   | "ARRANGEMENT_STALE"
   | "ARRANGEMENT_INVALID";

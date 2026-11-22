@@ -173,9 +173,8 @@ class VideoEngine:
         )
 
         all_lyrics: list[GlobalLRCLine] = []
-        chapters: list[ChapterInfo] = []
 
-        for i, segment in enumerate(segments):
+        for segment in segments:
             hash_prefix = segment.item.recording_hash_prefix
             if not hash_prefix:
                 continue
@@ -188,33 +187,10 @@ class VideoEngine:
                 continue
 
             local_lyrics = parse_lrc(lrc_content)
-            title = segment.item.song_title or (
-                str(segment.item.song_id) if segment.item.song_id else f"song-{i}"
-            )
             remapped_lyrics = remap_lrc_to_clips(
-                local_lyrics, segment.clips, title, tempo_bpm=segment.item.tempo_bpm
+                local_lyrics, segment.clips, segment.item.id, tempo_bpm=segment.item.tempo_bpm
             )
             all_lyrics.extend(remapped_lyrics)
-
-            segment_end = segment.start_time_seconds + segment.duration_seconds
-            chapters.append(
-                ChapterInfo(
-                    position=i + 1,
-                    song_title=(
-                        segment.item.song_title
-                        or (str(segment.item.song_id) if segment.item.song_id else f"Song {i + 1}")
-                    ),
-                    start_seconds=segment.start_time_seconds,
-                    end_seconds=segment_end,
-                    lines=tuple(
-                        {
-                            "text": line.text,
-                            "startSeconds": line.global_time_seconds,
-                        }
-                        for line in remapped_lyrics
-                    ),
-                )
-            )
 
         if not all_lyrics or all(not line.text for line in all_lyrics):
             return self.generate_blank_video(
@@ -246,7 +222,10 @@ class VideoEngine:
             if self.title_card_lines:
                 title_lines = tuple(self.title_card_lines)
             else:
-                song_titles = [seg.item.song_title for seg in segments if seg.item.song_title]
+                # Dedupe: a repeated Song is one title-card entry, first occurrence first.
+                song_titles = list(
+                    dict.fromkeys(seg.item.song_title for seg in segments if seg.item.song_title)
+                )
                 display_name = self.songset_name or "Worship Set"
                 title_lines = (
                     tuple([display_name] + song_titles) if song_titles else (display_name,)

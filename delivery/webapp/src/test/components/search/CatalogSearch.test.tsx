@@ -231,7 +231,7 @@ describe("CatalogSearch (shared search component)", () => {
         isOpen
         onOpenChange={vi.fn()}
         onAddSong={vi.fn().mockResolvedValue(undefined)}
-        existingSongIds={[]}
+        existingSongCounts={{}}
       />
     );
     await waitFor(() => {

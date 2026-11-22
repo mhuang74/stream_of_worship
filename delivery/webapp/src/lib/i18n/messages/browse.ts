@@ -49,7 +49,7 @@ export const browseBundle = bundle({
     "browse.pausePreview": "Pause preview",
     "browse.verified": "Verified",
     "browse.addToSongset": "Add to songset",
-    "browse.alreadyAdded": "Already added",
+    "browse.inSongsetCount": "In songset ×{count}",
     "browse.songsetFull": "Songset full",
     "browse.bpm": "BPM",
 
@@ -163,7 +163,7 @@ export const browseBundle = bundle({
     "browse.pausePreview": "暫停預覽",
     "browse.verified": "已認證",
     "browse.addToSongset": "加入敬拜歌單",
-    "browse.alreadyAdded": "已加入",
+    "browse.inSongsetCount": "敬拜歌單中 ×{count}",
     "browse.songsetFull": "敬拜歌單已滿",
     "browse.bpm": "BPM",
 

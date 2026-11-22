@@ -71,7 +71,7 @@ export interface CatalogSearchProps {
   mode: "browse" | "listen";
   /** browse mode — add flow (mirrors former BrowseSheet behavior). */
   onAddSong?: (song: SongCardData) => Promise<void>;
-  existingSongIds?: string[];
+  existingSongCounts?: Record<string, number>;
   /** browse mode — songset capacity gating for the add button. */
   isSongsetFull?: boolean;
   /** browse mode — toast chrome for the add flow. */
@@ -93,7 +93,7 @@ export interface CatalogSearchProps {
 export function CatalogSearch({
   mode,
   onAddSong,
-  existingSongIds = [],
+  existingSongCounts = {},
   isSongsetFull = false,
   songNotFoundMessage,
   songAddedMessage,
@@ -122,7 +122,6 @@ export function CatalogSearch({
   const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingSongIds, setAddingSongIds] = useState<Set<string>>(new Set());
-  const [addedSongIds, setAddedSongIds] = useState<Set<string>>(new Set());
 
   const hasSearchCriteria =
     keywordQuery.trim().length > 0 ||
@@ -307,7 +306,7 @@ export function CatalogSearch({
   const handleAddSong = useCallback(
     async (songOrId: string | SongCardData) => {
       const songId = typeof songOrId === "string" ? songOrId : songOrId.id;
-      if (addingSongIds.has(songId) || addedSongIds.has(songId)) return;
+      if (addingSongIds.has(songId)) return;
 
       const song = typeof songOrId === "string"
         ? results.find((result) => result.id === songId)
@@ -321,7 +320,6 @@ export function CatalogSearch({
 
       try {
         await onAddSong!(song);
-        setAddedSongIds((prev) => new Set(prev).add(songId));
         if (songAddedMessage) toast.success(songAddedMessage);
       } catch (err) {
         if (failedToAddMessage) toast.error(failedToAddMessage);
@@ -334,14 +332,12 @@ export function CatalogSearch({
         });
       }
     },
-    [onAddSong, addingSongIds, addedSongIds, results, songNotFoundMessage, songAddedMessage, failedToAddMessage]
+    [onAddSong, addingSongIds, results, songNotFoundMessage, songAddedMessage, failedToAddMessage]
   );
 
-  const isSongAdded = useCallback(
-    (songId: string) => {
-      return existingSongIds.includes(songId) || addedSongIds.has(songId);
-    },
-    [existingSongIds, addedSongIds]
+  const songCount = useCallback(
+    (songId: string) => existingSongCounts[songId] ?? 0,
+    [existingSongCounts]
   );
 
   const isSongAdding = useCallback(
@@ -378,9 +374,8 @@ export function CatalogSearch({
     reset: resetSemanticSearch,
   } = useSemanticSearch({
     onAddSong: mode === "browse" ? handleAddSong : async () => {},
-    existingSongIds,
+    existingSongCounts,
     addingSongIds,
-    addedSongIds,
     onSwitchToSearchTab: handleSwitchToSearchTab,
     albums: selectedAlbums,
     keys: selectedKeys,
@@ -423,7 +418,7 @@ export function CatalogSearch({
           onPlay={handlePlaySong}
           onToggleFavorite={(songId) => void toggleFavorite(songId)}
           isFavorite={favoriteIds.has(song.id)}
-          isAdded={isSongAdded(song.id)}
+          addedCount={songCount(song.id)}
           isAdding={isSongAdding(song.id)}
           disabled={isSongsetFull}
           isPlaying={playingSongId === song.id}
@@ -431,7 +426,7 @@ export function CatalogSearch({
         />
       );
     },
-    [mode, onAddSong, handleAddSong, handlePlaySong, isSongAdded, isSongAdding, isSongsetFull, favoriteIds, toggleFavorite, playingSongId, previewLoadingSongId]
+    [mode, onAddSong, handleAddSong, handlePlaySong, songCount, isSongAdding, isSongsetFull, favoriteIds, toggleFavorite, playingSongId, previewLoadingSongId]
   );
 
   const sharedFilters = (

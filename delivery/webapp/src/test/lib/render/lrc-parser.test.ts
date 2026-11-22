@@ -1,10 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   parseLRC,
-  convertToGlobalTimeline,
   estimateLastLyricDuration,
   findCurrentLyricIndex,
-  groupLyricsBySong,
   isValidLRC,
   getLyricsTimeRange,
   linesForSourceRange,
@@ -109,66 +107,6 @@ describe("parseLRC", () => {
   });
 });
 
-describe("convertToGlobalTimeline", () => {
-  it("converts local lines to global timeline", () => {
-    const localLines: LRCLine[] = [
-      { timeSeconds: 0, text: "Start" },
-      { timeSeconds: 10, text: "Middle" },
-    ];
-    const result = convertToGlobalTimeline(localLines, 5, " Song ");
-    expect(result).toHaveLength(2);
-    expect(result[0].globalTimeSeconds).toBe(5);
-    expect(result[1].globalTimeSeconds).toBe(15);
-  });
-
-  it("handles zero segment start offset", () => {
-    const localLines: LRCLine[] = [
-      { timeSeconds: 5, text: "Line 1" },
-      { timeSeconds: 15, text: "Line 2" },
-    ];
-    const result = convertToGlobalTimeline(localLines, 0, "Test Song");
-    expect(result[0].globalTimeSeconds).toBe(5);
-    expect(result[1].globalTimeSeconds).toBe(15);
-  });
-
-  it("handles multiple lines correctly", () => {
-    const localLines: LRCLine[] = [
-      { timeSeconds: 0, text: "First" },
-      { timeSeconds: 5, text: "Second" },
-      { timeSeconds: 10, text: "Third" },
-    ];
-    const result = convertToGlobalTimeline(localLines, 7, "Title");
-    expect(result[0].globalTimeSeconds).toBe(7);
-    expect(result[1].globalTimeSeconds).toBe(12);
-    expect(result[2].globalTimeSeconds).toBe(17);
-  });
-
-  it("preserves original line data", () => {
-    const localLines: LRCLine[] = [
-      { timeSeconds: 5, text: "Text" },
-    ];
-    const result = convertToGlobalTimeline(localLines, 10, "Song");
-    expect(result[0].localTimeSeconds).toBe(5);
-    expect(result[0].globalTimeSeconds).toBe(15);
-    expect(result[0].text).toBe("Text");
-    expect(result[0].title).toBe("Song");
-  });
-
-  it("handles empty local lines array", () => {
-    const result = convertToGlobalTimeline([], 5, "Song");
-    expect(result).toHaveLength(0);
-  });
-
-  it("handles empty title string", () => {
-    const localLines: LRCLine[] = [
-      { timeSeconds: 10, text: "Text" },
-    ];
-    const result = convertToGlobalTimeline(localLines, 0, "");
-    expect(result).toHaveLength(1);
-    expect(result[0].title).toBe("");
-  });
-});
-
 describe("estimateLastLyricDuration", () => {
   it("returns 5 seconds for empty array", () => {
     const result = estimateLastLyricDuration([]);
@@ -177,9 +115,9 @@ describe("estimateLastLyricDuration", () => {
 
   it("uses previous occurrence duration for repeated text", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Repeat", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song" },
-      { text: "Next", localTimeSeconds: 20, globalTimeSeconds: 20, title: "Song" },
-      { text: "Repeat", localTimeSeconds: 30, globalTimeSeconds: 30, title: "Song" },
+      { text: "Repeat", localTimeSeconds: 10, globalTimeSeconds: 10 },
+      { text: "Next", localTimeSeconds: 20, globalTimeSeconds: 20 },
+      { text: "Repeat", localTimeSeconds: 30, globalTimeSeconds: 30 },
     ];
     const result = estimateLastLyricDuration(lyrics);
     expect(result).toBe(10.0);
@@ -187,8 +125,8 @@ describe("estimateLastLyricDuration", () => {
 
   it("uses minimum of 3 seconds for repeated text", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Repeat", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song" },
-      { text: "Repeat", localTimeSeconds: 11, globalTimeSeconds: 11, title: "Song" },
+      { text: "Repeat", localTimeSeconds: 10, globalTimeSeconds: 10 },
+      { text: "Repeat", localTimeSeconds: 11, globalTimeSeconds: 11 },
     ];
     const result = estimateLastLyricDuration(lyrics);
     expect(result).toBe(3.0);
@@ -196,7 +134,7 @@ describe("estimateLastLyricDuration", () => {
 
   it("uses fallback char count for unique text", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Hello", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song" },
+      { text: "Hello", localTimeSeconds: 10, globalTimeSeconds: 10 },
     ];
     const result = estimateLastLyricDuration(lyrics);
     expect(result).toBeGreaterThan(0);
@@ -204,7 +142,7 @@ describe("estimateLastLyricDuration", () => {
 
   it("estimates duration using BPM", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Test", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song" },
+      { text: "Test", localTimeSeconds: 10, globalTimeSeconds: 10 },
     ];
     const result = estimateLastLyricDuration(lyrics, 120);
     expect(result).toBeGreaterThan(0);
@@ -212,7 +150,7 @@ describe("estimateLastLyricDuration", () => {
 
   it("uses default BPM of 70 when none provided", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Test", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song" },
+      { text: "Test", localTimeSeconds: 10, globalTimeSeconds: 10 },
     ];
     const result = estimateLastLyricDuration(lyrics);
     expect(result).toBeGreaterThan(0);
@@ -220,11 +158,11 @@ describe("estimateLastLyricDuration", () => {
 
   it("maintains minimum 3 seconds regardless of calculation", () => {
     const shortTextRepeated: GlobalLRCLine[] = [
-      { text: "Repeat", localTimeSeconds: 10, globalTimeSeconds: 10, title: "Song" },
-      { text: "Repeat", localTimeSeconds: 11, globalTimeSeconds: 11, title: "Song" },
+      { text: "Repeat", localTimeSeconds: 10, globalTimeSeconds: 10 },
+      { text: "Repeat", localTimeSeconds: 11, globalTimeSeconds: 11 },
     ];
     const calculatedLongText: GlobalLRCLine[] = [
-      { text: "12345678901234567890", localTimeSeconds: 0, globalTimeSeconds: 0, title: "Song" },
+      { text: "12345678901234567890", localTimeSeconds: 0, globalTimeSeconds: 0 },
     ];
     expect(estimateLastLyricDuration(shortTextRepeated)).toBe(3.0);
     expect(estimateLastLyricDuration(calculatedLongText, 200)).toBeGreaterThanOrEqual(3.0);
@@ -232,7 +170,7 @@ describe("estimateLastLyricDuration", () => {
 
   it("handles single line array", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "Single", localTimeSeconds: 0, globalTimeSeconds: 0, title: "Song" },
+      { text: "Single", localTimeSeconds: 0, globalTimeSeconds: 0 },
     ];
     const result = estimateLastLyricDuration(lyrics);
     expect(result).toBeGreaterThan(0);
@@ -240,7 +178,7 @@ describe("estimateLastLyricDuration", () => {
 
   it("rounds properly for character counts", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "ABC", localTimeSeconds: 0, globalTimeSeconds: 0, title: "Song" },
+      { text: "ABC", localTimeSeconds: 0, globalTimeSeconds: 0 },
     ];
     const result = estimateLastLyricDuration(lyrics);
     expect(result).toBeGreaterThan(0);
@@ -250,24 +188,24 @@ describe("estimateLastLyricDuration", () => {
 describe("findCurrentLyricIndex", () => {
   it("returns -1 for time before first lyric", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song" },
+      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10 },
+      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20 },
     ];
     expect(findCurrentLyricIndex(lyrics, 5)).toBe(-1);
   });
 
   it("returns 0 for time at first lyric", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song" },
+      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10 },
+      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20 },
     ];
     expect(findCurrentLyricIndex(lyrics, 10)).toBe(0);
   });
 
   it("returns correct index for time between lyrics", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song" },
+      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10 },
+      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20 },
     ];
     expect(findCurrentLyricIndex(lyrics, 15)).toBe(0);
     expect(findCurrentLyricIndex(lyrics, 18)).toBe(0);
@@ -275,16 +213,16 @@ describe("findCurrentLyricIndex", () => {
 
   it("returns index of last lyric for time at last lyric", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song" },
+      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10 },
+      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20 },
     ];
     expect(findCurrentLyricIndex(lyrics, 20)).toBe(1);
   });
 
   it("returns last index for time after last lyric", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song" },
+      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10 },
+      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20 },
     ];
     expect(findCurrentLyricIndex(lyrics, 25)).toBe(1);
     expect(findCurrentLyricIndex(lyrics, 100)).toBe(1);
@@ -296,75 +234,11 @@ describe("findCurrentLyricIndex", () => {
 
   it("returns maximum index when time matches last lyric exactly", () => {
     const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song" },
-      { text: "Last", globalTimeSeconds: 30, localTimeSeconds: 30, title: "Song" },
+      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10 },
+      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20 },
+      { text: "Last", globalTimeSeconds: 30, localTimeSeconds: 30 },
     ];
     expect(findCurrentLyricIndex(lyrics, 30)).toBe(2);
-  });
-});
-
-describe("groupLyricsBySong", () => {
-  it("groups single song lyrics", () => {
-    const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song 1" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song 1" },
-      { text: "Third", globalTimeSeconds: 30, localTimeSeconds: 30, title: "Song 1" },
-    ];
-    const result = groupLyricsBySong(lyrics);
-    expect(result.size).toBe(1);
-    expect(result.get("Song 1")).toHaveLength(3);
-  });
-
-  it("groups multiple song lyrics separately", () => {
-    const lyrics: GlobalLRCLine[] = [
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song 1" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song 1" },
-      { text: "First", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song 2" },
-      { text: "Second", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song 2" },
-    ];
-    const result = groupLyricsBySong(lyrics);
-    expect(result.size).toBe(2);
-    expect(result.get("Song 1")).toHaveLength(2);
-    expect(result.get("Song 2")).toHaveLength(2);
-  });
-
-  it("handles empty lyrics array", () => {
-    const result = groupLyricsBySong([]);
-    expect(result.size).toBe(0);
-  });
-
-  it("handles songs with single line", () => {
-    const lyrics: GlobalLRCLine[] = [
-      { text: "Only one", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Solo Song" },
-    ];
-    const result = groupLyricsBySong(lyrics);
-    expect(result.size).toBe(1);
-    expect(result.get("Solo Song")).toHaveLength(1);
-  });
-
-  it("handles titles with special characters", () => {
-    const lyrics: GlobalLRCLine[] = [
-      { text: "Line 1", globalTimeSeconds: 10, localTimeSeconds: 10, title: "Song & Special!" },
-      { text: "Line 2", globalTimeSeconds: 20, localTimeSeconds: 20, title: "Song & Special!" },
-    ];
-    const result = groupLyricsBySong(lyrics);
-    expect(result.get("Song & Special!")).toHaveLength(2);
-  });
-
-  it("handles multiple songs with various line counts", () => {
-    const lyrics: GlobalLRCLine[] = [
-      { text: "1", globalTimeSeconds: 0, localTimeSeconds: 0, title: "A" },
-      { text: "1", globalTimeSeconds: 0, localTimeSeconds: 0, title: "B" },
-      { text: "1", globalTimeSeconds: 0, localTimeSeconds: 0, title: "B" },
-      { text: "1", globalTimeSeconds: 0, localTimeSeconds: 0, title: "C" },
-      { text: "1", globalTimeSeconds: 0, localTimeSeconds: 0, title: "A" },
-    ];
-    const result = groupLyricsBySong(lyrics);
-    expect(result.size).toBe(3);
-    expect(result.get("A")).toHaveLength(2);
-    expect(result.get("B")).toHaveLength(2);
-    expect(result.get("C")).toHaveLength(1);
   });
 });
 

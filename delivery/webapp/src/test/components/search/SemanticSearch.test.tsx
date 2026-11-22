@@ -97,7 +97,7 @@ const mockSongs = [
 
 const defaultProps = {
   onAddSong: vi.fn().mockResolvedValue(undefined),
-  existingSongIds: [],
+  existingSongCounts: {},
 };
 const hymnsFilter = { albumName: "Hymns", albumSeries: "Classic" };
 const worshipFilter = { albumName: "Worship", albumSeries: null };
@@ -508,13 +508,13 @@ describe("SemanticSearch", () => {
       });
     });
 
-    it("marks already-added songs as added", async () => {
+    it("keeps songs already in the songset addable and shows their count", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
       });
 
-      renderComponent({ existingSongIds: ["song-1"] });
+      renderComponent({ existingSongCounts: { "song-1": 1 } });
 
       const input = screen.getByTestId("semantic-search-input");
       fireEvent.change(input, { target: { value: "grace" } });
@@ -522,7 +522,8 @@ describe("SemanticSearch", () => {
 
       await waitFor(() => {
         const addButtons = screen.getAllByTestId("add-song-button");
-        expect(addButtons[0]).toBeDisabled();
+        expect(addButtons[0]).toBeEnabled();
+        expect(screen.getByTestId("add-button-count")).toHaveTextContent("×1");
       });
     });
   });

@@ -72,7 +72,7 @@ export async function reviewQueue(
           AND reviewed_recording.deleted_at IS NULL
       ) AS feedback
     FROM candidates p
-    LEFT JOIN (SELECT song_id, COUNT(*) n FROM songset_items GROUP BY song_id) si ON si.song_id = p.song_id
+    LEFT JOIN (SELECT song_id, COUNT(DISTINCT songset_id) n FROM songset_items GROUP BY song_id) si ON si.song_id = p.song_id
     LEFT JOIN (SELECT song_id, COUNT(*) n FROM user_favorite_songs GROUP BY song_id) fav ON fav.song_id = p.song_id
     LEFT JOIN (SELECT album_name, album_series, MAX(created_at) newest FROM songs
       GROUP BY album_name, album_series) al
