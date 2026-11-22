@@ -31,6 +31,7 @@ type MockSelectChain = {
   from: ReturnType<typeof vi.fn>;
   leftJoin: ReturnType<typeof vi.fn>;
   where: ReturnType<typeof vi.fn>;
+  innerJoin: ReturnType<typeof vi.fn>;
   orderBy: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   for: ReturnType<typeof vi.fn>;
@@ -40,7 +41,7 @@ type MockSelectChain = {
 function createSelectChain(rows: unknown[]): MockSelectChain {
   const promise = Promise.resolve(rows);
   const chain = {} as MockSelectChain;
-  for (const method of ["from", "leftJoin", "where", "orderBy", "limit", "for"] as const) {
+  for (const method of ["from", "innerJoin", "leftJoin", "where", "orderBy", "limit", "for"] as const) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
   chain.then = (resolve) => promise.then(resolve);
@@ -164,6 +165,9 @@ function copiedItemRow(extra: Record<string, unknown> = {}) {
 describe("duplicateSongsetItem", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The duplicate reads its Item back with the glue resolver, whose first
+    // call is a `db.select` row read; clearAllMocks wipes the implementation.
+    vi.mocked(db.select).mockReturnValue(createSelectChain([]) as never);
   });
 
   it("inserts the copy below the source and shifts later siblings down", async () => {

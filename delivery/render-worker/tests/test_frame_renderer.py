@@ -105,7 +105,7 @@ def _tc_frame_inputs() -> tuple[dict, list[SegmentInfo], list[GlobalLRCLine], li
             text=line["text"],
             local_time_seconds=line["localSeconds"],
             global_time_seconds=line["globalSeconds"],
-            title=song["title"],
+            item_id=song["itemId"],
         )
         for song in fixture["songs"]
         for line in song["lyrics"]

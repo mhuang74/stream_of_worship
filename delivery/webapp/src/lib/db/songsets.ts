@@ -1078,8 +1078,8 @@ export async function getRenderPageData(
     const itemRows = await db
       .select({
         id: songsetItems.id,
-        songId: songsetItems.songId,
         position: songsetItems.position,
+        songId: songsetItems.songId,
         songTitle: songs.title,
         markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
         recordingDeletedAt: recordings.deletedAt,
@@ -1106,8 +1106,8 @@ export async function getRenderPageData(
       .where(eq(songsetItems.songsetId, id))
       .groupBy(
         songsetItems.id,
-        songsetItems.songId,
         songsetItems.position,
+        songsetItems.songId,
         songs.title,
         recordings.deletedAt,
         recordings.durationSeconds,
@@ -1835,7 +1835,18 @@ export async function duplicateSongsetItem(
 
   if (!inserted) return null;
 
-  return mapRelationalSongsetItem(inserted);
+  // The copy is a new occurrence: its outgoing Junction is unresolved until the
+  // caller stages a take, so read it back with the same resolver the editor uses.
+  const glue = requireJunction(
+    new Map(
+      (await loadResolvedGlueJunctions(songsetId, userId)).map(
+        (junction) => [junction.fromItemId, junction] as const
+      )
+    ),
+    inserted.id
+  );
+
+  return mapRelationalSongsetItem(inserted, glue);
 }
 
 export async function updateSongsetItem(

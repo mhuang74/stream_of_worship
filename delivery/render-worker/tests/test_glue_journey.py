@@ -453,7 +453,7 @@ def _video_inputs(result, fetcher: _JourneyFetcher):
             remap_lrc_to_clips(
                 parse_lrc(lrc_content),
                 segment.clips,
-                segment.item.song_title,
+                segment.item.id,
                 tempo_bpm=segment.item.tempo_bpm,
             )
         )
@@ -622,7 +622,7 @@ class TestGlueRenderJourney:
         assert [
             (line.text, line.global_time_seconds)
             for line in encoded_lyrics
-            if line.title == fixture["songs"][1]["title"]
+            if line.item_id == fixture["songs"][1]["itemId"]
         ] == [(line["text"], line["globalSeconds"]) for line in fixture["songs"][1]["lyrics"]]
 
         # --- 13.5 s frame: B's title only -----------------------------

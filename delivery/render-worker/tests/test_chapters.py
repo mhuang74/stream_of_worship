@@ -1149,3 +1149,4 @@ class TestGlueChapterTimeline:
         )
         assert manifest.chapters[1].start_seconds == ordinary_start
         assert manifest.chapters[0].end_seconds == timeline["chapters"][0]["endSeconds"]
+
