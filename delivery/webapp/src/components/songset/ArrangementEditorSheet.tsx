@@ -76,6 +76,9 @@ import type {
   TimelineItemSource,
 } from "@/lib/arrangements";
 import { abbreviatedSectionLabel, buildSectionHeadings } from "@/lib/section-labels";
+import { applyDraftValidity } from "@/lib/glue/draft";
+import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
+import type { TranslationKey } from "@/lib/i18n/messages";
 import type { SongListItem } from "./SongList";
 import {
   AlertTriangle,
@@ -101,6 +104,79 @@ export interface ArrangementEditorSheetProps {
   items: SongListItem[];
   /** Resolves on success; throws a translated message on failure. */
   onSave: (arrangement: SongArrangement | null) => Promise<void>;
+  /** Owner-scoped fetch for the AI-transition quote. */
+  songsetId?: string;
+  /**
+   * Free switch/beat PATCH. Resolves after local items refresh; rejects on a
+   * failed save so the rail can roll its optimistic state back.
+   */
+  onUpdateGlue?: (
+    itemId: string,
+    patch: { glueEnabled?: boolean; glueBeats?: 2 | 4 | 8 | 16 }
+  ) => Promise<void>;
+}
+
+/** Server quote shape used by the AI-transition rail. */
+interface GlueQuoteResponse {
+  uncachedSides: { side: "A" | "B"; seconds: number; credits: number }[];
+  generationSeconds: number;
+  uploadCredits: number;
+  generationCredits: number;
+  estimatedNewCredits: number;
+  quotaLimit: number;
+  quotaUsed: number;
+  quotaRemaining: number;
+  quotaResetAt: string | null;
+  blockedSides: {
+    side: "A" | "B";
+    code: "GLUE_COPYRIGHT_REJECTED" | "GLUE_EXCERPT_TOO_SHORT";
+  }[];
+}
+
+const GLUE_BEAT_CHOICES = [2, 4, 8, 16] as const;
+
+function glueReasonKey(
+  reason: NonNullable<ResolvedGlueJunction["unavailableReason"]>
+): TranslationKey {
+  switch (reason) {
+    case "unsaved-draft":
+      return "glue.reason.unsavedDraft";
+    case "no-next":
+      return "glue.reason.noNext";
+    case "no-tempo":
+      return "glue.reason.noTempo";
+    case "no-analysis":
+      return "glue.reason.noAnalysis";
+    case "invalid-arrangement":
+      return "glue.reason.invalidArrangement";
+    case "quota":
+      return "glue.reason.quota";
+    case "active-job":
+      return "glue.reason.activeJob";
+  }
+}
+
+function glueQuoteErrorKey(code: string): TranslationKey {
+  switch (code) {
+    case "GLUE_EXCERPT_TOO_SHORT":
+      return "glue.reason.tooShort";
+    case "GLUE_COPYRIGHT_REJECTED":
+      return "glue.reason.copyright";
+    case "GLUE_NOT_READY":
+      return "glue.reason.notReady";
+    case "GLUE_NOT_CONFIGURED":
+      return "glue.reason.unknown";
+    default:
+      return "glue.error.quote";
+  }
+}
+
+function glueStateKey(state: ResolvedGlueJunction["state"]): TranslationKey {
+  return `glue.state.${state}` as TranslationKey;
+}
+
+function formatGlueSeconds(seconds: number): string {
+  return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
 }
 
 /** A draft step with a stable dnd identity so duplicates stay distinguishable. */
@@ -890,8 +966,10 @@ export function ArrangementEditorSheet({
   item,
   items,
   onSave,
+  songsetId,
+  onUpdateGlue,
 }: ArrangementEditorSheetProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const dndContextId = useId();
 
   // Initialized synchronously at mount; the client remounts the sheet per
@@ -908,6 +986,14 @@ export function ArrangementEditorSheet({
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [glueEnabled, setGlueEnabled] = useState(item.glueEnabled ?? false);
+  const [glueBeats, setGlueBeats] = useState<2 | 4 | 8 | 16>(
+    item.glueBeats ?? 4
+  );
+  const [glueSaving, setGlueSaving] = useState(false);
+  const [glueError, setGlueError] = useState<string | null>(null);
+  const [glueQuote, setGlueQuote] = useState<GlueQuoteResponse | null>(null);
+  const [glueQuoteError, setGlueQuoteError] = useState<string | null>(null);
   // Bounds editing is one open transaction at a time: the id of the Step being
   // edited, its candidate (auditioned by the transport but never committed),
   // and whether the candidate is currently unsavable.
@@ -1109,6 +1195,128 @@ export function ArrangementEditorSheet({
     itemIndex >= 0 && itemIndex + 1 < items.length ? items[itemIndex + 1] : null;
   const previousTitle = previousItem?.song?.title || t("browse.unknownSong");
   const nextSongTitle = nextItem?.song?.title || t("browse.unknownSong");
+  const showGlueRail = Boolean(nextItem && songsetId && onUpdateGlue);
+  const glueTempoBpm = nextItem?.recording?.tempoBpm ?? null;
+  const glueGenerationSeconds =
+    glueTempoBpm !== null && glueTempoBpm > 0
+      ? Math.max(3, (glueBeats * 60) / glueTempoBpm)
+      : null;
+  const resolvedOutgoing = item.glue ?? null;
+  const displayGlue = useMemo(
+    () =>
+      resolvedOutgoing
+        ? applyDraftValidity([resolvedOutgoing], {
+            editedItemId: item.id,
+            hasUnsavedDraft: isDirty,
+          })[0]
+        : null,
+    [resolvedOutgoing, item.id, isDirty]
+  );
+
+  // The saved values are the source of truth after each free PATCH.
+  useEffect(() => {
+    setGlueEnabled(item.glueEnabled ?? false);
+    setGlueBeats(item.glueBeats ?? 4);
+    setGlueError(null);
+  }, [item.id, item.glueEnabled, item.glueBeats]);
+
+  // The quote endpoint is owner-scoped and computes every credit value. It is
+  // fetched only while the switch is on; the rail never computes credits.
+  useEffect(() => {
+    if (!isOpen || !nextItem || !glueEnabled || !songsetId) {
+      setGlueQuote(null);
+      setGlueQuoteError(null);
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    setGlueQuoteError(null);
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/songsets/${encodeURIComponent(songsetId)}/glue-quote?fromItemId=${encodeURIComponent(item.id)}&takeMode=initial`,
+          { signal: controller.signal }
+        );
+        const body = (await response.json().catch(() => null)) as
+          | (GlueQuoteResponse & { code?: unknown })
+          | null;
+        if (cancelled) return;
+        if (!response.ok) {
+          setGlueQuote(null);
+          setGlueQuoteError(
+            body && typeof body.code === "string" ? body.code : "GLUE_UNKNOWN"
+          );
+          return;
+        }
+        setGlueQuote(body as GlueQuoteResponse);
+      } catch (error) {
+        if (cancelled || (error as { name?: string }).name === "AbortError") {
+          return;
+        }
+        setGlueQuote(null);
+        setGlueQuoteError("GLUE_UNKNOWN");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [isOpen, nextItem, glueEnabled, songsetId, item.id, item.glueBeats]);
+
+  const updateGlue = useCallback(
+    async (patch: { glueEnabled?: boolean; glueBeats?: 2 | 4 | 8 | 16 }) => {
+      if (!onUpdateGlue || glueSaving) return;
+      const previousEnabled = glueEnabled;
+      const previousBeats = glueBeats;
+      if (patch.glueEnabled !== undefined) setGlueEnabled(patch.glueEnabled);
+      if (patch.glueBeats !== undefined) setGlueBeats(patch.glueBeats);
+      setGlueSaving(true);
+      setGlueError(null);
+      try {
+        await onUpdateGlue(item.id, patch);
+      } catch {
+        setGlueEnabled(previousEnabled);
+        setGlueBeats(previousBeats);
+        setGlueError(t("glue.error.save"));
+      } finally {
+        setGlueSaving(false);
+      }
+    },
+    [onUpdateGlue, glueSaving, glueEnabled, glueBeats, item.id, t]
+  );
+
+  const glueReason: TranslationKey | null = (() => {
+    if (!showGlueRail) return null;
+    if (isDirty) return "glue.reason.unsavedDraft";
+    if (!glueEnabled) return null;
+    if (displayGlue?.unavailableReason) {
+      return glueReasonKey(displayGlue.unavailableReason);
+    }
+    if (glueQuoteError) return glueQuoteErrorKey(glueQuoteError);
+    const blocked = glueQuote?.blockedSides[0];
+    if (blocked) {
+      return blocked.code === "GLUE_COPYRIGHT_REJECTED"
+        ? "glue.reason.copyright"
+        : "glue.reason.tooShort";
+    }
+    if (displayGlue?.state === "stale") return "glue.reason.stale";
+    if (displayGlue?.state === "failed") return "glue.reason.failed";
+    return null;
+  })();
+
+  const glueQuoteIsCurrent =
+    glueQuote !== null &&
+    !glueSaving &&
+    glueBeats === (item.glueBeats ?? 4);
+  const glueSelectedTake = displayGlue?.selectedTake ?? null;
+  const glueResetLabel =
+    glueQuote?.quotaResetAt !== null && glueQuote?.quotaResetAt !== undefined
+      ? new Intl.DateTimeFormat(locale === "zh-Hant" ? "zh-Hant" : "en", {
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(glueQuote.quotaResetAt))
+      : null;
+
   const nextTimelineItem = useMemo(
     () =>
       nextItem
@@ -2349,6 +2557,181 @@ export function ArrangementEditorSheet({
                         {formatTimecode(windowDurationSeconds)}
                       </span>
                     </div>
+
+                    {isRailVisible && showGlueRail && (
+                      <section
+                        aria-labelledby="arrangement-glue-title"
+                        className="space-y-2 border-t border-border/60 pt-3"
+                        data-testid="arrangement-glue"
+                        aria-busy={glueSaving}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h4
+                              id="arrangement-glue-title"
+                              className="text-xs font-semibold"
+                            >
+                              {t("glue.title")}
+                            </h4>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                              {t("glue.toggle").replace("{song}", nextSongTitle)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={glueEnabled}
+                            aria-label={t("glue.toggleAria").replace(
+                              "{song}",
+                              nextSongTitle
+                            )}
+                            data-testid="arrangement-glue-toggle"
+                            disabled={glueSaving}
+                            onClick={() =>
+                              void updateGlue({ glueEnabled: !glueEnabled })
+                            }
+                            className={cn(
+                              "relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                              glueEnabled
+                                ? "border-primary bg-primary"
+                                : "border-border bg-muted"
+                            )}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "absolute top-0.5 left-0.5 size-4 rounded-full bg-background shadow transition-transform",
+                                glueEnabled && "translate-x-5"
+                              )}
+                            />
+                          </button>
+                        </div>
+
+                        {glueEnabled && (
+                          <>
+                            <div
+                              role="group"
+                              aria-label={t("glue.beatsLabel")}
+                              className="flex items-center gap-1"
+                            >
+                              {GLUE_BEAT_CHOICES.map((beats) => (
+                                <button
+                                  key={beats}
+                                  type="button"
+                                  aria-pressed={glueBeats === beats}
+                                  data-testid={`arrangement-glue-beats-${beats}`}
+                                  disabled={glueSaving}
+                                  onClick={() => void updateGlue({ glueBeats: beats })}
+                                  className={cn(
+                                    "h-7 flex-1 rounded-md border text-[11px] tabular-nums transition-colors disabled:opacity-60",
+                                    glueBeats === beats
+                                      ? "border-primary bg-primary/10 text-primary"
+                                      : "border-border text-muted-foreground hover:bg-muted"
+                                  )}
+                                >
+                                  {t("glue.beatsOption").replace(
+                                    "{beats}",
+                                    String(beats)
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+
+                            {glueGenerationSeconds !== null && (
+                              <p
+                                className="text-[11px] leading-relaxed text-muted-foreground"
+                                data-testid="arrangement-glue-seconds"
+                              >
+                                {t("glue.generatedLength").replace(
+                                  "{seconds}",
+                                  formatGlueSeconds(glueGenerationSeconds)
+                                )}
+                              </p>
+                            )}
+
+                            {glueQuoteIsCurrent && glueQuote && (
+                              <div
+                                className="space-y-0.5 font-mono text-[11px] tabular-nums text-muted-foreground"
+                                data-testid="arrangement-glue-quote"
+                              >
+                                <p>
+                                  {t("glue.credits").replace(
+                                    "{credits}",
+                                    String(glueQuote.estimatedNewCredits)
+                                  )}
+                                </p>
+                                <p>
+                                  {t("glue.remaining")
+                                    .replace(
+                                      "{remaining}",
+                                      String(glueQuote.quotaRemaining)
+                                    )
+                                    .replace(
+                                      "{limit}",
+                                      String(glueQuote.quotaLimit)
+                                    )}
+                                </p>
+                                {glueResetLabel && (
+                                  <p>
+                                    {t("glue.resetAt").replace(
+                                      "{time}",
+                                      glueResetLabel
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {displayGlue && (
+                              <p
+                                className="text-[11px] leading-relaxed text-foreground/80"
+                                data-testid="arrangement-glue-state"
+                              >
+                                {t(glueStateKey(displayGlue.state))}
+                              </p>
+                            )}
+
+                            {glueSelectedTake && (
+                              <p
+                                className="text-[11px] leading-relaxed text-foreground/80"
+                                data-testid="arrangement-glue-selected"
+                              >
+                                {t("glue.selected").replace(
+                                  "{seconds}",
+                                  formatGlueSeconds(glueSelectedTake.seconds)
+                                )}
+                              </p>
+                            )}
+
+                            {glueSelectedTake?.status === "check" && (
+                              <p className="text-[11px] leading-relaxed text-amber-600">
+                                {t("glue.checkWarning")}
+                              </p>
+                            )}
+
+                            {glueReason && (
+                              <p
+                                role="status"
+                                className="text-[11px] leading-relaxed text-amber-600"
+                                data-testid="arrangement-glue-reason"
+                              >
+                                {t(glueReason)}
+                              </p>
+                            )}
+                          </>
+                        )}
+
+                        {glueError && (
+                          <Alert
+                            variant="destructive"
+                            data-testid="arrangement-glue-error"
+                          >
+                            <AlertTriangle className="size-4" />
+                            <AlertDescription>{glueError}</AlertDescription>
+                          </Alert>
+                        )}
+                      </section>
+                    )}
 
                     {isRailVisible && arrangementWindow && (
                       <p

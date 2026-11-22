@@ -56,6 +56,13 @@ export interface ArrangementTimelineItem {
   gapBeforeSeconds: number;
   crossfadeSeconds: number;
   clips: TimelineClip[];
+  /** Outgoing effective Glue of the predecessor, played into this item. */
+  glueTakeIdBefore: string | null;
+  glueWindowBefore: {
+    takeId: string;
+    startSeconds: number;
+    endSeconds: number;
+  } | null;
 }
 
 export interface ArrangementTimeline {
@@ -72,6 +79,10 @@ export interface ArrangementItemInput {
   crossfadeEnabled?: boolean | number | null;
   crossfadeDurationSeconds?: number | null;
   tempoBpm?: number | null;
+  /** Effective outgoing junction take; only the server resolver sets this. */
+  glueTakeId?: string | null;
+  /** Effective staged Glue seconds for the outgoing junction. */
+  glueSeconds?: number | null;
 }
 
 export interface TimelineItemSource extends ArrangementItemInput {
@@ -496,6 +507,38 @@ export function getSongsetDurationSeconds(
 // Preview timeline
 // ---------------------------------------------------------------------------
 
+/**
+ * The predecessor's effective Glue, when one exists: its take id and the
+ * junction window `[previousEnd, previousEnd + glueSeconds]`. `layoutSongsetItems`
+ * keeps its ordinary arithmetic until the audition issue (#319) makes Glue
+ * shift item starts; these fields let #319 and the player band consume the
+ * resolved values without a second readiness calculation.
+ */
+function glueBeforeFor(
+  items: TimelineItemSource[],
+  layouts: ItemLayout[],
+  index: number
+): Pick<ArrangementTimelineItem, "glueTakeIdBefore" | "glueWindowBefore"> {
+  if (index === 0) return { glueTakeIdBefore: null, glueWindowBefore: null };
+  const previous = items[index - 1];
+  const previousLayout = layouts[index - 1];
+  const takeId = previous.glueTakeId ?? null;
+  const seconds = previous.glueSeconds ?? null;
+  if (takeId === null || seconds === null || !(seconds > 0)) {
+    return { glueTakeIdBefore: null, glueWindowBefore: null };
+  }
+  const startSeconds =
+    previousLayout.startSeconds + (previousLayout.itemDurationSeconds ?? 0);
+  return {
+    glueTakeIdBefore: takeId,
+    glueWindowBefore: {
+      takeId,
+      startSeconds,
+      endSeconds: startSeconds + seconds,
+    },
+  };
+}
+
 export function buildArrangementTimeline(
   items: TimelineItemSource[],
 ): ArrangementTimeline {
@@ -546,6 +589,7 @@ export function buildArrangementTimeline(
       gapBeforeSeconds: layout.gapBeforeSeconds,
       crossfadeSeconds: layout.crossfadeSeconds,
       clips,
+      ...glueBeforeFor(items, layouts, index),
     };
   });
 

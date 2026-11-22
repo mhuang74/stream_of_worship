@@ -73,6 +73,7 @@ import { themesBundle } from "./messages/themes";
 import { shareBundle } from "./messages/share";
 import { listenBundle } from "./messages/listen";
 import { arrangementBundle } from "./messages/arrangement";
+import { glueBundle } from "./messages/glue";
 
 import { reviewBundle } from "./messages/review";
 
@@ -91,6 +92,7 @@ export const messages = mergeMessages(
   shareBundle,
   listenBundle,
   arrangementBundle,
+  glueBundle,
 );
 
 export type TranslationKey = keyof typeof messages.en;

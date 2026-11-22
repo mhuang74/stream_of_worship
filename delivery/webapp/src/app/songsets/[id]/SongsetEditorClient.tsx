@@ -7,6 +7,7 @@ import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
 import type { SongArrangement, RecordingSection, ArrangementItemInput } from "@/lib/arrangements";
+import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
 import {
   buildSnappedSteps,
   getItemDurationSeconds,
@@ -105,6 +106,10 @@ interface ApiSongsetItem {
   markedLineCount?: number;
   /** Raw persisted arrangement JSON; undefined when the API predates #283. */
   arrangementSteps?: string | null;
+  updatedAt?: string;
+  glueEnabled?: boolean;
+  glueBeats?: 2 | 4 | 8 | 16;
+  glue?: ResolvedGlueJunction;
 }
 
 interface ApiResponse {
@@ -181,6 +186,10 @@ function toSongListItem(item: ApiSongsetItem): SongListItem {
       recording: { durationSeconds: recording?.durationSeconds ?? null },
     }),
     arrangementAnalysisAvailable: hasRecordingAnalysis(recording),
+    updatedAt: item.updatedAt,
+    glueEnabled: item.glueEnabled,
+    glueBeats: item.glueBeats,
+    glue: item.glue,
   };
 }
 
@@ -864,6 +873,43 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     [songsetId, markStale, t]
   );
 
+  // AI-transition switch/beat changes: free PATCH, no job and no quota. The
+  // sheet rolls its optimistic state back when this rejects.
+  const handleUpdateGlue = useCallback(
+    async (
+      itemId: string,
+      patch: { glueEnabled?: boolean; glueBeats?: 2 | 4 | 8 | 16 }
+    ) => {
+      let response: Response;
+      try {
+        response = await fetch(`/api/songsets/${songsetId}/items`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId, ...patch }),
+        });
+      } catch {
+        throw new Error(t("glue.error.save"));
+      }
+
+      if (!response.ok) {
+        throw new Error(t("glue.error.save"));
+      }
+
+      const detail = (await response.json().catch(() => null)) as
+        | ApiSongsetItem
+        | null;
+      if (detail) {
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === itemId ? toSongListItem(detail) : item
+          )
+        );
+      }
+      markStale();
+    },
+    [songsetId, markStale, t]
+  );
+
   // Save the sheet's draft as this item's arrangement (one PUT; no autosave,
   // no render enqueue). Throws a translated error so the sheet stays open.
   const handleSaveArrangement = useCallback(
@@ -1256,6 +1302,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           item={editingArrangementItem}
           items={items}
           onSave={handleSaveArrangement}
+          songsetId={songsetId}
+          onUpdateGlue={handleUpdateGlue}
         />
       )}
       <ShareDialog
