@@ -13,6 +13,7 @@ import {
   classifyCreateConstraintError,
   createGlueJob,
   createGlueJobDeps,
+  evaluateGlueResume,
   evaluateQuotaClaim,
   getGlueJobStatus,
   glueElapsedSeconds,
@@ -866,6 +867,7 @@ describe("cancel / redispatch / recovery orchestration", () => {
         active: false,
         retryKind: "free",
         providerContacted: true,
+        descriptorKey: DESCRIPTOR_KEY,
         rawResponseR2Key: "glues/1/jobs/1/response.pcm",
         rawResponseSha256: "e".repeat(64),
         rawResponseBytes: 2048,
@@ -879,6 +881,101 @@ describe("cancel / redispatch / recovery orchestration", () => {
     const { deps } = buildDeps({ repository });
     const status = await resumeGlueJob({ jobId: "job-1", userId: 1 }, deps);
     expect(status.phase).toBe("staging");
-    expect(vi.mocked(repository.prepareResume).mock.calls[0][3]).toBe("staging");
+    expect(deps.dispatch).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(deps.dispatch).mock.calls[0][0]).toMatchObject({
+      kind: "glue.generate",
+      jobId: "job-1",
+    });
+  });
+
+  it("resumes a definitely-unsent post-contact free failure into generation", async () => {
+    // #317: an upload/compose call refused on the Lambda deadline before send,
+    // or exhausted ProviderNotSent retries, persists retry_kind="free" with
+    // provider_contacted=true and no raw response. It must remain resumable.
+    const repository = createFakeRepository([
+      makeRecord({
+        phase: "failed",
+        active: false,
+        retryKind: "free",
+        providerContacted: true,
+        descriptorKey: DESCRIPTOR_KEY,
+      }),
+    ]);
+    vi.mocked(repository.prepareResume).mockResolvedValue({
+      kind: "prepared",
+      job: makeRecord({ phase: "queued", active: true }),
+      phase: "queued",
+    });
+    const { deps } = buildDeps({ repository });
+    const status = await resumeGlueJob({ jobId: "job-1", userId: 1 }, deps);
+    expect(status.phase).toBe("queued");
+    expect(status.active).toBe(true);
+    expect(repository.prepareResume).toHaveBeenCalledTimes(1);
+    expect(deps.dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("revalidates the snapshot before resuming a post-contact free failure", async () => {
+    const repository = createFakeRepository([
+      makeRecord({
+        phase: "failed",
+        active: false,
+        retryKind: "free",
+        providerContacted: true,
+        expectedFromUpdatedAt: new Date("2026-01-01T00:00:00Z"),
+      }),
+    ]);
+    const { deps } = buildDeps({ repository });
+    const error = await expectGlueError(resumeGlueJob({ jobId: "job-1", userId: 1 }, deps));
+    expect(error.code).toBe("GLUE_INPUTS_CHANGED");
+    expect(repository.prepareResume).not.toHaveBeenCalled();
+  });
+});
+
+describe("resume eligibility", () => {
+  const base = {
+    phase: "failed",
+    rawResponseR2Key: null,
+    rawResponseSha256: null,
+    rawResponseBytes: null,
+  };
+
+  it("allows a free post-contact failure without a raw response", () => {
+    expect(evaluateGlueResume({ ...base, retryKind: "free" })).toEqual({
+      kind: "resumable",
+      phase: "queued",
+    });
+  });
+
+  it("routes a free failure with a durable raw response to staging", () => {
+    expect(
+      evaluateGlueResume({
+        ...base,
+        retryKind: "free",
+        rawResponseR2Key: "glues/1/response.pcm",
+        rawResponseSha256: "e".repeat(64),
+        rawResponseBytes: 2048,
+      })
+    ).toEqual({ kind: "resumable", phase: "staging" });
+  });
+
+  it("refuses paid and unclassified attempts even with a raw response", () => {
+    for (const retryKind of ["paid", "none", null] as const) {
+      expect(
+        evaluateGlueResume({
+          ...base,
+          retryKind,
+          rawResponseR2Key: "glues/1/response.pcm",
+          rawResponseSha256: "e".repeat(64),
+          rawResponseBytes: 2048,
+        })
+      ).toEqual({ kind: "requires-paid-retry" });
+    }
+  });
+
+  it("refuses a job that is not in a failed terminal phase", () => {
+    expect(evaluateGlueResume({ ...base, phase: "composing", retryKind: "free" })).toEqual({
+      kind: "not-resumable",
+      phase: "composing",
+    });
   });
 });

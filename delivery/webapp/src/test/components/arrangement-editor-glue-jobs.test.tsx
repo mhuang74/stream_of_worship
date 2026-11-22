@@ -378,7 +378,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     );
   });
 
-  it("offers a free retry for a worker failure with a stored response", async () => {
+  it("offers a free retry without new credits for a definitely-unsent failure", async () => {
     installFetch();
     renderSheet();
     await waitFor(() =>
@@ -400,15 +400,45 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-retry-processing")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-resume")).toBeTruthy()
     );
-    expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-retry-processing")).toBeNull();
     expect(screen.getByTestId("arrangement-glue-job-error").textContent).toContain(
       "did not finish"
     );
     expect(screen.getByTestId("arrangement-glue").textContent).not.toContain(
       "new paid request"
     );
+  });
+
+  it("shows only the reason for a non-retryable provider failure", async () => {
+    installFetch();
+    renderSheet();
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
+    await screen.findByTestId("arrangement-glue-confirm");
+    fireEvent.click(screen.getByTestId("arrangement-glue-confirm-generate"));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    FakeEventSource.instances[0].emit(
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "none",
+        errorCode: "GLUE_PROVIDER_PLAN",
+      })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-job-error")).toBeTruthy()
+    );
+    expect(screen.queryByText(/new paid request/i)).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-generate")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-try-another")).toBeNull();
   });
 
   it("offers a paid Try another when the last attempt cannot be retried for free", async () => {

@@ -81,7 +81,6 @@ import {
   cancelGlueJobRequest,
   createGlueJobRequest,
   resumeGlueJobRequest,
-  retryGlueProcessingRequest,
 } from "@/lib/glue/client";
 import { glueErrorMessageKey } from "@/lib/glue/errors";
 import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
@@ -1387,26 +1386,22 @@ export function ArrangementEditorSheet({
     await refreshGlueSelection();
   }, [watchedGlueJobId, refreshGlueSelection]);
 
-  const retryGlueJob = useCallback(
-    async (mode: "processing" | "resume") => {
-      if (watchedGlueJobId === null) return;
-      setGlueJobActionPending(true);
-      setGlueJobErrorCode(null);
-      setGlueCancelled(false);
-      const result =
-        mode === "processing"
-          ? await retryGlueProcessingRequest(watchedGlueJobId)
-          : await resumeGlueJobRequest(watchedGlueJobId);
-      setGlueJobActionPending(false);
-      if (!result.ok) {
-        setGlueJobErrorCode(result.error.code);
-        return;
-      }
-      setGlueJobId(watchedGlueJobId);
-      await refreshGlueJob();
-    },
-    [watchedGlueJobId, refreshGlueJob]
-  );
+  const retryGlueJob = useCallback(async () => {
+    if (watchedGlueJobId === null) return;
+    setGlueJobActionPending(true);
+    setGlueJobErrorCode(null);
+    setGlueCancelled(false);
+    // Resume replays the same identity for free; the server derives staging
+    // recovery vs generation from the durable phase/raw-response records.
+    const result = await resumeGlueJobRequest(watchedGlueJobId);
+    setGlueJobActionPending(false);
+    if (!result.ok) {
+      setGlueJobErrorCode(result.error.code);
+      return;
+    }
+    setGlueJobId(watchedGlueJobId);
+    await refreshGlueJob();
+  }, [watchedGlueJobId, refreshGlueJob]);
 
   // A finished take becomes the selected one server-side; refresh the parent
   // so the Junction reads its new resolved state without a page reload.
@@ -1469,19 +1464,20 @@ export function ArrangementEditorSheet({
   const glueFailureCode =
     glueJobErrorCode ??
     (isGlueJobFailed ? glueJobStatus?.errorCode ?? null : null);
-  const freeRetryMode =
-    isGlueJobFailed && glueJobStatus?.retryKind === "free"
-      ? glueJobStatus.providerContacted
-        ? "processing"
-        : "resume"
-      : null;
+  const canFreeRetry =
+    isGlueJobFailed && glueJobStatus?.retryKind === "free";
   const needsPaidRetry =
-    isGlueJobFailed &&
-    glueJobStatus !== null &&
-    glueJobStatus.retryKind !== "free";
+    isGlueJobFailed && glueJobStatus?.retryKind === "paid";
+  // retry_kind="none" means the failure is not retryable in place
+  // (entitlement, plan, copyright). Offering a fresh paid request would only
+  // spend credits on the same outcome, so the rail shows the reason alone.
+  const nonRetryableGlueFailure =
+    isGlueJobFailed && glueJobStatus?.retryKind === "none";
   const canGenerateGlue =
     glueEnabled &&
     !jobActive &&
+    !nonRetryableGlueFailure &&
+    (glueQuote?.blockedSides.length ?? 0) === 0 &&
     displayGlue !== null &&
     displayGlue.unavailableReason === null &&
     !isDirty &&
@@ -3071,29 +3067,19 @@ export function ArrangementEditorSheet({
                           </Alert>
                         )}
 
-                        {freeRetryMode !== null && (
+                        {canFreeRetry && (
                           <div className="space-y-1">
                             <p className="text-[11px] font-medium">
                               {t("glue.retry.heading")}
                             </p>
                             <p className="text-[11px] leading-relaxed text-muted-foreground">
-                              {t("glue.retry.processingBody")}
+                              {t("glue.retry.freeBody")}
                             </p>
                             <button
                               type="button"
-                              data-testid={
-                                freeRetryMode === "processing"
-                                  ? "arrangement-glue-retry-processing"
-                                  : "arrangement-glue-resume"
-                              }
+                              data-testid="arrangement-glue-resume"
                               disabled={glueJobActionPending}
-                              onClick={() =>
-                                void retryGlueJob(
-                                  freeRetryMode === "processing"
-                                    ? "processing"
-                                    : "resume"
-                                )
-                              }
+                              onClick={() => void retryGlueJob()}
                               className="h-7 rounded-md border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
                             >
                               {t("glue.retry.action")}

@@ -241,7 +241,6 @@ export interface GlueJobRepository {
     jobId: string,
     userId: number,
     attemptId: string,
-    phase: "queued" | "staging",
     now: Date
   ): Promise<ResumeResult>;
   markRetryDispatchFailed(jobId: string, userId: number, detail: string | undefined, now: Date): Promise<void>;
@@ -289,6 +288,52 @@ export function nextTakeOrdinal(
 ): number {
   const highest = Math.max(maxTakeOrdinal ?? 0, maxJobOrdinal ?? 0);
   return highest + 1;
+}
+
+/** A durable raw response exists (key, checksum, and byte count together). */
+export function hasGlueRawResponse(job: {
+  rawResponseR2Key: string | null;
+  rawResponseSha256: string | null;
+  rawResponseBytes: number | null;
+}): boolean {
+  return (
+    job.rawResponseR2Key !== null &&
+    job.rawResponseSha256 !== null &&
+    job.rawResponseBytes !== null
+  );
+}
+
+export type GlueResumeEligibility =
+  | { kind: "resumable"; phase: "queued" | "staging" }
+  | { kind: "not-resumable"; phase: string }
+  | { kind: "requires-paid-retry" };
+
+/**
+ * Resume is a free replay of the same job identity (spec §2.5). The durable
+ * `retry_kind` is the authority: the worker persists `free` only for outcomes
+ * where no provider request can have taken effect (pre-contact failures, a
+ * refused-before-send call, exhausted definitely-unsent retries, or a compose
+ * that was never sent after a persisted upload). Ambiguous outcomes persist
+ * `paid`/`none` and must never be replayed without a new paid request — even
+ * when a raw response exists. A durable raw response is always finished by
+ * staging (`staging`); everything else re-enters generation (`queued`), where
+ * the worker reuses excerpts whose provider song ids were already persisted.
+ */
+export function evaluateGlueResume(job: {
+  phase: string;
+  retryKind: string | null;
+  rawResponseR2Key: string | null;
+  rawResponseSha256: string | null;
+  rawResponseBytes: number | null;
+}): GlueResumeEligibility {
+  if (job.phase !== "failed" && job.phase !== "dispatch-failed") {
+    return { kind: "not-resumable", phase: job.phase };
+  }
+  if (job.retryKind !== "free") return { kind: "requires-paid-retry" };
+  return {
+    kind: "resumable",
+    phase: hasGlueRawResponse(job) ? "staging" : "queued",
+  };
 }
 
 /** Cryptographically random 32-bit seed (spec §2.2). */
@@ -754,7 +799,7 @@ export const glueJobRepository: GlueJobRepository = {
     });
   },
 
-  async prepareResume(jobId, userId, attemptId, phase, now) {
+  async prepareResume(jobId, userId, attemptId, now) {
     return mutationDb.transaction(async (tx) => {
       const [job] = await tx
         .select()
@@ -762,17 +807,14 @@ export const glueJobRepository: GlueJobRepository = {
         .where(and(eq(glueJobs.id, jobId), eq(glueJobs.userId, userId)))
         .limit(1);
       if (!job) return { kind: "not-found" };
-      if (job.phase !== "failed" && job.phase !== "dispatch-failed") {
-        return { kind: "not-resumable", phase: job.phase };
+      const eligibility = evaluateGlueResume(job);
+      if (eligibility.kind === "not-resumable") {
+        return { kind: "not-resumable", phase: eligibility.phase };
       }
-      if (job.retryKind !== "free") return { kind: "requires-paid-retry" };
-      if (job.providerContacted) {
-        // A provider call may have been sent; never silently repeat it. Only a
-        // durable raw response (staging recovery) is unambiguous and free.
-        if (job.rawResponseR2Key === null || phase !== "staging") {
-          return { kind: "requires-paid-retry" };
-        }
+      if (eligibility.kind === "requires-paid-retry") {
+        return { kind: "requires-paid-retry" };
       }
+      const phase = eligibility.phase;
 
       const [updated] = await tx
         .update(glueJobs)
@@ -1275,44 +1317,53 @@ export async function resumeGlueJob(
       { jobId: args.jobId }
     );
   }
-  if (!current.providerContacted) {
-    // Revalidate the saved inputs before replaying the same identity.
-    const items = (await deps.loadItems([current.songsetId], args.userId)).get(current.songsetId) ?? [];
-    const index = items.findIndex((item) => item.itemId === current.fromItemId);
-    const from = index >= 0 ? items[index] : null;
-    const to = index >= 0 ? items[index + 1] ?? null : null;
-    if (
-      from === null ||
-      to === null ||
-      from.updatedAt !== current.expectedFromUpdatedAt.toISOString() ||
-      to.updatedAt !== current.expectedToUpdatedAt.toISOString()
-    ) {
-      throw new GlueJobRequestError(
-        "GLUE_INPUTS_CHANGED",
-        "The Song sequence changed. Save and try again.",
-        { jobId: args.jobId }
-      );
-    }
-    const derivation = deriveGlueJunction(from, to);
-    if (!derivation.ok || derivation.descriptorKey !== current.descriptorKey) {
-      throw new GlueJobRequestError(
-        "GLUE_INPUTS_CHANGED",
-        "The Song sequence changed. Save and try again.",
-        { jobId: args.jobId }
-      );
-    }
+  const eligibility = evaluateGlueResume(current);
+  if (eligibility.kind === "requires-paid-retry") {
+    throw new GlueJobRequestError(
+      "GLUE_RETRY_PAID",
+      "This attempt needs a new paid request.",
+      { jobId: args.jobId }
+    );
+  }
+  if (eligibility.kind === "not-resumable") {
+    throw new GlueJobRequestError("GLUE_NOT_READY", "This AI transition cannot be resumed.", {
+      jobId: args.jobId,
+      detail: eligibility.phase,
+    });
   }
 
-  const hasRawResponse =
-    current.rawResponseR2Key !== null &&
-    current.rawResponseSha256 !== null &&
-    current.rawResponseBytes !== null;
-  const nextPhase: "queued" | "staging" = hasRawResponse ? "staging" : "queued";
+  // Revalidate the saved inputs before replaying the same identity, including
+  // the definitely-unsent post-contact case (persisted uploads are reused by
+  // descriptor, so a changed Song would silently attach the wrong take).
+  const items = (await deps.loadItems([current.songsetId], args.userId)).get(current.songsetId) ?? [];
+  const index = items.findIndex((item) => item.itemId === current.fromItemId);
+  const from = index >= 0 ? items[index] : null;
+  const to = index >= 0 ? items[index + 1] ?? null : null;
+  if (
+    from === null ||
+    to === null ||
+    from.updatedAt !== current.expectedFromUpdatedAt.toISOString() ||
+    to.updatedAt !== current.expectedToUpdatedAt.toISOString()
+  ) {
+    throw new GlueJobRequestError(
+      "GLUE_INPUTS_CHANGED",
+      "The Song sequence changed. Save and try again.",
+      { jobId: args.jobId }
+    );
+  }
+  const derivation = deriveGlueJunction(from, to);
+  if (!derivation.ok || derivation.descriptorKey !== current.descriptorKey) {
+    throw new GlueJobRequestError(
+      "GLUE_INPUTS_CHANGED",
+      "The Song sequence changed. Save and try again.",
+      { jobId: args.jobId }
+    );
+  }
+
   const result = await deps.repository.prepareResume(
     args.jobId,
     args.userId,
     deps.randomId(),
-    nextPhase,
     deps.now()
   );
   if (result.kind === "not-found") {

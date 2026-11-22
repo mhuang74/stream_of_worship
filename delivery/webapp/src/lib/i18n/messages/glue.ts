@@ -109,6 +109,8 @@ export const glueBundle = bundle({
     "glue.retry.heading": "Try again without new credits",
     "glue.retry.processingBody":
       "The AI audio was already created. Retrying it does not use new credits.",
+    "glue.retry.freeBody":
+      "Trying again does not use new credits.",
     "glue.retry.paidHeading": "Try again with a new paid request",
     "glue.retry.paidBody": "The last attempt needs a new paid request.",
     "glue.retry.action": "Try again",
@@ -196,6 +198,7 @@ export const glueBundle = bundle({
     "glue.confirm.dismiss": "先不要",
     "glue.retry.heading": "重試，不會使用新的點數",
     "glue.retry.processingBody": "AI 音訊已建立，重試不會使用新的點數。",
+    "glue.retry.freeBody": "重試不會使用新的點數。",
     "glue.retry.paidHeading": "以新的付費請求重試",
     "glue.retry.paidBody": "上一次需要重新付費才能再試。",
     "glue.retry.action": "重試",
