@@ -89,6 +89,47 @@ const BASE_SONG: NonNullable<SongListItem["song"]> = {
   musicalKey: "G",
 };
 
+it("uses the ready take only before the Item it was resolved for", () => {
+  const source = makeItem({
+    glueEnabled: true,
+    glue: {
+      fromItemId: "item-1",
+      toItemId: "item-2",
+      glueEnabled: true,
+      glueBeats: 4,
+      descriptorKey: "descriptor",
+      state: "ready",
+      selectedTake: {
+        id: "take-1", ordinal: 1, seconds: 6, r2Key: "take.wav",
+        descriptorKey: "descriptor", status: "ok", reasons: [],
+      },
+      availableTakes: [],
+      activeJob: null,
+      quote: null,
+      quotaLimit: 5,
+      quotaUsed: 1,
+      quotaRemaining: 4,
+      quotaResetAt: null,
+      expectedFromUpdatedAt: null,
+      expectedToUpdatedAt: null,
+      unavailableReason: null,
+    },
+  });
+  const successor = makeItem({ id: "item-2", position: 1 });
+  const copy = makeItem({ id: "item-copy", position: 1 });
+  const props = { isOpen: true, onClose: vi.fn(), item: source, onSave: vi.fn() };
+  const view = render(<ArrangementEditorSheet {...props} items={[source, successor]} />);
+
+  expect(preview.options?.items[0]).toMatchObject({ glueTakeId: "take-1", glueSeconds: 6 });
+
+  view.rerender(<ArrangementEditorSheet
+    {...props}
+    items={[source, copy, { ...successor, position: 2 }]}
+  />);
+
+  expect(preview.options?.items[0]).toMatchObject({ glueTakeId: null, glueSeconds: null });
+});
+
 function makeItem(overrides: Partial<SongListItem> = {}): SongListItem {
   return {
     id: "item-1",

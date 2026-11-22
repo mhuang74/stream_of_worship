@@ -340,7 +340,7 @@ export async function loadGlueItemRows(
       position: row.position,
       userId: row.userId ?? userId,
       glueEnabled: row.glueEnabled,
-      glueBeats: normalizeBeats(row.glueBeats),
+      glueBeats: normalizeGlueBeats(row.glueBeats),
       glueActiveTakeId: row.glueActiveTakeId,
       updatedAt,
       arrangementSteps: row.arrangementSteps,
@@ -359,7 +359,7 @@ export async function loadGlueItemRows(
   return result;
 }
 
-function normalizeBeats(value: number): GlueBeats {
+export function normalizeGlueBeats(value: number): GlueBeats {
   return value === 2 || value === 4 || value === 8 || value === 16 ? value : 4;
 }
 

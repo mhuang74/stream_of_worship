@@ -28,6 +28,7 @@ import { logGlueEvent } from "@/lib/glue/log";
 import {
   deriveGlueJunction,
   loadGlueItemRows,
+  normalizeGlueBeats,
   type GlueJunctionDerivation,
   type GlueResolverItem,
 } from "@/lib/glue/quote";
@@ -1734,30 +1735,26 @@ export async function duplicateSongsetItem(
 
     if (!ownedSongset) return null;
 
-    const [source] = await tx
+    const siblingRows = await tx
       .select({
+        ...arrangementItemColumns,
         songId: songsetItems.songId,
         recordingHashPrefix: songsetItems.recordingHashPrefix,
         position: songsetItems.position,
-        gapBeats: songsetItems.gapBeats,
-        crossfadeEnabled: songsetItems.crossfadeEnabled,
-        crossfadeDurationSeconds: songsetItems.crossfadeDurationSeconds,
         keyShiftSemitones: songsetItems.keyShiftSemitones,
         tempoRatio: songsetItems.tempoRatio,
-        arrangementSteps: songsetItems.arrangementSteps,
+        updatedAt: songsetItems.updatedAt,
+        glueBeats: songsetItems.glueBeats,
+        glueActiveTakeId: songsetItems.glueActiveTakeId,
+        contentHash: recordings.contentHash,
       })
-      .from(songsetItems)
-      .where(and(eq(songsetItems.id, itemId), eq(songsetItems.songsetId, songsetId)))
-      .limit(1);
-
-    if (!source) return null;
-
-    const siblingRows = await tx
-      .select(arrangementItemColumns)
       .from(songsetItems)
       .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
       .where(eq(songsetItems.songsetId, songsetId))
       .orderBy(asc(songsetItems.position));
+
+    const source = siblingRows.find((row) => row.id === itemId);
+    if (!source) return null;
 
     // A Recording with a deletedAt is invisible to renders, so it neither counts
     // toward the cap nor contributes to the projected duration.
@@ -1769,16 +1766,73 @@ export async function duplicateSongsetItem(
       );
     }
 
-    // Project the persisted order: the copy lands immediately after the source,
-    // not at the end of the Songset. Appending it would charge the trailing
-    // crossfade twice and refuse a Songset that actually fits.
+    const nextId = nanoid();
+    const now = new Date();
+    const activeTakeIds = [...visibleRows, source]
+      .map((row) => row.glueActiveTakeId)
+      .filter((id): id is string => id !== null);
+    const takeRows = activeTakeIds.length > 0
+      ? await tx
+          .select()
+          .from(glueTakes)
+          .where(and(eq(glueTakes.userId, userId), inArray(glueTakes.id, [...new Set(activeTakeIds)])))
+      : [];
+    const takesById = new Map(takeRows.map((row) => [row.id, takeRowFromDb(row)] as const));
+    const copiedTakeId =
+      source.glueActiveTakeId !== null && takesById.get(source.glueActiveTakeId)?.userId === userId
+        ? source.glueActiveTakeId
+        : null;
+
+    // Resolve the prospective adjacency. The source and copy have distinct
+    // outgoing junctions even when they play the same audio.
     const projectedRows = [...visibleRows];
-    const sourceRow = siblingRows.find((row) => row.id === itemId);
-    if (sourceRow && !sourceRow.recordingDeletedAt) {
-      const sourceIndex = projectedRows.findIndex((row) => row.id === itemId);
-      if (sourceIndex >= 0) projectedRows.splice(sourceIndex + 1, 0, sourceRow);
+    const sourceIndex = projectedRows.findIndex((row) => row.id === itemId);
+    if (sourceIndex >= 0) {
+      projectedRows.splice(sourceIndex + 1, 0, {
+        ...source,
+        id: nextId,
+        position: source.position + 1,
+        updatedAt: now,
+        glueActiveTakeId: copiedTakeId,
+      });
     }
-    const prospectiveTotalSeconds = getSongsetDurationSeconds(projectedRows.map(toArrangementInput));
+    const resolverItems: GlueResolverItem[] = projectedRows.map((row) => ({
+      itemId: row.id,
+      position: row.position,
+      userId,
+      glueEnabled: row.glueEnabled,
+      glueBeats: normalizeGlueBeats(row.glueBeats),
+      glueActiveTakeId: row.glueActiveTakeId,
+      updatedAt: row.updatedAt.toISOString(),
+      arrangementSteps: row.arrangementSteps,
+      recording: row.contentHash === null
+        ? null
+        : {
+            contentHash: row.contentHash,
+            durationSeconds: row.durationSeconds,
+            tempoBpm: row.tempoBpm,
+            sections: parseRecordingSections(row.recordingSections),
+            beats: parseRecordingBeats(row.recordingBeats),
+          },
+    }));
+    const prospectiveTotalSeconds = getSongsetDurationSeconds(
+      projectedRows.map((row, index) => {
+        const from = resolverItems[index];
+        const to = resolverItems[index + 1];
+        const take = from.glueActiveTakeId && takesById.get(from.glueActiveTakeId);
+        if (!from.glueEnabled || !to || !take) return toArrangementInput(row);
+        const selectionError = glueTakeSelectionError({
+          glueEnabled: true,
+          hasSuccessor: true,
+          derivation: deriveGlueJunction(from, to),
+          take,
+          ownerUserId: userId,
+        });
+        return selectionError === null
+          ? toArrangementInput({ ...row, glueTakeId: take.id, glueSeconds: take.seconds })
+          : toArrangementInput(row);
+      })
+    );
     if (
       prospectiveTotalSeconds != null &&
       prospectiveTotalSeconds > SONGSET_MAX_DURATION_SECONDS
@@ -1789,7 +1843,6 @@ export async function duplicateSongsetItem(
       );
     }
 
-    const now = new Date();
     await tx
       .update(songsetItems)
       .set({ position: sql`${songsetItems.position} + 1`, updatedAt: now })
@@ -1797,7 +1850,6 @@ export async function duplicateSongsetItem(
         and(eq(songsetItems.songsetId, songsetId), gt(songsetItems.position, source.position))
       );
 
-    const nextId = nanoid();
     await tx.insert(songsetItems).values({
       id: nextId,
       songsetId,
@@ -1810,6 +1862,10 @@ export async function duplicateSongsetItem(
       keyShiftSemitones: source.keyShiftSemitones,
       tempoRatio: source.tempoRatio,
       arrangementSteps: source.arrangementSteps,
+      glueEnabled: source.glueEnabled,
+      glueBeats: source.glueBeats,
+      glueActiveTakeId: copiedTakeId,
+      updatedAt: now,
     });
     await tx.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
 
@@ -1835,8 +1891,7 @@ export async function duplicateSongsetItem(
 
   if (!inserted) return null;
 
-  // The copy is a new occurrence: its outgoing Junction is unresolved until the
-  // caller stages a take, so read it back with the same resolver the editor uses.
+  // Resolve the copied selection against the committed successor.
   const glue = requireJunction(
     new Map(
       (await loadResolvedGlueJunctions(songsetId, userId)).map(
@@ -2446,10 +2501,7 @@ export async function createRenderGlueSnapshot(
     position: row.position,
     userId,
     glueEnabled: row.glueEnabled,
-    glueBeats:
-      row.glueBeats === 2 || row.glueBeats === 8 || row.glueBeats === 16
-        ? row.glueBeats
-        : 4,
+    glueBeats: normalizeGlueBeats(row.glueBeats),
     glueActiveTakeId: row.glueActiveTakeId,
     updatedAt: row.updatedAt.toISOString(),
     arrangementSteps: row.arrangementSteps,

@@ -254,7 +254,7 @@ export function glueTakeSelectionError(args: {
     args.take.userId !== args.ownerUserId ||
     args.take.status !== "ready" ||
     args.take.r2Key === null ||
-    (args.take.seconds ?? 0) <= 0
+    !((args.take.seconds ?? 0) > 0)
   ) {
     return "GLUE_NOT_READY";
   }
@@ -375,16 +375,15 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       };
     }
 
-    const effective =
-      selectedRow !== null &&
-      selectedRow.status === "ready" &&
-      selectedRow.userId === item.userId &&
-      selectedRow.descriptorKey === derivation.descriptorKey &&
-      selectedRow.descriptorJson === derivation.descriptorJson &&
-      selectedRow.r2Key !== null &&
-      (selectedRow.seconds ?? 0) > 0;
+    const selectionError = glueTakeSelectionError({
+      glueEnabled: item.glueEnabled,
+      hasSuccessor: true,
+      derivation,
+      take: selectedRow,
+      ownerUserId: item.userId,
+    });
     const selectedTake: ResolvedGlueTake | null =
-      effective && selectedRow !== null ? toResolvedTake(selectedRow) : null;
+      selectionError === null && selectedRow !== null ? toResolvedTake(selectedRow) : null;
 
     let state: ResolvedGlueState;
     let unavailableReason: GlueUnavailableReason | null = null;

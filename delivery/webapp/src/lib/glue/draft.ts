@@ -3,8 +3,18 @@ import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
 // Client-safe unsaved-draft overlay (spec:
 // specs/inpaint-transition-elevenlabs-v2.md §1.4, §5.3). A draft on one item
 // makes its outgoing Junction and its predecessor's incoming Junction stale for
-// audition and blocks generation until save. This is the only client-side state
-// adjustment; everything else comes from the server resolver.
+// audition and blocks generation until save. Readiness comes from the server
+// resolver and is scoped to the adjacency it resolved.
+
+export function glueForAdjacency(
+  junction: ResolvedGlueJunction | undefined,
+  fromItemId: string,
+  toItemId: string | undefined
+): ResolvedGlueJunction | null {
+  return junction && junction.fromItemId === fromItemId && junction.toItemId === toItemId
+    ? junction
+    : null;
+}
 
 export interface DraftValidityOptions {
   editedItemId: string;

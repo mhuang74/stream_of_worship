@@ -74,18 +74,21 @@ describe("POST /api/songsets/[id]/items/[itemId]/duplicate", () => {
     expect(duplicateSongsetItem).toHaveBeenCalledWith("item-1", "songset-1", 1);
   });
 
-  it("returns 409 with the validation code when the Songset is full", async () => {
+  it.each([
+    ["SONGSET_FULL", "Songset already has maximum of 5 songs"],
+    ["SONGSET_TOO_LONG", "Songset exceeds maximum duration of 25 minutes"],
+  ] as const)("returns 409 with validation code %s", async (code, message) => {
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "1" } } as any);
     vi.mocked(duplicateSongsetItem).mockRejectedValue(
-      new SongsetRenderValidationError("SONGSET_FULL", "Songset already has maximum of 5 songs")
+      new SongsetRenderValidationError(code, message)
     );
 
     const response = await POST(duplicateRequest() as any, params);
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: "Songset already has maximum of 5 songs",
-      code: "SONGSET_FULL",
+      error: message,
+      code,
     });
   });
 

@@ -76,7 +76,7 @@ import type {
   TimelineItemSource,
 } from "@/lib/arrangements";
 import { abbreviatedSectionLabel, buildSectionHeadings } from "@/lib/section-labels";
-import { applyDraftValidity } from "@/lib/glue/draft";
+import { applyDraftValidity, glueForAdjacency } from "@/lib/glue/draft";
 import {
   cancelGlueJobRequest,
   createGlueJobRequest,
@@ -1212,12 +1212,15 @@ export function ArrangementEditorSheet({
       : null;
     const editedIndex = items.findIndex((entry) => entry.id === item.id);
     const previousId = editedIndex > 0 ? items[editedIndex - 1].id : null;
-    return items.map((entry) => {
+    return items.map((entry, index) => {
       // An unsaved A/B draft cannot vouch for either adjacent Glue, so its own
       // outgoing junction and its predecessor's incoming junction drop out of
       // timeline playback until the draft is saved.
       const suppressGlue =
         isDirty && (entry.id === item.id || entry.id === previousId);
+      const take = suppressGlue
+        ? null
+        : glueForAdjacency(entry.glue, entry.id, items[index + 1]?.id)?.selectedTake;
       return {
         itemId: entry.id,
         recordingHashPrefix: entry.recording?.hashPrefix ?? null,
@@ -1230,12 +1233,8 @@ export function ArrangementEditorSheet({
         recordingDurationSeconds: entry.recording?.durationSeconds ?? null,
         recordingSections: entry.recording?.sections ?? null,
         recordingBeats: entry.recording?.beats ?? [],
-        glueTakeId: suppressGlue
-          ? null
-          : entry.glue?.selectedTake?.id ?? null,
-        glueSeconds: suppressGlue
-          ? null
-          : entry.glue?.selectedTake?.seconds ?? null,
+        glueTakeId: take?.id ?? null,
+        glueSeconds: take?.seconds ?? null,
       };
     });
   }, [items, item.id, previewDraft, isDraftValid, isDirty]);
@@ -1275,7 +1274,7 @@ export function ArrangementEditorSheet({
     glueTempoBpm !== null && glueTempoBpm > 0
       ? Math.max(3, (glueBeats * 60) / glueTempoBpm)
       : null;
-  const resolvedOutgoing = item.glue ?? null;
+  const resolvedOutgoing = glueForAdjacency(item.glue, item.id, nextItem?.id);
   const displayGlue = useMemo(
     () =>
       resolvedOutgoing
