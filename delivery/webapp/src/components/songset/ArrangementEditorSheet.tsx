@@ -1003,14 +1003,29 @@ export function ArrangementEditorSheet({
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [glueEnabled, setGlueEnabled] = useState(item.glueEnabled ?? false);
-  const [glueBeats, setGlueBeats] = useState<2 | 4 | 8 | 16>(
-    item.glueBeats ?? 4
-  );
+  // Optimistic overlay for the AI-transition switch and beat count. The saved
+  // `item` values are the source of truth: the draft only covers the window
+  // between a PATCH and the parent re-rendering with its result, and it is
+  // dropped as soon as the saved values catch up (or the sheet shows another
+  // item). Keeping it as one object makes the item scope explicit.
+  const [glueDraft, setGlueDraft] = useState<{
+    baseKey: string;
+    enabled: boolean;
+    beats: 2 | 4 | 8 | 16;
+  } | null>(null);
   const [glueSaving, setGlueSaving] = useState(false);
-  const [glueError, setGlueError] = useState<string | null>(null);
-  const [glueQuote, setGlueQuote] = useState<GlueQuoteResponse | null>(null);
-  const [glueQuoteError, setGlueQuoteError] = useState<string | null>(null);
+  const [glueError, setGlueError] = useState<{
+    itemId: string;
+    message: string;
+  } | null>(null);
+  const [glueQuote, setGlueQuote] = useState<{
+    requestKey: string;
+    quote: GlueQuoteResponse;
+  } | null>(null);
+  const [glueQuoteError, setGlueQuoteError] = useState<{
+    requestKey: string;
+    code: string;
+  } | null>(null);
   // One in-flight job per Junction. The id is local so the SSE subscription
   // starts the moment the create response arrives; discovery adopts the
   // server-reported active job after a reload.
@@ -1237,6 +1252,23 @@ export function ArrangementEditorSheet({
     itemIndex >= 0 && itemIndex + 1 < items.length ? items[itemIndex + 1] : null;
   const previousTitle = previousItem?.song?.title || t("browse.unknownSong");
   const nextSongTitle = nextItem?.song?.title || t("browse.unknownSong");
+  // The saved item values are the source of truth; the draft only bridges a
+  // PATCH and the parent's next render carrying its result. The draft is keyed
+  // on the saved values it was based on, so any later server state (this PATCH
+  // echoing, a parent re-resolve, or another tab) wins instead of being masked.
+  const savedGlueEnabled = item.glueEnabled ?? false;
+  const savedGlueBeats: 2 | 4 | 8 | 16 = item.glueBeats ?? 4;
+  const glueDraftBaseKey = `${item.id}:${savedGlueEnabled}:${savedGlueBeats}`;
+  if (glueDraft !== null && glueDraft.baseKey !== glueDraftBaseKey) {
+    // Render-time adjust: the saved values this draft was based on changed.
+    setGlueDraft(null);
+  }
+  const activeGlueDraft =
+    glueDraft !== null && glueDraft.baseKey === glueDraftBaseKey
+      ? glueDraft
+      : null;
+  const glueEnabled = activeGlueDraft?.enabled ?? savedGlueEnabled;
+  const glueBeats = activeGlueDraft?.beats ?? savedGlueBeats;
   const showGlueRail = Boolean(nextItem && songsetId && onUpdateGlue);
   const glueTempoBpm = nextItem?.recording?.tempoBpm ?? null;
   const glueGenerationSeconds =
@@ -1255,24 +1287,21 @@ export function ArrangementEditorSheet({
     [resolvedOutgoing, item.id, isDirty]
   );
 
-  // The saved values are the source of truth after each free PATCH.
-  useEffect(() => {
-    setGlueEnabled(item.glueEnabled ?? false);
-    setGlueBeats(item.glueBeats ?? 4);
-    setGlueError(null);
-  }, [item.id, item.glueEnabled, item.glueBeats]);
+  // The quote is computed from the saved item, so the request identity covers
+  // the Junction, the saved beat count, and the rail being open and enabled.
+  const glueQuoteRequestKey =
+    isOpen && nextItem !== null && glueEnabled && songsetId
+      ? `${songsetId}:${item.id}:${nextItem.id}:${savedGlueBeats}`
+      : null;
 
-  // The quote endpoint is owner-scoped and computes every credit value. It is
-  // fetched only while the switch is on; the rail never computes credits.
+  // The quote endpoint is owner-scoped and computes every credit value; the
+  // rail never computes credits. Each response is stored with the request key
+  // it answers, so a value for another Junction or beat count is never shown.
   useEffect(() => {
-    if (!isOpen || !nextItem || !glueEnabled || !songsetId) {
-      setGlueQuote(null);
-      setGlueQuoteError(null);
-      return;
-    }
+    if (glueQuoteRequestKey === null || !songsetId) return;
+    const requestKey = glueQuoteRequestKey;
     let cancelled = false;
     const controller = new AbortController();
-    setGlueQuoteError(null);
     void (async () => {
       try {
         const response = await fetch(
@@ -1285,25 +1314,34 @@ export function ArrangementEditorSheet({
         if (cancelled) return;
         if (!response.ok) {
           setGlueQuote(null);
-          setGlueQuoteError(
-            body && typeof body.code === "string" ? body.code : "GLUE_UNKNOWN"
-          );
+          setGlueQuoteError({
+            requestKey,
+            code:
+              body && typeof body.code === "string" ? body.code : "GLUE_UNKNOWN",
+          });
           return;
         }
-        setGlueQuote(body as GlueQuoteResponse);
+        setGlueQuote({ requestKey, quote: body as GlueQuoteResponse });
+        setGlueQuoteError(null);
       } catch (error) {
-        if (cancelled || (error as { name?: string }).name === "AbortError") {
+        if (
+          cancelled ||
+          (typeof error === "object" &&
+            error !== null &&
+            "name" in error &&
+            error.name === "AbortError")
+        ) {
           return;
         }
         setGlueQuote(null);
-        setGlueQuoteError("GLUE_UNKNOWN");
+        setGlueQuoteError({ requestKey, code: "GLUE_UNKNOWN" });
       }
     })();
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [isOpen, nextItem, glueEnabled, songsetId, item.id, item.glueBeats]);
+  }, [glueQuoteRequestKey, songsetId, item.id]);
 
   const updateGlue = useCallback(
     async (patch: {
@@ -1312,23 +1350,33 @@ export function ArrangementEditorSheet({
       glueActiveTakeId?: string | null;
     }) => {
       if (!onUpdateGlue || glueSaving) return;
-      const previousEnabled = glueEnabled;
-      const previousBeats = glueBeats;
-      if (patch.glueEnabled !== undefined) setGlueEnabled(patch.glueEnabled);
-      if (patch.glueBeats !== undefined) setGlueBeats(patch.glueBeats);
+      const previousDraft = glueDraft;
+      setGlueDraft({
+        baseKey: glueDraftBaseKey,
+        enabled: patch.glueEnabled ?? glueEnabled,
+        beats: patch.glueBeats ?? glueBeats,
+      });
       setGlueSaving(true);
       setGlueError(null);
       try {
         await onUpdateGlue(item.id, patch);
       } catch {
-        setGlueEnabled(previousEnabled);
-        setGlueBeats(previousBeats);
-        setGlueError(t("glue.error.save"));
+        setGlueDraft(previousDraft);
+        setGlueError({ itemId: item.id, message: t("glue.error.save") });
       } finally {
         setGlueSaving(false);
       }
     },
-    [onUpdateGlue, glueSaving, glueEnabled, glueBeats, item.id, t]
+    [
+      onUpdateGlue,
+      glueSaving,
+      glueDraft,
+      glueDraftBaseKey,
+      glueEnabled,
+      glueBeats,
+      item.id,
+      t,
+    ]
   );
 
   // One subscription per Junction. Discovery on load comes from the
@@ -1444,6 +1492,17 @@ export function ArrangementEditorSheet({
     void refreshGlueSelection();
   }, [glueJobStatus, refreshGlueSelection]);
 
+  const currentGlueQuote =
+    glueQuote !== null &&
+    glueQuote.requestKey === glueQuoteRequestKey &&
+    !glueSaving &&
+    glueBeats === savedGlueBeats
+      ? glueQuote.quote
+      : null;
+  const currentGlueQuoteError =
+    glueQuoteError !== null && glueQuoteError.requestKey === glueQuoteRequestKey
+      ? glueQuoteError.code
+      : null;
   const glueReason: TranslationKey | null = (() => {
     if (!showGlueRail) return null;
     if (isDirty) return "glue.reason.unsavedDraft";
@@ -1451,8 +1510,10 @@ export function ArrangementEditorSheet({
     if (displayGlue?.unavailableReason) {
       return glueReasonKey(displayGlue.unavailableReason);
     }
-    if (glueQuoteError) return glueQuoteErrorKey(glueQuoteError);
-    const blocked = glueQuote?.blockedSides[0];
+    if (currentGlueQuoteError) {
+      return glueQuoteErrorKey(currentGlueQuoteError);
+    }
+    const blocked = currentGlueQuote?.blockedSides[0];
     if (blocked) {
       return blocked.code === "GLUE_COPYRIGHT_REJECTED"
         ? "glue.reason.copyright"
@@ -1463,18 +1524,15 @@ export function ArrangementEditorSheet({
     return null;
   })();
 
-  const glueQuoteIsCurrent =
-    glueQuote !== null &&
-    !glueSaving &&
-    glueBeats === (item.glueBeats ?? 4);
   const glueSelectedTake = displayGlue?.selectedTake ?? null;
   const glueAvailableTakes = displayGlue?.availableTakes ?? [];
   const glueResetLabel =
-    glueQuote?.quotaResetAt !== null && glueQuote?.quotaResetAt !== undefined
+    currentGlueQuote?.quotaResetAt !== null &&
+    currentGlueQuote?.quotaResetAt !== undefined
       ? new Intl.DateTimeFormat(locale === "zh-Hant" ? "zh-Hant" : "en", {
           hour: "numeric",
           minute: "2-digit",
-        }).format(new Date(glueQuote.quotaResetAt))
+        }).format(new Date(currentGlueQuote.quotaResetAt))
       : null;
 
   // The server owns phase, elapsed time, and retry classification; the rail
@@ -1512,7 +1570,7 @@ export function ArrangementEditorSheet({
     glueEnabled &&
     !jobActive &&
     !nonRetryableGlueFailure &&
-    (glueQuote?.blockedSides.length ?? 0) === 0 &&
+    (currentGlueQuote?.blockedSides.length ?? 0) === 0 &&
     displayGlue !== null &&
     displayGlue.unavailableReason === null &&
     !isDirty &&
@@ -2870,7 +2928,7 @@ export function ArrangementEditorSheet({
                               </p>
                             )}
 
-                            {glueQuoteIsCurrent && glueQuote && (
+                            {currentGlueQuote && (
                               <div
                                 className="space-y-0.5 font-mono text-[11px] tabular-nums text-muted-foreground"
                                 data-testid="arrangement-glue-quote"
@@ -2878,18 +2936,18 @@ export function ArrangementEditorSheet({
                                 <p>
                                   {t("glue.credits").replace(
                                     "{credits}",
-                                    String(glueQuote.estimatedNewCredits)
+                                    String(currentGlueQuote.estimatedNewCredits)
                                   )}
                                 </p>
                                 <p>
                                   {t("glue.remaining")
                                     .replace(
                                       "{remaining}",
-                                      String(glueQuote.quotaRemaining)
+                                      String(currentGlueQuote.quotaRemaining)
                                     )
                                     .replace(
                                       "{limit}",
-                                      String(glueQuote.quotaLimit)
+                                      String(currentGlueQuote.quotaLimit)
                                     )}
                                 </p>
                                 {glueResetLabel && (
@@ -3039,7 +3097,7 @@ export function ArrangementEditorSheet({
                                       : "glue.confirm.heading"
                                   )}
                                 </p>
-                                {glueQuoteIsCurrent && glueQuote && (
+                                {currentGlueQuote && (
                                   <p
                                     className="text-[11px] leading-relaxed text-muted-foreground"
                                     data-testid="arrangement-glue-confirm-body"
@@ -3051,15 +3109,15 @@ export function ArrangementEditorSheet({
                                     )
                                       .replace(
                                         "{credits}",
-                                        String(glueQuote.estimatedNewCredits)
+                                        String(currentGlueQuote.estimatedNewCredits)
                                       )
                                       .replace(
                                         "{remaining}",
-                                        String(glueQuote.quotaRemaining)
+                                        String(currentGlueQuote.quotaRemaining)
                                       )
                                       .replace(
                                         "{limit}",
-                                        String(glueQuote.quotaLimit)
+                                        String(currentGlueQuote.quotaLimit)
                                       )}
                                   </p>
                                 )}
@@ -3076,9 +3134,7 @@ export function ArrangementEditorSheet({
                                     type="button"
                                     data-testid="arrangement-glue-confirm-generate"
                                     disabled={
-                                      !glueQuoteIsCurrent ||
-                                      !glueQuote ||
-                                      glueJobActionPending
+                                      !currentGlueQuote || glueJobActionPending
                                     }
                                     onClick={() =>
                                       void startGlueJob(glueConfirmMode)
@@ -3217,13 +3273,15 @@ export function ArrangementEditorSheet({
                           </div>
                         )}
 
-                        {glueError && (
+                        {glueError !== null && glueError.itemId === item.id && (
                           <Alert
                             variant="destructive"
                             data-testid="arrangement-glue-error"
                           >
                             <AlertTriangle className="size-4" />
-                            <AlertDescription>{glueError}</AlertDescription>
+                            <AlertDescription>
+                              {glueError.message}
+                            </AlertDescription>
                           </Alert>
                         )}
                       </section>

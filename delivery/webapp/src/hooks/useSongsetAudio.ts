@@ -134,12 +134,16 @@ export function useSongsetAudio(
 
   // A failure belongs to the take that failed. When the caller swaps the
   // Songset/selection and that take is no longer referenced, drop the warning.
+  // The prune must also forget the failure (not merely hide it): re-selecting
+  // the same take later must not resurrect a stale warning, which a derived
+  // filter would do.
   useEffect(() => {
     const present = new Set(
       items
         .map((item) => item.glueTakeId)
         .filter((takeId): takeId is string => typeof takeId === "string"),
     );
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- forgets failures for takes the items no longer reference
     setGlueFailures((previous) => {
       const kept = previous.filter((failure) => present.has(failure.takeId));
       return kept.length === previous.length ? previous : kept;
@@ -504,7 +508,6 @@ export function useSongsetAudio(
     }
     // The rebuilt timeline owns this position; it cannot be derived from the
     // new items alone.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((previous) => ({
       ...baseState(previous, itemsKey),
       timelinePositionSeconds: rebuild.position,

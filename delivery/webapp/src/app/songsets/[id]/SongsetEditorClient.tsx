@@ -615,10 +615,14 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
 
   // Render-preflight "Open editor" lands here with the outgoing item id: open
   // that item's arrangement sheet (where paid AI-transition actions live), then
-  // strip the ephemeral param.
+  // strip the ephemeral param. The open is a one-shot reaction to the URL, not
+  // render-derived state: the strip below clears the param on the next
+  // navigation, and deriving it during render would reopen a sheet the user
+  // just closed.
   useEffect(() => {
     if (!glueItemParam) return;
     const target = items.find((item) => item.id === glueItemParam);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot deep-link open; the ephemeral param is stripped immediately after
     if (target) setEditingArrangementItemId(target.id);
     const next = new URLSearchParams(searchParams.toString());
     next.delete("glueItem");

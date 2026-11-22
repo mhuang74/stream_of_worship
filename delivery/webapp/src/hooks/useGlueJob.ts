@@ -52,11 +52,12 @@ export function useGlueJob({
     if (!enabled || jobId === null || fromItemId === null) return;
 
     let disposed = false;
-    setStreamError(null);
     // A different job starts from a clean slate; the previous job's terminal
-    // status must not leak into the next Junction's UI.
+    // status must not leak into the next Junction's UI. The reset cannot be
+    // render-derived: the stale status is exactly what must not render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the previous junction's job status before the new subscription starts
     setStatus(null);
-
+    setStreamError(null);
     const stop = watchGlueJob(
       { jobId, songsetId, fromItemId },
       {
