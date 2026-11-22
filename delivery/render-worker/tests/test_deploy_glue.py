@@ -72,6 +72,20 @@ def test_aws_up_glue_never_passes_scaling_to_create_or_update() -> None:
         )
 
 
+def test_aws_up_glue_sets_scaling_only_after_publishing_a_version() -> None:
+    """`$LATEST.PUBLISHED` does not resolve before the first published version,
+    so a fresh-account run would abort under `set -euo pipefail`."""
+    text = read(AWS_UP_GLUE)
+    main_block = text[text.index("main() {"):]
+    order = [
+        main_block.index("create_or_update_lambda"),
+        main_block.index("create_event_source_mapping"),
+        main_block.index("publish_version"),
+        main_block.index("apply_scaling_config"),
+    ]
+    assert order == sorted(order), "aws-up-glue.sh main() no longer publishes before scaling"
+
+
 def test_aws_up_glue_fails_fast_before_any_aws_call() -> None:
     text = read(AWS_UP_GLUE)
     guard = text.index("GLUE_CAPACITY_PROVIDER_ARN is required")

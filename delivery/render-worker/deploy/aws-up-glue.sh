@@ -6,8 +6,9 @@
 #   * Lambda function        sow-glue-worker on AWS Lambda Managed Instances
 #                            running the shared sow-render-worker image
 #   * SQS event source map   batch size 1, ReportBatchItemFailures
-#   * scaling config         min 0 / max 2 execution environments on $LATEST.PUBLISHED
 #   * published Lambda version
+#   * scaling config         min 0 / max 2 execution environments on $LATEST.PUBLISHED
+#                            (set after the version is published)
 #
 # Managed Instances are required: standard Lambda caps asynchronous invocations
 # at 1800 s, while a Glue job needs 1900 s. The capacity provider ARN is an
@@ -290,11 +291,13 @@ main() {
     echo ""
     create_or_update_lambda
     echo ""
-    apply_scaling_config
-    echo ""
     create_event_source_mapping
     echo ""
     publish_version
+    echo ""
+    # `$LATEST.PUBLISHED` only exists once a version is published, so scaling
+    # must follow publish_version (same order as the deploy workflow).
+    apply_scaling_config
     echo ""
     info "Glue worker ready."
     echo "Queue URL: $QUEUE_URL"

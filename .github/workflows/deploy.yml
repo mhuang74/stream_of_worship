@@ -180,6 +180,82 @@ jobs:
           aws lambda wait function-updated \
             --function-name sow-render-worker
 
+  deploy-glue-worker:
+    name: Deploy Glue Worker to Lambda (Managed Instances)
+    needs: [detect-changes, migrate-db, deploy-render-worker]
+    if: needs.detect-changes.outputs.render-worker == 'true' && needs.deploy-render-worker.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-glue-worker-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.SOW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.SOW_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      # Standard Lambda caps asynchronous/event-source invocations at 1800 s,
+      # below the 1900 s Glue budget. Fail before touching the function when it
+      # is not the documented Managed Instances host.
+      - name: Fail fast unless the Glue function runs on Managed Instances
+        run: |
+          set -euo pipefail
+          config="$(aws lambda get-function-configuration --function-name sow-glue-worker)"
+          capacity_arn="$(printf '%s' "$config" | jq -r '.CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn // empty')"
+          timeout="$(printf '%s' "$config" | jq -r '.Timeout')"
+          if [ -z "$capacity_arn" ] || [ "$timeout" != "1900" ]; then
+            echo "::error::sow-glue-worker must run on AWS Lambda Managed Instances with Timeout == 1900; the current function has CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn='${capacity_arn}' and Timeout='${timeout}'. Standard Lambda (1800 s cap) is not eligible. Create it with delivery/render-worker/deploy/aws-up-glue.sh."
+            exit 1
+          fi
+          echo "Verified: sow-glue-worker runs on Managed Instances with a 1900 s timeout."
+
+      - name: Update Glue worker image (shared render-worker image)
+        env:
+          IMAGE_URI: ${{ needs.deploy-render-worker.outputs.image }}
+        run: |
+          set -euo pipefail
+          if [ -z "$IMAGE_URI" ]; then
+            echo "::error::The render-worker image URI is empty; refusing to deploy Glue without the shared image."
+            exit 1
+          fi
+          aws lambda update-function-code \
+            --function-name sow-glue-worker \
+            --image-uri "$IMAGE_URI"
+
+      - name: Wait for Glue Lambda image update
+        run: |
+          aws lambda wait function-updated --function-name sow-glue-worker
+
+      # Set the provider key ONLY on the Glue function, merging the existing
+      # environment so DB/R2/queue settings survive. Never echo the merged JSON.
+      - name: Set ElevenLabs provider key on the Glue function
+        env:
+          SOW_ELEVENLABS_API_KEY: ${{ secrets.SOW_ELEVENLABS_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SOW_ELEVENLABS_API_KEY" ]; then
+            echo "::error::SOW_ELEVENLABS_API_KEY secret is not configured; Glue would fail with GLUE_NOT_CONFIGURED."
+            exit 1
+          fi
+          config="$(aws lambda get-function-configuration --function-name sow-glue-worker)"
+          env_json="$(printf '%s' "$config" | jq -c --arg key "$SOW_ELEVENLABS_API_KEY" '.Environment.Variables // {} | .SOW_ELEVENLABS_API_KEY = $key | {Variables: .}')"
+          aws lambda update-function-configuration \
+            --function-name sow-glue-worker \
+            --environment "$env_json" >/dev/null
+
+      - name: Wait for Glue Lambda configuration update
+        run: |
+          aws lambda wait function-updated --function-name sow-glue-worker
+
+      - name: Publish Glue Lambda version
+        run: |
+          aws lambda publish-version --function-name sow-glue-worker
+
       # Execution-environment limits are not a create/update-configuration field;
       # AWS applies them per qualified ARN. `$LATEST.PUBLISHED` makes every future
       # published version inherit the cap, and min/max must be sent together.
