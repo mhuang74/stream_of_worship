@@ -75,19 +75,39 @@ class LyricsCallback(Protocol):
     async def __call__(self, hash_prefix: str, segment: SegmentInfo) -> list[ChapterLine]: ...
 
 
+def base_song_title(item: object, index: int) -> str:
+    """Display title for one Item occurrence, before any disambiguation.
+
+    Identity is the Songset Item, so two occurrences of the same Song share a
+    base title; the caller decides whether to disambiguate them.
+    """
+    return (
+        getattr(item, "song_title", None)
+        or str(getattr(item, "song_id", "") or f"Song {index + 1}")
+    )
+
+
 def chapter_titles(segments: Sequence[SegmentInfo]) -> list[str]:
-    """Per-segment chapter titles; the k-th use of the same base title (k > 1)
-    is suffixed with its occurrence ordinal: "Title", "Title (2)", "Title (3)"."""
-    base = [
-        getattr(seg.item, "song_title", None)
-        or str(getattr(seg.item, "song_id", "") or f"Song {i + 1}")
-        for i, seg in enumerate(segments)
-    ]
+    """Per-segment chapter titles, globally unique within the manifest.
+
+    The k-th use of the same base title (k > 1) gets its occurrence ordinal:
+    "Title", "Title (2)", "Title (3)". A base title that already looks like a
+    generated label ("Title (2)") can collide with an earlier generated one, so
+    the ordinal advances until the candidate is unused.
+    """
+    used: set[str] = set()
     seen: dict[str, int] = {}
     titles: list[str] = []
-    for title in base:
-        seen[title] = seen.get(title, 0) + 1
-        titles.append(title if seen[title] == 1 else f"{title} ({seen[title]})")
+    for i, seg in enumerate(segments):
+        base = base_song_title(seg.item, i)
+        seen[base] = seen.get(base, 0) + 1
+        ordinal = seen[base]
+        candidate = base if ordinal == 1 else f"{base} ({ordinal})"
+        while candidate in used:
+            ordinal += 1
+            candidate = f"{base} ({ordinal})"
+        used.add(candidate)
+        titles.append(candidate)
     return titles
 
 

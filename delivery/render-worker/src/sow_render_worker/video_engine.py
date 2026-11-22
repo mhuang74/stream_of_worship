@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from sow_render_worker.audio_engine import AudioSegmentInfo, get_audio_info
-from sow_render_worker.chapters import Chapter, ChaptersManifest, chapters_to_ffmpeg_metadata
+from sow_render_worker.chapters import (
+    Chapter,
+    ChaptersManifest,
+    base_song_title,
+    chapters_to_ffmpeg_metadata,
+)
 from sow_render_worker.frame_renderer import (
     VIDEO_TEMPLATES,
     FontSizePreset,
@@ -207,10 +212,7 @@ class VideoEngine:
                     id=seg.item.id,
                     song_id=seg.item.song_id,
                     position=seg.item.position,
-                    song_title=(
-                        seg.item.song_title
-                        or (str(seg.item.song_id) if seg.item.song_id else f"Song {i + 1}")
-                    ),
+                    song_title=base_song_title(seg.item, i),
                     start_time_seconds=seg.start_time_seconds,
                     duration_seconds=seg.duration_seconds,
                     tempo_bpm=seg.item.tempo_bpm,
@@ -222,10 +224,20 @@ class VideoEngine:
             if self.title_card_lines:
                 title_lines = tuple(self.title_card_lines)
             else:
-                # Dedupe: a repeated Song is one title-card entry, first occurrence first.
-                song_titles = list(
-                    dict.fromkeys(seg.item.song_title for seg in segments if seg.item.song_title)
-                )
+                # Dedupe by Song identity, not title text: repeated Items of one
+                # Song are one entry, while two distinct Songs that share a
+                # title both appear. Fall back to the Item id only when the
+                # segment carries no song id.
+                song_titles: list[str] = []
+                seen_song_ids: set[str] = set()
+                for seg in segments:
+                    if not seg.item.song_title:
+                        continue
+                    song_key = str(seg.item.song_id or seg.item.id)
+                    if song_key in seen_song_ids:
+                        continue
+                    seen_song_ids.add(song_key)
+                    song_titles.append(seg.item.song_title)
                 display_name = self.songset_name or "Worship Set"
                 title_lines = (
                     tuple([display_name] + song_titles) if song_titles else (display_name,)

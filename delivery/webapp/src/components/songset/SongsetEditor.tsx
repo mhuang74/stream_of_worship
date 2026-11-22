@@ -85,7 +85,10 @@ export interface SongsetEditorProps {
   onRemoveItem: (itemId: string) => Promise<void>;
   onUpdateTransition: (itemId: string, settings: TransitionSettings) => Promise<void>;
   onEditArrangement?: (itemId: string) => void;
-  onDuplicateItem?: (itemId: string) => Promise<void>;
+  /** Required: the Songset Item is the unit of identity, so every editor can
+   * duplicate one occurrence; hiding the control is a layout choice, not an
+   * absent capability. */
+  onDuplicateItem: (itemId: string) => Promise<void>;
   onRender: () => void;
   /** Present ⇒ the kebab shows "Cancel render" instead of "Render" while a
    * job is active. */
@@ -103,6 +106,9 @@ export interface SongsetEditorProps {
   onDownloadVideo?: () => void;
   onAddSongs: () => void;
   isRemoving?: boolean;
+  /** An Item mutation (append/remove/duplicate/reorder) is in flight; the
+   * list disables the controls so a second request cannot interleave. */
+  isItemMutationPending?: boolean;
   className?: string;
   highlightSongId?: string | null;
   onHighlightConsumed?: () => void;
@@ -136,6 +142,7 @@ export function SongsetEditor({
   onDownloadVideo,
   onAddSongs,
   isRemoving = false,
+  isItemMutationPending = false,
   className,
   highlightSongId,
   onHighlightConsumed,
@@ -224,7 +231,7 @@ export function SongsetEditor({
   const handleDuplicateItem = useCallback(
     async (itemId: string) => {
       try {
-        await onDuplicateItem?.(itemId);
+        await onDuplicateItem(itemId);
         toast.success(t("songsets.toast.itemDuplicated"));
       } catch (err) {
         toast.error(
@@ -641,6 +648,8 @@ export function SongsetEditor({
           onEditArrangement={onEditArrangement}
           onDuplicateItem={(itemId) => void handleDuplicateItem(itemId)}
           isRemoving={isRemoving}
+          isItemMutationPending={isItemMutationPending}
+          isDuplicateDisabled={songset.renderState === "rendering"}
           songsetId={songset.id}
           highlightSongId={highlightSongId}
           onHighlightConsumed={onHighlightConsumed}

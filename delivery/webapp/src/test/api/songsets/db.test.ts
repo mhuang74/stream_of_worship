@@ -7,13 +7,16 @@ import {
   deleteSongset,
   addSongsetItem,
   deleteSongsetItem,
+  reorderSongsetItems,
+  SongsetRenderValidationError,
   listSongsetSummaries,
   getSongsetEditorData,
   getRenderPageData,
   mapRenderStateFromSnapshot,
 } from "@/lib/db/songsets";
 import { db } from "@/db";
-import { recordings } from "@/db/schema";
+import { mutationDb } from "@/db/mutation-db";
+import { recordings, songsetItems, songsets } from "@/db/schema";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -839,6 +842,7 @@ describe("getRenderPageData", () => {
     const itemRows = [
       {
         id: "item-1",
+        songId: "song-a",
         songTitle: "Song A",
         markedLineCount: 3,
         recordingDeletedAt: null,
@@ -905,7 +909,7 @@ describe("getRenderPageData", () => {
     expect(result).not.toBeNull();
     expect(result!.songset.id).toBe("ss-1");
     expect(result!.songset.markedLineCount).toBe(3);
-    expect(result!.songset.songTitles).toEqual(["Song A"]);
+    expect(result!.songset.songs).toEqual([{ id: "song-a", title: "Song A" }]);
     expect(result!.songset.renderState).toBe("fresh");
     expect(result!.userSettings).not.toBeNull();
     expect(result!.userSettings!.defaultVideoTemplate).toBe("dark");
@@ -998,8 +1002,8 @@ describe("getRenderPageData", () => {
     };
 
     const itemRows = [
-      { id: "item-1", songTitle: "A", markedLineCount: 3, recordingDeletedAt: null, recordingDurationSeconds: 200, updatedAt: new Date() },
-      { id: "item-2", songTitle: "B", markedLineCount: 5, recordingDeletedAt: null, recordingDurationSeconds: 300, updatedAt: new Date() },
+      { id: "item-1", songId: "song-a", songTitle: "A", markedLineCount: 3, recordingDeletedAt: null, recordingDurationSeconds: 200, updatedAt: new Date() },
+      { id: "item-2", songId: "song-b", songTitle: "B", markedLineCount: 5, recordingDeletedAt: null, recordingDurationSeconds: 300, updatedAt: new Date() },
     ];
 
     const songsetChain = createSelectChain([songsetRow]);
@@ -1015,7 +1019,7 @@ describe("getRenderPageData", () => {
     expect(result!.songset.markedLineCount).toBe(8);
   });
 
-  it("songTitles extracted from items", async () => {
+  it("songs carry the Song id and title per visible item", async () => {
     const songsetRow = {
       id: "ss-1",
       name: "Test",
@@ -1028,8 +1032,9 @@ describe("getRenderPageData", () => {
     };
 
     const itemRows = [
-      { id: "item-1", songTitle: "Song A", markedLineCount: 0, recordingDeletedAt: null, recordingDurationSeconds: 250, updatedAt: new Date() },
-      { id: "item-2", songTitle: null, markedLineCount: 0, recordingDeletedAt: null, recordingDurationSeconds: null, updatedAt: new Date() },
+      { id: "item-1", songId: "song-a", songTitle: "Song A", markedLineCount: 0, recordingDeletedAt: null, recordingDurationSeconds: 250, updatedAt: new Date() },
+      { id: "item-2", songId: "song-b", songTitle: null, markedLineCount: 0, recordingDeletedAt: null, recordingDurationSeconds: null, updatedAt: new Date() },
+      { id: "item-3", songId: "song-a", songTitle: "Song A", markedLineCount: 0, recordingDeletedAt: new Date(), recordingDurationSeconds: 250, updatedAt: new Date() },
     ];
 
     const songsetChain = createSelectChain([songsetRow]);
@@ -1042,7 +1047,12 @@ describe("getRenderPageData", () => {
 
     const result = await getRenderPageData("ss-1", 1);
 
-    expect(result!.songset.songTitles).toEqual(["Song A", "Unknown Song"]);
+    // Hidden recordings are absent; occurrences of one Song stay separate here
+    // and the form dedupes them by id.
+    expect(result!.songset.songs).toEqual([
+      { id: "song-a", title: "Song A" },
+      { id: "song-b", title: "Unknown Song" },
+    ]);
   });
 });
 
@@ -1464,65 +1474,125 @@ describe("deleteSongset", () => {
   });
 });
 
+interface ItemTransactionWrite {
+  kind: "insert" | "update" | "delete";
+  table: unknown;
+  values?: Record<string, unknown>;
+}
+
+/**
+ * Transaction double for the locked Item mutations: `select` resolves
+ * `rowSets` in call order, and insert/update/delete record their writes.
+ */
+function installItemTransaction(...rowSets: unknown[][]) {
+  const writes: ItemTransactionWrite[] = [];
+  const lockCalls: unknown[] = [];
+  let callIndex = 0;
+  const select = vi.fn(() => {
+    const rows = rowSets[callIndex] ?? [];
+    callIndex += 1;
+    const promise = Promise.resolve(rows);
+    const chain: any = {};
+    for (const method of ["from", "where", "limit", "orderBy"]) {
+      chain[method] = vi.fn(() => chain);
+    }
+    chain.for = vi.fn((mode: unknown) => {
+      lockCalls.push(mode);
+      return chain;
+    });
+    chain.then = (resolve: (value: unknown[]) => unknown) => promise.then(resolve);
+    return chain;
+  });
+  const update = vi.fn((table: unknown) => ({
+    set: (values: Record<string, unknown>) => {
+      writes.push({ kind: "update", table, values });
+      return { where: () => Promise.resolve(undefined) };
+    },
+  }));
+  const insert = vi.fn((table: unknown) => ({
+    values: (values: Record<string, unknown>) => {
+      writes.push({ kind: "insert", table, values });
+      return {
+        returning: vi.fn().mockResolvedValue([]),
+        then: (resolve: (value: unknown) => unknown) => Promise.resolve(undefined).then(resolve),
+      };
+    },
+  }));
+  const remove = vi.fn((table: unknown) => {
+    writes.push({ kind: "delete", table });
+    return { where: () => Promise.resolve(undefined) };
+  });
+  vi.mocked(mutationDb.transaction).mockImplementation(((callback: any) =>
+    callback({ select, update, insert, delete: remove })) as any);
+  return { writes, lockCalls };
+}
+
+function persistedItemRow(extra: Record<string, unknown> = {}) {
+  return {
+    id: "test-id",
+    songsetId: "songset-1",
+    songId: "song-1",
+    recordingHashPrefix: null,
+    position: 0,
+    gapBeats: 0,
+    crossfadeEnabled: 0,
+    crossfadeDurationSeconds: null,
+    keyShiftSemitones: 0,
+    tempoRatio: 1,
+    arrangementSteps: null,
+    song: null,
+    recording: null,
+    ...extra,
+  };
+}
+
 describe("addSongsetItem", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("adds item to songset", async () => {
-    const mockSongset = {
-      id: "songset-1",
-      userId: 1,
-    };
+  it("appends at max(position) + 1 after a gap left by a delete", async () => {
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(
+      persistedItemRow({ position: 5 }) as any
+    );
+    const { writes, lockCalls } = installItemTransaction(
+      [{ id: "songset-1" }],
+      [
+        { id: "item-1", position: 0 },
+        { id: "item-3", position: 4 },
+      ]
+    );
 
-    const mockItem = {
-      id: "item-1",
-      songId: "song-1",
-      recordingHashPrefix: null,
-      position: 0,
-      gapBeats: 2.0,
-      crossfadeEnabled: 0,
-      crossfadeDurationSeconds: null,
-      keyShiftSemitones: 0,
-      tempoRatio: 1.0,
-      song: {
-        id: "song-1",
-        title: "Test Song",
-        composer: null,
-        lyricist: null,
-        albumName: null,
-        musicalKey: null,
-      },
-      recording: null,
-    };
+    const result = await addSongsetItem("songset-1", 1, { songId: "song-1" });
 
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(mockSongset as any);
-    vi.mocked(db.query.songsetItems.findMany).mockResolvedValue([{ id: "existing-1" }] as any);
-    vi.mocked(db.insert).mockReturnValue({
-      values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([mockItem]),
-      }),
-    } as any);
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(mockItem as any);
-
-    const result = await addSongsetItem("songset-1", 1, {
-      songId: "song-1",
-      position: 0,
-    });
-
-    expect(result).not.toBeNull();
+    // The cap/count read happens under the shared parent-row lock.
+    expect(lockCalls).toEqual(["update"]);
+    const insert = writes.find((write) => write.kind === "insert" && write.table === songsetItems);
+    expect(insert?.values?.position).toBe(5);
+    expect(writes.some((write) => write.kind === "update" && write.table === songsets)).toBe(true);
     expect(result?.songId).toBe("song-1");
   });
 
-  it("returns null when songset not found", async () => {
-    vi.mocked(db.query.songsets.findFirst).mockResolvedValue(null);
+  it("locks the owned Songset before counting the cap", async () => {
+    const { writes, lockCalls } = installItemTransaction(
+      [{ id: "songset-1" }],
+      [0, 1, 2, 3, 4].map((position) => ({ id: `item-${position}`, position }))
+    );
 
-    const result = await addSongsetItem("songset-1", 1, {
-      songId: "song-1",
-      position: 0,
-    });
+    const error = await addSongsetItem("songset-1", 1, { songId: "song-1" }).catch((err) => err);
 
-    expect(result).toBeNull();
+    expect(error).toBeInstanceOf(SongsetRenderValidationError);
+    expect(error.code).toBe("SONGSET_FULL");
+    expect(lockCalls).toEqual(["update"]);
+    // Rejection precedes the insert: a sixth row is never written.
+    expect(writes).toHaveLength(0);
+  });
+
+  it("returns null when the Songset is not owned", async () => {
+    const { writes } = installItemTransaction([]);
+
+    await expect(addSongsetItem("songset-1", 1, { songId: "song-1" })).resolves.toBeNull();
+    expect(writes).toHaveLength(0);
   });
 });
 
@@ -1531,28 +1601,80 @@ describe("deleteSongsetItem", () => {
     vi.clearAllMocks();
   });
 
-  it("deletes songset item", async () => {
-    const mockItem = {
-      id: "item-1",
-      songsetId: "songset-1",
-      songset: { userId: 1 },
-    };
-
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(mockItem as any);
-    vi.mocked(db.delete).mockReturnValue({
-      where: vi.fn().mockResolvedValue(undefined),
-    } as any);
+  it("deletes the item inside the parent lock", async () => {
+    const { writes, lockCalls } = installItemTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }]
+    );
 
     const result = await deleteSongsetItem("item-1", "songset-1", 1);
 
     expect(result).toBe(true);
+    expect(lockCalls).toEqual(["update"]);
+    expect(writes.some((write) => write.kind === "delete" && write.table === songsetItems)).toBe(
+      true
+    );
+    expect(writes.some((write) => write.kind === "update" && write.table === songsets)).toBe(true);
   });
 
-  it("returns false when item not found", async () => {
-    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(null);
+  it("returns false for an item outside the Songset", async () => {
+    const { writes } = installItemTransaction([{ id: "songset-1" }], []);
 
-    const result = await deleteSongsetItem("item-1", "songset-1", 1);
+    await expect(deleteSongsetItem("item-9", "songset-1", 1)).resolves.toBe(false);
+    expect(writes.some((write) => write.kind === "delete")).toBe(false);
+  });
 
-    expect(result).toBe(false);
+  it("returns false when the Songset is not owned", async () => {
+    const { writes } = installItemTransaction([]);
+
+    await expect(deleteSongsetItem("item-1", "songset-1", 1)).resolves.toBe(false);
+    expect(writes).toHaveLength(0);
+  });
+});
+
+describe("reorderSongsetItems", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("applies every position inside one transaction", async () => {
+    const { writes, lockCalls } = installItemTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }, { id: "item-2" }]
+    );
+
+    const result = await reorderSongsetItems("songset-1", 1, [
+      { itemId: "item-1", position: 1 },
+      { itemId: "item-2", position: 0 },
+    ]);
+
+    expect(result).toBe("ok");
+    expect(lockCalls).toEqual(["update"]);
+    expect(writes.filter((write) => write.kind === "update" && write.table === songsetItems)).toHaveLength(2);
+    expect(writes.some((write) => write.kind === "update" && write.table === songsets)).toBe(true);
+  });
+
+  it("rejects an item outside the Songset without writing positions", async () => {
+    const { writes } = installItemTransaction(
+      [{ id: "songset-1" }],
+      [{ id: "item-1" }]
+    );
+
+    const result = await reorderSongsetItems("songset-1", 1, [
+      { itemId: "item-1", position: 1 },
+      { itemId: "item-foreign", position: 0 },
+    ]);
+
+    expect(result).toBe("item-not-found");
+    expect(writes.filter((write) => write.kind === "update" && write.table === songsetItems)).toHaveLength(0);
+  });
+
+  it("returns songset-not-found for an unowned Songset", async () => {
+    const { writes } = installItemTransaction([]);
+
+    await expect(
+      reorderSongsetItems("songset-1", 1, [{ itemId: "item-1", position: 0 }])
+    ).resolves.toBe("songset-not-found");
+    expect(writes).toHaveLength(0);
   });
 });

@@ -116,6 +116,44 @@ describe("RenderForm", () => {
       
       expect(screen.queryByText("Duration")).not.toBeInTheDocument()
     })
+
+    it("previews distinct Songs sharing a title once each", () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          songsetName="Sunday"
+          songs={[
+            { id: "song-1", title: "Same" },
+            { id: "song-1", title: "Same" },
+            { id: "song-2", title: "Same" },
+          ]}
+          initialData={{ includeTitleCard: true }}
+        />
+      )
+
+      expect(screen.getByTestId("title-card-preview").textContent).toBe(
+        "Sunday\nSame\nSame"
+      )
+    })
+
+    it("filters empty titles from the title-card preview", () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          songsetName="Sunday"
+          songs={[
+            { id: "song-1", title: "" },
+            { id: "song-2", title: "Alpha" },
+            { id: "song-2", title: "Alpha" },
+          ]}
+          initialData={{ includeTitleCard: true }}
+        />
+      )
+
+      expect(screen.getByTestId("title-card-preview").textContent).toBe(
+        "Sunday\nAlpha"
+      )
+    })
   })
 
   describe("marked lines warning", () => {

@@ -313,6 +313,31 @@ describe("CatalogSearch (shared search component)", () => {
     });
   });
 
+  it("disables the add control on search results when the Songset is full", async () => {
+    render(
+      <BrowseSheet
+        isOpen
+        onOpenChange={vi.fn()}
+        onAddSong={vi.fn().mockResolvedValue(undefined)}
+        existingSongCounts={{}}
+        itemCount={5}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("search-controls-region")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("search-input"), { target: { value: "grace" } });
+    fireEvent.click(screen.getByTestId("search-button"));
+
+    await waitFor(() => {
+      const addButtons = screen.getAllByTestId("add-song-button");
+      expect(addButtons.length).toBeGreaterThan(0);
+      expect(addButtons[0]).toBeDisabled();
+      expect(addButtons[0]).toHaveAttribute("aria-label", "Songset full");
+    });
+  });
+
   it("search results in the Listen shell render play+favorite cards without add buttons", async () => {
     mockFetch.mockImplementation((url: string) => {
       if (url === "/api/songs/albums") {

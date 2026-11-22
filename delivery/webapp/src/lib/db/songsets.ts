@@ -366,7 +366,8 @@ export interface RenderPageData {
     description: string | null;
     markedLineCount: number;
     renderState: RenderState;
-    songTitles: string[];
+    /** One entry per visible Item: the web preview dedupes by Song id. */
+    songs: { id: string; title: string }[];
     lastCompletedRenderJobId: string | null;
     durationSeconds: number | null;
   };
@@ -962,6 +963,7 @@ export async function getRenderPageData(
     const itemRows = await db
       .select({
         id: songsetItems.id,
+        songId: songsetItems.songId,
         songTitle: songs.title,
         markedLineCount: sql<number>`count(distinct ${lyricMarks.id})::int`,
         recordingDeletedAt: recordings.deletedAt,
@@ -988,6 +990,7 @@ export async function getRenderPageData(
       .where(eq(songsetItems.songsetId, id))
       .groupBy(
         songsetItems.id,
+        songsetItems.songId,
         songs.title,
         recordings.deletedAt,
         recordings.durationSeconds,
@@ -1045,7 +1048,10 @@ export async function getRenderPageData(
           0
         ),
         renderState,
-        songTitles: visibleItems.map((item) => item.songTitle ?? "Unknown Song"),
+        songs: visibleItems.map((item) => ({
+          id: item.songId,
+          title: item.songTitle ?? "Unknown Song",
+        })),
         lastCompletedRenderJobId: row.lastCompletedRenderJobId,
         durationSeconds:
           getSongsetDurationSeconds(
@@ -1382,12 +1388,17 @@ export async function deleteSongset(id: string, userId: number): Promise<boolean
   return true;
 }
 
+/**
+ * Append one Item to the end of an owned Songset. The server owns the position:
+ * `max(position) + 1` over the persisted rows, computed under the parent-row
+ * lock so concurrent appends, duplicates, reorders, and deletes serialize on
+ * the same cap/count read.
+ */
 export async function addSongsetItem(
   songsetId: string,
   userId: number,
   data: {
     songId: string;
-    position: number;
     recordingHashPrefix?: string | null;
     gapBeats?: number | null;
     crossfadeEnabled?: number | null;
@@ -1396,27 +1407,40 @@ export async function addSongsetItem(
     tempoRatio?: number | null;
   }
 ): Promise<SongsetItemDetail | null> {
-  const songset = await db.query.songsets.findFirst({
-    where: and(eq(songsets.id, songsetId), eq(songsets.userId, userId)),
+  const insertedId = await mutationDb.transaction(async (tx) => {
+    const [ownedSongset] = await tx
+      .select({ id: songsets.id })
+      .from(songsets)
+      .where(and(eq(songsets.id, songsetId), eq(songsets.userId, userId)))
+      .for("update");
+
+    if (!ownedSongset) return null;
+
+    const siblings = await tx
+      .select({ id: songsetItems.id, position: songsetItems.position })
+      .from(songsetItems)
+      .where(eq(songsetItems.songsetId, songsetId));
+
+    if (siblings.length >= SONGSET_MAX_SONGS) {
+      throw new SongsetRenderValidationError(
+        "SONGSET_FULL",
+        `Songset already has maximum of ${SONGSET_MAX_SONGS} songs`
+      );
+    }
+
+    const nextPosition = siblings.reduce((max, row) => Math.max(max, row.position), -1) + 1;
+    const id = nanoid();
+    await tx.insert(songsetItems).values({ id, songsetId, position: nextPosition, ...data });
+
+    await tx.update(songsets).set({ updatedAt: new Date() }).where(eq(songsets.id, songsetId));
+
+    return id;
   });
-  if (!songset) return null;
 
-  const currentCount = await db.query.songsetItems.findMany({
-    where: eq(songsetItems.songsetId, songsetId),
-    columns: { id: true },
-  });
-
-  if (currentCount.length >= SONGSET_MAX_SONGS) {
-    throw new Error(`Songset already has maximum of ${SONGSET_MAX_SONGS} songs`);
-  }
-
-  const id = nanoid();
-  await db.insert(songsetItems).values({ id, songsetId, ...data }).returning();
-
-  await db.update(songsets).set({ updatedAt: new Date() }).where(eq(songsets.id, songsetId));
+  if (!insertedId) return null;
 
   const item = await db.query.songsetItems.findFirst({
-    where: eq(songsetItems.id, id),
+    where: eq(songsetItems.id, insertedId),
     with: {
       song: true,
       recording: {
@@ -1492,11 +1516,16 @@ export async function duplicateSongsetItem(
       );
     }
 
+    // Project the persisted order: the copy lands immediately after the source,
+    // not at the end of the Songset. Appending it would charge the trailing
+    // crossfade twice and refuse a Songset that actually fits.
+    const projectedRows = [...visibleRows];
     const sourceRow = siblingRows.find((row) => row.id === itemId);
-    const prospectiveTotalSeconds = getSongsetDurationSeconds([
-      ...visibleRows.map(toArrangementInput),
-      ...(sourceRow && !sourceRow.recordingDeletedAt ? [toArrangementInput(sourceRow)] : []),
-    ]);
+    if (sourceRow && !sourceRow.recordingDeletedAt) {
+      const sourceIndex = projectedRows.findIndex((row) => row.id === itemId);
+      if (sourceIndex >= 0) projectedRows.splice(sourceIndex + 1, 0, sourceRow);
+    }
+    const prospectiveTotalSeconds = getSongsetDurationSeconds(projectedRows.map(toArrangementInput));
     if (
       prospectiveTotalSeconds != null &&
       prospectiveTotalSeconds > SONGSET_MAX_DURATION_SECONDS
@@ -1561,7 +1590,6 @@ export async function updateSongsetItem(
   songsetId: string,
   userId: number,
   patch: Partial<{
-    position: number;
     recordingHashPrefix: string | null;
     gapBeats: number | null;
     crossfadeEnabled: number | null;
@@ -1594,7 +1622,6 @@ export async function updateSongsetItem(
 
     const now = new Date();
     const {
-      position,
       recordingHashPrefix,
       gapBeats,
       crossfadeEnabled,
@@ -1607,7 +1634,6 @@ export async function updateSongsetItem(
     // recording changes must invalidate a fresh render too (pre-existing gap).
     // Built field by field so a route payload's extra keys never reach SQL.
     const updateSet: Partial<typeof songsetItems.$inferInsert> = {
-      position,
       recordingHashPrefix,
       gapBeats,
       crossfadeEnabled,
@@ -1666,17 +1692,75 @@ export async function deleteSongsetItem(
   songsetId: string,
   userId: number
 ): Promise<boolean> {
-  const item = await db.query.songsetItems.findFirst({
-    where: eq(songsetItems.id, itemId),
-    with: { songset: true },
+  return mutationDb.transaction(async (tx) => {
+    // Same parent-row lock as append/duplicate/reorder so a delete cannot
+    // interleave with a cap or position read.
+    const [ownedSongset] = await tx
+      .select({ id: songsets.id })
+      .from(songsets)
+      .where(and(eq(songsets.id, songsetId), eq(songsets.userId, userId)))
+      .for("update");
+
+    if (!ownedSongset) return false;
+
+    const [item] = await tx
+      .select({ id: songsetItems.id })
+      .from(songsetItems)
+      .where(and(eq(songsetItems.id, itemId), eq(songsetItems.songsetId, songsetId)))
+      .limit(1);
+
+    if (!item) return false;
+
+    const now = new Date();
+    await tx.delete(songsetItems).where(eq(songsetItems.id, itemId));
+    await tx.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+
+    return true;
   });
+}
 
-  if (!item || item.songsetId !== songsetId || item.songset.userId !== userId) return false;
+/**
+ * Apply caller-supplied Item positions atomically. Every target Item must
+ * belong to the owned Songset; the whole update is rejected otherwise, so a
+ * partial reorder never lands. Holds the shared parent-row lock.
+ */
+export async function reorderSongsetItems(
+  songsetId: string,
+  userId: number,
+  updates: { itemId: string; position: number }[]
+): Promise<"ok" | "songset-not-found" | "item-not-found"> {
+  return mutationDb.transaction(async (tx) => {
+    const [ownedSongset] = await tx
+      .select({ id: songsets.id })
+      .from(songsets)
+      .where(and(eq(songsets.id, songsetId), eq(songsets.userId, userId)))
+      .for("update");
 
-  await db.delete(songsetItems).where(eq(songsetItems.id, itemId));
-  await db.update(songsets).set({ updatedAt: new Date() }).where(eq(songsets.id, songsetId));
+    if (!ownedSongset) return "songset-not-found";
 
-  return true;
+    if (updates.length === 0) return "ok";
+
+    const targetIds = updates.map((update) => update.itemId);
+    const ownedItems = await tx
+      .select({ id: songsetItems.id })
+      .from(songsetItems)
+      .where(and(eq(songsetItems.songsetId, songsetId), inArray(songsetItems.id, targetIds)));
+    const ownedIds = new Set(ownedItems.map((item) => item.id));
+
+    if (targetIds.some((itemId) => !ownedIds.has(itemId))) return "item-not-found";
+
+    const now = new Date();
+    for (const update of updates) {
+      await tx
+        .update(songsetItems)
+        .set({ position: update.position, updatedAt: now })
+        .where(eq(songsetItems.id, update.itemId));
+    }
+
+    await tx.update(songsets).set({ updatedAt: now }).where(eq(songsets.id, songsetId));
+
+    return "ok";
+  });
 }
 
 export type SongsetRenderValidationCode =

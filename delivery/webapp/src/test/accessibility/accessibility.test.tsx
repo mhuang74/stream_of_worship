@@ -452,9 +452,8 @@ describe("Accessibility (Task 8.2)", () => {
 
     it("add button announces how many copies the songset holds", () => {
       render(<SongCard song={mockSongCard} onAdd={vi.fn()} addedCount={2} />);
-      const count = screen.getByTestId("add-button-count");
-      expect(count).toHaveAttribute("aria-label", "In songset ×2");
-      expect(count).toHaveTextContent("×2");
+      // The count badge is a status region whose name is its visible ×N text.
+      expect(screen.getByRole("status")).toHaveTextContent("×2");
     });
   });
 

@@ -5,6 +5,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -82,7 +83,7 @@ class SongsetsRepositoryTest {
             server.enqueue(json("""{"success":true}"""))
             server.enqueue(json("""{"success":true}"""))
 
-            repository.addItem("set-1", "song-1", "hash1", 0)
+            repository.addItem("set-1", "song-1", "hash1")
             repository.updateItemTransition(
                 "set-1",
                 "item-1",
@@ -99,7 +100,10 @@ class SongsetsRepositoryTest {
 
             val add = server.takeRequest()
             assertEquals("/api/songsets/set-1/items", add.path)
-            assertTrue(add.body.readUtf8().contains("recordingHashPrefix"))
+            val addBody = add.body.readUtf8()
+            assertTrue(addBody.contains("recordingHashPrefix"))
+            // The server owns append order; the client never sends a position.
+            assertFalse(addBody.contains("\"position\""))
             val update = server.takeRequest()
             assertEquals("PATCH", update.method)
             assertTrue(update.body.readUtf8().contains("tempoRatio"))

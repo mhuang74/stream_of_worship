@@ -528,6 +528,51 @@ describe("SemanticSearch", () => {
     });
   });
 
+  describe("songset capacity gating", () => {
+    it("disables every result card's add control when the Songset is full", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+      });
+
+      renderComponent({ isSongsetFull: true });
+
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => {
+        const addButtons = screen.getAllByTestId("add-song-button");
+        expect(addButtons.length).toBeGreaterThan(0);
+        expect(addButtons[0]).toBeDisabled();
+        expect(addButtons[0]).toHaveAttribute("aria-label", "Songset full");
+      });
+    });
+
+    it("passes the capacity flag to a custom result-card renderer", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ songs: mockSongs, query: "grace", total: 2 }),
+      });
+      const disabledByCard: boolean[] = [];
+
+      renderComponent({
+        isSongsetFull: true,
+        renderSongCard: (args: { song: { id: string }; disabled: boolean }) => {
+          disabledByCard.push(args.disabled);
+          return <div data-testid={`custom-card-${args.song.id}`} />;
+        },
+      });
+
+      const input = screen.getByTestId("semantic-search-input");
+      fireEvent.change(input, { target: { value: "grace" } });
+      fireEvent.click(screen.getByTestId("semantic-search-button"));
+
+      await waitFor(() => expect(disabledByCard.length).toBe(mockSongs.length));
+      expect(disabledByCard.every(Boolean)).toBe(true);
+    });
+  });
+
   describe("play functionality", () => {
     it("renders song cards with play buttons", async () => {
       mockFetch.mockResolvedValue({

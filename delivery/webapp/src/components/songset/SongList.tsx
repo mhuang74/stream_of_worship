@@ -93,6 +93,8 @@ interface SongListProps {
   readOnly?: boolean;
   className?: string;
   isRemoving?: boolean;
+  isItemMutationPending?: boolean;
+  isDuplicateDisabled?: boolean;
   songsetId?: string;
   highlightSongId?: string | null;
   onHighlightConsumed?: () => void;
@@ -115,6 +117,8 @@ interface SortableSongItemProps {
   onRequestConfirm: () => void;
   onCancelConfirm: () => void;
   isRemoving?: boolean;
+  isItemMutationPending?: boolean;
+  isDuplicateDisabled?: boolean;
   isHighlighted?: boolean;
   favoriteIds?: Set<string>;
   onToggleFavorite?: (songId: string) => void | Promise<void>;
@@ -135,6 +139,8 @@ function SortableSongItem({
   onRequestConfirm,
   onCancelConfirm,
   isRemoving = false,
+  isItemMutationPending = false,
+  isDuplicateDisabled = false,
   isHighlighted = false,
   favoriteIds,
   onToggleFavorite,
@@ -147,7 +153,7 @@ function SortableSongItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id, disabled: readOnly });
+  } = useSortable({ id: item.id, disabled: readOnly || isItemMutationPending });
 
   const confirmRemove = isConfirming;
 
@@ -339,14 +345,18 @@ function SortableSongItem({
               </Button>
             )}
 
-            {/* Duplicate button — the same Song may occupy several Items. */}
-            {!readOnly && (
+            {/* Duplicate button — the same Song may occupy several Items.
+                Hidden only when the host supplies no duplicate capability;
+                disabled while another mutation or an active render owns the
+                Item order. */}
+            {!readOnly && onDuplicateItem && (
               <Button
                 variant="ghost"
                 size="icon-sm"
                 // Visible on phones (`sm:` is 0px in globals.css); hover-revealed from md up.
                 className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                onClick={() => onDuplicateItem?.(item.id)}
+                onClick={() => onDuplicateItem(item.id)}
+                disabled={isDuplicateDisabled || isItemMutationPending}
                 aria-label={t("songsets.action.duplicateItem")}
                 title={t("songsets.action.duplicateItem")}
                 data-testid={`duplicate-item-${item.id}`}
@@ -364,7 +374,7 @@ function SortableSongItem({
                     size="icon-sm"
                     className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                     onClick={onRequestConfirm}
-                    disabled={isRemoving}
+                    disabled={isRemoving || isItemMutationPending}
                     aria-label={`${t("browse.remove")}${item.song?.title || t("browse.song")}`}
                   >
                     <Trash2 className="size-4 text-destructive" />
@@ -375,7 +385,7 @@ function SortableSongItem({
                     size="sm"
                     className="h-7 px-2 text-xs"
                     onClick={() => onRemove(item.id)}
-                    disabled={isRemoving}
+                    disabled={isRemoving || isItemMutationPending}
                     aria-label={`${t("browse.confirmDelete")}${item.song?.title || t("browse.song")}`}
                   >
                     {t("browse.delete")}
@@ -400,6 +410,8 @@ export function SongList({
   readOnly = false,
   className,
   isRemoving = false,
+  isItemMutationPending = false,
+  isDuplicateDisabled = false,
   songsetId,
   highlightSongId,
   onHighlightConsumed,
@@ -513,6 +525,7 @@ export function SongList({
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
+      if (isItemMutationPending) return;
 
       if (over && active.id !== over.id) {
         const oldIndex = localItems.findIndex((item) => item.id === active.id);
@@ -526,7 +539,7 @@ export function SongList({
         onReorder(updatedItems);
       }
     },
-    [onReorder, localItems]
+    [onReorder, localItems, isItemMutationPending]
   );
 
   if (items.length === 0) {
@@ -570,6 +583,8 @@ export function SongList({
               onRequestConfirm={() => setConfirmingItemId(item.id)}
               onCancelConfirm={() => setConfirmingItemId(null)}
               isRemoving={isRemoving}
+              isItemMutationPending={isItemMutationPending}
+              isDuplicateDisabled={isDuplicateDisabled}
               isHighlighted={highlightedSongId === item.songId}
               favoriteIds={favoriteIds}
               onToggleFavorite={onToggleFavorite}

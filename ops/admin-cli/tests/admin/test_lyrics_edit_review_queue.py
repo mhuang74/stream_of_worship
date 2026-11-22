@@ -343,9 +343,11 @@ class TestGetReviewQueue:
         assert resolved == 1
 
         queue = client.get_review_queue()
-        # song_a falls out of the feedback tier; its 3 songset appearances
-        # keep it above song_b (0 appearances, 1 favorite).
+        # song_a falls out of the feedback tier; it occupies three Items across
+        # two distinct Songsets, which keeps it above song_b (0 Songsets,
+        # 1 favorite). Occurrences within one Songset count once.
         assert [c.song_id for c in queue] == ["song_c", "song_a", "song_b"]
+        assert queue[1].songset_appearances == 2
         assert queue[1].hash_prefix == "hash-aa"
         assert queue[1].open_sad_count == 0
 

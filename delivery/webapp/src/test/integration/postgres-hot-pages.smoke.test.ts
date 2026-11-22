@@ -196,7 +196,10 @@ describe("getRenderPageData", () => {
     expect(result.songset.name).toBe("Smoke Hot Pages Songset");
     expect(result.songset.description).toBe("Songset for hot-page smoke testing");
 
-    expect(result.songset.songTitles).toEqual(["Smoke Song Alpha", "Smoke Song Beta"]);
+    expect(result.songset.songs).toEqual([
+      { id: "smoke-song-1", title: "Smoke Song Alpha" },
+      { id: "smoke-song-2", title: "Smoke Song Beta" },
+    ]);
     // 180 s + 240 s plus the 2.0-beat default gap (1 s per beat when the
     // recording has no BPM), which the arranged timeline inserts between items.
     expect(result.songset.durationSeconds).toBe(422);

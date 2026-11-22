@@ -5,6 +5,7 @@ import {
   addSongsetItem,
   updateSongsetItem,
   deleteSongsetItem,
+  SongsetRenderValidationError,
 } from "@/lib/db/songsets";
 import { NextRequest } from "next/server";
 
@@ -22,6 +23,15 @@ vi.mock("@/lib/db/songsets", () => ({
   addSongsetItem: vi.fn(),
   updateSongsetItem: vi.fn(),
   deleteSongsetItem: vi.fn(),
+  SongsetRenderValidationError: class SongsetRenderValidationError extends Error {
+    constructor(
+      readonly code: string,
+      message: string
+    ) {
+      super(message);
+      this.name = "SongsetRenderValidationError";
+    }
+  },
 }));
 
 function createMockRequest(url: string, options?: RequestInit): NextRequest {
@@ -46,7 +56,7 @@ describe("POST /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ songId: "song-1", position: 0 }),
+        body: JSON.stringify({ songId: "song-1" }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
@@ -88,7 +98,7 @@ describe("POST /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ songId: "song-1", position: 0 }),
+        body: JSON.stringify({ songId: "song-1" }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
@@ -133,7 +143,6 @@ describe("POST /api/songsets/[id]/items", () => {
         body: JSON.stringify({
           songId: "song-1",
           recordingHashPrefix: "abc123",
-          position: 0,
           gapBeats: 4.0,
           crossfadeEnabled: 1,
           crossfadeDurationSeconds: 2.0,
@@ -159,7 +168,7 @@ describe("POST /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ position: 0 }),
+        body: JSON.stringify({ gapBeats: 2 }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
@@ -169,23 +178,27 @@ describe("POST /api/songsets/[id]/items", () => {
     expect(data.error).toBe("Invalid input");
   });
 
-  it("returns 400 when position is negative", async () => {
+  it("returns 409 when the songset is full", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },
     } as any);
+
+    vi.mocked(addSongsetItem).mockRejectedValue(
+      new SongsetRenderValidationError("SONGSET_FULL", "Songset already has maximum of 5 songs")
+    );
 
     const request = createMockRequest(
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ songId: "song-1", position: -1 }),
+        body: JSON.stringify({ songId: "song-1" }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(409);
     const data = await response.json();
-    expect(data.error).toBe("Invalid input");
+    expect(data.code).toBe("SONGSET_FULL");
   });
 
   it("returns 400 when keyShiftSemitones is out of range", async () => {
@@ -197,7 +210,7 @@ describe("POST /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ songId: "song-1", position: 0, keyShiftSemitones: 13 }),
+        body: JSON.stringify({ songId: "song-1", keyShiftSemitones: 13 }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
@@ -216,7 +229,7 @@ describe("POST /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ songId: "song-1", position: 0, tempoRatio: 0 }),
+        body: JSON.stringify({ songId: "song-1", tempoRatio: 0 }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
@@ -237,7 +250,7 @@ describe("POST /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ songId: "song-1", position: 0 }),
+        body: JSON.stringify({ songId: "song-1" }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
@@ -258,7 +271,7 @@ describe("POST /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "POST",
-        body: JSON.stringify({ songId: "song-1", position: 0 }),
+        body: JSON.stringify({ songId: "song-1" }),
       }
     );
     const response = await POST(request, { params: { id: "songset-1" } });
@@ -281,7 +294,7 @@ describe("PATCH /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "PATCH",
-        body: JSON.stringify({ itemId: "item-1", position: 1 }),
+        body: JSON.stringify({ itemId: "item-1", gapBeats: 2 }),
       }
     );
     const response = await PATCH(request, { params: { id: "songset-1" } });
@@ -323,7 +336,7 @@ describe("PATCH /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "PATCH",
-        body: JSON.stringify({ itemId: "item-1", position: 1 }),
+        body: JSON.stringify({ itemId: "item-1", gapBeats: 2 }),
       }
     );
     const response = await PATCH(request, { params: { id: "songset-1" } });
@@ -342,26 +355,7 @@ describe("PATCH /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "PATCH",
-        body: JSON.stringify({ position: 1 }),
-      }
-    );
-    const response = await PATCH(request, { params: { id: "songset-1" } });
-
-    expect(response.status).toBe(400);
-    const data = await response.json();
-    expect(data.error).toBe("Invalid input");
-  });
-
-  it("returns 400 when position is negative", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValue({
-      user: { id: 1 },
-    } as any);
-
-    const request = createMockRequest(
-      "http://localhost:3000/api/songsets/songset-1/items",
-      {
-        method: "PATCH",
-        body: JSON.stringify({ itemId: "item-1", position: -1 }),
+        body: JSON.stringify({ gapBeats: 2 }),
       }
     );
     const response = await PATCH(request, { params: { id: "songset-1" } });
@@ -382,7 +376,7 @@ describe("PATCH /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "PATCH",
-        body: JSON.stringify({ itemId: "item-1", position: 1 }),
+        body: JSON.stringify({ itemId: "item-1", gapBeats: 2 }),
       }
     );
     const response = await PATCH(request, { params: { id: "songset-1" } });
@@ -403,7 +397,7 @@ describe("PATCH /api/songsets/[id]/items", () => {
       "http://localhost:3000/api/songsets/songset-1/items",
       {
         method: "PATCH",
-        body: JSON.stringify({ itemId: "item-1", position: 1 }),
+        body: JSON.stringify({ itemId: "item-1", gapBeats: 2 }),
       }
     );
     const response = await PATCH(request, { params: { id: "songset-1" } });
