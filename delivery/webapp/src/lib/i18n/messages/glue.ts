@@ -18,7 +18,15 @@ export const glueBundle = bundle({
     "glue.resetAt": "Resets at {time}",
     "glue.selected": "Selected AI transition: {seconds} s",
     "glue.checkWarning":
-      "The ending energy may not quite match. Give it a listen before you render.",
+      "This AI transition was measured against the reference audio and its ending energy may not quite match. Give it a listen before you render. This is not a judgement about vocals or musical fit.",
+    "glue.takes.label": "Earlier AI transitions",
+    "glue.takes.none": "Choose a previous version",
+    "glue.takes.option": "Version {ordinal} · {status} · {seconds} s · {time}",
+    "glue.takes.ready": "Ready",
+    "glue.takes.check": "Check",
+    "glue.audioFallback":
+      "The AI transition from {from} to {to} could not play. You can load the same audio again.",
+    "glue.retryAudio": "Retry audio",
     "glue.state.queued": "Waiting to start",
     "glue.state.preparing": "Preparing",
     "glue.state.uploading": "Uploading song excerpts",
@@ -128,7 +136,15 @@ export const glueBundle = bundle({
     "glue.resetAt": "{time} 重置",
     "glue.selected": "已選用 {seconds} 秒的 AI 轉場",
     "glue.checkWarning":
-      "這段轉場的結尾能量可能不太合，建議你先試聽再輸出。",
+      "這段轉場已與參考音訊比對，結尾能量可能不太合，建議先試聽再輸出。這不是對人聲或音樂適配度的評價。",
+    "glue.takes.label": "先前的 AI 轉場",
+    "glue.takes.none": "選擇先前的版本",
+    "glue.takes.option": "第 {ordinal} 版 · {status} · {seconds} 秒 · {time}",
+    "glue.takes.ready": "已完成",
+    "glue.takes.check": "請試聽",
+    "glue.audioFallback":
+      "「{from}」到「{to}」的 AI 轉場無法播放，可以重新載入同一段音訊。",
+    "glue.retryAudio": "重新載入音訊",
     "glue.state.queued": "等待開始",
     "glue.state.preparing": "準備中",
     "glue.state.uploading": "上傳詩歌片段",

@@ -878,7 +878,11 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const handleUpdateGlue = useCallback(
     async (
       itemId: string,
-      patch: { glueEnabled?: boolean; glueBeats?: 2 | 4 | 8 | 16 }
+      patch: {
+        glueEnabled?: boolean;
+        glueBeats?: 2 | 4 | 8 | 16;
+        glueActiveTakeId?: string | null;
+      }
     ) => {
       let response: Response;
       try {

@@ -23,6 +23,8 @@ vi.mock("@/hooks/useSongsetAudio", () => ({
     stop: vi.fn(),
     seek: vi.fn(),
     startAtSeconds: vi.fn().mockResolvedValue(undefined),
+    glueFailures: [],
+    retryGlueAudio: vi.fn().mockResolvedValue(true),
   }),
 }));
 
@@ -73,6 +75,7 @@ function junction(
     descriptorKey: "a".repeat(64),
     state: "needs-generation",
     selectedTake: null,
+    availableTakes: [],
     activeJob: null,
     quote: null,
     quotaLimit: 5,
@@ -264,6 +267,79 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("ArrangementEditorSheet AI transition take menu", () => {
+  it("lists ready takes of the current descriptor and restores one for free", async () => {
+    const harness = installFetch();
+    const onUpdateGlue = vi.fn().mockResolvedValue(undefined);
+    const take = (
+      id: string,
+      ordinal: number,
+      seconds: number,
+      status: "ok" | "check",
+      createdAt: string
+    ) => ({
+      id,
+      ordinal,
+      seconds,
+      r2Key: `glues/1/${"a".repeat(64)}/take-${id}.wav`,
+      descriptorKey: "a".repeat(64),
+      status,
+      reasons: status === "check" ? ["reference-envelope correlation on side A was 0.71"] : [],
+      createdAt,
+    });
+    const selectedJunction = junction({
+      state: "ready",
+      selectedTake: take("take-2", 2, 4.5, "check", "2026-11-22T10:00:00.000Z"),
+      availableTakes: [
+        take("take-1", 1, 3.2, "ok", "2026-11-21T10:00:00.000Z"),
+        take("take-2", 2, 4.5, "check", "2026-11-22T10:00:00.000Z"),
+      ],
+    });
+    const allItems = [makeItem({ glue: selectedJunction }), successor()];
+
+    render(
+      <ArrangementEditorSheet
+        isOpen
+        onOpenChange={vi.fn()}
+        item={allItems[0]}
+        items={allItems}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        songsetId="songset-1"
+        onUpdateGlue={onUpdateGlue}
+      />
+    );
+
+    const select = await screen.findByTestId("arrangement-glue-takes");
+    const options = Array.from(select.querySelectorAll("option"));
+    expect(options.map((option) => option.getAttribute("value"))).toEqual([
+      "take-1",
+      "take-2",
+    ]);
+    expect(options[0].textContent).toContain("3.2");
+    expect(options[1].textContent).toContain("4.5");
+    expect(options[1].textContent).toContain("Check");
+    expect(options[0].textContent).toContain("Ready");
+    expect(select.textContent).not.toContain("AI transition");
+
+    fireEvent.change(select, { target: { value: "take-1" } });
+    await waitFor(() =>
+      expect(onUpdateGlue).toHaveBeenCalledWith("item-1", {
+        glueActiveTakeId: "take-1",
+      })
+    );
+    // Restore is a free PATCH: no POST anywhere, so no job row, dispatch,
+    // provider contact, or quota reservation can happen.
+    expect(harness.createBodies).toHaveLength(0);
+    const postCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => (init?.method ?? "GET") === "POST");
+    expect(postCalls).toHaveLength(0);
+
+    const warning = screen.getByText(/measured against the reference audio/i);
+    expect(warning.textContent).toContain("not a judgement");
+  });
 });
 
 describe("ArrangementEditorSheet AI transition jobs", () => {
