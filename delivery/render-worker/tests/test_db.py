@@ -33,6 +33,7 @@ from sow_render_worker.db import (
     read_songset_items_for_glue,
     reclaim_likely_dead_job,
     reclaim_stale_job,
+    record_glue_raw_response,
     record_provider_contact,
     recover_orphaned_jobs,
     set_glue_job_dispatch_failed,
@@ -1297,6 +1298,78 @@ class TestSetGlueJobDispatchFailed:
     def test_not_found(self):
         conn, _ = _make_mock_conn(fetchone_result=None)
         assert set_glue_job_dispatch_failed(conn, "j1", 42) is None
+
+
+class TestRecordGlueRawResponse:
+    def test_records_key_sha_and_bytes_once(self):
+        row = _make_glue_job_row(
+            phase="storing-response",
+            raw_response_r2_key="glues/42/jobs/j1/response.pcm",
+            raw_response_sha256="f" * 64,
+            raw_response_bytes=1234,
+        )
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        job = record_glue_raw_response(
+            conn,
+            row["id"],
+            42,
+            r2_key=row["raw_response_r2_key"],
+            sha256=row["raw_response_sha256"],
+            byte_count=1234,
+        )
+        assert job is not None
+        assert job.raw_response_bytes == 1234
+        sql, params = cursor.execute.call_args[0]
+        assert "raw_response_r2_key = %s" in sql
+        assert "raw_response_sha256 = %s" in sql
+        assert "raw_response_bytes = %s" in sql
+        assert "updated_at = %s" in sql
+        assert "raw_response_r2_key IS NULL" in sql
+        assert "RETURNING *" in sql
+        assert params[0] == row["raw_response_r2_key"]
+        assert params[1] == row["raw_response_sha256"]
+        assert params[2] == 1234
+        assert params[-2:] == (row["id"], 42)
+
+    def test_existing_response_is_never_overwritten(self):
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        assert (
+            record_glue_raw_response(
+                conn,
+                "j1",
+                42,
+                r2_key="glues/42/jobs/j1/response.pcm",
+                sha256="a" * 64,
+                byte_count=10,
+            )
+            is None
+        )
+        sql = cursor.execute.call_args[0][0]
+        assert "raw_response_r2_key IS NULL" in sql
+        assert "UPDATE glue_jobs" in sql
+        # A guarded miss must not issue a second, unguarded write.
+        assert cursor.execute.call_count == 1
+
+    @pytest.mark.parametrize("field", ["r2_key", "sha256"])
+    def test_rejects_empty_identity(self, field):
+        values = {
+            "r2_key": "glues/42/jobs/j1/response.pcm",
+            "sha256": "a" * 64,
+            "byte_count": 10,
+        }
+        values[field] = ""
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        with pytest.raises(ValueError, match=field):
+            record_glue_raw_response(conn, "j1", 42, **values)
+        cursor.execute.assert_not_called()
+
+    def test_rejects_non_positive_byte_count(self):
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        with pytest.raises(ValueError, match="byte_count"):
+            record_glue_raw_response(
+                conn, "j1", 42, r2_key="glues/42/jobs/j1/response.pcm", sha256="a" * 64, byte_count=0
+            )
+        cursor.execute.assert_not_called()
 
 
 class TestFinishGlueJob:

@@ -874,6 +874,45 @@ def record_provider_contact(
     return True
 
 
+def record_glue_raw_response(
+    conn: psycopg2.extensions.connection,
+    job_id: str,
+    user_id: int,
+    *,
+    r2_key: str,
+    sha256: str,
+    byte_count: int,
+) -> Optional[GlueJob]:
+    """Persist the immutable raw compose response metadata exactly once.
+
+    The guard ``raw_response_r2_key IS NULL`` makes the write idempotent across
+    retries and duplicate deliveries: an already stored response is never
+    overwritten (raw objects are immutable, spec §2.2/§2.4). Returns the
+    updated job, or None when the job is unknown, owned by someone else, or
+    already has a recorded response.
+    """
+    if not r2_key:
+        raise ValueError("record_glue_raw_response requires an r2_key")
+    if not sha256:
+        raise ValueError("record_glue_raw_response requires a sha256")
+    if byte_count <= 0:
+        raise ValueError("record_glue_raw_response requires a positive byte_count")
+    now = datetime.now(timezone.utc)
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "UPDATE glue_jobs SET "
+            "raw_response_r2_key = %s, raw_response_sha256 = %s, "
+            "raw_response_bytes = %s, updated_at = %s "
+            "WHERE id = %s AND user_id = %s AND raw_response_r2_key IS NULL "
+            "RETURNING *",
+            (r2_key, sha256, byte_count, now, job_id, user_id),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return _row_to_glue_job(row)
+
+
 def set_glue_job_dispatch_failed(
     conn: psycopg2.extensions.connection,
     job_id: str,

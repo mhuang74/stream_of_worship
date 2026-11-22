@@ -401,7 +401,9 @@ def test_happy_path_orders_contact_before_provider_and_heartbeats(worker):
 
 def test_missing_provider_key_raises_and_stays_pre_contact(worker, monkeypatch):
     monkeypatch.delenv("SOW_ELEVENLABS_API_KEY", raising=False)
-    monkeypatch.setattr(glue_jobs, "_load_provider_stage", lambda: (lambda *a, **k: None))
+    monkeypatch.setattr(
+        glue_jobs, "_load_provider_stage", lambda **_: (lambda *a, **k: None)
+    )
 
     with pytest.raises(glue_jobs.GlueConfigurationError) as exc_info:
         _run(worker, None)
@@ -580,6 +582,8 @@ def test_sanitized_detail_strips_paths_and_urls():
 
 
 def test_provider_stage_returning_in_flight_phase_is_ambiguous(worker):
+    """No durable response: bytes may have left, so never repeat automatically."""
+
     def stage_left_composing(job, conn, *, a_excerpt, b_excerpt, work_dir, log_event):
         return None
 
@@ -593,6 +597,47 @@ def test_provider_stage_returning_in_flight_phase_is_ambiguous(worker):
     assert kwargs["phase"] == "failed"
     assert kwargs["error_code"] == glue_jobs.GLUE_PROVIDER_UNKNOWN
     assert kwargs["retry_kind"] == "paid"
+
+
+def test_in_flight_phase_with_durable_response_continues_free_staging(worker, monkeypatch):
+    """Durable bytes authorize free recovery even if the phase did not advance."""
+
+    durable = _make_job(
+        phase="composing",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+        raw_response_r2_key="glues/7/jobs/x/response.pcm",
+        raw_response_sha256="e" * 64,
+        raw_response_bytes=1234,
+    )
+    storing = _make_job(
+        phase="storing-response",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+        raw_response_r2_key="glues/7/jobs/x/response.pcm",
+        raw_response_sha256="e" * 64,
+        raw_response_bytes=1234,
+    )
+    # Contact check and the post-stage read both see the durable in-flight row;
+    # after the phase repair every read sees storing-response.
+    reads = [durable, durable]
+
+    def read_job(*args, **kwargs):
+        return reads.pop(0) if reads else storing
+
+    worker.mocks["get_glue_job"].side_effect = read_job
+    staging_calls = []
+
+    def fake_staging(job_arg, conn_arg, *, work_dir, log_event):
+        staging_calls.append(job_arg.phase)
+
+    monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: fake_staging)
+
+    _run(worker, _FakeProviderStage())
+
+    worker.mocks["finish_glue_job"].assert_not_called()
+    worker.mocks["set_glue_phase"].assert_any_call(worker.conn, JOB_ID, USER_ID, "storing-response")
+    assert staging_calls == ["storing-response"]
 
 
 def test_generate_mode_recovers_storing_response_without_provider(worker, monkeypatch):
@@ -620,6 +665,102 @@ def test_generate_mode_recovers_storing_response_without_provider(worker, monkey
     assert stage.calls == []
     worker.mocks["prepare_excerpt"].assert_not_called()
     worker.mocks["read_songset_items_for_glue"].assert_not_called()
+
+
+def test_provider_stage_continues_into_free_staging(worker, monkeypatch):
+    staging_calls = []
+
+    def fake_staging(job_arg, conn_arg, *, work_dir, log_event):
+        staging_calls.append(
+            {"job": job_arg, "conn": conn_arg, "work_dir": work_dir, "log": log_event}
+        )
+
+    monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: fake_staging)
+    worker.mocks["get_glue_job"].return_value = _make_job(
+        phase="storing-response",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+        raw_response_r2_key="glues/7/jobs/x/response.pcm",
+        raw_response_sha256="e" * 64,
+        raw_response_bytes=1234,
+    )
+
+    _run(worker, _FakeProviderStage())
+
+    assert len(staging_calls) == 1
+    assert staging_calls[0]["job"].id == JOB_ID
+    assert staging_calls[0]["conn"] is worker.conn
+    assert isinstance(staging_calls[0]["work_dir"], Path)
+    assert callable(staging_calls[0]["log"])
+    worker.mocks["finish_glue_job"].assert_not_called()
+
+
+def test_missing_staging_module_leaves_job_at_storing_response(worker, monkeypatch):
+    def absent():
+        raise ImportError("no staging module yet")
+
+    monkeypatch.setattr(glue_jobs, "_load_staging_stage", absent)
+    worker.mocks["get_glue_job"].return_value = _make_job(
+        phase="storing-response",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+        raw_response_r2_key="glues/7/jobs/x/response.pcm",
+        raw_response_sha256="e" * 64,
+        raw_response_bytes=1234,
+    )
+
+    _run(worker, _FakeProviderStage())
+
+    # A build without issue #318 is never a job failure: the response stays
+    # durable and retry-processing can resume staging for free.
+    worker.mocks["finish_glue_job"].assert_not_called()
+    assert worker.mocks["heartbeat_glue_job"].call_count >= 1
+
+
+def test_resume_reuses_existing_provider_contact_instead_of_cancelling(worker):
+    # A free retry of a definitely-unsent failure: the earlier delivery already
+    # consumed the reservation, so a second contact CAS would lose and must not
+    # be read as a cancellation.
+    worker.mocks["get_glue_job"].return_value = _make_job(
+        phase="preparing",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+    )
+    worker.mocks["record_provider_contact"].return_value = False
+    stage = _FakeProviderStage()
+
+    _run(worker, stage)
+
+    assert len(stage.calls) == 1
+    worker.mocks["record_provider_contact"].assert_not_called()
+    worker.mocks["finish_glue_job"].assert_not_called()
+
+
+def test_pre_contact_cancellation_still_wins_the_cas(worker):
+    worker.mocks["get_glue_job"].return_value = _make_job(provider_contacted=False)
+    worker.mocks["record_provider_contact"].return_value = False
+    stage = _FakeProviderStage()
+
+    _run(worker, stage)
+
+    kwargs = _finish_kwargs(worker)
+    assert kwargs["phase"] == "cancelled"
+    assert stage.calls == []
+
+
+def test_stage_returning_on_cancelled_job_is_not_a_failure(worker):
+    # The stage sends nothing when the row went inactive mid-flight; the spine
+    # must read the terminal phase and stop quietly instead of failing it.
+    worker.mocks["get_glue_job"].return_value = _make_job(
+        phase="cancelled",
+        active=False,
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+    )
+
+    _run(worker, _FakeProviderStage())
+
+    worker.mocks["finish_glue_job"].assert_not_called()
 
 
 def test_compose_deadline_uses_compose_reserve():

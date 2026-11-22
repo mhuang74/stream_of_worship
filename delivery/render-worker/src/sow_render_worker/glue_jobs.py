@@ -554,29 +554,37 @@ def _rebuild_junction(items: list[dict[str, Any]], job: GlueJob) -> _JunctionInp
 # ---------------------------------------------------------------------------
 
 
-def _load_provider_stage() -> Callable[..., None]:
-    """Lazily import the production provider stage (issue #317)."""
+def _load_provider_stage(*, lambda_context: Any = None) -> Callable[..., None]:
+    """Lazily build the production provider stage (issue #317).
+
+    The factory gets the Lambda context so the HTTP transport can cap its
+    read timeouts to the actual remaining budget; it returns the stage
+    callable with the spine's exact ``provider_stage`` signature.
+    """
     try:
         from sow_render_worker.glue_provider import create_provider_stage
     except (ImportError, AttributeError) as exc:
         raise GlueConfigurationError(
             "Glue provider stage is not available in this worker build"
         ) from exc
-    return create_provider_stage
+    return create_provider_stage(lambda_context=lambda_context)
 
 
 def _provider_key_present() -> bool:
     return bool(os.environ.get("SOW_ELEVENLABS_API_KEY"))
 
 
-def _resolve_provider_stage(provider_stage: Optional[Callable[..., None]]) -> Callable[..., None]:
+def _resolve_provider_stage(
+    provider_stage: Optional[Callable[..., None]],
+    *,
+    lambda_context: Any = None,
+) -> Callable[..., None]:
     """Injected fake, else the production stage plus a configured key."""
     if provider_stage is not None:
         return provider_stage
-    stage = _load_provider_stage()
     if not _provider_key_present():
         raise GlueConfigurationError("SOW_ELEVENLABS_API_KEY is not configured")
-    return stage
+    return _load_provider_stage(lambda_context=lambda_context)
 
 
 def _load_staging_stage() -> Callable[..., None]:
@@ -588,6 +596,18 @@ def _load_staging_stage() -> Callable[..., None]:
 
 def _make_work_dir(job: GlueJob) -> Path:
     return Path(tempfile.mkdtemp(prefix=f"sow-glue-{job.id[:8]}-"))
+
+
+def _current_provider_contacted(conn: Any, job: GlueJob) -> bool:
+    """Read the live provider_contacted flag; the claimed row may be stale."""
+    try:
+        current = get_glue_job(conn, job.id, job.user_id)
+    except Exception:
+        logger.exception("Failed to read Glue provider contact state")
+        return bool(job.provider_contacted)
+    if current is None:
+        return bool(job.provider_contacted)
+    return bool(current.provider_contacted)
 
 
 def _has_durable_provider_success(job: GlueJob) -> bool:
@@ -728,7 +748,7 @@ def _run_generate_mode(
             return
         _heartbeat(conn, job, log, stage="validated")
 
-        stage = _resolve_provider_stage(provider_stage)
+        stage = _resolve_provider_stage(provider_stage, lambda_context=lambda_context)
         if asset_fetcher is None:
             asset_fetcher = AssetFetcher()
             initializer = getattr(asset_fetcher, "initialize", None)
@@ -750,7 +770,23 @@ def _run_generate_mode(
         require_deadline(lambda_context, "upload")
         _heartbeat(conn, job, log, stage="deadline-gate")
 
-        if not record_provider_contact(conn, job.id, job.user_id, _FIRST_UPLOAD_PROVIDER_PHASE):
+        # A resumed job (free retry of a definitely-unsent failure) already won
+        # this compare-and-set on its earlier delivery; its reservation is
+        # consumed and its persisted uploads are reusable. The CAS is a
+        # cancellation gate, not a per-delivery token, so re-losing it on a
+        # row that is already contacted would wrongly cancel paid work.
+        already_contacted = bool(_current_provider_contacted(conn, job))
+        if already_contacted:
+            contacted = True
+            log(
+                "glue.provider.contact.reused",
+                phase=job.phase,
+                providerStatus=job.provider_status,
+                status="resume",
+            )
+        elif not record_provider_contact(
+            conn, job.id, job.user_id, _FIRST_UPLOAD_PROVIDER_PHASE
+        ):
             _finish_terminal(
                 conn,
                 job,
@@ -763,7 +799,8 @@ def _run_generate_mode(
                 event="glue.job.cancelled",
             )
             return
-        contacted = True
+        else:
+            contacted = True
         _heartbeat(conn, job, log, stage="uploading")
 
         stage(
@@ -774,7 +811,7 @@ def _run_generate_mode(
             work_dir=work_dir,
             log_event=log,
         )
-        _after_provider_stage(conn, job, log)
+        _after_provider_stage(conn, job, log, work_dir=work_dir)
     except GlueConfigurationError:
         raise
     except Exception as exc:
@@ -812,11 +849,21 @@ def _prepare_side(
     )
 
 
-def _after_provider_stage(conn: Any, job: GlueJob, log: Callable[..., None]) -> None:
-    """Boundary after the provider stage: heartbeat and record the phase.
+def _after_provider_stage(
+    conn: Any,
+    job: GlueJob,
+    log: Callable[..., None],
+    *,
+    work_dir: Optional[Path] = None,
+) -> None:
+    """Boundary after the provider stage: heartbeat, then free staging.
 
-    The provider stage (issue #317) leaves the job in ``storing-response``.
-    Issue #318 continues from there into staging; this spine stops here.
+    The provider stage (issue #317) leaves the job in ``storing-response`` with
+    the raw response persisted. Issue #318 continues from there into staging
+    via ``glue_staging.finalize_staging``. Until that module exists in this
+    worker build the job simply stops at ``storing-response`` with a live
+    heartbeat: absent staging is never a job failure, because retry-processing
+    can resume it later for free.
     """
     _heartbeat(conn, job, log, stage="storing-response")
     try:
@@ -827,21 +874,65 @@ def _after_provider_stage(conn: Any, job: GlueJob, log: Callable[..., None]) -> 
     if current is None:
         return
     if current.phase in _IN_FLIGHT_PROVIDER_PHASES:
-        # The stage returned without a durable success record: a request may
-        # have been sent, so never repeat it automatically.
-        _finish_terminal(
-            conn,
-            job,
-            phase="failed",
-            code=GLUE_PROVIDER_UNKNOWN,
-            retry_kind="paid",
-            detail="Provider stage returned without a durable response",
-            release=False,
-            log=log,
-            event="glue.provider.ambiguous",
+        if _has_durable_provider_success(current):
+            # The stage persisted and recorded the raw response but could not
+            # advance the phase (for example, the row went inactive for one
+            # statement). Durable bytes are the only authorization for free
+            # recovery, so route to staging instead of declaring ambiguity.
+            log(
+                "glue.response.persisted",
+                phase=current.phase,
+                status="durable-response",
+            )
+            if set_glue_phase(conn, job.id, job.user_id, "storing-response") is None:
+                log("glue.staging.unavailable", level="warning", phase=current.phase)
+                return
+            current = get_glue_job(conn, job.id, job.user_id)
+            if current is None or current.phase not in ("storing-response", "staging"):
+                return
+        else:
+            # The stage returned without a durable success record: a request may
+            # have been sent, so never repeat it automatically.
+            _finish_terminal(
+                conn,
+                job,
+                phase="failed",
+                code=GLUE_PROVIDER_UNKNOWN,
+                retry_kind="paid",
+                detail="Provider stage returned without a durable response",
+                release=False,
+                log=log,
+                event="glue.provider.ambiguous",
+            )
+            return
+    log("glue.provider.stage.complete", phase=current.phase, providerStatus=current.provider_status)
+    if current.phase not in ("storing-response", "staging"):
+        return
+
+    # Free staging continuation. The module is issue #318's; until it exists in
+    # this worker build the job stops here with a live heartbeat and remains
+    # recoverable by id through retry-processing — never a failure.
+    try:
+        stage = _load_staging_stage()
+    except (ImportError, AttributeError):
+        _heartbeat(conn, job, log, stage="storing-response")
+        log(
+            "glue.staging.unavailable",
+            level="warning",
+            phase="storing-response",
+            status="free-recovery-available",
         )
         return
-    log("glue.provider.stage.complete", phase=current.phase, providerStatus=current.provider_status)
+    try:
+        # Hand staging the fresh row: it carries the persisted raw-response
+        # key/checksum/byte count that authorizes free recovery.
+        stage(current, conn, work_dir=work_dir, log_event=log)
+    except GlueConfigurationError:
+        raise
+    except Exception as exc:
+        # Staging is free recovery: never paid, and a consumed reservation is
+        # never refunded by the guarded release path.
+        _handle_failure(conn, job, exc, contacted=False, log=log)
 
 
 def _finish_stale(conn: Any, job: GlueJob, log: Callable[..., None], *, reason: str) -> None:
