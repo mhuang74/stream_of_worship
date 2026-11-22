@@ -35,7 +35,6 @@ export function PlayerLyricsPanel({ recordingContentHash }: PlayerLyricsPanelPro
         text: line.text,
         localTimeSeconds: line.timeSeconds,
         globalTimeSeconds: line.timeSeconds,
-        title: "",
       })) ?? null,
     [parsed]
   );

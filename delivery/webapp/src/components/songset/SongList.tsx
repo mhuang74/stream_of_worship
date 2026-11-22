@@ -344,7 +344,8 @@ function SortableSongItem({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                // Visible below `sm` (no hover there); hover-revealed on pointer screens.
+                className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 onClick={() => onDuplicateItem?.(item.id)}
                 aria-label={t("songsets.action.duplicateItem")}
                 title={t("songsets.action.duplicateItem")}

@@ -71,6 +71,7 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
       settings: TransitionSettings
     ) => Promise<void>;
     onEditArrangement: (itemId: string) => void;
+    onDuplicateItem?: (itemId: string) => Promise<void>;
   }) => {
     const item = props.items[0];
     return (
@@ -79,6 +80,14 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
         <span data-testid="shell-render-state">{props.songset.renderState}</span>
         <span data-testid="shell-gap">{item?.gapBeats}</span>
         <span data-testid="shell-arrangement">{item?.arrangementSteps}</span>
+        <span data-testid="shell-positions">
+          {props.items.map((entry) => entry.position).join(",")}
+        </span>
+        <button
+          type="button"
+          data-testid="shell-duplicate-first"
+          onClick={() => void props.onDuplicateItem?.(item.id)}
+        />
         <button
           type="button"
           data-testid="shell-cancel-render"
@@ -179,6 +188,48 @@ async function openArrangementSheet() {
   fireEvent.click(screen.getByTestId("shell-edit-arrangement"));
   await screen.findByTestId("arrangement-sheet");
 }
+
+describe("SongsetEditorClient duplicate item", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shifts later Items and keeps the stored position gap", async () => {
+    const data = initialData();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/items/item-1/duplicate") && init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ ...data.items[0], id: "item-copy", position: 1 }));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <SongsetEditorClient
+        songsetId="songset-1"
+        initialData={{
+          ...data,
+          itemCount: 3,
+          items: [
+            data.items[0],
+            { ...data.items[0], id: "item-2", position: 2 },
+            { ...data.items[0], id: "item-3", position: 4 },
+          ],
+        }}
+      />
+    );
+    expect(screen.getByTestId("shell-positions")).toHaveTextContent("0,2,4");
+
+    fireEvent.click(screen.getByTestId("shell-duplicate-first"));
+
+    // The copy takes position 1 and later Items shift by one, exactly like the server
+    // write; renumbering densely would make the next append reuse position 3 or 5.
+    await waitFor(() =>
+      expect(screen.getByTestId("shell-positions")).toHaveTextContent("0,1,3,5")
+    );
+  });
+});
 
 describe("SongsetEditorClient arrangement save", () => {
   beforeEach(() => {
