@@ -28,7 +28,13 @@ export async function GET(
       return NextResponse.json({ error: "Songset not found" }, { status: 404 });
     }
 
-    return NextResponse.json(songset);
+    // This body carries per-saved-state Glue facts (selected take, junction
+    // state, duration). A service worker or the browser HTTP cache answering a
+    // later request with the previous write's body showed a take that had just
+    // been cleared, so no cache layer may store it.
+    return NextResponse.json(songset, {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (error) {
     console.error("Error getting songset:", error);
     return NextResponse.json(

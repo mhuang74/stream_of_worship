@@ -82,8 +82,14 @@ workbox.routing.registerRoute(
 );
 
 // Runtime caching for song catalog API – stale-while-revalidate (read-heavy, changes infrequently).
+// `/api/songsets…` starts with `/api/songs` too, and workbox matches in
+// registration order, so this matcher must exclude it: otherwise every
+// songset read (and its selected Glue take) came back one mutation stale
+// from this route while the network-first songset route below never ran.
 workbox.routing.registerRoute(
-  ({ url }) => url.pathname.startsWith("/api/songs"),
+  ({ url }) =>
+    url.pathname.startsWith("/api/songs") &&
+    !url.pathname.startsWith("/api/songsets"),
   new workbox.strategies.StaleWhileRevalidate({
     cacheName: "sow-api-songs",
     plugins: [

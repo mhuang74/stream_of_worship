@@ -13,7 +13,7 @@ Paid Phase B was **not** run. Nothing in this document spends credits.
 |---|---|---|
 | Web journey (TC fixture) | `pnpm test src/test/journey/glue-tc-journey.test.ts` | 7 passed |
 | Worker journey (TC fixture) | `uv run --extra dev pytest tests/test_glue_journey.py -q` | 3 passed |
-| Webapp full | `pnpm test` | 207 files, 3531 passed, 3 skipped, 10 todo |
+| Webapp full | `pnpm test` | 208 files, 3534 passed, 3 skipped, 10 todo |
 | Webapp lint | `pnpm lint` | 0 errors (13 pre-existing warnings) |
 | Webapp typecheck | `pnpm typecheck` | clean |
 | Webapp build | `SOW_DATABASE_URL=… pnpm build` | succeeded before (111 s) and after (128 s) the Phase A fixes |
@@ -79,11 +79,30 @@ a live cross-language determinism check, not a fixture.
 | 6 duration integration | `GET /api/songsets/<id>` with the take selected, then cleared | 560.2691077077365 s selected / 558.4591524588676 s cleared; Δ = glue 3.61991 − the ordinary 2-beat gap 1.809955, matching `getSongsetDurationSeconds` |
 | 6 rendered artifact in the player | `/play/controller` | Player total 9:20, requests the signed MP4 and `chapters.json` for job `MmX2CWqUge8Mr_zIxhRh5` |
 
-Two read-side behaviours observed, neither a defect: the songset API answers one
-stale-while-revalidate read after an out-of-band SQL write (product PATCHes
-invalidate correctly and the next read is fresh), and the invalidating PATCH
-must be made through the API — editing `glue_active_take_id` with raw SQL leaves
-the cached view stale until it revalidates.
+The MP4 chapter track cannot store a gap: `chapters.json` ends 祢的救恩 at
+448.910 and starts 當祢走進我們當中 at 450.628 (the ordinary gap minus crossfade
+region belongs to neither Song), while the MP4 text track is contiguous, so
+ffmpeg extends the outgoing chapter to the next chapter's start. Reproduced in
+isolation (a 10 s clip plus chapter metadata with START/END 0–3000, 3000–6000,
+7000–10000): ffprobe reports `Two 3.000 → 7.000`. The two artifacts are not
+computed differently — `_segment_to_chapter_info` and
+`build_chapters_from_segments` agree; MP4 simply has no way to express the gap.
+Whether `chapters.json` should close the gap instead is a product decision, not
+addressed here.
+
+Reads after a write: the editor's songset GET came back one mutation stale
+(clear a take with a product `PATCH`, and the next `GET` still reported it
+selected). The API route is not cached, the DB read is not stale, and
+`?cb=<random>` was always correct — the service worker was answering from
+`sow-api-songs`, whose matcher `url.pathname.startsWith("/api/songs")` also
+matches `/api/songsets…`, so the stale-while-revalidate catalog route owned
+every songset read and the network-first songset route below it never ran
+(workbox matches in registration order). Fixed in `public/sw.js` by excluding
+`/api/songsets` from the catalog matcher; the route also now answers
+`Cache-Control: no-store` so no layer may store a per-mutation body. Verified
+live with the corrected worker: every `PATCH` was readable on the next plain
+`GET`; with the worker bypassed (`Network.setBypassServiceWorker`) the same
+`PATCH`/`GET` sequence was current beforehand, which pinned the layer.
 
 The seeded take, the one failed probe job, and both probe renders were deleted
 after this recording (rows, R2 objects, and the item's selected take), so the
@@ -113,6 +132,17 @@ ids above are historical and the dev songset carries no synthetic Glue audio.
    directory` at 79.8 %. The temp dir is now taken only after the claim wins.
    Regressions: `test_duplicate_delivery_keeps_winner_working_files` and the
    updated `test_pipeline_uses_reclaim_likely_dead_job`.
+5. The service worker served every `/api/songsets…` read from the catalog
+   route's stale-while-revalidate cache: `workbox.routing` matches in
+   registration order and `url.pathname.startsWith("/api/songs")` is also true
+   for `/api/songsets…`, so the network-first songset route was unreachable
+   dead code. A take cleared by a `PATCH` still read as selected on the next
+   `GET`, and the GUI could show a saved transition that no longer existed.
+   Fixed by excluding `/api/songsets` from the catalog matcher, with the
+   songset GET now sending `Cache-Control: no-store` as a second layer.
+   Regressions: `src/test/lib/offline/api-route-matching.test.ts` (routes are
+   registered against a stubbed workbox and matched the way workbox does) and
+   the `cache-control` assertion in `src/test/api/songsets/[id].test.ts`.
 
 Each regression was proven by reverting its fix and watching the test fail.
 
