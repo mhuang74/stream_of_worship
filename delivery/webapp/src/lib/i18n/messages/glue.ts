@@ -50,6 +50,68 @@ export const glueBundle = bundle({
     "glue.reason.unknown": "AI transitions are not available right now.",
     "glue.error.save": "Could not update the AI transition. Try again.",
     "glue.error.quote": "Could not load the AI transition details.",
+    "glue.error.unknown": "AI transitions are not available right now.",
+    "glue.error.notConfigured": "AI transitions are not available on this server.",
+    "glue.error.invalidRequest": "That request was not understood. Try again.",
+    "glue.error.notFound": "That AI transition could not be found.",
+    "glue.error.staleSnapshot":
+      "The Song sequence changed. Save and try the AI transition again.",
+    "glue.error.inputsChanged":
+      "The Song sequence changed while this AI transition was starting. Try again.",
+    "glue.error.activeJob": "An AI transition is already being made. Wait for it to finish.",
+    "glue.error.retryPaid":
+      "The last attempt needs a new paid request. Use Try another.",
+    "glue.error.retryProcessingFree":
+      "The AI audio was already created. Retry without using new credits.",
+    "glue.error.notReady": "This AI transition is not ready yet.",
+    "glue.error.paidNotCancellable":
+      "This paid request can't be cancelled or refunded.",
+    "glue.error.dailyLimit": "No paid AI transitions are left today.",
+    "glue.error.durationTooLong":
+      "This junction is too long for an AI transition. Choose fewer beats.",
+    "glue.error.excerptTooShort":
+      "One side of this junction is too short for an AI transition.",
+    "glue.error.dispatchFailed":
+      "Could not start the AI transition. Try again; it will not use new credits.",
+    "glue.error.workerFailed":
+      "The AI transition did not finish. Try again without new credits.",
+    "glue.error.executionDeadline":
+      "The AI transition took too long and stopped. Try again without new credits.",
+    "glue.error.providerUnknown":
+      "The AI service did not answer clearly. Try again without new credits.",
+    "glue.error.providerEntitlement":
+      "The AI service account cannot make this transition.",
+    "glue.error.providerPlan":
+      "The AI service plan cannot make this transition.",
+    "glue.error.copyrightRejected":
+      "This recording cannot be used for an AI transition.",
+    "glue.error.audioUnavailable":
+      "The AI transition audio could not be loaded. Try again.",
+    "glue.job.heading": "AI transition",
+    "glue.job.reference": "Request {id}",
+    "glue.job.elapsed": "{seconds} s elapsed",
+    "glue.job.generate": "Create AI transition",
+    "glue.job.tryAnother": "Try another",
+    "glue.job.cancel": "Cancel",
+    "glue.job.cancelling": "Cancelling…",
+    "glue.job.cancelled": "The AI transition was cancelled. No credits were used.",
+    "glue.job.contacted": "This paid request can't be cancelled or refunded.",
+    "glue.job.discovering": "Checking for AI transitions…",
+    "glue.confirm.heading": "Create this AI transition?",
+    "glue.confirm.body":
+      "This uses {credits} new credits. {remaining} of {limit} paid AI transitions left today.",
+    "glue.confirm.reset": "Paid AI transitions return at {time}.",
+    "glue.confirm.tryAnotherHeading": "Make another AI transition?",
+    "glue.confirm.tryAnotherBody":
+      "This uses {credits} new credits and replaces the current selection.",
+    "glue.confirm.confirm": "Create AI transition",
+    "glue.confirm.dismiss": "Not now",
+    "glue.retry.heading": "Try again without new credits",
+    "glue.retry.processingBody":
+      "The AI audio was already created. Retrying it does not use new credits.",
+    "glue.retry.paidHeading": "Try again with a new paid request",
+    "glue.retry.paidBody": "The last attempt needs a new paid request.",
+    "glue.retry.action": "Try again",
   },
   "zh-Hant": {
     "glue.title": "AI 接歌",
@@ -91,5 +153,51 @@ export const glueBundle = bundle({
     "glue.reason.unknown": "目前無法使用 AI 接歌。",
     "glue.error.save": "無法更新 AI 接歌，請再試一次。",
     "glue.error.quote": "無法載入 AI 接歌資訊。",
+    "glue.error.unknown": "目前無法使用 AI 接歌。",
+    "glue.error.notConfigured": "此伺服器目前無法使用 AI 接歌。",
+    "glue.error.invalidRequest": "無法理解這個請求，請再試一次。",
+    "glue.error.notFound": "找不到這段 AI 接歌。",
+    "glue.error.staleSnapshot": "敬拜歌單的順序已變更，請儲存後再試 AI 接歌。",
+    "glue.error.inputsChanged": "開始製作 AI 接歌時歌單已變更，請再試一次。",
+    "glue.error.activeJob": "已有 AI 接歌正在製作中，請等它完成。",
+    "glue.error.retryPaid": "上一次需要重新付費才能再試，請選「再試一次」。",
+    "glue.error.retryProcessingFree": "AI 音訊已建立，請重試，不會再用新的點數。",
+    "glue.error.notReady": "這段 AI 接歌還沒準備好。",
+    "glue.error.paidNotCancellable": "這個付費請求無法取消或退款。",
+    "glue.error.dailyLimit": "今天的付費 AI 接歌次數已用完。",
+    "glue.error.durationTooLong": "這個接點太長，無法製作 AI 接歌，請減少拍數。",
+    "glue.error.excerptTooShort": "這個接點其中一側太短，無法製作 AI 接歌。",
+    "glue.error.dispatchFailed": "無法開始 AI 接歌，請再試一次，不會使用新的點數。",
+    "glue.error.workerFailed": "AI 接歌沒有完成，請重試，不會使用新的點數。",
+    "glue.error.executionDeadline": "AI 接歌逾時停止，請重試，不會使用新的點數。",
+    "glue.error.providerUnknown": "AI 服務沒有明確回應，請重試，不會使用新的點數。",
+    "glue.error.providerEntitlement": "AI 服務帳戶目前無法製作這段接歌。",
+    "glue.error.providerPlan": "AI 服務方案目前無法製作這段接歌。",
+    "glue.error.copyrightRejected": "這首錄音無法用於 AI 接歌。",
+    "glue.error.audioUnavailable": "無法載入 AI 接歌音訊，請再試一次。",
+    "glue.job.heading": "AI 接歌",
+    "glue.job.reference": "請求 {id}",
+    "glue.job.elapsed": "已進行 {seconds} 秒",
+    "glue.job.generate": "建立 AI 接歌",
+    "glue.job.tryAnother": "再試一次",
+    "glue.job.cancel": "取消",
+    "glue.job.cancelling": "正在取消…",
+    "glue.job.cancelled": "AI 接歌已取消，沒有使用點數。",
+    "glue.job.contacted": "這個付費請求無法取消或退款。",
+    "glue.job.discovering": "正在確認 AI 接歌狀態…",
+    "glue.confirm.heading": "要建立這段 AI 接歌嗎？",
+    "glue.confirm.body":
+      "這會使用 {credits} 點。今天還有 {remaining}／{limit} 次付費 AI 接歌。",
+    "glue.confirm.reset": "付費 AI 接歌將於 {time} 重置。",
+    "glue.confirm.tryAnotherHeading": "要再製作一段 AI 接歌嗎？",
+    "glue.confirm.tryAnotherBody":
+      "這會使用 {credits} 點，並取代目前選用的接歌。",
+    "glue.confirm.confirm": "建立 AI 接歌",
+    "glue.confirm.dismiss": "先不要",
+    "glue.retry.heading": "重試，不會使用新的點數",
+    "glue.retry.processingBody": "AI 音訊已建立，重試不會使用新的點數。",
+    "glue.retry.paidHeading": "以新的付費請求重試",
+    "glue.retry.paidBody": "上一次需要重新付費才能再試。",
+    "glue.retry.action": "重試",
   },
 });

@@ -77,8 +77,16 @@ import type {
 } from "@/lib/arrangements";
 import { abbreviatedSectionLabel, buildSectionHeadings } from "@/lib/section-labels";
 import { applyDraftValidity } from "@/lib/glue/draft";
+import {
+  cancelGlueJobRequest,
+  createGlueJobRequest,
+  resumeGlueJobRequest,
+  retryGlueProcessingRequest,
+} from "@/lib/glue/client";
+import { glueErrorMessageKey } from "@/lib/glue/errors";
 import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
 import type { TranslationKey } from "@/lib/i18n/messages";
+import { useGlueJob } from "@/hooks/useGlueJob";
 import type { SongListItem } from "./SongList";
 import {
   AlertTriangle,
@@ -173,6 +181,11 @@ function glueQuoteErrorKey(code: string): TranslationKey {
 
 function glueStateKey(state: ResolvedGlueJunction["state"]): TranslationKey {
   return `glue.state.${state}` as TranslationKey;
+}
+
+/** Localized copy for a stable Glue failure code; unknown codes stay generic. */
+function glueFailureKey(code: string): TranslationKey {
+  return glueErrorMessageKey(code) as TranslationKey;
 }
 
 function formatGlueSeconds(seconds: number): string {
@@ -994,6 +1007,16 @@ export function ArrangementEditorSheet({
   const [glueError, setGlueError] = useState<string | null>(null);
   const [glueQuote, setGlueQuote] = useState<GlueQuoteResponse | null>(null);
   const [glueQuoteError, setGlueQuoteError] = useState<string | null>(null);
+  // One in-flight job per Junction. The id is local so the SSE subscription
+  // starts the moment the create response arrives; discovery adopts the
+  // server-reported active job after a reload.
+  const [glueJobId, setGlueJobId] = useState<string | null>(null);
+  const [glueConfirmMode, setGlueConfirmMode] = useState<
+    "initial" | "new-take" | null
+  >(null);
+  const [glueJobErrorCode, setGlueJobErrorCode] = useState<string | null>(null);
+  const [glueJobActionPending, setGlueJobActionPending] = useState(false);
+  const [glueCancelled, setGlueCancelled] = useState(false);
   // Bounds editing is one open transaction at a time: the id of the Step being
   // edited, its candidate (auditioned by the transport but never committed),
   // and whether the candidate is currently unsavable.
@@ -1285,6 +1308,117 @@ export function ArrangementEditorSheet({
     [onUpdateGlue, glueSaving, glueEnabled, glueBeats, item.id, t]
   );
 
+  // One subscription per Junction. Discovery on load comes from the
+  // server-resolved active job; `watchGlueJob` also rediscovers on reconnect
+  // and on tab visibility. A job started in this session is watched at once.
+  const watchedGlueJobId = glueJobId ?? displayGlue?.activeJob?.id ?? null;
+  const glueJob = useGlueJob({
+    jobId: watchedGlueJobId,
+    songsetId: songsetId ?? "",
+    fromItemId: item.id,
+    enabled:
+      isOpen &&
+      Boolean(songsetId) &&
+      showGlueRail &&
+      (glueEnabled || watchedGlueJobId !== null),
+  });
+  const refreshGlueJob = glueJob.refresh;
+
+  const refreshGlueSelection = useCallback(async () => {
+    if (!onUpdateGlue) return;
+    try {
+      // Re-PATCHing `glueEnabled: true` re-runs the server's free selection
+      // and refreshes the parent's resolved Junction. It never spends credits.
+      await onUpdateGlue(item.id, { glueEnabled: true });
+    } catch {
+      // Keep the previous selection; the next refresh reconciles it.
+    }
+  }, [onUpdateGlue, item.id]);
+
+  const startGlueJob = useCallback(
+    async (takeMode: "initial" | "new-take") => {
+      if (!songsetId || !displayGlue) return;
+      setGlueJobActionPending(true);
+      setGlueJobErrorCode(null);
+      setGlueCancelled(false);
+      const result = await createGlueJobRequest(songsetId, {
+        fromItemId: item.id,
+        clientRequestId: crypto.randomUUID(),
+        expectedFromUpdatedAt:
+          displayGlue.expectedFromUpdatedAt ?? item.updatedAt ?? "",
+        expectedToUpdatedAt:
+          displayGlue.expectedToUpdatedAt ?? nextItem?.updatedAt ?? "",
+        takeMode,
+      });
+      setGlueJobActionPending(false);
+      setGlueConfirmMode(null);
+      if (!result.ok) {
+        setGlueJobErrorCode(result.error.code);
+        return;
+      }
+      if (result.data.status === "ready") {
+        await refreshGlueSelection();
+        return;
+      }
+      setGlueJobId(result.data.jobId);
+    },
+    [
+      songsetId,
+      displayGlue,
+      item.id,
+      item.updatedAt,
+      nextItem?.updatedAt,
+      refreshGlueSelection,
+    ]
+  );
+
+  const cancelGlueJob = useCallback(async () => {
+    if (watchedGlueJobId === null) return;
+    setGlueJobActionPending(true);
+    setGlueJobErrorCode(null);
+    const result = await cancelGlueJobRequest(watchedGlueJobId);
+    setGlueJobActionPending(false);
+    if (!result.ok) {
+      setGlueJobErrorCode(result.error.code);
+      return;
+    }
+    setGlueCancelled(true);
+    setGlueJobId(null);
+    await refreshGlueSelection();
+  }, [watchedGlueJobId, refreshGlueSelection]);
+
+  const retryGlueJob = useCallback(
+    async (mode: "processing" | "resume") => {
+      if (watchedGlueJobId === null) return;
+      setGlueJobActionPending(true);
+      setGlueJobErrorCode(null);
+      setGlueCancelled(false);
+      const result =
+        mode === "processing"
+          ? await retryGlueProcessingRequest(watchedGlueJobId)
+          : await resumeGlueJobRequest(watchedGlueJobId);
+      setGlueJobActionPending(false);
+      if (!result.ok) {
+        setGlueJobErrorCode(result.error.code);
+        return;
+      }
+      setGlueJobId(watchedGlueJobId);
+      await refreshGlueJob();
+    },
+    [watchedGlueJobId, refreshGlueJob]
+  );
+
+  // A finished take becomes the selected one server-side; refresh the parent
+  // so the Junction reads its new resolved state without a page reload.
+  const refreshedReadyJobRef = useRef<string | null>(null);
+  const glueJobStatus = glueJob.status;
+  useEffect(() => {
+    if (!glueJobStatus || glueJobStatus.phase !== "ready") return;
+    if (refreshedReadyJobRef.current === glueJobStatus.id) return;
+    refreshedReadyJobRef.current = glueJobStatus.id;
+    void refreshGlueSelection();
+  }, [glueJobStatus, refreshGlueSelection]);
+
   const glueReason: TranslationKey | null = (() => {
     if (!showGlueRail) return null;
     if (isDirty) return "glue.reason.unsavedDraft";
@@ -1316,6 +1450,44 @@ export function ArrangementEditorSheet({
           minute: "2-digit",
         }).format(new Date(glueQuote.quotaResetAt))
       : null;
+
+  // The server owns phase, elapsed time, and retry classification; the rail
+  // only renders them. There is deliberately no percentage anywhere.
+  const jobPhase = glueJobStatus?.phase ?? displayGlue?.activeJob?.phase ?? null;
+  const jobActive =
+    glueJobStatus?.active ?? Boolean(displayGlue?.activeJob);
+  const jobProviderContacted = glueJobStatus?.providerContacted ?? false;
+  const canCancelGlueJob =
+    glueJobStatus !== null &&
+    glueJobStatus.active &&
+    !glueJobStatus.providerContacted;
+  const showGlueJobPanel = !glueCancelled && watchedGlueJobId !== null;
+  const isGlueJobFailed =
+    glueJobStatus !== null &&
+    (glueJobStatus.phase === "failed" ||
+      glueJobStatus.phase === "dispatch-failed");
+  const glueFailureCode =
+    glueJobErrorCode ??
+    (isGlueJobFailed ? glueJobStatus?.errorCode ?? null : null);
+  const freeRetryMode =
+    isGlueJobFailed && glueJobStatus?.retryKind === "free"
+      ? glueJobStatus.providerContacted
+        ? "processing"
+        : "resume"
+      : null;
+  const needsPaidRetry =
+    isGlueJobFailed &&
+    glueJobStatus !== null &&
+    glueJobStatus.retryKind !== "free";
+  const canGenerateGlue =
+    glueEnabled &&
+    !jobActive &&
+    displayGlue !== null &&
+    displayGlue.unavailableReason === null &&
+    !isDirty &&
+    nextItem !== null;
+  const hasSelectedGlueTake = glueSelectedTake !== null;
+  const shortGlueJobId = watchedGlueJobId?.slice(0, 8) ?? "";
 
   const nextTimelineItem = useMemo(
     () =>
@@ -2718,7 +2890,226 @@ export function ArrangementEditorSheet({
                                 {t(glueReason)}
                               </p>
                             )}
+
+                            {canGenerateGlue && (
+                              <button
+                                type="button"
+                                data-testid={
+                                  hasSelectedGlueTake
+                                    ? "arrangement-glue-try-another"
+                                    : "arrangement-glue-generate"
+                                }
+                                disabled={glueJobActionPending}
+                                onClick={() => {
+                                  setGlueJobErrorCode(null);
+                                  setGlueConfirmMode(
+                                    hasSelectedGlueTake ? "new-take" : "initial"
+                                  );
+                                }}
+                                className="h-8 w-full rounded-md border border-primary bg-primary/10 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-60"
+                              >
+                                {t(
+                                  hasSelectedGlueTake
+                                    ? "glue.job.tryAnother"
+                                    : "glue.job.generate"
+                                )}
+                              </button>
+                            )}
+
+                            {glueConfirmMode !== null && (
+                              <div
+                                data-testid="arrangement-glue-confirm"
+                                className="space-y-1.5 rounded-md border border-border/70 bg-muted/40 p-2"
+                              >
+                                <p className="text-[11px] font-medium">
+                                  {t(
+                                    glueConfirmMode === "new-take"
+                                      ? "glue.confirm.tryAnotherHeading"
+                                      : "glue.confirm.heading"
+                                  )}
+                                </p>
+                                {glueQuoteIsCurrent && glueQuote && (
+                                  <p
+                                    className="text-[11px] leading-relaxed text-muted-foreground"
+                                    data-testid="arrangement-glue-confirm-body"
+                                  >
+                                    {t(
+                                      glueConfirmMode === "new-take"
+                                        ? "glue.confirm.tryAnotherBody"
+                                        : "glue.confirm.body"
+                                    )
+                                      .replace(
+                                        "{credits}",
+                                        String(glueQuote.estimatedNewCredits)
+                                      )
+                                      .replace(
+                                        "{remaining}",
+                                        String(glueQuote.quotaRemaining)
+                                      )
+                                      .replace(
+                                        "{limit}",
+                                        String(glueQuote.quotaLimit)
+                                      )}
+                                  </p>
+                                )}
+                                {glueResetLabel && (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {t("glue.confirm.reset").replace(
+                                      "{time}",
+                                      glueResetLabel
+                                    )}
+                                  </p>
+                                )}
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    data-testid="arrangement-glue-confirm-generate"
+                                    disabled={
+                                      !glueQuoteIsCurrent ||
+                                      !glueQuote ||
+                                      glueJobActionPending
+                                    }
+                                    onClick={() =>
+                                      void startGlueJob(glueConfirmMode)
+                                    }
+                                    className="h-7 flex-1 rounded-md border border-primary bg-primary text-[11px] font-medium text-primary-foreground transition-colors disabled:opacity-60"
+                                  >
+                                    {t("glue.confirm.confirm")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="arrangement-glue-confirm-dismiss"
+                                    disabled={glueJobActionPending}
+                                    onClick={() => setGlueConfirmMode(null)}
+                                    className="h-7 flex-1 rounded-md border border-border text-[11px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                                  >
+                                    {t("glue.confirm.dismiss")}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </>
+                        )}
+
+                        {showGlueJobPanel && (
+                          <div
+                            className="space-y-1 border-t border-border/60 pt-2"
+                            data-testid="arrangement-glue-job"
+                          >
+                            <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                              {t("glue.job.reference").replace(
+                                "{id}",
+                                shortGlueJobId
+                              )}
+                            </p>
+                            {jobPhase !== null && (
+                              <p
+                                className="text-[11px] leading-relaxed text-foreground/80"
+                                data-testid="arrangement-glue-phase"
+                              >
+                                {t(
+                                  glueStateKey(
+                                    jobPhase as ResolvedGlueJunction["state"]
+                                  )
+                                )}
+                              </p>
+                            )}
+                            {glueJobStatus !== null && (
+                              <p
+                                className="font-mono text-[11px] tabular-nums text-muted-foreground"
+                                data-testid="arrangement-glue-elapsed"
+                              >
+                                {t("glue.job.elapsed").replace(
+                                  "{seconds}",
+                                  String(glueJobStatus.elapsedSeconds)
+                                )}
+                              </p>
+                            )}
+                            {canCancelGlueJob && (
+                              <button
+                                type="button"
+                                data-testid="arrangement-glue-cancel"
+                                disabled={glueJobActionPending}
+                                onClick={() => void cancelGlueJob()}
+                                className="h-7 rounded-md border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                              >
+                                {glueJobActionPending
+                                  ? t("glue.job.cancelling")
+                                  : t("glue.job.cancel")}
+                              </button>
+                            )}
+                            {jobActive && jobProviderContacted && (
+                              <p
+                                className="text-[11px] leading-relaxed text-amber-600"
+                                data-testid="arrangement-glue-contacted"
+                              >
+                                {t("glue.job.contacted")}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {glueCancelled && (
+                          <p
+                            role="status"
+                            className="text-[11px] leading-relaxed text-muted-foreground"
+                            data-testid="arrangement-glue-cancelled"
+                          >
+                            {t("glue.job.cancelled")}
+                          </p>
+                        )}
+
+                        {glueFailureCode !== null && (
+                          <Alert
+                            variant="destructive"
+                            data-testid="arrangement-glue-job-error"
+                          >
+                            <AlertTriangle className="size-4" />
+                            <AlertDescription>
+                              {t(glueFailureKey(glueFailureCode))}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                        {freeRetryMode !== null && (
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium">
+                              {t("glue.retry.heading")}
+                            </p>
+                            <p className="text-[11px] leading-relaxed text-muted-foreground">
+                              {t("glue.retry.processingBody")}
+                            </p>
+                            <button
+                              type="button"
+                              data-testid={
+                                freeRetryMode === "processing"
+                                  ? "arrangement-glue-retry-processing"
+                                  : "arrangement-glue-resume"
+                              }
+                              disabled={glueJobActionPending}
+                              onClick={() =>
+                                void retryGlueJob(
+                                  freeRetryMode === "processing"
+                                    ? "processing"
+                                    : "resume"
+                                )
+                              }
+                              className="h-7 rounded-md border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                            >
+                              {t("glue.retry.action")}
+                            </button>
+                          </div>
+                        )}
+
+                        {needsPaidRetry && (
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium">
+                              {t("glue.retry.paidHeading")}
+                            </p>
+                            <p className="text-[11px] leading-relaxed text-muted-foreground">
+                              {t("glue.retry.paidBody")}
+                            </p>
+                          </div>
                         )}
 
                         {glueError && (

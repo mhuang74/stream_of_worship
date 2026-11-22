@@ -8,6 +8,18 @@
     },
     "src/app/api/render-jobs/[id]/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/songsets/[id]/glue-jobs/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/events/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/songsets/[id]/glue-quote/route.ts": {
+      "maxDuration": 60
     }
   },
   "git": {
