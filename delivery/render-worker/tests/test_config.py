@@ -66,3 +66,37 @@ class TestRenderWorkerConfig:
         config = load_config()
         assert isinstance(config, RenderWorkerConfig)
         assert config.SOW_DATABASE_URL == "postgresql://user:pass@localhost:5432/testdb"
+
+
+class TestElevenLabsConfiguration:
+    def test_loads_without_provider_key(self, mock_env):
+        os.environ.pop("SOW_ELEVENLABS_API_KEY", None)
+        config = load_config()
+        assert config.SOW_ELEVENLABS_API_KEY is None
+        assert config.has_elevenlabs_key is False
+
+    def test_optional_provider_key_present(self, mock_env):
+        os.environ["SOW_ELEVENLABS_API_KEY"] = "provider-test-key"
+        try:
+            config = RenderWorkerConfig.from_env()
+        finally:
+            os.environ.pop("SOW_ELEVENLABS_API_KEY", None)
+        assert config.SOW_ELEVENLABS_API_KEY == "provider-test-key"
+        assert config.has_elevenlabs_key is True
+
+    def test_empty_provider_key_is_absent(self, mock_env):
+        os.environ["SOW_ELEVENLABS_API_KEY"] = ""
+        try:
+            config = RenderWorkerConfig.from_env()
+        finally:
+            os.environ.pop("SOW_ELEVENLABS_API_KEY", None)
+        assert config.SOW_ELEVENLABS_API_KEY is None
+        assert config.has_elevenlabs_key is False
+
+    def test_provider_key_never_appears_in_repr(self, mock_env):
+        os.environ["SOW_ELEVENLABS_API_KEY"] = "provider-secret-key"
+        try:
+            config = RenderWorkerConfig.from_env()
+        finally:
+            os.environ.pop("SOW_ELEVENLABS_API_KEY", None)
+        assert "provider-secret-key" not in repr(config)

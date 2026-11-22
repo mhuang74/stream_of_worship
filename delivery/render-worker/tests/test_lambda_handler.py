@@ -225,3 +225,119 @@ class TestHandler:
 
         assert "batchItemFailures" in result
         assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-no-job"
+
+
+def _make_kind_record(kind, job_id="job_glue_1", user_id=42, songset_id="ss_001",
+                      message_id="msg-glue"):
+    body = {"jobId": job_id, "userId": user_id}
+    if songset_id is not None:
+        body["songsetId"] = songset_id
+    if kind is not None:
+        body["kind"] = kind
+    return {
+        "messageId": message_id,
+        "body": json.dumps(body),
+        "eventSource": "aws:sqs",
+    }
+
+
+class TestGlueRouting:
+    @patch("sow_render_worker.lambda_handler.execute_render_pipeline")
+    @patch("sow_render_worker.lambda_handler.execute_glue_job")
+    def test_omitted_kind_still_renders(self, mock_glue, mock_pipeline):
+        mock_conn = MagicMock()
+        mock_context = MagicMock()
+
+        _process_record(_make_kind_record(None), MagicMock(), mock_conn, mock_context)
+
+        mock_pipeline.assert_called_once_with(
+            "job_glue_1", 42, mock_conn, lambda_context=mock_context
+        )
+        mock_glue.assert_not_called()
+
+    @patch("sow_render_worker.lambda_handler.get_glue_job")
+    @patch("sow_render_worker.lambda_handler.execute_glue_job")
+    def test_glue_generate_routes_to_execute_glue_job(self, mock_glue, mock_get_job):
+        stored = MagicMock()
+        stored.songset_id = "ss_001"
+        stored.active = True
+        stored.phase = "queued"
+        mock_get_job.return_value = stored
+        mock_conn = MagicMock()
+        mock_context = MagicMock()
+
+        _process_record(
+            _make_kind_record("glue.generate"), MagicMock(), mock_conn, mock_context
+        )
+
+        mock_get_job.assert_called_once_with(mock_conn, "job_glue_1", 42)
+        mock_glue.assert_called_once_with("job_glue_1", 42, mock_conn, lambda_context=mock_context)
+
+    @patch("sow_render_worker.lambda_handler.get_glue_job")
+    @patch("sow_render_worker.lambda_handler.execute_glue_job")
+    @patch("sow_render_worker.lambda_handler.execute_render_pipeline")
+    def test_unknown_kind_errors_visibly(self, mock_pipeline, mock_glue, mock_get_job):
+        with pytest.raises(ValueError, match="Unknown SQS message kind"):
+            _process_record(
+                _make_kind_record("glue.unknown"), MagicMock(), MagicMock(), MagicMock()
+            )
+        mock_pipeline.assert_not_called()
+        mock_glue.assert_not_called()
+
+    @patch("sow_render_worker.lambda_handler.execute_glue_job")
+    def test_glue_generate_requires_songset_id(self, mock_glue):
+        with pytest.raises(ValueError, match="songsetId"):
+            _process_record(
+                _make_kind_record("glue.generate", songset_id=None),
+                MagicMock(),
+                MagicMock(),
+                MagicMock(),
+            )
+        mock_glue.assert_not_called()
+
+    @patch("sow_render_worker.lambda_handler.finish_glue_job")
+    @patch("sow_render_worker.lambda_handler.get_glue_job")
+    @patch("sow_render_worker.lambda_handler.execute_glue_job")
+    def test_songset_mismatch_fails_safely_without_retry(
+        self, mock_glue, mock_get_job, mock_finish
+    ):
+        stored = MagicMock()
+        stored.songset_id = "ss_other"
+        stored.active = True
+        stored.phase = "queued"
+        mock_get_job.return_value = stored
+        mock_conn = MagicMock()
+
+        _process_record(_make_kind_record("glue.generate"), MagicMock(), mock_conn, MagicMock())
+
+        mock_glue.assert_not_called()
+        mock_finish.assert_called_once_with(
+            mock_conn,
+            "job_glue_1",
+            42,
+            phase="failed",
+            error_code="GLUE_WORKER_FAILED",
+            error_detail="Message does not match the stored job",
+            retry_kind="none",
+        )
+
+    @patch("sow_render_worker.lambda_handler.finish_glue_job")
+    @patch("sow_render_worker.lambda_handler.get_glue_job")
+    @patch("sow_render_worker.lambda_handler.execute_glue_job")
+    def test_user_mismatch_acknowledges_without_work(self, mock_glue, mock_get_job, mock_finish):
+        mock_get_job.return_value = None
+
+        _process_record(_make_kind_record("glue.generate"), MagicMock(), MagicMock(), MagicMock())
+
+        mock_glue.assert_not_called()
+        mock_finish.assert_not_called()
+
+    @patch("sow_render_worker.lambda_handler.get_connection")
+    @patch("sow_render_worker.lambda_handler.load_config")
+    def test_unknown_kind_returns_batch_item_failure(self, mock_config, mock_conn_func):
+        mock_conn_func.return_value = MagicMock()
+        event = _make_sqs_event([_make_kind_record("glue.unknown", message_id="msg-unknown")])
+
+        result = handler(event, None)
+
+        assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-unknown"

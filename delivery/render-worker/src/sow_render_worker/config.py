@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class ConfigError(Exception):
@@ -14,6 +14,14 @@ class RenderWorkerConfig:
     SOW_R2_ACCESS_KEY_ID: str
     SOW_R2_SECRET_ACCESS_KEY: str
     SOW_AWS_REGION: str
+    # Optional: only Glue paid stages need it. It is never required, never
+    # logged (repr=False) and never serialized into a status payload.
+    SOW_ELEVENLABS_API_KEY: str | None = field(default=None, repr=False)
+
+    @property
+    def has_elevenlabs_key(self) -> bool:
+        """True when a provider key is configured for paid Glue stages."""
+        return bool(self.SOW_ELEVENLABS_API_KEY)
 
     @classmethod
     def from_env(cls) -> "RenderWorkerConfig":
@@ -30,7 +38,10 @@ class RenderWorkerConfig:
         if missing:
             raise ConfigError(f"Missing required environment variables: {', '.join(missing)}")
 
-        return cls(**required_vars)
+        return cls(
+            **required_vars,
+            SOW_ELEVENLABS_API_KEY=os.environ.get("SOW_ELEVENLABS_API_KEY") or None,
+        )
 
 
 def load_config() -> RenderWorkerConfig:
