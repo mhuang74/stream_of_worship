@@ -33,6 +33,7 @@ class SongsetItem:
     duration_seconds: float | None = None
     recording_content_hash: str | None = None
     deleted_at: datetime | None = None
+    updated_at: datetime | None = None
     arrangement_steps: tuple[ArrangementStep, ...] | None = None
 
 

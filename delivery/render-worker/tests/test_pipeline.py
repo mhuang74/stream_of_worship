@@ -22,6 +22,7 @@ from sow_render_worker.pipeline import (
     MAX_REASONABLE_RATIO,
     PipelineCancelledError,
     GLUE_NOT_READY,
+    GLUE_STALE_SNAPSHOT,
     GlueSnapshotError,
     execute_render_pipeline,
     fetch_songset_items,
@@ -287,6 +288,7 @@ class TestFetchSongsetItems:
                 "duration_seconds": 180.0,
                 "recording_content_hash": "abc123def456",
                 "deleted_at": None,
+                "updated_at": datetime(2026, 11, 22, 10, 0, tzinfo=timezone.utc),
                 "song_title": "Test Song",
             },
             {
@@ -313,6 +315,7 @@ class TestFetchSongsetItems:
         assert len(items) == 2
         assert items[0].id == "item_1"
         assert items[0].song_title == "Test Song"
+        assert items[0].updated_at == datetime(2026, 11, 22, 10, 0, tzinfo=timezone.utc)
         assert items[1].id == "item_2"
         assert items[1].crossfade_enabled == 1
 
@@ -348,6 +351,7 @@ class TestFetchSongsetItems:
         assert "songset_items" in sql
         assert "recordings" in sql
         assert "songs" in sql
+        assert "si.updated_at" in sql
         assert "LEFT JOIN" in sql
 
     def test_query_uses_parameterized(self):
@@ -1264,13 +1268,16 @@ class TestExecuteRenderPipeline:
         assert mock_duration.call_args.kwargs["glue_clips"] is clips
         assert mock_generate.call_args.kwargs["glue_clips"] is clips
 
-    def test_pipeline_marks_render_failed_when_glue_snapshot_invalid(self):
+    @pytest.mark.parametrize("code", [GLUE_NOT_READY, GLUE_STALE_SNAPSHOT])
+    def test_pipeline_marks_render_failed_when_glue_snapshot_invalid(self, code):
         job = _make_render_job(video_enabled=False)
         items = [_make_songset_item()]
         mock_conn = MagicMock()
         mock_fetcher = _make_mock_fetcher()
         mock_uploader = _make_mock_uploader()
-        error = GlueSnapshotError("AI transition a -> b: take is missing")
+        error = GlueSnapshotError(
+            "AI transition a -> b: take is missing", code=code
+        )
 
         with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
              patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
@@ -1290,7 +1297,7 @@ class TestExecuteRenderPipeline:
             mock_conn,
             "job_abc123",
             42,
-            "GLUE_NOT_READY: AI transition a -> b: take is missing",
+            f"{code}: AI transition a -> b: take is missing",
         )
 
     def test_pipeline_estimated_total_seconds(self):

@@ -5,6 +5,7 @@ import json
 import logging
 import signal
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -149,6 +150,7 @@ def fetch_songset_items(
             "  si.key_shift_semitones, "
             "  si.tempo_ratio, "
             "  si.arrangement_steps, "
+            "  si.updated_at, "
             "  r.tempo_bpm, "
             "  r.duration_seconds, "
             "  r.sections, "
@@ -182,6 +184,7 @@ def fetch_songset_items(
             song_title=row["song_title"],
             recording_content_hash=row["recording_content_hash"],
             deleted_at=row["deleted_at"],
+            updated_at=row.get("updated_at"),
         )
         for row in rows
     ]
@@ -285,9 +288,11 @@ def _title_card_lead_in_resolver(
 
 
 GLUE_NOT_READY = "GLUE_NOT_READY"
+GLUE_STALE_SNAPSHOT = "GLUE_STALE_SNAPSHOT"
 
-# Snapshot vs immutable take metadata: the webapp serializes six decimals, so
-# anything beyond a microsecond is a real mismatch.
+# Snapshot vs immutable take/item metadata. Durations are serialized with six
+# decimals and timestamps with microsecond precision, so anything beyond a
+# microsecond is a real mismatch.
 GLUE_SNAPSHOT_SECONDS_EPSILON = 1e-6
 
 _GLUE_SNAPSHOT_REQUIRED_FIELDS = (
@@ -355,6 +360,72 @@ def _glue_metrics(take: GlueTake) -> dict[str, Any]:
     except (TypeError, json.JSONDecodeError):
         return {}
     return metrics if isinstance(metrics, dict) else {}
+
+
+def _parse_snapshot_timestamp(value: Any) -> datetime | None:
+    """Parse one ISO 8601 snapshot timestamp to an aware UTC datetime."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _timestamps_match(expected: datetime, actual: datetime) -> bool:
+    left = expected if expected.tzinfo else expected.replace(tzinfo=timezone.utc)
+    right = actual if actual.tzinfo else actual.replace(tzinfo=timezone.utc)
+    delta = abs(
+        (left.astimezone(timezone.utc) - right.astimezone(timezone.utc)).total_seconds()
+    )
+    return delta <= GLUE_SNAPSHOT_SECONDS_EPSILON
+
+
+def _validate_snapshot_item_identity(
+    job_id: str,
+    entry: dict[str, Any],
+    *,
+    from_item: SongsetItem,
+    to_item: SongsetItem,
+    from_item_id: str,
+    to_item_id: str,
+    take_id: str,
+) -> None:
+    """Reject a snapshot whose from/to items changed after creation.
+
+    The webapp pinned the exact ``songset_items.updated_at`` of both Items.
+    Arrangement edits, replacements, or reordering bump those timestamps; the
+    render must fail with ``GLUE_STALE_SNAPSHOT`` instead of inserting a take
+    that no longer matches the junction.
+    """
+    sides = (
+        ("from", "from_updated_at", from_item),
+        ("to", "to_updated_at", to_item),
+    )
+    for side, field, item in sides:
+        expected = _parse_snapshot_timestamp(entry.get(field))
+        actual = item.updated_at
+        if expected is None or not isinstance(actual, datetime):
+            raise _glue_failure(
+                job_id,
+                code=GLUE_STALE_SNAPSHOT,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail=f"{side} item identity is unverifiable ({field} missing or invalid)",
+            )
+        if not _timestamps_match(expected, actual):
+            raise _glue_failure(
+                job_id,
+                code=GLUE_STALE_SNAPSHOT,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail=f"{side} item changed since the snapshot ({field} mismatch)",
+            )
 
 
 def load_render_glue_clips(
@@ -426,6 +497,16 @@ def load_render_glue_clips(
                 detail="junction is duplicated in the snapshot",
             )
         seen_to_item_ids.add(to_item_id)
+
+        _validate_snapshot_item_identity(
+            job.id,
+            entry,
+            from_item=items[from_index],
+            to_item=items[to_index],
+            from_item_id=from_item_id,
+            to_item_id=to_item_id,
+            take_id=take_id,
+        )
 
         take = get_glue_take_by_id(conn, take_id, job.user_id)
         if take is None:

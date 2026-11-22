@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,12 +9,15 @@ from sow_render_worker.audio_engine import GlueClip, SongsetItem
 from sow_render_worker.db import GlueTake, RenderJob
 from sow_render_worker.pipeline import (
     GLUE_NOT_READY,
+    GLUE_STALE_SNAPSHOT,
     GlueSnapshotError,
     load_render_glue_clips,
 )
 
 SHA256 = "b" * 64
 DESCRIPTOR_KEY = "a" * 64
+UPDATED_AT = datetime(2026, 11, 22, 10, 0, 0, tzinfo=timezone.utc)
+UPDATED_AT_ISO = UPDATED_AT.isoformat()
 
 
 def _item(item_id: str, position: int, **overrides) -> SongsetItem:
@@ -33,6 +37,7 @@ def _item(item_id: str, position: int, **overrides) -> SongsetItem:
         "duration_seconds": 180.0,
         "recording_content_hash": f"content-{item_id}",
         "deleted_at": None,
+        "updated_at": UPDATED_AT,
         "arrangement_steps": None,
     }
     defaults.update(overrides)
@@ -88,6 +93,8 @@ def _entry(take: GlueTake, *, from_item_id: str = "item-1",
         "r2_key": take.r2_key,
         "seconds": take.seconds,
         "sha256": SHA256,
+        "from_updated_at": UPDATED_AT_ISO,
+        "to_updated_at": UPDATED_AT_ISO,
     }
     entry.update(overrides)
     return entry
@@ -215,6 +222,124 @@ class TestValidSnapshot:
                 "seconds": 2.786,
             }
         ]
+
+
+class TestSnapshotItemIdentity:
+    def _assert_stale(self, entry, *, detail, items=None):
+        fetcher = _fetcher()
+        with pytest.raises(GlueSnapshotError) as excinfo:
+            _load(
+                transitions=[entry],
+                takes=[_take()],
+                items=items,
+                fetcher=fetcher,
+            )
+        error = excinfo.value
+        assert error.code == GLUE_STALE_SNAPSHOT
+        assert detail in error.detail
+        assert "item-1 -> item-2" in str(error)
+        fetcher.download_glue.assert_not_called()
+        return error
+
+    def test_matching_timestamps_render(self):
+        take = _take()
+        fetcher = _fetcher()
+        clips, _ = _load(transitions=[_entry(take)], takes=[take], fetcher=fetcher)
+        assert clips["item-2"].take_id == "take-1"
+        fetcher.download_glue.assert_called_once()
+
+    def test_timestamps_within_one_microsecond_are_accepted(self):
+        take = _take()
+        items = [
+            _item("item-1", 0, updated_at=UPDATED_AT + timedelta(microseconds=1)),
+            _item("item-2", 1, updated_at=UPDATED_AT + timedelta(microseconds=1)),
+            _item("item-3", 2),
+        ]
+        clips, _ = _load(transitions=[_entry(take)], takes=[take], items=items)
+        assert clips["item-2"].take_id == "take-1"
+
+    def test_zulu_timestamp_is_accepted(self):
+        take = _take()
+        zulu = UPDATED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")
+        clips, _ = _load(
+            transitions=[_entry(take, from_updated_at=zulu, to_updated_at=zulu)],
+            takes=[take],
+        )
+        assert clips["item-2"].take_id == "take-1"
+
+    def test_from_item_updated_after_snapshot_is_stale(self):
+        take = _take()
+        moved = (UPDATED_AT + timedelta(seconds=1)).isoformat()
+        self._assert_stale(
+            _entry(take, from_updated_at=moved),
+            detail="from item changed since the snapshot (from_updated_at mismatch)",
+        )
+
+    def test_to_item_updated_after_snapshot_is_stale(self):
+        take = _take()
+        moved = (UPDATED_AT + timedelta(seconds=1)).isoformat()
+        self._assert_stale(
+            _entry(take, to_updated_at=moved),
+            detail="to item changed since the snapshot (to_updated_at mismatch)",
+        )
+
+    def test_microsecond_beyond_tolerance_is_stale(self):
+        take = _take()
+        items = [
+            _item("item-1", 0, updated_at=UPDATED_AT + timedelta(microseconds=2)),
+            _item("item-2", 1),
+            _item("item-3", 2),
+        ]
+        self._assert_stale(
+            _entry(take),
+            detail="from item changed since the snapshot",
+            items=items,
+        )
+
+    def test_malformed_from_timestamp_is_stale(self):
+        take = _take()
+        self._assert_stale(
+            _entry(take, from_updated_at="not-a-timestamp"),
+            detail="from item identity is unverifiable (from_updated_at missing or invalid)",
+        )
+
+    def test_missing_to_timestamp_is_stale(self):
+        take = _take()
+        entry = _entry(take)
+        del entry["to_updated_at"]
+        self._assert_stale(
+            entry,
+            detail="to item identity is unverifiable (to_updated_at missing or invalid)",
+        )
+
+    def test_legacy_item_without_updated_at_is_stale(self):
+        take = _take()
+        items = [
+            _item("item-1", 0, updated_at=None),
+            _item("item-2", 1),
+            _item("item-3", 2),
+        ]
+        self._assert_stale(
+            _entry(take),
+            detail="from item identity is unverifiable",
+            items=items,
+        )
+
+    def test_stale_failure_logs_stable_code(self, caplog):
+        take = _take()
+        moved = (UPDATED_AT + timedelta(seconds=1)).isoformat()
+        with caplog.at_level("INFO", logger="sow_render_worker.pipeline"):
+            self._assert_stale(
+                _entry(take, from_updated_at=moved),
+                detail="from item changed since the snapshot",
+            )
+        events = [
+            json.loads(record.getMessage())
+            for record in caplog.records
+            if record.getMessage().startswith("{")
+        ]
+        failed = [e for e in events if e["event"] == "glue.render.glue.failed"]
+        assert failed[0]["errorCode"] == GLUE_STALE_SNAPSHOT
 
 
 class TestSnapshotValidationFailures:
