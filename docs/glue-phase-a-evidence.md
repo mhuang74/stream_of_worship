@@ -17,7 +17,7 @@ Paid Phase B was **not** run. Nothing in this document spends credits.
 | Webapp lint | `pnpm lint` | 0 errors (13 pre-existing warnings) |
 | Webapp typecheck | `pnpm typecheck` | clean |
 | Webapp build | `SOW_DATABASE_URL=… pnpm build` | succeeded before (111 s) and after (128 s) the Phase A fixes |
-| Worker full | `SKIP_DOCKER_TESTS=1 uv run --extra dev pytest tests/ -q` | 1122 passed, 8 skipped |
+| Worker full | `SKIP_DOCKER_TESTS=1 uv run --extra dev pytest tests/ -q` | 1123 passed, 8 skipped |
 | AMD64 image | `docker build --platform linux/amd64` | succeeded; imports `numpy`, `soundfile`, `PIL`, `psycopg2`, `boto3`, `sow_render_worker.pipeline`; static `ffmpeg 7.0.2` |
 
 The worker journey proves the no-paid-call rule structurally: guards raise if
@@ -42,13 +42,48 @@ eyeballed.
 | 5 confirm copy | Read the confirm body | "This uses 405 new credits. 5 of 5 paid AI transitions left today." |
 
 Not executed in the browser (fakes required, covered by tests instead):
-SSE reconnect after navigation, an actual 202 job with phase progression,
-failed Try-another preserving the take, free staging recovery, unknown-outcome
-copy, take audition in Preview/Listen, free restore of an earlier take, and
-stale-draft revert. The automated journeys cover the same contracts with
-injected transports; the browser surfaces need a fake-provider server mode
-that does not exist in the deployment (and `test_deploy_glue.py` asserts the
-deploy scripts never select one).
+SSE reconnect after navigation, a provider-backed 202 job with phase
+progression, failed Try-another preserving the take, free staging recovery,
+unknown-outcome copy, free restore of an earlier take, and stale-draft revert.
+The automated journeys cover the same contracts with injected transports; the
+browser surfaces need a fake-provider server mode that does not exist in the
+deployment (and `test_deploy_glue.py` asserts the deploy scripts never select
+one).
+
+## Seeded-take audition, snapshot render, and artifacts
+
+Executed 2026-11-22 after the run above, on the same junction, using an
+**explicitly seeded immutable test take** (§7.3 Phase A) — a 3.61991 s
+1000 Hz stereo/44.1 kHz WAV at
+`glues/15/88fdcf7b…/take-11111111-2222-4333-8444-555555555555.wav`, take id
+`11111111-2222-4333-8444-555555555555`. No provider was contacted.
+
+The descriptor for the take was built with the worker's
+`sow_render_worker.glue_descriptor.build_descriptor` from the live item rows and
+produced key `88fdcf7beaf6de82c2ad323806d63b88481b066bcda2cb8899f1c8bbc956eef3`,
+byte-identical to the key the webapp quote route computed for the same rows —
+a live cross-language determinism check, not a fixture.
+
+| §7.3 item | What was done | Observed |
+|---|---|---|
+| 3 audition in Preview | Opened the sheet, pressed Preview | Fetched A, B and `/api/glues/11111111-…/audio`; playhead advanced to 0:06; range request returned `206`, `RIFF`, `cache-control: private, max-age=3600` |
+| 3 take audio proxy | `GET /api/glues/<takeId>/audio` with `Range: bytes=0-63` | `206`, 64 bytes, `RIFF` header |
+| 5 deep link | `/songsets/2ZV5SHjAzw7ceJE-nREs2?glueItem=VwEji7gQxQoIFGQrO15xG` | Sheet opened for the junction, then the param was stripped and a reload did not reopen it |
+| 5 preflight with a ready take | `/render` | No "needs attention"; Start Render enabled, no blocked junction |
+| 5 render from the selected take | Started the render from the browser | Job `MmX2CWqUge8Mr_zIxhRh5`; REST dispatch to the local worker image; phases `preparing → mixing_audio → rendering_frames → encoding_video → uploading → completed`, 0 → 100 % |
+| snapshot frozen with the take | Read `render_jobs.glue_transitions` | One entry: take id, descriptor key `88fdcf7b…`, staged key, `seconds 3.61991`, `sha256 1a7f9c1e…` |
+| 5 MP3 / MP4 / chapters | ffprobe on the uploaded artifacts | MP3 560.300408 s (AAC/MP3 frame padding), MP4 560.269002 s vs `total_duration_seconds` 560.2689 s (≈0.1 ms), `chapters.json` 3 chapters |
+| 5 embedded chapters | `ffprobe -show_chapters` on the MP4 | 3 chapters: 我揚聲敬拜 0.0000→241.1790, 祢的救恩 241.1790→450.6280, 當祢走進我們當中 450.6280→560.2680 |
+| 5 Glue midpoint frame | Frame at 239.37 s (Glue window 237.560→241.180) | Incoming title 「祢的救恩」 only, CJK glyphs rendered, no lyric lines, no extra title card |
+| 5 lyrics resume after Glue | Frame at 242.5 s | 「急難之中」 line at its shifted global time 241.17991, CJK rendered |
+| 6 duration integration | `GET /api/songsets/<id>` with the take selected, then cleared | 560.2691077077365 s selected / 558.4591524588676 s cleared; Δ = glue 3.61991 − the ordinary 2-beat gap 1.809955, matching `getSongsetDurationSeconds` |
+| 6 rendered artifact in the player | `/play/controller` | Player total 9:20, requests the signed MP4 and `chapters.json` for job `MmX2CWqUge8Mr_zIxhRh5` |
+
+Two read-side behaviours observed, neither a defect: the songset API answers one
+stale-while-revalidate read after an out-of-band SQL write (product PATCHes
+invalidate correctly and the next read is fresh), and the invalidating PATCH
+must be made through the API — editing `glue_active_take_id` with raw SQL leaves
+the cached view stale until it revalidates.
 
 ## Defects found and fixed while executing Phase A
 
@@ -65,6 +100,15 @@ deploy scripts never select one).
    answer's `descriptorKey` to match the saved junction, retries briefly, and
    otherwise shows the quote error. Regressions: "never shows credits computed
    for a different descriptor", "surfaces a quote error instead of numbers…".
+4. A duplicate render delivery that lost the claim still deleted the **winning**
+   invocation's working directory. `execute_render_pipeline` called
+   `asset_fetcher.get_job_temp_dir(job_id)` before the claim, so the losing
+   invocation owned `<temp>/<jobId>` too, and the `finally` block removed it
+   while the winner was mid-encode. Observed live: FFmpeg finished the frames
+   and failed the trailer with `Error writing trailer: No such file or
+   directory` at 79.8 %. The temp dir is now taken only after the claim wins.
+   Regressions: `test_duplicate_delivery_keeps_winner_working_files` and the
+   updated `test_pipeline_uses_reclaim_likely_dead_job`.
 
 Each regression was proven by reverting its fix and watching the test fail.
 

@@ -688,7 +688,6 @@ def execute_render_pipeline(
         uploader = R2Uploader()
 
     asset_fetcher.initialize()
-    temp_dir = asset_fetcher.get_job_temp_dir(job_id)
     pipeline_start = time.monotonic()
 
     def check_cancelled() -> None:
@@ -733,6 +732,11 @@ def execute_render_pipeline(
                 return
 
         check_lambda_timeout()
+
+        # The job temp dir belongs to the winning invocation. Claim before
+        # creating it so a duplicate delivery that skips never removes the
+        # live invocation's working files in the finally block.
+        temp_dir = asset_fetcher.get_job_temp_dir(job_id)
 
         logger.info(
             "[%s] Pipeline started: resolution=%s, video=%s, audio=%s, items=%d",

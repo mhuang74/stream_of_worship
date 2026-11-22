@@ -13,6 +13,7 @@ from sow_render_worker.audio_engine import (
     GlueWindow,
     SongsetItem,
 )
+from sow_render_worker.asset_fetcher import AssetFetcher
 from sow_render_worker.chapters import ChaptersManifest, Chapter
 from sow_render_worker.db import RenderJob, RenderProgress
 from sow_render_worker.pipeline import (
@@ -588,7 +589,34 @@ class TestExecuteRenderPipeline:
             )
 
             mock_reclaim.assert_called_once_with(mock_conn, "job_abc123", 42)
-            mock_fetcher.cleanup_temp.assert_called_once()
+            # A duplicate delivery that loses the claim never takes ownership
+            # of the job temp dir, so its finally block cannot delete the
+            # winning invocation's working files.
+            mock_fetcher.get_job_temp_dir.assert_not_called()
+
+    def test_duplicate_delivery_keeps_winner_working_files(self, tmp_path):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_uploader = _make_mock_uploader()
+
+        # The winning invocation already owns <temp>/job_abc123 and is
+        # mid-encode.
+        job_dir = tmp_path / "job_abc123"
+        job_dir.mkdir()
+        (job_dir / "output.mp4").write_bytes(b"in-progress")
+        fetcher = AssetFetcher(temp_dir=str(tmp_path))
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=None), \
+             patch("sow_render_worker.pipeline.reclaim_likely_dead_job", return_value=None):
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=fetcher,
+                uploader=mock_uploader,
+            )
+
+        assert (job_dir / "output.mp4").read_bytes() == b"in-progress"
 
     def test_pipeline_no_video(self):
         job = _make_render_job(video_enabled=False)
