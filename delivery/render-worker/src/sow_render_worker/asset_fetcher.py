@@ -168,7 +168,8 @@ class AssetFetcher:
                 pass
 
     def download_glue(self, r2_key: str, *, expected_bytes: int | None,
-                      expected_sha256: str | None, cache_key: str | None = None) -> str:
+                      expected_sha256: str | None, cache_key: str | None = None,
+                      job_id: str | None = None, take_id: str | None = None) -> str:
         """Download and verify one staged Glue take.
 
         Streams into a temp file in the fetcher's temp dir, validates the
@@ -177,11 +178,14 @@ class AssetFetcher:
         Transient transport failures retry with full jitter (1 s, 2 s, 4 s caps);
         missing objects and checksum/length mismatches fail immediately. The
         raised ``GlueDownloadError`` message never contains the signed URL or
-        secrets.
+        secrets; ``job_id``/``take_id`` only decorate operator logs and errors.
         """
+        context = ""
+        if job_id is not None or take_id is not None:
+            context = f" (job={job_id or '?'}, take={take_id or '?'})"
         cache_path = self._glue_cache_path(r2_key, cache_key)
         if self._glue_cache_is_valid(cache_path, expected_bytes, expected_sha256):
-            logger.info("Glue cache hit: %s", cache_path.name)
+            logger.info("Glue cache hit: %s%s", cache_path.name, context)
             return str(cache_path)
 
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -194,20 +198,31 @@ class AssetFetcher:
                 delay_cap = GLUE_DOWNLOAD_RETRY_DELAY_CAPS_SECONDS[attempt - 1]
                 delay = random.uniform(0, delay_cap)
                 logger.warning(
-                    "Glue download retry attempt %d/%d for %s in %.3fs",
-                    attempt, max_attempts - 1, cache_path.name, delay,
+                    "Glue download retry attempt %d/%d for %s in %.3fs%s",
+                    attempt, max_attempts - 1, cache_path.name, delay, context,
                 )
                 time.sleep(delay)
             try:
                 self._download_glue_once(r2_key, cache_path, expected_bytes, expected_sha256)
-                logger.info("Glue downloaded: %s", cache_path.name)
+                logger.info("Glue downloaded: %s%s", cache_path.name, context)
                 return str(cache_path)
             except _RetryableGlueDownloadError as exc:
                 last_transient = exc
-                logger.warning("Glue download attempt %d failed transiently", attempt + 1)
+                logger.warning(
+                    "Glue download attempt %d failed transiently%s",
+                    attempt + 1, context,
+                )
+            except GlueDownloadError as exc:
+                logger.error("Glue download failed: %s%s", exc, context)
+                raise
 
+        logger.error(
+            "Glue download exhausted %d attempts for %s%s",
+            max_attempts, cache_path.name, context,
+        )
         raise GlueDownloadError(
-            f"Glue audio download exhausted {max_attempts} attempts for {cache_path.name}"
+            f"Glue audio download exhausted {max_attempts} attempts for "
+            f"{cache_path.name}{context}"
         ) from last_transient
 
     def _glue_cache_path(self, r2_key: str, cache_key: str | None) -> Path:

@@ -9,6 +9,7 @@ from sow_render_worker.audio_engine import (
     AudioClipInfo,
     AudioSegmentInfo,
     ExportResult,
+    GlueClip,
     GlueWindow,
     SongsetItem,
 )
@@ -20,6 +21,8 @@ from sow_render_worker.pipeline import (
     MIN_REASONABLE_RATIO,
     MAX_REASONABLE_RATIO,
     PipelineCancelledError,
+    GLUE_NOT_READY,
+    GlueSnapshotError,
     execute_render_pipeline,
     fetch_songset_items,
     get_default_ratio,
@@ -29,6 +32,20 @@ from sow_render_worker.pipeline import (
 )
 from sow_render_worker.db import update_render_progress
 from sow_render_worker.uploader import UploadArtifactsResult
+
+
+@pytest.fixture(autouse=True)
+def _no_pinned_glue_snapshot(monkeypatch):
+    """These render-flow tests exercise jobs created before Glue existed.
+
+    Pinned-snapshot loading and validation are covered by
+    ``tests/test_pipeline_glue.py``; here the DB read returns no snapshot so the
+    ordinary render path stays the subject under test.
+    """
+    monkeypatch.setattr(
+        "sow_render_worker.pipeline.get_render_glue_transitions",
+        lambda conn, job_id: None,
+    )
 
 
 def _make_songset_item(**overrides) -> SongsetItem:
@@ -1175,6 +1192,106 @@ class TestExecuteRenderPipeline:
             (chapter.start_seconds, chapter.end_seconds)
             for chapter in injected_chapters
         ] == [(0.0, 12.0), (15.0, 33.0)]
+
+    def test_pipeline_without_pinned_glue_passes_no_clips(self):
+        job = _make_render_job(video_enabled=False)
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.calculate_total_duration", return_value=180.0) as mock_duration, \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result) as mock_generate, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+        assert mock_duration.call_args.kwargs["glue_clips"] is None
+        assert mock_generate.call_args.kwargs["glue_clips"] is None
+
+    def test_pipeline_forwards_pinned_glue_clips(self):
+        job = _make_render_job(video_enabled=False)
+        items = [
+            _make_songset_item(),
+            _make_songset_item(id="item_2", position=1),
+        ]
+        audio_result = _make_audio_result(items)
+        clips = {
+            "item_2": GlueClip(
+                path="/tmp/cache/take-1.wav",
+                take_id="take-1",
+                seconds=2.786,
+                checksum="b" * 64,
+            )
+        }
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.load_render_glue_clips", return_value=clips) as mock_load, \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.calculate_total_duration", return_value=205.0) as mock_duration, \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result) as mock_generate, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+        mock_load.assert_called_once_with(mock_conn, job, items, mock_fetcher)
+        assert mock_duration.call_args.kwargs["glue_clips"] is clips
+        assert mock_generate.call_args.kwargs["glue_clips"] is clips
+
+    def test_pipeline_marks_render_failed_when_glue_snapshot_invalid(self):
+        job = _make_render_job(video_enabled=False)
+        items = [_make_songset_item()]
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+        error = GlueSnapshotError("AI transition a -> b: take is missing")
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.load_render_glue_clips", side_effect=error):
+
+            with pytest.raises(GlueSnapshotError):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+        mock_fail.assert_called_once_with(
+            mock_conn,
+            "job_abc123",
+            42,
+            "GLUE_NOT_READY: AI transition a -> b: take is missing",
+        )
 
     def test_pipeline_estimated_total_seconds(self):
         job = _make_render_job()

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, call, patch
 
@@ -29,6 +30,7 @@ from sow_render_worker.db import (
     get_glue_take_by_id,
     get_glue_take_for_descriptor,
     get_phase_index,
+    get_render_glue_transitions,
     get_render_job,
     heartbeat_glue_job,
     insert_glue_take,
@@ -1594,6 +1596,62 @@ class TestGetGlueTakeById:
     def test_missing_returns_none(self):
         conn, _ = _make_mock_conn(fetchone_result=None)
         assert get_glue_take_by_id(conn, "missing", 42) is None
+
+
+class TestGetRenderGlueTransitions:
+    def test_reads_and_parses_snapshot_in_order(self):
+        entries = [
+            {"from_item_id": "a", "to_item_id": "b", "take_id": "t1", "seconds": 2.5},
+            {"from_item_id": "b", "to_item_id": "c", "take_id": "t2", "seconds": 3.0},
+        ]
+        conn, cursor = _make_mock_conn(
+            fetchone_result={"glue_transitions": json.dumps(entries)}
+        )
+        transitions = get_render_glue_transitions(conn, "job-1")
+        assert transitions == entries
+        sql, params = cursor.execute.call_args[0]
+        assert 'SELECT glue_transitions FROM "render_jobs"' in sql or (
+            "SELECT glue_transitions FROM render_jobs" in sql
+        )
+        assert "WHERE id = %s" in sql
+        assert params == ("job-1",)
+
+    def test_null_snapshot_means_no_glue(self):
+        conn, _ = _make_mock_conn(fetchone_result={"glue_transitions": None})
+        assert get_render_glue_transitions(conn, "job-1") is None
+
+    def test_empty_array_means_no_glue(self):
+        conn, _ = _make_mock_conn(fetchone_result={"glue_transitions": "[]"})
+        assert get_render_glue_transitions(conn, "job-1") is None
+
+    def test_blank_text_means_no_glue(self):
+        conn, _ = _make_mock_conn(fetchone_result={"glue_transitions": "   "})
+        assert get_render_glue_transitions(conn, "job-1") is None
+
+    def test_missing_job_returns_none(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert get_render_glue_transitions(conn, "missing") is None
+
+    def test_malformed_json_raises(self):
+        conn, _ = _make_mock_conn(
+            fetchone_result={"glue_transitions": "{not-json"}
+        )
+        with pytest.raises(ValueError, match="not valid JSON"):
+            get_render_glue_transitions(conn, "job-1")
+
+    def test_non_array_raises(self):
+        conn, _ = _make_mock_conn(
+            fetchone_result={"glue_transitions": json.dumps({"a": 1})}
+        )
+        with pytest.raises(ValueError, match="not a JSON array"):
+            get_render_glue_transitions(conn, "job-1")
+
+    def test_non_object_entry_raises(self):
+        conn, _ = _make_mock_conn(
+            fetchone_result={"glue_transitions": json.dumps(["entry"])}
+        )
+        with pytest.raises(ValueError, match="not a JSON array"):
+            get_render_glue_transitions(conn, "job-1")
 
 
 class TestListGlueTakesForDescriptor:

@@ -372,6 +372,45 @@ def get_render_job(
     return _row_to_render_job(row)
 
 
+def get_render_glue_transitions(
+    conn: psycopg2.extensions.connection,
+    job_id: str,
+) -> Optional[list[dict[str, Any]]]:
+    """Parse the immutable Glue snapshot pinned on a render job.
+
+    ``render_jobs.glue_transitions`` holds a JSON array written once by the
+    webapp at creation. ``NULL`` (and an empty array) means the render has no
+    Glue junctions. A malformed value is a hard error: the worker must fail the
+    render visibly instead of silently falling back to ordinary transitions.
+    """
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "SELECT glue_transitions FROM render_jobs WHERE id = %s",
+            (job_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+
+    raw = row["glue_transitions"]
+    if raw is None:
+        return None
+    if isinstance(raw, str) and not raw.strip():
+        return None
+
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("render_jobs.glue_transitions is not valid JSON") from exc
+    if not isinstance(parsed, list) or not all(isinstance(entry, dict) for entry in parsed):
+        raise ValueError(
+            "render_jobs.glue_transitions is not a JSON array of objects"
+        )
+    if not parsed:
+        return None
+    return [dict(entry) for entry in parsed]
+
+
 def start_render_job(
     conn: psycopg2.extensions.connection,
     job_id: str,

@@ -489,6 +489,24 @@ class TestDownloadGlue:
         assert excinfo.value.code == "GLUE_AUDIO_UNAVAILABLE"
         assert mock_http.request.call_count == 1
 
+    def test_failure_log_names_job_and_take(self, tmp_path, caplog):
+        import logging
+
+        from sow_render_worker.asset_fetcher import GlueDownloadError
+
+        fetcher, mock_http, _, _ = self._fetcher(tmp_path)
+        mock_http.request.return_value = self._response(status=404)
+
+        with caplog.at_level(
+            logging.ERROR, logger="sow_render_worker.asset_fetcher"
+        ):
+            with pytest.raises(GlueDownloadError):
+                self._download(fetcher, job_id="job-1", take_id="take-1")
+
+        assert "glue-take-1.wav" in caplog.text
+        assert "job=job-1" in caplog.text
+        assert "take=take-1" in caplog.text
+
     def test_retries_transient_failure_with_full_jitter_and_succeeds(
         self, tmp_path, monkeypatch, caplog
     ):
