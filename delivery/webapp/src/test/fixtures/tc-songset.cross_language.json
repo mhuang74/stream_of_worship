@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "kind": "tc-glue-acceptance",
+  "description": "Deterministic two-Song Traditional Chinese Songset with one effective 4-beat AI transition (Glue) at the A -> B junction. Both the render-worker (tests/test_video_engine.py, tests/test_frame_renderer.py, tests/test_chapters.py) and later webapp tests consume this file. Every timestamp is exact (staged Glue is exactly 3.0 s at 80 BPM) so no middleware is needed to derive the shifted timeline. Recording audio bytes are never needed: Song Arrangement steps, tempo/beat analysis, Timed LRC, and the staged-Glue facts are all inline.",
+  "songset": {
+    "id": "ss-tc-glue-acceptance",
+    "name": "主日敬拜：清晨到信實",
+    "locale": "zh-Hant",
+    "gapBeats": 2,
+    "crossfadeEnabled": false,
+    "titleCard": {
+      "enabled": false,
+      "note": "Title cards stay disabled for this fixture so any extra card would be a contract violation; the Glue pre-roll title is the ordinary per-Song title line, not a title card."
+    }
+  },
+  "songs": [
+    {
+      "itemId": "item-a",
+      "position": 0,
+      "songId": "song-tc-chenxi",
+      "title": "清晨的讚美",
+      "recording": {
+        "hashPrefix": "placeholder-a1b2c3d4e5f6",
+        "contentHash": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+        "durationSeconds": 30.0,
+        "takes": 1
+      },
+      "analysis": {
+        "tempoBpm": 100.0,
+        "timeSignature": "4/4",
+        "sections": [
+          { "label": "verse", "start": 0.0, "end": 6.0 },
+          { "label": "chorus", "start": 6.0, "end": 12.0 },
+          { "label": "verse", "start": 12.0, "end": 18.0 },
+          { "label": "outro", "start": 18.0, "end": 30.0 }
+        ],
+        "beats": [
+          0.0, 0.6, 1.2, 1.8, 2.4, 3.0, 3.6, 4.2, 4.8, 5.4,
+          6.0, 6.6, 7.2, 7.8, 8.4, 9.0, 9.6, 10.2, 10.8, 11.4,
+          12.0, 12.6, 13.2, 13.8, 14.4, 15.0, 15.6, 16.2, 16.8, 17.4,
+          18.0, 18.6, 19.2, 19.8, 20.4, 21.0, 21.6, 22.2, 22.8, 23.4,
+          24.0, 24.6, 25.2, 25.8, 26.4, 27.0, 27.6, 28.2, 28.8, 29.4,
+          30.0
+        ]
+      },
+      "arrangement": {
+        "version": 1,
+        "steps": [
+          { "sectionIndex": 0, "label": "verse", "startSeconds": 0.0, "endSeconds": 6.0 },
+          { "sectionIndex": 2, "label": "verse", "startSeconds": 12.0, "endSeconds": 18.0 }
+        ]
+      },
+      "arrangedDurationSeconds": 12.0,
+      "gapBeats": 2,
+      "crossfadeEnabled": false,
+      "crossfadeDurationSeconds": null,
+      "lrc": "[00:00.50]清晨醒來仰望祢\n[00:12.50]我要向祢獻上讚美\n[00:17.00]一生一世歌唱祢",
+      "lyrics": [
+        { "text": "清晨醒來仰望祢", "localSeconds": 0.5, "globalSeconds": 0.5 },
+        { "text": "我要向祢獻上讚美", "localSeconds": 12.5, "globalSeconds": 6.5 },
+        { "text": "一生一世歌唱祢", "localSeconds": 17.0, "globalSeconds": 11.0 }
+      ]
+    },
+    {
+      "itemId": "item-b",
+      "position": 1,
+      "songId": "song-tc-xinshi",
+      "title": "祢的信實廣大",
+      "recording": {
+        "hashPrefix": "placeholder-0f1e2d3c4b5a",
+        "contentHash": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "durationSeconds": 30.0,
+        "takes": 1
+      },
+      "analysis": {
+        "tempoBpm": 80.0,
+        "timeSignature": "4/4",
+        "sections": [
+          { "label": "intro", "start": 0.0, "end": 6.0 },
+          { "label": "verse", "start": 6.0, "end": 15.0 },
+          { "label": "chorus", "start": 15.0, "end": 21.0 },
+          { "label": "outro", "start": 21.0, "end": 30.0 }
+        ],
+        "beats": [
+          0.0, 0.75, 1.5, 2.25, 3.0, 3.75, 4.5, 5.25, 6.0, 6.75,
+          7.5, 8.25, 9.0, 9.75, 10.5, 11.25, 12.0, 12.75, 13.5, 14.25,
+          15.0, 15.75, 16.5, 17.25, 18.0, 18.75, 19.5, 20.25, 21.0, 21.75,
+          22.5, 23.25, 24.0, 24.75, 25.5, 26.25, 27.0, 27.75, 28.5, 29.25,
+          30.0
+        ]
+      },
+      "arrangement": {
+        "version": 1,
+        "steps": [
+          { "sectionIndex": 1, "label": "verse", "startSeconds": 6.0, "endSeconds": 15.0 },
+          { "sectionIndex": 3, "label": "outro", "startSeconds": 21.0, "endSeconds": 30.0 }
+        ]
+      },
+      "arrangedDurationSeconds": 18.0,
+      "gapBeats": 2,
+      "crossfadeEnabled": false,
+      "crossfadeDurationSeconds": null,
+      "lrc": "[00:06.50]祢的信實何等廣大\n[00:12.00]祢的恩典永不改變\n[00:21.50]我心稱謝祢的名\n[00:27.00]直到永遠讚美祢",
+      "lyrics": [
+        { "text": "祢的信實何等廣大", "localSeconds": 6.5, "globalSeconds": 15.5 },
+        { "text": "祢的恩典永不改變", "localSeconds": 12.0, "globalSeconds": 21.0 },
+        { "text": "我心稱謝祢的名", "localSeconds": 21.5, "globalSeconds": 24.5 },
+        { "text": "直到永遠讚美祢", "localSeconds": 27.0, "globalSeconds": 30.0 }
+      ]
+    }
+  ],
+  "glue": [
+    {
+      "fromItemId": "item-a",
+      "toItemId": "item-b",
+      "beats": 4,
+      "toTempoBpm": 80.0,
+      "generationSeconds": 3.0,
+      "stagedSeconds": 3.0,
+      "takeId": "9f1c2f7e-3b4d-4a6e-9c21-5d8b7a6f0e11",
+      "descriptorKey": "78a5158850b3a32afc884d9baced8f83155530cd4bc194354574b36baf9c9f04",
+      "descriptorJson": "{\"v\":2,\"model\":\"music_v2_5\",\"promptVersion\":2,\"excerptSeconds\":12,\"beats\":4,\"toTempoBpm\":80,\"from\":{\"contentHash\":\"a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3\",\"steps\":[[0,6],[12,18]]},\"to\":{\"contentHash\":\"5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c\",\"steps\":[[6,15],[21,30]]}}",
+      "r2Key": "placeholder://glues/42/78a5158850b3a32afc884d9baced8f83155530cd4bc194354574b36baf9c9f04/take-9f1c2f7e-3b4d-4a6e-9c21-5d8b7a6f0e11.wav",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "expectedTimeline": {
+    "segments": [
+      {
+        "itemId": "item-a",
+        "songTitle": "清晨的讚美",
+        "startSeconds": 0.0,
+        "durationSeconds": 12.0,
+        "endSeconds": 12.0
+      },
+      {
+        "itemId": "item-b",
+        "songTitle": "祢的信實廣大",
+        "startSeconds": 15.0,
+        "durationSeconds": 18.0,
+        "endSeconds": 33.0
+      }
+    ],
+    "glueWindows": [
+      {
+        "fromItemId": "item-a",
+        "toItemId": "item-b",
+        "startSeconds": 12.0,
+        "endSeconds": 15.0
+      }
+    ],
+    "chapters": [
+      {
+        "position": 1,
+        "title": "清晨的讚美",
+        "startSeconds": 0.0,
+        "endSeconds": 12.0
+      },
+      {
+        "position": 2,
+        "title": "祢的信實廣大",
+        "startSeconds": 15.0,
+        "endSeconds": 33.0
+      }
+    ],
+    "totalSeconds": 33.0,
+    "firstLyricGlobalSeconds": {
+      "item-a": 0.5,
+      "item-b": 15.5
+    },
+    "lastLyricGlobalSeconds": {
+      "item-a": 11.0,
+      "item-b": 30.0
+    },
+    "midpointFrame": {
+      "timeSeconds": 13.5,
+      "expectedTitle": "祢的信實廣大",
+      "expectNoLyrics": true,
+      "expectNoExtraTitleCard": true
+    },
+    "ordinaryGapComparison": {
+      "note": "Without an effective Glue the 2-beat ordinary gap at B's 80 BPM would start B at 13.5 s (A ends at 12.0). The staged 3.0 s Glue starts B at 15.0 s, so A's end plus the staged Glue seconds shifts B and all later lyrics/chapters.",
+      "wouldBeStartSecondsWithoutGlue": 13.5,
+      "ordinaryGapSeconds": 1.5
+    }
+  },
+  "placeholders": {
+    "songs[].recording.hashPrefix": "Opaque R2 asset prefix; no download happens in these tests.",
+    "songs[].recording.contentHash": "64-hex deterministic stand-in for the Recording content hash used by the Glue descriptor.",
+    "glue[].r2Key": "placeholder:// URL; staged WAV bytes are supplied by each test, not by R2.",
+    "glue[].sha256": "All-zero 64-hex checksum stand-in; tests that need integrity fake their own bytes and checksum.",
+    "glue[].descriptorKey": "Real sha256 of descriptorJson, asserted by the descriptor mirror."
+  }
+}

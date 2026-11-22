@@ -1,6 +1,7 @@
 import json
 import dataclasses
 from dataclasses import dataclass, fields as dc_fields
+from pathlib import Path
 
 import pytest
 
@@ -920,3 +921,231 @@ class TestTitleCardOffset:
         }
         parsed = parse_chapters_manifest(json.dumps(legacy))
         assert parsed.title_card_offset_seconds == 0.0
+
+
+FIXTURE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "webapp"
+    / "src"
+    / "test"
+    / "fixtures"
+    / "tc-songset.cross_language.json"
+)
+
+
+def _load_tc_fixture() -> dict:
+    with FIXTURE_PATH.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _tc_segments(fixture: dict) -> list[FakeSegment]:
+    segments: list[FakeSegment] = []
+    for song, expected in zip(fixture["songs"], fixture["expectedTimeline"]["segments"]):
+        target_start = expected["startSeconds"]
+        clips: list[AudioClipInfo] = []
+        for step in song["arrangement"]["steps"]:
+            clips.append(
+                AudioClipInfo(
+                    audio_path="/tmp/fixture.mp3",
+                    source_start_seconds=step["startSeconds"],
+                    source_end_seconds=step["endSeconds"],
+                    start_time_seconds=target_start,
+                )
+            )
+            target_start += step["endSeconds"] - step["startSeconds"]
+        assert target_start == pytest.approx(expected["endSeconds"])
+        segments.append(
+            FakeSegment(
+                item=FakeItem(
+                    song_title=song["title"],
+                    song_id=song["songId"],
+                    recording_hash_prefix=song["recording"]["hashPrefix"],
+                    tempo_bpm=song["analysis"]["tempoBpm"],
+                ),
+                start_time_seconds=expected["startSeconds"],
+                duration_seconds=expected["durationSeconds"],
+                clips=tuple(clips),
+            )
+        )
+    return segments
+
+
+class TestGlueChapterTimeline:
+    def test_b_chapter_starts_at_glue_end_and_no_chapter_covers_glue(self):
+        fixture = _load_tc_fixture()
+        timeline = fixture["expectedTimeline"]
+        segments = _tc_segments(fixture)
+        lrc_by_prefix = {
+            song["recording"]["hashPrefix"]: song["lrc"] for song in fixture["songs"]
+        }
+
+        manifest = generate_chapters_manifest(
+            segments,
+            lambda hash_prefix: lrc_by_prefix.get(hash_prefix),
+            timeline["totalSeconds"],
+        )
+
+        expected = timeline["chapters"]
+        assert [
+            (chapter.position, chapter.song_title, chapter.start_seconds, chapter.end_seconds)
+            for chapter in manifest.chapters
+        ] == [
+            (c["position"], c["title"], c["startSeconds"], c["endSeconds"])
+            for c in expected
+        ]
+        assert manifest.total_duration_seconds == timeline["totalSeconds"]
+
+        window = timeline["glueWindows"][0]
+        glue_midpoint = timeline["midpointFrame"]["timeSeconds"]
+        assert window["startSeconds"] == expected[0]["endSeconds"]
+        assert window["endSeconds"] == expected[1]["startSeconds"]
+        assert expected[0]["endSeconds"] - expected[0]["startSeconds"] == 12.0
+        assert (
+            expected[1]["startSeconds"] - expected[0]["endSeconds"]
+            == fixture["glue"][0]["stagedSeconds"]
+        )
+
+        assert find_chapter_at_time(manifest, glue_midpoint) == -1
+        assert get_song_title_at_time(manifest, glue_midpoint) is None
+        assert get_lyric_at_time(manifest, glue_midpoint) is None
+        assert find_chapter_at_time(manifest, window["endSeconds"]) == 1
+
+    def test_multi_glue_chapters_and_lyrics_shift_by_each_staged_window(self):
+        segments = [
+            FakeSegment(
+                item=FakeItem("第一首", "song-a", "aaa", 120.0),
+                start_time_seconds=0.0,
+                duration_seconds=10.0,
+                clips=(AudioClipInfo("/tmp/a.mp3", 0.0, 10.0, 0.0),),
+            ),
+            FakeSegment(
+                item=FakeItem("第二首", "song-b", "bbb", 120.0),
+                start_time_seconds=12.0,
+                duration_seconds=13.0,
+                clips=(AudioClipInfo("/tmp/b.mp3", 0.0, 13.0, 12.0),),
+            ),
+            FakeSegment(
+                item=FakeItem("第三首", "song-c", "ccc", 120.0),
+                start_time_seconds=28.0,
+                duration_seconds=12.0,
+                clips=(AudioClipInfo("/tmp/c.mp3", 0.0, 12.0, 28.0),),
+            ),
+        ]
+        lrc_by_prefix = {
+            "aaa": "[00:00.50]一",
+            "bbb": "[00:00.50]二",
+            "ccc": "[00:00.50]三",
+        }
+
+        manifest = generate_chapters_manifest(
+            segments, lambda hash_prefix: lrc_by_prefix.get(hash_prefix), 40.0
+        )
+
+        assert [
+            (chapter.song_title, chapter.start_seconds, chapter.end_seconds)
+            for chapter in manifest.chapters
+        ] == [
+            ("第一首", 0.0, 10.0),
+            ("第二首", 12.0, 25.0),
+            ("第三首", 28.0, 40.0),
+        ]
+        assert find_chapter_at_time(manifest, 11.0) == -1
+        assert find_chapter_at_time(manifest, 26.5) == -1
+        assert get_song_title_at_time(manifest, 12.5) == "第二首"
+        assert get_song_title_at_time(manifest, 28.5) == "第三首"
+        assert manifest.chapters[1].lines[0].start_seconds == 12.5
+        assert manifest.chapters[2].lines[0].start_seconds == 28.5
+        assert manifest.total_duration_seconds == 40.0
+
+    def test_lyric_timestamps_include_the_staged_glue(self):
+        fixture = _load_tc_fixture()
+        timeline = fixture["expectedTimeline"]
+        segments = _tc_segments(fixture)
+        lrc_by_prefix = {
+            song["recording"]["hashPrefix"]: song["lrc"] for song in fixture["songs"]
+        }
+
+        manifest = generate_chapters_manifest(
+            segments,
+            lambda hash_prefix: lrc_by_prefix.get(hash_prefix),
+            timeline["totalSeconds"],
+        )
+
+        for song in fixture["songs"]:
+            chapter = next(
+                chapter
+                for chapter in manifest.chapters
+                if chapter.song_title == song["title"]
+            )
+            assert [
+                (line.text, line.start_seconds) for line in chapter.lines
+            ] == [
+                (line["text"], line["globalSeconds"]) for line in song["lyrics"]
+            ]
+
+        first_b_lyric = timeline["firstLyricGlobalSeconds"]["item-b"]
+        b_first_source_start = fixture["songs"][1]["arrangement"]["steps"][0]["startSeconds"]
+        assert first_b_lyric == (
+            timeline["segments"][1]["startSeconds"]
+            + fixture["songs"][1]["lyrics"][0]["localSeconds"]
+            - b_first_source_start
+        )
+        assert get_lyric_at_time(manifest, first_b_lyric) == "祢的信實何等廣大"
+
+    def test_mp4_metadata_matches_mp3_and_chapters_timeline(self):
+        fixture = _load_tc_fixture()
+        timeline = fixture["expectedTimeline"]
+        segments = _tc_segments(fixture)
+
+        manifest = generate_chapters_manifest(
+            segments, lambda hash_prefix: None, timeline["totalSeconds"]
+        )
+        metadata = chapters_to_ffmpeg_metadata(manifest)
+
+        assert "START=0\nEND=12000" in metadata
+        assert "START=15000\nEND=33000" in metadata
+        assert manifest.total_duration_seconds == 33.0
+        assert manifest.chapters[-1].end_seconds == manifest.total_duration_seconds
+
+    def test_without_glue_the_same_fixture_would_start_b_earlier(self):
+        fixture = _load_tc_fixture()
+        timeline = fixture["expectedTimeline"]
+        comparison = timeline["ordinaryGapComparison"]
+        ordinary_start = comparison["wouldBeStartSecondsWithoutGlue"]
+        staged_start = timeline["segments"][1]["startSeconds"]
+
+        assert staged_start - ordinary_start == (
+            fixture["glue"][0]["stagedSeconds"] - comparison["ordinaryGapSeconds"]
+        )
+        assert staged_start == (
+            timeline["segments"][0]["endSeconds"]
+            + fixture["glue"][0]["stagedSeconds"]
+        )
+
+        # Rebuild B at the ordinary (non-Glue) start: only the junction shifts.
+        ordinary_segments = _tc_segments(fixture)
+        b_expected = timeline["segments"][1]
+        shift = ordinary_start - b_expected["startSeconds"]
+        b_source = ordinary_segments[1]
+        ordinary_b = FakeSegment(
+            item=b_source.item,
+            start_time_seconds=ordinary_start,
+            duration_seconds=b_source.duration_seconds,
+            clips=tuple(
+                AudioClipInfo(
+                    clip.audio_path,
+                    clip.source_start_seconds,
+                    clip.source_end_seconds,
+                    clip.start_time_seconds + shift,
+                )
+                for clip in b_source.clips
+            ),
+        )
+        manifest = generate_chapters_manifest(
+            [ordinary_segments[0], ordinary_b],
+            lambda hash_prefix: None,
+            comparison["wouldBeStartSecondsWithoutGlue"]
+            + b_source.duration_seconds,
+        )
+        assert manifest.chapters[1].start_seconds == ordinary_start
+        assert manifest.chapters[0].end_seconds == timeline["chapters"][0]["endSeconds"]

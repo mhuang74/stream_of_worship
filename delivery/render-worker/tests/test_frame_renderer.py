@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 from sow_render_worker.frame_renderer import (
     FONT_FAMILY_PATHS,
@@ -12,6 +14,7 @@ from sow_render_worker.frame_renderer import (
     FontFamily,
     FontSizePreset,
     FrameRenderer,
+    GlueWindowInfo,
     SegmentInfo,
     TitleCardConfig,
     VideoTemplate,
@@ -62,6 +65,66 @@ def _make_segment(
         duration_seconds=duration,
         tempo_bpm=tempo,
     )
+
+
+FIXTURE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "webapp"
+    / "src"
+    / "test"
+    / "fixtures"
+    / "tc-songset.cross_language.json"
+)
+
+
+def _load_tc_fixture() -> dict:
+    with FIXTURE_PATH.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _tc_frame_inputs() -> tuple[dict, list[SegmentInfo], list[GlobalLRCLine], list[GlueWindowInfo]]:
+    """Build the renderer's inputs straight from the cross-language fixture."""
+    fixture = _load_tc_fixture()
+    timeline = fixture["expectedTimeline"]
+
+    segments = [
+        SegmentInfo(
+            id=segment["itemId"],
+            song_id=song["songId"],
+            position=song["position"],
+            song_title=segment["songTitle"],
+            start_time_seconds=segment["startSeconds"],
+            duration_seconds=segment["durationSeconds"],
+            tempo_bpm=song["analysis"]["tempoBpm"],
+        )
+        for song, segment in zip(fixture["songs"], timeline["segments"])
+    ]
+
+    lyrics = [
+        GlobalLRCLine(
+            text=line["text"],
+            local_time_seconds=line["localSeconds"],
+            global_time_seconds=line["globalSeconds"],
+            title=song["title"],
+        )
+        for song in fixture["songs"]
+        for line in song["lyrics"]
+    ]
+
+    windows = [
+        GlueWindowInfo(
+            to_item_id=window["toItemId"],
+            start_seconds=window["startSeconds"],
+            end_seconds=window["endSeconds"],
+        )
+        for window in timeline["glueWindows"]
+    ]
+    return fixture, segments, lyrics, windows
+
+
+def _ink_bbox(img: Image.Image) -> tuple[int, int, int, int] | None:
+    background = Image.new("RGB", img.size, img.getpixel((0, 0)))
+    return ImageChops.difference(img, background).getbbox()
 
 
 class TestVideoTemplate:
@@ -1392,3 +1455,254 @@ class TestRGBMode:
 class TestDefaultMaxCacheEntries:
     def test_default_max_cache_entries_200(self):
         assert _DEFAULT_MAX_CACHE_ENTRIES == 200
+
+
+class TestGlueWindowVisualState:
+    """Glue time (uncovered by any Song segment) shows the incoming Song's
+    ordinary pre-roll title and no lyric line at all."""
+
+    def test_midpoint_shows_only_incoming_title(self):
+        fixture, segments, lyrics, windows = _tc_frame_inputs()
+        timeline = fixture["expectedTimeline"]
+        midpoint = timeline["midpointFrame"]
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+
+        state = renderer._resolve_visual_state(
+            lyrics, segments, midpoint["timeSeconds"], glue_windows=windows
+        )
+
+        assert state.segment_id == timeline["segments"][1]["itemId"]
+        assert state.current_title == midpoint["expectedTitle"]
+        assert state.current_segment is not None
+        assert state.current_segment.song_title == midpoint["expectedTitle"]
+        assert state.current_song_lyrics == []
+        assert state.current_lyric_index == -1
+        assert state.intro_alpha == 0
+        assert state.preview_alpha == 0
+        assert state.fade_alpha == 255
+
+        img = renderer.render_frame(
+            lyrics, segments, midpoint["timeSeconds"], glue_windows=windows
+        )
+        bbox = _ink_bbox(img)
+        assert bbox is not None, "the incoming title must be drawn"
+
+        lyric_top = int(img.height * 0.33)
+        assert bbox[1] >= 0
+        assert bbox[3] < lyric_top, "no lyric ink may appear in the lyric band"
+
+        # Pixel-identical to the existing pre-roll title frame at B's own
+        # start: same title style, same CJK font, no lyrics.
+        reference = renderer.render_frame(lyrics, segments, windows[0].end_seconds)
+        assert img.tobytes() == reference.tobytes()
+
+        # The incoming title stays legible through the whole window and no
+        # lyric ink ever enters the lyric band.
+        for offset in (0.0, 0.25, 0.5, 0.99):
+            window_time = (
+                windows[0].start_seconds
+                + (windows[0].end_seconds - windows[0].start_seconds) * offset
+            )
+            window_frame = renderer.render_frame(
+                lyrics, segments, window_time, glue_windows=windows
+            )
+            window_bbox = _ink_bbox(window_frame)
+            assert window_bbox is not None
+            assert window_bbox[3] < lyric_top
+            assert window_frame.tobytes() == reference.tobytes()
+            window_frame.close()
+
+        img.close()
+        reference.close()
+
+    def test_incoming_first_lyric_appears_at_shifted_global_time(self):
+        fixture, segments, lyrics, _windows = _tc_frame_inputs()
+        first_lyric = fixture["expectedTimeline"]["firstLyricGlobalSeconds"]["item-b"]
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        lyric_top = int(1080 * 0.33)
+
+        before = renderer.render_frame(lyrics, segments, first_lyric - 0.001)
+        at = renderer.render_frame(lyrics, segments, first_lyric)
+
+        before_bbox = _ink_bbox(before)
+        at_bbox = _ink_bbox(at)
+        assert before_bbox is not None and before_bbox[3] < lyric_top
+        assert at_bbox is not None and at_bbox[3] >= lyric_top
+        before.close()
+        at.close()
+
+    def test_title_uses_existing_cjk_font_loading_path(self):
+        fixture, segments, lyrics, windows = _tc_frame_inputs()
+        midpoint = fixture["expectedTimeline"]["midpointFrame"]
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+
+        with patch(
+            "sow_render_worker.frame_renderer._load_font", wraps=_load_font
+        ) as loader:
+            renderer.render_frame(
+                lyrics, segments, midpoint["timeSeconds"], glue_windows=windows
+            )
+
+        families = [call.args[1] for call in loader.call_args_list if len(call.args) > 1]
+        assert renderer.font_family in families
+        assert FONT_FAMILY_PATHS[renderer.font_family][0].endswith(
+            "NotoSerifTC-Regular.ttf"
+        )
+
+    def test_no_extra_title_card_in_glue(self):
+        fixture, segments, lyrics, windows = _tc_frame_inputs()
+        midpoint = fixture["expectedTimeline"]["midpointFrame"]
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+
+        with patch.object(renderer, "render_title_card") as title_card:
+            renderer.render_frame(
+                lyrics, segments, midpoint["timeSeconds"], glue_windows=windows
+            )
+
+        title_card.assert_not_called()
+
+    def test_window_boundaries_and_segment_precedence(self):
+        _, segments, lyrics, windows = _tc_frame_inputs()
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        window = windows[0]
+
+        at_start = renderer._resolve_visual_state(
+            lyrics, segments, window.start_seconds, glue_windows=windows
+        )
+        assert at_start.current_title == "祢的信實廣大"
+        assert at_start.current_song_lyrics == []
+
+        just_before = renderer._resolve_visual_state(
+            lyrics, segments, window.start_seconds - 0.001, glue_windows=windows
+        )
+        assert just_before.current_title == "清晨的讚美"
+        assert just_before.current_song_lyrics, "outgoing Song keeps its lyrics"
+
+        at_end = renderer._resolve_visual_state(
+            lyrics, segments, window.end_seconds, glue_windows=windows
+        )
+        assert at_end.current_title == "祢的信實廣大"
+        assert at_end.current_song_lyrics, "B's own segment state must be ordinary"
+
+        overlapping = GlueWindowInfo(
+            to_item_id="item-b", start_seconds=0.0, end_seconds=12.0
+        )
+        inside_segment = renderer._resolve_visual_state(
+            lyrics, segments, 5.0, glue_windows=[overlapping]
+        )
+        assert inside_segment.current_title == "清晨的讚美"
+        assert inside_segment.current_song_lyrics, "a covering segment always wins"
+
+    def test_unknown_incoming_falls_back_to_start_time_then_ordinary(self):
+        _, segments, lyrics, windows = _tc_frame_inputs()
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+
+        # No id match, but the window end matches B's start: still B's title.
+        by_start = GlueWindowInfo(
+            to_item_id="missing", start_seconds=12.0, end_seconds=15.0
+        )
+        state = renderer._resolve_visual_state(
+            lyrics, segments, 13.5, glue_windows=[by_start]
+        )
+        assert state.current_title == "祢的信實廣大"
+
+        # Neither an id nor a start match: ordinary (blank) gap behaviour.
+        unmatched = GlueWindowInfo(
+            to_item_id="missing", start_seconds=13.0, end_seconds=14.0
+        )
+        state = renderer._resolve_visual_state(
+            lyrics, segments, 13.5, glue_windows=[unmatched]
+        )
+        assert state.current_title == ""
+        assert state.current_song_lyrics == []
+
+    def test_ordinary_gap_byte_identical_without_windows(self):
+        fixture, segments, lyrics, windows = _tc_frame_inputs()
+        ordinary_start = fixture["expectedTimeline"]["ordinaryGapComparison"][
+            "wouldBeStartSecondsWithoutGlue"
+        ]
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+
+        legacy = renderer.render_frame_bytes(lyrics, segments, ordinary_start)
+        explicit_empty = renderer.render_frame_bytes(
+            lyrics, segments, ordinary_start, glue_windows=()
+        )
+        far_away_window = renderer.render_frame_bytes(
+            lyrics,
+            segments,
+            ordinary_start,
+            glue_windows=[GlueWindowInfo("item-b", 100.0, 103.0)],
+        )
+        blank = FrameRenderer(template=VIDEO_TEMPLATES["dark"]).render_frame_bytes(
+            [], [], ordinary_start
+        )
+
+        assert legacy == explicit_empty == far_away_window == blank
+
+        # Every ordinary time remains byte-identical when the real windows are
+        # configured: only times strictly inside the Glue may change.
+        window_start = windows[0].start_seconds
+        window_end = windows[0].end_seconds
+        ordinary_times = [
+            0.0,
+            3.0,
+            window_start - 0.001,
+            window_end,
+            20.0,
+            30.0,
+        ]
+        for ordinary_time in ordinary_times:
+            assert renderer.render_frame_bytes(
+                lyrics, segments, ordinary_time, glue_windows=windows
+            ) == renderer.render_frame_bytes(lyrics, segments, ordinary_time)
+
+    def test_multi_glue_each_window_shows_its_own_incoming_title(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        segments = [
+            SegmentInfo("a", "sa", 0, "第一首", start_time_seconds=0.0, duration_seconds=10.0),
+            SegmentInfo("b", "sb", 1, "第二首", start_time_seconds=12.0, duration_seconds=10.0),
+            SegmentInfo("c", "sc", 2, "第三首", start_time_seconds=25.0, duration_seconds=10.0),
+        ]
+        lyrics = [
+            GlobalLRCLine("啊", 0.5, 0.5, "第一首"),
+            GlobalLRCLine("哦", 0.5, 12.5, "第二首"),
+            GlobalLRCLine("嗯", 0.5, 25.5, "第三首"),
+        ]
+        windows = [
+            GlueWindowInfo("b", 10.0, 12.0),
+            GlueWindowInfo("c", 22.0, 25.0),
+        ]
+
+        first = renderer.render_frame(lyrics, segments, 11.0, glue_windows=windows)
+        second = renderer.render_frame(lyrics, segments, 23.5, glue_windows=windows)
+
+        assert _ink_bbox(first) is not None
+        assert _ink_bbox(second) is not None
+        assert first.tobytes() != second.tobytes()
+        assert first.tobytes() == renderer.render_frame(lyrics, segments, 12.0).tobytes()
+        assert second.tobytes() == renderer.render_frame(lyrics, segments, 25.0).tobytes()
+        assert _ink_bbox(first)[3] < int(first.height * 0.33)
+        assert _ink_bbox(second)[3] < int(second.height * 0.33)
+        first.close()
+        second.close()
+
+    def test_glue_state_participates_in_cache_key(self):
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        segments = [
+            SegmentInfo("a", "sa", 0, "第一首", start_time_seconds=0.0, duration_seconds=10.0),
+            SegmentInfo("b", "sb", 1, "第二首", start_time_seconds=12.0, duration_seconds=10.0),
+            SegmentInfo("c", "sc", 2, "第三首", start_time_seconds=25.0, duration_seconds=10.0),
+        ]
+        windows = [
+            GlueWindowInfo("b", 10.0, 12.0),
+            GlueWindowInfo("c", 22.0, 25.0),
+        ]
+
+        state_b = renderer._resolve_visual_state([], segments, 11.0, glue_windows=windows)
+        state_c = renderer._resolve_visual_state([], segments, 23.5, glue_windows=windows)
+
+        assert renderer._compute_cache_key(state_b) != renderer._compute_cache_key(state_c)
+
+        bytes_b = renderer.render_frame_bytes([], segments, 11.0, glue_windows=windows)
+        bytes_c = renderer.render_frame_bytes([], segments, 23.5, glue_windows=windows)
+        assert bytes_b != bytes_c

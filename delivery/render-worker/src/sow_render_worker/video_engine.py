@@ -8,11 +8,12 @@ import shutil
 import subprocess
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from sow_render_worker.audio_engine import AudioSegmentInfo, get_audio_info
+from sow_render_worker.audio_engine import AudioSegmentInfo, GlueWindow, get_audio_info
 from sow_render_worker.chapters import (
     Chapter,
     ChaptersManifest,
@@ -23,6 +24,7 @@ from sow_render_worker.frame_renderer import (
     VIDEO_TEMPLATES,
     FontSizePreset,
     FrameRenderer,
+    GlueWindowInfo,
     SegmentInfo,
     TitleCardConfig,
     VideoTemplateName,
@@ -94,6 +96,19 @@ def title_card_lead_in_seconds(
     """
     card_end_seconds = math.ceil(title_card_duration_seconds * fps) / fps
     return max(0.0, card_end_seconds + TITLE_CARD_END_BUFFER_SECONDS - first_lyric_time_seconds)
+
+
+def _to_frame_glue_windows(
+    glue_windows: Sequence[GlueWindow],
+) -> tuple[GlueWindowInfo, ...]:
+    return tuple(
+        GlueWindowInfo(
+            to_item_id=window.to_item_id,
+            start_seconds=window.start_seconds,
+            end_seconds=window.end_seconds,
+        )
+        for window in glue_windows
+    )
 
 
 @dataclass(frozen=True)
@@ -192,6 +207,7 @@ class VideoEngine:
         progress_callback: ProgressCallback | None = None,
         timeout_check_callback: TimeoutCheckCallback | None = None,
         job_id: str | None = None,
+        glue_windows: Sequence[GlueWindow] = (),
     ) -> VideoExportResult:
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -296,6 +312,7 @@ class VideoEngine:
             title_card_config,
             timeout_check_callback,
             job_id=job_id,
+            glue_windows=_to_frame_glue_windows(glue_windows),
         )
 
         logger.info(
@@ -325,6 +342,7 @@ class VideoEngine:
         title_card_config: TitleCardConfig | None = None,
         timeout_check_callback: TimeoutCheckCallback | None = None,
         job_id: str | None = None,
+        glue_windows: Sequence[GlueWindowInfo] = (),
     ) -> None:
         width, height = self.resolution
 
@@ -423,7 +441,7 @@ class VideoEngine:
                     current_time = frame_count / self.fps
                     t0 = time.monotonic_ns()
                     frame_bytes = self.frame_renderer.render_frame_bytes(
-                        lyrics, segments, current_time
+                        lyrics, segments, current_time, glue_windows=glue_windows
                     )
                     render_total_ns += time.monotonic_ns() - t0
 

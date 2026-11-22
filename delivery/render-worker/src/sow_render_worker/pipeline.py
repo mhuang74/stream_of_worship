@@ -571,6 +571,7 @@ def execute_render_pipeline(
                 progress_callback=video_progress_callback,
                 timeout_check_callback=check_lambda_timeout,
                 job_id=job_id,
+                glue_windows=audio_result.glue_windows,
             )
 
             video_engine.frame_renderer.clear_cache()
