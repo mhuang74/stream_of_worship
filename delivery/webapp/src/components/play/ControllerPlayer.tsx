@@ -96,6 +96,11 @@ interface ControllerPlayerBaseProps {
    * does not describe the current Song Arrangement yields `null`.
    */
   chapterLineHeadings?: (string | null)[][] | null;
+  /**
+   * Effective AI-transition windows of the fresh rendered timeline. Inert
+   * markers only; the media is already mixed and seeking is unchanged.
+   */
+  glueWindows?: { startSeconds: number; endSeconds: number }[];
   className?: string;
 }
 
@@ -193,6 +198,7 @@ export function ControllerPlayer({
   exitRoute,
   chapterRecordingHashes,
   chapterLineHeadings,
+  glueWindows,
   castAvailability,
   isCastConnecting,
   onSendToTV,
@@ -1616,6 +1622,7 @@ export function ControllerPlayer({
           onToggleMute={handleToggleMute}
           isLyricsOpen={isLyricsOpen}
           onToggleLyrics={handleToggleLyrics}
+          glueWindows={glueWindows}
         />
       </div>
 

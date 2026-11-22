@@ -498,3 +498,118 @@ describe("useSongsetAudio", () => {
     expect(onPreviewError).not.toHaveBeenCalled();
   });
 });
+
+describe("useSongsetAudio local AI-transition fallback", () => {
+  const gluedItems: TimelineItemSource[] = [
+    item({ itemId: "a", glueTakeId: "take-1", glueSeconds: 3 }),
+    item({ itemId: "b", glueTakeId: "take-2", glueSeconds: 2 }),
+    item({ itemId: "c" }),
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.createSession.mockImplementation(() => makeFakeSession(300).session);
+  });
+
+  it("strips only the failed take and rebuilds ordinary timing", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = renderAudio({ items: gluedItems });
+    expect(result.current.timeline.totalSeconds).toBe(305);
+
+    await runPlay(result);
+    const firstOptions = mocks.createSession.mock.calls[0]![1] as
+      | {
+          onGlueFailure?: (failure: {
+            takeId: string;
+            fromItemId: string | null;
+            toItemId: string;
+            message: string;
+          }) => void;
+        }
+      | undefined;
+    await act(async () => {
+      firstOptions?.onGlueFailure?.({
+        takeId: "take-1",
+        fromItemId: "a",
+        toItemId: "b",
+        message: "HTTP 404",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("take-1"),
+    );
+    expect(result.current.glueFailures).toEqual([
+      { takeId: "take-1", fromItemId: "a", toItemId: "b" },
+    ]);
+    // A's 3 s Glue is gone; B's 2 s Glue remains and still shifts C.
+    expect(result.current.timeline.totalSeconds).toBe(302);
+    expect(result.current.timeline.items[1]!.glueWindowBefore).toBeNull();
+    expect(result.current.timeline.items[2]!.glueWindowBefore).toEqual({
+      takeId: "take-2",
+      startSeconds: 200,
+      endSeconds: 202,
+    });
+
+    // The rebuilt session carries stripped items; playback resumed.
+    expect(mocks.createSession).toHaveBeenCalledTimes(2);
+    const rebuiltItems = mocks.createSession.mock.calls[1]![0] as TimelineItemSource[];
+    expect(rebuiltItems[0]!.glueTakeId).toBeNull();
+    expect(rebuiltItems[1]!.glueTakeId).toBe("take-2");
+    expect(result.current.status).toBe("playing");
+    errorSpy.mockRestore();
+  });
+
+  it("retries the same immutable take and restores it only when reachable", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = renderAudio({ items: gluedItems });
+    await runPlay(result);
+    const firstOptions = mocks.createSession.mock.calls[0]![1] as {
+      onGlueFailure: (failure: {
+        takeId: string;
+        fromItemId: string | null;
+        toItemId: string;
+        message: string;
+      }) => void;
+    };
+    await act(async () => {
+      firstOptions.onGlueFailure({
+        takeId: "take-1",
+        fromItemId: "a",
+        toItemId: "b",
+        message: "HTTP 500",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.glueFailures).toHaveLength(1);
+    const createCallsAfterFailure = mocks.createSession.mock.calls.length;
+
+    const fetchMock = vi.fn(async () => new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => {
+      await result.current.retryGlueAudio("take-1");
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/glues/take-1/audio", {
+      cache: "no-store",
+    });
+    // Failed retry leaves the fallback and timing alone.
+    expect(result.current.glueFailures).toHaveLength(1);
+    expect(result.current.timeline.totalSeconds).toBe(302);
+    expect(mocks.createSession.mock.calls.length).toBe(createCallsAfterFailure);
+
+    fetchMock.mockResolvedValue(new Response("wav", { status: 200 }));
+    await act(async () => {
+      await result.current.retryGlueAudio("take-1");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.glueFailures).toEqual([]);
+    expect(result.current.timeline.totalSeconds).toBe(305);
+    expect(mocks.createSession.mock.calls.length).toBe(createCallsAfterFailure + 1);
+    errorSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+});

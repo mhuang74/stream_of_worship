@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   seek: vi.fn(),
   startAtSeconds: vi.fn(),
   retry: vi.fn(),
+  retryGlueAudio: vi.fn(),
   validate: vi.fn(),
   useAudioPlayerContext: vi.fn(),
 }));
@@ -61,6 +62,8 @@ function makeAudio(overrides: Partial<UseSongsetAudioResult> = {}): UseSongsetAu
     errorMessage: null,
     timelinePositionSeconds: 0,
     totalSeconds: 100,
+    timeline: { items: [], totalSeconds: 100 },
+    glueFailures: [],
     progress: null,
     play: mocks.play,
     pause: mocks.pause,
@@ -68,6 +71,7 @@ function makeAudio(overrides: Partial<UseSongsetAudioResult> = {}): UseSongsetAu
     seek: mocks.seek,
     startAtSeconds: mocks.startAtSeconds,
     retry: mocks.retry,
+    retryGlueAudio: mocks.retryGlueAudio,
     ...overrides,
   };
 }
@@ -88,6 +92,12 @@ function Probe() {
       <span data-testid="load-error">{context.loadErrorKey ?? ""}</span>
       <span data-testid="item-count">{context.items.length}</span>
       <span data-testid="request">{context.request?.songsetId ?? ""}</span>
+      <span data-testid="glue-failures">{context.glueFailures.length}</span>
+      <button
+        type="button"
+        data-testid="retry-glue"
+        onClick={() => void context.retryGlueAudio("take-1")}
+      />
       <button
         type="button"
         data-testid="open"
@@ -262,5 +272,18 @@ describe("SongsetListenProvider", () => {
     await waitFor(() => {
       expect(mocks.play).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("exposes the Glue audio fallback and its retry to the Listen bar", () => {
+    audio = makeAudio({
+      glueFailures: [
+        { takeId: "take-1", fromItemId: "item-1", toItemId: "item-2" },
+      ],
+    });
+    renderProvider();
+
+    expect(screen.getByTestId("glue-failures")).toHaveTextContent("1");
+    fireEvent.click(screen.getByTestId("retry-glue"));
+    expect(mocks.retryGlueAudio).toHaveBeenCalledWith("take-1");
   });
 });

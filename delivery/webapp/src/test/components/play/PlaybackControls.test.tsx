@@ -307,3 +307,42 @@ describe("PlaybackControls", () => {
     });
   });
 });
+
+describe("PlaybackControls AI-transition markers", () => {
+  const props = {
+    isPlaying: false,
+    currentTime: 30,
+    duration: 300,
+    volume: 0.8,
+    isMuted: false,
+    currentSongIndex: 0,
+    totalSongs: 3,
+    isPresentationActive: false,
+    onPlayPause: vi.fn(),
+    onSeek: vi.fn(),
+    onPrevSong: vi.fn(),
+    onNextSong: vi.fn(),
+    onVolumeChange: vi.fn(),
+    onToggleMute: vi.fn(),
+  };
+
+  it("marks each glue window without changing seek behavior", () => {
+    const onSeek = vi.fn();
+    render(
+      <PlaybackControls
+        {...props}
+        onSeek={onSeek}
+        glueWindows={[{ startSeconds: 30, endSeconds: 33 }]}
+      />,
+    );
+
+    const marker = screen.getByTestId("controller-glue-window");
+    expect(marker).toHaveStyle({ left: "10%", width: "1%" });
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it("renders no markers for an ordinary render", () => {
+    render(<PlaybackControls {...props} />);
+    expect(screen.queryByTestId("controller-glue-window")).toBeNull();
+  });
+});

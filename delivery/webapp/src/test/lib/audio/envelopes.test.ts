@@ -18,6 +18,9 @@ function item(overrides: Partial<ArrangementTimelineItem> = {}): ArrangementTime
     gapBeforeSeconds: 0,
     crossfadeSeconds: 0,
     clips: [],
+    glueTakeIdBefore: null,
+    glueSecondsBefore: null,
+    glueWindowBefore: null,
     ...overrides,
   };
 }

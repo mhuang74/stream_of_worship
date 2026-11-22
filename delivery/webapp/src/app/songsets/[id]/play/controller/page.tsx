@@ -10,7 +10,7 @@ import type { Chapter } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { chapterLineHeadings } from "@/lib/render/chapter-sections";
 import { toListenTimelineSources, type ListenSongsetItemPayload } from "@/lib/arrangements-listen";
-import type { TimelineItemSource } from "@/lib/arrangements";
+import { buildArrangementTimeline, type TimelineItemSource } from "@/lib/arrangements";
 import {
   resolveOfflinePlayback,
   type OfflineMediaKind,
@@ -83,6 +83,12 @@ export default function ControllerPage() {
   // the render is stale/rendering/failed, the chapters do not line up with the
   // timeline, or the payload has no Items. Computed once the manifest lands.
   const [chapterHeadings, setChapterHeadings] = useState<(string | null)[][] | null>(null);
+  // Effective AI-transition windows for the fresh rendered timeline. The
+  // chapters manifest has no junction data, so these come from the same
+  // resolved item payload as the headings. Stale/absent renders show none.
+  const [glueWindows, setGlueWindows] = useState<
+    { startSeconds: number; endSeconds: number }[]
+  >([]);
   // Where the error screen's Go Back goes: the Songset it was opened from.
   // A Songset that 404s has no page to return to, so that error falls back
   // to the list (see runOnlineChain).
@@ -156,6 +162,20 @@ export default function ControllerPage() {
       const headingSources: TimelineItemSource[] | null =
         songsetData.renderState === "fresh" ? toListenTimelineSources(sortedItems) : null;
       if (headingSources === null) setChapterHeadings(null);
+      setGlueWindows(
+        headingSources === null
+          ? []
+          : buildArrangementTimeline(headingSources).items.flatMap((timelineItem) =>
+              timelineItem.glueWindowBefore
+                ? [
+                    {
+                      startSeconds: timelineItem.glueWindowBefore.startSeconds,
+                      endSeconds: timelineItem.glueWindowBefore.endSeconds,
+                    },
+                  ]
+                : []
+            )
+      );
 
       // Check if render artifacts exist
       if (!songsetData.latestRenderJobId) {
@@ -259,6 +279,7 @@ export default function ControllerPage() {
       chapters={core.chapters}
       chapterRecordingHashes={core.chapterRecordingHashes}
       chapterLineHeadings={chapterHeadings}
+      glueWindows={glueWindows}
       isOfflineMedia={media.isOffline}
       onMediaError={core.handleMediaError}
       isPresentationActive={core.isPresentationActive}

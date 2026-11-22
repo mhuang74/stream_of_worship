@@ -58,6 +58,8 @@ export interface ArrangementTimelineItem {
   clips: TimelineClip[];
   /** Outgoing effective Glue of the predecessor, played into this item. */
   glueTakeIdBefore: string | null;
+  /** Actual staged seconds of that Glue; null when there is no Glue. */
+  glueSecondsBefore: number | null;
   glueWindowBefore: {
     takeId: string;
     startSeconds: number;
@@ -456,18 +458,44 @@ function crossfadeSecondsFor(
   return Math.max(0, Math.min(item.crossfadeDurationSeconds, durationSeconds));
 }
 
+/**
+ * The preceding Item's effective outgoing Glue: a server-resolved selected
+ * take plus its actual staged seconds. The resolver emits `glueTakeId` only
+ * for an effective ready take, so disabled/stale/unavailable Junctions arrive
+ * as null and fall back to ordinary layout.
+ */
+function effectiveGlueOutgoing(
+  item: ArrangementItemInput | undefined,
+): { takeId: string; seconds: number } | null {
+  if (!item) return null;
+  const takeId = item.glueTakeId ?? null;
+  const seconds = item.glueSeconds ?? null;
+  if (takeId === null || typeof seconds !== "number") return null;
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return { takeId, seconds };
+}
+
 interface ItemLayout {
   itemDurationSeconds: number | null;
   startSeconds: number;
   gapBeforeSeconds: number;
   crossfadeSeconds: number;
+  /** Take and window of the Glue played into this item; null = no Glue. */
+  glueWindowBefore: { takeId: string; startSeconds: number; endSeconds: number } | null;
 }
 
 // Single layout definition shared by durations and the preview timeline.
 // Mirrors audio_engine.generate_songset_audio: item zero starts at 0 with no
 // gap/crossfade; later items start at max(0, previousEnd + gap - crossfade)
 // with the incoming item owning the fade and the crossfade clamped by its own
-// arranged duration. Whole-Songset duration = the last item's end time.
+// arranged duration.
+//
+// A Glue at the preceding Junction replaces that Junction's ordinary
+// transition entirely: gap and crossfade become zero, the Glue occupies
+// [previousEnd, previousEnd + glueSeconds], and this item starts after the
+// staged seconds. Every later start, Lyric, Section Label, chapter, and
+// duration therefore shifts by exactly the staged audio. Whole-Songset
+// duration = the last item's end time.
 function layoutSongsetItems(
   items: ArrangementItemInput[],
 ): { layouts: ItemLayout[]; totalSeconds: number | null } {
@@ -478,17 +506,34 @@ function layoutSongsetItems(
     const item = items[i];
     const itemDurationSeconds = getItemDurationSeconds(item);
     if (itemDurationSeconds === null) allDurationsKnown = false;
-    const gapBeforeSeconds = i === 0 ? 0 : calculateGapSeconds(item);
+    const glueBefore = i === 0 ? null : effectiveGlueOutgoing(items[i - 1]);
+    const glueWindowBefore =
+      glueBefore === null
+        ? null
+        : {
+            takeId: glueBefore.takeId,
+            startSeconds: previousEnd,
+            endSeconds: previousEnd + glueBefore.seconds,
+          };
+    const gapBeforeSeconds =
+      i === 0 || glueWindowBefore !== null ? 0 : calculateGapSeconds(item);
     const crossfadeSeconds =
-      i === 0 ? 0 : crossfadeSecondsFor(item, itemDurationSeconds ?? 0);
+      i === 0 || glueWindowBefore !== null
+        ? 0
+        : crossfadeSecondsFor(item, itemDurationSeconds ?? 0);
     const startSeconds =
-      i === 0 ? 0 : Math.max(0, previousEnd + gapBeforeSeconds - crossfadeSeconds);
+      i === 0
+        ? 0
+        : glueWindowBefore !== null
+          ? glueWindowBefore.endSeconds
+          : Math.max(0, previousEnd + gapBeforeSeconds - crossfadeSeconds);
     previousEnd = startSeconds + (itemDurationSeconds ?? 0);
     layouts.push({
       itemDurationSeconds,
       startSeconds,
       gapBeforeSeconds,
       crossfadeSeconds,
+      glueWindowBefore,
     });
   }
   return { layouts, totalSeconds: allDurationsKnown ? previousEnd : null };
@@ -506,38 +551,6 @@ export function getSongsetDurationSeconds(
 // ---------------------------------------------------------------------------
 // Preview timeline
 // ---------------------------------------------------------------------------
-
-/**
- * The predecessor's effective Glue, when one exists: its take id and the
- * junction window `[previousEnd, previousEnd + glueSeconds]`. `layoutSongsetItems`
- * keeps its ordinary arithmetic until the audition issue (#319) makes Glue
- * shift item starts; these fields let #319 and the player band consume the
- * resolved values without a second readiness calculation.
- */
-function glueBeforeFor(
-  items: TimelineItemSource[],
-  layouts: ItemLayout[],
-  index: number
-): Pick<ArrangementTimelineItem, "glueTakeIdBefore" | "glueWindowBefore"> {
-  if (index === 0) return { glueTakeIdBefore: null, glueWindowBefore: null };
-  const previous = items[index - 1];
-  const previousLayout = layouts[index - 1];
-  const takeId = previous.glueTakeId ?? null;
-  const seconds = previous.glueSeconds ?? null;
-  if (takeId === null || seconds === null || !(seconds > 0)) {
-    return { glueTakeIdBefore: null, glueWindowBefore: null };
-  }
-  const startSeconds =
-    previousLayout.startSeconds + (previousLayout.itemDurationSeconds ?? 0);
-  return {
-    glueTakeIdBefore: takeId,
-    glueWindowBefore: {
-      takeId,
-      startSeconds,
-      endSeconds: startSeconds + seconds,
-    },
-  };
-}
 
 export function buildArrangementTimeline(
   items: TimelineItemSource[],
@@ -589,7 +602,11 @@ export function buildArrangementTimeline(
       gapBeforeSeconds: layout.gapBeforeSeconds,
       crossfadeSeconds: layout.crossfadeSeconds,
       clips,
-      ...glueBeforeFor(items, layouts, index),
+      glueTakeIdBefore: layout.glueWindowBefore?.takeId ?? null,
+      glueSecondsBefore: layout.glueWindowBefore
+        ? layout.glueWindowBefore.endSeconds - layout.glueWindowBefore.startSeconds
+        : null,
+      glueWindowBefore: layout.glueWindowBefore,
     };
   });
 

@@ -94,6 +94,9 @@ export const songsetsBundle = bundle({
     "songsets.listen.untitled": "Untitled",
     "songsets.listen.action.retry": "Retry",
     "songsets.listen.seekAria": "Seek preview",
+    "songsets.listen.glueFallback":
+      "The AI transition from {from} to {to} could not play. Using the normal transition.",
+    "songsets.listen.glueRetry": "Retry audio",
     "songsets.listen.currentItem": "Now playing",
     "songsets.listen.error.noRecording": "A song in this Songset has no Recording",
     "songsets.listen.error.invalidArrangement": "A saved arrangement no longer matches its Recording",
@@ -263,6 +266,9 @@ export const songsetsBundle = bundle({
     "songsets.listen.untitled": "未命名",
     "songsets.listen.action.retry": "重試",
     "songsets.listen.seekAria": "調整試聽位置",
+    "songsets.listen.glueFallback":
+      "「{from}」到「{to}」的 AI 轉場無法播放，已改用一般轉場。",
+    "songsets.listen.glueRetry": "重試音訊",
     "songsets.listen.currentItem": "現正播放",
     "songsets.listen.error.noRecording": "此歌集有歌曲沒有錄音",
     "songsets.listen.error.invalidArrangement": "已儲存的編排與錄音不符",

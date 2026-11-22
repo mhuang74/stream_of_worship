@@ -16,12 +16,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildArrangementTimeline,
+  type ArrangementTimeline,
   type TimelineItemSource,
 } from "@/lib/arrangements";
 import {
   createSongsetAudioSession,
+  glueAudioUrl,
   validateSongsetAudioSources,
   type SongsetAudioError,
+  type SongsetAudioGlueFailure,
   type SongsetAudioProgress,
   type SongsetAudioSession,
 } from "@/lib/audio/songset-audio";
@@ -32,6 +35,7 @@ import { useAudioPlayerContext } from "@/contexts/AudioPlayerContext";
 export type {
   SongsetAudioError,
   SongsetAudioErrorKind,
+  SongsetAudioGlueFailure,
 } from "@/lib/audio/songset-audio";
 
 export type SongsetAudioStatus =
@@ -49,11 +53,22 @@ export interface UseSongsetAudioOptions {
   onPreviewError: (error: SongsetAudioError) => void;
 }
 
+/** One locally unavailable Glue junction (playback already falls back). */
+export interface SongsetGlueFailure {
+  takeId: string;
+  fromItemId: string | null;
+  toItemId: string;
+}
+
 export interface UseSongsetAudioResult {
   status: SongsetAudioStatus;
   errorMessage: string | null;
   timelinePositionSeconds: number;
   totalSeconds: number;
+  /** Effective timeline after any local Glue fallback. */
+  timeline: ArrangementTimeline;
+  /** Glue junctions whose audio failed locally; ordinary timing is restored. */
+  glueFailures: SongsetGlueFailure[];
   /** Snapshot of the session's in-flight prepare state, or null. */
   progress: SongsetAudioProgress | null;
   play: () => Promise<void>;
@@ -63,6 +78,8 @@ export interface UseSongsetAudioResult {
   startAtSeconds: (seconds: number) => Promise<void>;
   /** Recreates the session at the current position and replays. */
   retry: () => Promise<void>;
+  /** Re-fetches the same immutable take; rebuilds only when it is reachable. */
+  retryGlueAudio: (takeId: string) => Promise<void>;
 }
 
 interface SongsetAudioHookState {
@@ -105,14 +122,50 @@ export function useSongsetAudio(
     onPreviewErrorRef.current = options.onPreviewError;
   });
 
+  // A local Glue failure is remembered by immutable take id. Only that take's
+  // glue fields are stripped; every other effective Glue keeps playing, and the
+  // ordinary gap/crossfade is restored at the failed junction because the
+  // single layout definition sees no take there.
+  const [glueFailures, setGlueFailures] = useState<SongsetGlueFailure[]>([]);
+  const failedGlueTakeIds = useMemo(
+    () => new Set(glueFailures.map((failure) => failure.takeId)),
+    [glueFailures],
+  );
+
+  // A failure belongs to the take that failed. When the caller swaps the
+  // Songset/selection and that take is no longer referenced, drop the warning.
+  useEffect(() => {
+    const present = new Set(
+      items
+        .map((item) => item.glueTakeId)
+        .filter((takeId): takeId is string => typeof takeId === "string"),
+    );
+    setGlueFailures((previous) => {
+      const kept = previous.filter((failure) => present.has(failure.takeId));
+      return kept.length === previous.length ? previous : kept;
+    });
+  }, [items]);
+  const effectiveItems = useMemo(
+    () =>
+      items.map((item) =>
+        item.glueTakeId && failedGlueTakeIds.has(item.glueTakeId)
+          ? { ...item, glueTakeId: null, glueSeconds: null }
+          : item,
+      ),
+    [items, failedGlueTakeIds],
+  );
+
   // Content identity: reorder/repeat/omit changes this string, which must
   // stop the session even though callers may hand over a fresh array on
   // unrelated renders.
-  const itemsKey = useMemo(() => JSON.stringify(items), [items]);
-  const timeline = useMemo(() => buildArrangementTimeline(items), [items]);
+  const itemsKey = useMemo(() => JSON.stringify(effectiveItems), [effectiveItems]);
+  const timeline = useMemo(
+    () => buildArrangementTimeline(effectiveItems),
+    [effectiveItems],
+  );
   const validationError = useMemo(
-    () => validateSongsetAudioSources(items),
-    [items],
+    () => validateSongsetAudioSources(effectiveItems),
+    [effectiveItems],
   );
 
   const [state, setState] = useState<SongsetAudioHookState>(() =>
@@ -168,6 +221,38 @@ export function useSongsetAudio(
     [],
   );
 
+  // A local Glue failure rebuilds the visible timeline without that take. The
+  // position and playing state are carried across so the audition continues
+  // with ordinary timing instead of stopping.
+  const glueRebuildRef = useRef<{ position: number; resume: boolean } | null>(null);
+  const handleGlueFailure = useCallback((failure: SongsetAudioGlueFailure) => {
+    console.error(
+      `Glue audio failed (take ${failure.takeId}, ` +
+        `${failure.fromItemId ?? "none"} -> ${failure.toItemId}): ${failure.message}`,
+    );
+    const session = sessionRef.current;
+    glueRebuildRef.current = {
+      position: session?.getTimelinePositionSeconds() ?? 0,
+      resume: session?.isPlaying() ?? false,
+    };
+    setGlueFailures((previous) =>
+      previous.some((entry) => entry.takeId === failure.takeId)
+        ? previous
+        : [
+            ...previous,
+            {
+              takeId: failure.takeId,
+              fromItemId: failure.fromItemId,
+              toItemId: failure.toItemId,
+            },
+          ],
+    );
+  }, []);
+  const handleGlueFailureRef = useRef(handleGlueFailure);
+  useEffect(() => {
+    handleGlueFailureRef.current = handleGlueFailure;
+  }, [handleGlueFailure]);
+
   const play = useCallback(async () => {
     if (!active) return;
     if (playInFlightRef.current) return playInFlightRef.current;
@@ -175,7 +260,7 @@ export function useSongsetAudio(
 
     // Reject before playback: missing recording / invalid sibling
     // arrangement. Never create a session or start a fetch.
-    const validation = validateSongsetAudioSources(items);
+    const validation = validateSongsetAudioSources(effectiveItems);
     if (validation) {
       onPreviewErrorRef.current(validation);
       setState({
@@ -214,7 +299,9 @@ export function useSongsetAudio(
     // this play's own notifications must count again.
     stoppedRef.current = false;
     if (!session) {
-      session = createSongsetAudioSession(items);
+      session = createSongsetAudioSession(effectiveItems, {
+        onGlueFailure: (failure) => handleGlueFailureRef.current(failure),
+      });
       attachSession(session, itemsKey);
       const pending = pendingSeekRef.current;
       pendingSeekRef.current = null;
@@ -280,7 +367,7 @@ export function useSongsetAudio(
         playInFlightRef.current = null;
       }
     }
-  }, [active, items, itemsKey, player, attachSession, teardown, timeline.totalSeconds]);
+  }, [active, effectiveItems, itemsKey, player, attachSession, teardown, timeline.totalSeconds]);
 
   const pause = useCallback(() => {
     const session = sessionRef.current;
@@ -360,11 +447,64 @@ export function useSongsetAudio(
     await play();
   }, [active, play, state.timelinePositionSeconds, teardown]);
 
+  const playRef = useRef(play);
+  useEffect(() => {
+    playRef.current = play;
+  });
+
+  /**
+   * Re-fetches the same immutable take. The local fallback is dropped only
+   * after the take is reachable again; a failed retry leaves ordinary timing
+   * and the warning untouched. Preview/Listen never trigger provider work.
+   */
+  const retryGlueAudio = useCallback(
+    async (takeId: string) => {
+      if (!glueFailures.some((failure) => failure.takeId === takeId)) return;
+      try {
+        const response = await fetch(glueAudioUrl(takeId), { cache: "no-store" });
+        if (!response.ok) return;
+        void response.body?.cancel().catch(() => undefined);
+      } catch {
+        return;
+      }
+      const session = sessionRef.current;
+      glueRebuildRef.current = {
+        position:
+          session?.getTimelinePositionSeconds() ?? state.timelinePositionSeconds,
+        resume: session?.isPlaying() ?? false,
+      };
+      setGlueFailures((previous) =>
+        previous.filter((failure) => failure.takeId !== takeId),
+      );
+    },
+    [glueFailures, state.timelinePositionSeconds],
+  );
+
   // Timeline-input change, dialog close, and unmount are the full-cleanup
   // triggers: sources, ticker, buffers, and the session itself.
   useEffect(() => {
     teardown();
   }, [itemsKey, teardown]);
+
+  // A local Glue failure or a successful retry changes `itemsKey`; continue
+  // the audition at the same position with the rebuilt timeline.
+  useEffect(() => {
+    const rebuild = glueRebuildRef.current;
+    if (!rebuild) return;
+    glueRebuildRef.current = null;
+    pendingSeekRef.current = rebuild.position;
+    if (rebuild.resume) {
+      void playRef.current();
+      return;
+    }
+    // The rebuilt timeline owns this position; it cannot be derived from the
+    // new items alone.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setState((previous) => ({
+      ...baseState(previous, itemsKey),
+      timelinePositionSeconds: rebuild.position,
+    }));
+  }, [itemsKey]);
 
   useEffect(() => {
     if (active) return;
@@ -393,6 +533,8 @@ export function useSongsetAudio(
     errorMessage: isLive ? state.errorMessage : null,
     timelinePositionSeconds: isLive ? state.timelinePositionSeconds : 0,
     totalSeconds: validationError ? 0 : timeline.totalSeconds,
+    timeline,
+    glueFailures,
     progress: isLive ? state.progress : null,
     play,
     pause,
@@ -400,5 +542,6 @@ export function useSongsetAudio(
     seek,
     startAtSeconds,
     retry,
+    retryGlueAudio,
   };
 }

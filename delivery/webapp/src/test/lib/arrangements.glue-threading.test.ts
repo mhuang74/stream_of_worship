@@ -52,14 +52,17 @@ describe("Glue threading without layout changes", () => {
     ]);
 
     expect(timeline.items[0].glueTakeIdBefore).toBeNull();
+    expect(timeline.items[0].glueSecondsBefore).toBeNull();
     expect(timeline.items[1].glueTakeIdBefore).toBe("take-1");
+    expect(timeline.items[1].glueSecondsBefore).toBe(3);
     expect(timeline.items[1].glueWindowBefore).toEqual({
       takeId: "take-1",
       startSeconds: 100,
       endSeconds: 103,
     });
-    // Layout arithmetic is untouched until #319: B still starts at A's end.
-    expect(timeline.items[1].startSeconds).toBe(100);
+    // #319: the staged Glue shifts B after its actual seconds.
+    expect(timeline.items[1].startSeconds).toBe(103);
+    expect(timeline.totalSeconds).toBe(183);
   });
 
   it("leaves the window null without an effective take", () => {

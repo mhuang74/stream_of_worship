@@ -61,6 +61,8 @@ export function SongsetPlayerBar() {
     timeline,
     validation,
     previewErrorKind,
+    glueFailures,
+    retryGlueAudio,
     audio,
     close,
     retryLoad,
@@ -89,6 +91,9 @@ export function SongsetPlayerBar() {
   const currentIndex = findTimelineItemIndex(timeline, clampedPosition);
   const currentItem = items[currentIndex] ?? items[0] ?? null;
   const currentTitle = currentItem?.song?.title ?? t("songsets.listen.untitled");
+  const titlesById = new Map(
+    items.map((entry) => [entry.id, entry.song?.title ?? null] as const),
+  );
   const currentClips = timeline.items[currentIndex]?.clips ?? [];
   const segments = timeline.items.map((item, index) => ({
     item,
@@ -274,6 +279,49 @@ export function SongsetPlayerBar() {
         )}
       </div>
 
+      {/* Persistent, non-blocking local Glue warning: names the junction and
+          offers a local retry of the same immutable take. */}
+      {glueFailures.length > 0 && (
+        <div
+          className="border-t bg-background/95 px-3 py-1.5 lg:px-4"
+          data-testid="songset-glue-warnings"
+        >
+          {glueFailures.map((failure) => (
+            <div
+              key={failure.takeId}
+              role="status"
+              data-testid="songset-glue-warning"
+              data-take-id={failure.takeId}
+              className="flex items-center gap-2 text-xs"
+            >
+              <span className="min-w-0 flex-1 text-muted-foreground">
+                {t("songsets.listen.glueFallback")
+                  .replace(
+                    "{from}",
+                    failure.fromItemId === null
+                      ? t("songsets.listen.untitled")
+                      : titlesById.get(failure.fromItemId) ??
+                          t("songsets.listen.untitled"),
+                  )
+                  .replace(
+                    "{to}",
+                    titlesById.get(failure.toItemId) ??
+                      t("songsets.listen.untitled"),
+                  )}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="songset-glue-retry"
+                onClick={() => void retryGlueAudio(failure.takeId)}
+              >
+                {t("songsets.listen.glueRetry")}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Proportional seek bar: one segment per Songset Item */}
       <div className="w-full pt-2 lg:pt-3">
         <div
@@ -344,6 +392,28 @@ export function SongsetPlayerBar() {
                         />
                       )}
                     </div>
+                  );
+                })}
+              {/* The effective Glue window at each junction is its own seek
+                  segment; its seconds are already inside the shifted item
+                  starts, so it overlays the boundary. */}
+              {totalSeconds > 0 &&
+                timeline.items.map((item) => {
+                  const glue = item.glueWindowBefore;
+                  if (glue === null) return null;
+                  const width = glue.endSeconds - glue.startSeconds;
+                  return (
+                    <div
+                      key={`glue-${glue.takeId}`}
+                      data-testid="songset-seek-glue"
+                      data-take-id={glue.takeId}
+                      aria-hidden="true"
+                      className="absolute inset-y-0 border-x border-foreground/50 bg-foreground/25"
+                      style={{
+                        left: `${(glue.startSeconds / totalSeconds) * 100}%`,
+                        width: `${(width / totalSeconds) * 100}%`,
+                      }}
+                    />
                   );
                 })}
             </div>
