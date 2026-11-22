@@ -85,6 +85,10 @@ invalidate correctly and the next read is fresh), and the invalidating PATCH
 must be made through the API — editing `glue_active_take_id` with raw SQL leaves
 the cached view stale until it revalidates.
 
+The seeded take, the one failed probe job, and both probe renders were deleted
+after this recording (rows, R2 objects, and the item's selected take), so the
+ids above are historical and the dev songset carries no synthetic Glue audio.
+
 ## Defects found and fixed while executing Phase A
 
 1. `songsets/[id]/page.tsx` mapped items without `glueEnabled`/`glueBeats`/`glue`:
