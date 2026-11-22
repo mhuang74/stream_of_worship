@@ -177,5 +177,42 @@
       "key": "47e89f1a4d2b1b7ea2156ca6c73f520d86dda1c296eca36da665fc15583d8483"
     }
   ],
-  "excerpts": []
+  "excerpts": [
+    {
+      "name": "side-a-integer-seconds",
+      "input": {"side": "A", "seconds": 12, "contentHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0", "steps": [[0, 12], [12, 16]]},
+      "canonicalJson": "{\"v\":2,\"side\":\"A\",\"seconds\":12,\"contentHash\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0\",\"steps\":[[0,12],[12,16]]}",
+      "key": "93615d0153a755d270fe5d0807d1cc8a8940f8a2fa58ee3f77cf10773483fad4"
+    },
+    {
+      "name": "side-b-fractional-six-dp",
+      "input": {"side": "B", "seconds": 7.123456, "contentHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "steps": [[0, 20], [20, 24]]},
+      "canonicalJson": "{\"v\":2,\"side\":\"B\",\"seconds\":7.123456,\"contentHash\":\"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\",\"steps\":[[0,20],[20,24]]}",
+      "key": "f63cf10c34ffe075f6d6ea95d31baea80d76c41155d16e6de7f1327440634ec5"
+    },
+    {
+      "name": "null-steps",
+      "input": {"side": "A", "seconds": 12, "contentHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0", "steps": null},
+      "canonicalJson": "{\"v\":2,\"side\":\"A\",\"seconds\":12,\"contentHash\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0\",\"steps\":null}",
+      "key": "a1cd562888bd828a4d391085ea7a49651bbe80e0a4a2126f42fbca7c825e23ca"
+    },
+    {
+      "name": "multi-step",
+      "input": {"side": "B", "seconds": 10.5, "contentHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "steps": [[0, 6.5], [6.5, 9.25], [9.25, 10.5]]},
+      "canonicalJson": "{\"v\":2,\"side\":\"B\",\"seconds\":10.5,\"contentHash\":\"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\",\"steps\":[[0,6.5],[6.5,9.25],[9.25,10.5]]}",
+      "key": "febbd06f59d1bf3bedd6209ac04ec5e2bc51c95286b64b21a2b9b37f1df6a156"
+    },
+    {
+      "name": "content-hash-variant",
+      "input": {"side": "A", "seconds": 12, "contentHash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", "steps": [[0, 12], [12, 16]]},
+      "canonicalJson": "{\"v\":2,\"side\":\"A\",\"seconds\":12,\"contentHash\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"steps\":[[0,12],[12,16]]}",
+      "key": "7e3e4577e5979c12d19c05943a4bd4bbb0a207b51c1c6012c9cc2bf74182f693"
+    },
+    {
+      "name": "canonicalized-step-bounds",
+      "input": {"side": "B", "seconds": 2.5, "contentHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "steps": [[0, 1.0000004], [1.0000004, 2.5]]},
+      "canonicalJson": "{\"v\":2,\"side\":\"B\",\"seconds\":2.5,\"contentHash\":\"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\",\"steps\":[[0,1],[1,2.5]]}",
+      "key": "e53053dee6c7e794159be7e218d0bcd9768d99e79b11d694136ad070682e11a8"
+    }
+  ]
 }
