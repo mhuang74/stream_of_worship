@@ -408,8 +408,8 @@ reduces render throughput.
 | Redrive | `maxReceiveCount: 3` |
 | Function | `sow-glue-worker` on AWS Lambda **Managed Instances** |
 | Function timeout | 1900 s (standard Lambda's 1800 s asynchronous cap is not eligible) |
-| Event-source mapping | batch size 1, `ReportBatchItemFailures` |
-| Provider concurrency | reserved/maximum Glue worker concurrency 2 (independent of render) |
+| Event-source mapping | batch size 1, `MaximumConcurrency: 2`, `ReportBatchItemFailures` |
+| Provider concurrency | 2, capped on the event-source mapping (execution environments run multiple invocations each, so an environment cap alone is not a concurrency cap) |
 
 Run `deploy/aws-up-glue.sh` (requires `GLUE_CAPACITY_PROVIDER_ARN`; the script
 fails fast without it and never prints secrets) to create or update the queue,

@@ -47,6 +47,7 @@ def test_aws_up_glue_pins_frozen_literals() -> None:
         "--memory-size 3072",
         "--ephemeral-storage Size=2048",
         "--batch-size 1",
+        "--scaling-config MaximumConcurrency=2",
         "--function-response-types ReportBatchItemFailures",
         "--capacity-provider-config",
         "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN}",

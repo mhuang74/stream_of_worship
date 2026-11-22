@@ -251,6 +251,7 @@ create_event_source_mapping() {
         aws_cmd lambda update-event-source-mapping \
             --uuid "$mapping_uuid" \
             --batch-size 1 \
+            --scaling-config MaximumConcurrency=2 \
             --function-response-types ReportBatchItemFailures >/dev/null
     else
         info "Creating event source mapping: $QUEUE_NAME -> $FUNCTION_NAME"
@@ -258,10 +259,11 @@ create_event_source_mapping() {
             --function-name "$FUNCTION_NAME" \
             --event-source-arn "$queue_arn" \
             --batch-size 1 \
+            --scaling-config MaximumConcurrency=2 \
             --function-response-types ReportBatchItemFailures >/dev/null
     fi
 
-    info "Event source mapping ready: batch size 1, ReportBatchItemFailures"
+    info "Event source mapping ready: batch size 1, MaximumConcurrency 2, ReportBatchItemFailures"
 }
 
 # ── Publish version ─────────────────────────────────────────────────────────
