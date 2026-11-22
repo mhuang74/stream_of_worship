@@ -28,6 +28,8 @@ from sow_render_worker.video_engine import (
     RESOLUTION_MAP,
     _check_memory_pressure,
     _MEMORY_WARNING_FRACTION,
+    clamp_title_card_duration,
+    title_card_lead_in_seconds,
 )
 
 
@@ -1443,3 +1445,36 @@ class TestGCCollect:
             )
 
             mock_gc.collect.assert_called()
+
+
+class TestTitleCardLeadInSeconds:
+    """The card must clear the first sung line by a one-second buffer."""
+
+    def test_worked_example_first_line_at_three(self):
+        assert title_card_lead_in_seconds(3.0, 5.0) == 3.0
+
+    def test_very_early_first_line_gets_full_card_plus_buffer(self):
+        assert title_card_lead_in_seconds(0.2, 5.0) == pytest.approx(5.8)
+
+    def test_card_already_clears_first_line(self):
+        assert title_card_lead_in_seconds(6.0, 5.0) == 0.0
+        assert title_card_lead_in_seconds(6.5, 5.0) == 0.0
+        assert title_card_lead_in_seconds(120.0, 10.0) == 0.0
+
+    def test_shortfall_is_exact(self):
+        assert title_card_lead_in_seconds(5.99, 5.0) == pytest.approx(0.01)
+
+    def test_card_length_is_quantised_to_whole_frames(self):
+        # 5.02 s is 121 frames at 24 fps -> card ends at 5.0417 s.
+        expected = math.ceil(5.02 * 24) / 24 + 1.0
+        assert title_card_lead_in_seconds(0.0, 5.02) == pytest.approx(expected)
+
+
+class TestClampTitleCardDuration:
+    def test_offered_values_pass_through(self):
+        assert clamp_title_card_duration(5.0) == 5.0
+        assert clamp_title_card_duration(15.0) == 15.0
+
+    def test_clamps_to_worker_range(self):
+        assert clamp_title_card_duration(1.0) == 5.0
+        assert clamp_title_card_duration(45.0) == 30.0

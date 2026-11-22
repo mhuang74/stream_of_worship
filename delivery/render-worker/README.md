@@ -72,6 +72,13 @@ The 5-phase orchestrator runs:
 
 After completion, `complete_render_job()` sets `status: "completed"` and stores R2 keys. On failure, `fail_render_job()` sets `status: "failed"` with an error message.
 
+#### Title card lead-in
+
+When both `videoEnabled` and `includeTitleCard` are on, the mix is built with the card's silence baked in: `generate_songset_audio` prepends
+`title_card_lead_in_seconds(first_sung_lyric, card_duration)` — the shortfall against `card_end + 1 s`, zero when the card already clears the first line. The card then covers silence and the first lyric is never hidden.
+
+Because the silence is part of the uploaded MP3 (and therefore the MP4), every artifact shares one timeline; `chapters.json` additionally records it as `titleCardOffsetSeconds` so the webapp can compare chapter times against the Song Arrangement timeline, which starts at 0. Audio-only renders are unchanged.
+
 ### 6. Progress Tracking (Pull-Based)
 
 There is **no push callback** from Lambda to the webapp. Instead:

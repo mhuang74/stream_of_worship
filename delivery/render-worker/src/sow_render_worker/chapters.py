@@ -55,6 +55,7 @@ class ChaptersManifest:
     chapters: tuple[Chapter, ...] = field(default_factory=tuple)
     total_duration_seconds: float = 0.0
     generated_at: str = ""
+    title_card_offset_seconds: float = 0.0
 
     def to_camel_case_dict(self) -> dict:
         return dataclass_to_camel_case_dict(self)
@@ -149,6 +150,7 @@ def generate_chapters_manifest(
     segments: list[SegmentInfo],
     download_lrc: Callable[[str], str | None | object],
     total_duration_seconds: float,
+    offset_seconds: float = 0.0,
 ) -> ChaptersManifest:
     from .lrc_parser import parse_lrc, remap_lrc_to_clips
 
@@ -182,6 +184,7 @@ def generate_chapters_manifest(
         chapters=tuple(chapters),
         total_duration_seconds=total_duration_seconds,
         generated_at=datetime.now(timezone.utc).isoformat(),
+        title_card_offset_seconds=offset_seconds,
     )
 
 
@@ -273,4 +276,5 @@ def parse_chapters_manifest(json_str: str) -> ChaptersManifest:
         chapters=tuple(chapters),
         total_duration_seconds=float(parsed["totalDurationSeconds"]),
         generated_at=parsed["generatedAt"],
+        title_card_offset_seconds=float(parsed.get("titleCardOffsetSeconds", 0.0) or 0.0),
     )

@@ -20,7 +20,7 @@ from sow_render_worker.frame_renderer import (
     _DEFAULT_MAX_CACHE_ENTRIES,
     _get_bool_env,
     _get_int_env,
-    _has_lyric_content,
+    has_lyric_content,
     _load_font,
     _normalize_lyric_text,
     _split_lyric_phrase,
@@ -323,11 +323,11 @@ class TestNormalizeLyricText:
 
 class TestHasLyricContent:
     def test_non_str_and_blank_return_false(self):
-        assert not _has_lyric_content(None)
-        assert not _has_lyric_content(123)
-        assert not _has_lyric_content("   ")
-        assert not _has_lyric_content("\u3000")
-        assert _has_lyric_content(" 主 ")
+        assert not has_lyric_content(None)
+        assert not has_lyric_content(123)
+        assert not has_lyric_content("   ")
+        assert not has_lyric_content("\u3000")
+        assert has_lyric_content(" 主 ")
 
 
 class TestWrapLyricText:

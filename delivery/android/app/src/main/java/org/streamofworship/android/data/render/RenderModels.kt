@@ -41,7 +41,7 @@ enum class RenderFontSize(
     ExtraLarge("XL", "Extra Large (80px)", 80),
 }
 
-val RenderTitleCardDurations = listOf(5, 10, 15, 20, 25, 30)
+val RenderTitleCardDurations = listOf(5, 10, 15)
 
 @Serializable
 data class RenderFormConfig(

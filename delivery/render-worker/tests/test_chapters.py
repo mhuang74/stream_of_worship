@@ -873,3 +873,50 @@ class TestChapterTitles:
     def test_base_song_title_falls_back_to_song_id_then_position(self):
         assert base_song_title(FakeItem(None, "song-9", None), 0) == "song-9"
         assert base_song_title(FakeItem(None, "", None), 4) == "Song 5"
+
+
+class TestTitleCardOffset:
+    """The lead-in silence is declared in the manifest, never re-times chapters."""
+
+    def test_offset_serialises_and_round_trips(self):
+        segments = [
+            FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0),
+        ]
+        manifest = generate_chapters_manifest(
+            segments, lambda hash_prefix: "[00:03.00]Line 1", 33.0, offset_seconds=3.0
+        )
+
+        assert manifest.title_card_offset_seconds == 3.0
+        # Chapter and line times already describe the padded file.
+        assert manifest.chapters[0].start_seconds == 0.0
+        assert manifest.chapters[0].lines[0].start_seconds == 3.0
+
+        payload = manifest.to_camel_case_dict()
+        assert payload["titleCardOffsetSeconds"] == 3.0
+
+        parsed = parse_chapters_manifest(json.dumps(payload))
+        assert parsed.title_card_offset_seconds == 3.0
+        assert parsed.chapters[0].start_seconds == 0.0
+        assert parsed.chapters[0].lines[0].start_seconds == 3.0
+
+    def test_default_offset_is_zero(self):
+        segments = [FakeSegment(FakeItem("Song A", "id1", "hash1"), 0.0, 30.0)]
+        manifest = generate_chapters_manifest(segments, lambda hash_prefix: None, 30.0)
+        assert manifest.title_card_offset_seconds == 0.0
+
+    def test_manifest_without_offset_parses_as_zero(self):
+        legacy = {
+            "chapters": [
+                {
+                    "position": 1,
+                    "songTitle": "Song A",
+                    "startSeconds": 0.0,
+                    "endSeconds": 30.0,
+                    "lines": [],
+                }
+            ],
+            "totalDurationSeconds": 30.0,
+            "generatedAt": "2024-01-01T00:00:00Z",
+        }
+        parsed = parse_chapters_manifest(json.dumps(legacy))
+        assert parsed.title_card_offset_seconds == 0.0

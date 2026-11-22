@@ -25,7 +25,16 @@ import {
 } from "@/components/ui/alert-dialog"
 import { AlertCircle, Info } from "lucide-react"
 import Link from "next/link"
-import { FONT_FAMILIES, FONT_SIZES, TEMPLATES, RESOLUTIONS, type FontFamilyValue } from "@/lib/constants"
+import {
+  FONT_FAMILIES,
+  FONT_SIZES,
+  TEMPLATES,
+  RESOLUTIONS,
+  TITLE_CARD_DURATIONS,
+  TITLE_CARD_DURATION_DEFAULT,
+  normalizeTitleCardDuration,
+  type FontFamilyValue,
+} from "@/lib/constants"
 import { formatDuration } from "@/lib/format"
 import { useLocale } from "@/hooks/useLocale"
 import { optionKey } from "@/lib/i18n/messages"
@@ -69,8 +78,6 @@ export interface PreviousRenderJobData {
   songCount?: number | null
   songsetDurationSeconds?: number | null
 }
-
-const TITLE_CARD_DURATIONS = [5, 10, 15, 20, 25, 30] as const
 
 function formatDurationSafe(seconds: number | null | undefined): string {
   if (seconds == null || seconds <= 0) return "—"
@@ -123,7 +130,7 @@ export function RenderForm({
     fontSizePreset: initialData?.fontSizePreset ?? "M",
     fontFamily: initialData?.fontFamily ?? "noto_serif_tc",
     includeTitleCard: initialData?.includeTitleCard ?? false,
-    titleCardDurationSeconds: initialData?.titleCardDurationSeconds ?? 10,
+    titleCardDurationSeconds: normalizeTitleCardDuration(initialData?.titleCardDurationSeconds),
     titleCardLines: initialData?.titleCardLines ?? [],
   })
 
@@ -334,9 +341,12 @@ export function RenderForm({
                 <div className="space-y-2">
                   <Label htmlFor="titleCardDuration">{t("render.titleCard.duration")}</Label>
                   <Select
-                    value={(formData.titleCardDurationSeconds ?? 10).toString()}
+                    value={(formData.titleCardDurationSeconds ?? TITLE_CARD_DURATION_DEFAULT).toString()}
                     onValueChange={(value) =>
-                      updateField("titleCardDurationSeconds", parseInt(value ?? "10", 10))
+                      updateField(
+                        "titleCardDurationSeconds",
+                        parseInt(value ?? String(TITLE_CARD_DURATION_DEFAULT), 10)
+                      )
                     }
                   >
                     <SelectTrigger id="titleCardDuration">
@@ -457,14 +467,14 @@ export function RenderForm({
                       ? `${t("render.compare.titleCardOn")} (${previousRenderJob.titleCardDurationSeconds ?? 10}s)`
                       : t("render.compare.titleCardOff")
                     const currTitleCard = formData.includeTitleCard
-                      ? `${t("render.compare.titleCardOn")} (${formData.titleCardDurationSeconds ?? 10}s)`
+                      ? `${t("render.compare.titleCardOn")} (${formData.titleCardDurationSeconds ?? TITLE_CARD_DURATION_DEFAULT}s)`
                       : t("render.compare.titleCardOff")
                     const prevSongCount = previousRenderJob.songCount != null ? String(previousRenderJob.songCount) : "—"
                     const currSongCount = currentSongCount != null ? String(currentSongCount) : "—"
                     const prevSongsetDuration = formatDurationSafe(previousRenderJob.songsetDurationSeconds)
                     const currSongsetDuration = formatDurationSafe(currentSongsetDurationSeconds)
                     const prevTotalDuration = formatDurationSafe(previousRenderJob.totalDurationSeconds)
-                    const estimatedTotalDuration = (currentSongsetDurationSeconds ?? 0) + (formData.includeTitleCard ? (formData.titleCardDurationSeconds ?? 0) : 0)
+                    const estimatedTotalDuration = (currentSongsetDurationSeconds ?? 0) + (formData.includeTitleCard ? (formData.titleCardDurationSeconds ?? TITLE_CARD_DURATION_DEFAULT) : 0)
                     const currTotalDuration = estimatedTotalDuration > 0 ? `${t("render.compare.estimatedPrefix")}${formatDuration(estimatedTotalDuration)}` : "—"
 
                     const rows: { id: string; label: string; prev: string; curr: string; diff: boolean }[] = [

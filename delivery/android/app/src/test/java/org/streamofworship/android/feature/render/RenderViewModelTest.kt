@@ -52,6 +52,32 @@ class RenderViewModelTest {
         }
 
     @Test
+    fun `title card duration is validated against the offered range`() =
+        runTest {
+            val viewModel = viewModel(this)
+            viewModel.load()
+            advanceUntilIdle()
+
+            viewModel.updateConfig(
+                RenderFormConfig(includeTitleCard = true, titleCardDurationSeconds = 5),
+            )
+            assertEquals(null, viewModel.uiState.value.validationMessage)
+
+            viewModel.updateConfig(
+                RenderFormConfig(includeTitleCard = true, titleCardDurationSeconds = 15),
+            )
+            assertEquals(null, viewModel.uiState.value.validationMessage)
+
+            viewModel.updateConfig(
+                RenderFormConfig(includeTitleCard = true, titleCardDurationSeconds = 20),
+            )
+            assertEquals(
+                "Title card duration must be between 5 and 15 seconds.",
+                viewModel.uiState.value.validationMessage,
+            )
+        }
+
+    @Test
     fun `previous render requires confirmation before submit`() =
         runTest {
             val previous = detail().copy(lastCompletedRenderJobId = "old-job")

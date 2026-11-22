@@ -1098,3 +1098,94 @@ class TestRealFfmpegArrangementMix:
         assert [line["startSeconds"] for line in payload["chapters"][0]["lines"]] == [
             1.0, 11.0, 21.0,
         ]
+
+
+class TestTitleCardLeadIn:
+    """Lead-in silence prepends to the mix so the card clears the first lyric."""
+
+    @staticmethod
+    def _probe_180s():
+        return {
+            "duration_seconds": 180.0,
+            "duration_ms": 180000,
+            "channels": 2,
+            "sample_rate": 44100,
+            "bitrate_kbps": 320,
+            "file_size_bytes": 1000,
+        }
+
+    def _two_items(self) -> list[SongsetItem]:
+        return [
+            _make_item(id="1", position=0, gap_beats=2.0, tempo_bpm=120.0),
+            _make_item(
+                id="2", position=1, gap_beats=2.0, tempo_bpm=120.0,
+                recording_hash_prefix="def456",
+            ),
+        ]
+
+    def test_zero_resolver_leaves_mix_unchanged(self, tmp_path):
+        fetcher = MagicMock()
+        fetcher.download_audio.return_value = "/tmp/audio.mp3"
+        with patch("sow_render_worker.audio_engine.get_audio_info") as mock_info, \
+             patch("sow_render_worker.audio_engine.concatenate_audio_files") as mock_concat:
+            mock_info.return_value = self._probe_180s()
+            result = generate_songset_audio(
+                self._two_items(), str(tmp_path / "out.mp3"), fetcher,
+                lead_in_resolver=lambda segments: 0.0,
+            )
+        assert result.lead_in_seconds == 0.0
+        assert result.total_duration_seconds == 361.0
+        assert result.segments[1].start_time_seconds == 181.0
+        audio_files = mock_concat.call_args[0][0]
+        graph = build_ffmpeg_filter_complex(audio_files, normalize=False)
+        assert "adelay=181000|181000" in graph
+        assert "adelay=0|0" not in graph
+
+    def test_three_second_resolver_shifts_every_time(self, tmp_path):
+        fetcher = MagicMock()
+        fetcher.download_audio.return_value = "/tmp/audio.mp3"
+        with patch("sow_render_worker.audio_engine.get_audio_info") as mock_info, \
+             patch("sow_render_worker.audio_engine.concatenate_audio_files") as mock_concat:
+            mock_info.return_value = self._probe_180s()
+            result = generate_songset_audio(
+                self._two_items(), str(tmp_path / "out.mp3"), fetcher,
+                lead_in_resolver=lambda segments: 3.0,
+            )
+
+        assert result.lead_in_seconds == 3.0
+        assert result.total_duration_seconds == 364.0
+        assert [s.start_time_seconds for s in result.segments] == [3.0, 184.0]
+        for segment in result.segments:
+            for clip in segment.clips:
+                assert clip.start_time_seconds >= 3.0
+                assert clip.start_time_seconds == segment.start_time_seconds
+        # gap_before describes the arrangement gap, not the mix head.
+        assert result.segments[0].gap_before_seconds == 0.0
+        assert result.segments[1].gap_before_seconds == 1.0
+
+        audio_files = mock_concat.call_args[0][0]
+        assert [f["start_ms"] for f in audio_files] == [3000, 184000]
+        assert audio_files[0]["clips"][0]["start_time_seconds"] == 3.0
+        graph = build_ffmpeg_filter_complex(audio_files, normalize=False)
+        assert "adelay=3000|3000" in graph
+        assert "adelay=184000|184000" in graph
+
+    def test_resolver_receives_completed_segments(self, tmp_path):
+        fetcher = MagicMock()
+        fetcher.download_audio.return_value = "/tmp/audio.mp3"
+        seen: list[tuple[AudioSegmentInfo, ...]] = []
+
+        def resolver(segments):
+            seen.append(segments)
+            return 0.0
+
+        with patch("sow_render_worker.audio_engine.get_audio_info") as mock_info, \
+             patch("sow_render_worker.audio_engine.concatenate_audio_files"):
+            mock_info.return_value = self._probe_180s()
+            generate_songset_audio(
+                self._two_items(), str(tmp_path / "out.mp3"), fetcher,
+                lead_in_resolver=resolver,
+            )
+
+        assert len(seen) == 1
+        assert [s.item.id for s in seen[0]] == ["1", "2"]

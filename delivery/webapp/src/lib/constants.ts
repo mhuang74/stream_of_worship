@@ -55,6 +55,28 @@ export function normalizeFontFamily(value: unknown): FontFamilyValue {
     : "noto_serif_tc";
 }
 
+/** Title card durations offered in the render form, in seconds. */
+export const TITLE_CARD_DURATIONS = [5, 10, 15] as const;
+export const TITLE_CARD_DURATION_DEFAULT = 10;
+
+/**
+ * Snap a stored duration onto TITLE_CARD_DURATIONS: clamp to the offered
+ * range, round down. Legacy jobs stored 20/25/30 — `t("render.titleCard.duration.<n>")`
+ * has no fallback, so an un-normalised value would render as `undefined`.
+ */
+export function normalizeTitleCardDuration(value: unknown): number {
+  const raw =
+    typeof value === "number" && Number.isFinite(value)
+      ? value
+      : TITLE_CARD_DURATION_DEFAULT;
+  const longest = TITLE_CARD_DURATIONS[TITLE_CARD_DURATIONS.length - 1];
+  const clamped = Math.min(longest, Math.max(TITLE_CARD_DURATIONS[0], raw));
+  for (const duration of [...TITLE_CARD_DURATIONS].reverse()) {
+    if (duration <= clamped) return duration;
+  }
+  return TITLE_CARD_DURATIONS[0];
+}
+
 /** Completion gate (ADR-0002): fraction of a full-song play that marks a
  * song Completed client-side. Heard ≥90% unlocks favoriting. */
 export const COMPLETION_THRESHOLD = 0.9;
