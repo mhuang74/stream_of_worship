@@ -22,14 +22,18 @@ from sow_render_worker.db import (
     complete_render_job,
     fail_render_job,
     finish_glue_job,
+    finish_glue_job_ready,
     get_connection,
     get_glue_excerpt,
     get_glue_job,
+    get_glue_take_by_id,
     get_glue_take_for_descriptor,
     get_phase_index,
     get_render_job,
     heartbeat_glue_job,
     insert_glue_take,
+    insert_glue_take_if_absent,
+    list_glue_takes_for_descriptor,
     read_songset_items_for_glue,
     reclaim_likely_dead_job,
     reclaim_stale_job,
@@ -37,6 +41,7 @@ from sow_render_worker.db import (
     record_provider_contact,
     recover_orphaned_jobs,
     set_glue_job_dispatch_failed,
+    select_glue_take_for_junction,
     set_glue_phase,
     start_render_job,
     update_render_progress,
@@ -1572,3 +1577,155 @@ class TestReadSongsetItemsForGlue:
     def test_returns_plain_dicts(self):
         conn, cursor = _make_mock_conn(fetchall_result=[])
         assert read_songset_items_for_glue(conn, "ss_001") == []
+
+
+class TestGetGlueTakeById:
+    def test_owner_guarded_select(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        take = get_glue_take_by_id(conn, row["id"], 42)
+        assert take is not None
+        assert take.id == row["id"]
+        sql, params = cursor.execute.call_args[0]
+        assert "FROM glue_takes" in sql
+        assert "WHERE id = %s AND user_id = %s" in sql
+        assert params == (row["id"], 42)
+
+    def test_missing_returns_none(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert get_glue_take_by_id(conn, "missing", 42) is None
+
+
+class TestListGlueTakesForDescriptor:
+    def test_lists_ready_auditionable_takes_oldest_first(self):
+        rows = [
+            _make_glue_take_row(ordinal=1),
+            _make_glue_take_row(id="66666666-6666-4666-8666-666666666666", ordinal=2),
+        ]
+        conn, cursor = _make_mock_conn(fetchall_result=rows)
+        takes = list_glue_takes_for_descriptor(conn, 42, "a" * 64)
+        assert [take.ordinal for take in takes] == [1, 2]
+        sql, params = cursor.execute.call_args[0]
+        assert "status = %s" in sql
+        assert "r2_key IS NOT NULL" in sql
+        assert "seconds > 0" in sql
+        assert "ORDER BY ordinal ASC" in sql
+        assert params == (42, "a" * 64, "ready")
+
+
+class TestInsertGlueTakeIfAbsent:
+    def _insert(self, conn):
+        return insert_glue_take_if_absent(
+            conn,
+            take_id="55555555-5555-4555-8555-555555555555",
+            user_id=42,
+            descriptor_key="a" * 64,
+            descriptor_json='{"v":2}',
+            ordinal=1,
+            seed=7,
+            status="ready",
+            r2_key="glues/42/take.wav",
+            seconds=2.786,
+            raw_response_r2_key="glues/42/jobs/j/response.pcm",
+            raw_response_sha256="f" * 64,
+            raw_response_bytes=1234,
+            metrics_json='{"audioSha256":"e"}',
+            reasons_json="[]",
+        )
+
+    def test_conflicts_on_the_preallocated_id(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        take, created = self._insert(conn)
+        assert created is True
+        assert take.id == row["id"]
+        sql, params = cursor.execute.call_args[0]
+        assert "INSERT INTO glue_takes" in sql
+        assert "ON CONFLICT (id) DO NOTHING" in sql
+        assert "RETURNING *" in sql
+        assert params[0] == "55555555-5555-4555-8555-555555555555"
+
+    def test_replay_returns_the_stored_take_untouched(self):
+        row = _make_glue_take_row()
+        conn, cursor = _make_mock_conn(fetchone_result=None)
+        cursor.fetchone.side_effect = [None, row]
+        take, created = self._insert(conn)
+        assert created is False
+        assert take.id == row["id"]
+        second_sql, second_params = cursor.execute.call_args_list[1][0]
+        assert "SELECT * FROM glue_takes WHERE id = %s AND user_id = %s" in second_sql
+        assert second_params == ("55555555-5555-4555-8555-555555555555", 42)
+
+
+class TestFinishGlueJobReady:
+    def test_ready_only_from_staging_phases(self):
+        row = _make_glue_job_row(phase="ready", active=False, resulting_take_id="t1")
+        conn, cursor = _make_mock_conn(fetchone_result=row)
+        job = finish_glue_job_ready(
+            conn,
+            row["id"],
+            42,
+            resulting_take_id="t1",
+            active_take_id="t1",
+        )
+        assert job is not None
+        sql, params = cursor.execute.call_args[0]
+        assert "phase = %s" in sql
+        assert "active = %s" in sql
+        assert "resulting_take_id = %s" in sql
+        assert "active_take_id = %s" in sql
+        assert "phase = ANY(%s)" in sql
+        assert params[0] == "ready"
+        assert params[1] is False
+        assert params[2] == "t1"
+        assert params[3] == "t1"
+        assert params[-1] == ["storing-response", "staging"]
+
+    def test_keeps_a_concurrent_terminal_phase(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert (
+            finish_glue_job_ready(
+                conn, "j1", 42, resulting_take_id="t1", active_take_id=None
+            )
+            is None
+        )
+
+
+class TestSelectGlueTakeForJunction:
+    def _select(self, conn, **overrides):
+        args = dict(
+            item_id="item-a",
+            songset_id="ss-1",
+            user_id=42,
+            take_id="55555555-5555-4555-8555-555555555555",
+            descriptor_key="a" * 64,
+        )
+        args.update(overrides)
+        return select_glue_take_for_junction(conn, **args)
+
+    def test_guards_owner_descriptor_readiness_and_audio(self):
+        conn, cursor = _make_mock_conn(fetchone_result=("item-a",))
+        assert self._select(conn) is True
+        sql, params = cursor.execute.call_args_list[0][0]
+        assert "UPDATE songset_items SET glue_active_take_id = %s" in sql
+        assert "SELECT 1 FROM songsets WHERE songsets.id = %s AND songsets.user_id = %s" in sql
+        assert "glue_takes.descriptor_key = %s" in sql
+        assert "glue_takes.status = %s" in sql
+        assert "glue_takes.r2_key IS NOT NULL" in sql
+        assert "glue_takes.seconds > 0" in sql
+        assert params[0] == "55555555-5555-4555-8555-555555555555"
+        assert params[-1] == "ready"
+        conn.commit.assert_called_once()
+
+    def test_cross_user_or_wrong_descriptor_select_is_refused(self):
+        conn, _ = _make_mock_conn(fetchone_result=None)
+        assert self._select(conn, user_id=99) is False
+        conn.commit.assert_called_once()
+
+    def test_caller_managed_transaction_does_not_commit_or_toggle(self):
+        conn, _ = _make_mock_conn(fetchone_result=("item-a",))
+        conn.autocommit = False
+        assert self._select(conn, manage_transaction=False) is True
+        conn.commit.assert_not_called()
+        conn.rollback.assert_not_called()
+        assert conn.autocommit is False

@@ -1,3 +1,4 @@
+import json
 import logging
 import sys
 from datetime import datetime, timezone
@@ -462,7 +463,7 @@ def test_staging_mode_runs_staging_stage_and_never_provider(worker, monkeypatch)
     worker.mocks["get_glue_job"].return_value = job
     staging_calls = []
 
-    def fake_staging(job_arg, conn_arg, *, work_dir, log_event):
+    def fake_staging(conn_arg, job_arg, log_event, *, work_dir, asset_fetcher=None):
         staging_calls.append({"job": job_arg, "work_dir": work_dir})
 
     monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: fake_staging)
@@ -628,7 +629,7 @@ def test_in_flight_phase_with_durable_response_continues_free_staging(worker, mo
     worker.mocks["get_glue_job"].side_effect = read_job
     staging_calls = []
 
-    def fake_staging(job_arg, conn_arg, *, work_dir, log_event):
+    def fake_staging(conn_arg, job_arg, log_event, *, work_dir, asset_fetcher=None):
         staging_calls.append(job_arg.phase)
 
     monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: fake_staging)
@@ -653,7 +654,7 @@ def test_generate_mode_recovers_storing_response_without_provider(worker, monkey
     worker.mocks["get_glue_job"].return_value = job
     staging_calls = []
 
-    def fake_staging(job_arg, conn_arg, *, work_dir, log_event):
+    def fake_staging(conn_arg, job_arg, log_event, *, work_dir, asset_fetcher=None):
         staging_calls.append(job_arg.id)
 
     monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: fake_staging)
@@ -670,7 +671,7 @@ def test_generate_mode_recovers_storing_response_without_provider(worker, monkey
 def test_provider_stage_continues_into_free_staging(worker, monkeypatch):
     staging_calls = []
 
-    def fake_staging(job_arg, conn_arg, *, work_dir, log_event):
+    def fake_staging(conn_arg, job_arg, log_event, *, work_dir, asset_fetcher=None):
         staging_calls.append(
             {"job": job_arg, "conn": conn_arg, "work_dir": work_dir, "log": log_event}
         )
@@ -772,3 +773,57 @@ def test_compose_deadline_uses_compose_reserve():
     assert glue_jobs.require_deadline(None, "compose") is None
     with pytest.raises(ValueError, match="stage"):
         glue_jobs.require_deadline(_Context(1), "persist")
+
+
+def _contact_started_events(caplog) -> list[dict]:
+    events: list[dict] = []
+    for record in caplog.records:
+        message = record.getMessage()
+        if "glue.provider.contact.started" not in message:
+            continue
+        events.append(json.loads(message))
+    return events
+
+
+def test_paid_contact_started_event_emitted_once(worker, caplog):
+    with caplog.at_level(logging.INFO, logger="sow_render_worker.glue_jobs"):
+        _run(worker, _FakeProviderStage(), context=_Context(1_900_000))
+
+    events = _contact_started_events(caplog)
+    assert len(events) == 1
+    assert events[0]["event"] == "glue.provider.contact.started"
+    assert events[0]["phase"] == "preparing"
+    assert events[0]["attemptId"] == worker.job.attempt_id
+    assert events[0]["operation"] == "provider"
+
+
+def test_paid_contact_started_not_emitted_when_contact_is_reused(worker, caplog):
+    worker.mocks["get_glue_job"].return_value = _make_job(
+        phase="preparing",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+    )
+    worker.mocks["record_provider_contact"].return_value = False
+
+    with caplog.at_level(logging.INFO, logger="sow_render_worker.glue_jobs"):
+        _run(worker, _FakeProviderStage())
+
+    assert _contact_started_events(caplog) == []
+
+
+def test_paid_contact_started_not_emitted_for_staging_mode(worker, monkeypatch, caplog):
+    job = _make_job(
+        phase="storing-response",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+        raw_response_r2_key="glues/7/jobs/x/response.pcm",
+        raw_response_sha256="a" * 64,
+        raw_response_bytes=1024,
+    )
+    worker.mocks["claim_glue_job"].return_value = (job, False)
+    monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: MagicMock())
+
+    with caplog.at_level(logging.INFO, logger="sow_render_worker.glue_jobs"):
+        _run(worker, mode="staging")
+
+    assert _contact_started_events(caplog) == []

@@ -1083,6 +1083,206 @@ def get_glue_take_for_descriptor(
     return _row_to_glue_take(row)
 
 
+def get_glue_take_by_id(
+    conn: psycopg2.extensions.connection,
+    take_id: str,
+    user_id: int,
+) -> Optional[GlueTake]:
+    """Fetch one take owned by ``user_id`` regardless of status."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "SELECT * FROM glue_takes WHERE id = %s AND user_id = %s",
+            (take_id, user_id),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return _row_to_glue_take(row)
+
+
+def list_glue_takes_for_descriptor(
+    conn: psycopg2.extensions.connection,
+    user_id: int,
+    descriptor_key: str,
+) -> list[GlueTake]:
+    """Every auditionable ready take for a descriptor, earliest ordinal first.
+
+    This is the take-menu payload: ready status plus a stored object and a
+    positive duration are the same conditions selection enforces.
+    """
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "SELECT * FROM glue_takes "
+            "WHERE user_id = %s AND descriptor_key = %s AND status = %s "
+            "AND r2_key IS NOT NULL AND seconds > 0 "
+            "ORDER BY ordinal ASC",
+            (user_id, descriptor_key, "ready"),
+        )
+        rows = cur.fetchall()
+    return [_row_to_glue_take(row) for row in rows]
+
+
+def insert_glue_take_if_absent(
+    conn: psycopg2.extensions.connection,
+    *,
+    take_id: str,
+    user_id: int,
+    descriptor_key: str,
+    descriptor_json: str,
+    ordinal: int,
+    seed: int,
+    status: str,
+    r2_key: str,
+    seconds: float,
+    raw_response_r2_key: Optional[str],
+    raw_response_sha256: Optional[str],
+    raw_response_bytes: Optional[int],
+    metrics_json: str,
+    reasons_json: str,
+) -> tuple[GlueTake, bool]:
+    """Insert the immutable take row once; a replay returns the stored row.
+
+    The id is the job's pre-allocated ``pending_take_id``, so a redelivered
+    staging run conflicts on the primary key and can never create a second
+    take or mutate a different one. Returns ``(take, created)``.
+    """
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "INSERT INTO glue_takes ("
+            "id, user_id, descriptor_key, descriptor_json, ordinal, seed, status, "
+            "r2_key, seconds, raw_response_r2_key, raw_response_sha256, raw_response_bytes, "
+            "metrics_json, reasons_json"
+            ") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (id) DO NOTHING "
+            "RETURNING *",
+            (
+                take_id,
+                user_id,
+                descriptor_key,
+                descriptor_json,
+                ordinal,
+                seed,
+                status,
+                r2_key,
+                seconds,
+                raw_response_r2_key,
+                raw_response_sha256,
+                raw_response_bytes,
+                metrics_json,
+                reasons_json,
+            ),
+        )
+        row = cur.fetchone()
+    if row:
+        return _row_to_glue_take(row), True
+    existing = get_glue_take_by_id(conn, take_id, user_id)
+    if existing is None:
+        raise RuntimeError(
+            "glue take insert conflicted on a different id; refusing to overwrite"
+        )
+    return existing, False
+
+
+def finish_glue_job_ready(
+    conn: psycopg2.extensions.connection,
+    job_id: str,
+    user_id: int,
+    *,
+    resulting_take_id: str,
+    active_take_id: Optional[str],
+) -> Optional[GlueJob]:
+    """Move a staging job to ready, preserving any concurrent terminal phase."""
+    now = datetime.now(timezone.utc)
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "UPDATE glue_jobs SET "
+            "phase = %s, active = %s, resulting_take_id = %s, active_take_id = %s, "
+            "error_code = NULL, error_detail = NULL, retry_kind = NULL, "
+            "finished_at = %s, updated_at = %s "
+            "WHERE id = %s AND user_id = %s AND phase = ANY(%s) "
+            "RETURNING *",
+            (
+                "ready",
+                False,
+                resulting_take_id,
+                active_take_id,
+                now,
+                now,
+                job_id,
+                user_id,
+                list(GLUE_STAGING_PHASES),
+            ),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return _row_to_glue_job(row)
+
+
+def select_glue_take_for_junction(
+    conn: psycopg2.extensions.connection,
+    *,
+    item_id: str,
+    songset_id: str,
+    user_id: int,
+    take_id: str,
+    descriptor_key: str,
+    manage_transaction: bool = True,
+) -> bool:
+    """Make an owned, ready take the junction's selection.
+
+    The guarded ``UPDATE`` refuses cross-user item/take ownership, a
+    descriptor mismatch, a non-ready take, and a take with no stored audio.
+    Bumps the item and Songset ``updated_at`` in the same transaction so a
+    later render snapshot notices the change.
+    """
+    now = datetime.now(timezone.utc)
+    original_autocommit = conn.autocommit
+    try:
+        if manage_transaction:
+            conn.autocommit = False
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE songset_items SET glue_active_take_id = %s, updated_at = %s "
+                "WHERE id = %s AND songset_id = %s "
+                "AND EXISTS ("
+                "SELECT 1 FROM songsets WHERE songsets.id = %s AND songsets.user_id = %s"
+                ") AND EXISTS ("
+                "SELECT 1 FROM glue_takes WHERE glue_takes.id = %s AND glue_takes.user_id = %s "
+                "AND glue_takes.descriptor_key = %s AND glue_takes.status = %s "
+                "AND glue_takes.r2_key IS NOT NULL AND glue_takes.seconds > 0"
+                ") RETURNING id",
+                (
+                    take_id,
+                    now,
+                    item_id,
+                    songset_id,
+                    songset_id,
+                    user_id,
+                    take_id,
+                    user_id,
+                    descriptor_key,
+                    "ready",
+                ),
+            )
+            selected = cur.fetchone() is not None
+            if selected:
+                cur.execute(
+                    "UPDATE songsets SET updated_at = %s WHERE id = %s",
+                    (now, songset_id),
+                )
+        if manage_transaction:
+            conn.commit()
+    except Exception:
+        if manage_transaction:
+            conn.rollback()
+        raise
+    finally:
+        if manage_transaction:
+            conn.autocommit = original_autocommit
+    return selected
+
+
 def get_glue_excerpt(
     conn: psycopg2.extensions.connection,
     user_id: int,

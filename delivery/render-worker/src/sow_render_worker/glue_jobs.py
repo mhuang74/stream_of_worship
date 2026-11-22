@@ -155,6 +155,12 @@ class GlueJobError(Exception):
     retry_kind: str
     detail: str | None = None
 
+    def __init__(self, code: str, retry_kind: str, detail: str | None = None) -> None:
+        super().__init__(code, retry_kind, detail)
+        self.code = code
+        self.retry_kind = retry_kind
+        self.detail = detail
+
     def __str__(self) -> str:  # pragma: no cover - trivial
         return f"{self.code} ({self.retry_kind})"
 
@@ -654,7 +660,7 @@ def execute_glue_job(
     if job.phase in ("storing-response", "staging"):
         # A durable post-provider phase is free staging recovery, never a
         # second provider request (issue #318 fills the staging body).
-        _run_staging_mode(conn, job, log)
+        _run_staging_mode(conn, job, log, asset_fetcher=asset_fetcher)
         return
     if not claimed_now:
         # An explicit retry-processing delivery may run free staging recovery
@@ -675,7 +681,7 @@ def execute_glue_job(
         attemptId=job.attempt_id,
     )
     if mode == "staging":
-        _run_staging_mode(conn, job, log)
+        _run_staging_mode(conn, job, log, asset_fetcher=asset_fetcher)
         return
     _run_generate_mode(
         conn,
@@ -819,7 +825,13 @@ def _run_generate_mode(
             work_dir=work_dir,
             log_event=log,
         )
-        _after_provider_stage(conn, job, log, work_dir=work_dir)
+        _after_provider_stage(
+            conn,
+            job,
+            log,
+            work_dir=work_dir,
+            asset_fetcher=asset_fetcher,
+        )
     except GlueConfigurationError:
         raise
     except Exception as exc:
@@ -863,6 +875,7 @@ def _after_provider_stage(
     log: Callable[..., None],
     *,
     work_dir: Optional[Path] = None,
+    asset_fetcher: Any = None,
 ) -> None:
     """Boundary after the provider stage: heartbeat, then free staging.
 
@@ -934,7 +947,13 @@ def _after_provider_stage(
     try:
         # Hand staging the fresh row: it carries the persisted raw-response
         # key/checksum/byte count that authorizes free recovery.
-        stage(current, conn, work_dir=work_dir, log_event=log)
+        stage(
+            conn,
+            current,
+            log,
+            work_dir=work_dir,
+            asset_fetcher=asset_fetcher,
+        )
     except GlueConfigurationError:
         raise
     except Exception as exc:
@@ -957,7 +976,13 @@ def _finish_stale(conn: Any, job: GlueJob, log: Callable[..., None], *, reason: 
     )
 
 
-def _run_staging_mode(conn: Any, job: GlueJob, log: Callable[..., None]) -> None:
+def _run_staging_mode(
+    conn: Any,
+    job: GlueJob,
+    log: Callable[..., None],
+    *,
+    asset_fetcher: Any = None,
+) -> None:
     """Free staging recovery entry: never calls the provider stage."""
     contacted = bool(job.provider_contacted)
     try:
@@ -1001,7 +1026,7 @@ def _run_staging_mode(conn: Any, job: GlueJob, log: Callable[..., None]) -> None
 
         work_dir = _make_work_dir(job)
         try:
-            stage(job, conn, work_dir=work_dir, log_event=log)
+            stage(conn, job, log, work_dir=work_dir, asset_fetcher=asset_fetcher)
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
         log("glue.staging.recovered", phase="staging")
