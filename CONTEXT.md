@@ -39,8 +39,12 @@ _Avoid_: voice, perspective, address
 
 ### Songset & Transitions
 
+**Songset Item**:
+One occurrence of a Song inside a Songset, with its own position, Transition settings, and Song Arrangement. The same Song may occupy several Songset Items; the per-Songset cap counts Items, not distinct Songs.
+_Avoid_: entry, slot, row, duplicate song
+
 **Songset**:
-An ordered list of songs a user curates and renders into a seamless audio/video deliverable.
+An ordered list of Songset Items a user curates and renders into a seamless audio/video deliverable.
 _Avoid_: playlist
 _Avoid_: 詩歌集 (old mechanical zh-Hant UI term; replaced by 敬拜歌單 per docs/translation-guidelines.md)
 

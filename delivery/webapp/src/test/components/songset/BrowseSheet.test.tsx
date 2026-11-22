@@ -79,7 +79,7 @@ describe("BrowseSheet", () => {
     isOpen: true,
     onOpenChange: vi.fn(),
     onAddSong: vi.fn().mockResolvedValue(undefined),
-    existingSongIds: [],
+    existingSongCounts: {},
   };
 
   beforeEach(() => {

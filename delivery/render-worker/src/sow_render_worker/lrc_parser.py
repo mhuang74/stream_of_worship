@@ -21,7 +21,9 @@ class GlobalLRCLine:
     text: str
     local_time_seconds: float
     global_time_seconds: float
-    title: str
+    #: The Songset Item this line belongs to. The same Song may occupy several
+    #: Items, so the Song title cannot identify an occurrence.
+    item_id: str
 
 
 _LRC_PATTERN = re.compile(r"\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)")
@@ -156,7 +158,7 @@ def parse_lrc(lrc_content: str) -> list[LRCLine]:
 def remap_lrc_to_clips(
     local_lines: list[LRCLine],
     clips: tuple[AudioClipInfo, ...],
-    title: str,
+    item_id: str,
     tempo_bpm: float | None = None,
 ) -> list[GlobalLRCLine]:
     """
@@ -242,7 +244,7 @@ def remap_lrc_to_clips(
                     text=line.text,
                     local_time_seconds=line.time_seconds,
                     global_time_seconds=global_time,
-                    title=title,
+                    item_id=item_id,
                 )
             )
     remapped.sort(key=lambda line: line.global_time_seconds)
@@ -303,12 +305,13 @@ def find_current_lyric_index(
     return current_index
 
 
-def group_lyrics_by_song(
+def group_lyrics_by_item(
     lyrics: list[GlobalLRCLine],
 ) -> dict[str, list[GlobalLRCLine]]:
+    """Group lyrics lines by the Songset Item that owns them."""
     grouped: dict[str, list[GlobalLRCLine]] = {}
     for line in lyrics:
-        grouped.setdefault(line.title, []).append(line)
+        grouped.setdefault(line.item_id, []).append(line)
     return grouped
 
 

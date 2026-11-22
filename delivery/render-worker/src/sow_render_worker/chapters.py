@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +75,28 @@ class LyricsCallback(Protocol):
     async def __call__(self, hash_prefix: str, segment: SegmentInfo) -> list[ChapterLine]: ...
 
 
+def chapter_titles(segments: Sequence[SegmentInfo]) -> list[str]:
+    """Per-segment chapter titles; the k-th use of the same base title (k > 1)
+    is suffixed with its occurrence ordinal: "Title", "Title (2)", "Title (3)"."""
+    base = [
+        getattr(seg.item, "song_title", None)
+        or str(getattr(seg.item, "song_id", "") or f"Song {i + 1}")
+        for i, seg in enumerate(segments)
+    ]
+    seen: dict[str, int] = {}
+    titles: list[str] = []
+    for title in base:
+        seen[title] = seen.get(title, 0) + 1
+        titles.append(title if seen[title] == 1 else f"{title} ({seen[title]})")
+    return titles
+
+
 def build_chapters_from_segments(
     segments: list[SegmentInfo],
     get_lyrics: Callable[[str, SegmentInfo], list[ChapterLine] | object],
 ) -> list[Chapter]:
+    titles = chapter_titles(segments)
+
     def _build_chapter(i: int, segment: SegmentInfo) -> Chapter:
         clips = segment.clips
         if clips:
@@ -88,7 +106,7 @@ def build_chapters_from_segments(
             start_seconds = segment.start_time_seconds
             end_seconds = start_seconds + segment.duration_seconds
         item = segment.item
-        song_title = getattr(item, "song_title", None) or getattr(item, "song_id", None) or f"Song {i + 1}"
+        song_title = titles[i]
         hash_prefix = getattr(item, "recording_hash_prefix", None)
         if hash_prefix:
             result = get_lyrics(hash_prefix, segment)
@@ -122,18 +140,16 @@ def generate_chapters_manifest(
             if lrc_content:
                 local_lyrics = parse_lrc(lrc_content)
                 item = segment.item
-                title = (
-                    getattr(item, "song_title", None)
-                    or getattr(item, "song_id", None)
-                    or hash_prefix
-                )
                 return [
                     ChapterLine(
                         text=line.text,
                         start_seconds=line.global_time_seconds,
                     )
                     for line in remap_lrc_to_clips(
-                        local_lyrics, segment.clips, title, tempo_bpm=segment.item.tempo_bpm
+                        local_lyrics,
+                        segment.clips,
+                        getattr(item, "id", hash_prefix),
+                        tempo_bpm=segment.item.tempo_bpm,
                     )
                 ]
         except Exception:

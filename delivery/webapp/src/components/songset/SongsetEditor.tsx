@@ -85,6 +85,7 @@ export interface SongsetEditorProps {
   onRemoveItem: (itemId: string) => Promise<void>;
   onUpdateTransition: (itemId: string, settings: TransitionSettings) => Promise<void>;
   onEditArrangement?: (itemId: string) => void;
+  onDuplicateItem?: (itemId: string) => Promise<void>;
   onRender: () => void;
   /** Present ⇒ the kebab shows "Cancel render" instead of "Render" while a
    * job is active. */
@@ -120,6 +121,7 @@ export function SongsetEditor({
   onRemoveItem,
   onUpdateTransition,
   onEditArrangement,
+  onDuplicateItem,
   onRender,
   onCancelRender,
   isCancellingRender = false,
@@ -216,6 +218,21 @@ export function SongsetEditor({
       }
     },
     [onRemoveItem, t]
+  );
+
+  // Handle duplicate item
+  const handleDuplicateItem = useCallback(
+    async (itemId: string) => {
+      try {
+        await onDuplicateItem?.(itemId);
+        toast.success(t("songsets.toast.itemDuplicated"));
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : t("songsets.error.duplicateItemFailed")
+        );
+      }
+    },
+    [onDuplicateItem, t]
   );
 
   // Handle transition edit
@@ -622,6 +639,7 @@ export function SongsetEditor({
           onRemove={handleRemove}
           onEditTransition={handleEditTransition}
           onEditArrangement={onEditArrangement}
+          onDuplicateItem={(itemId) => void handleDuplicateItem(itemId)}
           isRemoving={isRemoving}
           songsetId={songset.id}
           highlightSongId={highlightSongId}

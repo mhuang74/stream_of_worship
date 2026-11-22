@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Popover,
   PopoverContent,
@@ -19,7 +20,10 @@ interface ContainingSongset {
   description: string | null;
   updatedAt: string;
   itemCount: number;
-  songPosition: number;
+  /** How many Items in this Songset are the current song (>= 1). */
+  occurrenceCount: number;
+  /** Zero-based positions of every occurrence, ascending. */
+  positions: number[];
   isOrigin: boolean;
   owner: { id: number; name: string };
 }
@@ -137,7 +141,7 @@ export function LocateSongsetsPopover() {
           >
             {songsets.map((ss) => (
               <button
-                key={`${ss.id}-${ss.songPosition}`}
+                key={ss.id}
                 role="listitem"
                 tabIndex={0}
                 onClick={() => handleSelect(ss.id)}
@@ -155,9 +159,19 @@ export function LocateSongsetsPopover() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{ss.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {ss.itemCount} {t("audio.locate.songs")} • {t("audio.locate.position")} {ss.songPosition + 1}
+                    {ss.itemCount} {t("audio.locate.songs")} • {t("audio.locate.position")}{" "}
+                    {ss.positions.map((p) => p + 1).join(", ")}
                   </p>
                 </div>
+                {ss.occurrenceCount > 1 && (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 text-[10px] px-1 py-0 tabular-nums"
+                    data-testid="locate-occurrence-count"
+                  >
+                    ×{ss.occurrenceCount}
+                  </Badge>
+                )}
                 {ss.isOrigin && (
                   <span className="text-xs text-primary shrink-0 font-medium">
                     {t("audio.locate.origin")}

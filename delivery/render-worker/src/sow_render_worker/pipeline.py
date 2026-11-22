@@ -17,7 +17,7 @@ from sow_render_worker.audio_engine import (
     calculate_total_duration,
     generate_songset_audio,
 )
-from sow_render_worker.chapters import generate_chapters_manifest
+from sow_render_worker.chapters import chapter_titles, generate_chapters_manifest
 from sow_render_worker.db import (
     RenderProgress,
     complete_render_job,
@@ -224,14 +224,10 @@ class PipelineCancelledError(Exception):
     pass
 
 
-def _segment_to_chapter_info(seg, index: int) -> ChapterInfo:
-    item = seg.item
+def _segment_to_chapter_info(seg, index: int, song_title: str) -> ChapterInfo:
     return ChapterInfo(
         position=index + 1,
-        song_title=(
-            item.song_title
-            or (str(item.song_id) if item.song_id else f"Song {index + 1}")
-        ),
+        song_title=song_title,
         start_seconds=seg.start_time_seconds,
         end_seconds=seg.start_time_seconds + seg.duration_seconds,
     )
@@ -527,8 +523,9 @@ def execute_render_pipeline(
 
             video_engine.frame_renderer.clear_cache()
 
+            titles_for_video = chapter_titles(audio_result.segments)
             chapters_for_video = [
-                _segment_to_chapter_info(seg, i)
+                _segment_to_chapter_info(seg, i, titles_for_video[i])
                 for i, seg in enumerate(audio_result.segments)
             ]
             if chapters_for_video:

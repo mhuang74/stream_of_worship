@@ -19,7 +19,7 @@ interface BrowseSheetProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onAddSong: (song: SongCardData) => Promise<void>;
-  existingSongIds?: string[];
+  existingSongCounts?: Record<string, number>;
   itemCount?: number;
   className?: string;
 }
@@ -28,7 +28,7 @@ export function BrowseSheet({
   isOpen,
   onOpenChange,
   onAddSong,
-  existingSongIds = [],
+  existingSongCounts = {},
   itemCount = 0,
   className,
 }: BrowseSheetProps) {
@@ -49,7 +49,7 @@ export function BrowseSheet({
           <CatalogSearch
             mode="browse"
             onAddSong={onAddSong}
-            existingSongIds={existingSongIds}
+            existingSongCounts={existingSongCounts}
             isSongsetFull={isSongsetFull}
             songNotFoundMessage={t("browse.songNotFound")}
             songAddedMessage={t("browse.songAddedToSongset")}

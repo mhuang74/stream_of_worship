@@ -361,7 +361,9 @@ export function RenderForm({
                     <p className="text-xs text-muted-foreground mb-1">{t("render.titleCard.defaultLines")}</p>
                     <p className="text-sm text-muted-foreground whitespace-pre-line">
                       {songsetName || t("render.titleCard.worshipSet")}{"\n"}
-                      {songTitles.join("\n")}
+                      {/* A Song occupying several Items is one title-card line,
+                          matching the render worker's deduped title card. */}
+                      {Array.from(new Set(songTitles)).join("\n")}
                     </p>
                   </div>
                 )}

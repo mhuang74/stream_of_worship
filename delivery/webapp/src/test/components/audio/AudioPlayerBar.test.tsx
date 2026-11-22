@@ -815,7 +815,9 @@ describe("AudioPlayerBar", () => {
       description: null,
       updatedAt: new Date().toISOString(),
       itemCount: 5,
-      songPosition: i,
+      // The first Songset holds the song twice (positions 0 and 2).
+      occurrenceCount: i === 0 ? 2 : 1,
+      positions: i === 0 ? [0, 2] : [3],
       isOrigin: i === 0,
       owner: { id: 1, name: "Owner" },
     }));
@@ -937,6 +939,31 @@ describe("AudioPlayerBar", () => {
       expect(items).toHaveLength(15);
 
       expect(list.querySelector("[aria-selected]")).toBeNull();
+    });
+
+    it("collapses repeated occurrences into one row with a count badge", async () => {
+      const user = userEvent.setup();
+      render(
+        <AudioPlayerProvider>
+          <TestPlayerWithTrack track={songTrack} />
+        </AudioPlayerProvider>
+      );
+      await user.click(screen.getByTestId("load-track"));
+      await waitFor(() => {
+        expect(screen.getByTestId("audio-player-bar")).toBeInTheDocument();
+      });
+
+      await user.click(
+        screen.getByRole("button", { name: /find containing songsets/i })
+      );
+
+      const list = await screen.findByRole("list", {
+        name: /songsets containing this song/i,
+      });
+      const badges = screen.getAllByTestId("locate-occurrence-count");
+      expect(badges).toHaveLength(1);
+      expect(badges[0]).toHaveTextContent("×2");
+      expect(list).toHaveTextContent("Position 1, 3");
     });
 
     it("popover content has min-h-[240px] class", async () => {

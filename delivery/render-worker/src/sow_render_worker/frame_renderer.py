@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 from sow_render_worker.lrc_parser import (
     GlobalLRCLine,
     estimate_last_lyric_duration,
-    group_lyrics_by_song,
+    group_lyrics_by_item,
 )
 
 logger = logging.getLogger(__name__)
@@ -646,8 +646,13 @@ class FrameRenderer:
                     tempo_bpm = segment.tempo_bpm
                 break
 
-        lyrics_by_song = group_lyrics_by_song(lyrics)
-        current_song_lyrics = lyrics_by_song.get(current_title, [])
+        # Lyrics are keyed by Songset Item, not by Song: a repeated Song has one
+        # bucket per occurrence, so the last-line fade and the blank-gap windows
+        # are computed from this occurrence's lines only.
+        lyrics_by_item = group_lyrics_by_item(lyrics)
+        current_song_lyrics = (
+            lyrics_by_item.get(current_segment.id, []) if current_segment else []
+        )
 
         intro_alpha = 0
         if current_segment and current_song_lyrics:
@@ -805,7 +810,6 @@ class FrameRenderer:
                 self.render_lyrics(
                     current_song_lyrics,
                     current_time,
-                    current_title,
                     draw,
                     width,
                     height,
@@ -886,7 +890,6 @@ class FrameRenderer:
         self,
         song_lyrics: list[GlobalLRCLine],
         current_time: float,
-        current_title: str,
         draw: ImageDraw.ImageDraw,
         width: int,
         height: int,

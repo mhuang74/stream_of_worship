@@ -16,7 +16,6 @@ export interface GlobalLRCLine {
   text: string;
   localTimeSeconds: number;
   globalTimeSeconds: number;
-  title: string;
 }
 
 /**
@@ -49,27 +48,6 @@ export function parseLRC(lrcContent: string): LRCLine[] {
 
   // Sort by timestamp
   return lines.sort((a, b) => a.timeSeconds - b.timeSeconds);
-}
-
-/**
- * Convert local LRC lines to global timeline.
- * 
- * @param localLines - LRC lines with local timestamps
- * @param segmentStartSeconds - Start time of this segment in the global timeline
- * @param title - Song title for these lyrics
- * @returns Array of global LRC lines
- */
-export function convertToGlobalTimeline(
-  localLines: LRCLine[],
-  segmentStartSeconds: number,
-  title: string
-): GlobalLRCLine[] {
-  return localLines.map((line) => ({
-    text: line.text,
-    localTimeSeconds: line.timeSeconds,
-    globalTimeSeconds: segmentStartSeconds + line.timeSeconds,
-    title,
-  }));
 }
 
 /**
@@ -149,25 +127,6 @@ export function findCurrentLyricIndex(
     }
   }
   return currentIndex;
-}
-
-/**
- * Group lyrics by song title for easy lookup.
- * 
- * @param lyrics - Array of global LRC lines
- * @returns Map of title to lyrics array
- */
-export function groupLyricsBySong(
-  lyrics: GlobalLRCLine[]
-): Map<string, GlobalLRCLine[]> {
-  const grouped = new Map<string, GlobalLRCLine[]>();
-  for (const line of lyrics) {
-    if (!grouped.has(line.title)) {
-      grouped.set(line.title, []);
-    }
-    grouped.get(line.title)!.push(line);
-  }
-  return grouped;
 }
 
 /**

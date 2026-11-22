@@ -386,7 +386,7 @@ class TestEncodeVideoWithFFmpeg:
 
         lyrics: list[GlobalLRCLine] = [
             GlobalLRCLine(
-                text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, title="Song"
+                text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, item_id="1"
             ),
         ]
         segments = [
@@ -520,7 +520,7 @@ class TestEncodeVideoWithFFmpeg:
 
         lyrics: list[GlobalLRCLine] = [
             GlobalLRCLine(
-                text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, title="Song"
+                text="Hello", local_time_seconds=0.0, global_time_seconds=0.0, item_id="1"
             ),
         ]
         segments = [
@@ -607,7 +607,7 @@ class TestEncodeVideoWithFFmpeg:
 
         lyrics: list[GlobalLRCLine] = [
             GlobalLRCLine(
-                text="Hello", local_time_seconds=5.0, global_time_seconds=5.0, title="Song"
+                text="Hello", local_time_seconds=5.0, global_time_seconds=5.0, item_id="1"
             ),
         ]
         segments = [

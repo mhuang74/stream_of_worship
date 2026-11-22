@@ -28,13 +28,13 @@ from sow_render_worker.frame_renderer import (
 from sow_render_worker.lrc_parser import GlobalLRCLine
 
 
-def _make_lyrics(times_and_texts, title="Song", offset=0.0):
+def _make_lyrics(times_and_texts, item_id="seg1", offset=0.0):
     return [
         GlobalLRCLine(
             text=t,
             local_time_seconds=ts,
             global_time_seconds=ts + offset,
-            title=title,
+            item_id=item_id,
         )
         for ts, t in times_and_texts
     ]
@@ -42,6 +42,7 @@ def _make_lyrics(times_and_texts, title="Song", offset=0.0):
 
 def _make_segment(
     song_title="Test Song",
+    id="seg1",
     start=0.0,
     duration=60.0,
     album=None,
@@ -50,7 +51,7 @@ def _make_segment(
     tempo=None,
 ):
     return SegmentInfo(
-        id="seg1",
+        id=id,
         song_id="song1",
         position=0,
         song_title=song_title,
@@ -452,11 +453,11 @@ class TestRenderFrame:
 
     def test_multiple_segments(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics_song1 = _make_lyrics([(5.0, "Hello")], title="Song 1", offset=0.0)
-        lyrics_song2 = _make_lyrics([(5.0, "World")], title="Song 2", offset=60.0)
+        lyrics_song1 = _make_lyrics([(5.0, "Hello")], item_id="seg1", offset=0.0)
+        lyrics_song2 = _make_lyrics([(5.0, "World")], item_id="seg2", offset=60.0)
         lyrics = lyrics_song1 + lyrics_song2
-        seg1 = _make_segment(song_title="Song 1", start=0.0, duration=60.0)
-        seg2 = _make_segment(song_title="Song 2", start=60.0, duration=60.0)
+        seg1 = _make_segment(id="seg1", song_title="Song 1", start=0.0, duration=60.0)
+        seg2 = _make_segment(id="seg2", song_title="Song 2", start=60.0, duration=60.0)
         result = renderer.render_frame(lyrics, [seg1, seg2], 65.0)
         assert isinstance(result, Image.Image)
 
@@ -556,7 +557,7 @@ class TestRenderLyrics:
         img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
-        renderer.render_lyrics(lyrics, 7.0, "Song", draw, 1920, 1080)
+        renderer.render_lyrics(lyrics, 7.0, draw, 1920, 1080)
         blank = Image.new("RGB", (1920, 1080), bg)
         assert list(img.getdata()) != list(blank.getdata())
 
@@ -566,7 +567,7 @@ class TestRenderLyrics:
         img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello")])
-        renderer.render_lyrics(lyrics, 2.0, "Song", draw, 1920, 1080)
+        renderer.render_lyrics(lyrics, 2.0, draw, 1920, 1080)
         blank = Image.new("RGB", (1920, 1080), bg)
         assert list(img.getdata()) == list(blank.getdata())
 
@@ -576,7 +577,7 @@ class TestRenderLyrics:
         img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello")])
-        renderer.render_lyrics(lyrics, 8.0, "Song", draw, 1920, 1080)
+        renderer.render_lyrics(lyrics, 8.0, draw, 1920, 1080)
         blank = Image.new("RGB", (1920, 1080), bg)
         assert list(img.getdata()) != list(blank.getdata())
 
@@ -586,11 +587,11 @@ class TestRenderLyrics:
         img_before = Image.new("RGB", (1920, 1080), bg)
         draw_before = ImageDraw.Draw(img_before)
         lyrics = _make_lyrics([(5.0, "Hello")])
-        renderer.render_lyrics(lyrics, 8.0, "Song", draw_before, 1920, 1080)
+        renderer.render_lyrics(lyrics, 8.0, draw_before, 1920, 1080)
 
         img_after = Image.new("RGB", (1920, 1080), bg)
         draw_after = ImageDraw.Draw(img_after)
-        renderer.render_lyrics(lyrics, 50.0, "Song", draw_after, 1920, 1080)
+        renderer.render_lyrics(lyrics, 50.0, draw_after, 1920, 1080)
 
         blank = Image.new("RGB", (1920, 1080), bg)
         assert list(img_before.getdata()) != list(blank.getdata())
@@ -602,7 +603,7 @@ class TestRenderLyrics:
         img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
-        renderer.render_lyrics(lyrics, 5.0, "Song", draw, 1920, 1080)
+        renderer.render_lyrics(lyrics, 5.0, draw, 1920, 1080)
         blank = Image.new("RGB", (1920, 1080), bg)
         assert list(img.getdata()) != list(blank.getdata())
 
@@ -612,7 +613,7 @@ class TestRenderLyrics:
         img = Image.new("RGB", (1920, 1080), bg)
         draw = ImageDraw.Draw(img)
         lyrics = _make_lyrics([(5.0, "讚美之泉"), (10.0, "哈利路亞")])
-        renderer.render_lyrics(lyrics, 7.0, "Song", draw, 1920, 1080)
+        renderer.render_lyrics(lyrics, 7.0, draw, 1920, 1080)
         blank = Image.new("RGB", (1920, 1080), bg)
         assert list(img.getdata()) != list(blank.getdata())
 
@@ -624,7 +625,7 @@ class TestRenderLyrics:
         lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (40.0, "World")])
 
         with patch.object(renderer, "_render_next_lyric_preview") as mock_preview:
-            renderer.render_lyrics(lyrics, 17.0, "Song", draw, 1920, 1080, tempo_bpm=120.0)
+            renderer.render_lyrics(lyrics, 17.0, draw, 1920, 1080, tempo_bpm=120.0)
 
         blank = Image.new("RGB", (1920, 1080), bg)
         mock_preview.assert_not_called()
@@ -637,7 +638,7 @@ class TestRenderLyrics:
         lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")])
 
         with patch.object(renderer, "_render_next_lyric_preview") as mock_preview:
-            renderer.render_lyrics(lyrics, 11.25, "Song", draw, 1920, 1080, tempo_bpm=120.0)
+            renderer.render_lyrics(lyrics, 11.25, draw, 1920, 1080, tempo_bpm=120.0)
 
         mock_preview.assert_called_once()
         assert mock_preview.call_args.args[0].text == "World"
@@ -698,9 +699,9 @@ class TestRenderLyrics:
         lyrics = _make_lyrics([(0.0, "Hello"), (10.0, "")])
 
         img_hold = Image.new("RGB", (1920, 1080), bg)
-        renderer.render_lyrics(lyrics, 11.0, "Song", ImageDraw.Draw(img_hold), 1920, 1080)
+        renderer.render_lyrics(lyrics, 11.0, ImageDraw.Draw(img_hold), 1920, 1080)
         img_faded = Image.new("RGB", (1920, 1080), bg)
-        renderer.render_lyrics(lyrics, 16.0, "Song", ImageDraw.Draw(img_faded), 1920, 1080)
+        renderer.render_lyrics(lyrics, 16.0, ImageDraw.Draw(img_faded), 1920, 1080)
         blank = Image.new("RGB", (1920, 1080), bg)
 
         assert list(img_hold.getdata()) != list(blank.getdata())
@@ -712,7 +713,7 @@ class TestRenderLyrics:
         img = Image.new("RGB", (1920, 1080), bg)
         lyrics = _make_lyrics([(0.0, "Hello"), (10.0, "")])
 
-        renderer.render_lyrics(lyrics, 14.0, "Song", ImageDraw.Draw(img), 1920, 1080)
+        renderer.render_lyrics(lyrics, 14.0, ImageDraw.Draw(img), 1920, 1080)
 
         changed_pixels = [pixel for pixel in img.getdata() if pixel != bg]
         assert changed_pixels
@@ -742,7 +743,7 @@ class TestRenderLyrics:
             text=text,
             local_time_seconds=10.0,
             global_time_seconds=10.0,
-            title="Song",
+            item_id="seg1",
         )
 
         renderer._render_next_lyric_preview(line, alpha, draw, 1920, 300)
@@ -774,7 +775,7 @@ class TestRenderLyricsMultiLine:
         bg = VIDEO_TEMPLATES["dark"].background_color
         lyrics = _make_lyrics([(0.0, "祢的話在我心  使我腳步不偏離")])
         img = Image.new("RGB", (1920, 1080), bg)
-        renderer.render_lyrics(lyrics, 1.0, "Song", ImageDraw.Draw(img), 1920, 1080)
+        renderer.render_lyrics(lyrics, 1.0, ImageDraw.Draw(img), 1920, 1080)
 
         rows = self._glyph_rows(img, bg)
         assert rows, "no pixels drawn"
@@ -793,7 +794,7 @@ class TestRenderLyricsMultiLine:
         def band_heights(text):
             img = Image.new("RGB", (1920, 1080), bg)
             renderer.render_lyrics(
-                _make_lyrics([(0.0, text)]), 1.0, "Song", ImageDraw.Draw(img), 1920, 1080
+                _make_lyrics([(0.0, text)]), 1.0, ImageDraw.Draw(img), 1920, 1080
             )
             return self._band_heights(self._glyph_rows(img, bg))
 
@@ -1016,7 +1017,7 @@ class TestQuantizeAlpha:
 class TestVisualState:
     def test_intro_phase(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics = _make_lyrics([(10.0, "Hello")], title="Test Song")
+        lyrics = _make_lyrics([(10.0, "Hello")])
         segment = _make_segment(start=0.0, duration=60.0, composer="Test")
         state = renderer._resolve_visual_state(lyrics, [segment], 2.0)
         assert state.intro_alpha == 255
@@ -1025,7 +1026,7 @@ class TestVisualState:
 
     def test_lyric_phase(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")], title="Test Song")
+        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
         segment = _make_segment(start=0.0, duration=60.0)
         state = renderer._resolve_visual_state(lyrics, [segment], 7.0)
         assert state.intro_alpha == 0
@@ -1049,7 +1050,7 @@ class TestVisualState:
 
     def test_last_lyric_fade(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics = _make_lyrics([(5.0, "Hello")], title="Test Song")
+        lyrics = _make_lyrics([(5.0, "Hello")])
         segment = _make_segment(start=0.0, duration=60.0)
         state = renderer._resolve_visual_state(lyrics, [segment], 50.0)
         assert state.is_last_lyric_faded is True
@@ -1057,14 +1058,39 @@ class TestVisualState:
 
     def test_segment_transition(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics_song1 = _make_lyrics([(5.0, "Hello")], title="Song 1", offset=0.0)
-        lyrics_song2 = _make_lyrics([(5.0, "World")], title="Song 2", offset=60.0)
+        lyrics_song1 = _make_lyrics([(5.0, "Hello")], item_id="seg1", offset=0.0)
+        lyrics_song2 = _make_lyrics([(5.0, "World")], item_id="seg2", offset=60.0)
         lyrics = lyrics_song1 + lyrics_song2
-        seg1 = _make_segment(song_title="Song 1", start=0.0, duration=60.0)
-        seg2 = _make_segment(song_title="Song 2", start=60.0, duration=60.0)
+        seg1 = _make_segment(id="seg1", song_title="Song 1", start=0.0, duration=60.0)
+        seg2 = _make_segment(id="seg2", song_title="Song 2", start=60.0, duration=60.0)
         state = renderer._resolve_visual_state(lyrics, [seg1, seg2], 65.0)
-        assert state.segment_id == "seg1"
+        assert state.segment_id == "seg2"
         assert state.current_title == "Song 2"
+
+    def test_repeated_song_uses_its_own_occurrence_lyrics(self):
+        # The same Song occupies two Items: each occurrence owns its own lyric
+        # lines, so occurrence 2's lines never join occurrence 1's bucket.
+        renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
+        occurrence_1 = _make_lyrics([(5.0, "First time"), (10.0, "Same words")], item_id="seg1")
+        occurrence_2 = _make_lyrics(
+            [(5.0, "Second time"), (10.0, "Same words")], item_id="seg2", offset=60.0
+        )
+        lyrics = occurrence_1 + occurrence_2
+        seg1 = _make_segment(id="seg1", song_title="Same Song", start=0.0, duration=60.0)
+        seg2 = _make_segment(id="seg2", song_title="Same Song", start=60.0, duration=60.0)
+
+        state = renderer._resolve_visual_state(lyrics, [seg1, seg2], 67.0)
+        assert state.segment_id == "seg2"
+        assert state.current_title == "Same Song"
+        assert [line.text for line in state.current_song_lyrics] == ["Second time", "Same words"]
+        assert state.current_lyric_index == 0
+
+        # Occurrence 1's own last line is last, so it fades out before its
+        # segment ends instead of being held for occurrence 2's lines.
+        end_of_occurrence_1 = renderer._resolve_visual_state(lyrics, [seg1, seg2], 50.0)
+        assert end_of_occurrence_1.segment_id == "seg1"
+        assert end_of_occurrence_1.is_last_lyric_faded is True
+        assert end_of_occurrence_1.current_lyric_index == -1
 
 
 class TestComputeCacheKey:
@@ -1078,18 +1104,18 @@ class TestComputeCacheKey:
 
     def test_different_segment_different_key(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics_song1 = _make_lyrics([(5.0, "Hello")], title="Song 1", offset=0.0)
-        lyrics_song2 = _make_lyrics([(5.0, "World")], title="Song 2", offset=60.0)
+        lyrics_song1 = _make_lyrics([(5.0, "Hello")], item_id="seg1", offset=0.0)
+        lyrics_song2 = _make_lyrics([(5.0, "World")], item_id="seg2", offset=60.0)
         lyrics = lyrics_song1 + lyrics_song2
-        seg1 = _make_segment(song_title="Song 1", start=0.0, duration=60.0)
-        seg2 = _make_segment(song_title="Song 2", start=60.0, duration=60.0)
+        seg1 = _make_segment(id="seg1", song_title="Song 1", start=0.0, duration=60.0)
+        seg2 = _make_segment(id="seg2", song_title="Song 2", start=60.0, duration=60.0)
         state1 = renderer._resolve_visual_state(lyrics, [seg1, seg2], 7.0)
         state2 = renderer._resolve_visual_state(lyrics, [seg1, seg2], 65.0)
         assert renderer._compute_cache_key(state1) != renderer._compute_cache_key(state2)
 
     def test_different_lyric_index_different_key(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")], title="Test Song")
+        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
         segment = _make_segment(start=0.0, duration=60.0)
         state1 = renderer._resolve_visual_state(lyrics, [segment], 6.0)
         state2 = renderer._resolve_visual_state(lyrics, [segment], 11.0)
@@ -1103,7 +1129,7 @@ class TestComputeCacheKey:
 
     def test_blank_preview_alpha_changes_cache_key(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")], title="Test Song")
+        lyrics = _make_lyrics([(0.0, "Hello"), (10.0, ""), (13.0, "World")])
         segment = _make_segment(start=0.0, duration=60.0, tempo=120.0)
 
         state_before = renderer._resolve_visual_state(lyrics, [segment], 10.5)
@@ -1135,7 +1161,7 @@ class TestFrameCache:
 
     def test_cache_miss_on_different_state(self):
         renderer = FrameRenderer(template=VIDEO_TEMPLATES["dark"])
-        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")], title="Test Song")
+        lyrics = _make_lyrics([(5.0, "Hello"), (10.0, "World")])
         segment = _make_segment(start=0.0, duration=60.0)
         renderer.render_frame_bytes(lyrics, [segment], 6.0)
         renderer.render_frame_bytes(lyrics, [segment], 11.0)

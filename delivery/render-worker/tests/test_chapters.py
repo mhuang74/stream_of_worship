@@ -212,6 +212,38 @@ class TestBuildChaptersFromSegments:
         chapters = build_chapters_from_segments([], lambda h, s: [])
         assert chapters == []
 
+    def test_repeated_song_titles_take_occurrence_ordinals(self):
+        segments = [
+            FakeSegment(FakeItem("A", "id1", "hash1"), 0.0, 30.0),
+            FakeSegment(FakeItem("B", "id2", "hash2"), 30.0, 45.0),
+            FakeSegment(FakeItem("A", "id1", "hash1"), 45.0, 15.0),
+        ]
+
+        chapters = build_chapters_from_segments(segments, lambda h, s: [])
+
+        assert [chapter.song_title for chapter in chapters] == ["A", "B", "A (2)"]
+
+    def test_distinct_titles_are_untouched(self):
+        segments = [
+            FakeSegment(FakeItem("A", "id1", "hash1"), 0.0, 30.0),
+            FakeSegment(FakeItem("B", "id2", "hash2"), 30.0, 45.0),
+        ]
+
+        chapters = build_chapters_from_segments(segments, lambda h, s: [])
+
+        assert [chapter.song_title for chapter in chapters] == ["A", "B"]
+
+    def test_third_occurrence_suffix(self):
+        segments = [
+            FakeSegment(FakeItem("A", "id1", "hash1"), 0.0, 30.0),
+            FakeSegment(FakeItem("A", "id1", "hash1"), 30.0, 30.0),
+            FakeSegment(FakeItem("A", "id1", "hash1"), 60.0, 30.0),
+        ]
+
+        chapters = build_chapters_from_segments(segments, lambda h, s: [])
+
+        assert [chapter.song_title for chapter in chapters] == ["A", "A (2)", "A (3)"]
+
 
 class TestGenerateChaptersManifest:
     def test_basic_generation(self):

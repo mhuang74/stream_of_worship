@@ -38,7 +38,6 @@ function toGlobalLines(chapter: Chapter): GlobalLRCLine[] {
     text: line.text,
     localTimeSeconds: line.startSeconds,
     globalTimeSeconds: line.startSeconds,
-    title: "",
   }));
 }
 

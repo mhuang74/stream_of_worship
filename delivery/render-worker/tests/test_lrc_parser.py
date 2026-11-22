@@ -7,7 +7,7 @@ from sow_render_worker.lrc_parser import (
     estimate_last_lyric_duration,
     find_current_lyric_index,
     get_lyrics_time_range,
-    group_lyrics_by_song,
+    group_lyrics_by_item,
     is_valid_lrc,
     lyric_boundary_tolerance,
     parse_lrc,
@@ -130,19 +130,19 @@ class TestRemapLrcToClips:
             LRCLine(time_seconds=5.0, text="Hello"),
             LRCLine(time_seconds=10.0, text="World"),
         ]
-        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 30.0, 0.0),), "Test Song")
+        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 30.0, 0.0),), "item-1")
         assert result == [
             GlobalLRCLine(
                 text="Hello",
                 local_time_seconds=5.0,
                 global_time_seconds=5.0,
-                title="Test Song",
+                item_id="item-1",
             ),
             GlobalLRCLine(
                 text="World",
                 local_time_seconds=10.0,
                 global_time_seconds=10.0,
-                title="Test Song",
+                item_id="item-1",
             ),
         ]
 
@@ -273,10 +273,10 @@ class TestRemapLrcToClips:
     def test_empty_lines_returns_empty(self):
         assert remap_lrc_to_clips([], (_clip(0.0, 10.0, 0.0),), "Song") == []
 
-    def test_title_preserved(self):
+    def test_item_id_preserved(self):
         local_lines = [LRCLine(time_seconds=1.0, text="Hi")]
-        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 10.0, 0.0),), "My Song Title")
-        assert result[0].title == "My Song Title"
+        result = remap_lrc_to_clips(local_lines, (_clip(0.0, 10.0, 0.0),), "item-42")
+        assert result[0].item_id == "item-42"
 
     def test_pickup_kept_when_preceding_section_is_omitted(self):
         # The 10–20 s section was dropped, so no clip ends at the 20 s boundary
@@ -394,13 +394,13 @@ class TestRemapLrcToClips:
             LRCLine(time_seconds=10.6, text="next"),
             LRCLine(time_seconds=20.0, text="later"),
         ]
-        assert remap_lrc_to_clips(cut, clips, "Song") == []
+        assert remap_lrc_to_clips(cut, clips, "item-1") == []
 
 
 class TestEstimateLastLyricDuration:
     def _make_lyrics(self, times_and_texts):
         return [
-            GlobalLRCLine(text=t, local_time_seconds=ts, global_time_seconds=ts, title="Song")
+            GlobalLRCLine(text=t, local_time_seconds=ts, global_time_seconds=ts, item_id="item-1")
             for ts, t in times_and_texts
         ]
 
@@ -483,7 +483,7 @@ class TestFindCurrentLyricIndex:
                 text=f"Line {i}",
                 local_time_seconds=ts,
                 global_time_seconds=ts,
-                title="Song",
+                item_id="item-1",
             )
             for i, ts in enumerate(times)
         ]
@@ -520,40 +520,40 @@ class TestFindCurrentLyricIndex:
         assert find_current_lyric_index(lyrics, 10.0) == 0
 
 
-class TestGroupLyricsBySong:
+class TestGroupLyricsByItem:
     def test_basic_grouping(self):
         lyrics = [
-            GlobalLRCLine("A", 1.0, 1.0, "Song 1"),
-            GlobalLRCLine("B", 2.0, 2.0, "Song 2"),
-            GlobalLRCLine("C", 3.0, 3.0, "Song 1"),
+            GlobalLRCLine("A", 1.0, 1.0, "item-1"),
+            GlobalLRCLine("B", 2.0, 2.0, "item-2"),
+            GlobalLRCLine("C", 3.0, 3.0, "item-1"),
         ]
-        grouped = group_lyrics_by_song(lyrics)
+        grouped = group_lyrics_by_item(lyrics)
         assert len(grouped) == 2
-        assert len(grouped["Song 1"]) == 2
-        assert len(grouped["Song 2"]) == 1
+        assert len(grouped["item-1"]) == 2
+        assert len(grouped["item-2"]) == 1
 
     def test_empty_lyrics(self):
-        grouped = group_lyrics_by_song([])
+        grouped = group_lyrics_by_item([])
         assert grouped == {}
 
-    def test_single_song(self):
+    def test_single_item(self):
         lyrics = [
-            GlobalLRCLine("A", 1.0, 1.0, "Only Song"),
-            GlobalLRCLine("B", 2.0, 2.0, "Only Song"),
+            GlobalLRCLine("A", 1.0, 1.0, "only-item"),
+            GlobalLRCLine("B", 2.0, 2.0, "only-item"),
         ]
-        grouped = group_lyrics_by_song(lyrics)
+        grouped = group_lyrics_by_item(lyrics)
         assert len(grouped) == 1
-        assert len(grouped["Only Song"]) == 2
+        assert len(grouped["only-item"]) == 2
 
     def test_preserves_order(self):
         lyrics = [
-            GlobalLRCLine("A", 1.0, 1.0, "Song 1"),
-            GlobalLRCLine("B", 2.0, 2.0, "Song 2"),
-            GlobalLRCLine("C", 3.0, 3.0, "Song 1"),
+            GlobalLRCLine("A", 1.0, 1.0, "item-1"),
+            GlobalLRCLine("B", 2.0, 2.0, "item-2"),
+            GlobalLRCLine("C", 3.0, 3.0, "item-1"),
         ]
-        grouped = group_lyrics_by_song(lyrics)
-        assert grouped["Song 1"][0].text == "A"
-        assert grouped["Song 1"][1].text == "C"
+        grouped = group_lyrics_by_item(lyrics)
+        assert grouped["item-1"][0].text == "A"
+        assert grouped["item-1"][1].text == "C"
 
 
 class TestIsValidLRC:
