@@ -88,6 +88,8 @@ jobs:
     needs: [detect-changes, migrate-db]
     if: needs.detect-changes.outputs.render-worker == 'true' && needs.migrate-db.result == 'success'
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}
     concurrency:
       group: deploy-render-worker-${{ github.ref }}
       cancel-in-progress: false

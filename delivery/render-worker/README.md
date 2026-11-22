@@ -142,6 +142,7 @@ Cloudflare R2 — stores rendered artifacts
 - Docker (for containerized builds)
 - FFmpeg and CJK fonts (installed in the Docker image)
 - AWS account with SQS, Lambda, and private ECR access
+- AWS Lambda Managed Instances capacity provider for the Glue worker (standard Lambda's 1800 s asynchronous cap is below the required 1900 s)
 - Cloudflare R2 account (credentials required for both build time and runtime)
 - Neon PostgreSQL database
 - A `.env` file with R2 credentials (used at Docker build time via build args and at runtime)
@@ -157,6 +158,9 @@ Cloudflare R2 — stores rendered artifacts
 | `SOW_R2_SECRET_ACCESS_KEY` | R2 secret access key (also used at Docker build time) |
 | `SOW_AWS_REGION` | AWS region for SQS and Lambda (default: `us-west-2`) |
 | `SOW_SQS_QUEUE_URL` | SQS queue URL for render job messages |
+| `SOW_GLUE_SQS_QUEUE_URL` | SQS queue URL for Glue (AI transition) job messages — separate from the render queue |
+| `SOW_ELEVENLABS_API_KEY` | ElevenLabs key for paid Glue stages. Worker/server only: never `NEXT_PUBLIC_*`, never logged, never set on the render-worker function. Unset disables paid Glue with `GLUE_NOT_CONFIGURED` before reservation/spend |
+| `GLUE_CAPACITY_PROVIDER_ARN` | Deploy-time only: Lambda Managed Instances capacity provider ARN for `deploy/aws-up-glue.sh` |
 
 Copy `.env.example` to `.env` and fill in the values for local development.
 
@@ -389,6 +393,45 @@ Create the SQS queue and dead-letter queue in AWS:
      --batch-size 1 \
      --event-source-arn arn:aws:sqs:us-west-2:762288208920:sow-render-jobs
    ```
+
+### Glue Worker (AI Transitions)
+
+The Glue worker runs the **same ECR image** as the render worker but as a
+separate Lambda function and queue, so paid AI-transition generation never
+reduces render throughput.
+
+| Setting | Value |
+|---|---|
+| Queue | `sow-glue-jobs` |
+| Dead-letter queue | `sow-glue-jobs-dlq` |
+| Visibility timeout | 2100 s (must exceed the function timeout) |
+| Redrive | `maxReceiveCount: 3` |
+| Function | `sow-glue-worker` on AWS Lambda **Managed Instances** |
+| Function timeout | 1900 s (standard Lambda's 1800 s asynchronous cap is not eligible) |
+| Event-source mapping | batch size 1, `ReportBatchItemFailures` |
+| Provider concurrency | reserved/maximum Glue worker concurrency 2 (independent of render) |
+
+Run `deploy/aws-up-glue.sh` (requires `GLUE_CAPACITY_PROVIDER_ARN`; the script
+fails fast without it and never prints secrets) to create or update the queue,
+DLQ, Managed Instances function, event-source mapping, and a published
+version. Managed Instances require `aws lambda publish-version`.
+
+`SOW_ELEVENLABS_API_KEY` is set on the **Glue function only**. It is never set
+on the render-worker function, never returned to the browser, and never
+`NEXT_PUBLIC_*`. If the key is missing, the job fails with
+`GLUE_NOT_CONFIGURED` before any paid reservation or spend. Creating the key
+and making paid calls requires separate authorization (spec §7.3).
+
+Provider account prerequisites: a paid ElevenLabs workspace with Music
+inpainting access, sufficient credits, supported model `music_v2_5`, and
+capacity for concurrency 2. Account entitlement/plan failures are
+non-retryable in place.
+
+Run `deploy/glue-observability.sh` to create the CloudWatch metric filters and
+alarms for DLQ arrivals, ambiguous provider outcomes, stale queue age, missing
+heartbeats, and staging-recovery spikes. Set `GLUE_ALARM_SNS_TOPIC_ARN` to
+route alarm notifications. Operator recovery is documented in
+`docs/glue-operator-runbook.md`, keyed by `glue_jobs.id`.
 
 ### IAM Permissions
 

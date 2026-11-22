@@ -22,6 +22,8 @@ import * as path from "path";
 const WEBAPP_ROOT = path.resolve(__dirname, "../../../");
 const VERCEL_JSON_PATH = path.join(WEBAPP_ROOT, "vercel.json");
 const ENV_EXAMPLE_PATH = path.join(WEBAPP_ROOT, ".env.production.example");
+const LOCAL_ENV_EXAMPLE_PATH = path.join(WEBAPP_ROOT, ".env.example");
+const WORKER_ENV_EXAMPLE_PATH = path.resolve(WEBAPP_ROOT, "../render-worker/.env.example");
 const README_PATH = path.join(WEBAPP_ROOT, "README.md");
 
 // ---------------------------------------------------------------------------
@@ -385,6 +387,72 @@ describe("README.md — deployment documentation", () => {
   it("documents Cast production approval process", () => {
     const content = readReadme();
     expect(content.toLowerCase()).toMatch(/approv|review/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Glue deployment environment variables
+// ---------------------------------------------------------------------------
+
+describe("Glue deployment environment variables", () => {
+  const envFiles = [
+    { label: "delivery/webapp/.env.example", file: LOCAL_ENV_EXAMPLE_PATH },
+    { label: "delivery/webapp/.env.production.example", file: ENV_EXAMPLE_PATH },
+    { label: "delivery/render-worker/.env.example", file: WORKER_ENV_EXAMPLE_PATH },
+  ];
+
+  for (const { label, file } of envFiles) {
+    describe(label, () => {
+      it("exists", () => {
+        expect(fs.existsSync(file)).toBe(true);
+      });
+
+      it("documents SOW_GLUE_SQS_QUEUE_URL", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
+      });
+
+      it("documents SOW_ELEVENLABS_API_KEY", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("SOW_ELEVENLABS_API_KEY=");
+      });
+
+      it("documents GLUE_CAPACITY_PROVIDER_ARN", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("GLUE_CAPACITY_PROVIDER_ARN=");
+      });
+
+      it("never exposes the provider key or queue as NEXT_PUBLIC_*", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).not.toMatch(/NEXT_PUBLIC_SOW_ELEVENLABS_API_KEY/);
+        expect(content).not.toMatch(/NEXT_PUBLIC_SOW_GLUE_SQS_QUEUE_URL/);
+        expect(content).not.toMatch(/NEXT_PUBLIC_GLUE_CAPACITY_PROVIDER_ARN/);
+      });
+
+      it("marks the provider key as server/worker only", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toMatch(/server-only|server\/worker only|worker\/server only|server only/i);
+      });
+
+      it("keeps the Glue queue separate from the render queue", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
+        expect(content.toLowerCase()).toMatch(/separate (queue|from)/);
+      });
+    });
+  }
+
+  it("production example includes every Glue deployment variable", () => {
+    const content = fs.readFileSync(ENV_EXAMPLE_PATH, "utf-8");
+    expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
+    expect(content).toContain("SOW_ELEVENLABS_API_KEY=");
+    expect(content).toContain("GLUE_CAPACITY_PROVIDER_ARN=");
+  });
+
+  it("production example ties a missing provider key to GLUE_NOT_CONFIGURED before spend", () => {
+    const content = fs.readFileSync(ENV_EXAMPLE_PATH, "utf-8");
+    expect(content).toContain("GLUE_NOT_CONFIGURED");
+    expect(content).toContain("before any paid reservation");
   });
 });
 
