@@ -82,6 +82,26 @@ describe("Glue SQS client", () => {
     expect(String(sentCommands[0].QueueUrl)).toContain("us-west-2");
   });
 
+  it("falls back to the render region when SOW_GLUE_AWS_REGION is blank", async () => {
+    // Both env examples ship a blank `SOW_GLUE_AWS_REGION=`, which must not
+    // shadow the render region.
+    vi.stubEnv("SOW_AWS_REGION", "us-east-1");
+    vi.stubEnv("SOW_GLUE_AWS_REGION", "");
+    vi.stubEnv("SOW_GLUE_SQS_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/1/glue");
+    vi.stubEnv("SOW_AWS_ACCESS_KEY_ID", "key");
+    vi.stubEnv("SOW_AWS_SECRET_ACCESS_KEY", "secret");
+
+    const client = createGlueSQSClientFromEnv();
+    await client.sendMessage({
+      kind: "glue.generate",
+      jobId: "job-1",
+      songsetId: "songset-1",
+      userId: 7,
+    });
+
+    expect(clientRegions).toEqual(["us-east-1"]);
+  });
+
   it("uses the Glue queue URL, never the render queue URL", async () => {
     vi.stubEnv("SOW_AWS_REGION", "us-east-1");
     vi.stubEnv("SOW_GLUE_SQS_QUEUE_URL", "https://sqs.example/glue");

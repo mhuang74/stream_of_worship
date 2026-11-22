@@ -141,8 +141,9 @@ export class GlueSQSClient {
 export function createGlueSQSClientFromEnv(): GlueSQSClient {
   // The Glue worker deploys beside the render worker region, which can differ
   // from the render job queue's region; signing must use the queue's own
-  // region or SendMessage 403s against the URL.
-  const region = process.env.SOW_GLUE_AWS_REGION ?? process.env.SOW_AWS_REGION;
+  // region or SendMessage 403s against the URL. `||` (not `??`) so a blank
+  // `SOW_GLUE_AWS_REGION=` line in an env file still falls back.
+  const region = process.env.SOW_GLUE_AWS_REGION || process.env.SOW_AWS_REGION;
   const queueUrl = process.env.SOW_GLUE_SQS_QUEUE_URL;
   const endpoint = process.env.SOW_SQS_ENDPOINT_URL;
   const accessKeyId = process.env.SOW_AWS_ACCESS_KEY_ID;
