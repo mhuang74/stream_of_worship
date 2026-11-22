@@ -53,6 +53,10 @@ export interface ResolvedGlueTake {
   descriptorKey: string;
   status: "ok" | "check";
   reasons: string[];
+}
+
+/** Menu entry: the resolved take plus when this take finished staging. */
+export interface ResolvedGlueTakeOption extends ResolvedGlueTake {
   createdAt: string;
 }
 
@@ -79,6 +83,8 @@ export interface ResolvedGlueJunction {
   descriptorKey: string | null;
   state: ResolvedGlueState;
   selectedTake: ResolvedGlueTake | null;
+  /** Ready takes for this descriptor, oldest ordinal first (free restore). */
+  availableTakes: ResolvedGlueTakeOption[];
   activeJob: ResolvedGlueActiveJob | null;
   quote: ResolvedGlueJunctionQuote | null;
   quotaLimit: number;
@@ -188,6 +194,10 @@ function toResolvedTake(take: GlueTakeRow): ResolvedGlueTake {
     status: qa.status,
     reasons: qa.reasons,
   };
+}
+
+function toAvailableTake(take: GlueTakeRow): ResolvedGlueTakeOption {
+  return { ...toResolvedTake(take), createdAt: take.createdAt };
 }
 
 function latestJobFor(jobs: readonly GlueJobRow[], fromItemId: string): GlueJobRow | null {
@@ -319,6 +329,21 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       item.glueActiveTakeId === null
         ? null
         : takes.find((take) => take.id === item.glueActiveTakeId) ?? null;
+    // The selected-take menu restores any ready take of this descriptor for
+    // free, so the resolved payload carries the full list (oldest first).
+    const availableTakes = derivation.ok
+      ? takes
+          .filter(
+            (take) =>
+              take.userId === item.userId &&
+              take.descriptorKey === derivation.descriptorKey &&
+              take.status === "ready" &&
+              take.r2Key !== null &&
+              (take.seconds ?? 0) > 0
+          )
+          .sort((left, right) => left.ordinal - right.ordinal)
+          .map(toAvailableTake)
+      : [];
 
     if (!item.glueEnabled) {
       return {

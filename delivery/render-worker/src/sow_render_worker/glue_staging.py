@@ -801,6 +801,21 @@ def finalize_staging(
 
     store = r2_store or R2StagingStore()
 
+    def _read_verified_once() -> bytes:
+        try:
+            return store.read_raw(job)
+        except RawResponseUnverified as exc:
+            # Terminal: a metadata/checksum mismatch is never a retryable R2
+            # blip and never authorizes another compose request. Raising the
+            # typed job error also keeps _free_retry from retrying it.
+            raise spine.GlueJobError(GLUE_WORKER_FAILED, "none", str(exc)) from exc
+
+    raw = spine._free_retry(
+        _read_verified_once,
+        label="read_raw_response",
+        log=log,
+    )
+
     descriptor = _descriptor_payload(job)
     items = {
         row["id"]: row for row in read_songset_items_for_glue(conn, job.songset_id)

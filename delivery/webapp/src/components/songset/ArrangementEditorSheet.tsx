@@ -120,7 +120,11 @@ export interface ArrangementEditorSheetProps {
    */
   onUpdateGlue?: (
     itemId: string,
-    patch: { glueEnabled?: boolean; glueBeats?: 2 | 4 | 8 | 16 }
+    patch: {
+      glueEnabled?: boolean;
+      glueBeats?: 2 | 4 | 8 | 16;
+      glueActiveTakeId?: string | null;
+    }
   ) => Promise<void>;
 }
 
@@ -963,7 +967,7 @@ function activeClipRefs(
 
 interface StripBand {
   key: string;
-  kind: "previous" | "step" | "next";
+  kind: "previous" | "step" | "next" | "glue";
   clipIndex: number | null;
   /** Full label: the band's tooltip and accessible name. */
   label: string;
@@ -1302,7 +1306,11 @@ export function ArrangementEditorSheet({
   }, [isOpen, nextItem, glueEnabled, songsetId, item.id, item.glueBeats]);
 
   const updateGlue = useCallback(
-    async (patch: { glueEnabled?: boolean; glueBeats?: 2 | 4 | 8 | 16 }) => {
+    async (patch: {
+      glueEnabled?: boolean;
+      glueBeats?: 2 | 4 | 8 | 16;
+      glueActiveTakeId?: string | null;
+    }) => {
       if (!onUpdateGlue || glueSaving) return;
       const previousEnabled = glueEnabled;
       const previousBeats = glueBeats;
@@ -1460,6 +1468,7 @@ export function ArrangementEditorSheet({
     !glueSaving &&
     glueBeats === (item.glueBeats ?? 4);
   const glueSelectedTake = displayGlue?.selectedTake ?? null;
+  const glueAvailableTakes = displayGlue?.availableTakes ?? [];
   const glueResetLabel =
     glueQuote?.quotaResetAt !== null && glueQuote?.quotaResetAt !== undefined
       ? new Intl.DateTimeFormat(locale === "zh-Hant" ? "zh-Hant" : "en", {
@@ -1488,6 +1497,10 @@ export function ArrangementEditorSheet({
     (isGlueJobFailed ? glueJobStatus?.errorCode ?? null : null);
   const canFreeRetry =
     isGlueJobFailed && glueJobStatus?.retryKind === "free";
+  // After provider contact the paid audio already exists, so the free action
+  // is retry-processing, never a new generation.
+  const freeRetryUsesProcessing =
+    canFreeRetry && glueJobStatus?.providerContacted === true;
   const needsPaidRetry =
     isGlueJobFailed && glueJobStatus?.retryKind === "paid";
   // retry_kind="none" means the failure is not retryable in place
@@ -2441,6 +2454,24 @@ export function ArrangementEditorSheet({
     const bands: StripBand[] = [];
     const clips = songTimelineItem?.clips ?? [];
     const songStart = clips[0]?.startSeconds ?? windowStart;
+    // A ready Glue replaces its junction's gap/crossfade; draw it as a
+    // distinct band so the inserted audio is visible, not implied.
+    for (const timelineItem of [songTimelineItem, nextTimelineItem]) {
+      const window = timelineItem?.glueWindowBefore;
+      if (!window) continue;
+      const start = Math.max(window.startSeconds, windowStart);
+      const end = Math.min(window.endSeconds, windowEnd);
+      if (end <= start) continue;
+      bands.push({
+        key: `glue-${window.takeId}`,
+        kind: "glue",
+        clipIndex: null,
+        label: t("glue.title"),
+        shortLabel: t("glue.title"),
+        startSeconds: start,
+        endSeconds: end,
+      });
+    }
     if (arrangementWindow.includesPreviousTail) {
       const end = Math.min(songStart, windowEnd);
       if (end > windowStart) {
@@ -2894,9 +2925,71 @@ export function ArrangementEditorSheet({
                             )}
 
                             {glueSelectedTake?.status === "check" && (
-                              <p className="text-[11px] leading-relaxed text-amber-600">
+                              <p
+                                className="text-[11px] leading-relaxed text-amber-600"
+                                data-testid="arrangement-glue-check-warning"
+                              >
                                 {t("glue.checkWarning")}
                               </p>
+                            )}
+
+                            {glueAvailableTakes.length > 0 && (
+                              <div className="space-y-1">
+                                <label
+                                  className="block text-[11px] font-medium"
+                                  htmlFor={`glue-takes-${item.id}`}
+                                >
+                                  {t("glue.takes.label")}
+                                </label>
+                                <select
+                                  id={`glue-takes-${item.id}`}
+                                  data-testid="arrangement-glue-takes"
+                                  value={glueSelectedTake?.id ?? ""}
+                                  disabled={glueSaving}
+                                  onChange={(event) =>
+                                    void updateGlue({
+                                      glueActiveTakeId: event.target.value,
+                                    })
+                                  }
+                                  className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                                >
+                                  {glueSelectedTake === null && (
+                                    <option value="" disabled>
+                                      {t("glue.takes.none")}
+                                    </option>
+                                  )}
+                                  {glueAvailableTakes.map((take) => (
+                                    <option key={take.id} value={take.id}>
+                                      {t("glue.takes.option")
+                                        .replace("{ordinal}", String(take.ordinal))
+                                        .replace(
+                                          "{status}",
+                                          t(
+                                            take.status === "check"
+                                              ? "glue.takes.check"
+                                              : "glue.takes.ready"
+                                          )
+                                        )
+                                        .replace(
+                                          "{seconds}",
+                                          formatGlueSeconds(take.seconds)
+                                        )
+                                        .replace(
+                                          "{time}",
+                                          new Intl.DateTimeFormat(
+                                            locale === "zh-Hant" ? "zh-Hant" : "en",
+                                            {
+                                              month: "short",
+                                              day: "numeric",
+                                              hour: "numeric",
+                                              minute: "2-digit",
+                                            }
+                                          ).format(new Date(take.createdAt))
+                                        )}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             )}
 
                             {glueReason && (
@@ -3095,7 +3188,11 @@ export function ArrangementEditorSheet({
                               {t("glue.retry.heading")}
                             </p>
                             <p className="text-[11px] leading-relaxed text-muted-foreground">
-                              {t("glue.retry.freeBody")}
+                              {t(
+                                freeRetryUsesProcessing
+                                  ? "glue.retry.processingBody"
+                                  : "glue.retry.freeBody"
+                              )}
                             </p>
                             <button
                               type="button"
@@ -3130,6 +3227,45 @@ export function ArrangementEditorSheet({
                           </Alert>
                         )}
                       </section>
+                    )}
+
+                    {preview.glueFailures.length > 0 && (
+                      <div
+                        className="space-y-1"
+                        data-testid="arrangement-glue-audio-failures"
+                      >
+                        {preview.glueFailures.map((failure) => {
+                          const fromTitle =
+                            items.find((entry) => entry.id === failure.fromItemId)
+                              ?.song?.title ?? previousTitle;
+                          const toTitle =
+                            items.find((entry) => entry.id === failure.toItemId)
+                              ?.song?.title ?? nextSongTitle;
+                          return (
+                            <div
+                              key={failure.takeId}
+                              data-testid="arrangement-glue-audio-failure"
+                              className="flex items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1"
+                            >
+                              <p className="text-[11px] leading-relaxed text-amber-700">
+                                {t("glue.audioFallback")
+                                  .replace("{from}", fromTitle)
+                                  .replace("{to}", toTitle)}
+                              </p>
+                              <button
+                                type="button"
+                                data-testid="arrangement-glue-audio-retry"
+                                onClick={() =>
+                                  void preview.retryGlueAudio(failure.takeId)
+                                }
+                                className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+                              >
+                                {t("glue.retryAudio")}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
 
                     {isRailVisible && arrangementWindow && (
@@ -3222,10 +3358,14 @@ export function ArrangementEditorSheet({
                           const bandClass = cn(
                             "absolute inset-y-1.5 flex min-w-0 items-center overflow-hidden rounded-[3px]",
                             band.key === activeBandKey
-                              ? "bg-primary/70"
-                              : band.kind === "step"
-                                ? "bg-primary/25"
-                                : "bg-foreground/15"
+                              ? band.kind === "glue"
+                                ? "bg-sky-600/80"
+                                : "bg-primary/70"
+                              : band.kind === "glue"
+                                ? "bg-sky-500/35"
+                                : band.kind === "step"
+                                  ? "bg-primary/25"
+                                  : "bg-foreground/15"
                           );
                           // Every band is a tap target: a tap seeks there, so a
                           // context band is as reachable as a component band.

@@ -83,11 +83,21 @@ function createSelectChain(rows: any[]) {
 
   Object.assign(chain, terminalMethods, {
     from: () => chain,
+    innerJoin: () => chain,
     leftJoin: () => chain,
     where: () => chain,
   });
 
-  for (const method of ["from", "leftJoin", "where", "groupBy", "orderBy", "limit", "offset"]) {
+  for (const method of [
+    "from",
+    "innerJoin",
+    "leftJoin",
+    "where",
+    "groupBy",
+    "orderBy",
+    "limit",
+    "offset",
+  ]) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
   chain.then = (cb: any) => promise.then(cb);
@@ -1557,6 +1567,7 @@ function persistedItemRow(extra: Record<string, unknown> = {}) {
 describe("addSongsetItem", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.select).mockReturnValue(createSelectChain([]) as never);
   });
 
   it("appends at max(position) + 1 after a gap left by a delete", async () => {
