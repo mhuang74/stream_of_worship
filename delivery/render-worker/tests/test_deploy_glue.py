@@ -138,6 +138,25 @@ def test_observability_creates_required_filters_and_alarms() -> None:
         "ApproximateAgeOfOldestMessage",
         "sow-glue-jobs-dlq",
         "sow-glue-jobs",
+        # §4.2 counters: paid attempts, failures, redeliveries, cache hits,
+        # cached copyright rejections, raw-response persists, staging faults.
+        "sow-glue-paid-attempt",
+        "GluePaidAttempt",
+        '{ $.event = "glue.provider.contact.started" }',
+        "sow-glue-job-claimed",
+        "sow-glue-job-failed",
+        "sow-glue-paid-failure",
+        "glue.job.failed\" && $.retryKind = \"paid\"",
+        "sow-glue-redelivery",
+        "glue.job.redelivered",
+        "sow-glue-cache-hit",
+        '{ $.cacheHit = true }',
+        "sow-glue-cached-copyright",
+        "GLUE_COPYRIGHT_REJECTED",
+        "sow-glue-response-persisted",
+        "glue.response.persisted",
+        "sow-glue-staging-unavailable",
+        "glue.staging.unavailable",
     ]
     for literal in required:
         assert literal in text, f"glue-observability.sh lost required literal: {literal!r}"

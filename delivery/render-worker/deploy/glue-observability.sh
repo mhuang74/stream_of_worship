@@ -9,6 +9,21 @@
 #   sow-glue-heartbeat-missing       Lambda Duration reaches the 1900 s budget
 #   sow-glue-staging-recovery-spike  free staging recoveries per 15 min
 #
+# Metric filters (counters required by spec §4.2):
+#
+#   sow-glue-paid-attempt          glue.provider.contact.started (reservation consumed)
+#   sow-glue-job-claimed           glue.job.claimed
+#   sow-glue-job-failed            glue.job.failed (all codes/phases)
+#   sow-glue-paid-failure          glue.job.failed with retryKind = paid
+#   sow-glue-redelivery            glue.job.redelivered
+#   sow-glue-cache-hit             any event with cacheHit = true
+#   sow-glue-cached-copyright      cached GLUE_COPYRIGHT_REJECTED
+#   sow-glue-response-persisted    glue.response.persisted
+#   sow-glue-staging-recovery      glue.staging.recovered
+#   sow-glue-staging-unavailable   glue.staging.unavailable
+#   sow-glue-heartbeat-failure     glue.heartbeat.failed
+#   sow-glue-provider-ambiguous    glue.provider.ambiguous
+#
 # Set GLUE_ALARM_SNS_TOPIC_ARN to route alarm state changes to SNS. Without it
 # the alarms are created without actions (visible in CloudWatch, no paging).
 #
@@ -152,6 +167,48 @@ main() {
         "sow-glue-paid-failure" \
         '{ $.event = "glue.job.failed" && $.retryKind = "paid" }' \
         "GluePaidFailure"
+
+    # --- Counters required by spec §4.2 (no dynamic dimensions in CloudWatch
+    # Logs metric filters, so each counter gets its own filter/metric) ------
+    put_metric_filter \
+        "sow-glue-paid-attempt" \
+        '{ $.event = "glue.provider.contact.started" }' \
+        "GluePaidAttempt"
+
+    put_metric_filter \
+        "sow-glue-job-claimed" \
+        '{ $.event = "glue.job.claimed" }' \
+        "GlueJobClaimed"
+
+    put_metric_filter \
+        "sow-glue-job-failed" \
+        '{ $.event = "glue.job.failed" }' \
+        "GlueJobFailed"
+
+    put_metric_filter \
+        "sow-glue-redelivery" \
+        '{ $.event = "glue.job.redelivered" }' \
+        "GlueRedelivery"
+
+    put_metric_filter \
+        "sow-glue-cache-hit" \
+        '{ $.cacheHit = true }' \
+        "GlueCacheHit"
+
+    put_metric_filter \
+        "sow-glue-cached-copyright" \
+        '{ $.event = "glue.provider.failed" && $.errorCode = "GLUE_COPYRIGHT_REJECTED" }' \
+        "GlueCachedCopyrightRejection"
+
+    put_metric_filter \
+        "sow-glue-response-persisted" \
+        '{ $.event = "glue.response.persisted" }' \
+        "GlueResponsePersisted"
+
+    put_metric_filter \
+        "sow-glue-staging-unavailable" \
+        '{ $.event = "glue.staging.unavailable" }' \
+        "GlueStagingUnavailable"
 
     # --- Alarms -----------------------------------------------------------
     # Any DLQ arrival means a job exhausted maxReceiveCount=3.

@@ -429,9 +429,13 @@ non-retryable in place.
 
 Run `deploy/glue-observability.sh` to create the CloudWatch metric filters and
 alarms for DLQ arrivals, ambiguous provider outcomes, stale queue age, missing
-heartbeats, and staging-recovery spikes. Set `GLUE_ALARM_SNS_TOPIC_ARN` to
-route alarm notifications. Operator recovery is documented in
-`docs/glue-operator-runbook.md`, keyed by `glue_jobs.id`.
+heartbeats, and staging-recovery spikes. The same script publishes the spec
+§4.2 counters under the `SOW/Glue` namespace: paid attempts
+(`GluePaidAttempt`), claimed/failed jobs, redeliveries, cache hits, cached
+copyright rejections, persisted raw responses, staging recoveries and staging
+faults. Set `GLUE_ALARM_SNS_TOPIC_ARN` to route alarm notifications. Operator
+recovery is documented in `docs/glue-operator-runbook.md`, keyed by
+`glue_jobs.id`.
 
 ### IAM Permissions
 
