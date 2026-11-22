@@ -13,10 +13,10 @@ Paid Phase B was **not** run. Nothing in this document spends credits.
 |---|---|---|
 | Web journey (TC fixture) | `pnpm test src/test/journey/glue-tc-journey.test.ts` | 7 passed |
 | Worker journey (TC fixture) | `uv run --extra dev pytest tests/test_glue_journey.py -q` | 3 passed |
-| Webapp full | `pnpm test` | 206 files, 3526 passed, 3 skipped, 10 todo |
+| Webapp full | `pnpm test` | 207 files, 3531 passed, 3 skipped, 10 todo |
 | Webapp lint | `pnpm lint` | 0 errors (13 pre-existing warnings) |
 | Webapp typecheck | `pnpm typecheck` | clean |
-| Webapp build | `SOW_DATABASE_URL=… pnpm build` | succeeded, 111 s |
+| Webapp build | `SOW_DATABASE_URL=… pnpm build` | succeeded before (111 s) and after (128 s) the Phase A fixes |
 | Worker full | `SKIP_DOCKER_TESTS=1 uv run --extra dev pytest tests/ -q` | 1122 passed, 8 skipped |
 | AMD64 image | `docker build --platform linux/amd64` | succeeded; imports `numpy`, `soundfile`, `PIL`, `psycopg2`, `boto3`, `sow_render_worker.pipeline`; static `ffmpeg 7.0.2` |
 
