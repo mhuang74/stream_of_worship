@@ -435,7 +435,7 @@ class TestEncodeVideoWithFFmpeg:
         mock_process.kill = MagicMock()
         mock_process.wait.return_value = 1
         mock_process.stderr = MagicMock()
-        mock_process.stderr.read.return_value = b"error output"
+        mock_process.stderr.read.side_effect = [b"error output", b""]
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process
@@ -464,7 +464,7 @@ class TestEncodeVideoWithFFmpeg:
         mock_process.stdin.write = MagicMock()
         mock_process.wait.return_value = 1
         mock_process.stderr = MagicMock()
-        mock_process.stderr.read.return_value = b"some error"
+        mock_process.stderr.read.side_effect = [b"some error", b""]
 
         with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
             mock_popen.return_value = mock_process

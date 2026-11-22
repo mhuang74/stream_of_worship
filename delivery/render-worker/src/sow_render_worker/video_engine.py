@@ -39,6 +39,10 @@ RESOLUTION_MAP: dict[str, tuple[int, int]] = {
 
 _MEMORY_WARNING_FRACTION = 0.90
 
+# Retain only the tail of FFmpeg's stderr: the error messages keep the last 2000
+# chars, and a chatty or never-EOF pipe must not grow the worker's RSS.
+_STDERR_TAIL_BYTES = 8192
+
 
 def _check_memory_pressure() -> None:
     try:
@@ -338,22 +342,24 @@ class VideoEngine:
             stderr=subprocess.PIPE,
         )
 
-        stderr_chunks: list[bytes] = []
+        stderr_tail = bytearray()
         stderr_thread: threading.Thread | None = None
         if process.stderr:
 
-            def _drain_stderr(pipe, chunks):
+            def _drain_stderr(pipe, tail):
                 try:
                     while True:
                         chunk = pipe.read(4096)
                         if not chunk:
                             break
-                        chunks.append(chunk)
+                        tail.extend(chunk)
+                        if len(tail) > _STDERR_TAIL_BYTES:
+                            del tail[:-_STDERR_TAIL_BYTES]
                 except Exception:
                     pass
 
             stderr_thread = threading.Thread(
-                target=_drain_stderr, args=(process.stderr, stderr_chunks), daemon=True
+                target=_drain_stderr, args=(process.stderr, stderr_tail), daemon=True
             )
             stderr_thread.start()
 
@@ -421,7 +427,7 @@ class VideoEngine:
                         frame_count,
                         total_frames,
                     )
-                    stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+                    stderr_output = bytes(stderr_tail).decode("utf-8", errors="replace")
                     stderr_info = (
                         f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
                         if stderr_output
@@ -514,7 +520,7 @@ class VideoEngine:
             return_code,
             ffmpeg_elapsed,
         )
-        stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        stderr_output = bytes(stderr_tail).decode("utf-8", errors="replace")
         if return_code != 0:
             stderr_info = (
                 f"\nFFmpeg stderr (last 2000 chars): {stderr_output[-2000:]}"
