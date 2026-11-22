@@ -6,6 +6,7 @@
 #   * Lambda function        sow-glue-worker on AWS Lambda Managed Instances
 #                            running the shared sow-render-worker image
 #   * SQS event source map   batch size 1, ReportBatchItemFailures
+#   * scaling config         min 0 / max 2 execution environments on $LATEST.PUBLISHED
 #   * published Lambda version
 #
 # Managed Instances are required: standard Lambda caps asynchronous invocations
@@ -191,7 +192,6 @@ create_or_update_lambda() {
             --memory-size 3072 \
             --ephemeral-storage Size=2048 \
             --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN}" \
-            --function-scaling-config MaxExecutionEnvironments=2 \
             --environment "$env_vars" >/dev/null
         wait_for_lambda_updated
     else
@@ -205,7 +205,6 @@ create_or_update_lambda() {
             --memory-size 3072 \
             --ephemeral-storage Size=2048 \
             --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN}" \
-            --function-scaling-config MaxExecutionEnvironments=2 \
             --environment "$env_vars" >/dev/null
 
         info "Waiting for the new Lambda function to become active..."
@@ -214,6 +213,21 @@ create_or_update_lambda() {
             exit 1
         }
     fi
+}
+
+# ── Execution-environment scaling ──────────────────────────────────────────
+# Scaling limits are not a CreateFunction/UpdateFunctionConfiguration request
+# field: AWS applies them per qualified ARN through PutFunctionScalingConfig.
+# `$LATEST.PUBLISHED` makes every future published version inherit the cap; the
+# minimum/maximum pair must be sent together (an omitted value resets to the
+# default minimum of 3), so the minimum is pinned to 0 (scale to zero between
+# jobs) with the maximum at the spec's 2 provider concurrency.
+apply_scaling_config() {
+    info "Setting execution environments: min 0, max 2"
+    aws_cmd lambda put-function-scaling-config \
+        --function-name "$FUNCTION_NAME" \
+        --qualifier '$LATEST.PUBLISHED' \
+        --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' >/dev/null
 }
 
 # ── Event source mapping ───────────────────────────────────────────────────
@@ -275,6 +289,8 @@ main() {
     create_sqs_queues
     echo ""
     create_or_update_lambda
+    echo ""
+    apply_scaling_config
     echo ""
     create_event_source_mapping
     echo ""

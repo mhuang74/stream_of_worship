@@ -283,6 +283,21 @@ describe("Deploy workflow — Glue worker", () => {
     expect(raw).toContain("--function-name sow-glue-worker");
   });
 
+  it("applies execution-environment scaling with the separate API", () => {
+    const steps = glueSteps();
+    const scaling = steps.filter((s) =>
+      JSON.stringify(s).includes("--function-scaling-config"),
+    );
+    // FunctionScalingConfig is not a CreateFunction/UpdateFunctionConfiguration
+    // request field, so exactly one step may carry it and it must be the
+    // PutFunctionScalingConfig call.
+    expect(scaling).toHaveLength(1);
+    const script = JSON.stringify(scaling[0]);
+    expect(script).toContain("aws lambda put-function-scaling-config");
+    expect(script).toContain("--qualifier '$LATEST.PUBLISHED'");
+    expect(script).toContain("MinExecutionEnvironments=0,MaxExecutionEnvironments=2");
+  });
+
   it("sets SOW_ELEVENLABS_API_KEY only on the Glue function", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;

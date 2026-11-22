@@ -50,12 +50,26 @@ def test_aws_up_glue_pins_frozen_literals() -> None:
         "--function-response-types ReportBatchItemFailures",
         "--capacity-provider-config",
         "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN}",
-        "--function-scaling-config MaxExecutionEnvironments=2",
+        "put-function-scaling-config",
+        "--qualifier '$LATEST.PUBLISHED'",
+        "--function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2'",
         "publish-version",
         "GLUE_CAPACITY_PROVIDER_ARN is required",
     ]
     for literal in required:
         assert literal in text, f"aws-up-glue.sh lost required literal: {literal!r}"
+
+
+def test_aws_up_glue_never_passes_scaling_to_create_or_update() -> None:
+    """`FunctionScalingConfig` is not a CreateFunction/UpdateFunctionConfiguration
+    request field; passing it aborts the script under `set -euo pipefail`."""
+    text = read(AWS_UP_GLUE)
+    for command in ("create-function", "update-function-configuration"):
+        start = text.index(f"lambda {command}")
+        block = text[start:].split(">/dev/null", 1)[0]
+        assert "--function-scaling-config" not in block, (
+            f"aws-up-glue.sh passes --function-scaling-config to {command}, which the AWS API rejects"
+        )
 
 
 def test_aws_up_glue_fails_fast_before_any_aws_call() -> None:

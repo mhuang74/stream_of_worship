@@ -179,3 +179,14 @@ jobs:
         run: |
           aws lambda wait function-updated \
             --function-name sow-render-worker
+
+      # Execution-environment limits are not a create/update-configuration field;
+      # AWS applies them per qualified ARN. `$LATEST.PUBLISHED` makes every future
+      # published version inherit the cap, and min/max must be sent together.
+      - name: Apply Glue execution-environment scaling
+        run: |
+          set -euo pipefail
+          aws lambda put-function-scaling-config \
+            --function-name sow-glue-worker \
+            --qualifier '$LATEST.PUBLISHED' \
+            --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' >/dev/null
