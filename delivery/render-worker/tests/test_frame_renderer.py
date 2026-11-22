@@ -1664,9 +1664,9 @@ class TestGlueWindowVisualState:
             SegmentInfo("c", "sc", 2, "第三首", start_time_seconds=25.0, duration_seconds=10.0),
         ]
         lyrics = [
-            GlobalLRCLine("啊", 0.5, 0.5, "第一首"),
-            GlobalLRCLine("哦", 0.5, 12.5, "第二首"),
-            GlobalLRCLine("嗯", 0.5, 25.5, "第三首"),
+            GlobalLRCLine("啊", 0.5, 0.5, "a"),
+            GlobalLRCLine("哦", 0.5, 12.5, "b"),
+            GlobalLRCLine("嗯", 0.5, 25.5, "c"),
         ]
         windows = [
             GlueWindowInfo("b", 10.0, 12.0),
