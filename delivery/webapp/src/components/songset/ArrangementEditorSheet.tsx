@@ -81,6 +81,7 @@ import {
   cancelGlueJobRequest,
   createGlueJobRequest,
   resumeGlueJobRequest,
+  retryGlueProcessingRequest,
 } from "@/lib/glue/client";
 import { glueErrorMessageKey } from "@/lib/glue/errors";
 import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
@@ -1190,20 +1191,35 @@ export function ArrangementEditorSheet({
     const draftArrangement = isDraftValid
       ? JSON.stringify(draftToArrangement(previewDraft))
       : null;
-    return items.map((entry) => ({
-      itemId: entry.id,
-      recordingHashPrefix: entry.recording?.hashPrefix ?? null,
-      arrangementSteps:
-        entry.id === item.id ? draftArrangement : entry.arrangementSteps,
-      gapBeats: entry.gapBeats,
-      crossfadeEnabled: entry.crossfadeEnabled,
-      crossfadeDurationSeconds: entry.crossfadeDurationSeconds ?? null,
-      tempoBpm: entry.recording?.tempoBpm ?? null,
-      recordingDurationSeconds: entry.recording?.durationSeconds ?? null,
-      recordingSections: entry.recording?.sections ?? null,
-      recordingBeats: entry.recording?.beats ?? [],
-    }));
-  }, [items, item.id, previewDraft, isDraftValid]);
+    const editedIndex = items.findIndex((entry) => entry.id === item.id);
+    const previousId = editedIndex > 0 ? items[editedIndex - 1].id : null;
+    return items.map((entry) => {
+      // An unsaved A/B draft cannot vouch for either adjacent Glue, so its own
+      // outgoing junction and its predecessor's incoming junction drop out of
+      // timeline playback until the draft is saved.
+      const suppressGlue =
+        isDirty && (entry.id === item.id || entry.id === previousId);
+      return {
+        itemId: entry.id,
+        recordingHashPrefix: entry.recording?.hashPrefix ?? null,
+        arrangementSteps:
+          entry.id === item.id ? draftArrangement : entry.arrangementSteps,
+        gapBeats: entry.gapBeats,
+        crossfadeEnabled: entry.crossfadeEnabled,
+        crossfadeDurationSeconds: entry.crossfadeDurationSeconds ?? null,
+        tempoBpm: entry.recording?.tempoBpm ?? null,
+        recordingDurationSeconds: entry.recording?.durationSeconds ?? null,
+        recordingSections: entry.recording?.sections ?? null,
+        recordingBeats: entry.recording?.beats ?? [],
+        glueTakeId: suppressGlue
+          ? null
+          : entry.glue?.selectedTake?.id ?? null,
+        glueSeconds: suppressGlue
+          ? null
+          : entry.glue?.selectedTake?.seconds ?? null,
+      };
+    });
+  }, [items, item.id, previewDraft, isDraftValid, isDirty]);
 
   const timeline = useMemo(() => buildArrangementTimeline(previewItems), [previewItems]);
   const songTimelineItem = useMemo(
@@ -1391,9 +1407,15 @@ export function ArrangementEditorSheet({
     setGlueJobActionPending(true);
     setGlueJobErrorCode(null);
     setGlueCancelled(false);
-    // Resume replays the same identity for free; the server derives staging
-    // recovery vs generation from the durable phase/raw-response records.
-    const result = await resumeGlueJobRequest(watchedGlueJobId);
+    // A free failure after provider contact means the paid audio already
+    // exists; retry-processing rebuilds only the staged take. Everything else
+    // resumes the same identity, and the server derives the safe path.
+    const status = glueJob.status;
+    const processingOnly =
+      status?.retryKind === "free" && status.providerContacted;
+    const result = processingOnly
+      ? await retryGlueProcessingRequest(watchedGlueJobId)
+      : await resumeGlueJobRequest(watchedGlueJobId);
     setGlueJobActionPending(false);
     if (!result.ok) {
       setGlueJobErrorCode(result.error.code);
@@ -1401,7 +1423,7 @@ export function ArrangementEditorSheet({
     }
     setGlueJobId(watchedGlueJobId);
     await refreshGlueJob();
-  }, [watchedGlueJobId, refreshGlueJob]);
+  }, [glueJob.status, watchedGlueJobId, refreshGlueJob]);
 
   // A finished take becomes the selected one server-side; refresh the parent
   // so the Junction reads its new resolved state without a page reload.

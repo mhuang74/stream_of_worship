@@ -107,6 +107,10 @@ GLUE_ACTIVE_PHASES = (
 
 GLUE_TERMINAL_PHASES = ("ready", "failed", "cancelled", "dispatch-failed")
 
+# The two phases where the paid response is already stored and only free local
+# decoding/QA remains. Staging may finish from either one.
+GLUE_STAGING_PHASES = ("storing-response", "staging")
+
 # A duplicate queue delivery during an in-flight phase must not redo provider
 # work. Only an absent or stale heartbeat makes a non-queued active job
 # claimable again; the phase itself is preserved so execute_glue_job can apply

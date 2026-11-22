@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import { glueJobs, glueTakes, songsetItems } from "@/db/schema";
@@ -53,6 +53,7 @@ export interface ResolvedGlueTake {
   descriptorKey: string;
   status: "ok" | "check";
   reasons: string[];
+  createdAt: string;
 }
 
 export interface ResolvedGlueActiveJob {
@@ -176,6 +177,19 @@ function parseTakeQa(take: GlueTakeRow): { status: "ok" | "check"; reasons: stri
   return { status, reasons: parseReasons(take.reasonsJson) };
 }
 
+function toResolvedTake(take: GlueTakeRow): ResolvedGlueTake {
+  const qa = parseTakeQa(take);
+  return {
+    id: take.id,
+    ordinal: take.ordinal,
+    seconds: canonicalSixDp(take.seconds ?? 0),
+    r2Key: take.r2Key as string,
+    descriptorKey: take.descriptorKey,
+    status: qa.status,
+    reasons: qa.reasons,
+  };
+}
+
 function latestJobFor(jobs: readonly GlueJobRow[], fromItemId: string): GlueJobRow | null {
   let latest: GlueJobRow | null = null;
   for (const job of jobs) {
@@ -289,6 +303,7 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
         descriptorKey: null,
         state: "disabled",
         selectedTake: null,
+        availableTakes: [],
         activeJob: null,
         quote: null,
         unavailableReason: "no-next",
@@ -311,6 +326,7 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
         descriptorKey,
         state: "disabled",
         selectedTake: null,
+        availableTakes,
         activeJob,
         quote: null,
         unavailableReason: null,
@@ -327,6 +343,7 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
             ? "stale"
             : "needs-generation",
         selectedTake: null,
+        availableTakes: [],
         activeJob,
         quote: null,
         unavailableReason: activeJob ? "active-job" : derivation.reason,
@@ -341,19 +358,8 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       selectedRow.descriptorJson === derivation.descriptorJson &&
       selectedRow.r2Key !== null &&
       (selectedRow.seconds ?? 0) > 0;
-    const qa = effective ? parseTakeQa(selectedRow) : null;
     const selectedTake: ResolvedGlueTake | null =
-      effective && selectedRow !== null
-        ? {
-            id: selectedRow.id,
-            ordinal: selectedRow.ordinal,
-            seconds: canonicalSixDp(selectedRow.seconds ?? 0),
-            r2Key: selectedRow.r2Key as string,
-            descriptorKey: selectedRow.descriptorKey,
-            status: qa?.status ?? "ok",
-            reasons: qa?.reasons ?? [],
-          }
-        : null;
+      effective && selectedRow !== null ? toResolvedTake(selectedRow) : null;
 
     let state: ResolvedGlueState;
     let unavailableReason: GlueUnavailableReason | null = null;
@@ -377,6 +383,7 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       descriptorKey,
       state,
       selectedTake,
+      availableTakes,
       activeJob,
       quote: toJunctionQuote(derivation, cachedExcerptKeys, rejectedExcerptKeys),
       unavailableReason,
@@ -461,13 +468,36 @@ async function loadResolvedGlueJunctionsForSongsets(
   const activeTakeIds = allItems
     .map((item) => item.glueActiveTakeId)
     .filter((id): id is string => id !== null);
+  // Ready takes for every Junction descriptor feed the free restore menu.
+  const descriptorKeys = new Set<string>();
+  for (const items of itemsBySongset.values()) {
+    for (let index = 0; index + 1 < items.length; index += 1) {
+      const derivation = deriveGlueJunction(items[index], items[index + 1]);
+      if (derivation.ok) descriptorKeys.add(derivation.descriptorKey);
+    }
+  }
+  const activeTakeClause =
+    activeTakeIds.length > 0
+      ? inArray(glueTakes.id, [...new Set(activeTakeIds)])
+      : undefined;
+  const descriptorTakeClause =
+    descriptorKeys.size > 0
+      ? and(
+          eq(glueTakes.userId, userId),
+          eq(glueTakes.status, "ready"),
+          inArray(glueTakes.descriptorKey, [...descriptorKeys]),
+          isNotNull(glueTakes.r2Key),
+          gt(glueTakes.seconds, 0)
+        )
+      : undefined;
+  const takeWhere =
+    activeTakeClause && descriptorTakeClause
+      ? or(activeTakeClause, descriptorTakeClause)
+      : activeTakeClause ?? descriptorTakeClause;
 
   const [takeRows, jobRows, quota] = await Promise.all([
-    activeTakeIds.length > 0
-      ? db
-          .select()
-          .from(glueTakes)
-          .where(inArray(glueTakes.id, [...new Set(activeTakeIds)]))
+    takeWhere
+      ? db.select().from(glueTakes).where(takeWhere)
       : Promise.resolve([]),
     db
       .select()

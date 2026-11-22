@@ -328,12 +328,17 @@ export async function loadGlueItemRows(
 
   for (const row of rows) {
     if (row.recordingDeletedAt !== null) continue;
-    const items = result.get(row.songsetId) ?? [];
+    // The query is scoped to these Songsets and owner-checked in SQL, so a row
+    // whose projected join columns are unusable still belongs to the single
+    // requested Songset. Losing it would leave a visible Item with no Junction.
+    const songsetId = row.songsetId ?? (songsetIds.length === 1 ? songsetIds[0] : null);
+    if (songsetId === null) continue;
+    const items = result.get(songsetId) ?? [];
     const updatedAt = row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt;
     items.push({
       itemId: row.itemId,
       position: row.position,
-      userId: row.userId,
+      userId: row.userId ?? userId,
       glueEnabled: row.glueEnabled,
       glueBeats: normalizeBeats(row.glueBeats),
       glueActiveTakeId: row.glueActiveTakeId,

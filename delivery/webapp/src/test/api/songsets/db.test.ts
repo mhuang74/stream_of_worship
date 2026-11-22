@@ -1219,6 +1219,10 @@ describe("getSongset", () => {
           crossfadeDurationSeconds: null,
           keyShiftSemitones: 0,
           tempoRatio: 1.0,
+          updatedAt: new Date("2024-01-02"),
+          glueEnabled: false,
+          glueBeats: 4,
+          glueActiveTakeId: null,
           song: {
             id: "song-1",
             title: "Test Song",
@@ -1326,6 +1330,8 @@ describe("createSongset", () => {
   it("rejects unknown songId with a 400 result before inserting", async () => {
     const promise = Promise.resolve([]);
     const chain = vi.fn().mockReturnValue({
+      innerJoin: vi.fn().mockReturnThis(),
+      leftJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnValue(promise),
       then: promise.then.bind(promise),
     });
@@ -1362,6 +1368,8 @@ describe("createSongset", () => {
       const promise = Promise.resolve(rows);
       return {
         from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnThis(),
+          leftJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockReturnValue({
             orderBy: vi.fn().mockReturnValue(promise),
             then: promise.then.bind(promise),

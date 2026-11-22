@@ -801,6 +801,14 @@ def _run_generate_mode(
             return
         else:
             contacted = True
+            # Exactly one event per paid attempt: this is the moment the
+            # reservation is consumed and provider_contacted flips true.
+            log(
+                "glue.provider.contact.started",
+                phase=job.phase,
+                attemptId=job.attempt_id,
+                operation="provider",
+            )
         _heartbeat(conn, job, log, stage="uploading")
 
         stage(

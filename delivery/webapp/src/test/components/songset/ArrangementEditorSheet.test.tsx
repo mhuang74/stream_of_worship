@@ -31,6 +31,12 @@ const preview = vi.hoisted(() => ({
     stop: vi.fn(),
     seek: vi.fn(),
     startAtSeconds: vi.fn().mockResolvedValue(undefined),
+    glueFailures: [] as Array<{
+      takeId: string;
+      fromItemId: string;
+      toItemId: string;
+    }>,
+    retryGlueAudio: vi.fn().mockResolvedValue(true),
   },
 }));
 
