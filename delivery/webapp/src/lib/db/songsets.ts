@@ -557,39 +557,35 @@ function toArrangementInput(item: {
   };
 }
 
-/**
- * Arrangement total including every effective outgoing Glue. The single
- * layout formula still lives in `layoutSongsetItems`; this helper mirrors only
- * the `+ glueSeconds` sum so list/render totals stay correct before #319 wires
- * Glue into that layout.
- */
-function totalArrangementSecondsWithGlue(
-  inputs: ArrangementItemInput[]
-): number | null {
-  let total = 0;
-  let known = false;
-  for (const input of inputs) {
-    const duration = getItemDurationSeconds(input);
-    if (duration !== null) {
-      known = true;
-      total += duration;
-    }
-    total += input.glueSeconds ?? 0;
-  }
-  return known ? total : null;
-}
-
 function requireJunction(
   byItemId: ReadonlyMap<string, ResolvedGlueJunction>,
   itemId: string
 ): ResolvedGlueJunction {
   const glue = byItemId.get(itemId);
-  if (!glue) {
-    // The resolver guarantees one Junction per item; a miss is an internal
-    // invariant failure, never a state to display.
-    throw new Error(`Missing resolved AI transition for item ${itemId}`);
-  }
-  return glue;
+  if (glue) return glue;
+  // A resolver miss means a join/projection did not line up for this Item.
+  // Degrade to a disabled Junction instead of 500ing the editor, list or
+  // render page: the server resolver stays the only source of take state.
+  const known = byItemId.values().next().value;
+  return {
+    fromItemId: itemId,
+    toItemId: null,
+    glueEnabled: false,
+    glueBeats: known?.glueBeats ?? 4,
+    descriptorKey: null,
+    state: "disabled",
+    selectedTake: null,
+    availableTakes: [],
+    activeJob: null,
+    quote: null,
+    quotaLimit: known?.quotaLimit ?? 5,
+    quotaUsed: known?.quotaUsed ?? 0,
+    quotaRemaining: known?.quotaRemaining ?? 5,
+    quotaResetAt: known?.quotaResetAt ?? null,
+    expectedFromUpdatedAt: null,
+    expectedToUpdatedAt: null,
+    unavailableReason: null,
+  };
 }
 
 async function timePageLoad<T>(label: string, fn: () => Promise<T>): Promise<T> {
@@ -812,7 +808,7 @@ export async function listSongsetSummaries(
           lastCompletedRenderJobId: row.lastCompletedRenderJobId,
           itemCount: Number(row.itemCount ?? 0),
           durationSeconds: row.itemDurationInputs
-            ? totalArrangementSecondsWithGlue(
+            ? getSongsetDurationSeconds(
                 row.itemDurationInputs.map((input) => {
                   const glue = glueBySongset.get(row.id)?.get(input.itemId);
                   return toArrangementInput({
@@ -1022,7 +1018,7 @@ export async function getSongsetEditorData(
       lastCompletedRenderJobId: row.lastCompletedRenderJobId,
       itemCount: items.length,
       deletedItemCount: itemRows.length - visibleItemRows.length,
-      durationSeconds: totalArrangementSecondsWithGlue(
+      durationSeconds: getSongsetDurationSeconds(
         items.map((item) =>
           toArrangementInput({
             arrangementSteps: item.arrangementSteps,
@@ -1168,7 +1164,7 @@ export async function getRenderPageData(
           title: item.songTitle ?? "Unknown Song",
         })),
         lastCompletedRenderJobId: row.lastCompletedRenderJobId,
-        durationSeconds: totalArrangementSecondsWithGlue(
+        durationSeconds: getSongsetDurationSeconds(
           visibleItems.map((item) => {
             const glue = glueByItemId.get(item.id);
             return toArrangementInput({
