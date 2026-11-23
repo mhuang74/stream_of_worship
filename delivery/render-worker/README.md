@@ -142,7 +142,7 @@ Cloudflare R2 — stores rendered artifacts
 - Docker (for containerized builds)
 - FFmpeg and CJK fonts (installed in the Docker image)
 - AWS account with SQS, Lambda, and private ECR access
-- AWS Lambda Managed Instances capacity provider for the Glue worker (standard Lambda's 1800 s asynchronous cap is below the required 1900 s)
+- AWS Lambda Managed Instances capacity provider for the Glue worker (standard Lambda's 1800 s asynchronous cap is below the required 3300 s)
 - Cloudflare R2 account (credentials required for both build time and runtime)
 - Neon PostgreSQL database
 - A `.env` file with R2 credentials (used at Docker build time via build args and at runtime)
@@ -407,10 +407,10 @@ reduces render throughput.
 |---|---|
 | Queue | `sow-glue-jobs` |
 | Dead-letter queue | `sow-glue-jobs-dlq` |
-| Visibility timeout | 2100 s (must exceed the function timeout) |
+| Visibility timeout | 3500 s (must exceed the function timeout) |
 | Redrive | `maxReceiveCount: 3` |
 | Function | `sow-glue-worker` on AWS Lambda **Managed Instances** |
-| Function timeout | 1900 s (standard Lambda's 1800 s asynchronous cap is not eligible) |
+| Function timeout | 3300 s — covers the 990 s upload + 1890 s compose reserves (standard Lambda's 1800 s asynchronous cap is not eligible) |
 | Event-source mapping | batch size 1, `ReportBatchItemFailures` (Managed Instances reject `MaximumConcurrency`; provider concurrency is capped by max 2 execution environments x `PerExecutionEnvironmentMaxConcurrency=1`) |
 | Provider concurrency | 2 = `MaxExecutionEnvironments=2` x `PerExecutionEnvironmentMaxConcurrency=1`. This is the only cap Managed Instances allow: the event-source mapping rejects `ScalingConfig.MaximumConcurrency`, and `ProvisionedPollerConfig.MaximumPollers` sizes the prefetch window rather than in-flight jobs |
 

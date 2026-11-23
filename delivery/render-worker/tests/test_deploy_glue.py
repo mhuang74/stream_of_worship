@@ -8,6 +8,7 @@ recovery class.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 WORKER_ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +46,29 @@ def test_scripts_exist() -> None:
     assert RUNBOOK.is_file()
 
 
+def test_function_timeout_covers_both_provider_stage_reserves() -> None:
+    """The deployed timeout must fit the worker's own deadline gates.
+
+    An upload may legitimately consume its whole reserve before compose
+    re-checks its own, so the timeout has to cover the sum. When it did not
+    (1900 s vs 990 + 1890), every production job died at the compose gate
+    after the paid upload had already run.
+    """
+    from sow_render_worker import glue_jobs
+
+    script = read(AWS_UP_GLUE)
+    timeouts = {int(value) for value in re.findall(r"--timeout (\d+)", script)}
+    assert timeouts == {3300}, timeouts
+    (timeout,) = timeouts
+    reserves = (
+        glue_jobs.UPLOAD_DEADLINE_RESERVE_MS + glue_jobs.COMPOSE_DEADLINE_RESERVE_MS
+    ) // 1000
+    assert timeout >= reserves, f"timeout {timeout}s < upload+compose reserves {reserves}s"
+
+    visibility = int(re.search(r'VisibilityTimeout\\":\\"(\d+)', script).group(1))
+    assert visibility > timeout, "SQS visibility must exceed the function timeout"
+
+
 def test_aws_up_glue_pins_frozen_literals() -> None:
     text = read(AWS_UP_GLUE)
     required = [
@@ -52,10 +76,10 @@ def test_aws_up_glue_pins_frozen_literals() -> None:
         "sow-glue-jobs",
         "sow-glue-worker",
         "VisibilityTimeout",
-        "2100",
+        "3500",
         "maxReceiveCount",
         "3",
-        "--timeout 1900",
+        "--timeout 3300",
         "--memory-size 3072",
         "--ephemeral-storage Size=2048",
         "--batch-size 1",
@@ -248,7 +272,7 @@ def test_deploy_workflow_reuses_the_render_image_and_publishes_a_version() -> No
         "SOW_ELEVENLABS_API_KEY",
         "CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn",
         "Timeout",
-        "1900",
+        "3300",
         "exit 1",
     ]
     for literal in required:
@@ -285,12 +309,12 @@ def test_worker_readme_documents_all_glue_deployment_facts() -> None:
     required = [
         "sow-glue-jobs",
         "sow-glue-jobs-dlq",
-        "2100",
+        "3500",
         "maxReceiveCount",
         "batch size 1",
         "ReportBatchItemFailures",
         "sow-glue-worker",
-        "1900",
+        "3300",
         "Managed Instances",
         "concurrency 2",
         "SOW_ELEVENLABS_API_KEY",

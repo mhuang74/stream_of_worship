@@ -5,8 +5,8 @@
 #
 #   sow-glue-dlq-arrival             any message on sow-glue-jobs-dlq
 #   sow-glue-provider-ambiguous      glue.provider.ambiguous log event
-#   sow-glue-queue-age               oldest queued message older than 1900 s
-#   sow-glue-heartbeat-missing       Lambda Duration reaches the 1900 s budget
+#   sow-glue-queue-age               oldest queued message older than 3300 s
+#   sow-glue-heartbeat-missing       Lambda Duration reaches the 3300 s budget
 #   sow-glue-staging-recovery-spike  free staging recoveries per 15 min
 #
 # Metric filters (counters required by spec §4.2):
@@ -39,7 +39,7 @@ DLQ_NAME="sow-glue-jobs-dlq"
 
 # Operation budget: the Glue function timeout. A queued/in-flight job older
 # than this without a heartbeat is stuck.
-OPERATION_BUDGET_SECONDS=1900
+OPERATION_BUDGET_SECONDS=3300
 STAGING_RECOVERY_SPIKE_THRESHOLD=5
 
 METRIC_NAMESPACE="SOW/Glue"
@@ -253,7 +253,7 @@ main() {
         "$OPERATION_BUDGET_SECONDS" \
         "GreaterThanThreshold" \
         "Name=QueueName,Value=${QUEUE_NAME}" \
-        "Oldest Glue queue message exceeds the 1900 s operation budget; check dispatch and worker health."
+        "Oldest Glue queue message exceeds the 3300 s operation budget; check dispatch and worker health."
 
     # Missing heartbeat beyond the operation budget. A claimed job that stops
     # heartbeating keeps running until the function timeout, so the Lambda
@@ -267,10 +267,10 @@ main() {
         "Maximum" \
         300 \
         1 \
-        1900000 \
+        3300000 \
         "GreaterThanOrEqualToThreshold" \
         "Name=FunctionName,Value=${FUNCTION_NAME}" \
-        "A claimed Glue job reached the 1900 s operation budget without completing; check the heartbeat and use free redispatch or staging recovery."
+        "A claimed Glue job reached the 3300 s operation budget without completing; check the heartbeat and use free redispatch or staging recovery."
 
     # Raw-response staging-recovery spikes: repeated free recoveries usually
     # mean a staging/database fault rather than isolated bad input.

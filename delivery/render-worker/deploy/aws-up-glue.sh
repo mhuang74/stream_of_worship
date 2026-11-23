@@ -2,7 +2,7 @@
 # Create or update the dedicated Glue (AI transition) worker:
 #
 #   * SQS dead-letter queue  sow-glue-jobs-dlq
-#   * SQS queue              sow-glue-jobs (visibility 2100 s, redrive 3)
+#   * SQS queue              sow-glue-jobs (visibility 3500 s, redrive 3)
 #   * Lambda function        sow-glue-worker on AWS Lambda Managed Instances
 #                            running the shared sow-render-worker image
 #   * SQS event source map   batch size 1, ReportBatchItemFailures
@@ -11,7 +11,7 @@
 #                            (set after the version is published)
 #
 # Managed Instances are required: standard Lambda caps asynchronous invocations
-# at 1800 s, while a Glue job needs 1900 s. The capacity provider ARN is an
+# at 1800 s, while a Glue job needs 3300 s. The capacity provider ARN is an
 # operator-supplied input and must already exist in the account.
 #
 # This script never prints secrets: provider keys and the merged environment
@@ -40,8 +40,13 @@ DLQ_URL="https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/${DLQ_NAME}"
 # Glue limits (spec §2.4 / §2.5): visibility > function timeout; provider
 # concurrency 2 independent of render render throughput. These values are
 # intentionally inline in the CLI calls below so deployment tests pin the
-# exact flags the platform requires: 2100 s visibility, maxReceiveCount 3,
-# 1900 s timeout, 3072 MB memory, 2048 MB ephemeral storage, 2 environments.
+# exact flags the platform requires: 3500 s visibility, maxReceiveCount 3,
+# 3300 s timeout, 3072 MB memory, 2048 MB ephemeral storage, 2 environments.
+#
+# 3300 s must cover both provider stage reserves: an upload may consume its
+# whole 990 s before compose re-checks its own 1890 s
+# (sow_render_worker.glue_jobs), so anything below 2880 s fails every job at
+# the compose gate. tests/test_deploy_glue.py pins that inequality.
 #
 # PerExecutionEnvironmentMaxConcurrency=1: Managed Instances default to 24
 # concurrent invocations per execution environment, which splits the 3 GB
@@ -64,7 +69,7 @@ error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 # Must run before any `aws` call so an unset value never creates a queue or a
 # standard-Lambda function that would silently time out at 1800 s.
 if [[ -z "${GLUE_CAPACITY_PROVIDER_ARN:-}" ]]; then
-    error "GLUE_CAPACITY_PROVIDER_ARN is required: sow-glue-worker must run on AWS Lambda Managed Instances (standard Lambda caps asynchronous invocations at 1800 s, below the 1900 s Glue timeout)."
+    error "GLUE_CAPACITY_PROVIDER_ARN is required: sow-glue-worker must run on AWS Lambda Managed Instances (standard Lambda caps asynchronous invocations at 1800 s, below the 3300 s Glue timeout)."
     error "Set GLUE_CAPACITY_PROVIDER_ARN to the ARN of the Lambda Managed Instances capacity provider for this account/region."
     exit 1
 fi
@@ -159,15 +164,15 @@ create_sqs_queues() {
         aws_cmd sqs create-queue --queue-name "$QUEUE_NAME" >/dev/null
     fi
 
-    # VisibilityTimeout must exceed the 1900 s function timeout so a slow job
+    # VisibilityTimeout must exceed the 3300 s function timeout so a slow job
     # is never redelivered while it is still running.
     local attributes
-    attributes="{\"VisibilityTimeout\":\"2100\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${dlq_arn}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
+    attributes="{\"VisibilityTimeout\":\"3500\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${dlq_arn}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
     aws_cmd sqs set-queue-attributes \
         --queue-url "$QUEUE_URL" \
         --attributes "$attributes"
 
-    info "SQS ready: visibility 2100s, maxReceiveCount 3"
+    info "SQS ready: visibility 3500s, maxReceiveCount 3"
 }
 
 # ── Lambda function (Managed Instances) ────────────────────────────────────
@@ -197,7 +202,7 @@ create_or_update_lambda() {
 
         aws_cmd lambda update-function-configuration \
             --function-name "$FUNCTION_NAME" \
-            --timeout 1900 \
+            --timeout 3300 \
             --memory-size 3072 \
             --ephemeral-storage Size=2048 \
             --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN,PerExecutionEnvironmentMaxConcurrency=1}" \
@@ -210,7 +215,7 @@ create_or_update_lambda() {
             --package-type Image \
             --code "ImageUri=${ECR_URI}:latest" \
             --role "$role_arn" \
-            --timeout 1900 \
+            --timeout 3300 \
             --memory-size 3072 \
             --ephemeral-storage Size=2048 \
             --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN,PerExecutionEnvironmentMaxConcurrency=1}" \

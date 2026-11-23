@@ -332,7 +332,7 @@ describe("Deploy workflow — Glue worker", () => {
     expect(renderRaw).not.toContain("SOW_ELEVENLABS_API_KEY");
   });
 
-  it("fails fast unless the Glue function uses Managed Instances and Timeout 1900", () => {
+  it("fails fast unless the Glue function uses Managed Instances and Timeout 3300", () => {
     const steps = glueSteps();
     const check = steps.find((s) => {
       const run = typeof s.run === "string" ? s.run : "";
@@ -344,7 +344,7 @@ describe("Deploy workflow — Glue worker", () => {
       "CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn",
     );
     expect(run).toContain("Timeout");
-    expect(run).toContain("1900");
+    expect(run).toContain("3300");
     expect(run).toContain("exit 1");
   });
 
