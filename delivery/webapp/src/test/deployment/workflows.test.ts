@@ -288,13 +288,18 @@ describe("Deploy workflow — Glue worker", () => {
   });
 
   it("verifies the published Glue version reached Active", () => {
-    const verify = glueSteps().find((s) =>
-      JSON.stringify(s).includes("Verify the published Glue version is Active"),
-    );
+    // Match on content, not the step name: renaming the step must not silently
+    // disarm the guard.
+    const verify = glueSteps().find((s) => {
+      const raw = JSON.stringify(s);
+      return (
+        raw.includes("get-function-configuration") &&
+        raw.includes("$LATEST.PUBLISHED") &&
+        raw.includes("State") &&
+        raw.includes("Failed")
+      );
+    });
     expect(verify).toBeDefined();
-    const raw = JSON.stringify(verify);
-    expect(raw).toContain("$LATEST.PUBLISHED");
-    expect(raw).toContain("State");
   });
 
   it("applies execution-environment scaling with the separate API", () => {

@@ -27,6 +27,18 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def read_code(path: Path) -> str:
+    """File text without comment lines, for "must not appear" assertions.
+
+    Explanatory comments legitimately name the flag they explain, so absence
+    checks have to look at executed lines only.
+    """
+    return "".join(
+        line for line in path.read_text(encoding="utf-8").splitlines(keepends=True)
+        if not line.lstrip().startswith("#")
+    )
+
+
 def test_scripts_exist() -> None:
     assert AWS_UP_GLUE.is_file()
     assert OBSERVABILITY.is_file()
@@ -80,6 +92,18 @@ def test_aws_up_glue_never_passes_scaling_to_create_or_update() -> None:
         )
 
 
+def test_aws_up_glue_verifies_the_published_version_is_active() -> None:
+    """PublishVersion succeeds before the version activates; on Managed
+    Instances it can then settle at Failed (InitResourceExhausted), so the
+    bootstrap must poll State and fail on Failed."""
+    text = read(AWS_UP_GLUE)
+    start = text.index("publish_version() {")
+    block = text[start:].split("\n}", 1)[0]
+    assert "--query 'State'" in block
+    assert "Failed" in block
+    assert "StateReason" in block
+
+
 def test_aws_up_glue_publishes_before_mapping_and_scaling() -> None:
     """A Managed Instances function is ActiveNonInvocable until
     `$LATEST.PUBLISHED` exists: the scaling qualifier does not resolve before
@@ -99,14 +123,14 @@ def test_aws_up_glue_publishes_before_mapping_and_scaling() -> None:
 def test_aws_up_glue_never_sets_esm_max_concurrency() -> None:
     """Managed Instances event source mappings reject ScalingConfig.MaximumConcurrency;
     the cap comes from the execution-environment limit instead."""
-    text = read(AWS_UP_GLUE)
+    text = read_code(AWS_UP_GLUE)
     assert "--scaling-config MaximumConcurrency" not in text
     assert "MaxExecutionEnvironments=2" in text
 
 
 def test_aws_up_glue_never_waits_for_function_active_on_create() -> None:
     """`wait function-active` cannot succeed before `$LATEST.PUBLISHED` exists."""
-    assert "wait function-active" not in read(AWS_UP_GLUE)
+    assert "wait function-active" not in read_code(AWS_UP_GLUE)
 
 
 def test_aws_up_glue_fails_fast_before_any_aws_call() -> None:

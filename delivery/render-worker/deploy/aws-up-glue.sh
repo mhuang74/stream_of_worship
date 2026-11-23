@@ -311,6 +311,37 @@ publish_version() {
         exit 1
     fi
     info "Published version: $version"
+
+    # PublishVersion succeeds as soon as the version is requested; on Managed
+    # Instances it can then settle at Failed (for example
+    # FunctionError.InitResourceExhausted) while the queue happily accepts jobs.
+    # Wait for Active so a broken version fails the bootstrap, not a user's run.
+    local state reason
+    for attempt in $(seq 1 60); do
+        state=$(aws_cmd lambda get-function-configuration \
+            --function-name "$FUNCTION_NAME" \
+            --qualifier "$version" \
+            --query 'State' \
+            --output text)
+        case "$state" in
+            Active)
+                info "  Version $version is Active"
+                return 0
+                ;;
+            Failed)
+                reason=$(aws_cmd lambda get-function-configuration \
+                    --function-name "$FUNCTION_NAME" \
+                    --qualifier "$version" \
+                    --query 'StateReason' \
+                    --output text)
+                error "Version $version settled at Failed: $reason"
+                exit 1
+                ;;
+        esac
+        sleep 10
+    done
+    error "Version $version did not reach Active."
+    exit 1
 }
 
 # ── Main ───────────────────────────────────────────────────────────────────
