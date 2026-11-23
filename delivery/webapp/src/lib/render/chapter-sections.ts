@@ -28,6 +28,11 @@ const CHAPTER_MATCH_TOLERANCE_SECONDS = 0.5;
 /**
  * Per-chapter headings, one entry per chapter line (null = no heading).
  *
+ * `timelineOffsetSeconds` is the silence the render worker prepended for the
+ * Title Card (`ChaptersManifest.titleCardOffsetSeconds`): chapter and line
+ * seconds include it, the Song Arrangement timeline starts at 0, so it is
+ * subtracted before any comparison.
+ *
  * Returns `null` when the sheet must render flat: no Items, a chapter count
  * that differs from the Item count, a chapter start that does not match its
  * Item's timeline start, or a timeline the Item list cannot produce. A chapter
@@ -36,6 +41,7 @@ const CHAPTER_MATCH_TOLERANCE_SECONDS = 0.5;
 export function chapterLineHeadings(
   chapters: Chapter[],
   items: TimelineItemSource[],
+  timelineOffsetSeconds: number = 0,
   toleranceSeconds: number = CHAPTER_MATCH_TOLERANCE_SECONDS,
 ): (string | null)[][] | null {
   if (items.length === 0 || chapters.length !== items.length) return null;
@@ -49,11 +55,12 @@ export function chapterLineHeadings(
     if (!chapter || !item || !source) return null;
     if (
       !Number.isFinite(chapter.startSeconds) ||
-      Math.abs(chapter.startSeconds - item.startSeconds) > toleranceSeconds
+      Math.abs(chapter.startSeconds - timelineOffsetSeconds - item.startSeconds) >
+        toleranceSeconds
     ) {
       return null;
     }
-    const headings = headingsForChapter(chapter, item.clips, source);
+    const headings = headingsForChapter(chapter, item.clips, source, timelineOffsetSeconds);
     if (headings === null) return null;
     rows.push(headings);
   }
@@ -63,12 +70,13 @@ export function chapterLineHeadings(
 function headingsForChapter(
   chapter: Chapter,
   clips: TimelineClip[],
-  source: TimelineItemSource
+  source: TimelineItemSource,
+  timelineOffsetSeconds: number
 ): (string | null)[] | null {
   if (clips.length === 0) return null;
   const positions: number[] = [];
   for (const line of chapter.lines) {
-    const position = sourcePositionFor(clips, line.startSeconds);
+    const position = sourcePositionFor(clips, line.startSeconds - timelineOffsetSeconds);
     // A line the arranged clips cannot reach means the manifest does not
     // describe this Song Arrangement: no headings rather than a wrong one.
     if (position === null) return null;

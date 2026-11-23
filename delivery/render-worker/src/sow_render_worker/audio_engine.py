@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Protocol
@@ -69,6 +69,7 @@ class ExportResult:
     segments: tuple[AudioSegmentInfo, ...] = field(default_factory=tuple)
     sample_rate: int = 44100
     channels: int = 2
+    lead_in_seconds: float = 0.0
 
 
 class AssetFetcherProtocol(Protocol):
@@ -287,6 +288,7 @@ def generate_songset_audio(
     sample_rate: int = 44100,
     channels: int = 2,
     job_id: str | None = None,
+    lead_in_resolver: Callable[[tuple[AudioSegmentInfo, ...]], float] | None = None,
 ) -> ExportResult:
     if not items:
         raise ValueError("Cannot generate audio for empty songset")
@@ -414,6 +416,38 @@ def generate_songset_audio(
             progress_callback(current_step, total_steps)
         current_step += 1
 
+    lead_in_seconds = 0.0
+    if lead_in_resolver is not None:
+        lead_in_seconds = max(0.0, lead_in_resolver(tuple(segments)))
+    if lead_in_seconds > 0:
+        lead_in_ms = round(lead_in_seconds * 1000)
+        shifted_segments: list[AudioSegmentInfo] = []
+        for segment in segments:
+            shifted_segments.append(
+                replace(
+                    segment,
+                    start_time_seconds=segment.start_time_seconds + lead_in_seconds,
+                    clips=tuple(
+                        replace(
+                            clip,
+                            start_time_seconds=clip.start_time_seconds + lead_in_seconds,
+                        )
+                        for clip in segment.clips
+                    ),
+                )
+            )
+        segments = shifted_segments
+        for audio_file in audio_files:
+            audio_file["start_ms"] += lead_in_ms
+            for clip in audio_file["clips"]:
+                clip["start_time_seconds"] += lead_in_seconds
+        current_time_ms += lead_in_ms
+        logger.info(
+            "[%s] Audio: title card lead-in %.3fs prepended to the mix",
+            job_id or "unknown",
+            lead_in_seconds,
+        )
+
     output_dir = Path(output_path).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -448,6 +482,7 @@ def generate_songset_audio(
         segments=tuple(segments),
         sample_rate=sample_rate,
         channels=channels,
+        lead_in_seconds=lead_in_seconds,
     )
 
 

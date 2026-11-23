@@ -474,6 +474,29 @@ describe("chapters", () => {
   });
 
   describe("normalizeChaptersManifest", () => {
+    it("reads the title card offset and defaults it to zero", () => {
+      const base = {
+        chapters: [
+          {
+            position: 1,
+            songTitle: "Song A",
+            startSeconds: 3,
+            endSeconds: 33,
+            lines: [{ text: "Line 1", startSeconds: 4 }],
+          },
+        ],
+        totalDurationSeconds: 33,
+        generatedAt: "2024-01-01T00:00:00Z",
+      };
+
+      expect(
+        normalizeChaptersManifest({ ...base, titleCardOffsetSeconds: 3 })
+          .titleCardOffsetSeconds
+      ).toBe(3);
+      // A manifest written before the lead-in existed carries no key.
+      expect(normalizeChaptersManifest(base).titleCardOffsetSeconds).toBe(0);
+    });
+
     it("normalizes snake_case keys to camelCase", () => {
       const snakeCaseData = {
         chapters: [

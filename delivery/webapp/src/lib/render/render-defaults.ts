@@ -1,4 +1,9 @@
-import { normalizeFontFamily, type FontFamilyValue } from "@/lib/constants"
+import {
+  TITLE_CARD_DURATION_DEFAULT,
+  normalizeFontFamily,
+  normalizeTitleCardDuration,
+  type FontFamilyValue,
+} from "@/lib/constants"
 import type { RenderFormData } from "@/components/render/RenderForm"
 
 export const APP_RENDER_DEFAULTS: Partial<RenderFormData> = {
@@ -9,7 +14,7 @@ export const APP_RENDER_DEFAULTS: Partial<RenderFormData> = {
   audioEnabled: true,
   videoEnabled: true,
   includeTitleCard: false,
-  titleCardDurationSeconds: 10,
+  titleCardDurationSeconds: TITLE_CARD_DURATION_DEFAULT,
   titleCardLines: [],
 }
 
@@ -41,7 +46,7 @@ export function buildInitialRenderData(
     if (latestJob.audioEnabled != null) result.audioEnabled = latestJob.audioEnabled as boolean
     if (latestJob.videoEnabled != null) result.videoEnabled = latestJob.videoEnabled as boolean
     if (latestJob.includeTitleCard != null) result.includeTitleCard = latestJob.includeTitleCard as boolean
-    if (latestJob.titleCardDurationSeconds != null) result.titleCardDurationSeconds = latestJob.titleCardDurationSeconds as number
+    if (latestJob.titleCardDurationSeconds != null) result.titleCardDurationSeconds = normalizeTitleCardDuration(latestJob.titleCardDurationSeconds)
     if (latestJob.titleCardLines) result.titleCardLines = latestJob.titleCardLines as string[]
   }
 

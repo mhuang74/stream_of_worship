@@ -5,7 +5,7 @@ import logging
 import signal
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import psycopg2
 import psycopg2.extras
@@ -13,6 +13,7 @@ import psycopg2.extras
 from sow_render_worker.arrangements import validate_arrangement
 from sow_render_worker.asset_fetcher import AssetFetcher
 from sow_render_worker.audio_engine import (
+    AudioSegmentInfo,
     SongsetItem,
     calculate_total_duration,
     generate_songset_audio,
@@ -28,8 +29,16 @@ from sow_render_worker.db import (
     start_render_job,
     update_render_progress,
 )
+from sow_render_worker.frame_renderer import has_lyric_content
+from sow_render_worker.lrc_parser import parse_lrc, remap_lrc_to_clips
 from sow_render_worker.uploader import R2Uploader, RenderArtifacts
-from sow_render_worker.video_engine import ChapterInfo, VideoEngine
+from sow_render_worker.video_engine import (
+    DEFAULT_TITLE_CARD_DURATION_SECONDS,
+    ChapterInfo,
+    VideoEngine,
+    clamp_title_card_duration,
+    title_card_lead_in_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +242,42 @@ def _segment_to_chapter_info(seg, index: int, song_title: str) -> ChapterInfo:
     )
 
 
+def _title_card_lead_in_resolver(
+    job, asset_fetcher: AssetFetcher
+) -> Callable[[tuple[AudioSegmentInfo, ...]], float]:
+    """Lead-in seconds for this job's card, from the first sung lyric line."""
+    card_seconds = clamp_title_card_duration(
+        job.title_card_duration_seconds or DEFAULT_TITLE_CARD_DURATION_SECONDS
+    )
+
+    def resolve(segments: tuple[AudioSegmentInfo, ...]) -> float:
+        first_lyric: float | None = None
+        for segment in segments:
+            hash_prefix = segment.item.recording_hash_prefix
+            if not hash_prefix:
+                continue
+            try:
+                lrc_content = asset_fetcher.download_lrc(hash_prefix)
+            except Exception:
+                lrc_content = None
+            if not lrc_content:
+                continue
+            for line in remap_lrc_to_clips(
+                parse_lrc(lrc_content),
+                segment.clips,
+                segment.item.id,
+                tempo_bpm=segment.item.tempo_bpm,
+            ):
+                if has_lyric_content(line.text):
+                    if first_lyric is None or line.global_time_seconds < first_lyric:
+                        first_lyric = line.global_time_seconds
+        if first_lyric is None:
+            return 0.0
+        return title_card_lead_in_seconds(first_lyric, card_seconds)
+
+    return resolve
+
+
 def execute_render_pipeline(
     job_id: str,
     user_id: int,
@@ -391,6 +436,11 @@ def execute_render_pipeline(
             asset_fetcher,
             progress_callback=audio_progress_callback,
             job_id=job_id,
+            lead_in_resolver=(
+                _title_card_lead_in_resolver(job, asset_fetcher)
+                if job.video_enabled and job.include_title_card
+                else None
+            ),
         )
 
         if not Path(audio_output_path).exists():
@@ -435,7 +485,9 @@ def execute_render_pipeline(
                 font_size_preset=job.font_size_preset,
                 resolution=job.resolution,
                 include_title_card=job.include_title_card,
-                title_card_duration_seconds=job.title_card_duration_seconds or 5.0,
+                title_card_duration_seconds=clamp_title_card_duration(
+                    job.title_card_duration_seconds or DEFAULT_TITLE_CARD_DURATION_SECONDS
+                ),
                 title_card_lines=title_card_lines,
                 songset_name=songset_name,
                 font_family=job.font_family,
@@ -537,6 +589,7 @@ def execute_render_pipeline(
             list(audio_result.segments),
             asset_fetcher.download_lrc,
             audio_result.total_duration_seconds,
+            offset_seconds=audio_result.lead_in_seconds,
         )
 
         check_lambda_timeout()

@@ -17,6 +17,7 @@ from sow_render_worker.pipeline import (
     execute_render_pipeline,
     fetch_songset_items,
     get_default_ratio,
+    _title_card_lead_in_resolver,
     get_render_ratio,
     PHASES,
 )
@@ -1788,3 +1789,108 @@ class TestPipelineSoftDeleteFailFast:
             mock_audio.assert_not_called()
             mock_fail.assert_called_once()
             assert "not found in database" in mock_fail.call_args[0][3]
+
+
+class TestTitleCardLeadInResolver:
+    def test_resolver_uses_first_lyric_line(self):
+        item = _make_songset_item()
+        result = _make_audio_result([item])
+        fetcher = _make_mock_fetcher()
+        fetcher.download_lrc.return_value = "[00:03.00]First line\n[00:20.00]Later"
+        job = _make_render_job(include_title_card=True, title_card_duration_seconds=5)
+
+        resolver = _title_card_lead_in_resolver(job, fetcher)
+        assert resolver(result.segments) == 3.0
+
+    def test_resolver_defaults_card_duration_and_clamps(self):
+        item = _make_songset_item()
+        result = _make_audio_result([item])
+        fetcher = _make_mock_fetcher()
+        fetcher.download_lrc.return_value = "[00:00.20]First line"
+
+        # No stored duration -> the worker default card of 5 s.
+        assert _title_card_lead_in_resolver(_make_render_job(), fetcher)(result.segments) \
+            == pytest.approx(5.8)
+        # A legacy 30 s request still renders 30 s, so the lead-in follows it.
+        assert _title_card_lead_in_resolver(
+            _make_render_job(title_card_duration_seconds=45), fetcher
+        )(result.segments) == pytest.approx(30.8)
+
+    def test_resolver_returns_zero_without_lyrics(self):
+        item = _make_songset_item()
+        result = _make_audio_result([item])
+        fetcher = _make_mock_fetcher()
+        fetcher.download_lrc.return_value = None
+
+        resolver = _title_card_lead_in_resolver(_make_render_job(), fetcher)
+        assert resolver(result.segments) == 0.0
+
+    def test_resolver_ignores_blank_lines(self):
+        item = _make_songset_item()
+        result = _make_audio_result([item])
+        fetcher = _make_mock_fetcher()
+        fetcher.download_lrc.return_value = "[00:00.50]   \n[00:04.00]Real line"
+
+        resolver = _title_card_lead_in_resolver(
+            _make_render_job(title_card_duration_seconds=5), fetcher
+        )
+        # Card ends at 5 s, first *sung* line at 4 s -> 2 s shortfall.
+        assert resolver(result.segments) == pytest.approx(2.0)
+
+
+class TestPipelineLeadInWiring:
+    def _run(self, job, lead_in_seconds: float = 0.0):
+        mock_conn = MagicMock()
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        audio_result = ExportResult(
+            output_path=audio_result.output_path,
+            total_duration_seconds=audio_result.total_duration_seconds + lead_in_seconds,
+            segments=audio_result.segments,
+            lead_in_seconds=lead_in_seconds,
+        )
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result) as mock_audio, \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()) as mock_manifest, \
+             patch("sow_render_worker.pipeline.VideoEngine"), \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+        return mock_audio, mock_manifest
+
+    def test_video_with_card_supplies_resolver(self):
+        mock_audio, _ = self._run(
+            _make_render_job(include_title_card=True, title_card_duration_seconds=5)
+        )
+        assert mock_audio.call_args.kwargs["lead_in_resolver"] is not None
+
+    def test_video_without_card_supplies_none(self):
+        mock_audio, _ = self._run(_make_render_job(include_title_card=False))
+        assert mock_audio.call_args.kwargs["lead_in_resolver"] is None
+
+    def test_audio_only_supplies_none(self):
+        mock_audio, _ = self._run(
+            _make_render_job(video_enabled=False, include_title_card=True)
+        )
+        assert mock_audio.call_args.kwargs["lead_in_resolver"] is None
+
+    def test_manifest_records_the_lead_in(self):
+        _, mock_manifest = self._run(
+            _make_render_job(include_title_card=True, title_card_duration_seconds=5),
+            lead_in_seconds=3.0,
+        )
+        assert mock_manifest.call_args.kwargs["offset_seconds"] == 3.0

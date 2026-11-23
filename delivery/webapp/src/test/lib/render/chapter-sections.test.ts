@@ -213,3 +213,31 @@ describe("chapterLineHeadings", () => {
     expect(rows).toEqual([["chorus 1"], [null]]);
   });
 });
+
+describe("chapterLineHeadings with a title card lead-in", () => {
+  it("keeps Section Labels when the manifest declares the lead-in offset", () => {
+    const rows = chapterLineHeadings(
+      chapters([
+        { text: "verse line", startSeconds: 4 },
+        { text: "chorus line", startSeconds: 14 },
+      ], { startSeconds: 3 }),
+      [item()],
+      3
+    );
+
+    expect(rows).toEqual([["verse", "chorus 1"]]);
+  });
+
+  it("still renders flat when the offset does not explain the disagreement", () => {
+    // The chapter really does start 2 s late: a 3 s lead-in is not the reason.
+    expect(
+      chapterLineHeadings(chapters([{ text: "a", startSeconds: 1 }], { startSeconds: 2 }), [item()], 3)
+    ).toBeNull();
+  });
+
+  it("defaults to no offset", () => {
+    expect(
+      chapterLineHeadings(chapters([{ text: "a", startSeconds: 1 }], { startSeconds: 3 }), [item()])
+    ).toBeNull();
+  });
+});

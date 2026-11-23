@@ -309,8 +309,8 @@ fun validationError(
         songset.items.size > SongsetMaxSongs -> "Songset exceeds maximum of $SongsetMaxSongs songs."
         (songset.durationSeconds ?: 0.0) > SongsetMaxDurationSeconds ->
             "Songset exceeds maximum duration of 25 minutes."
-        config.includeTitleCard && config.titleCardDurationSeconds !in 5..30 ->
-            "Title card duration must be between 5 and 30 seconds."
+        config.includeTitleCard && config.titleCardDurationSeconds !in 5..15 ->
+            "Title card duration must be between 5 and 15 seconds."
         config.includeTitleCard && config.titleCardLines.any { it.length > 200 } ->
             "Title card lines must be 200 characters or fewer."
         config.includeTitleCard && config.titleCardLines.size > 20 ->

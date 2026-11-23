@@ -117,6 +117,34 @@ describe("RenderForm", () => {
       expect(screen.queryByText("Duration")).not.toBeInTheDocument()
     })
 
+    it("offers only 5, 10 and 15 second title cards", () => {
+      render(<RenderForm {...defaultProps} initialData={{ includeTitleCard: true }} />)
+
+      fireEvent.click(screen.getByRole("combobox", { name: /duration/i }))
+
+      const options = screen
+        .getAllByRole("option")
+        .map((option) => option.textContent)
+      expect(options).toEqual(["5 seconds", "10 seconds", "15 seconds"])
+    })
+
+    it("snaps a legacy 25 s duration down to 15 s on submit", async () => {
+      render(
+        <RenderForm
+          {...defaultProps}
+          initialData={{ includeTitleCard: true, titleCardDurationSeconds: 25 }}
+        />
+      )
+
+      fireEvent.click(screen.getByRole("button", { name: /start render/i }))
+
+      await waitFor(() => {
+        expect(mockSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({ titleCardDurationSeconds: 15 })
+        )
+      })
+    })
+
     it("previews distinct Songs sharing a title once each", () => {
       render(
         <RenderForm

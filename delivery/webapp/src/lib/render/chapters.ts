@@ -49,6 +49,12 @@ export interface ChaptersManifest {
   chapters: Chapter[];
   totalDurationSeconds: number;
   generatedAt: string;
+  /**
+   * Silence the worker prepended for the Title Card. Chapter and line seconds
+   * already include it; this offset is only for comparing them against a
+   * timeline built from the Song Arrangement (see chapter-sections.ts).
+   */
+  titleCardOffsetSeconds?: number;
 }
 
 export interface ChapterGenerationOptions {
@@ -110,6 +116,7 @@ export async function generateChaptersManifest(
     chapters,
     totalDurationSeconds,
     generatedAt: new Date().toISOString(),
+    titleCardOffsetSeconds: 0,
   };
 }
 
@@ -371,5 +378,9 @@ export function normalizeChaptersManifest(data: unknown): ChaptersManifest {
     totalDurationSeconds:
       typeof totalDurationSeconds === "number" ? totalDurationSeconds : 0,
     generatedAt: typeof generatedAt === "string" ? generatedAt : "",
+    titleCardOffsetSeconds:
+      (raw.titleCardOffsetSeconds as number) ??
+      (raw.title_card_offset_seconds as number) ??
+      0,
   };
 }

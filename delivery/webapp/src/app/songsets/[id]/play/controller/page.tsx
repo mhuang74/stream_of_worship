@@ -51,7 +51,13 @@ async function loadChapters(
     // current Song Arrangement; null (flat sheet) whenever that cannot be done
     // safely — see lib/render/chapter-sections.ts.
     setChapterHeadings(
-      headingSources ? chapterLineHeadings(manifest.chapters, headingSources) : null
+      headingSources
+        ? chapterLineHeadings(
+            manifest.chapters,
+            headingSources,
+            manifest.titleCardOffsetSeconds ?? 0
+          )
+        : null
     );
   } catch (e) {
     console.error("Failed to load chapters:", e);

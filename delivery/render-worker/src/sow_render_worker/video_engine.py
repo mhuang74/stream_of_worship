@@ -37,6 +37,16 @@ RESOLUTION_MAP: dict[str, tuple[int, int]] = {
     "1080p": (1920, 1080),
 }
 
+DEFAULT_VIDEO_FPS = 24
+
+DEFAULT_TITLE_CARD_DURATION_SECONDS = 5.0
+TITLE_CARD_DURATION_MIN_SECONDS = 5.0
+TITLE_CARD_DURATION_MAX_SECONDS = 30.0
+
+#: Minimum silence between the card's last frame and the first sung line, so the
+#: card never hands straight off into a lyric mid-phrase.
+TITLE_CARD_END_BUFFER_SECONDS = 1.0
+
 _MEMORY_WARNING_FRACTION = 0.90
 
 # Retain only the tail of FFmpeg's stderr: the error messages keep the last 2000
@@ -63,6 +73,27 @@ def _check_memory_pressure() -> None:
                     return
     except (OSError, ValueError, IndexError):
         pass
+
+
+def clamp_title_card_duration(seconds: float) -> float:
+    """The card length the worker will actually render."""
+    return max(TITLE_CARD_DURATION_MIN_SECONDS, min(seconds, TITLE_CARD_DURATION_MAX_SECONDS))
+
+
+def title_card_lead_in_seconds(
+    first_lyric_time_seconds: float,
+    title_card_duration_seconds: float,
+    fps: int = DEFAULT_VIDEO_FPS,
+) -> float:
+    """Silence to prepend to the mix so the card clears the first lyric line.
+
+    Returns 0.0 when the card already ends at least
+    ``TITLE_CARD_END_BUFFER_SECONDS`` before the first sung line; otherwise
+    exactly the shortfall, so that line lands one buffer after the card's last
+    frame. ``fps`` only quantises the card length to whole frames.
+    """
+    card_end_seconds = math.ceil(title_card_duration_seconds * fps) / fps
+    return max(0.0, card_end_seconds + TITLE_CARD_END_BUFFER_SECONDS - first_lyric_time_seconds)
 
 
 @dataclass(frozen=True)
@@ -101,7 +132,7 @@ class VideoEngine:
         template: VideoTemplateName = "dark",
         font_size_preset: FontSizePreset = "M",
         resolution: str = "1080p",
-        fps: int = 24,
+        fps: int = DEFAULT_VIDEO_FPS,
         include_title_card: bool = True,
         title_card_duration_seconds: float = 5.0,
         title_card_lines: list[str] | None = None,
@@ -116,7 +147,7 @@ class VideoEngine:
         self.resolution = RESOLUTION_MAP.get(resolution, (1920, 1080))
         self.fps = fps
         self.include_title_card = include_title_card
-        self.title_card_duration_seconds = max(5.0, min(title_card_duration_seconds, 30.0))
+        self.title_card_duration_seconds = clamp_title_card_duration(title_card_duration_seconds)
         self.title_card_lines = title_card_lines
         self.songset_name = songset_name
         self.font_family = font_family

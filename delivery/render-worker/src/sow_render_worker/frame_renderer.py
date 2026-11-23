@@ -222,7 +222,7 @@ def _normalize_lyric_text(text: str) -> str:
     return _WHITESPACE_RUN_RE.sub(" ", text).strip()
 
 
-def _has_lyric_content(text: object) -> bool:
+def has_lyric_content(text: object) -> bool:
     """True when text is a str with at least one non-whitespace character."""
     return isinstance(text, str) and bool(_WHITESPACE_RUN_RE.sub("", text))
 
@@ -549,7 +549,7 @@ class FrameRenderer:
         current_index: int,
     ) -> int:
         for i in range(current_index - 1, -1, -1):
-            if _has_lyric_content(song_lyrics[i].text):
+            if has_lyric_content(song_lyrics[i].text):
                 return i
         return -1
 
@@ -559,7 +559,7 @@ class FrameRenderer:
         current_index: int,
     ) -> int:
         for i in range(current_index + 1, len(song_lyrics)):
-            if _has_lyric_content(song_lyrics[i].text):
+            if has_lyric_content(song_lyrics[i].text):
                 return i
         return -1
 
@@ -569,7 +569,7 @@ class FrameRenderer:
         current_index: int,
     ) -> int:
         for i in range(current_index - 1, -1, -1):
-            if _has_lyric_content(song_lyrics[i].text):
+            if has_lyric_content(song_lyrics[i].text):
                 return i + 1
         return 0
 
@@ -581,7 +581,7 @@ class FrameRenderer:
     ) -> int:
         if current_index < 0 or current_index >= len(song_lyrics):
             return 0
-        if _has_lyric_content(song_lyrics[current_index].text):
+        if has_lyric_content(song_lyrics[current_index].text):
             return 0
         if self._find_previous_non_blank_index(song_lyrics, current_index) < 0:
             return 0
@@ -607,7 +607,7 @@ class FrameRenderer:
     ) -> int:
         if current_index < 0 or current_index >= len(song_lyrics):
             return 0
-        if _has_lyric_content(song_lyrics[current_index].text):
+        if has_lyric_content(song_lyrics[current_index].text):
             return 0
 
         next_index = self._find_next_non_blank_index(song_lyrics, current_index)
@@ -676,7 +676,7 @@ class FrameRenderer:
 
             if current_lyric_index >= 0:
                 current_line = current_song_lyrics[current_lyric_index]
-                if _has_lyric_content(current_line.text):
+                if has_lyric_content(current_line.text):
                     is_last = current_lyric_index == len(current_song_lyrics) - 1
                     if is_last:
                         fade_alpha = self._compute_last_lyric_fade_alpha(
@@ -912,7 +912,7 @@ class FrameRenderer:
         current_line = song_lyrics[current_index]
         is_last_lyric = current_index == len(song_lyrics) - 1
 
-        if not _has_lyric_content(current_line.text):
+        if not has_lyric_content(current_line.text):
             previous_index = self._find_previous_non_blank_index(song_lyrics, current_index)
             previous_alpha = self._compute_blank_previous_fade_alpha(
                 song_lyrics, current_time, current_index
@@ -972,7 +972,7 @@ class FrameRenderer:
 
         preview_lines = (
             self._wrapped_preview_lines(next_line.text)
-            if next_line is not None and next_alpha > 0 and _has_lyric_content(next_line.text)
+            if next_line is not None and next_alpha > 0 and has_lyric_content(next_line.text)
             else ()
         )
         current_lines = self._wrapped_lyric_lines(current_line.text)
@@ -1004,7 +1004,7 @@ class FrameRenderer:
         width: int,
         top_y: int,
     ) -> None:
-        if next_alpha <= 0 or not _has_lyric_content(next_line.text):
+        if next_alpha <= 0 or not has_lyric_content(next_line.text):
             return
 
         lines = self._wrapped_preview_lines(next_line.text)
