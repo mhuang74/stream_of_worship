@@ -1189,3 +1189,334 @@ class TestTitleCardLeadIn:
 
         assert len(seen) == 1
         assert [s.item.id for s in seen[0]] == ["1", "2"]
+
+
+def _write_staged_wav(path, seconds: float, sample_rate: int = 44100,
+                      channels: int = 2) -> str:
+    """Write a canonical quiet PCM16 staging WAV of ``seconds`` exact length."""
+    import wave
+
+    frames = round(seconds * sample_rate)
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(b"\x00\x00" * frames * channels)
+    return str(path)
+
+
+def _glue_clip(path, seconds: float, take_id: str = "take-1"):
+    from sow_render_worker.audio_engine import GlueClip
+
+    return GlueClip(
+        path=str(path),
+        take_id=take_id,
+        seconds=seconds,
+        checksum="a" * 64,
+    )
+
+
+class TestGlueClipAndWindowShapes:
+    def test_glue_clip_fields_and_frozen(self):
+        from sow_render_worker.audio_engine import GlueClip
+
+        clip = GlueClip(path="/tmp/g.wav", take_id="t1", seconds=2.5, checksum="f" * 64)
+        assert clip.path == "/tmp/g.wav"
+        assert clip.take_id == "t1"
+        assert clip.seconds == 2.5
+        assert clip.checksum == "f" * 64
+        with pytest.raises(AttributeError):
+            clip.seconds = 3.0
+
+    def test_glue_window_fields_and_frozen(self):
+        from sow_render_worker.audio_engine import GlueWindow
+
+        window = GlueWindow(to_item_id="item-2", start_seconds=10.0, end_seconds=12.5)
+        assert window.to_item_id == "item-2"
+        assert window.start_seconds == 10.0
+        assert window.end_seconds == 12.5
+        with pytest.raises(AttributeError):
+            window.end_seconds = 13.0
+
+    def test_export_result_defaults_to_no_glue_windows(self):
+        result = ExportResult(output_path="/tmp/out.mp3", total_duration_seconds=180.0)
+        assert result.glue_windows == ()
+
+
+class TestGlueJunctionMix:
+    def _items(self):
+        item1 = _make_item(id="1", position=0, duration_seconds=180.0)
+        item2 = _make_item(
+            id="2", position=1, recording_hash_prefix="def456",
+            duration_seconds=200.0, gap_beats=2.0, tempo_bpm=120.0,
+            crossfade_enabled=1, crossfade_duration_seconds=2.0,
+        )
+        return [item1, item2]
+
+    def _generate(self, tmp_path, items, glue_clips, fetcher=None):
+        if fetcher is None:
+            fetcher = MagicMock()
+            fetcher.download_audio.side_effect = lambda prefix: f"/tmp/{prefix}.mp3"
+        output_path = str(tmp_path / "out.mp3")
+        with patch("sow_render_worker.audio_engine.concatenate_audio_files") as mock_concat:
+            result = generate_songset_audio(
+                items, output_path, fetcher, glue_clips=glue_clips,
+            )
+        return result, mock_concat.call_args[0][0]
+
+    def test_gap_and_crossfade_are_zero_at_glue_junction(self, tmp_path):
+        item1, item2 = self._items()
+        glue = _glue_clip(_write_staged_wav(tmp_path / "glue.wav", 2.786), 2.786)
+
+        result, _ = self._generate(tmp_path, [item1, item2], {"2": glue})
+
+        assert len(result.segments) == 2
+        assert result.segments[1].gap_before_seconds == 0.0
+        assert result.segments[1].start_time_seconds == pytest.approx(182.786)
+        assert result.segments[1].duration_seconds == 200.0
+        assert result.total_duration_seconds == pytest.approx(382.786)
+
+    def test_glue_segment_is_inserted_at_previous_song_end_without_fades(self, tmp_path):
+        item1, item2 = self._items()
+        glue_path = _write_staged_wav(tmp_path / "glue.wav", 2.786)
+        glue = _glue_clip(glue_path, 2.786)
+
+        _, audio_files = self._generate(tmp_path, [item1, item2], {"2": glue})
+
+        assert [entry["path"] for entry in audio_files] == [
+            "/tmp/abc123.mp3", glue_path, "/tmp/def456.mp3",
+        ]
+        glue_entry = audio_files[1]
+        assert glue_entry["start_ms"] == pytest.approx(180000.0)
+        assert glue_entry["duration_ms"] == pytest.approx(2786.0)
+        assert glue_entry["gap_ms"] == 0
+        assert glue_entry["crossfade_ms"] == 0
+        assert glue_entry["clips"] == [{
+            "path": glue_path,
+            "source_start_seconds": 0.0,
+            "source_end_seconds": 2.786,
+            "start_time_seconds": pytest.approx(180.0),
+        }]
+        assert audio_files[2]["start_ms"] == pytest.approx(182786.0)
+        assert audio_files[2]["crossfade_ms"] == 0
+        assert audio_files[2]["gap_ms"] == 0
+
+    def test_filter_graph_places_glue_and_suppresses_all_fades(self, tmp_path):
+        item1, item2 = self._items()
+        glue = _glue_clip(_write_staged_wav(tmp_path / "glue.wav", 2.786), 2.786)
+
+        _, audio_files = self._generate(tmp_path, [item1, item2], {"2": glue})
+        graph = build_ffmpeg_filter_complex(audio_files, normalize=False)
+
+        # A's outgoing fade is suppressed along with the ordinary crossfade,
+        # the Glue gets no extra fade, and B gets no incoming fade.
+        assert "afade" not in graph
+        assert "[0:a]atrim=start=0.000000:end=180.000000,asetpts=PTS-STARTPTS[c0]" in graph
+        assert "[1:a]atrim=start=0.000000:end=2.786000,asetpts=PTS-STARTPTS[c1]" in graph
+        assert "[2:a]atrim=start=0.000000:end=200.000000,asetpts=PTS-STARTPTS[c2]" in graph
+        assert "[c0]anull[a0]" in graph
+        assert "[c1]adelay=180000|180000[a1]" in graph
+        assert "[c2]adelay=182786|182786[a2]" in graph
+        assert "[a0][a1][a2]amix=inputs=3:normalize=0:dropout_transition=0[outa]" in graph
+
+    def test_glue_window_is_previous_song_end_to_incoming_start(self, tmp_path):
+        from sow_render_worker.audio_engine import GlueWindow
+
+        item1, item2 = self._items()
+        glue = _glue_clip(_write_staged_wav(tmp_path / "glue.wav", 2.786), 2.786)
+
+        result, _ = self._generate(tmp_path, [item1, item2], {"2": glue})
+
+        assert result.glue_windows == (
+            GlueWindow(to_item_id="2", start_seconds=180.0, end_seconds=182.786),
+        )
+
+    def test_lead_in_shifts_glue_windows_and_mix(self, tmp_path):
+        item1, item2 = self._items()
+        glue = _glue_clip(_write_staged_wav(tmp_path / "glue.wav", 2.786), 2.786)
+        fetcher = MagicMock()
+        fetcher.download_audio.side_effect = lambda prefix: f"/tmp/{prefix}.mp3"
+        output_path = str(tmp_path / "out.mp3")
+        with patch("sow_render_worker.audio_engine.concatenate_audio_files") as mock_concat:
+            result = generate_songset_audio(
+                [item1, item2],
+                output_path,
+                fetcher,
+                lead_in_resolver=lambda segments: 3.0,
+                glue_clips={"2": glue},
+            )
+
+        assert result.lead_in_seconds == 3.0
+        assert result.segments[0].start_time_seconds == pytest.approx(3.0)
+        assert result.glue_windows[0].start_seconds == pytest.approx(183.0)
+        assert result.glue_windows[0].end_seconds == pytest.approx(185.786)
+        assert result.segments[1].start_time_seconds == pytest.approx(185.786)
+        assert result.total_duration_seconds == pytest.approx(385.786)
+
+        audio_files = mock_concat.call_args[0][0]
+        assert audio_files[1]["start_ms"] == pytest.approx(183000.0)
+        assert audio_files[1]["clips"][0]["start_time_seconds"] == pytest.approx(183.0)
+
+    def test_multiple_glue_junctions_shift_every_later_start(self, tmp_path):
+        from sow_render_worker.audio_engine import GlueWindow
+
+        item1 = _make_item(id="1", position=0, duration_seconds=10.0)
+        item2 = _make_item(id="2", position=1, recording_hash_prefix="b",
+                           duration_seconds=20.0)
+        item3 = _make_item(id="3", position=2, recording_hash_prefix="c",
+                           duration_seconds=30.0)
+        glue_b = _glue_clip(_write_staged_wav(tmp_path / "b.wav", 1.0), 1.0, "tb")
+        glue_c = _glue_clip(_write_staged_wav(tmp_path / "c.wav", 2.25), 2.25, "tc")
+
+        fetcher = MagicMock()
+        fetcher.download_audio.side_effect = ["/tmp/a.mp3", "/tmp/b.mp3", "/tmp/c.mp3"]
+        result, _ = self._generate(
+            tmp_path, [item1, item2, item3], {"2": glue_b, "3": glue_c}, fetcher
+        )
+
+        assert [s.start_time_seconds for s in result.segments] == pytest.approx(
+            [0.0, 11.0, 33.25]
+        )
+        assert result.total_duration_seconds == pytest.approx(63.25)
+        assert result.glue_windows == (
+            GlueWindow(to_item_id="2", start_seconds=10.0, end_seconds=11.0),
+            GlueWindow(to_item_id="3", start_seconds=31.0, end_seconds=33.25),
+        )
+
+    def test_clip_for_first_item_is_ignored(self, tmp_path):
+        item1, item2 = self._items()
+        item1 = _make_item(id="1", position=0, duration_seconds=180.0)
+        # No incoming junction for item 1; the clip must not be consumed.
+        glue = _glue_clip(_write_staged_wav(tmp_path / "glue.wav", 2.786), 2.786)
+
+        result, _ = self._generate(tmp_path, [item1, item2], {"1": glue})
+
+        assert result.glue_windows == ()
+        # The ordinary 2 s crossfade still overlaps the junction: 180 - 2 + 200.
+        assert result.total_duration_seconds == pytest.approx(378.0)
+
+    def test_calculate_total_duration_matches_mix_with_glue(self, tmp_path):
+        item1, item2 = self._items()
+        glue = _glue_clip(_write_staged_wav(tmp_path / "glue.wav", 2.786), 2.786)
+
+        mix, _ = self._generate(tmp_path, [item1, item2], {"2": glue})
+        total = calculate_total_duration([item1, item2], MagicMock(), {"2": glue})
+
+        assert total == pytest.approx(mix.total_duration_seconds)
+        assert total == pytest.approx(382.786)
+
+    def test_calculate_total_duration_multiple_glue_junctions(self, tmp_path):
+        item1 = _make_item(id="1", position=0, duration_seconds=10.0)
+        item2 = _make_item(id="2", position=1, duration_seconds=20.0)
+        item3 = _make_item(id="3", position=2, duration_seconds=30.0)
+        glue_b = _glue_clip(_write_staged_wav(tmp_path / "b.wav", 1.0), 1.0, "tb")
+        glue_c = _glue_clip(_write_staged_wav(tmp_path / "c.wav", 2.25), 2.25, "tc")
+
+        total = calculate_total_duration(
+            [item1, item2, item3], MagicMock(), {"2": glue_b, "3": glue_c}
+        )
+
+        assert total == pytest.approx(10.0 + 1.0 + 20.0 + 2.25 + 30.0)
+
+    def test_calculate_total_duration_without_clips_is_unchanged(self):
+        item1 = _make_item(id="1", duration_seconds=180.0)
+        item2 = _make_item(id="2", duration_seconds=200.0)
+
+        assert calculate_total_duration([item1, item2], MagicMock()) == pytest.approx(382.0)
+        assert calculate_total_duration(
+            [item1, item2], MagicMock(), None
+        ) == pytest.approx(382.0)
+        assert calculate_total_duration(
+            [item1, item2], MagicMock(), {}
+        ) == pytest.approx(382.0)
+
+    def test_missing_glue_file_is_a_hard_error(self, tmp_path):
+        from sow_render_worker.audio_engine import GlueClipError
+
+        item1, item2 = self._items()
+        glue = _glue_clip(tmp_path / "missing.wav", 2.786)
+
+        with pytest.raises(GlueClipError, match="missing or unreadable"):
+            self._generate(tmp_path, [item1, item2], {"2": glue})
+
+    def test_unreadable_glue_file_is_a_hard_error(self, tmp_path):
+        from sow_render_worker.audio_engine import GlueClipError
+
+        item1, item2 = self._items()
+        bogus = tmp_path / "bogus.wav"
+        bogus.write_bytes(b"not a riff wave at all")
+        glue = _glue_clip(bogus, 2.786)
+
+        with pytest.raises(GlueClipError, match="missing or unreadable"):
+            self._generate(tmp_path, [item1, item2], {"2": glue})
+
+    def test_zero_and_negative_glue_seconds_raise(self, tmp_path):
+        from sow_render_worker.audio_engine import GlueClipError
+
+        item1, item2 = self._items()
+        path = _write_staged_wav(tmp_path / "glue.wav", 1.0)
+        for seconds in (0.0, -1.0):
+            glue = _glue_clip(path, seconds)
+            with pytest.raises(GlueClipError, match="non-positive"):
+                self._generate(tmp_path, [item1, item2], {"2": glue})
+            with pytest.raises(GlueClipError, match="non-positive"):
+                calculate_total_duration([item1, item2], MagicMock(), {"2": glue})
+
+    def test_glue_seconds_mismatch_beyond_epsilon_raises(self, tmp_path):
+        from sow_render_worker.audio_engine import GlueClipError
+
+        item1, item2 = self._items()
+        path = _write_staged_wav(tmp_path / "glue.wav", 2.0)
+        glue = _glue_clip(path, 3.0)
+
+        with pytest.raises(GlueClipError, match="does not match"):
+            self._generate(tmp_path, [item1, item2], {"2": glue})
+
+    def test_glue_seconds_within_epsilon_is_accepted(self, tmp_path):
+        item1, item2 = self._items()
+        path = _write_staged_wav(tmp_path / "glue.wav", 2.0)
+        glue = _glue_clip(path, 2.04)
+
+        result, _ = self._generate(tmp_path, [item1, item2], {"2": glue})
+
+        assert result.segments[1].start_time_seconds == pytest.approx(182.04)
+
+
+class TestNoGlueRegression:
+    def test_no_glue_filter_graph_is_byte_identical(self):
+        audio_files = [
+            _make_audio_file("/tmp/a.mp3"),
+            _make_audio_file(
+                "/tmp/b.mp3", start_ms=181000, duration_ms=200000,
+                gap_ms=1000, crossfade_ms=2000,
+            ),
+        ]
+
+        assert build_ffmpeg_filter_complex(audio_files, normalize=False) == (
+            "[0:a]atrim=start=0.000000:end=180.000000,asetpts=PTS-STARTPTS[c0];"
+            "[1:a]atrim=start=0.000000:end=200.000000,asetpts=PTS-STARTPTS[c1];"
+            "[c0]afade=t=out:st=178.000:d=2.000[a0];"
+            "[c1]afade=t=in:st=0:d=2.000,adelay=181000|181000[a1];"
+            "[a0][a1]amix=inputs=2:normalize=0:dropout_transition=0[outa]"
+        )
+
+    def test_no_glue_export_has_no_windows_and_old_duration(self, tmp_path):
+        item1 = _make_item(id="1", position=0, duration_seconds=180.0)
+        item2 = _make_item(
+            id="2", position=1, recording_hash_prefix="def456",
+            duration_seconds=200.0, gap_beats=2.0, tempo_bpm=120.0,
+        )
+        fetcher = MagicMock()
+        fetcher.download_audio.side_effect = ["/tmp/a.mp3", "/tmp/b.mp3"]
+
+        with patch("sow_render_worker.audio_engine.concatenate_audio_files") as mock_concat:
+            result = generate_songset_audio(
+                [item1, item2], str(tmp_path / "out.mp3"), fetcher,
+            )
+
+        assert result.glue_windows == ()
+        assert result.total_duration_seconds == pytest.approx(381.0)
+        audio_files = mock_concat.call_args[0][0]
+        assert len(audio_files) == 2
+        assert audio_files[1]["start_ms"] == 181000
+        assert audio_files[1]["crossfade_ms"] == 0

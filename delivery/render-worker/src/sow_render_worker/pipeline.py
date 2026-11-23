@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 import signal
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -11,18 +13,23 @@ import psycopg2
 import psycopg2.extras
 
 from sow_render_worker.arrangements import validate_arrangement
-from sow_render_worker.asset_fetcher import AssetFetcher
+from sow_render_worker.asset_fetcher import AssetFetcher, GlueDownloadError
 from sow_render_worker.audio_engine import (
     AudioSegmentInfo,
+    GlueClip,
     SongsetItem,
     calculate_total_duration,
     generate_songset_audio,
 )
 from sow_render_worker.chapters import chapter_titles, generate_chapters_manifest
 from sow_render_worker.db import (
+    GlueTake,
+    RenderJob,
     RenderProgress,
     complete_render_job,
     fail_render_job,
+    get_glue_take_by_id,
+    get_render_glue_transitions,
     get_render_job,
     reclaim_likely_dead_job,
     reclaim_stale_job,
@@ -143,6 +150,7 @@ def fetch_songset_items(
             "  si.key_shift_semitones, "
             "  si.tempo_ratio, "
             "  si.arrangement_steps, "
+            "  si.updated_at, "
             "  r.tempo_bpm, "
             "  r.duration_seconds, "
             "  r.sections, "
@@ -176,6 +184,7 @@ def fetch_songset_items(
             song_title=row["song_title"],
             recording_content_hash=row["recording_content_hash"],
             deleted_at=row["deleted_at"],
+            updated_at=row.get("updated_at"),
         )
         for row in rows
     ]
@@ -278,6 +287,386 @@ def _title_card_lead_in_resolver(
     return resolve
 
 
+GLUE_NOT_READY = "GLUE_NOT_READY"
+GLUE_STALE_SNAPSHOT = "GLUE_STALE_SNAPSHOT"
+
+# Snapshot vs immutable take/item metadata. Durations are serialized with six
+# decimals and timestamps with microsecond precision, so anything beyond a
+# microsecond is a real mismatch.
+GLUE_SNAPSHOT_SECONDS_EPSILON = 1e-6
+
+_GLUE_SNAPSHOT_REQUIRED_FIELDS = (
+    "from_item_id",
+    "to_item_id",
+    "take_id",
+    "descriptor_key",
+    "r2_key",
+)
+
+
+class GlueSnapshotError(RuntimeError):
+    """The pinned Glue snapshot cannot be rendered as written.
+
+    The stable code prefixes the message so the failed render's persisted
+    ``error_message`` stays actionable. There is never an ordinary-gap fallback.
+    """
+
+    code = GLUE_NOT_READY
+
+    def __init__(self, detail: str, *, code: str = GLUE_NOT_READY) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code = code
+        self.detail = detail
+
+
+def _log_glue_render_event(event: str, *, level: str = "info", **fields: Any) -> None:
+    """Emit one structured JSON line for a stable Glue render event."""
+    payload: dict[str, Any] = {"event": event}
+    for key, value in fields.items():
+        if value is not None:
+            payload[key] = value
+    logger.log(
+        getattr(logging, level.upper(), logging.INFO),
+        json.dumps(payload, default=str, ensure_ascii=False, sort_keys=True),
+    )
+
+
+def _glue_failure(
+    job_id: str,
+    *,
+    code: str,
+    from_item_id: str | None,
+    to_item_id: str | None,
+    take_id: str | None,
+    detail: str,
+) -> GlueSnapshotError:
+    _log_glue_render_event(
+        "glue.render.glue.failed",
+        level="error",
+        jobId=job_id,
+        takeId=take_id,
+        toItemId=to_item_id,
+        errorCode=code,
+    )
+    return GlueSnapshotError(
+        f"AI transition {from_item_id or '?'} -> {to_item_id or '?'}: {detail}",
+        code=code,
+    )
+
+
+def _glue_metrics(take: GlueTake) -> dict[str, Any]:
+    try:
+        metrics = json.loads(take.metrics_json or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return metrics if isinstance(metrics, dict) else {}
+
+
+def _parse_snapshot_timestamp(value: Any) -> datetime | None:
+    """Parse one ISO 8601 snapshot timestamp to an aware UTC datetime."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _timestamps_match(expected: datetime, actual: datetime) -> bool:
+    left = expected if expected.tzinfo else expected.replace(tzinfo=timezone.utc)
+    right = actual if actual.tzinfo else actual.replace(tzinfo=timezone.utc)
+    delta = abs(
+        (left.astimezone(timezone.utc) - right.astimezone(timezone.utc)).total_seconds()
+    )
+    return delta <= GLUE_SNAPSHOT_SECONDS_EPSILON
+
+
+def _validate_snapshot_item_identity(
+    job_id: str,
+    entry: dict[str, Any],
+    *,
+    from_item: SongsetItem,
+    to_item: SongsetItem,
+    from_item_id: str,
+    to_item_id: str,
+    take_id: str,
+) -> None:
+    """Reject a snapshot whose from/to items changed after creation.
+
+    The webapp pinned the exact ``songset_items.updated_at`` of both Items.
+    Arrangement edits, replacements, or reordering bump those timestamps; the
+    render must fail with ``GLUE_STALE_SNAPSHOT`` instead of inserting a take
+    that no longer matches the junction.
+    """
+    sides = (
+        ("from", "from_updated_at", from_item),
+        ("to", "to_updated_at", to_item),
+    )
+    for side, field, item in sides:
+        expected = _parse_snapshot_timestamp(entry.get(field))
+        actual = item.updated_at
+        if expected is None or not isinstance(actual, datetime):
+            raise _glue_failure(
+                job_id,
+                code=GLUE_STALE_SNAPSHOT,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail=f"{side} item identity is unverifiable ({field} missing or invalid)",
+            )
+        if not _timestamps_match(expected, actual):
+            raise _glue_failure(
+                job_id,
+                code=GLUE_STALE_SNAPSHOT,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail=f"{side} item changed since the snapshot ({field} mismatch)",
+            )
+
+
+def load_render_glue_clips(
+    conn: psycopg2.extensions.connection,
+    job: RenderJob,
+    items: list[SongsetItem],
+    asset_fetcher: AssetFetcher,
+) -> dict[str, GlueClip]:
+    """Load the immutable render snapshot into Glue clips keyed by incoming item.
+
+    Every snapshot entry is revalidated against its immutable ``glue_takes`` row
+    and the Songset item order. Snapshot order is preserved. Any mismatch,
+    missing object, checksum failure, or download failure raises
+    :class:`GlueSnapshotError`; the worker never substitutes an earlier take or
+    an ordinary gap.
+    """
+    try:
+        transitions = get_render_glue_transitions(conn, job.id)
+    except ValueError as exc:
+        raise GlueSnapshotError(f"render job {job.id}: {exc}") from exc
+    if not transitions:
+        return {}
+
+    index_by_item_id = {item.id: index for index, item in enumerate(items)}
+    clips: dict[str, GlueClip] = {}
+    seen_to_item_ids: set[str] = set()
+
+    for position, entry in enumerate(transitions):
+        from_item_id = entry.get("from_item_id")
+        to_item_id = entry.get("to_item_id")
+        take_id = entry.get("take_id")
+        seconds = entry.get("seconds")
+
+        malformed = any(
+            not isinstance(entry.get(field), str) or not entry[field]
+            for field in _GLUE_SNAPSHOT_REQUIRED_FIELDS
+        ) or (
+            not isinstance(seconds, (int, float))
+            or isinstance(seconds, bool)
+        )
+        if malformed:
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id if isinstance(from_item_id, str) else None,
+                to_item_id=to_item_id if isinstance(to_item_id, str) else None,
+                take_id=take_id if isinstance(take_id, str) else None,
+                detail=f"snapshot entry {position} is malformed",
+            )
+
+        from_index = index_by_item_id.get(from_item_id)
+        to_index = index_by_item_id.get(to_item_id)
+        if from_index is None or to_index is None or to_index != from_index + 1:
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="junction is not adjacent in this songset",
+            )
+        if to_item_id in seen_to_item_ids:
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="junction is duplicated in the snapshot",
+            )
+        seen_to_item_ids.add(to_item_id)
+
+        _validate_snapshot_item_identity(
+            job.id,
+            entry,
+            from_item=items[from_index],
+            to_item=items[to_index],
+            from_item_id=from_item_id,
+            to_item_id=to_item_id,
+            take_id=take_id,
+        )
+
+        take = get_glue_take_by_id(conn, take_id, job.user_id)
+        if take is None:
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="take is missing for this render owner",
+            )
+        if take.user_id != job.user_id:
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="take belongs to another user",
+            )
+        if take.status != "ready":
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail=f"take is not ready (status={take.status!r})",
+            )
+        if take.descriptor_key != entry["descriptor_key"]:
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="descriptor key mismatch",
+            )
+        if take.r2_key != entry["r2_key"]:
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="staged object key mismatch",
+            )
+        if take.seconds is None or (
+            abs(float(seconds) - float(take.seconds)) > GLUE_SNAPSHOT_SECONDS_EPSILON
+        ):
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="staged duration mismatch",
+            )
+
+        metrics = _glue_metrics(take)
+        snapshot_sha256 = entry.get("sha256")
+        if snapshot_sha256 is None:
+            snapshot_sha256 = entry.get("audio_sha256")
+        if snapshot_sha256 is not None and not isinstance(snapshot_sha256, str):
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="snapshot checksum is malformed",
+            )
+        row_sha256 = metrics.get("audioSha256")
+        if (
+            isinstance(snapshot_sha256, str)
+            and isinstance(row_sha256, str)
+            and snapshot_sha256.lower() != row_sha256.lower()
+        ):
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="staged checksum mismatch",
+            )
+        expected_sha256 = (
+            snapshot_sha256
+            if isinstance(snapshot_sha256, str)
+            else (row_sha256 if isinstance(row_sha256, str) else None)
+        )
+
+        expected_bytes = entry.get("audio_bytes")
+        if expected_bytes is None:
+            expected_bytes = entry.get("bytes")
+        if expected_bytes is not None and (
+            not isinstance(expected_bytes, int)
+            or isinstance(expected_bytes, bool)
+            or expected_bytes <= 0
+        ):
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="snapshot byte length is malformed",
+            )
+        row_bytes = metrics.get("audioBytes")
+        if (
+            isinstance(expected_bytes, int)
+            and isinstance(row_bytes, int)
+            and expected_bytes != row_bytes
+        ):
+            raise _glue_failure(
+                job.id,
+                code=GLUE_NOT_READY,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail="staged byte length mismatch",
+            )
+
+        try:
+            path = asset_fetcher.download_glue(
+                take.r2_key,
+                expected_bytes=expected_bytes,
+                expected_sha256=expected_sha256,
+                cache_key=f"glue-{take_id}",
+                job_id=job.id,
+                take_id=take_id,
+            )
+        except GlueDownloadError as exc:
+            raise _glue_failure(
+                job.id,
+                code=exc.code,
+                from_item_id=from_item_id,
+                to_item_id=to_item_id,
+                take_id=take_id,
+                detail=f"audio download failed: {exc}",
+            ) from exc
+
+        clip = GlueClip(
+            path=path,
+            take_id=take_id,
+            seconds=float(take.seconds),
+            checksum=expected_sha256 or "",
+        )
+        clips[to_item_id] = clip
+        _log_glue_render_event(
+            "glue.render.glue.loaded",
+            jobId=job.id,
+            takeId=take_id,
+            toItemId=to_item_id,
+            seconds=clip.seconds,
+        )
+
+    return clips
+
+
 def execute_render_pipeline(
     job_id: str,
     user_id: int,
@@ -299,7 +688,6 @@ def execute_render_pipeline(
         uploader = R2Uploader()
 
     asset_fetcher.initialize()
-    temp_dir = asset_fetcher.get_job_temp_dir(job_id)
     pipeline_start = time.monotonic()
 
     def check_cancelled() -> None:
@@ -345,6 +733,11 @@ def execute_render_pipeline(
 
         check_lambda_timeout()
 
+        # The job temp dir belongs to the winning invocation. Claim before
+        # creating it so a duplicate delivery that skips never removes the
+        # live invocation's working files in the finally block.
+        temp_dir = asset_fetcher.get_job_temp_dir(job_id)
+
         logger.info(
             "[%s] Pipeline started: resolution=%s, video=%s, audio=%s, items=%d",
             job_id, job.resolution, job.video_enabled, job.audio_enabled, 0,
@@ -374,11 +767,19 @@ def execute_render_pipeline(
         if not items:
             raise ValueError("Songset has no items")
 
+        # The render snapshot is immutable: load and revalidate it before any
+        # duration admission or mixing so a broken Glue fails visibly here
+        # instead of silently rendering an ordinary gap.
+        glue_clips = load_render_glue_clips(conn, job, items, asset_fetcher)
+        effective_glue_clips = glue_clips or None
+
         # Admission uses the arranged timeline (crossfade overlap shortens it),
         # matching both the mix and the webapp's own admission check. A layout
         # of 0 means no item had a known duration — fall back to the raw sum as
         # a rough upper bound.
-        total_duration = calculate_total_duration(items, asset_fetcher)
+        total_duration = calculate_total_duration(
+            items, asset_fetcher, glue_clips=effective_glue_clips
+        )
         if total_duration <= 0:
             total_duration = sum(item.duration_seconds or 0 for item in items)
         if len(items) > MAX_SONGSET_ITEMS or total_duration > MAX_SONGSET_DURATION_SECONDS:
@@ -441,6 +842,7 @@ def execute_render_pipeline(
                 if job.video_enabled and job.include_title_card
                 else None
             ),
+            glue_clips=effective_glue_clips,
         )
 
         if not Path(audio_output_path).exists():
@@ -571,6 +973,7 @@ def execute_render_pipeline(
                 progress_callback=video_progress_callback,
                 timeout_check_callback=check_lambda_timeout,
                 job_id=job_id,
+                glue_windows=audio_result.glue_windows,
             )
 
             video_engine.frame_renderer.clear_cache()

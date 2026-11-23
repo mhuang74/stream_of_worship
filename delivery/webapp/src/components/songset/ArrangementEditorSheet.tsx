@@ -76,6 +76,17 @@ import type {
   TimelineItemSource,
 } from "@/lib/arrangements";
 import { abbreviatedSectionLabel, buildSectionHeadings } from "@/lib/section-labels";
+import { applyDraftValidity, glueForAdjacency } from "@/lib/glue/draft";
+import {
+  cancelGlueJobRequest,
+  createGlueJobRequest,
+  resumeGlueJobRequest,
+  retryGlueProcessingRequest,
+} from "@/lib/glue/client";
+import { glueErrorMessageKey } from "@/lib/glue/errors";
+import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
+import type { TranslationKey } from "@/lib/i18n/messages";
+import { useGlueJob } from "@/hooks/useGlueJob";
 import type { SongListItem } from "./SongList";
 import {
   AlertTriangle,
@@ -101,6 +112,88 @@ export interface ArrangementEditorSheetProps {
   items: SongListItem[];
   /** Resolves on success; throws a translated message on failure. */
   onSave: (arrangement: SongArrangement | null) => Promise<void>;
+  /** Owner-scoped fetch for the AI-transition quote. */
+  songsetId?: string;
+  /**
+   * Free switch/beat PATCH. Resolves after local items refresh; rejects on a
+   * failed save so the rail can roll its optimistic state back.
+   */
+  onUpdateGlue?: (
+    itemId: string,
+    patch: {
+      glueEnabled?: boolean;
+      glueBeats?: 2 | 4 | 8 | 16;
+      glueActiveTakeId?: string | null;
+    }
+  ) => Promise<void>;
+}
+
+/** Server quote shape used by the AI-transition rail. */
+interface GlueQuoteResponse {
+  uncachedSides: { side: "A" | "B"; seconds: number; credits: number }[];
+  generationSeconds: number;
+  uploadCredits: number;
+  generationCredits: number;
+  estimatedNewCredits: number;
+  quotaLimit: number;
+  quotaUsed: number;
+  quotaRemaining: number;
+  quotaResetAt: string | null;
+  blockedSides: {
+    side: "A" | "B";
+    code: "GLUE_COPYRIGHT_REJECTED" | "GLUE_EXCERPT_TOO_SHORT";
+  }[];
+}
+
+const GLUE_BEAT_CHOICES = [2, 4, 8, 16] as const;
+
+function glueReasonKey(
+  reason: NonNullable<ResolvedGlueJunction["unavailableReason"]>
+): TranslationKey {
+  switch (reason) {
+    case "unsaved-draft":
+      return "glue.reason.unsavedDraft";
+    case "no-next":
+      return "glue.reason.noNext";
+    case "no-tempo":
+      return "glue.reason.noTempo";
+    case "no-analysis":
+      return "glue.reason.noAnalysis";
+    case "invalid-arrangement":
+      return "glue.reason.invalidArrangement";
+    case "quota":
+      return "glue.reason.quota";
+    case "active-job":
+      return "glue.reason.activeJob";
+  }
+}
+
+function glueQuoteErrorKey(code: string): TranslationKey {
+  switch (code) {
+    case "GLUE_EXCERPT_TOO_SHORT":
+      return "glue.reason.tooShort";
+    case "GLUE_COPYRIGHT_REJECTED":
+      return "glue.reason.copyright";
+    case "GLUE_NOT_READY":
+      return "glue.reason.notReady";
+    case "GLUE_NOT_CONFIGURED":
+      return "glue.reason.unknown";
+    default:
+      return "glue.error.quote";
+  }
+}
+
+function glueStateKey(state: ResolvedGlueJunction["state"]): TranslationKey {
+  return `glue.state.${state}` as TranslationKey;
+}
+
+/** Localized copy for a stable Glue failure code; unknown codes stay generic. */
+function glueFailureKey(code: string): TranslationKey {
+  return glueErrorMessageKey(code) as TranslationKey;
+}
+
+function formatGlueSeconds(seconds: number): string {
+  return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
 }
 
 /** A draft step with a stable dnd identity so duplicates stay distinguishable. */
@@ -874,7 +967,7 @@ function activeClipRefs(
 
 interface StripBand {
   key: string;
-  kind: "previous" | "step" | "next";
+  kind: "previous" | "step" | "next" | "glue";
   clipIndex: number | null;
   /** Full label: the band's tooltip and accessible name. */
   label: string;
@@ -890,8 +983,10 @@ export function ArrangementEditorSheet({
   item,
   items,
   onSave,
+  songsetId,
+  onUpdateGlue,
 }: ArrangementEditorSheetProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const dndContextId = useId();
 
   // Initialized synchronously at mount; the client remounts the sheet per
@@ -908,6 +1003,39 @@ export function ArrangementEditorSheet({
   const [dirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Optimistic overlay for the AI-transition switch and beat count. The saved
+  // `item` values are the source of truth: the draft only covers the window
+  // between a PATCH and the parent re-rendering with its result, and it is
+  // dropped as soon as the saved values catch up (or the sheet shows another
+  // item). Keeping it as one object makes the item scope explicit.
+  const [glueDraft, setGlueDraft] = useState<{
+    baseKey: string;
+    enabled: boolean;
+    beats: 2 | 4 | 8 | 16;
+  } | null>(null);
+  const [glueSaving, setGlueSaving] = useState(false);
+  const [glueError, setGlueError] = useState<{
+    itemId: string;
+    message: string;
+  } | null>(null);
+  const [glueQuote, setGlueQuote] = useState<{
+    requestKey: string;
+    quote: GlueQuoteResponse;
+  } | null>(null);
+  const [glueQuoteError, setGlueQuoteError] = useState<{
+    requestKey: string;
+    code: string;
+  } | null>(null);
+  // One in-flight job per Junction. The id is local so the SSE subscription
+  // starts the moment the create response arrives; discovery adopts the
+  // server-reported active job after a reload.
+  const [glueJobId, setGlueJobId] = useState<string | null>(null);
+  const [glueConfirmMode, setGlueConfirmMode] = useState<
+    "initial" | "new-take" | null
+  >(null);
+  const [glueJobErrorCode, setGlueJobErrorCode] = useState<string | null>(null);
+  const [glueJobActionPending, setGlueJobActionPending] = useState(false);
+  const [glueCancelled, setGlueCancelled] = useState(false);
   // Bounds editing is one open transaction at a time: the id of the Step being
   // edited, its candidate (auditioned by the transport but never committed),
   // and whether the candidate is currently unsavable.
@@ -1082,20 +1210,34 @@ export function ArrangementEditorSheet({
     const draftArrangement = isDraftValid
       ? JSON.stringify(draftToArrangement(previewDraft))
       : null;
-    return items.map((entry) => ({
-      itemId: entry.id,
-      recordingHashPrefix: entry.recording?.hashPrefix ?? null,
-      arrangementSteps:
-        entry.id === item.id ? draftArrangement : entry.arrangementSteps,
-      gapBeats: entry.gapBeats,
-      crossfadeEnabled: entry.crossfadeEnabled,
-      crossfadeDurationSeconds: entry.crossfadeDurationSeconds ?? null,
-      tempoBpm: entry.recording?.tempoBpm ?? null,
-      recordingDurationSeconds: entry.recording?.durationSeconds ?? null,
-      recordingSections: entry.recording?.sections ?? null,
-      recordingBeats: entry.recording?.beats ?? [],
-    }));
-  }, [items, item.id, previewDraft, isDraftValid]);
+    const editedIndex = items.findIndex((entry) => entry.id === item.id);
+    const previousId = editedIndex > 0 ? items[editedIndex - 1].id : null;
+    return items.map((entry, index) => {
+      // An unsaved A/B draft cannot vouch for either adjacent Glue, so its own
+      // outgoing junction and its predecessor's incoming junction drop out of
+      // timeline playback until the draft is saved.
+      const suppressGlue =
+        isDirty && (entry.id === item.id || entry.id === previousId);
+      const take = suppressGlue
+        ? null
+        : glueForAdjacency(entry.glue, entry.id, items[index + 1]?.id)?.selectedTake;
+      return {
+        itemId: entry.id,
+        recordingHashPrefix: entry.recording?.hashPrefix ?? null,
+        arrangementSteps:
+          entry.id === item.id ? draftArrangement : entry.arrangementSteps,
+        gapBeats: entry.gapBeats,
+        crossfadeEnabled: entry.crossfadeEnabled,
+        crossfadeDurationSeconds: entry.crossfadeDurationSeconds ?? null,
+        tempoBpm: entry.recording?.tempoBpm ?? null,
+        recordingDurationSeconds: entry.recording?.durationSeconds ?? null,
+        recordingSections: entry.recording?.sections ?? null,
+        recordingBeats: entry.recording?.beats ?? [],
+        glueTakeId: take?.id ?? null,
+        glueSeconds: take?.seconds ?? null,
+      };
+    });
+  }, [items, item.id, previewDraft, isDraftValid, isDirty]);
 
   const timeline = useMemo(() => buildArrangementTimeline(previewItems), [previewItems]);
   const songTimelineItem = useMemo(
@@ -1109,6 +1251,369 @@ export function ArrangementEditorSheet({
     itemIndex >= 0 && itemIndex + 1 < items.length ? items[itemIndex + 1] : null;
   const previousTitle = previousItem?.song?.title || t("browse.unknownSong");
   const nextSongTitle = nextItem?.song?.title || t("browse.unknownSong");
+  // The saved item values are the source of truth; the draft only bridges a
+  // PATCH and the parent's next render carrying its result. The draft is keyed
+  // on the saved values it was based on, so any later server state (this PATCH
+  // echoing, a parent re-resolve, or another tab) wins instead of being masked.
+  const savedGlueEnabled = item.glueEnabled ?? false;
+  const savedGlueBeats: 2 | 4 | 8 | 16 = item.glueBeats ?? 4;
+  const glueDraftBaseKey = `${item.id}:${savedGlueEnabled}:${savedGlueBeats}`;
+  if (glueDraft !== null && glueDraft.baseKey !== glueDraftBaseKey) {
+    // Render-time adjust: the saved values this draft was based on changed.
+    setGlueDraft(null);
+  }
+  const activeGlueDraft =
+    glueDraft !== null && glueDraft.baseKey === glueDraftBaseKey
+      ? glueDraft
+      : null;
+  const glueEnabled = activeGlueDraft?.enabled ?? savedGlueEnabled;
+  const glueBeats = activeGlueDraft?.beats ?? savedGlueBeats;
+  const showGlueRail = Boolean(nextItem && songsetId && onUpdateGlue);
+  const glueTempoBpm = nextItem?.recording?.tempoBpm ?? null;
+  const glueGenerationSeconds =
+    glueTempoBpm !== null && glueTempoBpm > 0
+      ? Math.max(3, (glueBeats * 60) / glueTempoBpm)
+      : null;
+  const resolvedOutgoing = glueForAdjacency(item.glue, item.id, nextItem?.id);
+  const displayGlue = useMemo(
+    () =>
+      resolvedOutgoing
+        ? applyDraftValidity([resolvedOutgoing], {
+            editedItemId: item.id,
+            hasUnsavedDraft: isDirty,
+          })[0]
+        : null,
+    [resolvedOutgoing, item.id, isDirty]
+  );
+
+  // The quote is computed from the saved item, so the request identity covers
+  // the Junction, the saved beat count, and the rail being open and enabled.
+  const glueQuoteRequestKey =
+    isOpen && nextItem !== null && glueEnabled && songsetId
+      ? `${songsetId}:${item.id}:${nextItem.id}:${savedGlueBeats}`
+      : null;
+
+  // The quote endpoint is owner-scoped and computes every credit value; the
+  // rail never computes credits. Each response is stored with the request key
+  // it answers, so a value for another Junction or beat count is never shown.
+  //
+  // A read replica can answer a request issued right after the beat PATCH with
+  // the row as it was before that write, which describes a different descriptor
+  // and therefore different credits. The response names its `descriptorKey`, so
+  // a value that does not describe the saved junction is retried briefly and,
+  // failing that, never displayed.
+  const expectedGlueDescriptorKey = displayGlue?.descriptorKey ?? null;
+  useEffect(() => {
+    if (glueQuoteRequestKey === null || !songsetId) return;
+    const requestKey = glueQuoteRequestKey;
+    let cancelled = false;
+    const controller = new AbortController();
+    void (async () => {
+      const QUOTE_MATCH_ATTEMPTS = 6;
+      const QUOTE_MATCH_DELAY_MS = 300;
+      try {
+        for (let attempt = 0; attempt < QUOTE_MATCH_ATTEMPTS; attempt += 1) {
+          if (attempt > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, QUOTE_MATCH_DELAY_MS)
+            );
+            if (cancelled) return;
+          }
+          // The URL is stable across a beat change, so a default-cached GET
+          // answered the next request with the previous beat count's credits.
+          // Quota and credits are per-saved-state facts: always revalidate.
+          const response = await fetch(
+            `/api/songsets/${encodeURIComponent(songsetId)}/glue-quote?fromItemId=${encodeURIComponent(item.id)}&takeMode=initial`,
+            { signal: controller.signal, cache: "no-store" }
+          );
+          const body = (await response.json().catch(() => null)) as
+            | (GlueQuoteResponse & { code?: unknown; descriptorKey?: unknown })
+            | null;
+          if (cancelled) return;
+          if (!response.ok) {
+            setGlueQuote(null);
+            setGlueQuoteError({
+              requestKey,
+              code:
+                body && typeof body.code === "string"
+                  ? body.code
+                  : "GLUE_UNKNOWN",
+            });
+            return;
+          }
+          const answeredDescriptor =
+            body && typeof body.descriptorKey === "string"
+              ? body.descriptorKey
+              : null;
+          if (
+            expectedGlueDescriptorKey !== null &&
+            answeredDescriptor !== null &&
+            answeredDescriptor !== expectedGlueDescriptorKey
+          ) {
+            continue;
+          }
+          setGlueQuote({ requestKey, quote: body as GlueQuoteResponse });
+          setGlueQuoteError(null);
+          return;
+        }
+        // Every answer described a state this rail is no longer showing.
+        setGlueQuote(null);
+        setGlueQuoteError({ requestKey, code: "GLUE_QUOTE_STALE" });
+      } catch (error) {
+        if (
+          cancelled ||
+          (typeof error === "object" &&
+            error !== null &&
+            "name" in error &&
+            error.name === "AbortError")
+        ) {
+          return;
+        }
+        setGlueQuote(null);
+        setGlueQuoteError({ requestKey, code: "GLUE_UNKNOWN" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [glueQuoteRequestKey, songsetId, item.id, expectedGlueDescriptorKey]);
+
+  const updateGlue = useCallback(
+    async (patch: {
+      glueEnabled?: boolean;
+      glueBeats?: 2 | 4 | 8 | 16;
+      glueActiveTakeId?: string | null;
+    }) => {
+      if (!onUpdateGlue || glueSaving) return;
+      const previousDraft = glueDraft;
+      setGlueDraft({
+        baseKey: glueDraftBaseKey,
+        enabled: patch.glueEnabled ?? glueEnabled,
+        beats: patch.glueBeats ?? glueBeats,
+      });
+      setGlueSaving(true);
+      setGlueError(null);
+      try {
+        await onUpdateGlue(item.id, patch);
+      } catch {
+        setGlueDraft(previousDraft);
+        setGlueError({ itemId: item.id, message: t("glue.error.save") });
+      } finally {
+        setGlueSaving(false);
+      }
+    },
+    [
+      onUpdateGlue,
+      glueSaving,
+      glueDraft,
+      glueDraftBaseKey,
+      glueEnabled,
+      glueBeats,
+      item.id,
+      t,
+    ]
+  );
+
+  // One subscription per Junction. Discovery on load comes from the
+  // server-resolved active job; `watchGlueJob` also rediscovers on reconnect
+  // and on tab visibility. A job started in this session is watched at once.
+  const watchedGlueJobId = glueJobId ?? displayGlue?.activeJob?.id ?? null;
+  const glueJob = useGlueJob({
+    jobId: watchedGlueJobId,
+    songsetId: songsetId ?? "",
+    fromItemId: item.id,
+    enabled:
+      isOpen &&
+      Boolean(songsetId) &&
+      showGlueRail &&
+      (glueEnabled || watchedGlueJobId !== null),
+  });
+  const refreshGlueJob = glueJob.refresh;
+
+  const refreshGlueSelection = useCallback(async () => {
+    if (!onUpdateGlue) return;
+    try {
+      // Re-PATCHing `glueEnabled: true` re-runs the server's free selection
+      // and refreshes the parent's resolved Junction. It never spends credits.
+      await onUpdateGlue(item.id, { glueEnabled: true });
+    } catch {
+      // Keep the previous selection; the next refresh reconciles it.
+    }
+  }, [onUpdateGlue, item.id]);
+
+  const startGlueJob = useCallback(
+    async (takeMode: "initial" | "new-take") => {
+      if (!songsetId || !displayGlue) return;
+      setGlueJobActionPending(true);
+      setGlueJobErrorCode(null);
+      setGlueCancelled(false);
+      const result = await createGlueJobRequest(songsetId, {
+        fromItemId: item.id,
+        clientRequestId: crypto.randomUUID(),
+        expectedFromUpdatedAt:
+          displayGlue.expectedFromUpdatedAt ?? item.updatedAt ?? "",
+        expectedToUpdatedAt:
+          displayGlue.expectedToUpdatedAt ?? nextItem?.updatedAt ?? "",
+        takeMode,
+      });
+      setGlueJobActionPending(false);
+      setGlueConfirmMode(null);
+      if (!result.ok) {
+        setGlueJobErrorCode(result.error.code);
+        return;
+      }
+      if (result.data.status === "ready") {
+        await refreshGlueSelection();
+        return;
+      }
+      setGlueJobId(result.data.jobId);
+    },
+    [
+      songsetId,
+      displayGlue,
+      item.id,
+      item.updatedAt,
+      nextItem?.updatedAt,
+      refreshGlueSelection,
+    ]
+  );
+
+  const cancelGlueJob = useCallback(async () => {
+    if (watchedGlueJobId === null) return;
+    setGlueJobActionPending(true);
+    setGlueJobErrorCode(null);
+    const result = await cancelGlueJobRequest(watchedGlueJobId);
+    setGlueJobActionPending(false);
+    if (!result.ok) {
+      setGlueJobErrorCode(result.error.code);
+      return;
+    }
+    setGlueCancelled(true);
+    setGlueJobId(null);
+    await refreshGlueSelection();
+  }, [watchedGlueJobId, refreshGlueSelection]);
+
+  const retryGlueJob = useCallback(async () => {
+    if (watchedGlueJobId === null) return;
+    setGlueJobActionPending(true);
+    setGlueJobErrorCode(null);
+    setGlueCancelled(false);
+    // A free failure after provider contact means the paid audio already
+    // exists; retry-processing rebuilds only the staged take. Everything else
+    // resumes the same identity, and the server derives the safe path.
+    const status = glueJob.status;
+    const processingOnly =
+      status?.retryKind === "free" && status.providerContacted;
+    const result = processingOnly
+      ? await retryGlueProcessingRequest(watchedGlueJobId)
+      : await resumeGlueJobRequest(watchedGlueJobId);
+    setGlueJobActionPending(false);
+    if (!result.ok) {
+      setGlueJobErrorCode(result.error.code);
+      return;
+    }
+    setGlueJobId(watchedGlueJobId);
+    await refreshGlueJob();
+  }, [glueJob.status, watchedGlueJobId, refreshGlueJob]);
+
+  // A finished take becomes the selected one server-side; refresh the parent
+  // so the Junction reads its new resolved state without a page reload.
+  const refreshedReadyJobRef = useRef<string | null>(null);
+  const glueJobStatus = glueJob.status;
+  useEffect(() => {
+    if (!glueJobStatus || glueJobStatus.phase !== "ready") return;
+    if (refreshedReadyJobRef.current === glueJobStatus.id) return;
+    refreshedReadyJobRef.current = glueJobStatus.id;
+    void refreshGlueSelection();
+  }, [glueJobStatus, refreshGlueSelection]);
+
+  const currentGlueQuote =
+    glueQuote !== null &&
+    glueQuote.requestKey === glueQuoteRequestKey &&
+    !glueSaving &&
+    glueBeats === savedGlueBeats
+      ? glueQuote.quote
+      : null;
+  const currentGlueQuoteError =
+    glueQuoteError !== null && glueQuoteError.requestKey === glueQuoteRequestKey
+      ? glueQuoteError.code
+      : null;
+  const glueReason: TranslationKey | null = (() => {
+    if (!showGlueRail) return null;
+    if (isDirty) return "glue.reason.unsavedDraft";
+    if (!glueEnabled) return null;
+    if (displayGlue?.unavailableReason) {
+      return glueReasonKey(displayGlue.unavailableReason);
+    }
+    if (currentGlueQuoteError) {
+      return glueQuoteErrorKey(currentGlueQuoteError);
+    }
+    const blocked = currentGlueQuote?.blockedSides[0];
+    if (blocked) {
+      return blocked.code === "GLUE_COPYRIGHT_REJECTED"
+        ? "glue.reason.copyright"
+        : "glue.reason.tooShort";
+    }
+    if (displayGlue?.state === "stale") return "glue.reason.stale";
+    if (displayGlue?.state === "failed") return "glue.reason.failed";
+    return null;
+  })();
+
+  const glueSelectedTake = displayGlue?.selectedTake ?? null;
+  const glueAvailableTakes = displayGlue?.availableTakes ?? [];
+  const glueResetLabel =
+    currentGlueQuote?.quotaResetAt !== null &&
+    currentGlueQuote?.quotaResetAt !== undefined
+      ? new Intl.DateTimeFormat(locale === "zh-Hant" ? "zh-Hant" : "en", {
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(currentGlueQuote.quotaResetAt))
+      : null;
+
+  // The server owns phase, elapsed time, and retry classification; the rail
+  // only renders them. There is deliberately no percentage anywhere.
+  const jobPhase = glueJobStatus?.phase ?? displayGlue?.activeJob?.phase ?? null;
+  const jobActive =
+    glueJobStatus?.active ?? Boolean(displayGlue?.activeJob);
+  const jobProviderContacted = glueJobStatus?.providerContacted ?? false;
+  const canCancelGlueJob =
+    glueJobStatus !== null &&
+    glueJobStatus.active &&
+    !glueJobStatus.providerContacted;
+  const showGlueJobPanel = !glueCancelled && watchedGlueJobId !== null;
+  const isGlueJobFailed =
+    glueJobStatus !== null &&
+    (glueJobStatus.phase === "failed" ||
+      glueJobStatus.phase === "dispatch-failed");
+  const glueFailureCode =
+    glueJobErrorCode ??
+    (isGlueJobFailed ? glueJobStatus?.errorCode ?? null : null);
+  const canFreeRetry =
+    isGlueJobFailed && glueJobStatus?.retryKind === "free";
+  // After provider contact the paid audio already exists, so the free action
+  // is retry-processing, never a new generation.
+  const freeRetryUsesProcessing =
+    canFreeRetry && glueJobStatus?.providerContacted === true;
+  const needsPaidRetry =
+    isGlueJobFailed && glueJobStatus?.retryKind === "paid";
+  // retry_kind="none" means the failure is not retryable in place
+  // (entitlement, plan, copyright). Offering a fresh paid request would only
+  // spend credits on the same outcome, so the rail shows the reason alone.
+  const nonRetryableGlueFailure =
+    isGlueJobFailed && glueJobStatus?.retryKind === "none";
+  const canGenerateGlue =
+    glueEnabled &&
+    !jobActive &&
+    !nonRetryableGlueFailure &&
+    (currentGlueQuote?.blockedSides.length ?? 0) === 0 &&
+    displayGlue !== null &&
+    displayGlue.unavailableReason === null &&
+    !isDirty &&
+    nextItem !== null;
+  const hasSelectedGlueTake = glueSelectedTake !== null;
+  const shortGlueJobId = watchedGlueJobId?.slice(0, 8) ?? "";
+
   const nextTimelineItem = useMemo(
     () =>
       nextItem
@@ -2043,6 +2548,24 @@ export function ArrangementEditorSheet({
     const bands: StripBand[] = [];
     const clips = songTimelineItem?.clips ?? [];
     const songStart = clips[0]?.startSeconds ?? windowStart;
+    // A ready Glue replaces its junction's gap/crossfade; draw it as a
+    // distinct band so the inserted audio is visible, not implied.
+    for (const timelineItem of [songTimelineItem, nextTimelineItem]) {
+      const window = timelineItem?.glueWindowBefore;
+      if (!window) continue;
+      const start = Math.max(window.startSeconds, windowStart);
+      const end = Math.min(window.endSeconds, windowEnd);
+      if (end <= start) continue;
+      bands.push({
+        key: `glue-${window.takeId}`,
+        kind: "glue",
+        clipIndex: null,
+        label: t("glue.title"),
+        shortLabel: t("glue.title"),
+        startSeconds: start,
+        endSeconds: end,
+      });
+    }
     if (arrangementWindow.includesPreviousTail) {
       const end = Math.min(songStart, windowEnd);
       if (end > windowStart) {
@@ -2350,6 +2873,495 @@ export function ArrangementEditorSheet({
                       </span>
                     </div>
 
+                    {isRailVisible && showGlueRail && (
+                      <section
+                        aria-labelledby="arrangement-glue-title"
+                        className="space-y-2 border-t border-border/60 pt-3"
+                        data-testid="arrangement-glue"
+                        aria-busy={glueSaving}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h4
+                              id="arrangement-glue-title"
+                              className="text-xs font-semibold"
+                            >
+                              {t("glue.title")}
+                            </h4>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                              {t("glue.toggle").replace("{song}", nextSongTitle)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={glueEnabled}
+                            aria-label={t("glue.toggleAria").replace(
+                              "{song}",
+                              nextSongTitle
+                            )}
+                            data-testid="arrangement-glue-toggle"
+                            disabled={glueSaving}
+                            onClick={() =>
+                              void updateGlue({ glueEnabled: !glueEnabled })
+                            }
+                            className={cn(
+                              "relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                              glueEnabled
+                                ? "border-primary bg-primary"
+                                : "border-border bg-muted"
+                            )}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "absolute top-0.5 left-0.5 size-4 rounded-full bg-background shadow transition-transform",
+                                glueEnabled && "translate-x-5"
+                              )}
+                            />
+                          </button>
+                        </div>
+
+                        {glueEnabled && (
+                          <>
+                            <div
+                              role="group"
+                              aria-label={t("glue.beatsLabel")}
+                              className="flex items-center gap-1"
+                            >
+                              {GLUE_BEAT_CHOICES.map((beats) => (
+                                <button
+                                  key={beats}
+                                  type="button"
+                                  aria-pressed={glueBeats === beats}
+                                  data-testid={`arrangement-glue-beats-${beats}`}
+                                  disabled={glueSaving}
+                                  onClick={() => void updateGlue({ glueBeats: beats })}
+                                  className={cn(
+                                    "h-7 flex-1 rounded-md border text-[11px] tabular-nums transition-colors disabled:opacity-60",
+                                    glueBeats === beats
+                                      ? "border-primary bg-primary/10 text-primary"
+                                      : "border-border text-muted-foreground hover:bg-muted"
+                                  )}
+                                >
+                                  {t("glue.beatsOption").replace(
+                                    "{beats}",
+                                    String(beats)
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+
+                            {glueGenerationSeconds !== null && (
+                              <p
+                                className="text-[11px] leading-relaxed text-muted-foreground"
+                                data-testid="arrangement-glue-seconds"
+                              >
+                                {t("glue.generatedLength").replace(
+                                  "{seconds}",
+                                  formatGlueSeconds(glueGenerationSeconds)
+                                )}
+                              </p>
+                            )}
+
+                            {currentGlueQuote && (
+                              <div
+                                className="space-y-0.5 font-mono text-[11px] tabular-nums text-muted-foreground"
+                                data-testid="arrangement-glue-quote"
+                              >
+                                <p>
+                                  {t("glue.credits").replace(
+                                    "{credits}",
+                                    String(currentGlueQuote.estimatedNewCredits)
+                                  )}
+                                </p>
+                                <p>
+                                  {t("glue.remaining")
+                                    .replace(
+                                      "{remaining}",
+                                      String(currentGlueQuote.quotaRemaining)
+                                    )
+                                    .replace(
+                                      "{limit}",
+                                      String(currentGlueQuote.quotaLimit)
+                                    )}
+                                </p>
+                                {glueResetLabel && (
+                                  <p>
+                                    {t("glue.resetAt").replace(
+                                      "{time}",
+                                      glueResetLabel
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {displayGlue && (
+                              <p
+                                className="text-[11px] leading-relaxed text-foreground/80"
+                                data-testid="arrangement-glue-state"
+                              >
+                                {t(glueStateKey(displayGlue.state))}
+                              </p>
+                            )}
+
+                            {glueSelectedTake && (
+                              <p
+                                className="text-[11px] leading-relaxed text-foreground/80"
+                                data-testid="arrangement-glue-selected"
+                              >
+                                {t("glue.selected").replace(
+                                  "{seconds}",
+                                  formatGlueSeconds(glueSelectedTake.seconds)
+                                )}
+                              </p>
+                            )}
+
+                            {glueSelectedTake?.status === "check" && (
+                              <p
+                                className="text-[11px] leading-relaxed text-amber-600"
+                                data-testid="arrangement-glue-check-warning"
+                              >
+                                {t("glue.checkWarning")}
+                              </p>
+                            )}
+
+                            {glueAvailableTakes.length > 0 && (
+                              <div className="space-y-1">
+                                <label
+                                  className="block text-[11px] font-medium"
+                                  htmlFor={`glue-takes-${item.id}`}
+                                >
+                                  {t("glue.takes.label")}
+                                </label>
+                                <select
+                                  id={`glue-takes-${item.id}`}
+                                  data-testid="arrangement-glue-takes"
+                                  value={glueSelectedTake?.id ?? ""}
+                                  disabled={glueSaving}
+                                  onChange={(event) =>
+                                    void updateGlue({
+                                      glueActiveTakeId: event.target.value,
+                                    })
+                                  }
+                                  className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                                >
+                                  {glueSelectedTake === null && (
+                                    <option value="" disabled>
+                                      {t("glue.takes.none")}
+                                    </option>
+                                  )}
+                                  {glueAvailableTakes.map((take) => (
+                                    <option key={take.id} value={take.id}>
+                                      {t("glue.takes.option")
+                                        .replace("{ordinal}", String(take.ordinal))
+                                        .replace(
+                                          "{status}",
+                                          t(
+                                            take.status === "check"
+                                              ? "glue.takes.check"
+                                              : "glue.takes.ready"
+                                          )
+                                        )
+                                        .replace(
+                                          "{seconds}",
+                                          formatGlueSeconds(take.seconds)
+                                        )
+                                        .replace(
+                                          "{time}",
+                                          new Intl.DateTimeFormat(
+                                            locale === "zh-Hant" ? "zh-Hant" : "en",
+                                            {
+                                              month: "short",
+                                              day: "numeric",
+                                              hour: "numeric",
+                                              minute: "2-digit",
+                                            }
+                                          ).format(new Date(take.createdAt))
+                                        )}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            {glueReason && (
+                              <p
+                                role="status"
+                                className="text-[11px] leading-relaxed text-amber-600"
+                                data-testid="arrangement-glue-reason"
+                              >
+                                {t(glueReason)}
+                              </p>
+                            )}
+
+                            {canGenerateGlue && (
+                              <button
+                                type="button"
+                                data-testid={
+                                  hasSelectedGlueTake
+                                    ? "arrangement-glue-try-another"
+                                    : "arrangement-glue-generate"
+                                }
+                                disabled={glueJobActionPending}
+                                onClick={() => {
+                                  setGlueJobErrorCode(null);
+                                  setGlueConfirmMode(
+                                    hasSelectedGlueTake ? "new-take" : "initial"
+                                  );
+                                }}
+                                className="h-8 w-full rounded-md border border-primary bg-primary/10 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-60"
+                              >
+                                {t(
+                                  hasSelectedGlueTake
+                                    ? "glue.job.tryAnother"
+                                    : "glue.job.generate"
+                                )}
+                              </button>
+                            )}
+
+                            {glueConfirmMode !== null && (
+                              <div
+                                data-testid="arrangement-glue-confirm"
+                                className="space-y-1.5 rounded-md border border-border/70 bg-muted/40 p-2"
+                              >
+                                <p className="text-[11px] font-medium">
+                                  {t(
+                                    glueConfirmMode === "new-take"
+                                      ? "glue.confirm.tryAnotherHeading"
+                                      : "glue.confirm.heading"
+                                  )}
+                                </p>
+                                {currentGlueQuote && (
+                                  <p
+                                    className="text-[11px] leading-relaxed text-muted-foreground"
+                                    data-testid="arrangement-glue-confirm-body"
+                                  >
+                                    {t(
+                                      glueConfirmMode === "new-take"
+                                        ? "glue.confirm.tryAnotherBody"
+                                        : "glue.confirm.body"
+                                    )
+                                      .replace(
+                                        "{credits}",
+                                        String(currentGlueQuote.estimatedNewCredits)
+                                      )
+                                      .replace(
+                                        "{remaining}",
+                                        String(currentGlueQuote.quotaRemaining)
+                                      )
+                                      .replace(
+                                        "{limit}",
+                                        String(currentGlueQuote.quotaLimit)
+                                      )}
+                                  </p>
+                                )}
+                                {glueResetLabel && (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {t("glue.confirm.reset").replace(
+                                      "{time}",
+                                      glueResetLabel
+                                    )}
+                                  </p>
+                                )}
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    data-testid="arrangement-glue-confirm-generate"
+                                    disabled={
+                                      !currentGlueQuote || glueJobActionPending
+                                    }
+                                    onClick={() =>
+                                      void startGlueJob(glueConfirmMode)
+                                    }
+                                    className="h-7 flex-1 rounded-md border border-primary bg-primary text-[11px] font-medium text-primary-foreground transition-colors disabled:opacity-60"
+                                  >
+                                    {t("glue.confirm.confirm")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid="arrangement-glue-confirm-dismiss"
+                                    disabled={glueJobActionPending}
+                                    onClick={() => setGlueConfirmMode(null)}
+                                    className="h-7 flex-1 rounded-md border border-border text-[11px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                                  >
+                                    {t("glue.confirm.dismiss")}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {showGlueJobPanel && (
+                          <div
+                            className="space-y-1 border-t border-border/60 pt-2"
+                            data-testid="arrangement-glue-job"
+                          >
+                            <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                              {t("glue.job.reference").replace(
+                                "{id}",
+                                shortGlueJobId
+                              )}
+                            </p>
+                            {jobPhase !== null && (
+                              <p
+                                className="text-[11px] leading-relaxed text-foreground/80"
+                                data-testid="arrangement-glue-phase"
+                              >
+                                {t(
+                                  glueStateKey(
+                                    jobPhase as ResolvedGlueJunction["state"]
+                                  )
+                                )}
+                              </p>
+                            )}
+                            {glueJobStatus !== null && (
+                              <p
+                                className="font-mono text-[11px] tabular-nums text-muted-foreground"
+                                data-testid="arrangement-glue-elapsed"
+                              >
+                                {t("glue.job.elapsed").replace(
+                                  "{seconds}",
+                                  String(glueJobStatus.elapsedSeconds)
+                                )}
+                              </p>
+                            )}
+                            {canCancelGlueJob && (
+                              <button
+                                type="button"
+                                data-testid="arrangement-glue-cancel"
+                                disabled={glueJobActionPending}
+                                onClick={() => void cancelGlueJob()}
+                                className="h-7 rounded-md border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                              >
+                                {glueJobActionPending
+                                  ? t("glue.job.cancelling")
+                                  : t("glue.job.cancel")}
+                              </button>
+                            )}
+                            {jobActive && jobProviderContacted && (
+                              <p
+                                className="text-[11px] leading-relaxed text-amber-600"
+                                data-testid="arrangement-glue-contacted"
+                              >
+                                {t("glue.job.contacted")}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {glueCancelled && (
+                          <p
+                            role="status"
+                            className="text-[11px] leading-relaxed text-muted-foreground"
+                            data-testid="arrangement-glue-cancelled"
+                          >
+                            {t("glue.job.cancelled")}
+                          </p>
+                        )}
+
+                        {glueFailureCode !== null && (
+                          <Alert
+                            variant="destructive"
+                            data-testid="arrangement-glue-job-error"
+                          >
+                            <AlertTriangle className="size-4" />
+                            <AlertDescription>
+                              {t(glueFailureKey(glueFailureCode))}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                        {canFreeRetry && (
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium">
+                              {t("glue.retry.heading")}
+                            </p>
+                            <p className="text-[11px] leading-relaxed text-muted-foreground">
+                              {t(
+                                freeRetryUsesProcessing
+                                  ? "glue.retry.processingBody"
+                                  : "glue.retry.freeBody"
+                              )}
+                            </p>
+                            <button
+                              type="button"
+                              data-testid="arrangement-glue-resume"
+                              disabled={glueJobActionPending}
+                              onClick={() => void retryGlueJob()}
+                              className="h-7 rounded-md border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                            >
+                              {t("glue.retry.action")}
+                            </button>
+                          </div>
+                        )}
+
+                        {needsPaidRetry && (
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium">
+                              {t("glue.retry.paidHeading")}
+                            </p>
+                            <p className="text-[11px] leading-relaxed text-muted-foreground">
+                              {t("glue.retry.paidBody")}
+                            </p>
+                          </div>
+                        )}
+
+                        {glueError !== null && glueError.itemId === item.id && (
+                          <Alert
+                            variant="destructive"
+                            data-testid="arrangement-glue-error"
+                          >
+                            <AlertTriangle className="size-4" />
+                            <AlertDescription>
+                              {glueError.message}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </section>
+                    )}
+
+                    {preview.glueFailures.length > 0 && (
+                      <div
+                        className="space-y-1"
+                        data-testid="arrangement-glue-audio-failures"
+                      >
+                        {preview.glueFailures.map((failure) => {
+                          const fromTitle =
+                            items.find((entry) => entry.id === failure.fromItemId)
+                              ?.song?.title ?? previousTitle;
+                          const toTitle =
+                            items.find((entry) => entry.id === failure.toItemId)
+                              ?.song?.title ?? nextSongTitle;
+                          return (
+                            <div
+                              key={failure.takeId}
+                              data-testid="arrangement-glue-audio-failure"
+                              className="flex items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1"
+                            >
+                              <p className="text-[11px] leading-relaxed text-amber-700">
+                                {t("glue.audioFallback")
+                                  .replace("{from}", fromTitle)
+                                  .replace("{to}", toTitle)}
+                              </p>
+                              <button
+                                type="button"
+                                data-testid="arrangement-glue-audio-retry"
+                                onClick={() =>
+                                  void preview.retryGlueAudio(failure.takeId)
+                                }
+                                className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+                              >
+                                {t("glue.retryAudio")}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {isRailVisible && arrangementWindow && (
                       <p
                         className="text-[11px] leading-relaxed text-muted-foreground"
@@ -2440,10 +3452,14 @@ export function ArrangementEditorSheet({
                           const bandClass = cn(
                             "absolute inset-y-1.5 flex min-w-0 items-center overflow-hidden rounded-[3px]",
                             band.key === activeBandKey
-                              ? "bg-primary/70"
-                              : band.kind === "step"
-                                ? "bg-primary/25"
-                                : "bg-foreground/15"
+                              ? band.kind === "glue"
+                                ? "bg-sky-600/80"
+                                : "bg-primary/70"
+                              : band.kind === "glue"
+                                ? "bg-sky-500/35"
+                                : band.kind === "step"
+                                  ? "bg-primary/25"
+                                  : "bg-foreground/15"
                           );
                           // Every band is a tap target: a tap seeks there, so a
                           // context band is as reachable as a component band.

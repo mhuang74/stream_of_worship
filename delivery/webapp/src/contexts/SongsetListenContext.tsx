@@ -31,7 +31,6 @@ import {
   type ListenSongsetItemPayload,
 } from "@/lib/arrangements-listen";
 import {
-  buildArrangementTimeline,
   type ArrangementTimeline,
 } from "@/lib/arrangements";
 import { validateSongsetAudioSources } from "@/lib/audio/songset-audio";
@@ -61,6 +60,9 @@ interface SongsetListenContextValue {
   timeline: ArrangementTimeline;
   validation: SongsetAudioError | null;
   previewErrorKind: SongsetAudioErrorKind | null;
+  /** Glue junctions whose audio failed locally (ordinary timing restored). */
+  glueFailures: UseSongsetAudioResult["glueFailures"];
+  retryGlueAudio: UseSongsetAudioResult["retryGlueAudio"];
   audio: UseSongsetAudioResult;
   open: (request: SongsetListenRequest) => void;
   retryLoad: () => void;
@@ -91,7 +93,6 @@ export function SongsetListenProvider({
   const autoplayGenerationRef = useRef(-1);
 
   const items = useMemo(() => toListenTimelineSources(payloadItems), [payloadItems]);
-  const timeline = useMemo(() => buildArrangementTimeline(items), [items]);
   const validation = useMemo(() => validateSongsetAudioSources(items), [items]);
   const active = enabled && request !== null;
 
@@ -102,6 +103,10 @@ export function SongsetListenProvider({
       setPreviewErrorKind(error.kind);
     },
   });
+  // The bar and Lyrics panel consume the hook's effective timeline: a local
+  // Glue failure restores ordinary gap/crossfade timing everywhere.
+  const timeline = audio.timeline;
+  const { glueFailures, retryGlueAudio } = audio;
 
   const close = useCallback(() => {
     // Never touches the Song transport: this provider does not own it.
@@ -223,6 +228,8 @@ export function SongsetListenProvider({
       timeline,
       validation,
       previewErrorKind,
+      glueFailures,
+      retryGlueAudio,
       audio,
       open,
       retryLoad,
@@ -237,6 +244,8 @@ export function SongsetListenProvider({
       timeline,
       validation,
       previewErrorKind,
+      glueFailures,
+      retryGlueAudio,
       audio,
       open,
       retryLoad,

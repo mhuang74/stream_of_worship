@@ -41,6 +41,12 @@ export interface PlaybackControlsProps {
   isLyricsOpen?: boolean;
   /** When present, renders the lyric-sheet toggle button in the right column. */
   onToggleLyrics?: () => void;
+  /**
+   * Effective AI-transition windows of the rendered timeline (fresh renders
+   * only). Rendered as inert markers on the scrub bar; the media itself is
+   * already mixed, so this never changes seeking.
+   */
+  glueWindows?: { startSeconds: number; endSeconds: number }[];
   className?: string;
 }
 
@@ -64,6 +70,7 @@ export function PlaybackControls({
   onToggleMute,
   isLyricsOpen,
   onToggleLyrics,
+  glueWindows,
   className,
 }: PlaybackControlsProps) {
   const { t } = useLocale();
@@ -126,6 +133,19 @@ export function PlaybackControls({
             className="absolute h-full bg-primary rounded-full"
             style={{ width: `${progress}%` }}
           />
+          {duration > 0 &&
+            glueWindows?.map((window, index) => (
+              <div
+                key={`${window.startSeconds}-${index}`}
+                data-testid="controller-glue-window"
+                aria-hidden="true"
+                className="absolute inset-y-0 border-x border-white/70 bg-white/30"
+                style={{
+                  left: `${(window.startSeconds / duration) * 100}%`,
+                  width: `${((window.endSeconds - window.startSeconds) / duration) * 100}%`,
+                }}
+              />
+            ))}
           <div
             className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ left: `calc(${progress}% - 8px)` }}

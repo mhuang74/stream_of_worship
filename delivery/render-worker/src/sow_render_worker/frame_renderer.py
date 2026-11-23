@@ -5,6 +5,7 @@ import math
 import os
 import re
 from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
@@ -91,6 +92,20 @@ class SegmentInfo:
 
 
 @dataclass(frozen=True)
+class GlueWindowInfo:
+    """Uncovered timeline span filled by a staged Glue (AI transition).
+
+    ``start_seconds`` is the outgoing Song's end; ``end_seconds`` is the
+    incoming Song's start. Inside the window there is no Song segment, so the
+    renderer shows the incoming Song's ordinary title line only.
+    """
+
+    to_item_id: str
+    start_seconds: float
+    end_seconds: float
+
+
+@dataclass(frozen=True)
 class TitleCardConfig:
     enabled: bool
     duration_seconds: float
@@ -148,6 +163,8 @@ VIDEO_TEMPLATES: dict[VideoTemplateName, VideoTemplate] = {
 }
 
 _SANS_SERIF_FONT_PATHS = [
+    # Where the Lambda image's google-noto-sans-cjk-ttc-fonts package installs.
+    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
@@ -626,11 +643,64 @@ class FrameRenderer:
             math.floor(_BLANK_PREVIEW_ALPHA * preview_elapsed / _BLANK_PREVIEW_FADE_SECONDS),
         )
 
+    def _resolve_glue_visual_state(
+        self,
+        segments: list[SegmentInfo],
+        current_time: float,
+        glue_windows: Sequence[GlueWindowInfo],
+    ) -> VisualState | None:
+        """State for uncovered Glue time: incoming title only, never lyrics.
+
+        Only consulted when no Song segment covers ``current_time``; a segment
+        always wins if both were to match.
+        """
+        for window in glue_windows:
+            if not (window.start_seconds <= current_time < window.end_seconds):
+                continue
+
+            incoming = next(
+                (segment for segment in segments if segment.id == window.to_item_id),
+                None,
+            )
+            if incoming is None:
+                incoming = next(
+                    (
+                        segment
+                        for segment in segments
+                        if abs(segment.start_time_seconds - window.end_seconds) <= 1e-6
+                    ),
+                    None,
+                )
+            if incoming is None:
+                return None
+
+            tempo_bpm = (
+                incoming.tempo_bpm
+                if incoming.tempo_bpm is not None and incoming.tempo_bpm > 0
+                else None
+            )
+            return VisualState(
+                segment_id=incoming.id,
+                current_title=incoming.song_title or "Unknown",
+                current_segment=incoming,
+                # No outgoing or incoming lyric line renders inside the Glue.
+                current_song_lyrics=[],
+                current_lyric_index=-1,
+                intro_alpha=0,
+                fade_alpha=255,
+                preview_alpha=0,
+                tempo_bpm=tempo_bpm,
+                is_last_lyric_faded=False,
+                current_time=current_time,
+            )
+        return None
+
     def _resolve_visual_state(
         self,
         lyrics: list[GlobalLRCLine],
         segments: list[SegmentInfo],
         current_time: float,
+        glue_windows: Sequence[GlueWindowInfo] = (),
     ) -> VisualState:
         current_title = ""
         current_segment: SegmentInfo | None = None
@@ -645,6 +715,11 @@ class FrameRenderer:
                 if segment.tempo_bpm and segment.tempo_bpm > 0:
                     tempo_bpm = segment.tempo_bpm
                 break
+
+        if current_segment is None and glue_windows:
+            glue_state = self._resolve_glue_visual_state(segments, current_time, glue_windows)
+            if glue_state is not None:
+                return glue_state
 
         # Lyrics are keyed by Songset Item, not by Song: a repeated Song has one
         # bucket per occurrence, so the last-line fade and the blank-gap windows
@@ -731,8 +806,11 @@ class FrameRenderer:
         segments: list[SegmentInfo],
         current_time: float,
         _state: VisualState | None = None,
+        glue_windows: Sequence[GlueWindowInfo] = (),
     ) -> Image.Image:
-        state = _state or self._resolve_visual_state(lyrics, segments, current_time)
+        state = _state or self._resolve_visual_state(
+            lyrics, segments, current_time, glue_windows=glue_windows
+        )
         return self._render_frame_impl(state)
 
     def render_frame_bytes(
@@ -740,8 +818,11 @@ class FrameRenderer:
         lyrics: list[GlobalLRCLine],
         segments: list[SegmentInfo],
         current_time: float,
+        glue_windows: Sequence[GlueWindowInfo] = (),
     ) -> bytes:
-        state = self._resolve_visual_state(lyrics, segments, current_time)
+        state = self._resolve_visual_state(
+            lyrics, segments, current_time, glue_windows=glue_windows
+        )
 
         if self._cache_enabled:
             cache_key = self._compute_cache_key(state)

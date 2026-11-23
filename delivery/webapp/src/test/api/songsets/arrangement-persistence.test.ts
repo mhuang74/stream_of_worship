@@ -76,6 +76,18 @@ function useSelectRows(...rowSets: unknown[][]) {
       createSelectChain(rows) as unknown as ReturnType<typeof db.select>
     );
   }
+  primeEmptySelects();
+}
+
+/**
+ * Any select a test does not queue explicitly resolves to no rows. Songset
+ * mutations re-resolve AI-transition junctions, so an unqueued select must read
+ * like an empty query instead of crashing on `undefined.from`.
+ */
+function primeEmptySelects() {
+  vi.mocked(db.select).mockReturnValue(
+    createSelectChain([]) as unknown as ReturnType<typeof db.select>
+  );
 }
 
 interface UpdateCall {
@@ -283,6 +295,7 @@ const fullRecordingArrangement: SongArrangement = {
 describe("updateSongArrangement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    primeEmptySelects();
   });
 
   it("persists repeated Steps identically and bumps item and Songset timestamps", async () => {
@@ -623,6 +636,7 @@ describe("getSongsetRenderMetrics", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    primeEmptySelects();
   });
 
   it("returns the arranged duration and item count", async () => {
@@ -701,6 +715,7 @@ describe("getSongsetRenderMetrics", () => {
 describe("updateSongsetItem arrangement lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    primeEmptySelects();
   });
 
   it("clears the arrangement and bumps updatedAt when the Recording changes", async () => {
@@ -808,6 +823,7 @@ describe("updateSongsetItem arrangement lifecycle", () => {
 describe("duplicateSongset", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    primeEmptySelects();
   });
 
   it("copies the raw arrangement JSON verbatim", async () => {
@@ -835,6 +851,10 @@ describe("duplicateSongset", () => {
           keyShiftSemitones: 0,
           tempoRatio: 1,
           arrangementSteps: raw,
+          updatedAt: new Date(),
+          glueEnabled: 0,
+          glueBeats: 2,
+          glueActiveTakeId: null,
           song: null,
           recording: null,
         },
@@ -888,6 +908,7 @@ describe("duplicateSongset", () => {
 describe("readers expose arranged durations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    primeEmptySelects();
   });
 
   it("getSongsetEditorData totals the arranged duration", async () => {

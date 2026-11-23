@@ -145,7 +145,7 @@ def test_card_plays_over_lead_in_silence(tmp_path: Path):
     drawn_at: list[float] = []
     render = engine.frame_renderer.render_frame_bytes
 
-    def recording(lyrics, segments, current_time):
+    def recording(lyrics, segments, current_time, glue_windows=()):
         drawn_at.append(current_time)
         return render(lyrics, segments, current_time)
 

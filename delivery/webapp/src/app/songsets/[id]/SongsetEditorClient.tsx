@@ -7,6 +7,8 @@ import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
 import type { SongArrangement, RecordingSection, ArrangementItemInput } from "@/lib/arrangements";
+import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
+import { glueForAdjacency } from "@/lib/glue/draft";
 import {
   buildSnappedSteps,
   getItemDurationSeconds,
@@ -105,6 +107,10 @@ interface ApiSongsetItem {
   markedLineCount?: number;
   /** Raw persisted arrangement JSON; undefined when the API predates #283. */
   arrangementSteps?: string | null;
+  updatedAt?: string;
+  glueEnabled?: boolean;
+  glueBeats?: 2 | 4 | 8 | 16;
+  glue?: ResolvedGlueJunction;
 }
 
 interface ApiResponse {
@@ -132,7 +138,8 @@ interface SongsetEditorClientProps {
 }
 
 /** Arrangement input shape shared with the canonical duration helpers. */
-function toArrangementInput(item: SongListItem): ArrangementItemInput {
+function toArrangementInput(item: SongListItem, nextItemId: string | undefined): ArrangementItemInput {
+  const take = glueForAdjacency(item.glue, item.id, nextItemId)?.selectedTake;
   return {
     arrangementSteps: item.arrangementSteps,
     gapBeats: item.gapBeats,
@@ -140,6 +147,8 @@ function toArrangementInput(item: SongListItem): ArrangementItemInput {
     crossfadeDurationSeconds: item.crossfadeDurationSeconds ?? null,
     tempoBpm: item.recording?.tempoBpm ?? null,
     recording: { durationSeconds: item.recording?.durationSeconds ?? null },
+    glueTakeId: take?.id ?? null,
+    glueSeconds: take?.seconds ?? null,
   };
 }
 
@@ -181,6 +190,10 @@ function toSongListItem(item: ApiSongsetItem): SongListItem {
       recording: { durationSeconds: recording?.durationSeconds ?? null },
     }),
     arrangementAnalysisAvailable: hasRecordingAnalysis(recording),
+    updatedAt: item.updatedAt,
+    glueEnabled: item.glueEnabled,
+    glueBeats: item.glueBeats,
+    glue: item.glue,
   };
 }
 
@@ -295,6 +308,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const searchParams = useSearchParams();
   const isNew = searchParams.get("new") === "true";
   const highlightSongParam = searchParams.get("highlightSong");
+  const glueItemParam = searchParams.get("glueItem");
   const [highlightSongId, setHighlightSongId] = useState<string | null>(
     highlightSongParam
   );
@@ -363,10 +377,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
   const isLoading = false;
   const error: string | null = null;
   const [isRemoving, setIsRemoving] = useState(false);
-  // Every Item mutation (append, remove, duplicate, reorder) goes through this
-  // promise queue: React state updates are ordered, but the network calls are
-  // not, so an unqueued remove could race an in-flight duplicate and drop the
-  // persisted copy from the list.
+  // Serialize structural writes, Glue PATCHes, and editor refreshes. Other
+  // saves merge their own fields through the same queue when they complete.
   const itemMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [pendingItemMutations, setPendingItemMutations] = useState(0);
   const itemsRef = useRef(items);
@@ -603,6 +615,23 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     router.replace(`/songsets/${songsetId}${query ? `?${query}` : ""}`);
   }, [highlightSongParam, songsetId, searchParams, router]);
 
+  // Render-preflight "Open editor" lands here with the outgoing item id: open
+  // that item's arrangement sheet (where paid AI-transition actions live), then
+  // strip the ephemeral param. The open is a one-shot reaction to the URL, not
+  // render-derived state: the strip below clears the param on the next
+  // navigation, and deriving it during render would reopen a sheet the user
+  // just closed.
+  useEffect(() => {
+    if (!glueItemParam) return;
+    const target = items.find((item) => item.id === glueItemParam);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot deep-link open; the ephemeral param is stripped immediately after
+    if (target) setEditingArrangementItemId(target.id);
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("glueItem");
+    const query = next.toString();
+    router.replace(`/songsets/${songsetId}${query ? `?${query}` : ""}`);
+  }, [glueItemParam, items, songsetId, searchParams, router]);
+
   const touchUpdatedAt = useCallback(() => {
     const now = new Date().toISOString();
     setSongset((prev) => (prev ? { ...prev, updatedAt: now } : prev));
@@ -623,18 +652,65 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     touchUpdatedAt();
   }, [touchUpdatedAt]);
 
+  const commitItemLayout = useCallback((nextItems: SongListItem[]) => {
+    commitItems(nextItems);
+    const durationSeconds = getSongsetDurationSeconds(
+      nextItems.map((item, index) => toArrangementInput(item, nextItems[index + 1]?.id))
+    );
+    setSongset((prev) =>
+      prev ? { ...prev, itemCount: nextItems.length, durationSeconds } : prev
+    );
+  }, [commitItems]);
+
+  const readItemLayout = useCallback(async () => {
+    const response = await fetch(`/api/songsets/${songsetId}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error("Songset refresh failed");
+    const authoritative: ApiResponse = await response.json();
+    commitItems(authoritative.items.map(toSongListItem));
+    setSongset((prev) =>
+      prev
+        ? {
+            ...prev,
+            itemCount: authoritative.itemCount,
+            durationSeconds: authoritative.durationSeconds,
+            updatedAt: authoritative.updatedAt,
+          }
+        : prev
+    );
+  }, [commitItems, songsetId]);
+
+  const refreshItemLayout = useCallback(async () => {
+    const reportRefreshFailure = () =>
+      toast.error(t("songsets.error.itemRefreshFailed"), {
+        action: {
+          label: t("songsets.action.retry"),
+          onClick: () => {
+            void runItemMutation(readItemLayout).catch(reportRefreshFailure);
+          },
+        },
+      });
+    await readItemLayout().catch(reportRefreshFailure);
+  }, [readItemLayout, runItemMutation, t]);
+
   // Handle item reorder (optimistic)
   const handleUpdateItems = useCallback(
     (newItems: SongListItem[]) => {
+      const orderedIds = newItems.map((item) => item.id);
       void runItemMutation(async () => {
         const previousItems = itemsRef.current;
-        commitItems(newItems);
-
-        const updates = newItems.map((item, index) => ({
-          itemId: item.id,
-          position: index,
-        }));
-
+        const itemsById = new Map(previousItems.map((item) => [item.id, item]));
+        if (orderedIds.length !== itemsById.size || orderedIds.some((id) => !itemsById.has(id))) {
+          toast.error(t("songsets.error.reorderFailed"));
+          return;
+        }
+        const updates = orderedIds.map((itemId, position) => ({ itemId, position }));
+        commitItemLayout(updates.map(({ itemId, position }) => ({
+          ...itemsById.get(itemId)!,
+          position,
+        })));
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -645,21 +721,19 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
             body: JSON.stringify({ updates }),
             signal: controller.signal,
           });
-          clearTimeout(timeoutId);
-          if (!response.ok) {
-            commitItems(previousItems);
-            toast.error(t("songsets.error.reorderFailed"));
-            return;
-          }
-          markStale();
+          if (!response.ok) throw new Error("Songset reorder failed");
         } catch {
-          clearTimeout(timeoutId);
-          commitItems(previousItems);
+          commitItemLayout(previousItems);
           toast.error(t("songsets.error.reorderFailed"));
+          return;
+        } finally {
+          clearTimeout(timeoutId);
         }
+        markStale();
+        if (previousItems.some((item) => item.glueEnabled)) await refreshItemLayout();
       });
     },
-    [commitItems, runItemMutation, songsetId, markStale, t]
+    [commitItemLayout, runItemMutation, songsetId, markStale, refreshItemLayout, t]
   );
 
   // Handle item removal
@@ -670,19 +744,17 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         setIsRemoving(true);
 
         const currentItems = itemsRef.current;
-        const removedItem = currentItems.find((item) => item.id === itemId);
-        const removedIndex = currentItems.findIndex((item) => item.id === itemId);
+        const hadItem = currentItems.some((item) => item.id === itemId);
         const prevRenderState = songset?.renderState;
         const prevIsArtifactsStale = songset?.isArtifactsStale;
         const prevRenderErrorMessage = songset?.renderErrorMessage;
         const prevFailedAt = songset?.failedAt;
 
-        commitItems(currentItems.filter((item) => item.id !== itemId));
+        commitItemLayout(currentItems.filter((item) => item.id !== itemId));
         setSongset((prev) =>
           prev
             ? {
                 ...prev,
-                itemCount: Math.max(0, prev.itemCount - 1),
                 renderState: "stale" as RenderState,
                 isArtifactsStale: true,
                 renderErrorMessage: null,
@@ -704,16 +776,14 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           }
 
           touchUpdatedAt();
+          if (currentItems.some((item) => item.glueEnabled)) await refreshItemLayout();
         } catch {
-          if (removedItem && removedIndex >= 0) {
-            const restored = [...itemsRef.current];
-            restored.splice(removedIndex, 0, removedItem);
-            commitItems(restored);
+          if (hadItem) {
+            commitItemLayout(currentItems);
             setSongset((prev) =>
               prev
                 ? {
                     ...prev,
-                    itemCount: prev.itemCount + 1,
                     renderState: prevRenderState ?? prev.renderState,
                     isArtifactsStale: prevIsArtifactsStale ?? prev.isArtifactsStale,
                     renderErrorMessage: prevRenderErrorMessage ?? prev.renderErrorMessage,
@@ -728,7 +798,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         }
       }),
     [
-      commitItems,
+      commitItemLayout,
+      refreshItemLayout,
       runItemMutation,
       songsetId,
       isRemoving,
@@ -748,78 +819,27 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         const response = await fetch(`/api/songsets/${songsetId}/items/${itemId}/duplicate`, {
           method: "POST",
         });
-        const data = await response.json().catch(() => ({}));
+        const data = await response.json().catch(() => null);
         if (!response.ok) {
           throw new Error(
-            (data as { error?: string }).error || t("songsets.error.duplicateItemFailed")
+            (data as { error?: string } | null)?.error || t("songsets.error.duplicateItemFailed")
           );
         }
-        const item: ApiSongsetItem = data;
-
-        if (!itemsRef.current.some((entry) => entry.id === itemId)) {
-          // The copy is persisted but its source is no longer in local state
-          // (a queued remove from this or another tab). Adopt the server's
-          // authoritative ordering instead of silently dropping the copy.
-          const refreshed = await fetch(`/api/songsets/${songsetId}`);
-          if (!refreshed.ok) {
-            throw new Error(t("songsets.error.duplicateItemFailed"));
-          }
-          const authoritative: ApiResponse = await refreshed.json();
-          commitItems(authoritative.items.map(toSongListItem));
-          setSongset((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  itemCount: authoritative.itemCount,
-                  durationSeconds: authoritative.durationSeconds,
-                  updatedAt: authoritative.updatedAt,
-                  renderState: "stale" as RenderState,
-                  isArtifactsStale: true,
-                  renderErrorMessage: null,
-                  failedAt: null,
-                }
-              : prev
+        // Show the saved copy even if the authoritative read fails or its
+        // source is already absent locally. Keep the server's position gaps.
+        if (typeof data?.id === "string" && typeof data.position === "number") {
+          const copy = toSongListItem(data as ApiSongsetItem);
+          const shifted = itemsRef.current.map((entry) =>
+            entry.position >= copy.position
+              ? { ...entry, position: entry.position + 1 }
+              : entry
           );
-          return;
+          commitItemLayout([...shifted, copy].sort((left, right) => left.position - right.position));
         }
-
-        const currentItems = itemsRef.current;
-        const index = currentItems.findIndex((entry) => entry.id === itemId);
-        if (index < 0) return;
-        // Mirror the server's write: the copy takes `source.position + 1` and
-        // every later Item shifts down one, so local positions stay equal to
-        // the persisted ones (gaps included) and the next append cannot
-        // collide.
-        const sourcePosition = currentItems[index].position;
-        const shifted = currentItems.map((entry) =>
-          entry.position > sourcePosition
-            ? { ...entry, position: entry.position + 1 }
-            : entry
-        );
-        const nextItems = [
-          ...shifted.slice(0, index + 1),
-          toSongListItem(item),
-          ...shifted.slice(index + 1),
-        ];
-        commitItems(nextItems);
-        // The copy changes the laid-out timeline, so the cached Songset
-        // duration must be recomputed from the resulting Items.
-        setSongset((prevSongset) =>
-          prevSongset
-            ? {
-                ...prevSongset,
-                itemCount: nextItems.length,
-                durationSeconds: getSongsetDurationSeconds(nextItems.map(toArrangementInput)),
-                renderState: "stale" as RenderState,
-                isArtifactsStale: true,
-                renderErrorMessage: null,
-                failedAt: null,
-              }
-            : prevSongset
-        );
-        touchUpdatedAt();
+        markStale();
+        await refreshItemLayout();
       }),
-    [commitItems, runItemMutation, songsetId, t, touchUpdatedAt]
+    [commitItemLayout, runItemMutation, songsetId, t, markStale, refreshItemLayout]
   );
 
   // Handle transition update
@@ -842,9 +862,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         throw new Error(t("songsets.error.updateTransitionFailed"));
       }
 
-      // Update local state
-      setItems((prev) => {
-        const next = prev.map((item) =>
+      await runItemMutation(async () => {
+        commitItemLayout(itemsRef.current.map((item) =>
           item.id === itemId
             ? {
                 ...item,
@@ -855,13 +874,58 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
                 tempoRatio: settings.tempoRatio,
               }
             : item
-        );
-        itemsRef.current = next;
-        return next;
+        ));
+        markStale();
       });
-      markStale();
     },
-    [songsetId, markStale, t]
+    [commitItemLayout, runItemMutation, songsetId, markStale, t]
+  );
+
+  // AI-transition switch/beat changes: free PATCH, no job and no quota. The
+  // sheet rolls its optimistic state back when this rejects.
+  const handleUpdateGlue = useCallback(
+    async (
+      itemId: string,
+      patch: {
+        glueEnabled?: boolean;
+        glueBeats?: 2 | 4 | 8 | 16;
+        glueActiveTakeId?: string | null;
+      }
+    ) => runItemMutation(async () => {
+      let response: Response;
+      try {
+        response = await fetch(`/api/songsets/${songsetId}/items`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId, ...patch }),
+        });
+      } catch {
+        throw new Error(t("glue.error.save"));
+      }
+
+      if (!response.ok) {
+        throw new Error(t("glue.error.save"));
+      }
+
+      const detail = (await response.json().catch(() => null)) as
+        | ApiSongsetItem
+        | null;
+      if (detail) {
+        commitItemLayout(itemsRef.current.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                glue: detail.glue,
+                glueEnabled: detail.glueEnabled,
+                glueBeats: detail.glueBeats,
+                updatedAt: detail.updatedAt,
+              }
+            : item
+        ));
+      }
+      markStale();
+    }),
+    [commitItemLayout, runItemMutation, songsetId, markStale, t]
   );
 
   // Save the sheet's draft as this item's arrangement (one PUT; no autosave,
@@ -930,33 +994,36 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       // Apply the saved arrangement to the CURRENT items, not a captured
       // snapshot: a transition edit committed while the PUT was in flight must
       // survive. The Songset duration derives from the same next state.
-      setItems((prev) => {
-        const nextItems = prev.map((item) =>
-          item.id === savedItemId
+      await runItemMutation(async () => {
+        const currentItems = itemsRef.current;
+        const savedIndex = currentItems.findIndex((item) => item.id === savedItemId);
+        const arrangementChanged =
+          savedIndex >= 0 && currentItems[savedIndex].arrangementSteps !== savedSteps;
+        const needsGlueRefresh = arrangementChanged && (
+          currentItems[savedIndex].glueEnabled || currentItems[savedIndex - 1]?.glueEnabled
+        );
+        const nextItems = currentItems.map((item, index) => {
+          const updated = index === savedIndex
             ? applySavedArrangement(item, savedSteps, detail)
-            : item
-        );
-        itemsRef.current = nextItems;
-        setSongset((prevSongset) =>
-          prevSongset
-            ? {
-                ...prevSongset,
-                durationSeconds: getSongsetDurationSeconds(
-                  nextItems.map(toArrangementInput)
-                ),
-              }
-            : prevSongset
-        );
-        return nextItems;
+            : item;
+          // A changed cut invalidates both neighboring takes even when their
+          // Item IDs still match. Use ordinary timing until they re-resolve.
+          if (needsGlueRefresh && (index === savedIndex || index === savedIndex - 1)) {
+            return { ...updated, glue: undefined };
+          }
+          return updated;
+        });
+        commitItemLayout(nextItems);
+        markStale();
+        if (needsGlueRefresh) await refreshItemLayout();
       });
-      markStale();
       toast.success(
         arrangement === null
           ? t("arrangement.toast.reset")
           : t("arrangement.toast.saved")
       );
     },
-    [editingArrangementItemId, songsetId, markStale, t]
+    [commitItemLayout, editingArrangementItemId, markStale, refreshItemLayout, runItemMutation, songsetId, t]
   );
 
   // Handle render
@@ -1147,24 +1214,13 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
 
         const item: ApiSongsetItem = await response.json();
 
-        commitItems([...itemsRef.current, toSongListItem(item)]);
-
-        setSongset((prev) =>
-          prev
-            ? {
-                ...prev,
-                itemCount: prev.itemCount + 1,
-                renderState: "stale" as RenderState,
-                isArtifactsStale: true,
-                renderErrorMessage: null,
-                failedAt: null,
-              }
-            : prev
-        );
-        touchUpdatedAt();
+        const nextItems = [...itemsRef.current, toSongListItem(item)];
+        commitItemLayout(nextItems);
+        markStale();
+        if (nextItems.some((entry) => entry.glueEnabled)) await refreshItemLayout();
       });
     },
-    [commitItems, isSongsetFull, runItemMutation, songsetId, t, touchUpdatedAt]
+    [commitItemLayout, isSongsetFull, markStale, refreshItemLayout, runItemMutation, songsetId, t]
   );
 
   const editingArrangementItem = editingArrangementItemId
@@ -1256,6 +1312,8 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           item={editingArrangementItem}
           items={items}
           onSave={handleSaveArrangement}
+          songsetId={songsetId}
+          onUpdateGlue={handleUpdateGlue}
         />
       )}
       <ShareDialog

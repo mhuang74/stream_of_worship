@@ -8,6 +8,33 @@
     },
     "src/app/api/render-jobs/[id]/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/songsets/[id]/glue-jobs/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/cancel/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/redispatch/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/resume/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/retry-processing/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glues/[takeId]/audio/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/glue-jobs/[id]/events/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/songsets/[id]/glue-quote/route.ts": {
+      "maxDuration": 60
     }
   },
   "git": {

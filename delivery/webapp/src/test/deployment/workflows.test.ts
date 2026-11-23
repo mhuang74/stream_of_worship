@@ -245,3 +245,107 @@ describe("Deploy workflow", () => {
     expect(lambdaStep).toBeDefined();
   });
 });
+
+describe("Deploy workflow — Glue worker", () => {
+  function glueSteps(): Array<Record<string, unknown>> {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    return jobs["deploy-glue-worker"].steps as Array<Record<string, unknown>>;
+  }
+
+  it("has deploy-glue-worker job", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, unknown>;
+    expect(jobs["deploy-glue-worker"]).toBeDefined();
+  });
+
+  it("waits for the render worker deploy and reuses its image URI", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const job = jobs["deploy-glue-worker"];
+    expect(job.needs).toEqual(["detect-changes", "migrate-db", "deploy-render-worker"]);
+    expect(job.if).toBe(
+      "needs.detect-changes.outputs.render-worker == 'true' && needs.deploy-render-worker.result == 'success'",
+    );
+    expect(JSON.stringify(job.steps)).toContain("needs.deploy-render-worker.outputs.image");
+  });
+
+  it("updates sow-glue-worker with the shared render-worker image", () => {
+    const raw = JSON.stringify(glueSteps());
+    expect(raw).toContain("aws lambda update-function-code");
+    expect(raw).toContain("--function-name sow-glue-worker");
+    expect(raw).toContain("--image-uri \\\"$IMAGE_URI\\\"");
+  });
+
+  it("publishes a Glue Lambda version", () => {
+    const publish = glueSteps().find((s) =>
+      JSON.stringify(s).includes("aws lambda publish-version"),
+    );
+    expect(publish).toBeDefined();
+    const raw = JSON.stringify(publish);
+    expect(raw).toContain("--function-name sow-glue-worker");
+    expect(raw).toContain("--publish-to LATEST_PUBLISHED");
+  });
+
+  it("verifies the published Glue version reached Active", () => {
+    // Match on content, not the step name: renaming the step must not silently
+    // disarm the guard.
+    const verify = glueSteps().find((s) => {
+      const raw = JSON.stringify(s);
+      return (
+        raw.includes("get-function-configuration") &&
+        raw.includes("$LATEST.PUBLISHED") &&
+        raw.includes("State") &&
+        raw.includes("Failed")
+      );
+    });
+    expect(verify).toBeDefined();
+  });
+
+  it("applies execution-environment scaling with the separate API", () => {
+    const steps = glueSteps();
+    const scaling = steps.filter((s) =>
+      JSON.stringify(s).includes("--function-scaling-config"),
+    );
+    // FunctionScalingConfig is not a CreateFunction/UpdateFunctionConfiguration
+    // request field, so exactly one step may carry it and it must be the
+    // PutFunctionScalingConfig call.
+    expect(scaling).toHaveLength(1);
+    const script = JSON.stringify(scaling[0]);
+    expect(script).toContain("aws lambda put-function-scaling-config");
+    expect(script).toContain("--qualifier '$LATEST.PUBLISHED'");
+    expect(script).toContain("MinExecutionEnvironments=0,MaxExecutionEnvironments=2");
+  });
+
+  it("sets SOW_ELEVENLABS_API_KEY only on the Glue function", () => {
+    const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
+    const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+    const glueRaw = JSON.stringify(jobs["deploy-glue-worker"].steps);
+    const renderRaw = JSON.stringify(jobs["deploy-render-worker"].steps);
+
+    expect(glueRaw).toContain("SOW_ELEVENLABS_API_KEY");
+    expect(renderRaw).not.toContain("SOW_ELEVENLABS_API_KEY");
+  });
+
+  it("fails fast unless the Glue function uses Managed Instances and Timeout 1900", () => {
+    const steps = glueSteps();
+    const check = steps.find((s) => {
+      const run = typeof s.run === "string" ? s.run : "";
+      return run.includes("get-function-configuration") && run.includes("sow-glue-worker");
+    });
+    expect(check).toBeDefined();
+    const run = check!.run as string;
+    expect(run).toContain(
+      "CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn",
+    );
+    expect(run).toContain("Timeout");
+    expect(run).toContain("1900");
+    expect(run).toContain("exit 1");
+  });
+
+  it("does not rebuild or push an image for the Glue function", () => {
+    const raw = JSON.stringify(glueSteps());
+    expect(raw).not.toContain("docker buildx");
+    expect(raw).not.toContain("docker push");
+  });
+});

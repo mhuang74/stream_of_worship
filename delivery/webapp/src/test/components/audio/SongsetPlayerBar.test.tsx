@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   seek: vi.fn(),
   startAtSeconds: vi.fn(),
   retry: vi.fn(),
+  retryGlueAudio: vi.fn(),
   close: vi.fn(),
   retryLoad: vi.fn(),
   lyrics: { lrcContent: null as string | null, lines: null as string[] | null },
@@ -94,6 +95,8 @@ function makeAudio(overrides: Partial<UseSongsetAudioResult> = {}): UseSongsetAu
     errorMessage: null,
     timelinePositionSeconds: 0,
     totalSeconds: timeline.totalSeconds,
+    timeline,
+    glueFailures: [],
     progress: null,
     play: mocks.play,
     pause: mocks.pause,
@@ -101,6 +104,7 @@ function makeAudio(overrides: Partial<UseSongsetAudioResult> = {}): UseSongsetAu
     seek: mocks.seek,
     startAtSeconds: mocks.startAtSeconds,
     retry: mocks.retry,
+    retryGlueAudio: mocks.retryGlueAudio,
     ...overrides,
   };
 }
@@ -118,6 +122,7 @@ interface SessionOverrides {
 
 function setSession(overrides: SessionOverrides = {}) {
   const sessionItems = overrides.items ?? items;
+  const sessionAudio = makeAudio(overrides.audio);
   mocks.context = {
     request: { songsetId: "set-1", name: "Sunday Worship" },
     loadState: overrides.loadState ?? "ready",
@@ -127,7 +132,9 @@ function setSession(overrides: SessionOverrides = {}) {
     timeline: overrides.timeline ?? timeline,
     validation: overrides.validation ?? null,
     previewErrorKind: overrides.previewErrorKind ?? null,
-    audio: makeAudio(overrides.audio),
+    glueFailures: sessionAudio.glueFailures,
+    retryGlueAudio: sessionAudio.retryGlueAudio,
+    audio: sessionAudio,
     open: vi.fn(),
     retryLoad: mocks.retryLoad,
     close: mocks.close,
@@ -563,6 +570,61 @@ describe("SongsetPlayerBar", () => {
       expect(screen.getByTestId("songset-subtitle")).toHaveTextContent(
         en("songsets.listen.loadingSongset"),
       );
+    });
+  });
+
+  describe("AI transition audio", () => {
+    const gluedItems = [
+      itemPayload("item-1", "Amazing Grace", "content-1"),
+      itemPayload("item-2", "Second Song", "content-2"),
+    ].map((entry, index) =>
+      index === 0
+        ? { ...entry, glueTakeId: "take-1", glueSeconds: 3 }
+        : entry,
+    );
+    const gluedTimeline = buildArrangementTimeline(
+      toListenTimelineSources(gluedItems),
+    );
+
+    it("draws a seek segment for each effective Glue window", () => {
+      setSession({
+        items: gluedItems,
+        timeline: gluedTimeline,
+        audio: { totalSeconds: gluedTimeline.totalSeconds },
+      });
+      render(<SongsetPlayerBar />);
+
+      const segment = screen.getByTestId("songset-seek-glue");
+      expect(segment).toHaveAttribute("data-take-id", "take-1");
+      // A is 10 s, the Glue 3 s, B 10 s: the window is [10, 13) of 23 s.
+      const total = gluedTimeline.totalSeconds;
+      expect(segment).toHaveStyle({
+        left: `${(10 / total) * 100}%`,
+        width: `${(3 / total) * 100}%`,
+      });
+    });
+
+    it("shows a persistent A → B warning with a local retry", () => {
+      setSession({
+        audio: {
+          glueFailures: [
+            { takeId: "take-1", fromItemId: "item-1", toItemId: "item-2" },
+          ],
+        },
+      });
+      render(<SongsetPlayerBar />);
+
+      const warning = screen.getByTestId("songset-glue-warning");
+      expect(warning).toHaveTextContent(
+        "The AI transition from Amazing Grace to Second Song could not play. " +
+          "Using the normal transition.",
+      );
+      // Persistent, non-blocking: it is a status, not a toast or alert.
+      expect(warning).toHaveAttribute("role", "status");
+      expect(screen.queryByTestId("songset-seek-glue")).toBeNull();
+
+      fireEvent.click(screen.getByTestId("songset-glue-retry"));
+      expect(mocks.retryGlueAudio).toHaveBeenCalledWith("take-1");
     });
   });
 });

@@ -37,7 +37,12 @@ import {
 } from "@/lib/constants"
 import { formatDuration } from "@/lib/format"
 import { useLocale } from "@/hooks/useLocale"
-import { optionKey } from "@/lib/i18n/messages"
+import { optionKey, type TranslationKey } from "@/lib/i18n/messages"
+import { resumeGlueJobRequest } from "@/lib/glue/client"
+import type {
+  GlueRenderPreflight,
+  GlueRenderPreflightGlue,
+} from "@/lib/db/songsets"
 
 export interface RenderFormData {
   audioEnabled: boolean
@@ -63,6 +68,10 @@ interface RenderFormProps {
   previousRenderJob?: PreviousRenderJobData
   currentSongCount?: number
   currentSongsetDurationSeconds?: number | null
+  /** Blocking AI-transition preflight; non-null disables Start Render. */
+  gluePreflight?: GlueRenderPreflight | null
+  /** Re-resolve the page after a retry/disable action. */
+  onGluePreflightChanged?: () => void
 }
 
 export interface PreviousRenderJobData {
@@ -77,6 +86,46 @@ export interface PreviousRenderJobData {
   totalDurationSeconds?: number | null
   songCount?: number | null
   songsetDurationSeconds?: number | null
+}
+
+// Stable preflight reason codes -> user copy. Internal Glue vocabulary never
+// reaches the UI; unknown codes fall back to a generic unavailable message.
+const GLUE_PREFLIGHT_REASON_KEYS: Readonly<Record<string, TranslationKey>> = {
+  GLUE_NOT_READY: "render.gluePreflight.reason.notReady",
+  GLUE_ACTIVE_JOB: "render.gluePreflight.reason.activeJob",
+  GLUE_STALE_SNAPSHOT: "render.gluePreflight.reason.staleSnapshot",
+  GLUE_QUOTA_EXHAUSTED: "render.gluePreflight.reason.quotaExhausted",
+  GLUE_DAILY_LIMIT: "render.gluePreflight.reason.quotaExhausted",
+  GLUE_TEMPO_UNAVAILABLE: "render.gluePreflight.reason.tempoUnavailable",
+  GLUE_NOT_ANALYZED: "render.gluePreflight.reason.notAnalyzed",
+  GLUE_ARRANGEMENT_INVALID: "render.gluePreflight.reason.arrangementInvalid",
+  GLUE_UNSAVED_DRAFT: "render.gluePreflight.reason.unsavedDraft",
+  GLUE_WORKER_FAILED: "render.gluePreflight.reason.workerFailed",
+  GLUE_RETRY_PAID: "render.gluePreflight.reason.retryPaid",
+  GLUE_RETRY_PROCESSING_FREE: "render.gluePreflight.reason.retryFree",
+  GLUE_PROVIDER_UNKNOWN: "render.gluePreflight.reason.providerUnknown",
+  GLUE_PROVIDER_ENTITLEMENT: "render.gluePreflight.reason.entitlement",
+  GLUE_PROVIDER_PLAN: "render.gluePreflight.reason.plan",
+  GLUE_COPYRIGHT_REJECTED: "render.gluePreflight.reason.copyright",
+  GLUE_EXCERPT_TOO_SHORT: "render.gluePreflight.reason.tooShort",
+  GLUE_AUDIO_UNAVAILABLE: "render.gluePreflight.reason.audioUnavailable",
+  GLUE_EXECUTION_DEADLINE: "render.gluePreflight.reason.executionDeadline",
+  GLUE_DISPATCH_FAILED: "render.gluePreflight.reason.dispatchFailed",
+  GLUE_INPUTS_CHANGED: "render.gluePreflight.reason.inputsChanged",
+  GLUE_NOT_CONFIGURED: "render.gluePreflight.reason.notConfigured",
+}
+
+const GLUE_PREFLIGHT_PHASE_KEYS: Readonly<Record<string, TranslationKey>> = {
+  queued: "glue.state.queued",
+  preparing: "glue.state.preparing",
+  uploading: "glue.state.uploading",
+  composing: "glue.state.composing",
+  "storing-response": "glue.state.storing-response",
+  staging: "glue.state.staging",
+  ready: "glue.state.ready",
+  failed: "glue.state.failed",
+  cancelled: "glue.state.failed",
+  "dispatch-failed": "glue.state.failed",
 }
 
 function formatDurationSafe(seconds: number | null | undefined): string {
@@ -107,6 +156,8 @@ export function RenderForm({
   previousRenderJob,
   currentSongCount,
   currentSongsetDurationSeconds,
+  gluePreflight = null,
+  onGluePreflightChanged,
 }: RenderFormProps) {
   const { t } = useLocale()
   // Mirror the render worker's title card: repeated Items of one Song collapse
@@ -135,9 +186,62 @@ export function RenderForm({
   })
 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [busyGlueKey, setBusyGlueKey] = useState<string | null>(null)
+  const [glueErrorKey, setGlueErrorKey] = useState<TranslationKey | null>(null)
+  const [disableTarget, setDisableTarget] = useState<GlueRenderPreflightGlue | null>(null)
+
+  const glueBlocked = (gluePreflight?.glues.length ?? 0) > 0
+
+  const editorHref = (fromItemId: string) =>
+    `/songsets/${songsetId}?glueItem=${encodeURIComponent(fromItemId)}`
+
+  const retryGlue = async (glue: GlueRenderPreflightGlue) => {
+    if (!glue.jobId) return
+    const key = `${glue.fromItemId}:${glue.toItemId}`
+    setGlueErrorKey(null)
+    setBusyGlueKey(key)
+    try {
+      const result = await resumeGlueJobRequest(glue.jobId)
+      if (!result.ok) {
+        setGlueErrorKey("render.gluePreflight.retryFailed")
+        return
+      }
+      onGluePreflightChanged?.()
+    } catch {
+      setGlueErrorKey("render.gluePreflight.retryFailed")
+    } finally {
+      setBusyGlueKey(null)
+    }
+  }
+
+  const disableGlue = async (glue: GlueRenderPreflightGlue) => {
+    setDisableTarget(null)
+    const key = `${glue.fromItemId}:${glue.toItemId}`
+    setGlueErrorKey(null)
+    setBusyGlueKey(key)
+    try {
+      // Only the affected Junction's item is switched off; every other
+      // Junction keeps its configuration.
+      const response = await fetch(`/api/songsets/${songsetId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: glue.fromItemId, glueEnabled: false }),
+      })
+      if (!response.ok) {
+        setGlueErrorKey("render.gluePreflight.disableFailed")
+        return
+      }
+      onGluePreflightChanged?.()
+    } catch {
+      setGlueErrorKey("render.gluePreflight.disableFailed")
+    } finally {
+      setBusyGlueKey(null)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (glueBlocked) return
     if (previousRenderJob) {
       setShowConfirmDialog(true)
     } else {
@@ -160,6 +264,97 @@ export function RenderForm({
   return (
     <TooltipProvider>
       <form onSubmit={handleSubmit} className="space-y-6">
+        {glueBlocked && gluePreflight && (
+          <Card data-testid="render-glue-preflight" className="border-destructive/40">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="size-4 text-destructive" />
+                {t("render.gluePreflight.heading")}
+              </CardTitle>
+              <CardDescription>{t("render.gluePreflight.body")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-4">
+                {gluePreflight.glues.map((glue) => {
+                  const key = `${glue.fromItemId}:${glue.toItemId}`
+                  const busy = busyGlueKey === key
+                  const phaseLabel = glue.jobPhase
+                    ? t(GLUE_PREFLIGHT_PHASE_KEYS[glue.jobPhase] ?? "glue.state.failed")
+                    : null
+                  return (
+                    <li
+                      key={key}
+                      data-testid={`render-glue-preflight-${glue.fromItemId}`}
+                      className="space-y-2 rounded-lg border border-border/60 p-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                        <span>{glue.fromTitle}</span>
+                        <span aria-hidden="true">→</span>
+                        <span>{glue.toTitle}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {t(
+                          GLUE_PREFLIGHT_REASON_KEYS[glue.reasonCode] ??
+                            "render.gluePreflight.reason.unknown"
+                        )}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {phaseLabel && (
+                          <span data-testid="render-glue-preflight-phase">
+                            {t("render.gluePreflight.phaseLabel")} {phaseLabel}
+                          </span>
+                        )}
+                        {glue.jobId && (
+                          <span data-testid="render-glue-preflight-job">
+                            {t("render.gluePreflight.jobLabel")} {glue.jobId}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        {glue.retryKind === "free" && glue.jobId ? (
+                          <button
+                            type="button"
+                            className="font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+                            onClick={() => void retryGlue(glue)}
+                            disabled={busy}
+                          >
+                            {t("render.gluePreflight.retryFree")}
+                          </button>
+                        ) : (
+                          <Link
+                            href={editorHref(glue.fromItemId)}
+                            className="font-medium text-primary underline-offset-4 hover:underline"
+                          >
+                            {t("render.gluePreflight.retryPaid")}
+                          </Link>
+                        )}
+                        <Link
+                          href={editorHref(glue.fromItemId)}
+                          className="font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          {t("render.gluePreflight.openEditor")}
+                        </Link>
+                        <button
+                          type="button"
+                          className="font-medium text-destructive underline-offset-4 hover:underline disabled:opacity-50"
+                          onClick={() => setDisableTarget(glue)}
+                          disabled={busy}
+                        >
+                          {t("render.gluePreflight.disable")}
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+              {glueErrorKey && (
+                <p role="alert" className="mt-3 text-sm text-destructive">
+                  {t(glueErrorKey)}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
         {previousRenderJob && (
           <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2.5">
             <Info className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
@@ -431,7 +626,11 @@ export function RenderForm({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || (!formData.audioEnabled && !formData.videoEnabled)}
+            disabled={
+              isSubmitting ||
+              glueBlocked ||
+              (!formData.audioEnabled && !formData.videoEnabled)
+            }
             className="flex-1 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
             {isSubmitting ? t("render.action.starting") : t("render.action.start")}
@@ -507,6 +706,33 @@ export function RenderForm({
             <AlertDialogCancel>{t("render.confirm.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmRender}>
               {t("render.action.start")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={disableTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisableTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("render.gluePreflight.disableConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {disableTarget ? (
+                <span className="font-medium">
+                  {disableTarget.fromTitle} → {disableTarget.toTitle}
+                </span>
+              ) : null}{" "}
+              {t("render.gluePreflight.disableConfirmBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("render.gluePreflight.disableConfirmCancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void disableGlue(disableTarget!)}>
+              {t("render.gluePreflight.disableConfirmAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

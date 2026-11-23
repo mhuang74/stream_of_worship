@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FontPreviewStylesheets } from "@/components/fonts/FontPreviewStylesheets"
 import type { RenderFormData } from "@/components/render/RenderForm"
+import type { GlueRenderPreflight } from "@/lib/db/songsets"
 import { useLocale } from "@/hooks/useLocale"
 import { useSongsetListBack } from "@/hooks/useSongsetListBack"
 
@@ -57,6 +58,7 @@ interface RenderPageClientProps {
   initialRenderData: Partial<RenderFormData>
   currentSongCount?: number
   currentSongsetDurationSeconds?: number | null
+  initialGluePreflight?: GlueRenderPreflight | null
 }
 
 /**
@@ -71,12 +73,16 @@ export function RenderPageClient({
   initialRenderData,
   currentSongCount,
   currentSongsetDurationSeconds,
+  initialGluePreflight = null,
 }: RenderPageClientProps) {
   const router = useRouter()
   const backToList = useSongsetListBack()
   const { t } = useLocale()
 
-  const [songset] = useState<SongsetData | null>(initialSongset)
+  // Read straight from props: router.refresh() after Retry/Disable re-resolves
+  // both the preflight and the Songset duration on the server.
+  const songset: SongsetData | null = initialSongset
+  const gluePreflight: GlueRenderPreflight | null = initialGluePreflight
   const [previousCompletedJob] = useState<RenderJobData | null>(initialPreviousCompletedJob)
   const [initialData] = useState<Partial<RenderFormData> | undefined>(initialRenderData)
   const isLoading = false
@@ -119,6 +125,11 @@ export function RenderPageClient({
               if (data.config?.videoEnabled) configSummary.push(t("render.toast.config.video"))
               toast.info(`${t("render.toast.alreadyInProgress")} (${configSummary.join(" + ")})`)
               router.replace(`/songsets/${songsetId}`)
+            } else if (data.code === "GLUE_NOT_READY") {
+              // The blocking panel is server-rendered; re-resolve the page
+              // rather than toasting a failure.
+              router.refresh()
+              return
             } else if (
               data.code === "ARRANGEMENT_ANALYSIS_UNAVAILABLE" ||
               data.code === "ARRANGEMENT_STALE" ||
@@ -228,6 +239,8 @@ export function RenderPageClient({
           }
           currentSongCount={currentSongCount ?? songset.songs.length}
           currentSongsetDurationSeconds={currentSongsetDurationSeconds ?? songset.durationSeconds}
+          gluePreflight={gluePreflight}
+          onGluePreflightChanged={() => router.refresh()}
         />
       </main>
     </div>

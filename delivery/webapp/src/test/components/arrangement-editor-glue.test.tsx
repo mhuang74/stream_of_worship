@@ -1,0 +1,308 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderWithLocale as render } from "@/test/render";
+import { ArrangementEditorSheet } from "@/components/songset/ArrangementEditorSheet";
+import type { SongListItem } from "@/components/songset/SongList";
+import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
+
+vi.mock("@/contexts/SongsetListenContext", () => ({
+  useSongsetListen: () => ({ audio: { pause: vi.fn() } }),
+}));
+
+vi.mock("@/hooks/useSongsetAudio", () => ({
+  useSongsetAudio: () => ({
+    status: "idle",
+    errorMessage: null,
+    timelinePositionSeconds: 0,
+    totalSeconds: 120,
+    progress: null,
+    play: vi.fn().mockResolvedValue(undefined),
+    pause: vi.fn(),
+    stop: vi.fn(),
+    seek: vi.fn(),
+    startAtSeconds: vi.fn().mockResolvedValue(undefined),
+    glueFailures: [],
+    retryGlueAudio: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
+vi.mock("@/hooks/useSongLyrics", () => ({
+  useSongLyrics: () => ({
+    lrcContent: "[00:01.00]line\n",
+    lines: null,
+    loading: false,
+    error: null,
+  }),
+}));
+
+const SECTIONS = [{ label: "Verse", start: 0, end: 30 }];
+const BEATS = Array.from({ length: 16 }, (_, index) => index * 2);
+const TAKE_ID = "6b7f9c34-1c2b-4c4d-8a3a-1b2c3d4e5f60";
+
+function junction(overrides: Partial<ResolvedGlueJunction> = {}): ResolvedGlueJunction {
+  return {
+    fromItemId: "item-1",
+    toItemId: "item-2",
+    glueEnabled: true,
+    glueBeats: 4,
+    descriptorKey: "a".repeat(64),
+    state: "ready",
+    selectedTake: {
+      id: TAKE_ID,
+      ordinal: 1,
+      seconds: 3,
+      r2Key: "glues/take.wav",
+      descriptorKey: "a".repeat(64),
+      status: "ok",
+      reasons: [],
+    },
+    activeJob: null,
+    quote: null,
+    quotaLimit: 5,
+    quotaUsed: 2,
+    quotaRemaining: 3,
+    quotaResetAt: "2026-11-23T09:15:00.000Z",
+    expectedFromUpdatedAt: "2026-11-22T10:00:00.000Z",
+    expectedToUpdatedAt: "2026-11-22T10:01:00.000Z",
+    unavailableReason: null,
+    ...overrides,
+  };
+}
+
+function makeItem(overrides: Partial<SongListItem> = {}): SongListItem {
+  return {
+    id: "item-1",
+    songId: "song-1",
+    position: 0,
+    song: {
+      id: "song-1",
+      title: "Amazing Grace",
+      composer: null,
+      lyricist: null,
+      albumName: null,
+      musicalKey: "G",
+    },
+    recording: {
+      contentHash: "abc123",
+      hashPrefix: "ab",
+      durationSeconds: 30,
+      tempoBpm: 120,
+      musicalKey: "G",
+      sections: SECTIONS,
+      beats: BEATS,
+    },
+    gapBeats: 2,
+    crossfadeEnabled: 0,
+    keyShiftSemitones: 0,
+    tempoRatio: 1,
+    arrangementSteps: null,
+    arrangedDurationSeconds: 30,
+    arrangementAnalysisAvailable: true,
+    updatedAt: "2026-11-22T10:00:00.000Z",
+    glueEnabled: false,
+    glueBeats: 4,
+    glue: junction({ state: "needs-generation", selectedTake: null }),
+    ...overrides,
+  };
+}
+
+function successor(): SongListItem {
+  return makeItem({
+    id: "item-2",
+    songId: "song-2",
+    position: 1,
+    song: {
+      id: "song-2",
+      title: "How Great Thou Art",
+      composer: null,
+      lyricist: null,
+      albumName: null,
+      musicalKey: "G",
+    },
+    glue: undefined,
+  });
+}
+
+const QUOTE = {
+  descriptorKey: "a".repeat(64),
+  fromItemId: "item-1",
+  toItemId: "item-2",
+  expectedFromUpdatedAt: "2026-11-22T10:00:00.000Z",
+  expectedToUpdatedAt: "2026-11-22T10:01:00.000Z",
+  uncachedSides: [
+    { side: "A", seconds: 12, credits: 180 },
+    { side: "B", seconds: 12, credits: 180 },
+  ],
+  generationSeconds: 3,
+  uploadCredits: 360,
+  generationCredits: 45,
+  estimatedNewCredits: 405,
+  blockedSides: [],
+  quotaLimit: 5,
+  quotaUsed: 2,
+  quotaRemaining: 3,
+  quotaResetAt: "2026-11-23T09:15:00.000Z",
+};
+
+function renderSheet(args: {
+  items?: SongListItem[];
+  onUpdateGlue?: (itemId: string, patch: Record<string, unknown>) => Promise<void>;
+}) {
+  const items = args.items ?? [makeItem(), successor()];
+  return render(
+    <ArrangementEditorSheet
+      isOpen
+      onOpenChange={vi.fn()}
+      item={items[0]}
+      items={items}
+      onSave={vi.fn().mockResolvedValue(undefined)}
+      songsetId="songset-1"
+      onUpdateGlue={args.onUpdateGlue ?? vi.fn().mockResolvedValue(undefined)}
+    />
+  );
+}
+
+describe("ArrangementEditorSheet AI transition rail", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => QUOTE })
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("hides the AI transition controls when there is no successor", () => {
+    renderSheet({ items: [makeItem()] });
+    expect(screen.queryByTestId("arrangement-glue")).toBeNull();
+  });
+
+  it("shows the switch named for the next Song and the computed seconds", async () => {
+    renderSheet({});
+    expect(screen.getByTestId("arrangement-glue")).toBeTruthy();
+    expect(
+      screen.getByText(/AI transition to How Great Thou Art/)
+    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-seconds").textContent).toContain(
+        "3"
+      )
+    );
+    // 4 beats at 120 BPM is 2 s, raised to the 3 s floor.
+    expect(screen.getByTestId("arrangement-glue-beats-4").getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+  });
+
+  it("PATCHes the switch and shows the server quote, remaining count, and reset", async () => {
+    const onUpdateGlue = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ onUpdateGlue });
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    await waitFor(() =>
+      expect(onUpdateGlue).toHaveBeenCalledWith("item-1", { glueEnabled: true })
+    );
+    const quote = await screen.findByTestId("arrangement-glue-quote");
+    expect(quote.textContent).toContain("405 new credits");
+    expect(quote.textContent).toContain("3 of 5 paid AI transitions left today");
+    expect(quote.textContent).toContain("Resets at");
+  });
+
+  it("rolls the switch back when the PATCH fails", async () => {
+    const onUpdateGlue = vi.fn().mockRejectedValue(new Error("nope"));
+    renderSheet({ onUpdateGlue });
+    const toggle = screen.getByTestId("arrangement-glue-toggle");
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-error")).toBeTruthy()
+    );
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("sends the chosen beat count", async () => {
+    const onUpdateGlue = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ onUpdateGlue });
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    await waitFor(() => expect(onUpdateGlue).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId("arrangement-glue-beats-8"));
+    await waitFor(() =>
+      expect(onUpdateGlue).toHaveBeenCalledWith("item-1", { glueBeats: 8 })
+    );
+  });
+
+  it("requests the quote without a browser cache so a beat change cannot replay the old credits", async () => {
+    renderSheet({});
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const init = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[1] as RequestInit | undefined)
+      .find((options) => options?.cache !== undefined);
+    expect(init?.cache).toBe("no-store");
+  });
+
+  it("never shows credits computed for a different descriptor", async () => {
+    const staleQuote = { ...QUOTE, descriptorKey: "b".repeat(64) };
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => {
+        calls += 1;
+        // The first answer describes the pre-PATCH junction; the retry sees the
+        // saved one.
+        return { ok: true, json: async () => (calls === 1 ? staleQuote : QUOTE) };
+      })
+    );
+    renderSheet({});
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    const quote = await screen.findByTestId("arrangement-glue-quote");
+    expect(quote.textContent).toContain("405 new credits");
+    expect(calls).toBeGreaterThan(1);
+  });
+
+  it("surfaces a quote error instead of numbers for a junction it cannot confirm", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({ ...QUOTE, descriptorKey: "b".repeat(64) }),
+      }))
+    );
+    // With a resolved junction the rail knows which descriptor the answer must
+    // describe; a replica that keeps returning the previous one is never shown.
+    renderSheet({
+      items: [makeItem({ glueEnabled: true, glue: junction() }), successor()],
+    });
+    expect(
+      await screen.findByText(/Could not load the AI transition details/, {}, { timeout: 5000 })
+    ).toBeTruthy();
+    expect(screen.queryByTestId("arrangement-glue-quote")).toBeNull();
+  });
+
+  it("shows the selected AI transition and its plain-language check warning", async () => {
+    renderSheet({
+      items: [
+        makeItem({
+          glueEnabled: true,
+          glue: junction({
+            selectedTake: {
+              id: TAKE_ID,
+              ordinal: 1,
+              seconds: 2.8,
+              r2Key: "glues/take.wav",
+              descriptorKey: "a".repeat(64),
+              status: "check",
+              reasons: ["ending-energy"],
+            },
+          }),
+        }),
+        successor(),
+      ],
+    });
+    expect(screen.getByTestId("arrangement-glue-selected").textContent).toContain(
+      "2.8"
+    );
+    expect(screen.getByText(/Give it a listen/)).toBeTruthy();
+  });
+});

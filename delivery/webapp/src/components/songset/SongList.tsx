@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { useSongPlayback } from "@/hooks/useSongPlayback";
 import { useLocale } from "@/hooks/useLocale";
 import type { RecordingSection } from "@/lib/arrangements";
+import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
 import { FavoriteButton } from "./FavoriteButton";
 import { ThemeLabel, toSongTheme } from "./ThemeLabel";
 
@@ -81,6 +82,12 @@ export interface SongListItem {
   arrangedDurationSeconds: number | null;
   /** Client-computed availability of sections+beats analysis for this item. */
   arrangementAnalysisAvailable: boolean;
+  /** Row timestamp reported by the API; absent on older payloads/tests. */
+  updatedAt?: string;
+  /** Outgoing AI transition switch and resolved state. */
+  glueEnabled?: boolean;
+  glueBeats?: 2 | 4 | 8 | 16;
+  glue?: ResolvedGlueJunction;
 }
 
 interface SongListProps {

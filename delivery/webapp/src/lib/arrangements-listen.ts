@@ -19,6 +19,10 @@ export interface ListenSongsetItemPayload {
   gapBeats: number | null;
   crossfadeEnabled: number | null;
   crossfadeDurationSeconds: number | null;
+  /** Effective outgoing junction take resolved by the server. */
+  glueTakeId?: string | null;
+  /** Actual staged seconds of that take. */
+  glueSeconds?: number | null;
   song: { title: string | null } | null;
   recording: {
     /** Recording identity for the Lyrics panel (LRC fetch); unused by timing. */
@@ -42,6 +46,8 @@ export function toListenTimelineSources(
     crossfadeDurationSeconds: item.crossfadeDurationSeconds,
     tempoBpm: item.recording?.tempoBpm ?? null,
     recordingDurationSeconds: item.recording?.durationSeconds ?? null,
+    glueTakeId: item.glueTakeId ?? null,
+    glueSeconds: item.glueSeconds ?? null,
     recordingSections: item.recording?.sections ?? null,
     recordingBeats: item.recording?.beats ?? null,
   }));

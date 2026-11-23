@@ -95,6 +95,9 @@ describe("GET /api/songsets/[id]", () => {
     const data = await response.json();
     expect(data.name).toBe("Test Songset");
     expect(data.items).toHaveLength(1);
+    // The body changes with every mutation of the same URL; a cache layer
+    // answering the next request with this body shows the previous state.
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("returns 404 when songset not found", async () => {

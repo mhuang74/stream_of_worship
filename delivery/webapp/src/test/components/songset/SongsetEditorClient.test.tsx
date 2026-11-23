@@ -3,6 +3,8 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import type { SongListItem } from "@/components/songset/SongList";
 import type { TransitionSettings } from "@/components/songset/TransitionPanel";
+import type { SongCardData } from "@/components/songset/SongCard";
+import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
 import { SongsetEditorClient } from "@/app/songsets/[id]/SongsetEditorClient";
 import { toast } from "sonner";
 
@@ -37,9 +39,22 @@ vi.mock("@/contexts/AudioPlayerContext", () => ({
   }),
 }));
 
-// Sheets other than the arrangement editor are out of scope for this slice.
 vi.mock("@/components/songset/BrowseSheet", () => ({
-  BrowseSheet: () => null,
+  BrowseSheet: ({ onAddSong }: { onAddSong: (song: SongCardData) => Promise<void> }) => (
+    <button
+      type="button"
+      data-testid="browse-add"
+      onClick={() => void onAddSong({
+        id: "song-3",
+        title: "Third song",
+        composer: null,
+        lyricist: null,
+        albumName: null,
+        musicalKey: null,
+        recordings: [],
+      })}
+    />
+  ),
 }));
 vi.mock("@/components/share/ShareDialog", () => ({
   ShareDialog: () => null,
@@ -78,6 +93,7 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
     onEditArrangement: (itemId: string) => void;
     onDuplicateItem: (itemId: string) => Promise<void>;
     onRemoveItem: (itemId: string) => Promise<void>;
+    onUpdateItems: (items: SongListItem[]) => void;
     isItemMutationPending?: boolean;
   }) => {
     const item = props.items[0];
@@ -93,6 +109,16 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
         <span data-testid="shell-positions">
           {props.items.map((entry) => entry.position).join(",")}
         </span>
+        <span data-testid="shell-glue">
+          {props.items.map((entry) =>
+            `${entry.id}:${entry.glue?.state ?? ""}:${entry.glue?.selectedTake?.id ?? ""}`
+          ).join(",")}
+        </span>
+        <button
+          type="button"
+          data-testid="shell-reverse"
+          onClick={() => props.onUpdateItems([...props.items].reverse())}
+        />
         <button
           type="button"
           data-testid="shell-duplicate-first"
@@ -196,6 +222,31 @@ function jsonResponse(body: unknown, ok = true) {
     status: ok ? 200 : 500,
     json: () => Promise.resolve(body),
   } as unknown as Response;
+}
+
+function readyJunction(fromItemId: string, toItemId: string): ResolvedGlueJunction {
+  return {
+    fromItemId,
+    toItemId,
+    glueEnabled: true,
+    glueBeats: 8,
+    descriptorKey: "descriptor",
+    state: "ready",
+    selectedTake: {
+      id: "take-1", ordinal: 1, seconds: 6, r2Key: "take.wav",
+      descriptorKey: "descriptor", status: "ok", reasons: [],
+    },
+    availableTakes: [],
+    activeJob: null,
+    quote: null,
+    quotaLimit: 5,
+    quotaUsed: 1,
+    quotaRemaining: 4,
+    quotaResetAt: null,
+    expectedFromUpdatedAt: null,
+    expectedToUpdatedAt: null,
+    unavailableReason: null,
+  };
 }
 
 /** Opens the (real) arrangement sheet for the single seeded item. */
@@ -346,6 +397,111 @@ describe("SongsetEditorClient Item mutation queue", () => {
     expect(screen.getByTestId("shell-item-count")).toHaveTextContent("2");
   });
 
+  it("keeps a saved copy when its refresh fails and retries only the read", async () => {
+    const data = initialData();
+    const first = {
+      ...data.items[0], glueEnabled: true, glueBeats: 8 as const,
+      glue: readyJunction("item-1", "item-2"),
+    };
+    const second = { ...data.items[0], id: "item-2", position: 1 };
+    const copy = {
+      ...first, id: "item-copy", position: 1,
+      glue: readyJunction("item-copy", "item-2"),
+    };
+    const savedFirst = {
+      ...first,
+      glue: { ...first.glue, toItemId: copy.id, state: "stale", selectedTake: null },
+    };
+    const read = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({}, false))
+      .mockResolvedValueOnce(jsonResponse({
+        ...data, itemCount: 3, durationSeconds: 67,
+        items: [savedFirst, copy, { ...second, position: 2 }],
+      }));
+    const duplicate = vi.fn().mockResolvedValue(jsonResponse(copy));
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/duplicate") && init?.method === "POST") return duplicate();
+      return read(input, init);
+    }));
+    render(<SongsetEditorClient songsetId="songset-1" initialData={{
+      ...data, itemCount: 2, durationSeconds: 46, items: [first, second],
+    }} />);
+
+    fireEvent.click(screen.getByTestId("shell-duplicate-first"));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(screen.getByTestId("shell-positions")).toHaveTextContent("0,1,2");
+    // The source's old A-to-B take must not contribute another six seconds.
+    expect(screen.getByTestId("shell-duration")).toHaveTextContent("67");
+    const refreshToast = vi.mocked(toast.error).mock.calls.at(-1)?.[1];
+    const retry = refreshToast?.action;
+    expect(retry).toMatchObject({ label: "Retry" });
+    if (!retry || !("onClick" in retry)) throw new Error("Expected refresh retry");
+    retry.onClick(new MouseEvent("click"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("shell-glue")).toHaveTextContent("item-1:stale:,item-copy:ready:take-1")
+    );
+    expect(duplicate).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledWith(
+      "/api/songsets/songset-1", expect.objectContaining({ cache: "no-store" })
+    );
+  });
+
+  it("retains a Glue PATCH while an append and reorder wait in the queue", async () => {
+    const data = initialData();
+    const first = data.items[0];
+    const second = { ...first, id: "item-2", position: 1 };
+    const third = { ...first, id: "item-3", position: 2 };
+    const ready = {
+      ...first, glueEnabled: true, glueBeats: 8, glue: readyJunction(first.id, second.id),
+    };
+    const patch = Promise.withResolvers<Response>();
+    const appended = Promise.withResolvers<Response>();
+    const calls: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/items") && init?.method === "PATCH") {
+        calls.push("patch");
+        return patch.promise;
+      }
+      if (url.endsWith("/items") && init?.method === "POST") {
+        calls.push("append");
+        return appended.promise;
+      }
+      if (url.endsWith("/items/reorder")) {
+        calls.push("reorder");
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (url.endsWith("/api/songsets/songset-1")) {
+        calls.push("read");
+      }
+      return Promise.resolve(jsonResponse({}, false));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SongsetEditorClient songsetId="songset-1" initialData={{
+      ...data, itemCount: 2, durationSeconds: 41, items: [first, second],
+    }} />);
+    await openArrangementSheet();
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    await waitFor(() => expect(calls).toEqual(["patch"]));
+    fireEvent.click(screen.getByTestId("browse-add"));
+
+    patch.resolve(jsonResponse(ready));
+    await waitFor(() => expect(calls).toEqual(["patch", "append"]));
+    fireEvent.click(screen.getByTestId("shell-reverse"));
+    appended.resolve(jsonResponse(third));
+
+    // An order captured before the append must not overwrite the new row or
+    // the just-saved selection. The server refresh is intentionally failed
+    // here so it cannot mask an obsolete ref on the optimistic path.
+    await waitFor(() => expect(screen.getByTestId("shell-pending")).toHaveTextContent("false"));
+    expect(calls).toEqual(["patch", "append", "read"]);
+    expect(screen.getByTestId("shell-glue")).toHaveTextContent("item-1:ready:take-1");
+    expect(screen.getByTestId("shell-item-count")).toHaveTextContent("3");
+  });
+
   it("adopts the authoritative Songset when the duplicated source vanished", async () => {
     const data = initialData();
     const remove = Promise.withResolvers<Response>();
@@ -395,6 +551,32 @@ describe("SongsetEditorClient Item mutation queue", () => {
 describe("SongsetEditorClient arrangement save", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("uses ordinary timing while the saved cut's Glue is unresolved", async () => {
+    const data = initialData();
+    const first = {
+      ...data.items[0], glueEnabled: true, glueBeats: 8 as const,
+      glue: readyJunction("item-1", "item-2"),
+    };
+    const second = { ...data.items[0], id: "item-2", position: 1 };
+    const saved = JSON.stringify({
+      version: 1,
+      steps: [{ sectionIndex: 0, label: "Verse", startSeconds: 0, endSeconds: 10 }],
+    });
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(init?.method === "PUT"
+        ? jsonResponse({ arrangementSteps: saved })
+        : jsonResponse({}, false))
+    ));
+    render(<SongsetEditorClient songsetId="songset-1" initialData={{
+      ...data, itemCount: 2, durationSeconds: 46, items: [first, second],
+    }} />);
+    await openArrangementSheet();
+    fireEvent.click(screen.getByTestId("arrangement-save"));
+
+    await waitFor(() => expect(screen.getByTestId("shell-duration")).toHaveTextContent("31"));
+    expect(screen.getByTestId("shell-glue")).not.toHaveTextContent("take-1");
   });
 
   it("keeps a transition edit that landed while the arrangement save was in flight", async () => {

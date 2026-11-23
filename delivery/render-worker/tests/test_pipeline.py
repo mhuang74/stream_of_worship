@@ -5,7 +5,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sow_render_worker.audio_engine import AudioClipInfo, AudioSegmentInfo, ExportResult, SongsetItem
+from sow_render_worker.audio_engine import (
+    AudioClipInfo,
+    AudioSegmentInfo,
+    ExportResult,
+    GlueClip,
+    GlueWindow,
+    SongsetItem,
+)
+from sow_render_worker.asset_fetcher import AssetFetcher
+from sow_render_worker.r2_client import R2Client
 from sow_render_worker.chapters import ChaptersManifest, Chapter
 from sow_render_worker.db import RenderJob, RenderProgress
 from sow_render_worker.pipeline import (
@@ -14,6 +23,9 @@ from sow_render_worker.pipeline import (
     MIN_REASONABLE_RATIO,
     MAX_REASONABLE_RATIO,
     PipelineCancelledError,
+    GLUE_NOT_READY,
+    GLUE_STALE_SNAPSHOT,
+    GlueSnapshotError,
     execute_render_pipeline,
     fetch_songset_items,
     get_default_ratio,
@@ -23,6 +35,20 @@ from sow_render_worker.pipeline import (
 )
 from sow_render_worker.db import update_render_progress
 from sow_render_worker.uploader import UploadArtifactsResult
+
+
+@pytest.fixture(autouse=True)
+def _no_pinned_glue_snapshot(monkeypatch):
+    """These render-flow tests exercise jobs created before Glue existed.
+
+    Pinned-snapshot loading and validation are covered by
+    ``tests/test_pipeline_glue.py``; here the DB read returns no snapshot so the
+    ordinary render path stays the subject under test.
+    """
+    monkeypatch.setattr(
+        "sow_render_worker.pipeline.get_render_glue_transitions",
+        lambda conn, job_id: None,
+    )
 
 
 def _make_songset_item(**overrides) -> SongsetItem:
@@ -264,6 +290,7 @@ class TestFetchSongsetItems:
                 "duration_seconds": 180.0,
                 "recording_content_hash": "abc123def456",
                 "deleted_at": None,
+                "updated_at": datetime(2026, 11, 22, 10, 0, tzinfo=timezone.utc),
                 "song_title": "Test Song",
             },
             {
@@ -290,6 +317,7 @@ class TestFetchSongsetItems:
         assert len(items) == 2
         assert items[0].id == "item_1"
         assert items[0].song_title == "Test Song"
+        assert items[0].updated_at == datetime(2026, 11, 22, 10, 0, tzinfo=timezone.utc)
         assert items[1].id == "item_2"
         assert items[1].crossfade_enabled == 1
 
@@ -325,6 +353,7 @@ class TestFetchSongsetItems:
         assert "songset_items" in sql
         assert "recordings" in sql
         assert "songs" in sql
+        assert "si.updated_at" in sql
         assert "LEFT JOIN" in sql
 
     def test_query_uses_parameterized(self):
@@ -561,7 +590,37 @@ class TestExecuteRenderPipeline:
             )
 
             mock_reclaim.assert_called_once_with(mock_conn, "job_abc123", 42)
-            mock_fetcher.cleanup_temp.assert_called_once()
+            # A duplicate delivery that loses the claim never takes ownership
+            # of the job temp dir, so its finally block cannot delete the
+            # winning invocation's working files.
+            mock_fetcher.get_job_temp_dir.assert_not_called()
+
+    def test_duplicate_delivery_keeps_winner_working_files(self, tmp_path):
+        job = _make_render_job()
+        mock_conn = MagicMock()
+        mock_uploader = _make_mock_uploader()
+
+        # The winning invocation already owns <temp>/job_abc123 and is
+        # mid-encode.
+        job_dir = tmp_path / "job_abc123"
+        job_dir.mkdir()
+        (job_dir / "output.mp4").write_bytes(b"in-progress")
+        fetcher = AssetFetcher(
+            temp_dir=str(tmp_path),
+            r2_client=MagicMock(spec=R2Client),
+        )
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=None), \
+             patch("sow_render_worker.pipeline.reclaim_likely_dead_job", return_value=None):
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=fetcher,
+                uploader=mock_uploader,
+            )
+
+        assert (job_dir / "output.mp4").read_bytes() == b"in-progress"
 
     def test_pipeline_no_video(self):
         job = _make_render_job(video_enabled=False)
@@ -872,7 +931,7 @@ class TestExecuteRenderPipeline:
         mock_fetcher = _make_mock_fetcher()
         mock_uploader = _make_mock_uploader()
 
-        def fake_generate_video(audio_path, segments, output_path, progress_callback=None, timeout_check_callback=None, job_id=None):
+        def fake_generate_video(audio_path, segments, output_path, progress_callback=None, timeout_check_callback=None, job_id=None, glue_windows=()):
             if progress_callback:
                 progress_callback(1500, 3000)
 
@@ -959,7 +1018,7 @@ class TestExecuteRenderPipeline:
         mock_fetcher = _make_mock_fetcher()
         mock_uploader = _make_mock_uploader()
 
-        def fake_generate_video(audio_path, segments, output_path, progress_callback=None, timeout_check_callback=None, job_id=None):
+        def fake_generate_video(audio_path, segments, output_path, progress_callback=None, timeout_check_callback=None, job_id=None, glue_windows=()):
             if progress_callback:
                 progress_callback(500, 3000)
                 progress_callback(1000, 3000)
@@ -1097,6 +1156,181 @@ class TestExecuteRenderPipeline:
             call_args = mock_uploader.upload_render_artifacts.call_args
             artifacts = call_args[0][1]
             assert artifacts.mp3_path is None
+
+    def test_pipeline_forwards_glue_windows_to_video_and_chapters(self):
+        job = _make_render_job()
+        items = [
+            _make_songset_item(),
+            _make_songset_item(id="item_2", position=1, song_title="第二首"),
+        ]
+        segment_a = AudioSegmentInfo(
+            item=items[0],
+            audio_path="/tmp/a.mp3",
+            start_time_seconds=0.0,
+            duration_seconds=12.0,
+            gap_before_seconds=0.0,
+            clips=(
+                AudioClipInfo("/tmp/a.mp3", 0.0, 6.0, 0.0),
+                AudioClipInfo("/tmp/a.mp3", 12.0, 18.0, 6.0),
+            ),
+        )
+        segment_b = AudioSegmentInfo(
+            item=items[1],
+            audio_path="/tmp/b.mp3",
+            start_time_seconds=15.0,
+            duration_seconds=18.0,
+            gap_before_seconds=0.0,
+            clips=(
+                AudioClipInfo("/tmp/b.mp3", 6.0, 15.0, 15.0),
+                AudioClipInfo("/tmp/b.mp3", 21.0, 30.0, 24.0),
+            ),
+        )
+        glue_window = GlueWindow(
+            to_item_id="item_2", start_seconds=12.0, end_seconds=15.0
+        )
+        audio_result = ExportResult(
+            output_path="/tmp/test/output.mp3",
+            total_duration_seconds=33.0,
+            segments=(segment_a, segment_b),
+            glue_windows=(glue_window,),
+        )
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result), \
+             patch("sow_render_worker.pipeline.generate_chapters_manifest", return_value=_make_chapters_manifest()), \
+             patch("sow_render_worker.pipeline.VideoEngine") as mock_ve_class, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            mock_ve = MagicMock()
+            mock_ve_class.return_value = mock_ve
+
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+        assert mock_ve.generate_video.call_args.kwargs["glue_windows"] == (
+            glue_window,
+        )
+        injected_chapters = mock_ve.inject_chapters.call_args.args[1]
+        assert [
+            (chapter.start_seconds, chapter.end_seconds)
+            for chapter in injected_chapters
+        ] == [(0.0, 12.0), (15.0, 33.0)]
+
+    def test_pipeline_without_pinned_glue_passes_no_clips(self):
+        job = _make_render_job(video_enabled=False)
+        items = [_make_songset_item()]
+        audio_result = _make_audio_result(items)
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.calculate_total_duration", return_value=180.0) as mock_duration, \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result) as mock_generate, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+        assert mock_duration.call_args.kwargs["glue_clips"] is None
+        assert mock_generate.call_args.kwargs["glue_clips"] is None
+
+    def test_pipeline_forwards_pinned_glue_clips(self):
+        job = _make_render_job(video_enabled=False)
+        items = [
+            _make_songset_item(),
+            _make_songset_item(id="item_2", position=1),
+        ]
+        audio_result = _make_audio_result(items)
+        clips = {
+            "item_2": GlueClip(
+                path="/tmp/cache/take-1.wav",
+                take_id="take-1",
+                seconds=2.786,
+                checksum="b" * 64,
+            )
+        }
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.complete_render_job"), \
+             patch("sow_render_worker.pipeline.fail_render_job"), \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.load_render_glue_clips", return_value=clips) as mock_load, \
+             patch("sow_render_worker.pipeline.get_render_ratio", return_value=0.8), \
+             patch("sow_render_worker.pipeline.calculate_total_duration", return_value=205.0) as mock_duration, \
+             patch("sow_render_worker.pipeline.generate_songset_audio", return_value=audio_result) as mock_generate, \
+             patch("sow_render_worker.pipeline.Path") as mock_path_cls:
+
+            mock_path_cls.return_value.exists.return_value = True
+            execute_render_pipeline(
+                "job_abc123", 42, mock_conn,
+                asset_fetcher=mock_fetcher,
+                uploader=mock_uploader,
+            )
+
+        mock_load.assert_called_once_with(mock_conn, job, items, mock_fetcher)
+        assert mock_duration.call_args.kwargs["glue_clips"] is clips
+        assert mock_generate.call_args.kwargs["glue_clips"] is clips
+
+    @pytest.mark.parametrize("code", [GLUE_NOT_READY, GLUE_STALE_SNAPSHOT])
+    def test_pipeline_marks_render_failed_when_glue_snapshot_invalid(self, code):
+        job = _make_render_job(video_enabled=False)
+        items = [_make_songset_item()]
+        mock_conn = MagicMock()
+        mock_fetcher = _make_mock_fetcher()
+        mock_uploader = _make_mock_uploader()
+        error = GlueSnapshotError(
+            "AI transition a -> b: take is missing", code=code
+        )
+
+        with patch("sow_render_worker.pipeline.get_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.start_render_job", return_value=job), \
+             patch("sow_render_worker.pipeline.update_render_progress"), \
+             patch("sow_render_worker.pipeline.fail_render_job") as mock_fail, \
+             patch("sow_render_worker.pipeline.fetch_songset_items", return_value=("Worship Set", items)), \
+             patch("sow_render_worker.pipeline.load_render_glue_clips", side_effect=error):
+
+            with pytest.raises(GlueSnapshotError):
+                execute_render_pipeline(
+                    "job_abc123", 42, mock_conn,
+                    asset_fetcher=mock_fetcher,
+                    uploader=mock_uploader,
+                )
+
+        mock_fail.assert_called_once_with(
+            mock_conn,
+            "job_abc123",
+            42,
+            f"{code}: AI transition a -> b: take is missing",
+        )
 
     def test_pipeline_estimated_total_seconds(self):
         job = _make_render_job()

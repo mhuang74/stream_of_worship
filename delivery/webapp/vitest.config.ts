@@ -14,8 +14,14 @@ export default defineConfig({
     ],
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      // server-only's throwing entry must be stubbed in Vitest; Next keeps the
+      // real guard because this alias is test-only.
+      {
+        find: /^server-only$/,
+        replacement: path.resolve(__dirname, "./src/test/server-only-stub.ts"),
+      },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+    ],
   },
 });

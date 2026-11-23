@@ -151,7 +151,7 @@ The project consists of **nine architecturally separate components**:
 
 ## Development Guidelines
 
-- **Python Version**: 3.11
+- **Python Version**: 3.11, except `delivery/render-worker` which is 3.13 — its Lambda base image must declare `com.amazonaws.lambda.feature.managedinstances="Supported"` for the Glue worker's Managed Instances capacity provider, and the 3.11 base image declares `NotSupported`.
 - **Python Env**:
   - ALWAYS use `uv add` to add dependencies so it's documented in pyproject.toml
   - for running song analysis using allinone library, use Docker via lab/poc-scripts/docker/docker-compose.allinone.yml (due to dependencies on NATTEN native libraries, doesn't work on Apple Silicon MacOS)
@@ -161,7 +161,7 @@ The project consists of **nine architecturally separate components**:
 - **Configuration**: Use `config.json` (in TUI) or centralized constants. Do not hardcode paths (e.g., avoid `Path("output")`, use configured paths).
 - **Formatting**:
   - **Black**: Line length 100.
-  - **Ruff**: Line length 100, target version py311.
+  - **Ruff**: Line length 100, target version py311 (except `delivery/render-worker`, which targets py313).
 - **Output Directories**:
   - `output/transitions/`: For transition clips.
   - `output/songs/`: For full song outputs.

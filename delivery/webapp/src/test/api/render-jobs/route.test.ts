@@ -630,6 +630,130 @@ describe("POST /api/render-jobs", () => {
     expect(mockDispatchToRenderWorker).not.toHaveBeenCalled();
   });
 
+  it("returns 409 GLUE_NOT_READY with the ordered preflight payload", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const glues = [
+      {
+        fromItemId: "item-a",
+        toItemId: "item-b",
+        fromTitle: "Song A",
+        toTitle: "Song B",
+        reasonCode: "GLUE_PROVIDER_UNKNOWN",
+        jobId: "job-1",
+        jobPhase: "failed",
+        retryKind: "paid",
+      },
+    ];
+    mockGetMetrics.mockRejectedValueOnce(
+      new SongsetRenderValidationError("GLUE_NOT_READY", "blocked", {
+        code: "GLUE_NOT_READY",
+        glues,
+      })
+    );
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    // Junction readiness wins over the duration cap: this is not a 400.
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data).toEqual({ code: "GLUE_NOT_READY", glues });
+    expect(createRenderJob).not.toHaveBeenCalled();
+    expect(mockDispatchToRenderWorker).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 GLUE_NOT_READY when the snapshot check rejects at create", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+
+    const glues = [
+      {
+        fromItemId: "item-a",
+        toItemId: "item-b",
+        fromTitle: "Song A",
+        toTitle: "Song B",
+        reasonCode: "GLUE_NOT_READY",
+        jobId: null,
+        jobPhase: null,
+        retryKind: null,
+      },
+    ];
+    vi.mocked(createRenderJob).mockRejectedValueOnce(
+      new SongsetRenderValidationError("GLUE_NOT_READY", "blocked", {
+        code: "GLUE_NOT_READY",
+        glues,
+      })
+    );
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ code: "GLUE_NOT_READY", glues });
+    expect(mockDispatchToRenderWorker).not.toHaveBeenCalled();
+  });
+
+  it("enqueues exactly one worker message for an all-ready Songset", async () => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: 1 },
+    } as any);
+    vi.mocked(createRenderJob).mockResolvedValueOnce({
+      id: "job-1",
+      songsetId: "songset-1",
+      userId: 1,
+      status: "queued",
+      phase: "preparing",
+      phaseIndex: 0,
+      totalPhases: 5,
+      elapsedSeconds: 0,
+      errorMessage: null,
+      estimatedTotalSeconds: null,
+      totalDurationSeconds: null,
+      startedAt: null,
+      template: "dark",
+      resolution: "720p",
+      audioEnabled: true,
+      videoEnabled: true,
+      fontSizePreset: "M",
+      fontFamily: "noto_serif_tc",
+      includeTitleCard: false,
+      titleCardDurationSeconds: null,
+      titleCardLines: null,
+      songCount: 2,
+      songsetDurationSeconds: 200,
+      mp3R2Key: null,
+      mp4R2Key: null,
+      chaptersR2Key: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      completedAt: null,
+    } as unknown as Awaited<ReturnType<typeof createRenderJob>>);
+
+    const request = createMockRequest("http://localhost:3000/api/render-jobs", {
+      method: "POST",
+      body: JSON.stringify({ songsetId: "songset-1" }),
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    expect(mockDispatchToRenderWorker).toHaveBeenCalledTimes(1);
+    expect(mockDispatchToRenderWorker).toHaveBeenCalledWith({
+      jobId: "job-1",
+      songsetId: "songset-1",
+      userId: 1,
+    });
+  });
+
   it("returns 409 when active job already exists", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValue({
       user: { id: 1 },

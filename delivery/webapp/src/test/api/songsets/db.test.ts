@@ -83,11 +83,21 @@ function createSelectChain(rows: any[]) {
 
   Object.assign(chain, terminalMethods, {
     from: () => chain,
+    innerJoin: () => chain,
     leftJoin: () => chain,
     where: () => chain,
   });
 
-  for (const method of ["from", "leftJoin", "where", "groupBy", "orderBy", "limit", "offset"]) {
+  for (const method of [
+    "from",
+    "innerJoin",
+    "leftJoin",
+    "where",
+    "groupBy",
+    "orderBy",
+    "limit",
+    "offset",
+  ]) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
   chain.then = (cb: any) => promise.then(cb);
@@ -1219,6 +1229,10 @@ describe("getSongset", () => {
           crossfadeDurationSeconds: null,
           keyShiftSemitones: 0,
           tempoRatio: 1.0,
+          updatedAt: new Date("2024-01-02"),
+          glueEnabled: false,
+          glueBeats: 4,
+          glueActiveTakeId: null,
           song: {
             id: "song-1",
             title: "Test Song",
@@ -1326,6 +1340,8 @@ describe("createSongset", () => {
   it("rejects unknown songId with a 400 result before inserting", async () => {
     const promise = Promise.resolve([]);
     const chain = vi.fn().mockReturnValue({
+      innerJoin: vi.fn().mockReturnThis(),
+      leftJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnValue(promise),
       then: promise.then.bind(promise),
     });
@@ -1362,6 +1378,8 @@ describe("createSongset", () => {
       const promise = Promise.resolve(rows);
       return {
         from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnThis(),
+          leftJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockReturnValue({
             orderBy: vi.fn().mockReturnValue(promise),
             then: promise.then.bind(promise),
@@ -1540,6 +1558,9 @@ function persistedItemRow(extra: Record<string, unknown> = {}) {
     keyShiftSemitones: 0,
     tempoRatio: 1,
     arrangementSteps: null,
+    updatedAt: new Date("2024-01-02"),
+    glueEnabled: 0,
+    glueBeats: 4,
     song: null,
     recording: null,
     ...extra,
@@ -1549,6 +1570,7 @@ function persistedItemRow(extra: Record<string, unknown> = {}) {
 describe("addSongsetItem", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.select).mockReturnValue(createSelectChain([]) as never);
   });
 
   it("appends at max(position) + 1 after a gap left by a delete", async () => {

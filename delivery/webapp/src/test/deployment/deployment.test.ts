@@ -22,6 +22,8 @@ import * as path from "path";
 const WEBAPP_ROOT = path.resolve(__dirname, "../../../");
 const VERCEL_JSON_PATH = path.join(WEBAPP_ROOT, "vercel.json");
 const ENV_EXAMPLE_PATH = path.join(WEBAPP_ROOT, ".env.production.example");
+const LOCAL_ENV_EXAMPLE_PATH = path.join(WEBAPP_ROOT, ".env.example");
+const WORKER_ENV_EXAMPLE_PATH = path.resolve(WEBAPP_ROOT, "../render-worker/.env.example");
 const README_PATH = path.join(WEBAPP_ROOT, "README.md");
 
 // ---------------------------------------------------------------------------
@@ -96,10 +98,33 @@ describe("vercel.json — render function maxDuration", () => {
   });
 });
 
+describe("vercel.json — Glue routes", () => {
+  // Every Glue route either opens a transaction or awaits an SQS publish, so a
+  // slow DB or dispatch must not fall back to the platform default duration.
+  const GLUE_ROUTES = [
+    "src/app/api/songsets/[id]/glue-jobs/route.ts",
+    "src/app/api/glue-jobs/[id]/route.ts",
+    "src/app/api/glue-jobs/[id]/events/route.ts",
+    "src/app/api/glue-jobs/[id]/cancel/route.ts",
+    "src/app/api/glue-jobs/[id]/redispatch/route.ts",
+    "src/app/api/glue-jobs/[id]/resume/route.ts",
+    "src/app/api/glue-jobs/[id]/retry-processing/route.ts",
+    "src/app/api/glues/[takeId]/audio/route.ts",
+    "src/app/api/songsets/[id]/glue-quote/route.ts",
+  ];
+
+  it.each(GLUE_ROUTES)("sets maxDuration: 60 for %s", (route) => {
+    const config = readVercelJson();
+    const functions = config.functions as Record<string, { maxDuration?: number }>;
+    expect(functions[route]?.maxDuration).toBe(60);
+    // The route file must exist: a stale key would silently do nothing.
+    expect(fs.existsSync(path.join(WEBAPP_ROOT, route))).toBe(true);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Fluid Compute
 // ---------------------------------------------------------------------------
-
 describe("vercel.json — Fluid Compute (not required on render routes)", () => {
   it("does not enable fluid compute on render-jobs POST route", () => {
     const config = readVercelJson();
@@ -385,6 +410,83 @@ describe("README.md — deployment documentation", () => {
   it("documents Cast production approval process", () => {
     const content = readReadme();
     expect(content.toLowerCase()).toMatch(/approv|review/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Glue deployment environment variables
+// ---------------------------------------------------------------------------
+
+describe("Glue deployment environment variables", () => {
+  const envFiles = [
+    { label: "delivery/webapp/.env.example", file: LOCAL_ENV_EXAMPLE_PATH },
+    { label: "delivery/webapp/.env.production.example", file: ENV_EXAMPLE_PATH },
+    { label: "delivery/render-worker/.env.example", file: WORKER_ENV_EXAMPLE_PATH },
+  ];
+
+  for (const { label, file } of envFiles) {
+    describe(label, () => {
+      it("exists", () => {
+        expect(fs.existsSync(file)).toBe(true);
+      });
+
+      it("documents SOW_GLUE_SQS_QUEUE_URL", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
+      });
+
+      it("documents SOW_ELEVENLABS_API_KEY", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("SOW_ELEVENLABS_API_KEY=");
+      });
+
+      it("documents GLUE_CAPACITY_PROVIDER_ARN", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("GLUE_CAPACITY_PROVIDER_ARN=");
+      });
+
+      it("never exposes the provider key or queue as NEXT_PUBLIC_*", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).not.toMatch(/NEXT_PUBLIC_SOW_ELEVENLABS_API_KEY/);
+        expect(content).not.toMatch(/NEXT_PUBLIC_SOW_GLUE_SQS_QUEUE_URL/);
+        expect(content).not.toMatch(/NEXT_PUBLIC_GLUE_CAPACITY_PROVIDER_ARN/);
+      });
+
+      it("marks the provider key as server/worker only", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toMatch(/server-only|server\/worker only|worker\/server only|server only/i);
+      });
+
+      it("keeps the Glue queue separate from the render queue", () => {
+        const content = fs.readFileSync(file, "utf-8");
+        expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
+        expect(content.toLowerCase()).toMatch(/separate (queue|from)/);
+      });
+    });
+  }
+
+  it("production example includes every Glue deployment variable", () => {
+    const content = fs.readFileSync(ENV_EXAMPLE_PATH, "utf-8");
+    expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
+    expect(content).toContain("SOW_GLUE_AWS_REGION=");
+    expect(content).toContain("SOW_ELEVENLABS_API_KEY=");
+    expect(content).toContain("GLUE_CAPACITY_PROVIDER_ARN=");
+  });
+
+  it("Glue queue URL region matches the region used to sign sends", () => {
+    const content = fs.readFileSync(ENV_EXAMPLE_PATH, "utf-8");
+    const queueUrl = /^SOW_GLUE_SQS_QUEUE_URL=(.*)$/m.exec(content)?.[1] ?? "";
+    const glueRegion = /^SOW_GLUE_AWS_REGION=(.*)$/m.exec(content)?.[1] ?? "";
+    const urlRegion = /^https:\/\/sqs\.([a-z0-9-]+)\.amazonaws\.com\//.exec(queueUrl)?.[1] ?? "";
+    expect(urlRegion).not.toBe("");
+    // Signing with a different region than the URL names makes SendMessage 403.
+    expect(glueRegion).toBe(urlRegion);
+  });
+
+  it("production example ties a missing provider key to GLUE_NOT_CONFIGURED before spend", () => {
+    const content = fs.readFileSync(ENV_EXAMPLE_PATH, "utf-8");
+    expect(content).toContain("GLUE_NOT_CONFIGURED");
+    expect(content).toContain("before any paid reservation");
   });
 });
 

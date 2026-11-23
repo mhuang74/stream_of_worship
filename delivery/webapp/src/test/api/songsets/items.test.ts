@@ -23,6 +23,16 @@ vi.mock("@/lib/db/songsets", () => ({
   addSongsetItem: vi.fn(),
   updateSongsetItem: vi.fn(),
   deleteSongsetItem: vi.fn(),
+  // The route classifies these error types before its generic 500 path.
+  GlueSelectionError: class GlueSelectionError extends Error {
+    constructor(
+      readonly code: string,
+      message: string
+    ) {
+      super(message);
+      this.name = "GlueSelectionError";
+    }
+  },
   SongsetRenderValidationError: class SongsetRenderValidationError extends Error {
     constructor(
       readonly code: string,

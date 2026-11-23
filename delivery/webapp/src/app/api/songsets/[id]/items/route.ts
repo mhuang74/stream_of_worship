@@ -4,6 +4,7 @@ import {
   addSongsetItem,
   updateSongsetItem,
   deleteSongsetItem,
+  GlueSelectionError,
   SongsetRenderValidationError,
 } from "@/lib/db/songsets";
 import { z } from "zod";
@@ -27,6 +28,9 @@ const updateSongsetItemSchema = z.object({
   crossfadeDurationSeconds: z.number().optional(),
   keyShiftSemitones: z.number().int().min(-12).max(12).optional(),
   tempoRatio: z.number().positive().optional(),
+  glueEnabled: z.boolean().optional(),
+  glueBeats: z.union([z.literal(2), z.literal(4), z.literal(8), z.literal(16)]).optional(),
+  glueActiveTakeId: z.string().uuid().nullable().optional(),
 });
 
 export async function POST(
@@ -116,6 +120,12 @@ export async function PATCH(
 
     return NextResponse.json(item);
   } catch (error) {
+    if (error instanceof GlueSelectionError) {
+      return NextResponse.json(
+        { code: error.code, message: error.message },
+        { status: error.status }
+      );
+    }
     console.error("Error updating songset item:", error);
     return NextResponse.json(
       { error: "Failed to update songset item" },

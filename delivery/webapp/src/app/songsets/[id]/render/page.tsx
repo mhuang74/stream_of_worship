@@ -51,6 +51,7 @@ export default async function RenderPage({
         latestJob as unknown as Record<string, unknown> | null,
         data.userSettings
       )}
+      initialGluePreflight={data.gluePreflight ?? null}
     />
   );
 }

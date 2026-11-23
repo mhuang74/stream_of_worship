@@ -1,8 +1,17 @@
-FROM public.ecr.aws/lambda/python:3.11
+# Python 3.13 (Amazon Linux 2023) is required by Lambda Managed Instances: the
+# 3.11 base image carries com.amazonaws.lambda.feature.managedinstances="NotSupported",
+# and Lambda rejects create/update-function on a capacity provider for it. The
+# label is inherited from this base, so the Glue function can only run on the
+# shared image when it is built from 3.13.
+FROM public.ecr.aws/lambda/python:3.13
 
-RUN yum install -y google-noto-sans-cjk-fonts tar xz \
-    && yum clean all \
-    && rm -rf /var/cache/yum
+# Amazon Linux 2023 (the 3.13 Lambda base) has dnf, not yum, and ships the CJK
+# font as google-noto-sans-cjk-ttc-fonts. Assert the file the renderer actually
+# opens so a package rename fails the build, not a production lyric render.
+RUN dnf install -y google-noto-sans-cjk-ttc-fonts tar xz \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf \
+    && test -f /usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc
 
 COPY fonts/ /usr/share/fonts/truetype/vendor/
 

@@ -10,12 +10,19 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
+from PIL import Image
 
-from sow_render_worker.audio_engine import AudioClipInfo, AudioSegmentInfo, SongsetItem
+from sow_render_worker.audio_engine import (
+    AudioClipInfo,
+    AudioSegmentInfo,
+    GlueWindow,
+    SongsetItem,
+)
 from sow_render_worker.chapters import Chapter, ChaptersManifest, generate_chapters_manifest
 from sow_render_worker.frame_renderer import (
     FONT_SIZE_PRESETS,
     VIDEO_TEMPLATES,
+    GlueWindowInfo,
     SegmentInfo,
     TitleCardConfig,
     VideoTemplate,
@@ -87,6 +94,91 @@ class MockAssetFetcher:
 
     def get_temp_dir(self) -> Path:
         return Path(self._temp_dir)
+
+
+FIXTURE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "webapp"
+    / "src"
+    / "test"
+    / "fixtures"
+    / "tc-songset.cross_language.json"
+)
+
+
+def _load_tc_fixture() -> dict:
+    with FIXTURE_PATH.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _fixture_fetcher(fixture: dict) -> MockAssetFetcher:
+    lrc_by_prefix = {
+        song["recording"]["hashPrefix"]: song["lrc"] for song in fixture["songs"]
+    }
+    fetcher = MockAssetFetcher()
+
+    def download_lrc(hash_prefix: str) -> str | None:
+        return lrc_by_prefix.get(hash_prefix)
+
+    fetcher.download_lrc = download_lrc  # type: ignore[method-assign]
+    return fetcher
+
+
+def _tc_video_inputs() -> tuple[dict, list[AudioSegmentInfo], tuple[GlueWindow, ...]]:
+    fixture = _load_tc_fixture()
+    timeline = fixture["expectedTimeline"]
+    segments: list[AudioSegmentInfo] = []
+    for song, expected in zip(fixture["songs"], timeline["segments"]):
+        target_start = expected["startSeconds"]
+        clips: list[AudioClipInfo] = []
+        for step in song["arrangement"]["steps"]:
+            clips.append(
+                AudioClipInfo(
+                    audio_path="/tmp/fixture.mp3",
+                    source_start_seconds=step["startSeconds"],
+                    source_end_seconds=step["endSeconds"],
+                    start_time_seconds=target_start,
+                )
+            )
+            target_start += step["endSeconds"] - step["startSeconds"]
+        assert target_start == pytest.approx(expected["endSeconds"])
+        item = _make_item(
+            id=song["itemId"],
+            song_id=song["songId"],
+            song_title=song["title"],
+            position=song["position"],
+            recording_hash_prefix=song["recording"]["hashPrefix"],
+            tempo_bpm=song["analysis"]["tempoBpm"],
+            duration_seconds=song["recording"]["durationSeconds"],
+        )
+        segments.append(
+            _make_segment(
+                item=item,
+                start_time_seconds=expected["startSeconds"],
+                duration_seconds=expected["durationSeconds"],
+                clips=tuple(clips),
+            )
+        )
+
+    windows = tuple(
+        GlueWindow(
+            to_item_id=window["toItemId"],
+            start_seconds=window["startSeconds"],
+            end_seconds=window["endSeconds"],
+        )
+        for window in timeline["glueWindows"]
+    )
+    return fixture, segments, windows
+
+
+def _make_fake_process() -> MagicMock:
+    process = MagicMock()
+    process.stdin = MagicMock()
+    process.stdin.write = MagicMock()
+    process.wait.return_value = 0
+    process.stderr = MagicMock()
+    process.stderr.read.return_value = b""
+    return process
 
 
 class TestVideoEngineInit:
@@ -640,9 +732,13 @@ class TestEncodeVideoWithFFmpeg:
         render_times: list[float] = []
         original_render_frame_bytes = engine.frame_renderer.render_frame_bytes
 
-        def capture_render_time(lyrics_arg, segments_arg, current_time):
+        def capture_render_time(
+            lyrics_arg, segments_arg, current_time, glue_windows=()
+        ):
             render_times.append(current_time)
-            return original_render_frame_bytes(lyrics_arg, segments_arg, current_time)
+            return original_render_frame_bytes(
+                lyrics_arg, segments_arg, current_time, glue_windows=glue_windows
+            )
 
         with (
             patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen,
@@ -1478,3 +1574,239 @@ class TestClampTitleCardDuration:
     def test_clamps_to_worker_range(self):
         assert clamp_title_card_duration(1.0) == 5.0
         assert clamp_title_card_duration(45.0) == 30.0
+
+
+class TestGlueWindowVideoTimeline:
+    def test_fixture_glue_junction_facts_are_valid_and_canonical(self):
+        from sow_render_worker.arrangements import validate_arrangement
+        from sow_render_worker.glue_descriptor import build_descriptor
+
+        fixture = _load_tc_fixture()
+        glue = fixture["glue"][0]
+
+        assert glue["stagedSeconds"] == glue["generationSeconds"] == 3.0
+        assert glue["stagedSeconds"] == glue["beats"] * 60.0 / glue["toTempoBpm"]
+        assert fixture["expectedTimeline"]["glueWindows"][0]["startSeconds"] == (
+            fixture["expectedTimeline"]["segments"][0]["endSeconds"]
+        )
+        assert fixture["expectedTimeline"]["glueWindows"][0]["endSeconds"] == (
+            fixture["expectedTimeline"]["segments"][1]["startSeconds"]
+        )
+
+        b_song = fixture["songs"][1]
+        assert b_song["crossfadeEnabled"] is False
+        assert (
+            b_song["gapBeats"] * 60.0 / b_song["analysis"]["tempoBpm"]
+            == fixture["expectedTimeline"]["ordinaryGapComparison"][
+                "ordinaryGapSeconds"
+            ]
+        )
+
+        sides = []
+        for song in fixture["songs"]:
+            sections = song["analysis"]["sections"]
+            beats = song["analysis"]["beats"]
+            steps = validate_arrangement(
+                json.dumps(song["arrangement"]),
+                json.dumps(sections),
+                json.dumps(beats),
+                song["recording"]["durationSeconds"],
+            )
+            assert steps is not None
+            assert [
+                (step.label, step.start_seconds, step.end_seconds) for step in steps
+            ] == [
+                (step["label"], step["startSeconds"], step["endSeconds"])
+                for step in song["arrangement"]["steps"]
+            ]
+            assert sum(step.duration_seconds for step in steps) == song[
+                "arrangedDurationSeconds"
+            ]
+            sides.append(
+                {
+                    "contentHash": song["recording"]["contentHash"],
+                    "steps": [
+                        [step["startSeconds"], step["endSeconds"]]
+                        for step in song["arrangement"]["steps"]
+                    ],
+                }
+            )
+
+        _, canonical_json, descriptor_key = build_descriptor(
+            beats=glue["beats"],
+            to_tempo_bpm=glue["toTempoBpm"],
+            from_side=sides[0],
+            to_side=sides[1],
+        )
+        assert canonical_json == glue["descriptorJson"]
+        assert descriptor_key == glue["descriptorKey"]
+
+    def test_generate_video_threads_glue_windows(self, tmp_path):
+        fixture, segments, windows = _tc_video_inputs()
+        timeline = fixture["expectedTimeline"]
+        fetcher = _fixture_fetcher(fixture)
+        engine = VideoEngine(fetcher, include_title_card=False)
+        output_path = str(tmp_path / "video.mp4")
+        audio_info = {
+            "duration_seconds": timeline["totalSeconds"],
+            "duration_ms": int(timeline["totalSeconds"] * 1000),
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg") as mock_encode,
+        ):
+            result = engine.generate_video(
+                "/tmp/audio.mp3",
+                segments,
+                output_path,
+                job_id="glue-job",
+                glue_windows=windows,
+            )
+
+        assert result.duration_seconds == timeline["totalSeconds"]
+        assert result.total_frames == math.ceil(timeline["totalSeconds"] * 24)
+
+        encode_kwargs = mock_encode.call_args.kwargs
+        assert encode_kwargs["glue_windows"] == (
+            GlueWindowInfo(
+                to_item_id="item-b", start_seconds=12.0, end_seconds=15.0
+            ),
+        )
+
+        lyrics = mock_encode.call_args.args[4]
+        for song in fixture["songs"]:
+            assert [
+                (line.text, line.global_time_seconds)
+                for line in lyrics
+                if line.item_id == song["itemId"]
+            ] == [
+                (line["text"], line["globalSeconds"]) for line in song["lyrics"]
+            ]
+
+        assert (
+            timeline["firstLyricGlobalSeconds"]["item-b"]
+            == fixture["songs"][1]["lyrics"][0]["globalSeconds"]
+        )
+
+    def test_mp4_duration_and_chapters_match_mp3_timeline(self, tmp_path):
+        fixture, segments, windows = _tc_video_inputs()
+        timeline = fixture["expectedTimeline"]
+        fetcher = _fixture_fetcher(fixture)
+        engine = VideoEngine(fetcher, include_title_card=False)
+        output_path = str(tmp_path / "video.mp4")
+        audio_info = {
+            "duration_seconds": timeline["totalSeconds"],
+            "duration_ms": int(timeline["totalSeconds"] * 1000),
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+
+        manifest = generate_chapters_manifest(
+            list(segments), fetcher.download_lrc, timeline["totalSeconds"]
+        )
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "encode_video_with_ffmpeg"),
+        ):
+            result = engine.generate_video(
+                "/tmp/audio.mp3", segments, output_path, glue_windows=windows
+            )
+
+        assert result.duration_seconds == manifest.total_duration_seconds == 33.0
+        assert [
+            (chapter.start_seconds, chapter.end_seconds)
+            for chapter in manifest.chapters
+        ] == [(0.0, 12.0), (15.0, 33.0)]
+        assert manifest.chapters[1].start_seconds == windows[0].end_seconds
+
+    def test_encode_passes_windows_to_frame_renderer(self, tmp_path):
+        engine = VideoEngine(MockAssetFetcher(), fps=24)
+        engine.frame_renderer.render_frame_bytes = MagicMock(  # type: ignore[method-assign]
+            return_value=b"\x00" * (1920 * 1080 * 3)
+        )
+        windows = (
+            GlueWindowInfo("item-b", 12.0, 15.0),
+            GlueWindowInfo("item-c", 22.0, 25.0),
+        )
+
+        with patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen:
+            mock_popen.return_value = _make_fake_process()
+            engine.encode_video_with_ffmpeg(
+                "/tmp/audio.mp3",
+                str(tmp_path / "video.mp4"),
+                total_frames=2,
+                total_duration_seconds=2 / 24,
+                lyrics=[],
+                segments=[],
+                glue_windows=windows,
+            )
+
+        assert engine.frame_renderer.render_frame_bytes.call_count == 2
+        for call in engine.frame_renderer.render_frame_bytes.call_args_list:
+            assert call.kwargs["glue_windows"] == windows
+
+    def test_glue_adds_no_title_card(self, tmp_path):
+        engine = VideoEngine(MockAssetFetcher(), fps=24)
+        windows = (GlueWindowInfo("item-b", 12.0, 15.0),)
+        config = TitleCardConfig(
+            enabled=True,
+            duration_seconds=33.0,
+            lines=("主日敬拜", "清晨的讚美", "祢的信實廣大"),
+            total_duration_seconds=33.0,
+        )
+
+        with (
+            patch.object(engine.frame_renderer, "render_title_card") as render_card,
+            patch("sow_render_worker.video_engine.subprocess.Popen") as mock_popen,
+        ):
+            render_card.return_value = Image.new("RGB", (1920, 1080))
+            mock_popen.return_value = _make_fake_process()
+            engine.encode_video_with_ffmpeg(
+                "/tmp/audio.mp3",
+                str(tmp_path / "video.mp4"),
+                total_frames=2,
+                total_duration_seconds=2 / 24,
+                lyrics=[],
+                segments=[],
+                title_card_config=config,
+                glue_windows=windows,
+            )
+
+        render_card.assert_called_once_with(config)
+
+    def test_generate_blank_video_accepts_glue_windows(self, tmp_path):
+        fixture, _, windows = _tc_video_inputs()
+        fetcher = MockAssetFetcher(lrc_content=None)
+        engine = VideoEngine(fetcher)
+        output_path = str(tmp_path / "video.mp4")
+        audio_info = {
+            "duration_seconds": 33.0,
+            "duration_ms": 33000,
+            "sample_rate": 44100,
+            "channels": 2,
+        }
+        blank_result = VideoExportResult(
+            output_path=output_path,
+            total_frames=math.ceil(33.0 * 24),
+            duration_seconds=33.0,
+            width=1920,
+            height=1080,
+            fps=24,
+        )
+
+        with (
+            patch("sow_render_worker.video_engine.get_audio_info", return_value=audio_info),
+            patch.object(engine, "generate_blank_video", return_value=blank_result) as blank,
+        ):
+            result = engine.generate_video(
+                "/tmp/audio.mp3", [], output_path, glue_windows=windows
+            )
+
+        blank.assert_called_once_with(
+            "/tmp/audio.mp3", output_path, 33.0, job_id=None
+        )
+        assert result == blank_result

@@ -1315,3 +1315,207 @@ describe("validateSongsetAudioSources", () => {
     ).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Glue audition (issue #319)
+// ---------------------------------------------------------------------------
+
+describe("songset audio Glue scheduling", () => {
+  function glueItems(): TimelineItemSource[] {
+    return [
+      source({
+        itemId: "a",
+        recordingDurationSeconds: 10,
+        glueTakeId: "take-1",
+        glueSeconds: 3,
+      }),
+      source({ itemId: "b", recordingDurationSeconds: 10 }),
+    ];
+  }
+
+  function cacheSpy() {
+    const base = createAudioBytesCache({ maxBytes: 1 << 20 });
+    const load = vi.fn(
+      (key: string, fetchBytes: Parameters<typeof base.load>[1]) =>
+        base.load(key, fetchBytes),
+    );
+    return {
+      cache: { load, clear: base.clear, get memoryBytes() { return base.memoryBytes; } },
+      load,
+    };
+  }
+
+  it("loads glue bytes under glue:<takeId> and schedules them at the junction", async () => {
+    const { cache, load } = cacheSpy();
+    const { session, context } = buildSession(glueItems(), { audioBytesCache: cache });
+    context.decodeAudioData
+      .mockResolvedValueOnce(decodedBuffer(1000)) // A recording
+      .mockResolvedValueOnce(decodedBuffer(1000)) // B recording
+      .mockResolvedValueOnce(decodedBuffer(300)); // 3 s Glue
+
+    await session.play();
+    // The outgoing junction's Glue belongs to B and is not fetched while only
+    // A is prepared.
+    expect(load.mock.calls.map((call) => call[0])).toEqual(["hash-a"]);
+
+    await vi.advanceTimersByTimeAsync(200); // prepare-ahead B + its Glue
+    await flushMicrotasks();
+
+    expect(load.mock.calls.map((call) => call[0])).toContain("glue:take-1");
+
+    const glueSource = context.sources.find(
+      (record) => record.buffer !== null && record.buffer.duration === 3,
+    );
+    expect(glueSource).toBeDefined();
+    expect(glueSource!.starts[0]).toMatchObject({ when: 10, offset: 0, duration: 3 });
+
+    // B starts after the staged Glue, never at A's end.
+    const bSource = context.sources.find(
+      (record) => record.buffer !== null && record.buffer.duration === 10 &&
+        record.starts[0]?.when === 13,
+    );
+    expect(bSource).toBeDefined();
+  });
+
+  it("seeks into the middle of a Glue with the correct buffer offset", async () => {
+    const { session, context } = buildSession(glueItems());
+    context.decodeAudioData
+      .mockResolvedValueOnce(decodedBuffer(1000))
+      .mockResolvedValueOnce(decodedBuffer(1000))
+      .mockResolvedValueOnce(decodedBuffer(300));
+
+    await session.play();
+    // Position 11.5 s is 1.5 s into the 10–13 s Glue window.
+    session.seek(11.5);
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+
+    const glueSource = context.sources.find(
+      (record) => record.buffer !== null && record.buffer.duration === 3,
+    );
+    expect(glueSource).toBeDefined();
+    expect(glueSource!.starts[0]!.when).toBeCloseTo(0, 6);
+    expect(glueSource!.starts[0]!.offset).toBeCloseTo(1.5, 6);
+    expect(glueSource!.starts[0]!.duration).toBeCloseTo(1.5, 6);
+
+    const bSource = context.sources.find(
+      (record) => record.buffer !== null && record.buffer.duration === 10 &&
+        record.starts[0]?.when === 1.5,
+    );
+    expect(bSource).toBeDefined();
+  });
+
+  it("never fetches a Glue without a server-resolved take and keeps ordinary timing", async () => {
+    const { cache, load } = cacheSpy();
+    const { session, context } = buildSession(
+      [
+        source({ itemId: "a", recordingDurationSeconds: 10 }),
+        source({ itemId: "b", recordingDurationSeconds: 10 }),
+      ],
+      { audioBytesCache: cache },
+    );
+
+    await session.play();
+    await vi.advanceTimersByTimeAsync(200);
+    await flushMicrotasks();
+
+    expect(load.mock.calls.map((call) => call[0])).toEqual(["hash-a", "hash-b"]);
+    expect(
+      context.sources.some((record) => record.buffer !== null && record.buffer.duration === 3),
+    ).toBe(false);
+    const bSource = context.sources.find(
+      (record) => record.buffer !== null && record.buffer.duration === 10 &&
+        record.starts[0]?.when === 10,
+    );
+    expect(bSource).toBeDefined();
+  });
+
+  it("never schedules a take without staged seconds", async () => {
+    const { cache, load } = cacheSpy();
+    const { session, context } = buildSession(
+      [
+        source({
+          itemId: "a",
+          recordingDurationSeconds: 10,
+          glueTakeId: "take-1",
+          glueSeconds: 0,
+        }),
+        source({ itemId: "b", recordingDurationSeconds: 10 }),
+      ],
+      { audioBytesCache: cache },
+    );
+
+    await session.play();
+    await vi.advanceTimersByTimeAsync(200);
+    await flushMicrotasks();
+
+    expect(load.mock.calls.map((call) => call[0])).toEqual(["hash-a", "hash-b"]);
+    const bSource = context.sources.find(
+      (record) =>
+        record.buffer !== null &&
+        record.buffer.duration === 10 &&
+        record.starts[0]?.when === 10,
+    );
+    expect(bSource).toBeDefined();
+  });
+
+  it("stops scheduled Glue sources on stop", async () => {
+    const { session, context } = buildSession(glueItems());
+    context.decodeAudioData
+      .mockResolvedValueOnce(decodedBuffer(1000))
+      .mockResolvedValueOnce(decodedBuffer(1000))
+      .mockResolvedValueOnce(decodedBuffer(300));
+
+    await session.play();
+    await vi.advanceTimersByTimeAsync(200);
+    await flushMicrotasks();
+
+    const glueSource = context.sources.find(
+      (record) => record.buffer !== null && record.buffer.duration === 3,
+    );
+    expect(glueSource).toBeDefined();
+    session.stop();
+    expect(glueSource!.stops).toBeGreaterThanOrEqual(1);
+  });
+
+  it("reports a local Glue failure without stopping playback or retrying forever", async () => {
+    const onGlueFailure = vi.fn();
+    const fetchArrayBuffer = vi.fn(async (url: string) => {
+      if (url.startsWith("/api/glues/")) throw new Error("HTTP 404");
+      return new ArrayBuffer(8);
+    });
+    const { session } = buildSession(glueItems(), {
+      fetchArrayBuffer,
+      onGlueFailure,
+    });
+
+    await session.play();
+    await vi.advanceTimersByTimeAsync(200);
+    await flushMicrotasks();
+
+    expect(onGlueFailure).toHaveBeenCalledTimes(1);
+    expect(onGlueFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        takeId: "take-1",
+        fromItemId: "a",
+        toItemId: "b",
+        message: "HTTP 404",
+      }),
+    );
+    expect(session.isPlaying()).toBe(true);
+    expect(session.getError()).toBeNull();
+
+    // A failed take is not hammered: a further seek/prepare is a no-op.
+    const glueCalls = fetchArrayBuffer.mock.calls.filter(([url]) =>
+      String(url).startsWith("/api/glues/"),
+    ).length;
+    session.seek(11);
+    await vi.advanceTimersByTimeAsync(0);
+    await flushMicrotasks();
+    expect(
+      fetchArrayBuffer.mock.calls.filter(([url]) =>
+        String(url).startsWith("/api/glues/"),
+      ).length,
+    ).toBe(glueCalls);
+  });
+});

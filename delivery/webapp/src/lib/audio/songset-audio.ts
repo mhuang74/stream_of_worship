@@ -55,8 +55,22 @@ export interface SongsetAudioProgress {
   totalBytes: number | null;
 }
 
+/** One local Glue load failure, reported without stopping the audition. */
+export interface SongsetAudioGlueFailure {
+  takeId: string;
+  fromItemId: string | null;
+  toItemId: string;
+  message: string;
+}
+
+/** Same-origin proxy URL for one immutable AI-transition take. */
+export function glueAudioUrl(takeId: string): string {
+  return `/api/glues/${encodeURIComponent(takeId)}/audio`;
+}
+
 export interface SongsetAudioSessionOptions {
   audioUrlFor?: (hashPrefix: string) => string;
+  glueAudioUrlFor?: (takeId: string) => string;
   createAudioContext?: () => AudioContext;
   fetchArrayBuffer?: (
     url: string,
@@ -67,6 +81,8 @@ export interface SongsetAudioSessionOptions {
   retainedBudgetSeconds?: number;
   /** Byte cache shared across sessions; defaults to the process-wide cache. */
   audioBytesCache?: AudioBytesCache;
+  /** Local Glue fetch/decode failure; the session keeps playing. */
+  onGlueFailure?: (failure: SongsetAudioGlueFailure) => void;
 }
 
 export interface SongsetAudioSession {
@@ -190,6 +206,7 @@ export function createSongsetAudioSession(
   const totalSeconds = timeline.totalSeconds;
   const itemCount = timeline.items.length;
   const audioUrlFor = options.audioUrlFor ?? recordingAudioUrl;
+  const glueUrlFor = options.glueAudioUrlFor ?? glueAudioUrl;
   const createAudioContext = options.createAudioContext ?? getAudioContext;
   const fetchArrayBuffer = options.fetchArrayBuffer ?? fetchAudioBytes;
   const audioBytesCache = options.audioBytesCache ?? sharedAudioBytesCache;
@@ -214,6 +231,13 @@ export function createSongsetAudioSession(
 
   const prepared = new Map<number, StoredClip[]>();
   let activePrepare: ActivePrepare | null = null;
+
+  // Decoded Glue buffers keyed by immutable take id. `failedGlueTakes` stops
+  // repeated fetches for a take that already failed locally; the hook rebuilds
+  // the timeline without those takes.
+  const preparedGlue = new Map<string, AudioBuffer>();
+  const glueInFlight = new Map<string, Promise<void>>();
+  const failedGlueTakes = new Set<string>();
 
   interface ScheduledGraph {
     sources: AudioBufferSourceNode[];
@@ -401,6 +425,37 @@ export function createSongsetAudioSession(
     const graph: ScheduledGraph = { sources: [], gains: [gainIn, gainOut] };
     scheduledGraphs.set(index, graph);
 
+    // The Glue plays on a neutral gain: its 20 ms fades and gain staging were
+    // baked into the staged WAV, so no extra envelope is applied. A seek that
+    // lands inside the window keeps the correct buffer offset.
+    const glueWindow = item.glueWindowBefore;
+    if (glueWindow !== null && glueWindow.endSeconds > atSeconds) {
+      const glueBuffer = preparedGlue.get(glueWindow.takeId);
+      if (glueBuffer) {
+        const glueGain = ctx.createGain();
+        glueGain.gain.setValueAtTime(1, originContextTime);
+        glueGain.connect(ctx.destination);
+        const source = ctx.createBufferSource();
+        source.buffer = glueBuffer;
+        source.connect(glueGain);
+        const windowStart = Math.max(atSeconds, glueWindow.startSeconds);
+        const duration = glueWindow.endSeconds - windowStart;
+        if (duration > 0) {
+          source.start(
+            originContextTime +
+              Math.max(0, glueWindow.startSeconds - atSeconds),
+            clamp(atSeconds - glueWindow.startSeconds, 0, glueBuffer.duration),
+            duration,
+          );
+          graph.sources.push(source);
+          graph.gains.push(glueGain);
+        } else {
+          source.disconnect();
+          glueGain.disconnect();
+        }
+      }
+    }
+
     for (let clipIndex = 0; clipIndex < storedClips.length; clipIndex++) {
       const clip = item.clips[clipIndex];
       const stored = storedClips[clipIndex];
@@ -433,7 +488,8 @@ export function createSongsetAudioSession(
     for (let index = 0; index < itemCount; index++) {
       const item = timeline.items[index]!;
       const itemEnd = item.startSeconds + item.durationSeconds;
-      if (itemEnd <= atSeconds) continue;
+      const glueEnd = item.glueWindowBefore?.endSeconds ?? itemEnd;
+      if (Math.max(itemEnd, glueEnd) <= atSeconds) continue;
       if (!prepared.has(index)) continue;
       scheduleItem(index, atSeconds, originContextTime, ctx);
     }
@@ -587,6 +643,9 @@ export function createSongsetAudioSession(
         };
       });
       prepared.set(index, storedClips);
+      // The Glue belongs to the incoming item's junction, so it is decoded
+      // before the item becomes playable. Failure stays local.
+      await prepareGlueFor(index);
 
       const readyProgress = getProgress();
       if (readyProgress !== null) {
@@ -600,6 +659,58 @@ export function createSongsetAudioSession(
       reportError("playback-failed", item.itemId, errorMessage(cause));
       throw cause;
     }
+  }
+
+  /**
+   * Fetches and decodes the Glue played into item `index`. Failure is local and
+   * non-fatal: the take is remembered as failed, the subscriber is notified
+   * (the hook rebuilds without it), and playback continues. Never called for a
+   * junction without a server-resolved ready take, so an unfinished take is
+   * never scheduled.
+   */
+  function prepareGlueFor(index: number): Promise<void> {
+    const item = timeline.items[index];
+    const window = item?.glueWindowBefore ?? null;
+    if (!window) return Promise.resolve();
+    const takeId = window.takeId;
+    if (preparedGlue.has(takeId) || failedGlueTakes.has(takeId)) {
+      return Promise.resolve();
+    }
+    const inFlight = glueInFlight.get(takeId);
+    if (inFlight) return inFlight;
+
+    const fromItemId = timeline.items[index - 1]?.itemId ?? null;
+    const toItemId = item!.itemId;
+    const promise = (async () => {
+      try {
+        const url = glueUrlFor(takeId);
+        const data = await audioBytesCache.load(`glue:${takeId}`, (onProgress) =>
+          fetchArrayBuffer(url, onProgress),
+        );
+        if (inert) return;
+        const decoded = await getContext().decodeAudioData(data);
+        if (inert) return;
+        preparedGlue.set(takeId, decoded);
+      } catch (cause) {
+        if (inert) return;
+        failedGlueTakes.add(takeId);
+        const failure: SongsetAudioGlueFailure = {
+          takeId,
+          fromItemId,
+          toItemId,
+          message: errorMessage(cause),
+        };
+        try {
+          options.onGlueFailure?.(failure);
+        } catch {
+          // A subscriber must never corrupt transport state.
+        }
+      } finally {
+        glueInFlight.delete(takeId);
+      }
+    })();
+    glueInFlight.set(takeId, promise);
+    return promise;
   }
 
   function prepare(index: number): Promise<void> {
@@ -783,6 +894,9 @@ export function createSongsetAudioSession(
     teardownGraph();
     stopTicker();
     prepared.clear();
+    preparedGlue.clear();
+    glueInFlight.clear();
+    failedGlueTakes.clear();
     progress = null;
     error = null;
     notify();

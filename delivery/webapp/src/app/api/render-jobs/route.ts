@@ -57,6 +57,14 @@ export async function POST(request: NextRequest) {
       );
     } catch (error) {
       if (error instanceof SongsetRenderValidationError) {
+        if (error.code === "GLUE_NOT_READY") {
+          // Blocking AI-transition preflight (spec §5.5): every unresolved
+          // Junction and its remedies, ordered by Songset position.
+          return NextResponse.json(
+            { code: error.code, glues: error.glue?.glues ?? [] },
+            { status: 409 }
+          );
+        }
         if (error.code !== "SONGSET_NOT_FOUND") {
           // Analysis/staleness failure: the stored arrangement must be
           // repaired or reset. Existing concurrent-job 409s are separate.
@@ -120,6 +128,12 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       // The arrangement can change between the admission read above and this
       // write; a second-pass analysis failure is the same client-visible 409.
+      if (err instanceof SongsetRenderValidationError && err.code === "GLUE_NOT_READY") {
+        return NextResponse.json(
+          { code: err.code, glues: err.glue?.glues ?? [] },
+          { status: 409 }
+        );
+      }
       if (
         err instanceof SongsetRenderValidationError &&
         err.code !== "SONGSET_NOT_FOUND"

@@ -138,10 +138,11 @@ Cloudflare R2 — stores rendered artifacts
 
 ## Prerequisites
 
-- Python 3.11
+- Python 3.13 — the shared image is built from `public.ecr.aws/lambda/python:3.13`, whose inherited `com.amazonaws.lambda.feature.managedinstances` label is `Supported` (the 3.11 base sets it to `NotSupported`, which blocks Managed Instances)
 - Docker (for containerized builds)
 - FFmpeg and CJK fonts (installed in the Docker image)
 - AWS account with SQS, Lambda, and private ECR access
+- AWS Lambda Managed Instances capacity provider for the Glue worker (standard Lambda's 1800 s asynchronous cap is below the required 1900 s)
 - Cloudflare R2 account (credentials required for both build time and runtime)
 - Neon PostgreSQL database
 - A `.env` file with R2 credentials (used at Docker build time via build args and at runtime)
@@ -156,7 +157,11 @@ Cloudflare R2 — stores rendered artifacts
 | `SOW_R2_ACCESS_KEY_ID` | R2 access key ID (also used at Docker build time) |
 | `SOW_R2_SECRET_ACCESS_KEY` | R2 secret access key (also used at Docker build time) |
 | `SOW_AWS_REGION` | AWS region for SQS and Lambda (default: `us-west-2`) |
+| `SOW_GLUE_AWS_REGION` | Optional webapp-side region for signing Glue queue sends; must match the `SOW_GLUE_SQS_QUEUE_URL` region and falls back to `SOW_AWS_REGION` when empty |
 | `SOW_SQS_QUEUE_URL` | SQS queue URL for render job messages |
+| `SOW_GLUE_SQS_QUEUE_URL` | SQS queue URL for Glue (AI transition) job messages — separate from the render queue |
+| `SOW_ELEVENLABS_API_KEY` | ElevenLabs key for paid Glue stages. Worker/server only: never `NEXT_PUBLIC_*`, never logged, never set on the render-worker function. Unset disables paid Glue with `GLUE_NOT_CONFIGURED` before reservation/spend |
+| `GLUE_CAPACITY_PROVIDER_ARN` | Deploy-time only: Lambda Managed Instances capacity provider ARN for `deploy/aws-up-glue.sh` |
 
 Copy `.env.example` to `.env` and fill in the values for local development.
 
@@ -213,7 +218,9 @@ When a new johnvansickle release is available:
 
 Two properties of the base image and the registry path are load-bearing — both have already broken a deploy:
 
-**Dependencies must have a wheel the Lambda base image accepts.** `public.ecr.aws/lambda/python:3.11` is glibc 2.26 and has no compiler, so a package whose wheels are `manylinux_2_28`+ resolves to its sdist and the build dies with `No such file or directory: 'gcc'`. Both Dockerfiles pass `--only-binary=:all:`, which turns that into an immediate resolution error naming the package. This is why `requirements.txt` pins `Pillow==12.2.0` (last release with a `manylinux2014` cp311 wheel) instead of `Pillow>=10.0.0`.
+**Dependencies must have a cp313 wheel the Lambda base image accepts.** `public.ecr.aws/lambda/python:3.13` is Amazon Linux 2023 (glibc 2.34) with no compiler, so a package without a `cp313` manylinux wheel resolves to its sdist and the build dies with `No such file or directory: 'gcc'`. Both Dockerfiles pass `--only-binary=:all:`, which turns that into an immediate resolution error naming the package. This is why `requirements.txt` requires `numpy>=2.1` (numpy 1.26 has no cp313 wheel) and pins `soundfile==0.12.1`.
+
+**The base image must be Python 3.13 or later.** Lambda Managed Instances only accept runtimes that declare `com.amazonaws.lambda.feature.managedinstances="Supported"`; the 3.11 base image sets it to `NotSupported`, so `CreateFunction`/`UpdateFunctionConfiguration` on the Glue capacity provider fails. The label is inherited from the base image, which is why the shared image is built from 3.13.
 
 **The pushed image must be a Docker schema2 manifest.** `UpdateFunctionCode` rejects OCI image indexes and provenance attestations with `The image manifest, config or layer media type for the source image ... is not supported`. Docker 29 with the containerd image store emits an OCI index plus an attestation manifest by default, so the build runs through buildx with `--platform linux/amd64 --provenance=false --sbom=false` and pushes inside the build via `--output type=image,…,push=true,oci-mediatypes=false`. Compare `aws ecr describe-images --query 'imageDetails[*].imageManifestMediaType'` (`application/vnd.docker.distribution.manifest.v2+json`) when a deploy fails this way.
 
@@ -390,13 +397,74 @@ Create the SQS queue and dead-letter queue in AWS:
      --event-source-arn arn:aws:sqs:us-west-2:762288208920:sow-render-jobs
    ```
 
+### Glue Worker (AI Transitions)
+
+The Glue worker runs the **same ECR image** as the render worker but as a
+separate Lambda function and queue, so paid AI-transition generation never
+reduces render throughput.
+
+| Setting | Value |
+|---|---|
+| Queue | `sow-glue-jobs` |
+| Dead-letter queue | `sow-glue-jobs-dlq` |
+| Visibility timeout | 2100 s (must exceed the function timeout) |
+| Redrive | `maxReceiveCount: 3` |
+| Function | `sow-glue-worker` on AWS Lambda **Managed Instances** |
+| Function timeout | 1900 s (standard Lambda's 1800 s asynchronous cap is not eligible) |
+| Event-source mapping | batch size 1, `ReportBatchItemFailures` (Managed Instances reject `MaximumConcurrency`; provider concurrency is capped by max 2 execution environments x `PerExecutionEnvironmentMaxConcurrency=1`) |
+| Provider concurrency | 2 = `MaxExecutionEnvironments=2` x `PerExecutionEnvironmentMaxConcurrency=1`. This is the only cap Managed Instances allow: the event-source mapping rejects `ScalingConfig.MaximumConcurrency`, and `ProvisionedPollerConfig.MaximumPollers` sizes the prefetch window rather than in-flight jobs |
+
+Run `deploy/aws-up-glue.sh` (requires `GLUE_CAPACITY_PROVIDER_ARN`; the script
+fails fast without it and never prints secrets) to create or update the queue,
+DLQ, Managed Instances function, event-source mapping, and a published
+version. Managed Instances require `aws lambda publish-version`.
+
+`SOW_ELEVENLABS_API_KEY` is set on the **Glue function only**. It is never set
+on the render-worker function, never returned to the browser, and never
+`NEXT_PUBLIC_*`. If the key is missing, the job fails with
+`GLUE_NOT_CONFIGURED` before any paid reservation or spend. Creating the key
+and making paid calls requires separate authorization (spec §7.3).
+
+Provider account prerequisites: a paid ElevenLabs workspace with Music
+inpainting access, sufficient credits, supported model `music_v2_5`, and
+capacity for concurrency 2. Account entitlement/plan failures are
+non-retryable in place.
+
+Run `deploy/glue-observability.sh` to create the CloudWatch metric filters and
+alarms for DLQ arrivals, ambiguous provider outcomes, stale queue age, missing
+heartbeats, and staging-recovery spikes. The same script publishes the spec
+§4.2 counters under the `SOW/Glue` namespace: paid attempts
+(`GluePaidAttempt`), claimed/failed jobs, redeliveries, cache hits, cached
+copyright rejections, persisted raw responses, staging recoveries and staging
+faults. Set `GLUE_ALARM_SNS_TOPIC_ARN` to route alarm notifications. Operator
+recovery is documented in `docs/glue-operator-runbook.md`, keyed by
+`glue_jobs.id`.
+
 ### IAM Permissions
 
 The Lambda execution role needs:
 
 - `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on the render jobs queue
+- `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on `sow-glue-jobs`
 - `s3:GetObject`, `s3:PutObject`, `s3:HeadObject`, `s3:DeleteObject` on the R2 bucket (if using IAM-compatible endpoint)
 - `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` for pulling the container image
+- `logs:CreateLogStream`, `logs:PutLogEvents` on the `sow-glue-worker` log group
+
+The deploying principal (local admin profile or the GitHub deploy role) needs,
+in addition to the above:
+
+- `lambda:GetFunctionConfiguration`, `lambda:GetFunction`, `lambda:ListFunctions`
+- `lambda:CreateFunction`, `lambda:UpdateFunctionCode`, `lambda:UpdateFunctionConfiguration`
+- `lambda:PublishVersion`, `lambda:PutFunctionScalingConfig`
+- `lambda:ListEventSourceMappings`, `lambda:CreateEventSourceMapping`, `lambda:UpdateEventSourceMapping`
+- `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`
+  on `sow-glue-jobs` and `sow-glue-jobs-dlq`
+- `iam:PassRole` for the Glue worker execution role
+- `logs:DescribeLogGroups`, `logs:CreateLogGroup`, `logs:PutMetricFilter`
+- `cloudwatch:PutMetricAlarm`
+- `ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage`,
+  `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`
+  for image pushes
 
 ## Error Handling
 
