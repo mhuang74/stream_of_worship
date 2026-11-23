@@ -94,14 +94,22 @@ branch) and its tests are untouched. `gen_audio_inpaint.py` was read-only refere
 present in the worktree (the plan's input, not mine); it is committed because the script cannot run
 without it.
 
-Copied-block fidelity, re-checked with `inspect.getsource` against `gen_glue_elevenlabs.py`:
-`context_card_html`, `ranking_table`, `full_set_card_html`, `_num`, `_audio` and `CSS` are
+Copied-block fidelity, re-checked with `inspect.getsource` against `gen_glue_elevenlabs.py` at this
+commit: `context_card_html`, `ranking_table`, `full_set_card_html`, `_num`, `_audio` and `CSS` are
 **identical**; `JS` differs only in the localStorage namespace (`sow.elevenlabs-glue:` →
-`sow.treblo-glue:`); `card_html` differs in exactly two places — a deliberate label change
-(`Generation (raw)` → `Section (returned)`, since the endpoint returns the replaced section and not a
-separate generation) and `ruff format`'s f-string quote rewrite on one line (`take.get('summary')` →
-`take.get("summary")`). So `card_html` is *not* byte-identical, by design in one line and by formatter
-in the other.
+`sow.treblo-glue:`); `card_html` differs in exactly three places —
+
+1. a deliberate label change, `Generation (raw)` → `Section (returned)`, since the endpoint returns the
+   replaced section rather than a separate generation;
+2. the refusal-line fix from §7 (the copy prints the take's own status, the source still hardcodes
+   `check:`);
+3. one `ruff format` f-string quote rewrite (`take.get('summary')` → `take.get("summary")`).
+
+So `card_html` is *not* byte-identical. Difference 3 is cosmetic; differences 1 and 2 are intentional,
+and difference 2 means **the `check:` mislabel still exists in `gen_glue_elevenlabs.py:1675`** — that
+file is untouched by design (the plan forbids modifying it and its 29 tests), so the bug is live there
+for any ElevenLabs report whose take failed on reasons rather than on `error`. Porting the one-line fix
+is out of scope for this branch and is worth a separate change.
 
 That formatter delta is a known cosmetic wart, not a verification failure being papered over: `ruff
 format --check` reports this file would be reformatted (the `sections.append(f"""…""")` wrapping plus
