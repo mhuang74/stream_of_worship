@@ -4,7 +4,7 @@ Date: 2026-11-23. Repo `mhuang74/stream_of_worship`; production webapp
 `https://app.streamofworship.com`; region `us-west-2`, account `762288208920`.
 
 Status: **shipped and proven end to end in production.** Three PRs merged, all
-deploy workflows green, one paid generation produced a take that a real render
+deploy workflows green, two paid generations produced takes that a real render
 consumed.
 
 ## Merges
@@ -68,13 +68,17 @@ Deploy runs: `45131155447` (first, Glue job failed on scaling), `45135725699`
 | Provider | `provider_status=200` at compose; raw response persisted, 4,762,800 bytes, SHA-256 recorded |
 | Take | `defa5544-fd1c-4dcb-8638-b173516cf3d8` (3.0 s), `a6116a42-7ddb-4983-b054-7cd06a76a967` (3.0 s), both `status=ready` |
 | Job lifecycle | `128f5068` created 07:45:33 → ready 07:46:01 (28 s); log `glue.job.ready` + `glue.staging.recovered` |
-| Render | `V5OxHIU9OzJGni9vaT9zr` completed 07:58:22, 152.45 s, `glue_transitions` holds both takes (take id, `r2_key`, `sha256`, `seconds`); worker logs `glue.render.glue.loaded` for both |
+| Render | `V5OxHIU9OzJGni9vaT9zr` render elapsed **73.6 s** (`started_at` 07:57:08 → `completed_at` 07:58:22); output media length 152.45 s for a 146 s songset + 5 s title card. `glue_transitions` holds both takes (take id, `r2_key`, `sha256`, `seconds`); worker logs `glue.render.glue.loaded` for both |
 | Artifacts | `renders/V5OxHIU9OzJGni9vaT9zr/output.mp3` and `output.mp4` recorded on the job |
 
 ## Cost and quota
 
-- Two paid generations: 405 credits (2 beats) and 45 credits (compose-only retry
-  of the second junction; the upload was already persisted).
+- Two paid generations, each a **separate junction**: `128f5068` (item 0 →
+  item 1, quoted 405 credits) and `65a3b228` (item 1 → item 2, quoted 45
+  credits). Both jobs did a full upload + compose of their own raw response
+  (distinct `raw_response_r2_key`, both 4,762,800 bytes); neither reused the
+  other's upload. The 405-vs-45 difference is *not* explained by any recorded
+  evidence and is left as observed.
 - The failed job (`d8436130`) consumed one daily quota unit without producing a
   take (`glue_paid_attempts` `dcf21b8c`, state `consumed`). Per ADR 0014 a
   consumed reservation is never refunded automatically.
