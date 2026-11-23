@@ -151,66 +151,72 @@ main() {
     # --- Metric filters (structured Glue log events) ----------------------
     # Stable event names from spec §4.2. Never include titles, lyrics, URLs,
     # signed URLs, keys, or provider bodies in these payloads.
+    #
+    # Lambda's JSON log format wraps every record as
+    # {"timestamp":…,"level":…,"message":"<payload json string>"}, so the
+    # payload fields are NOT top-level: `{ $.event = … }` matched nothing and
+    # every Glue metric stayed at zero. Match the escaped payload text through
+    # `$.message` instead; the event tokens are unique per payload.
     put_metric_filter \
         "sow-glue-provider-ambiguous" \
-        '{ $.event = "glue.provider.ambiguous" }' \
+        '{ $.message = "*glue.provider.ambiguous*" }' \
         "GlueProviderAmbiguous"
 
     put_metric_filter \
         "sow-glue-heartbeat-failure" \
-        '{ $.event = "glue.heartbeat.failed" }' \
+        '{ $.message = "*glue.heartbeat.failed*" }' \
         "GlueHeartbeatFailure"
 
     put_metric_filter \
         "sow-glue-staging-recovery" \
-        '{ $.event = "glue.staging.recovered" }' \
+        '{ $.message = "*glue.staging.recovered*" }' \
         "GlueStagingRecovery"
 
     put_metric_filter \
         "sow-glue-paid-failure" \
-        '{ $.event = "glue.job.failed" && $.retryKind = "paid" }' \
+        '{ $.message = "*glue.job.failed*" && $.message = "*\"retryKind\": \"paid\"*" }' \
         "GluePaidFailure"
 
     # --- Counters required by spec §4.2 (no dynamic dimensions in CloudWatch
     # Logs metric filters, so each counter gets its own filter/metric) ------
     put_metric_filter \
         "sow-glue-paid-attempt" \
-        '{ $.event = "glue.provider.contact.started" }' \
+        '{ $.message = "*glue.provider.contact.started*" }' \
         "GluePaidAttempt"
 
     put_metric_filter \
         "sow-glue-job-claimed" \
-        '{ $.event = "glue.job.claimed" }' \
+        '{ $.message = "*glue.job.claimed*" }' \
         "GlueJobClaimed"
 
     put_metric_filter \
         "sow-glue-job-failed" \
-        '{ $.event = "glue.job.failed" }' \
+        '{ $.message = "*glue.job.failed*" }' \
         "GlueJobFailed"
 
     put_metric_filter \
         "sow-glue-redelivery" \
-        '{ $.event = "glue.job.redelivered" }' \
+        '{ $.message = "*glue.job.redelivered*" }' \
         "GlueRedelivery"
 
     put_metric_filter \
         "sow-glue-cache-hit" \
-        '{ $.cacheHit = true }' \
+        '{ $.message = "*\"cacheHit\": true*" }' \
         "GlueCacheHit"
 
     put_metric_filter \
         "sow-glue-cached-copyright" \
-        '{ $.event = "glue.provider.failed" && $.errorCode = "GLUE_COPYRIGHT_REJECTED" }' \
+        '{ $.message = "*glue.provider.failed*" && $.message = "*GLUE_COPYRIGHT_REJECTED*" }' \
         "GlueCachedCopyrightRejection"
 
     put_metric_filter \
         "sow-glue-response-persisted" \
-        '{ $.event = "glue.response.persisted" }' \
+        '{ $.message = "*glue.response.persisted*" }' \
         "GlueResponsePersisted"
 
     put_metric_filter \
         "sow-glue-staging-unavailable" \
-        '{ $.event = "glue.staging.unavailable" }' \
+        '{ $.message = "*glue.staging.unavailable*" }' \
         "GlueStagingUnavailable"
 
     # --- Alarms -----------------------------------------------------------

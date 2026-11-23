@@ -120,6 +120,9 @@ _LOG_FIELD_ALLOWLIST = (
     "providerStatus",
     "cacheHit",
     "retryCount",
+    # Logged on terminal failure so the GluePaidFailure metric filter can match
+    # `"retryKind": "paid"`; without it the documented alarm never fired.
+    "retryKind",
     "durationMs",
     "errorCode",
     "mode",
@@ -359,6 +362,7 @@ def _finish_terminal(
                 phase=current.phase,
                 errorCode=current.error_code,
                 status="already-terminal",
+                retryKind=retry_kind,
             )
             return
     try:
@@ -380,6 +384,7 @@ def _finish_terminal(
         phase=phase,
         errorCode=code,
         status="finished",
+        retryKind=retry_kind,
     )
 
 

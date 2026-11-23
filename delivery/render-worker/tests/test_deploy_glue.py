@@ -116,6 +116,61 @@ def test_aws_up_glue_never_passes_scaling_to_create_or_update() -> None:
         )
 
 
+def test_metric_filters_match_the_lambda_json_log_wrapper() -> None:
+    """Lambda's JSON log format wraps each record as {timestamp, level, message}.
+
+    The payload JSON is therefore escaped inside `$.message`; patterns written
+    against `$.event` matched nothing and left every Glue metric at zero.
+    """
+    text = read_code(OBSERVABILITY)
+    assert "$.event" not in text, "metric filters must match the wrapped payload"
+    assert "$.message" in text
+    # Each documented counter/event must have a filter on its token.
+    for token in (
+        "glue.job.claimed",
+        "glue.response.persisted",
+        "glue.provider.contact.started",
+        "glue.staging.recovered",
+        "glue.provider.ambiguous",
+        "glue.staging.unavailable",
+        "glue.job.redelivered",
+    ):
+        assert f"*{token}*" in text, f"metric filter lost its token: {token}"
+
+
+def test_paid_failure_log_payload_carries_retry_kind() -> None:
+    """The GluePaidFailure filter matches `"retryKind": "paid"` in the payload,
+    so the worker must emit that field on terminal failures."""
+    import json
+    import logging
+
+    from sow_render_worker import glue_jobs
+
+    records: list[str] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record.getMessage())
+
+    handler = Capture()
+    glue_jobs.logger.addHandler(handler)
+    try:
+        glue_jobs._log_event(
+            "glue.job.failed",
+            level="warning",
+            jobId="j",
+            phase="failed",
+            status="finished",
+            retryKind="paid",
+        )
+    finally:
+        glue_jobs.logger.removeHandler(handler)
+
+    payload = records[-1]
+    assert '"retryKind": "paid"' in payload
+    json.loads(payload)
+
+
 def test_glue_scaling_is_retried_and_verified() -> None:
     """PutFunctionScalingConfig answers ResourceConflictException right after a
     version publish; both the bootstrap and the workflow must retry it and then
@@ -229,15 +284,16 @@ def test_observability_creates_required_filters_and_alarms() -> None:
         # cached copyright rejections, raw-response persists, staging faults.
         "sow-glue-paid-attempt",
         "GluePaidAttempt",
-        '{ $.event = "glue.provider.contact.started" }',
+        '{ $.message = "*glue.provider.contact.started*" }',
         "sow-glue-job-claimed",
         "sow-glue-job-failed",
         "sow-glue-paid-failure",
-        "glue.job.failed\" && $.retryKind = \"paid\"",
+        '*glue.job.failed*',
+        '*\\"retryKind\\": \\"paid\\"*',
         "sow-glue-redelivery",
         "glue.job.redelivered",
         "sow-glue-cache-hit",
-        '{ $.cacheHit = true }',
+        '{ $.message = "*\\"cacheHit\\": true*" }',
         "sow-glue-cached-copyright",
         "GLUE_COPYRIGHT_REJECTED",
         "sow-glue-response-persisted",
