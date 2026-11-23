@@ -92,6 +92,23 @@ def test_aws_up_glue_never_passes_scaling_to_create_or_update() -> None:
         )
 
 
+def test_glue_scaling_is_retried_and_verified() -> None:
+    """PutFunctionScalingConfig answers ResourceConflictException right after a
+    version publish; both the bootstrap and the workflow must retry it and then
+    assert the applied 0/2 values (a default minimum of 3 keeps paid capacity)."""
+    workflow = read(DEPLOY_WORKFLOW)
+    start = workflow.index("- name: Apply Glue execution-environment scaling")
+    step = workflow[start:].split("\n\n      - name:", 1)[0]
+    assert "ResourceConflictException" in step
+    assert "get-function-scaling-config" in step
+    assert ".MaxExecutionEnvironments" in step
+
+    script = read(AWS_UP_GLUE)
+    fn = script[script.index("apply_scaling_config() {"):].split("\n}", 1)[0]
+    assert "ResourceConflictException" in fn
+    assert "MinExecutionEnvironments=0,MaxExecutionEnvironments=2" in fn
+
+
 def test_aws_up_glue_verifies_the_published_version_is_active() -> None:
     """PublishVersion succeeds before the version activates; on Managed
     Instances it can then settle at Failed (InitResourceExhausted), so the

@@ -235,10 +235,29 @@ create_or_update_lambda() {
 # jobs) with the maximum at the spec's 2 provider concurrency.
 apply_scaling_config() {
     info "Setting execution environments: min 0, max 2"
-    aws_cmd lambda put-function-scaling-config \
-        --function-name "$FUNCTION_NAME" \
-        --qualifier '$LATEST.PUBLISHED' \
-        --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' >/dev/null
+    # PutFunctionScalingConfig answers ResourceConflictException while the version
+    # just published is still settling, so retry before failing.
+    local attempt output
+    for attempt in $(seq 1 30); do
+        if output=$(aws_cmd lambda put-function-scaling-config \
+            --function-name "$FUNCTION_NAME" \
+            --qualifier '$LATEST.PUBLISHED' \
+            --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' 2>&1); then
+            return 0
+        fi
+        case "$output" in
+            *ResourceConflictException*)
+                warn "  scaling config attempt ${attempt} hit a transient state; retrying"
+                sleep 10
+                ;;
+            *)
+                error "$output"
+                exit 1
+                ;;
+        esac
+    done
+    error "Scaling config was not applied after repeated transient-state retries."
+    exit 1
 }
 
 # ── Event source mapping ───────────────────────────────────────────────────

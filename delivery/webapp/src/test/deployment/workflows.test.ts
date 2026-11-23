@@ -315,6 +315,11 @@ describe("Deploy workflow — Glue worker", () => {
     expect(script).toContain("aws lambda put-function-scaling-config");
     expect(script).toContain("--qualifier '$LATEST.PUBLISHED'");
     expect(script).toContain("MinExecutionEnvironments=0,MaxExecutionEnvironments=2");
+    // PutFunctionScalingConfig conflicts while the new version settles; retry it
+    // and assert the applied values instead of trusting the response code.
+    expect(script).toContain("ResourceConflictException");
+    expect(script).toContain("get-function-scaling-config");
+    expect(script).toContain("AppliedFunctionScalingConfig");
   });
 
   it("sets SOW_ELEVENLABS_API_KEY only on the Glue function", () => {
