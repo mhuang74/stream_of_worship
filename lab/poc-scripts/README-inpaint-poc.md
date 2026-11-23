@@ -286,7 +286,7 @@ This README is usage only; measured values live in those reports and are not dup
 
 ## gen_glue_treblo.py — instrumental Glue via the Treblo v2 inpaint endpoint
 
-Builds both *arranged* sides of every adjacent junction from Postgres + R2, splices them into one uploaded montage with a silent hole where the Glue belongs (`[ A arranged last 12 s ][ silent hole = 4 beats ][ B arranged first 12 s ]`), and asks `POST /generations/v2/inpaint` to replace that one section of that one file. The response is the new section only, so the Glue geometry is exact by construction: no needle search, no envelope alignment, no 3 s generation floor, no tail trim. One request costs **100 credits** (uploads are free, a FAILURE task is not charged), so one junction with one 4-beat take is 100 credits. Paid responses are cached by request body + take id under `cache/treblo-responses/`, and an interrupted run resumes from its saved task id instead of resubmitting.
+Builds both *arranged* sides of every adjacent junction from Postgres + R2, splices them into one uploaded montage with a silent hole where the Glue belongs (`[ A arranged last 12 s ][ silent hole = 4 beats ][ B arranged first 12 s ]`), and asks `POST /generations/v2/inpaint` to replace that one section of that one file. With `selection_crop` the response is the new section only, so the seam is placed by construction rather than located in the response: no needle search, no envelope alignment, no 3 s generation floor. The returned section is not sample-exact, though — measured 3.344 s for a 3.438 s request (Δ −94.7 ms), so `resolve_section` zero-pads (or trims) the tail to the requested length and records `padded_ms`/`trimmed_ms`; that pad is silent by construction and a take whose pad dominated the glue would be refused by the level gate. One request costs **100 credits** (uploads are free, a FAILURE task is not charged), so one junction with one 4-beat take is 100 credits. Paid responses are cached by request body + take id under `cache/treblo-responses/`, and an interrupted run resumes from its saved task id instead of resubmitting.
 
 ```bash
 uv run --project lab/poc-scripts --extra glue_treblo \
@@ -308,7 +308,7 @@ uv run --project lab/poc-scripts --extra glue_treblo \
 | `--instrumental` / `--no-instrumental` | on | ask for an instrumental section; `--no-instrumental` needs `--lyrics` |
 | `--lyrics` | none | lyrics for a vocal Glue (with `--no-instrumental`) |
 | `--prompt-strength` | `2.0` | prompt adherence, 1.4–3.1 |
-| `--balance-strength` | `0.7` | reference/hole balance, 0.0–1.0 |
+| `--balance-strength` | `0.7` | v2 balance: higher is more natural vocals, lower sharper instrumentals, 0.0–1.0 (not a reference/hole weighting) |
 | `--upload-seconds` | `12.0` | A's last / B's first N seconds inside the montage, 3–30 |
 | `--output-format` | `flac` | API output format |
 | `--dry-run` | off | print plans; no network, no writes |
@@ -319,7 +319,16 @@ uv run --project lab/poc-scripts --extra glue_treblo \
 
 Tags come from the closed v2 vocabulary in [`data/treblo-v2-tags.txt`](data/treblo-v2-tags.txt) and are validated before any request: the API rejects anything off-list with a 422 (a rejected request is not charged). `POST /uploads` refuses audio Treblo already holds ("This upload matches existing audio") — both recordings of the default songset are refused today, so that songset cannot be used as an inpaint source and the run aborts fatally on the upload, before any credits are spent. Use recordings that pass the upload; never transform audio to get past that filter.
 
-**Measured so far (2026-11-24): the v2 inpaint returns digital silence for a silent hole.** One paid run (`run2`, songset `2ZV5SHjAzw7ceJE-nREs2`, junction 2, 4 beats) submitted, polled, downloaded and cropped end to end for 100 credits, and Treblo's returned section measured **−103 dBFS RMS, peak 0.0015** — the model continued the hole instead of filling it, so the take is refused (`glue level -88.628 dBFS is below -50 dBFS`). The raw bytes in `cache/treblo-responses/*.bin` are that silence, so this is the vendor's output, not the splice: the geometry, crop (−94.7 ms short of the requested 3.438 s), staging and gates all behaved as designed. Uploads fail content matching across the library — of four arranged songsets (7 junctions), only `2ZV5SHjAzw7ceJE-nREs2` junction 2 accepts its montage. Treat `run2` as the paid negative result, not a quality reference.
+**Measured so far (2026-11-24): the v2 inpaint returned near-digital silence for a silent hole.** One paid run (`run2`, songset `2ZV5SHjAzw7ceJE-nREs2`, junction 2, 4 beats) submitted, polled, downloaded and cropped end to end for 100 credits, and Treblo returned **3.344 s at −88.6 dBFS glued / −103 dBFS raw RMS, peak 0.0015** (a faint onset in the first 0.17 s, then near-silence) for a hole of pure digital zeros. The take is refused by the level gate (`glue level -88.628 dBFS is below -50 dBFS`) and not spliced. The raw bytes in `cache/treblo-responses/*.bin` are that near-silence, so the response is the vendor's output, not the splice: geometry (`crop`), the 94.7 ms pad, staging and the gate all behaved as designed.
+
+Two rival explanations remain **untested** — do not assume one:
+
+1. *Silence in the hole.* v2 appears to treat the masked region's silence as content to keep. The discriminating probe is one request over a section holding **real** audio from the same cached upload (e.g. `sections=[[0.0, 3.44]]` over A's tail): real music back means the hole content was the cause.
+2. *`instrumental: true` inpaint.* Every historically working v2 inpaint config known to us uses `tags` plus `lyrics` with `instrumental: false`; no working instrumental-mode inpaint has been observed. If (1) also fails, this is the remaining suspect.
+
+Note the parameter semantics when designing a retry: `balance_strength` is documented as *vocal naturalness vs. instrumental sharpness* (higher = more natural vocals), **not** a reference/hole weighting, and v2 inpaint rejects `prompt` outright — it wants `tags` plus either `lyrics` or `instrumental: true`. The v3 routes (`operation: replace|insert`, `prefix_context_seconds`/`suffix_context_seconds`) are in the OpenAPI schema but the docs state section replacement runs on v2 only ("replace for v3 is coming soon"), so there is no second endpoint to fall back to today. Each further paid probe costs another 100 credits.
+
+Uploads fail content matching across the library — of four arranged songsets (7 junctions), only `2ZV5SHjAzw7ceJE-nREs2` junction 2 accepts its montage. Treat `run2` as the paid negative result, not a quality reference.
 
 Outputs under `<out-root>/<run-name>`:
 

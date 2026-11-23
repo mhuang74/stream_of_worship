@@ -530,3 +530,66 @@ def test_dry_run_writes_nothing(
     assert '"sections"' in printed
     assert '"selection_crop": true' in printed
     assert not list(tmp_path.iterdir()), "the dry run must not write anything"
+
+
+def test_upload_is_fresh_respects_the_api_lifetime() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime(2026, 11, 24, 12, 0, tzinfo=UTC)
+    fresh = {"uploaded_at": (now - timedelta(hours=1)).isoformat(timespec="seconds")}
+    stale = {"uploaded_at": (now - timedelta(hours=23)).isoformat(timespec="seconds")}
+    assert glue_mod._upload_is_fresh(fresh, now=now)
+    # the id is only good for "about 24 hours"; re-upload well before that
+    assert not glue_mod._upload_is_fresh(stale, now=now)
+    # an entry we cannot date is not reusable: a dead id would fail the paid submit
+    assert not glue_mod._upload_is_fresh({}, now=now)
+    assert not glue_mod._upload_is_fresh({"uploaded_at": "not a date"}, now=now)
+    naive = {"uploaded_at": (now - timedelta(hours=1)).replace(tzinfo=None).isoformat()}
+    assert glue_mod._upload_is_fresh(naive, now=now)
+
+
+def test_upload_reuploads_a_stale_id(tmp_path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    _, sha = glue_mod.pcm16_and_sha(np.zeros((glue_mod.SR, 2), dtype=np.float32))
+    stale = (datetime.now(UTC) - timedelta(hours=30)).isoformat(timespec="seconds")
+    glue_mod.save_uploads(
+        tmp_path,
+        {sha: {"audio_upload_id": "old", "seconds": 1.0, "format": "wav", "uploaded_at": stale}},
+    )
+    monkeypatch.setattr(glue_mod, "treblo_post_upload", lambda *_a: ("new", "wav"))
+
+    entry = glue_mod.treblo_upload(
+        np.zeros((glue_mod.SR, 2), dtype=np.float32), tmp_path, False, "probe"
+    )
+    assert entry["audio_upload_id"] == "new"
+    assert "past the upload lifetime" in capsys.readouterr().out
+    assert glue_mod.load_uploads(tmp_path)[sha]["audio_upload_id"] == "new"
+
+
+def test_submit_survives_a_renamed_task_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    import requests
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, body: str) -> None:
+            self.text = body
+
+        def json(self):
+            return json.loads(self.text)
+
+    for body, expected in (
+        ('{"task_id": "abc"}', "abc"),
+        ('{"id": "def"}', "def"),
+        ('{"job_id": "ghi"}', "ghi"),
+    ):
+        monkeypatch.setattr(requests, "post", lambda *_a, _b=body, **_k: FakeResponse(_b))
+        assert glue_mod.treblo_submit({}) == expected
+
+    # a charged submit with no id anywhere must still name the body, never raise KeyError
+    monkeypatch.setattr(requests, "post", lambda *_a, **_k: FakeResponse('{"status": "queued"}'))
+    with pytest.raises(glue_mod.ApiFatalError) as excinfo:
+        glue_mod.treblo_submit({})
+    assert "task id" in str(excinfo.value)
+    assert "queued" in str(excinfo.value)
