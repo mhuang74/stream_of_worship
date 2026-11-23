@@ -163,6 +163,8 @@ VIDEO_TEMPLATES: dict[VideoTemplateName, VideoTemplate] = {
 }
 
 _SANS_SERIF_FONT_PATHS = [
+    # Where the Lambda image's google-noto-sans-cjk-ttc-fonts package installs.
+    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",

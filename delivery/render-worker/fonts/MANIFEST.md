@@ -21,5 +21,5 @@ Vendored font files for the render worker. All fonts are Regular weight only.
 ## Notes
 
 - These fonts are vendored for the Lambda render worker which runs in an isolated container without internet access.
-- The system package `google-noto-sans-cjk-fonts` provides Noto Sans CJK as an emergency fallback.
+- The system package `google-noto-sans-cjk-ttc-fonts` (Amazon Linux 2023, installed by both Dockerfiles) provides Noto Sans CJK at `/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc` as an emergency fallback.
 - Font files must be placed in this directory before building the Docker image.

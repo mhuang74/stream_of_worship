@@ -138,7 +138,7 @@ Cloudflare R2 — stores rendered artifacts
 
 ## Prerequisites
 
-- Python 3.13 (the Lambda base image is `public.ecr.aws/lambda/python:3.13`; Lambda Managed Instances reject Python 3.11 images)
+- Python 3.13 — the shared image is built from `public.ecr.aws/lambda/python:3.13`, whose inherited `com.amazonaws.lambda.feature.managedinstances` label is `Supported` (the 3.11 base sets it to `NotSupported`, which blocks Managed Instances)
 - Docker (for containerized builds)
 - FFmpeg and CJK fonts (installed in the Docker image)
 - AWS account with SQS, Lambda, and private ECR access

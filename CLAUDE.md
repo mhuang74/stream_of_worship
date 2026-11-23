@@ -161,7 +161,7 @@ The project consists of **nine architecturally separate components**:
 - **Configuration**: Use `config.json` (in TUI) or centralized constants. Do not hardcode paths (e.g., avoid `Path("output")`, use configured paths).
 - **Formatting**:
   - **Black**: Line length 100.
-  - **Ruff**: Line length 100, target version py311.
+  - **Ruff**: Line length 100, target version py311 (except `delivery/render-worker`, which targets py313).
 - **Output Directories**:
   - `output/transitions/`: For transition clips.
   - `output/songs/`: For full song outputs.
