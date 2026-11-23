@@ -12,9 +12,12 @@ and asks Treblo to replace that one section of that one file:
     POST /v1/generations/v2/inpaint
     sections = [[12.0, 14.786493]]   selection_crop = true
 
-The response is the new section only, so the Glue geometry is exact by construction: no needle
-search, no envelope alignment, no 3 s generation floor, no tail trim. The outgoing Song's Song
-Arrangement and the incoming Song's Song Arrangement stay sample-identical; only the Glue is new:
+The response is the new section only, so the seam is placed by construction rather than located
+in the response afterwards: no needle search, no envelope alignment, no 3 s generation floor.
+The returned section is not sample-exact (measured Δ -94.7 ms on a 3.438 s request), so its tail
+is zero-padded or trimmed to the requested length and the delta is recorded per take. The outgoing
+Song's Song Arrangement and the incoming Song's Song Arrangement stay sample-identical; only the
+Glue is new:
 
     final = A arranged + staged Glue + B arranged
 
@@ -102,6 +105,7 @@ MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 SECTION_TOLERANCE_SECONDS = 0.1  # crop length accepted before it counts as geometry error
 MAX_TAGS = 64
 CREDITS_PER_REQUEST = 100
+UPLOAD_TTL_SECONDS = 20 * 3600.0  # ids expire "about 24 hours" after upload; re-upload with margin
 POLL_INTERVAL_SECONDS = 5.0
 POLL_TIMEOUT_SECONDS = 900.0
 DEFAULT_PROMPT_STRENGTH = 2.0
@@ -714,6 +718,20 @@ def save_uploads(out_root: Path, uploads: dict[str, dict[str, Any]]) -> None:
     (out_root / "uploads.json").write_text(json.dumps(uploads, indent=2, sort_keys=True) + "\n")
 
 
+def _upload_is_fresh(entry: dict[str, Any], now: datetime | None = None) -> bool:
+    """Whether a cached `audio_upload_id` is still within the API's ~24 h lifetime."""
+    stamp = entry.get("uploaded_at")
+    if not isinstance(stamp, str):
+        return False
+    try:
+        uploaded = datetime.fromisoformat(stamp)
+    except ValueError:
+        return False
+    if uploaded.tzinfo is None:
+        uploaded = uploaded.replace(tzinfo=UTC)
+    return ((now or datetime.now(UTC)) - uploaded).total_seconds() < UPLOAD_TTL_SECONDS
+
+
 def treblo_upload(
     samples: np.ndarray,
     out_root: Path,
@@ -723,18 +741,24 @@ def treblo_upload(
     """Upload one montage once; the audio hash is the cache key, so a rerun never re-uploads.
 
     Uploads cost no credits, but the id is what every request body references, so a stale id (after
-    an `--refresh-uploads`) is the only way to ask about audio that is no longer this run's montage.
+    an `--refresh-uploads`, or past the API's ~24 h upload lifetime) is the only way to ask about
+    audio that is no longer this run's montage.
     """
     _, sha = pcm16_and_sha(samples)
     cache = load_uploads(out_root)
     if not refresh and sha in cache:
         entry = dict(cache[sha])
+        if _upload_is_fresh(entry):
+            print(
+                f"  reusing upload for {label}: audio_upload_id {entry['audio_upload_id']} "
+                f"({entry.get('format', 'wav')}, {entry['seconds']:.2f} s)",
+                flush=True,
+            )
+            return {**entry, "sha256": sha}
         print(
-            f"  reusing upload for {label}: audio_upload_id {entry['audio_upload_id']} "
-            f"({entry.get('format', 'wav')}, {entry['seconds']:.2f} s)",
+            f"  cached upload for {label} is past the upload lifetime; uploading again",
             flush=True,
         )
-        return {**entry, "sha256": sha}
 
     uploads_dir = out_root / "uploads"
     wav_path = uploads_dir / f"{sha[:16]}.wav"
@@ -760,6 +784,12 @@ def treblo_upload(
 
 
 def treblo_submit(body: dict[str, Any]) -> str:
+    """POST the plan and return its task id.
+
+    A charged submit whose payload names the id differently (`id`, `job_id`) must not raise a bare
+    KeyError - the id is the only handle on already-spent credits - so every shape ends in either
+    the id or an `ApiFatalError` that quotes the body.
+    """
     import requests
 
     resp = requests.post(
@@ -770,7 +800,21 @@ def treblo_submit(body: dict[str, Any]) -> str:
     )
     if resp.status_code >= 400:
         raise _fatal_from_response(resp.status_code, resp.text, "inpaint")
-    return str(resp.json()["task_id"])
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise ApiFatalError(
+            f"inpaint returned a non-JSON body, so its task id is unknown: {resp.text[:1200]}"
+        ) from exc
+    if isinstance(payload, dict):
+        for key in ("task_id", "id", "job_id"):
+            value = payload.get(key)
+            if value:
+                return str(value)
+    raise ApiFatalError(
+        f"inpaint response carries no task id, so the request may be charged and unpollable: "
+        f"{resp.text[:1200]}"
+    )
 
 
 def treblo_status(task_id: str) -> str:
@@ -1815,7 +1859,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--balance-strength",
         type=float,
         default=DEFAULT_BALANCE_STRENGTH,
-        help="reference/hole balance, 0.0..1.0",
+        help="v2 vocal/instrument balance: higher is more natural vocals, lower sharper "
+        "instrumentals, 0.0..1.0",
     )
     parser.add_argument(
         "--upload-seconds",
@@ -1981,6 +2026,25 @@ def _write_index(run_dir: Path, index: dict[str, Any]) -> None:
     )
 
 
+def _write_failure(run_dir: Path, run_name: str, songset: str, message: str) -> None:
+    """Record a fatal error next to the artifacts, whoever hit it."""
+    if not run_dir.is_dir():
+        return
+    (run_dir / "failure.json").write_text(
+        json.dumps(
+            {
+                "run": run_name,
+                "songset_id": songset,
+                "failed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                "error": message,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    print(f"  failure recorded in {run_dir / 'failure.json'}", flush=True)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     if args.dry_run:
@@ -1989,21 +2053,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _execute_run(args)
     except ApiFatalError as exc:
         print(f"error: {exc}", flush=True)
-        run_dir = Path(args.out_root) / args.run_name
-        if run_dir.is_dir():
-            (run_dir / "failure.json").write_text(
-                json.dumps(
-                    {
-                        "run": args.run_name,
-                        "songset_id": args.songset,
-                        "failed_at": datetime.now(UTC).isoformat(timespec="seconds"),
-                        "error": str(exc),
-                    },
-                    indent=2,
-                )
-                + "\n"
-            )
-            print(f"  failure recorded in {run_dir / 'failure.json'}", flush=True)
+        _write_failure(
+            Path(args.out_root) / args.run_name, args.run_name, args.songset, str(exc)
+        )
         return 2
 
 
@@ -2252,6 +2304,7 @@ def _execute_run(args: argparse.Namespace) -> int:
         print(f"error: {message}", flush=True)
         _write_index(run_dir, index)
         (run_dir / "report.html").write_text(report_html(index))
+        _write_failure(run_dir, args.run_name, args.songset, message)
         print(f"  partial artifacts in {run_dir}", flush=True)
         return 2
 
