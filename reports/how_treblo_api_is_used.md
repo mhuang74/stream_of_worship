@@ -212,6 +212,9 @@ submit had already been charged, and the rerun resumed task `c80da03a-…` inste
 `run2`, songset `2ZV5SHjAzw7ceJE-nREs2` junction j2 (祢的救恩 → 當祢走進我們當中), 4 beats, one take,
 100 credits. Task `c80da03a-b1ef-4c85-80da-d7bf257b0655`, `model_version v2.2`, balance 3000 → 2900.
 
+Every figure below is the recorded one, from `run2/index.json`, the raw `.bin` in
+`cache/treblo-responses/`, and `reports/treblo_glue_poc_impl_summary.md` §4 — no new measurements.
+
 | measured | value |
 |---|---|
 | returned section | 147,456 frames = 3.3437 s (requested 3.43839 s, Δ −94.717 ms) |
@@ -227,8 +230,8 @@ submit had already been charged, and the rerun resumed task `c80da03a-…` inste
 
 Stated plainly: **the model wrote no music into the masked region.** Its own bytes are near-digital
 silence with a faint onset transient — not an echo of the upload, whose hole held exactly 0.0.
-`glue_rms_db` is measured after the pad and before `stage_edges`,
-which is why the gate reads a property of the vendor's audio rather than of the staging.
+`glue_rms_db` is measured after the pad and before `stage_edges`, which is why the gate reads a
+property of the vendor's audio rather than of the staging.
 
 Two rival explanations remain **untested**; neither is asserted here, and each is another 100-credit
 probe:
