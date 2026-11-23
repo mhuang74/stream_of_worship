@@ -45,7 +45,7 @@ Outputs under `--out`:
 Usage:
     set -a && . /opt/sow/.env && set +a
     uv run --project lab/poc-scripts --extra audio_inpaint \\
-        python lab/poc-scripts/gen_audio_inpaint.py \\
+        python lab/poc-scripts/gen_seam_inpaint_acestep.py \\
         --songset hbWfCccGxN_JLQGBEqmdu --out lab/poc-scripts/output/audio-inpaint/run4 --dry-run
 
 Prerequisites: `SOW_DATABASE_URL`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`,
@@ -170,7 +170,7 @@ SILENCE_PEAK_FLOOR = 0.001
 # -16 dB RMS, so a program-level floor separates them without guessing.
 SILENCE_RMS_FLOOR_DB = -50.0
 
-# Gap timing corrections (copied from gen_seam_fill_run3.py, which cannot be
+# Gap timing corrections (copied from gen_gap_fill_sa3.py, which cannot be
 # imported: it imports this module).
 # Below this a sample counts as digital silence (~-80 dBFS, under PCM16 dither).
 SILENCE_FLOOR = 1e-4
@@ -397,7 +397,7 @@ def apply_join_fades(
 
     A fade-out ends at the join and a fade-in starts there, so the join is a
     butt splice with de-clicking windows rather than an overlap: the clip keeps
-    head + montage + tail sample counts exactly. `gen_seam_fill*.py` rely on the
+    head + montage + tail sample counts exactly. `gen_gap_fill*.py` rely on the
     5 ms default; this script asks for a longer fade at the hole edges only.
     """
     fade = seconds_to_samples(fade_seconds)
@@ -1577,7 +1577,7 @@ def bytes_from_array(samples: np.ndarray) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Gap timing correction (copied from gen_seam_fill_run3.py)
+# Gap timing correction (copied from gen_gap_fill_sa3.py)
 # ---------------------------------------------------------------------------
 
 

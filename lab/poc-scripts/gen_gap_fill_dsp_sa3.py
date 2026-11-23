@@ -33,7 +33,7 @@ Outputs under `--out`:
 
 Usage:
     uv run --project lab/poc-scripts --extra audio_inpaint \\
-        python lab/poc-scripts/gen_seam_fill.py \\
+        python lab/poc-scripts/gen_gap_fill_dsp_sa3.py \\
         --songset hbWfCccGxN_JLQGBEqmdu --out lab/poc-scripts/output/audio-inpaint/run2
 
 Prerequisites: `SOW_DATABASE_URL`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`,
@@ -60,7 +60,7 @@ import scipy.signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen_audio_inpaint import (  # noqa: E402  (same directory; reused helpers)
+from gen_seam_inpaint_acestep import (  # noqa: E402  (same directory; reused helpers)
     SR,
     Component,
     Recording,

@@ -1,6 +1,6 @@
 """Build one listening page for every audio-inpaint run under a directory.
 
-`gen_audio_inpaint.py` writes a `report.html` per run; this writes the page above
+`gen_seam_inpaint_acestep.py` writes a `report.html` per run; this writes the page above
 them, so a review is one tab: the same bridge variant on both engines side by side,
 then the production gap per take. Everything is read from each run's `index.json`
 and every player points at the run's own `clips/` and `bridges/` files, so serve the
@@ -8,7 +8,7 @@ output directory over HTTP (relative paths do not work from `file://`).
 
 Usage:
     uv run --project lab/poc-scripts --extra audio_inpaint \
-      python lab/poc-scripts/build_review_index.py \
+      python lab/poc-scripts/build_inpaint_review_index.py \
       --root lab/poc-scripts/output/audio-inpaint
 """
 
