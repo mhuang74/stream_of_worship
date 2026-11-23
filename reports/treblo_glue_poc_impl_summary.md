@@ -2,7 +2,7 @@
 
 Branch `sow_treblo_inpaint_poc`, pushed to `origin`. Commits: `6d8a5227` (script, tests, tag
 vocabulary, docs), `f71d32e2` (submit/upload hardening + docs corrected against the official
-reference).
+reference), `772f7114` (this summary, plus the copy-fidelity and level corrections).
 
 Goal: use Treblo's `POST /v1/generations/v2/inpaint` as the generation engine for the seam glue —
 generate one instrumental Glue for the junction between two Songs of a Songset, splice it between
@@ -10,8 +10,9 @@ two sample-identical arranged Songs, and let a listening page show the result or
 
 Outcome: **the pipeline works end to end; the vendor returned near-digital silence.** `run2`
 submitted, polled, downloaded, cropped, staged, spliced and reported for 100 of the 3000 credits,
-and the returned section measured −88.5 dBFS RMS, so the take was refused by the level gate rather
-than spliced. That is the recorded result of this POC, not a defect in the splice path.
+and the raw returned section measured **−88.52 dBFS RMS** (peak 0.0015; a faint 0.17 s onset at
+−75.71 dBFS over a −103.50 dBFS remainder), so the take was refused by the level gate rather than
+spliced. That is the recorded result of this POC, not a defect in the splice path.
 
 ## 1. Why the plan changed shape before any code
 
@@ -88,15 +89,26 @@ flowchart LR
 | `lab/poc-scripts/pyproject.toml` | `glue_treblo` extra (`requests`, `numpy`, `soundfile` — no librosa/scipy/modal/openai) | +1 |
 | `lab/poc-scripts/README-inpaint-poc.md` | the script's row in the table, flag reference, artifact layout, prerequisites, the measured result and the two untested hypotheses | +14 |
 
-`gen_elevenlabs_glue.py` and its 29 tests are untouched. `gen_audio_inpaint.py` was read-only
-reference. The tag file was present in the worktree (the plan's input, not mine); it is committed
-because the script cannot run without it.
+`gen_glue_elevenlabs.py` (renamed from `gen_elevenlabs_glue.py` in `4712944e`, an ancestor of this
+branch) and its tests are untouched. `gen_audio_inpaint.py` was read-only reference. The tag file was
+present in the worktree (the plan's input, not mine); it is committed because the script cannot run
+without it.
 
-The three copied HTML helpers are byte-identical to their source in `gen_elevenlabs_glue.py`, which
-is why `card_html`/`context_card_html` appear in a source-vs-copy diff: `ruff format` would rewrite
-the nested f-string quotes in *both* files (repo ruff config targets py311, the formatter applies
-py312+ quote rules). No CI formatter gate exists for `poc-scripts` (`ci.yml` runs `ruff check
---select F821,F841` on `admin-cli` only), so source fidelity won over formatter cleanliness.
+Copied-block fidelity, re-checked with `inspect.getsource` against `gen_glue_elevenlabs.py`:
+`context_card_html`, `ranking_table`, `full_set_card_html`, `_num`, `_audio` and `CSS` are
+**identical**; `JS` differs only in the localStorage namespace (`sow.elevenlabs-glue:` →
+`sow.treblo-glue:`); `card_html` differs in exactly two places — a deliberate label change
+(`Generation (raw)` → `Section (returned)`, since the endpoint returns the replaced section and not a
+separate generation) and `ruff format`'s f-string quote rewrite on one line (`take.get('summary')` →
+`take.get("summary")`). So `card_html` is *not* byte-identical, by design in one line and by formatter
+in the other.
+
+That formatter delta is a known cosmetic wart, not a verification failure being papered over: `ruff
+format --check` reports this file would be reformatted (the `sections.append(f"""…""")` wrapping plus
+that quote style), and it reports the same for `gen_glue_elevenlabs.py`, because the repo ruff config
+targets `py311` while the formatter applies `py312+` nested-quote rules. No CI formatter gate exists
+for `poc-scripts` (`ci.yml` runs `ruff check --select F821,F841` on `admin-cli` only), so source
+fidelity won over formatter cleanliness. `ruff check` is clean on both new files.
 
 ## 4. Measured result — the paid run
 
@@ -120,13 +132,20 @@ What came back, re-derived from the raw `.bin` in `cache/treblo-responses/`:
 |---|---|
 | returned section | 147,456 frames = 3.3437 s (requested 3.43839 s, Δ −94.717 ms) |
 | peak | 0.00152588 = 50 / 32768 |
-| RMS, whole | −88.52 dBFS |
+| RMS, returned section overall | −88.52 dBFS |
 | RMS, first 0.17 s | −75.71 dBFS (the only non-noise content) |
 | RMS, remainder | −103.50 dBFS |
-| `glue_rms_db` recorded (after the 94.7 ms zero-pad) | −88.628 dBFS |
+| `glue_rms_db` recorded (padded raw section, **pre-staging**) | −88.628 dBFS |
+| staged + faded glue (what would be spliced) | −82.767 dBFS, peak 0.002411 |
 | staging | requested +59.686 / +78.390 dB, clamped to 18 / 18 dB, residuals 41.686 / 60.390 dB |
 | joints | A step −66.032 dB (jump_ratio 2.229); B step +208.632 dB |
 | status | `failed` — "glue level -88.628 dBFS is below -50 dBFS" |
+
+`glue_rms_db` is measured on the returned section after the pad and *before* `stage_edges`, so −88.628
+is a property of the vendor's audio, not of the staging. Staging then lifted it to −82.767 dBFS and the
+splice would have produced `junctions/j2/full/beats-4.flac` at −14.715 dBFS — which is why the gate
+matters: those two numbers look plausible at a glance and only the pre-staging level exposes that no
+music is in the glue.
 
 So the vendor's own bytes are near-silence with a faint onset transient, not a copy of the hole
 (the hole slice is exactly 0.0). The geometry, crop, pad, staging and gate all behaved as designed;
@@ -177,7 +196,9 @@ diagnosis:
   "the tag file is stale". It now branches on `matches existing audio` and says the recording is
   blocked and the fix is a different song — never transformed audio.
 
-## 7. Verification performed
+## 7. Verification performed — and what did not match the plan
+
+Performed:
 
 - `uv run --project lab/poc-scripts --python 3.12 --extra glue_treblo --extra test python -m pytest
   lab/poc-scripts/tests/test_gen_glue_treblo.py -q` → **23 passed**. Covers montage geometry and its
@@ -191,13 +212,37 @@ diagnosis:
 - `--dry-run --dry-run-items 3 --junctions 2` reproduces the geometry, the credits line and the exact
   request body without Postgres, R2 or the API.
 - `--help` shows the corrected `--balance-strength` semantics.
-- The paid run itself is the end-to-end proof: upload → submit → poll (`TRANSCRIBE_STAGE_1` →
-  `SUCCESS`) → download → `resolve_section` → stage → splice → `index.json` + `report.html`, with
-  `credits_spent: 100` in the index and the balance confirmed at 2900 by `GET /v1/credits/balance`.
-- `report.html` was checked by inspection for the junction, both arranged context cards and the
-  failed-take section with its reason string. **Not** browser-verified for player playback this time
-  (the plan's step 4 asked for that); the audio `src`s are relative and resolve to files that exist on
-  disk.
+- The paid run is the end-to-end proof of the *pipeline*: upload → submit → poll
+  (`TRANSCRIBE_STAGE_1` → `SUCCESS`) → download → `resolve_section` → stage → splice → `index.json` +
+  `report.html`, with `credits_spent: 100` in the index and the balance confirmed at 2900 by
+  `GET /v1/credits/balance`.
+- **Report page in a real browser** (`python -m http.server 8094` in `run2/`, headless Chromium at
+  `http://127.0.0.1:8094/report.html`): 10 `<audio>` elements, all 10 `src`s resolved to the files on
+  disk with finite `duration` after forcing load of the `preload="none"` players — context
+  237.56 / 207.73 / 109.64 s, `full-set/baseline.flac` 558.459 s, j2 baseline seam 31.719 s, j2
+  baseline full 319.089 s, glued section 3.43839 s, staged glue 3.43839 s, seam excerpt 33.438 s, full
+  pair 320.808 s, no `MediaError`. Playback advanced (`currentTime` 2.0 → 0.851 s after 0.9 s — the
+  element wrapped the short excerpt rather than stalling, `paused: false`). 5 take cards
+  (`full-set-baseline`, `j2-baseline`, `j2-beats-4`, and the two ranking-table repeats); the "Failed
+  takes" section renders `failed: glue level -88.628 dBFS is below -50 dBFS`; the subtitle reads
+  `engine treblo · POST /generations/v2/inpaint · model v2.2 · tags worship, praise & worship ·
+  instrumental yes · prompt_strength 2.00 · balance_strength 0.70 · selection_crop yes · 12.00 s
+  sides · 100/100 credits`.
+- The browser check found a rendering bug the unit tests did not: `card_html` hardcoded the prefix
+  `check:` on the reasons line, so a `failed` take displayed `check: glue level -88.628 dBFS is below
+  -50 dBFS` — the label contradicted the take's own status. It now prints the status verbatim
+  (`failed:`), regenerated `run2/report.html`, and re-verified in the browser with the cache
+  disabled (`p.error` = `failed: glue level -88.628 dBFS is below -50 dBFS`, 10 players, 5 cards).
+  23 tests still pass and `ruff check` is clean.
+
+Where the executed work deviates from the approved plan, stated plainly:
+
+| plan item | what actually happened |
+|---|---|
+| step 3, paid run on the default songset `hbWfCccGxN_JLQGBEqmdu`, both junctions, `run-name run1` | impossible — `POST /v1/uploads` 422s that songset's recordings. `run1` is the 0-credit failure record; the paid run is `run2` on `2ZV5SHjAzw7ceJE-nREs2` **junction 2 only** (the sole junction of seven that accepts its montage), after explicit user approval of the substitute |
+| step 3 expected `takes: 1 (ok 1)` or `(check 1)`, `glue_seconds ≈ 2.786`, `full-set/beats-4.flac ≈ 326.6 s` | got `takes: 1 (failed 1)` — the take was refused at −88.628 dBFS; `glue_seconds` is 3.4384 (69.8 BPM, not 86.13281); `full-set/beats-4.flac` was never written because a junction subset skips full-set assembly (`full_set.skipped` recorded) |
+| step 4, browser check of `report.html` | performed (§7 above) — durations finite, playback advances, subtitle matches |
+| step 5, ≈19 tests | 23 tests, after three were added for the fixes in §6 |
 
 ## 8. Review surfaces
 
@@ -244,8 +289,12 @@ paid response instead of buying the same audio again.
   deliberately not a dependency of the `glue_treblo` extra.
 - **Upload coverage is the binding constraint**: one of seven library junctions passes the guard, so a
   multi-junction run cannot be assembled from the current catalog.
+- **Disk footprint is unbounded and unpruned.** `cache/` reached 503 MB for this work: 442 MB of decoded
+  source WAVs (one per recording touched, 32–98 MB each at 44.1 kHz stereo PCM16) plus 61 MB of source
+  mp3s, and `run2/` adds 171 MB. Nothing prunes it — the cache is shared across runs and kept so a rerun
+  never re-downloads or re-decodes. A 5-song set touching five recordings, or a sweep over several
+  songsets while hunting an uploadable junction, multiplies that linearly; there is no `--prune` flag.
 - **`--takes`, `--beats` sweeps and `--no-instrumental --lyrics`** are implemented and unit-tested but
   have never been run against the live API — every live request so far used one take, 4 beats,
   instrumental mode.
 - **Report page scoring UI is client-side only** (localStorage), unchanged from the ElevenLabs page.
-- The `report.html` player playback was not browser-verified for `run2` (§7).
