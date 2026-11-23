@@ -27,6 +27,36 @@ const createRenderJobSchema = z.object({
   titleCardLines: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
 });
 
+/**
+ * True when the insert lost the admission race on the partial unique index.
+ *
+ * Drizzle wraps driver failures: the constraint name and SQLSTATE 23505 live on
+ * `err.cause`, not on the outer "Failed query: insert into ..." message, so a
+ * plain `err.message.includes(...)` check turned a documented 409 into a 500.
+ */
+function isActiveRenderJobConflict(err: unknown): boolean {
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    const candidate = current as {
+      message?: unknown;
+      constraint?: unknown;
+      code?: unknown;
+      cause?: unknown;
+    };
+    if (candidate.constraint === "uq_render_jobs_active_per_songset_user") {
+      return true;
+    }
+    if (
+      typeof candidate.message === "string" &&
+      candidate.message.includes("uq_render_jobs_active_per_songset_user")
+    ) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+  return false;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
@@ -143,7 +173,7 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
-      if (err instanceof Error && err.message.includes("uq_render_jobs_active_per_songset_user")) {
+      if (isActiveRenderJobConflict(err)) {
         return NextResponse.json(
           { error: "A render job is already in progress for this songset" },
           { status: 409 }
