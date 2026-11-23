@@ -131,6 +131,31 @@ describe("useGlueJob", () => {
     expect(FakeEventSource.instances[0].closed).toBe(true);
   });
 
+  it("restart reopens the stream for the same job after a terminal phase", async () => {
+    installFetch();
+    const { result } = renderHook(() =>
+      useGlueJob({ jobId: "job-1", songsetId: "songset-1", fromItemId: "item-a" })
+    );
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    act(() =>
+      FakeEventSource.instances[0].emit(
+        status({ phase: "failed", active: false, retryKind: "free" })
+      )
+    );
+    await waitFor(() => expect(result.current.terminal).toBe(true));
+    expect(FakeEventSource.instances[0].closed).toBe(true);
+
+    act(() => result.current.restart());
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(FakeEventSource.instances[1].url).toBe("/api/glue-jobs/job-1/events");
+    // The retried job keeps the rail's last known phase until the stream speaks.
+    expect(result.current.phase).toBe("failed");
+
+    act(() => FakeEventSource.instances[1].emit(status({ phase: "queued" })));
+    await waitFor(() => expect(result.current.phase).toBe("queued"));
+  });
+
   it("falls back to discovery after a dropped stream and reconnects", async () => {
     vi.useFakeTimers();
     const calls = installFetch();
