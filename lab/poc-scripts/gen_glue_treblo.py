@@ -1604,7 +1604,11 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
     metrics_line = baseline_text(take) if is_baseline else metric_text(take)
     detail = f'<p class="error">failed: {html.escape(str(error))}</p>' if error else ""
     if reasons and not error:
-        detail += f'<p class="error">check: {html.escape("; ".join(str(r) for r in reasons))}</p>'
+        # the prefix is the take's own status: a refused take must not read "check"
+        detail += (
+            f'<p class="error">{html.escape(str(status))}: '
+            f'{html.escape("; ".join(str(r) for r in reasons))}</p>'
+        )
     return f"""<article class="card" data-take-id="{html.escape(take_id)}"
   data-label="{html.escape(label)}">
   <h3>{html.escape(label)} <span class="badge" hidden>last played</span></h3>
