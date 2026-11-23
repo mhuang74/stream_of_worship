@@ -115,6 +115,9 @@ put_alarm() {
     local description="${10}"
 
     info "Alarm: $alarm_name"
+    # `--dimensions` shorthand takes struct pairs (`Name=QueueName,Value=...`),
+    # not MetricDimension-style `QueueName=...`; the latter is rejected with
+    # 'Missing required parameter in Dimensions[0]: "Name"'.
     local dimension_args=()
     if [[ -n "$dimensions" ]]; then
         dimension_args=(--dimensions "$dimensions")
@@ -221,7 +224,7 @@ main() {
         1 \
         1 \
         "GreaterThanOrEqualToThreshold" \
-        "QueueName=${DLQ_NAME}" \
+        "Name=QueueName,Value=${DLQ_NAME}" \
         "Glue dead-letter queue has a message; a job failed 3 deliveries. Inspect glue_jobs by id before acting (see docs/glue-operator-runbook.md)."
 
     # A provider-ambiguous outcome means a paid request may have been sent and
@@ -249,7 +252,7 @@ main() {
         2 \
         "$OPERATION_BUDGET_SECONDS" \
         "GreaterThanThreshold" \
-        "QueueName=${QUEUE_NAME}" \
+        "Name=QueueName,Value=${QUEUE_NAME}" \
         "Oldest Glue queue message exceeds the 1900 s operation budget; check dispatch and worker health."
 
     # Missing heartbeat beyond the operation budget. A claimed job that stops
@@ -266,7 +269,7 @@ main() {
         1 \
         1900000 \
         "GreaterThanOrEqualToThreshold" \
-        "FunctionName=${FUNCTION_NAME}" \
+        "Name=FunctionName,Value=${FUNCTION_NAME}" \
         "A claimed Glue job reached the 1900 s operation budget without completing; check the heartbeat and use free redispatch or staging recovery."
 
     # Raw-response staging-recovery spikes: repeated free recoveries usually

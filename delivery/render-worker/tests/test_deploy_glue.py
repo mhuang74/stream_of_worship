@@ -184,6 +184,18 @@ def test_observability_creates_required_filters_and_alarms() -> None:
         assert literal in text, f"glue-observability.sh lost required literal: {literal!r}"
 
 
+def test_observability_alarm_dimensions_use_name_value_pairs() -> None:
+    """`--dimensions` shorthand needs Name=/Value= members; `QueueName=...` is
+    rejected with 'Missing required parameter in Dimensions[0]: "Name"'."""
+    text = read(OBSERVABILITY)
+    for literal in (
+        "Name=QueueName,Value=${DLQ_NAME}",
+        "Name=QueueName,Value=${QUEUE_NAME}",
+        "Name=FunctionName,Value=${FUNCTION_NAME}",
+    ):
+        assert literal in text, f"glue-observability.sh lost dimension pair: {literal!r}"
+
+
 def test_deploy_workflow_reuses_the_render_image_and_publishes_a_version() -> None:
     text = read(DEPLOY_WORKFLOW)
     required = [
