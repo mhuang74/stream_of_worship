@@ -546,6 +546,14 @@ def generate_songset_audio(
                 )
             )
         segments = shifted_segments
+        glue_windows = [
+            replace(
+                window,
+                start_seconds=window.start_seconds + lead_in_seconds,
+                end_seconds=window.end_seconds + lead_in_seconds,
+            )
+            for window in glue_windows
+        ]
         for audio_file in audio_files:
             audio_file["start_ms"] += lead_in_ms
             for clip in audio_file["clips"]:

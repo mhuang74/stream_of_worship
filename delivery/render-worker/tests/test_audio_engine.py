@@ -1331,6 +1331,32 @@ class TestGlueJunctionMix:
             GlueWindow(to_item_id="2", start_seconds=180.0, end_seconds=182.786),
         )
 
+    def test_lead_in_shifts_glue_windows_and_mix(self, tmp_path):
+        item1, item2 = self._items()
+        glue = _glue_clip(_write_staged_wav(tmp_path / "glue.wav", 2.786), 2.786)
+        fetcher = MagicMock()
+        fetcher.download_audio.side_effect = lambda prefix: f"/tmp/{prefix}.mp3"
+        output_path = str(tmp_path / "out.mp3")
+        with patch("sow_render_worker.audio_engine.concatenate_audio_files") as mock_concat:
+            result = generate_songset_audio(
+                [item1, item2],
+                output_path,
+                fetcher,
+                lead_in_resolver=lambda segments: 3.0,
+                glue_clips={"2": glue},
+            )
+
+        assert result.lead_in_seconds == 3.0
+        assert result.segments[0].start_time_seconds == pytest.approx(3.0)
+        assert result.glue_windows[0].start_seconds == pytest.approx(183.0)
+        assert result.glue_windows[0].end_seconds == pytest.approx(185.786)
+        assert result.segments[1].start_time_seconds == pytest.approx(185.786)
+        assert result.total_duration_seconds == pytest.approx(385.786)
+
+        audio_files = mock_concat.call_args[0][0]
+        assert audio_files[1]["start_ms"] == pytest.approx(183000.0)
+        assert audio_files[1]["clips"][0]["start_time_seconds"] == pytest.approx(183.0)
+
     def test_multiple_glue_junctions_shift_every_later_start(self, tmp_path):
         from sow_render_worker.audio_engine import GlueWindow
 
