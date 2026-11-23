@@ -25,6 +25,7 @@ import { logGlueError, logGlueEvent } from "@/lib/glue/log";
 import { dispatchGlueMessage } from "@/lib/glue/dispatch";
 import {
   buildGlueQuota,
+  isGlueQuotaExempt,
   readGlueQuota,
   type GlueQuota,
 } from "@/lib/glue/quota";
@@ -275,8 +276,10 @@ export function classifyCreateConstraintError(
 /** Pure rolling-24h quota claim used inside the create transaction. */
 export function evaluateQuotaClaim(
   consumedAt: readonly Date[],
-  now: Date
+  now: Date,
+  exempt = false
 ): { allowed: true } | { allowed: false; resetAt: string | null } {
+  if (exempt) return { allowed: true };
   const quota = buildGlueQuota(consumedAt, now);
   return quota.remaining > 0 ? { allowed: true } : { allowed: false, resetAt: quota.resetAt };
 }
@@ -461,7 +464,8 @@ export const glueJobRepository: GlueJobRepository = {
             consumed
               .map((row) => row.consumedAt)
               .filter((value): value is Date => value instanceof Date),
-            input.now
+            input.now,
+            isGlueQuotaExempt(input.userId)
           );
           if (!claim.allowed) {
             return { kind: "quota", resetAt: claim.resetAt } as const;

@@ -189,7 +189,11 @@ function jobStatus(overrides: Partial<GlueJobStatus> = {}): GlueJobStatus {
 interface Harness {
   createBodies: Record<string, unknown>[];
   cancelCalls: string[];
+  redispatchCalls: string[];
+  retryProcessingCalls: string[];
   discoveryCalls: number;
+  /** Replaces what discovery/streams report as the server's latest jobs. */
+  setActive: (statuses: GlueJobStatus[]) => void;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -200,11 +204,17 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response;
 }
 
-function installFetch(activeStatuses: GlueJobStatus[] = []): Harness {
+function installFetch(initialStatuses: GlueJobStatus[] = []): Harness {
+  let activeStatuses = initialStatuses;
   const harness: Harness = {
     createBodies: [],
     cancelCalls: [],
+    redispatchCalls: [],
+    retryProcessingCalls: [],
     discoveryCalls: 0,
+    setActive: (statuses) => {
+      activeStatuses = statuses;
+    },
   };
   vi.stubGlobal(
     "fetch",
@@ -230,7 +240,12 @@ function installFetch(activeStatuses: GlueJobStatus[] = []): Harness {
         return jsonResponse({ jobId: JOB_ID, status: "cancelled" });
       }
       if (url.endsWith("/retry-processing") && method === "POST") {
+        harness.retryProcessingCalls.push(url);
         return jsonResponse({ jobId: JOB_ID, status: "staging", charged: false }, 202);
+      }
+      if (url.endsWith("/redispatch") && method === "POST") {
+        harness.redispatchCalls.push(url);
+        return jsonResponse({ jobId: JOB_ID, status: "queued", charged: false }, 202);
       }
       if (url.endsWith("/resume") && method === "POST") {
         return jsonResponse({ jobId: JOB_ID, status: "queued", charged: false }, 202);
@@ -515,6 +530,133 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
     expect(screen.queryByTestId("arrangement-glue-generate")).toBeNull();
     expect(screen.queryByTestId("arrangement-glue-try-another")).toBeNull();
+  });
+
+  it("restarts the status stream after a free retry", async () => {
+    const harness = installFetch();
+    renderSheet();
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
+    await screen.findByTestId("arrangement-glue-confirm");
+    fireEvent.click(screen.getByTestId("arrangement-glue-confirm-generate"));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    FakeEventSource.instances[0].emit(
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "free",
+        errorCode: "GLUE_WORKER_FAILED",
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-resume")).toBeTruthy()
+    );
+    expect(FakeEventSource.instances[0].closed).toBe(true);
+
+    // The server now reports the same job running again.
+    harness.setActive([jobStatus({ phase: "queued", active: true })]);
+    fireEvent.click(screen.getByTestId("arrangement-glue-resume"));
+
+    await waitFor(() => expect(harness.retryProcessingCalls).toHaveLength(1));
+    expect(harness.retryProcessingCalls[0]).toContain(`/${JOB_ID}`);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(FakeEventSource.instances[1].url).toBe(
+      `/api/glue-jobs/${JOB_ID}/events`
+    );
+
+    FakeEventSource.instances[1].emit(jobStatus({ phase: "queued" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-phase").textContent).toContain(
+        "Waiting to start"
+      )
+    );
+  });
+
+  it("adopts a free-retryable failure on load", async () => {
+    const harness = installFetch([
+      jobStatus({
+        phase: "failed",
+        active: false,
+        retryKind: "free",
+        errorCode: "GLUE_WORKER_FAILED",
+      }),
+    ]);
+    renderSheet([
+      makeItem({ glue: junction({ state: "failed" }) }),
+      successor(),
+    ]);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-resume")).toBeTruthy()
+    );
+    expect(harness.discoveryCalls).toBeGreaterThanOrEqual(1);
+    // The adopted failure is still the Junction's reason.
+    expect(screen.getByTestId("arrangement-glue-reason").textContent).toContain(
+      "The last AI transition attempt failed."
+    );
+  });
+
+  it("adopts and redispatches a dispatch-failed job", async () => {
+    const harness = installFetch([
+      jobStatus({
+        phase: "dispatch-failed",
+        active: false,
+        retryKind: null,
+        errorCode: "GLUE_DISPATCH_FAILED",
+      }),
+    ]);
+    renderSheet([
+      makeItem({ glue: junction({ state: "needs-generation" }) }),
+      successor(),
+    ]);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-resume")).toBeTruthy()
+    );
+    // `dispatch-failed` has no Junction state of its own; it reads as a failure.
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-phase").textContent).toContain(
+        "The last attempt did not finish"
+      )
+    );
+
+    harness.setActive([jobStatus({ phase: "queued", active: true })]);
+    fireEvent.click(screen.getByTestId("arrangement-glue-resume"));
+
+    await waitFor(() => expect(harness.redispatchCalls).toHaveLength(1));
+    expect(harness.redispatchCalls[0]).toContain(`/${JOB_ID}/redispatch`);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(FakeEventSource.instances[0].url).toBe(
+      `/api/glue-jobs/${JOB_ID}/events`
+    );
+  });
+
+  it("does not adopt a non-retryable failure and offers Create instead", async () => {
+    const harness = installFetch([
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "none",
+        errorCode: "GLUE_PROVIDER_PLAN",
+      }),
+    ]);
+    renderSheet([
+      makeItem({ glue: junction({ state: "failed" }) }),
+      successor(),
+    ]);
+
+    await waitFor(() => expect(harness.discoveryCalls).toBeGreaterThanOrEqual(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-generate")).toBeTruthy()
+    );
+    expect(screen.queryByTestId("arrangement-glue-job")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
+    expect(FakeEventSource.instances).toHaveLength(0);
   });
 
   it("offers a paid Try another when the last attempt cannot be retried for free", async () => {

@@ -13,6 +13,18 @@ import { gluePaidAttempts } from "@/db/schema";
 export const GLUE_DAILY_LIMIT = 5 as const;
 const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * QA account exempt from the rolling paid-transition quota so end-to-end
+ * testing is never blocked. `tester@streamofworship.com` is the only QA user
+ * (Better Auth id 15). This is deliberately a hardcoded server-side
+ * allowlist, not a deployment knob.
+ */
+export const GLUE_QUOTA_EXEMPT_USER_IDS: ReadonlySet<number> = new Set([15]);
+
+export function isGlueQuotaExempt(userId: number): boolean {
+  return GLUE_QUOTA_EXEMPT_USER_IDS.has(userId);
+}
+
 export interface GlueQuota {
   limit: typeof GLUE_DAILY_LIMIT;
   used: number;
@@ -41,6 +53,8 @@ export function buildGlueQuota(consumedAt: readonly Date[], now: Date = new Date
 
 /** Reads the consumed `glue_paid_attempts` ledger for the rolling 24 hours. */
 export async function readGlueQuota(userId: number, now: Date = new Date()): Promise<GlueQuota> {
+  // The exempt account never reads the ledger, so its window is always open.
+  if (isGlueQuotaExempt(userId)) return buildGlueQuota([], now);
   const cutoff = new Date(now.getTime() - QUOTA_WINDOW_MS);
   const rows = await db
     .select({ consumedAt: gluePaidAttempts.consumedAt })

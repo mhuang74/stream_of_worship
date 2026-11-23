@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   fetchGlueJob,
@@ -37,6 +37,8 @@ export interface UseGlueJobResult {
   quota: GlueQuota | null;
   streamError: GlueApiError | null;
   refresh: () => Promise<void>;
+  /** Reopens the stream for the current job (after an in-place retry). */
+  restart: () => void;
 }
 
 export function useGlueJob({
@@ -47,6 +49,10 @@ export function useGlueJob({
 }: UseGlueJobOptions): UseGlueJobResult {
   const [status, setStatus] = useState<GlueJobStatus | null>(null);
   const [streamError, setStreamError] = useState<GlueApiError | null>(null);
+  const [watchEpoch, setWatchEpoch] = useState(0);
+  // Which job the current stream belongs to; a restart of the same id must not
+  // blank the phase the rail is already showing.
+  const subscribedJobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled || jobId === null || fromItemId === null) return;
@@ -55,9 +61,13 @@ export function useGlueJob({
     // A different job starts from a clean slate; the previous job's terminal
     // status must not leak into the next Junction's UI. The reset cannot be
     // render-derived: the stale status is exactly what must not render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the previous junction's job status before the new subscription starts
-    setStatus(null);
-    setStreamError(null);
+    const jobChanged = subscribedJobIdRef.current !== jobId;
+    subscribedJobIdRef.current = jobId;
+    if (jobChanged) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the previous junction's job status before the new subscription starts
+      setStatus(null);
+      setStreamError(null);
+    }
     const stop = watchGlueJob(
       { jobId, songsetId, fromItemId },
       {
@@ -76,7 +86,9 @@ export function useGlueJob({
       disposed = true;
       stop();
     };
-  }, [enabled, jobId, songsetId, fromItemId]);
+  }, [enabled, jobId, songsetId, fromItemId, watchEpoch]);
+
+  const restart = useCallback(() => setWatchEpoch((value) => value + 1), []);
 
   const refresh = useCallback(async () => {
     if (jobId === null) return;
@@ -103,5 +115,6 @@ export function useGlueJob({
     quota: status?.quota ?? null,
     streamError,
     refresh,
+    restart,
   };
 }

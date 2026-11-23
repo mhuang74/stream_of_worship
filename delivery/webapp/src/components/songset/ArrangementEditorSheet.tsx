@@ -80,6 +80,8 @@ import { applyDraftValidity, glueForAdjacency } from "@/lib/glue/draft";
 import {
   cancelGlueJobRequest,
   createGlueJobRequest,
+  fetchActiveGlueJobs,
+  redispatchGlueJobRequest,
   resumeGlueJobRequest,
   retryGlueProcessingRequest,
 } from "@/lib/glue/client";
@@ -183,7 +185,10 @@ function glueQuoteErrorKey(code: string): TranslationKey {
   }
 }
 
-function glueStateKey(state: ResolvedGlueJunction["state"]): TranslationKey {
+function glueStateKey(state: string): TranslationKey {
+  // `dispatch-failed` is a durable job phase with no Junction state of its own;
+  // it reads as the same failure line the Junction uses.
+  if (state === "dispatch-failed") return "glue.state.failed";
   return `glue.state.${state}` as TranslationKey;
 }
 
@@ -1431,6 +1436,42 @@ export function ArrangementEditorSheet({
   });
   const refreshGlueJob = glueJob.refresh;
 
+  // After a reload the Junction payload only reports *active* jobs, so a
+  // terminal free-retryable job (resume / retry-processing / redispatch) would
+  // lose its free retry. Adopt only those. A `ready`, `cancelled`, `paid`, or
+  // `none` terminal job is deliberately not adopted: reopening then offers a
+  // fresh Create, which is the restart path for a non-retryable failure.
+  const resolvedGlueState = displayGlue?.state ?? null;
+  const hasServerActiveGlueJob = displayGlue?.activeJob != null;
+  useEffect(() => {
+    if (!isOpen || !songsetId || !showGlueRail) return;
+    if (glueJobId !== null || hasServerActiveGlueJob) return;
+    if (resolvedGlueState !== "failed" && resolvedGlueState !== "needs-generation") {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await fetchActiveGlueJobs(songsetId);
+      if (cancelled || !result.ok) return;
+      const latest = result.data?.latestByFromItemId?.[item.id];
+      if (latest === undefined) return;
+      if (latest.retryKind === "free" || latest.phase === "dispatch-failed") {
+        setGlueJobId(latest.id);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isOpen,
+    songsetId,
+    showGlueRail,
+    glueJobId,
+    hasServerActiveGlueJob,
+    resolvedGlueState,
+    item.id,
+  ]);
+
   const refreshGlueSelection = useCallback(async () => {
     if (!onUpdateGlue) return;
     try {
@@ -1499,23 +1540,31 @@ export function ArrangementEditorSheet({
     setGlueJobActionPending(true);
     setGlueJobErrorCode(null);
     setGlueCancelled(false);
-    // A free failure after provider contact means the paid audio already
-    // exists; retry-processing rebuilds only the staged take. Everything else
-    // resumes the same identity, and the server derives the safe path.
+    // The durable status picks the route. A dispatch failure never reached the
+    // worker, so it only re-enqueues. A free failure after provider contact
+    // means the paid audio already exists; retry-processing rebuilds only the
+    // staged take. Everything else resumes the same identity, and the server
+    // derives the safe path.
     const status = glueJob.status;
+    const dispatchFailed = status?.phase === "dispatch-failed";
     const processingOnly =
-      status?.retryKind === "free" && status.providerContacted;
-    const result = processingOnly
-      ? await retryGlueProcessingRequest(watchedGlueJobId)
-      : await resumeGlueJobRequest(watchedGlueJobId);
+      !dispatchFailed && status?.retryKind === "free" && status.providerContacted;
+    const result = dispatchFailed
+      ? await redispatchGlueJobRequest(watchedGlueJobId)
+      : processingOnly
+        ? await retryGlueProcessingRequest(watchedGlueJobId)
+        : await resumeGlueJobRequest(watchedGlueJobId);
     setGlueJobActionPending(false);
     if (!result.ok) {
       setGlueJobErrorCode(result.error.code);
       return;
     }
+    // The stream stopped when the previous attempt reached a terminal phase; a
+    // retry of the same job id only becomes live if the hook reopens it.
+    glueJob.restart();
     setGlueJobId(watchedGlueJobId);
     await refreshGlueJob();
-  }, [glueJob.status, watchedGlueJobId, refreshGlueJob]);
+  }, [glueJob.status, glueJob.restart, watchedGlueJobId, refreshGlueJob]);
 
   // A finished take becomes the selected one server-side; refresh the parent
   // so the Junction reads its new resolved state without a page reload.
@@ -1527,6 +1576,13 @@ export function ArrangementEditorSheet({
     refreshedReadyJobRef.current = glueJobStatus.id;
     void refreshGlueSelection();
   }, [glueJobStatus, refreshGlueSelection]);
+
+  // The server owns phase, elapsed time, and retry classification; the rail
+  // only renders them. There is deliberately no percentage anywhere.
+  const jobPhase = glueJobStatus?.phase ?? displayGlue?.activeJob?.phase ?? null;
+  const jobActive =
+    glueJobStatus?.active ?? Boolean(displayGlue?.activeJob);
+  const jobProviderContacted = glueJobStatus?.providerContacted ?? false;
 
   const currentGlueQuote =
     glueQuote !== null &&
@@ -1556,7 +1612,8 @@ export function ArrangementEditorSheet({
         : "glue.reason.tooShort";
     }
     if (displayGlue?.state === "stale") return "glue.reason.stale";
-    if (displayGlue?.state === "failed") return "glue.reason.failed";
+    // A retried job in flight supersedes the Junction's last failure.
+    if (displayGlue?.state === "failed" && !jobActive) return "glue.reason.failed";
     return null;
   })();
 
@@ -1571,12 +1628,6 @@ export function ArrangementEditorSheet({
         }).format(new Date(currentGlueQuote.quotaResetAt))
       : null;
 
-  // The server owns phase, elapsed time, and retry classification; the rail
-  // only renders them. There is deliberately no percentage anywhere.
-  const jobPhase = glueJobStatus?.phase ?? displayGlue?.activeJob?.phase ?? null;
-  const jobActive =
-    glueJobStatus?.active ?? Boolean(displayGlue?.activeJob);
-  const jobProviderContacted = glueJobStatus?.providerContacted ?? false;
   const canCancelGlueJob =
     glueJobStatus !== null &&
     glueJobStatus.active &&
@@ -1589,12 +1640,15 @@ export function ArrangementEditorSheet({
   const glueFailureCode =
     glueJobErrorCode ??
     (isGlueJobFailed ? glueJobStatus?.errorCode ?? null : null);
+  // A dispatch failure never reached the worker, so re-enqueueing it is free
+  // even though the durable `retry_kind` is unset.
+  const dispatchFailed = glueJobStatus?.phase === "dispatch-failed";
   const canFreeRetry =
-    isGlueJobFailed && glueJobStatus?.retryKind === "free";
+    isGlueJobFailed && (glueJobStatus?.retryKind === "free" || dispatchFailed);
   // After provider contact the paid audio already exists, so the free action
   // is retry-processing, never a new generation.
   const freeRetryUsesProcessing =
-    canFreeRetry && glueJobStatus?.providerContacted === true;
+    canFreeRetry && !dispatchFailed && glueJobStatus?.providerContacted === true;
   const needsPaidRetry =
     isGlueJobFailed && glueJobStatus?.retryKind === "paid";
   // retry_kind="none" means the failure is not retryable in place
@@ -3210,11 +3264,7 @@ export function ArrangementEditorSheet({
                                 className="text-[11px] leading-relaxed text-foreground/80"
                                 data-testid="arrangement-glue-phase"
                               >
-                                {t(
-                                  glueStateKey(
-                                    jobPhase as ResolvedGlueJunction["state"]
-                                  )
-                                )}
+                                {t(glueStateKey(jobPhase))}
                               </p>
                             )}
                             {glueJobStatus !== null && (

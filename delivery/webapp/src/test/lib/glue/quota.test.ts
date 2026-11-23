@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("@/db", () => ({ db: {} }));
 
-import { buildGlueQuota } from "@/lib/glue/quota";
+import { buildGlueQuota, GLUE_QUOTA_EXEMPT_USER_IDS, isGlueQuotaExempt } from "@/lib/glue/quota";
 
 const NOW = new Date("2026-11-22T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -43,5 +43,15 @@ describe("buildGlueQuota", () => {
     expect(quota.used).toBe(6);
     expect(quota.remaining).toBe(0);
     expect(quota.resetAt).toBe("2026-11-23T06:00:00.000Z");
+  });
+});
+
+describe("QA quota exemption", () => {
+  it("exempts the QA account only", () => {
+    // `tester@streamofworship.com` is the sole exempt user (Better Auth id 15).
+    expect(isGlueQuotaExempt(15)).toBe(true);
+    expect(isGlueQuotaExempt(3)).toBe(false);
+    expect(isGlueQuotaExempt(20)).toBe(false);
+    expect(GLUE_QUOTA_EXEMPT_USER_IDS.size).toBe(1);
   });
 });

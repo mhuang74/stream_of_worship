@@ -319,6 +319,12 @@ describe("quota claim", () => {
     );
     expect(evaluateQuotaClaim(stale, now)).toEqual({ allowed: true });
   });
+
+  it("allows an exempt account past a full window", () => {
+    const five = [1, 2, 3, 4, 5].map((hours) => new Date(now.getTime() - hours * 3600_000));
+    expect(evaluateQuotaClaim(five, now, true)).toEqual({ allowed: true });
+    expect(evaluateQuotaClaim(five, now).allowed).toBe(false);
+  });
 });
 
 describe("constraint classification", () => {
