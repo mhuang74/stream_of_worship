@@ -32,7 +32,7 @@ Outputs under `--out`:
 Usage:
     set -a && . /opt/sow/.env && set +a
     uv run --project lab/poc-scripts --extra audio_inpaint \\
-        python lab/poc-scripts/gen_seam_fill_run3.py \\
+        python lab/poc-scripts/gen_gap_fill_sa3.py \\
         --out lab/poc-scripts/output/audio-inpaint/run3
 
 `--dry-run` makes zero Modal calls and still writes the run2 reference raw/trim/
@@ -55,8 +55,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen_audio_inpaint import SR, fit_length  # noqa: E402
-from gen_seam_fill import (  # noqa: E402  (run2 module; reused verbatim)
+from gen_seam_inpaint_acestep import SR, fit_length  # noqa: E402
+from gen_gap_fill_dsp_sa3 import (  # noqa: E402  (run2 module, renamed; reused verbatim)
     SA3_APP,
     SA3_CLASS,
     SA3_ENGINE,

@@ -35,11 +35,11 @@ geometry and the returned references are verified by envelope, never by wave cor
 
 Usage:
     uv run --project lab/poc-scripts --extra elevenlabs_glue \\
-        python lab/poc-scripts/gen_elevenlabs_glue.py --run-name run1 --upload-seconds 12
+        python lab/poc-scripts/gen_glue_elevenlabs.py --run-name run1 --upload-seconds 12
     uv run --project lab/poc-scripts --extra elevenlabs_glue \\
-        python lab/poc-scripts/gen_elevenlabs_glue.py --run-name run1 --junctions 1
+        python lab/poc-scripts/gen_glue_elevenlabs.py --run-name run1 --junctions 1
     uv run --project lab/poc-scripts --extra elevenlabs_glue \\
-        python lab/poc-scripts/gen_elevenlabs_glue.py --dry-run --dry-run-items 5
+        python lab/poc-scripts/gen_glue_elevenlabs.py --dry-run --dry-run-items 5
 
 Costs ElevenLabs credits: 15 credits per second uploaded plus 15 per second generated. Full
 arranged sides are 4,857 credits of upload and the copyright screen rejects them for commercial

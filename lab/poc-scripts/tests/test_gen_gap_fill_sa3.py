@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import gen_seam_fill_run3 as run3
+import gen_gap_fill_sa3 as run3
 
 SR = run3.SR
 FILL = run3.FILL_SAMPLES

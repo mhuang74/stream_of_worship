@@ -1,5 +1,7 @@
 # Audio-inpaint POC runs
 
+Usage for every inpaint script: [README-inpaint-poc.md](README-inpaint-poc.md).
+
 Listening pages for the seam inpainting proof of concept, under `output/audio-inpaint/`
 (that directory is git-ignored: the runs are local artifacts, this file is the record).
 Each run directory holds
@@ -17,7 +19,7 @@ cd lab/poc-scripts/output/audio-inpaint/run5-arranged && python -m http.server 8
 Each take is scored 0–10 on five weighted criteria in the run's own `report.html`; the
 guide at the top of every report lists the measured proxy for each criterion.
 
-`build_review_index.py` writes the page above all of them — `output/audio-inpaint/index.html`
+`build_inpaint_review_index.py` writes the page above all of them — `output/audio-inpaint/index.html`
 (same server, `/index.html`): one row per run, every bridge variant with both engines side by
 side, and every gap take with `raw`/`trim`/`grid` plus the measured reason a take was refused.
 It reads each run's `index.json` and its `clips/`/`bridges/` files, so it only works on a machine
@@ -26,7 +28,7 @@ rebuild.
 
 ```bash
 uv run --project lab/poc-scripts --extra audio_inpaint \
-  python lab/poc-scripts/build_review_index.py --root lab/poc-scripts/output/audio-inpaint
+  python lab/poc-scripts/build_inpaint_review_index.py --root lab/poc-scripts/output/audio-inpaint
 ```
 
 ## Runs
@@ -52,7 +54,7 @@ Reproduce (all four in parallel, ~15 min wall, ~470 s GPU — one model call per
 
 ```bash
 uv run --project lab/poc-scripts --extra audio_inpaint \
-  python lab/poc-scripts/gen_audio_inpaint.py --songset hbWfCccGxN_JLQGBEqmdu \
+  python lab/poc-scripts/gen_seam_inpaint_acestep.py --songset hbWfCccGxN_JLQGBEqmdu \
   --out lab/poc-scripts/output/audio-inpaint/rerun-bridge
 # ... --engine sa3 for the SA3 bridge; --mode gap [--engine sa3] for the gap runs
 ```

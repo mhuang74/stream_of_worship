@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-import gen_elevenlabs_glue as glue_mod
-from gen_elevenlabs_glue import (
+import gen_glue_elevenlabs as glue_mod
+from gen_glue_elevenlabs import (
     EDGE_SECONDS,
     SR,
     PlanOptions,

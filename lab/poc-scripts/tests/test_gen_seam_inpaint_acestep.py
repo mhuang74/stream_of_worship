@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-import gen_audio_inpaint as gap
+import gen_seam_inpaint_acestep as gap
 
 SR = gap.SR
 CONTEXT = gap.seconds_to_samples(gap.CLIP_CONTEXT_SECONDS)
