@@ -319,6 +319,8 @@ uv run --project lab/poc-scripts --extra glue_treblo \
 
 Tags come from the closed v2 vocabulary in [`data/treblo-v2-tags.txt`](data/treblo-v2-tags.txt) and are validated before any request: the API rejects anything off-list with a 422 (a rejected request is not charged). `POST /uploads` refuses audio Treblo already holds ("This upload matches existing audio") — both recordings of the default songset are refused today, so that songset cannot be used as an inpaint source and the run aborts fatally on the upload, before any credits are spent. Use recordings that pass the upload; never transform audio to get past that filter.
 
+**Measured so far (2026-11-24): the v2 inpaint returns digital silence for a silent hole.** One paid run (`run2`, songset `2ZV5SHjAzw7ceJE-nREs2`, junction 2, 4 beats) submitted, polled, downloaded and cropped end to end for 100 credits, and Treblo's returned section measured **−103 dBFS RMS, peak 0.0015** — the model continued the hole instead of filling it, so the take is refused (`glue level -88.628 dBFS is below -50 dBFS`). The raw bytes in `cache/treblo-responses/*.bin` are that silence, so this is the vendor's output, not the splice: the geometry, crop (−94.7 ms short of the requested 3.438 s), staging and gates all behaved as designed. Uploads fail content matching across the library — of four arranged songsets (7 junctions), only `2ZV5SHjAzw7ceJE-nREs2` junction 2 accepts its montage. Treat `run2` as the paid negative result, not a quality reference.
+
 Outputs under `<out-root>/<run-name>`:
 
 ```
