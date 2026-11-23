@@ -417,7 +417,20 @@ reduces render throughput.
 Run `deploy/aws-up-glue.sh` (requires `GLUE_CAPACITY_PROVIDER_ARN`; the script
 fails fast without it and never prints secrets) to create or update the queue,
 DLQ, Managed Instances function, event-source mapping, and a published
-version. Managed Instances require `aws lambda publish-version`.
+version.
+
+Unqualified invocations (the event-source mapping) resolve to the special
+`$LATEST.PUBLISHED` version, whose configuration is a snapshot. Changing the
+function configuration does **not** change what runs: republish with
+`aws lambda publish-version --function-name sow-glue-worker --publish-to LATEST_PUBLISHED`
+(a plain `publish-version` only creates a numbered version the mapping never
+invokes), wait for `State=Active`, then re-apply
+`put-function-scaling-config --qualifier '$LATEST.PUBLISHED'`.
+
+The published timeout is 3300 s because the worker's own deadline gates need
+the sum of its provider-stage reserves: an upload may consume its whole 990 s
+before compose re-checks its own 1890 s. SQS visibility (3500 s) must stay
+above the function timeout, and the CloudWatch operation budget matches it.
 
 `SOW_ELEVENLABS_API_KEY` is set on the **Glue function only**. It is never set
 on the render-worker function, never returned to the browser, and never
