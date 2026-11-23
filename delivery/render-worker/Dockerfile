@@ -1,4 +1,9 @@
-FROM public.ecr.aws/lambda/python:3.11
+# Python 3.13 (Amazon Linux 2023) is required by Lambda Managed Instances: the
+# 3.11 base image carries com.amazonaws.lambda.feature.managedinstances="NotSupported",
+# and Lambda rejects create/update-function on a capacity provider for it. The
+# label is inherited from this base, so the Glue function can only run on the
+# shared image when it is built from 3.13.
+FROM public.ecr.aws/lambda/python:3.13
 
 RUN yum install -y google-noto-sans-cjk-fonts tar xz \
     && yum clean all \

@@ -27,7 +27,7 @@ Lambda Runtime Interface Emulator listening on port 8080
 If the build fails with:
 
 ```
-failed to resolve source metadata for public.ecr.aws/lambda/python:3.11: 403 Forbidden
+failed to resolve source metadata for public.ecr.aws/lambda/python:3.13: 403 Forbidden
 ```
 
 The `multiarch-builder` (docker-container buildx driver) has cached an expired auth token for `public.ecr.aws`. Public ECR allows anonymous pulls, but the stale token takes precedence and gets rejected.
@@ -114,7 +114,7 @@ docker compose --env-file /opt/sow/.env -f docker-compose.dev.yml down
 
 | Issue | Solution |
 |-------|----------|
-| `403 Forbidden` on `public.ecr.aws/lambda/python:3.11` | Recreate the buildx builder (see [Buildx 403 Forbidden Error](#buildx-403-forbidden-error)) |
+| `403 Forbidden` on `public.ecr.aws/lambda/python:3.13` | Recreate the buildx builder (see [Buildx 403 Forbidden Error](#buildx-403-forbidden-error)) |
 | `port 9000 already in use` | Stop the existing container or change the port mapping in `docker-compose.dev.yml` |
 | Missing env var errors at startup | Verify `/opt/sow/.env` contains all `SOW_*` variables (see `.env.example`) |
 | Container exits with OOM | Increase Docker memory limit, or reduce resolution in the render job |
