@@ -300,6 +300,10 @@ describe("Deploy workflow — Glue worker", () => {
       );
     });
     expect(verify).toBeDefined();
+    // State alone accepts an Active snapshot on the old 1900 s timeout.
+    const run = String((verify as { run?: unknown }).run ?? "");
+    expect(run).toContain("[State,Timeout]");
+    expect(run).toContain('$timeout" != "3300');
   });
 
   it("applies execution-environment scaling with the separate API", () => {

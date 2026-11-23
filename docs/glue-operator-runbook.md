@@ -224,10 +224,40 @@ take and no extra provider charge.
 **What the user sees:** terminal jobs stop showing as active; a recovered
 queued job resumes with its real phase rather than a fabricated percent.
 
+## Configuration changes require a republish
+
+The event-source mapping invokes the `$LATEST.PUBLISHED` version, which is a
+configuration snapshot: editing the function's timeout, memory, or environment
+leaves the running version unchanged. After any configuration change:
+
+```bash
+aws lambda update-function-configuration --function-name sow-glue-worker --timeout 3300
+aws lambda publish-version --function-name sow-glue-worker --publish-to LATEST_PUBLISHED
+# wait for State=Active, then re-apply the cap (a new version starts uncapped)
+aws lambda put-function-scaling-config --function-name sow-glue-worker \
+  --qualifier '$LATEST.PUBLISHED' \
+  --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2'
+```
+
+A plain `publish-version` creates a numbered version that the mapping never
+invokes. `PutFunctionScalingConfig` answers `ResourceConflictException` while
+the new version settles, so retry it.
+
+The timeout must stay above the worker's stage reserves (`990 s` upload +
+`1 890 s` compose). Below that sum every job fails with
+`GLUE_EXECUTION_DEADLINE` after the paid upload has already run.
+
 ## Alerts and metrics
 
 Created/updated by `delivery/render-worker/deploy/glue-observability.sh`
 (idempotent; optional SNS via `GLUE_ALARM_SNS_TOPIC_ARN`).
+
+Lambda's JSON log format wraps every record as `{timestamp, level, message}`,
+so the Glue payload is escaped inside `$.message`. The metric filters match
+event tokens through `$.message` (`{ $.message = "*glue.job.claimed*" }`);
+patterns against `$.event` match nothing and leave `SOW/Glue` at zero. A
+reviewer can prove a pattern with `aws logs test-metric-filter` or by replaying
+one event into a scratch log group before trusting an alarm.
 
 | Alarm | Metric | Meaning / first action |
 |---|---|---|

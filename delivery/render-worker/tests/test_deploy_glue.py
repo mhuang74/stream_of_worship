@@ -171,6 +171,16 @@ def test_paid_failure_log_payload_carries_retry_kind() -> None:
     json.loads(payload)
 
 
+def test_published_version_verification_asserts_the_timeout() -> None:
+    """State alone would accept an Active snapshot still carrying 1900 s, which
+    is exactly how the first paid job died; the step must read both values."""
+    workflow = read(DEPLOY_WORKFLOW)
+    start = workflow.index("- name: Verify the published Glue version is Active")
+    step = workflow[start:].split("\n\n      - name:", 1)[0]
+    assert "[State,Timeout]" in step
+    assert '"$timeout" != "3300"' in step
+
+
 def test_glue_scaling_is_retried_and_verified() -> None:
     """PutFunctionScalingConfig answers ResourceConflictException right after a
     version publish; both the bootstrap and the workflow must retry it and then
