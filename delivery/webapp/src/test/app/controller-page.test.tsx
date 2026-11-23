@@ -175,6 +175,7 @@ interface CapturedControllerProps {
   chapters: unknown[];
   chapterRecordingHashes?: (string | null)[];
   chapterLineHeadings?: (string | null)[][] | null;
+  glueWindows?: { startSeconds: number; endSeconds: number }[];
   isOfflineMedia?: boolean;
   onMediaError?: () => Promise<boolean>;
   isPresentationActive: boolean;
@@ -651,6 +652,102 @@ describe("ControllerPage (songset)", () => {
 
       await waitFor(() => {
         expect(lastControllerProps?.chapterLineHeadings).toEqual([["verse", "chorus"]]);
+      });
+    });
+
+    // Two fresh Items with a 12 s Glue into Item 1. Arrangement timeline:
+    // Item 0 = [0, 100], Glue = [100, 112], Item 1 = [112, 192].
+    const glueSongset = {
+      ...SONGSET_RESPONSE,
+      renderState: "fresh" as const,
+      items: [
+        {
+          id: "item-0",
+          position: 0,
+          recordingHashPrefix: "hash-a",
+          arrangementSteps: null,
+          gapBeats: 0,
+          crossfadeEnabled: 0,
+          crossfadeDurationSeconds: null,
+          glueTakeId: "take-1",
+          glueSeconds: 12,
+          song: { title: "A" },
+          recording: {
+            contentHash: "hash-a",
+            tempoBpm: null,
+            durationSeconds: 100,
+            sections: null,
+            beats: null,
+          },
+        },
+        {
+          id: "item-1",
+          position: 1,
+          recordingHashPrefix: "hash-b",
+          arrangementSteps: null,
+          gapBeats: 0,
+          crossfadeEnabled: 0,
+          crossfadeDurationSeconds: null,
+          glueTakeId: null,
+          glueSeconds: null,
+          song: { title: "B" },
+          recording: {
+            contentHash: "hash-b",
+            tempoBpm: null,
+            durationSeconds: 80,
+            sections: null,
+            beats: null,
+          },
+        },
+      ],
+    };
+
+    function glueFetches(chaptersManifest: unknown) {
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(glueSongset) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({ ...RENDER_JOB_RESPONSE, chaptersR2Key: "chapters/test.json" }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(SIGNED_URL_RESPONSE) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(chaptersManifest) });
+    }
+
+    it("shifts Glue markers by the Title Card lead-in", async () => {
+      // The Arrangement timeline starts at 0, the rendered media starts with
+      // the Title Card's silence: markers must move right by that lead-in or
+      // the playhead crosses them before the song boundary arrives.
+      glueFetches({
+        chapters: [],
+        totalDurationSeconds: 192,
+        generatedAt: "2026-09-15T00:00:00.000Z",
+        titleCardOffsetSeconds: 7.5,
+      });
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(lastControllerProps?.glueWindows).toEqual([
+          { startSeconds: 107.5, endSeconds: 119.5 },
+        ]);
+      });
+    });
+
+    it("keeps Glue markers on arrangement seconds when the manifest records no lead-in", async () => {
+      glueFetches({
+        chapters: [],
+        totalDurationSeconds: 192,
+        generatedAt: "2026-09-15T00:00:00.000Z",
+      });
+
+      render(<ControllerPage />);
+
+      await waitFor(() => {
+        expect(lastControllerProps?.glueWindows).toEqual([
+          { startSeconds: 100, endSeconds: 112 },
+        ]);
       });
     });
 

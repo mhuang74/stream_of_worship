@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import { usePlaybackCore, AuthRedirectError } from "@/hooks/usePlaybackCore";
 import { useLocale } from "@/hooks/useLocale";
@@ -39,6 +39,7 @@ async function loadChapters(
   isCancelled: () => boolean,
   setChapters: (chapters: Chapter[]) => void,
   setChapterHeadings: (headings: (string | null)[][] | null) => void,
+  setTitleCardOffsetSeconds: (seconds: number) => void,
   headingSources: TimelineItemSource[] | null
 ): Promise<void> {
   try {
@@ -47,6 +48,7 @@ async function loadChapters(
     const manifest = normalizeChaptersManifest(await response.json());
     if (isCancelled()) return;
     setChapters(manifest.chapters);
+    setTitleCardOffsetSeconds(manifest.titleCardOffsetSeconds ?? 0);
     // Section Label headings map each line's global second back through the
     // current Song Arrangement; null (flat sheet) whenever that cannot be done
     // safely — see lib/render/chapter-sections.ts.
@@ -83,10 +85,17 @@ export default function ControllerPage() {
   // the render is stale/rendering/failed, the chapters do not line up with the
   // timeline, or the payload has no Items. Computed once the manifest lands.
   const [chapterHeadings, setChapterHeadings] = useState<(string | null)[][] | null>(null);
+  // Silence the render worker prepended for the Title Card (`chapters.json`
+  // `titleCardOffsetSeconds`, #326). Chapter, lyric and Glue seconds of the
+  // manifest/media all include it; a timeline built from the Song Arrangement
+  // starts at 0, so anything taken from that timeline must add it back before
+  // it is drawn against the media.
+  const [titleCardOffsetSeconds, setTitleCardOffsetSeconds] = useState(0);
   // Effective AI-transition windows for the fresh rendered timeline. The
   // chapters manifest has no junction data, so these come from the same
   // resolved item payload as the headings. Stale/absent renders show none.
-  const [glueWindows, setGlueWindows] = useState<
+  // Seconds are Arrangement-timeline seconds (no Title Card lead-in).
+  const [arrangementGlueWindows, setArrangementGlueWindows] = useState<
     { startSeconds: number; endSeconds: number }[]
   >([]);
   // Where the error screen's Go Back goes: the Songset it was opened from.
@@ -162,7 +171,7 @@ export default function ControllerPage() {
       const headingSources: TimelineItemSource[] | null =
         songsetData.renderState === "fresh" ? toListenTimelineSources(sortedItems) : null;
       if (headingSources === null) setChapterHeadings(null);
-      setGlueWindows(
+      setArrangementGlueWindows(
         headingSources === null
           ? []
           : buildArrangementTimeline(headingSources).items.flatMap((timelineItem) =>
@@ -229,11 +238,23 @@ export default function ControllerPage() {
           isCancelled,
           setChapters,
           setChapterHeadings,
+          setTitleCardOffsetSeconds,
           headingSources
         );
       }
     },
   });
+
+  // Glue windows on the rendered-media timeline: the arrangement timeline they
+  // come from has no Title Card lead-in, the media does.
+  const mediaGlueWindows = useMemo(
+    () =>
+      arrangementGlueWindows.map((window) => ({
+        startSeconds: window.startSeconds + titleCardOffsetSeconds,
+        endSeconds: window.endSeconds + titleCardOffsetSeconds,
+      })),
+    [arrangementGlueWindows, titleCardOffsetSeconds]
+  );
 
   const { media } = core;
 
@@ -279,7 +300,7 @@ export default function ControllerPage() {
       chapters={core.chapters}
       chapterRecordingHashes={core.chapterRecordingHashes}
       chapterLineHeadings={chapterHeadings}
-      glueWindows={glueWindows}
+      glueWindows={mediaGlueWindows}
       isOfflineMedia={media.isOffline}
       onMediaError={core.handleMediaError}
       isPresentationActive={core.isPresentationActive}
