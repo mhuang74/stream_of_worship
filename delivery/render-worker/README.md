@@ -411,8 +411,8 @@ reduces render throughput.
 | Redrive | `maxReceiveCount: 3` |
 | Function | `sow-glue-worker` on AWS Lambda **Managed Instances** |
 | Function timeout | 1900 s (standard Lambda's 1800 s asynchronous cap is not eligible) |
-| Event-source mapping | batch size 1, `MaximumConcurrency: 2`, `ReportBatchItemFailures` |
-| Provider concurrency | 2, capped on the event-source mapping (execution environments run multiple invocations each, so an environment cap alone is not a concurrency cap) |
+| Event-source mapping | batch size 1, `ReportBatchItemFailures` (Managed Instances reject `MaximumConcurrency`; provider concurrency is capped by max 2 execution environments x `PerExecutionEnvironmentMaxConcurrency=1`) |
+| Provider concurrency | 2 = `MaxExecutionEnvironments=2` x `PerExecutionEnvironmentMaxConcurrency=1`. This is the only cap Managed Instances allow: the event-source mapping rejects `ScalingConfig.MaximumConcurrency`, and `ProvisionedPollerConfig.MaximumPollers` sizes the prefetch window rather than in-flight jobs |
 
 Run `deploy/aws-up-glue.sh` (requires `GLUE_CAPACITY_PROVIDER_ARN`; the script
 fails fast without it and never prints secrets) to create or update the queue,

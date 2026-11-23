@@ -42,6 +42,14 @@ DLQ_URL="https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/${DLQ_NAME}"
 # intentionally inline in the CLI calls below so deployment tests pin the
 # exact flags the platform requires: 2100 s visibility, maxReceiveCount 3,
 # 1900 s timeout, 3072 MB memory, 2048 MB ephemeral storage, 2 environments.
+#
+# PerExecutionEnvironmentMaxConcurrency=1: Managed Instances default to 24
+# concurrent invocations per execution environment, which splits the 3 GB
+# environment across 24 initializations and fails init with
+# FunctionError.InitResourceExhausted. A Glue job is memory-heavy Python and
+# writes into /tmp, so one job per environment is the correct isolation; the
+# provider's 2-way concurrency comes from two environments, not from
+# co-tenancy.
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -192,7 +200,7 @@ create_or_update_lambda() {
             --timeout 1900 \
             --memory-size 3072 \
             --ephemeral-storage Size=2048 \
-            --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN}" \
+            --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN,PerExecutionEnvironmentMaxConcurrency=1}" \
             --environment "$env_vars" >/dev/null
         wait_for_lambda_updated
     else
@@ -205,14 +213,16 @@ create_or_update_lambda() {
             --timeout 1900 \
             --memory-size 3072 \
             --ephemeral-storage Size=2048 \
-            --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN}" \
+            --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN,PerExecutionEnvironmentMaxConcurrency=1}" \
             --environment "$env_vars" >/dev/null
 
-        info "Waiting for the new Lambda function to become active..."
-        aws_cmd lambda wait function-active --function-name "$FUNCTION_NAME" || {
-            error "Lambda function $FUNCTION_NAME did not become active (check the image pull)."
-            exit 1
-        }
+        # No Active-state waiter here: a Managed Instances function has no
+        # execution environment until a version is published, and unqualified
+        # invocation resolves to `$LATEST.PUBLISHED`. It reports
+        # ActiveNonInvocable until publish_version runs, so such a waiter can
+        # never succeed and used to abort the bootstrap before the mapping,
+        # the version, and the scaling config existed.
+        wait_for_lambda_updated
     fi
 }
 
@@ -232,6 +242,12 @@ apply_scaling_config() {
 }
 
 # ── Event source mapping ───────────────────────────────────────────────────
+# Managed Instances event source mappings reject `ScalingConfig.MaximumConcurrency`
+# ("Elevator function ESM does not support maximum concurrency feature"). The
+# provider's 2-way concurrency therefore comes from the execution-environment
+# cap (max 2 environments x PerExecutionEnvironmentMaxConcurrency=1), not from
+# the mapping. ProvisionedPollerConfig.MaximumPollers is the odd alternative and
+# bills poller-hours, so it is deliberately not used.
 create_event_source_mapping() {
     local queue_arn
     queue_arn=$(aws_cmd sqs get-queue-attributes \
@@ -251,7 +267,6 @@ create_event_source_mapping() {
         aws_cmd lambda update-event-source-mapping \
             --uuid "$mapping_uuid" \
             --batch-size 1 \
-            --scaling-config MaximumConcurrency=2 \
             --function-response-types ReportBatchItemFailures >/dev/null
     else
         info "Creating event source mapping: $QUEUE_NAME -> $FUNCTION_NAME"
@@ -259,22 +274,42 @@ create_event_source_mapping() {
             --function-name "$FUNCTION_NAME" \
             --event-source-arn "$queue_arn" \
             --batch-size 1 \
-            --scaling-config MaximumConcurrency=2 \
             --function-response-types ReportBatchItemFailures >/dev/null
     fi
 
-    info "Event source mapping ready: batch size 1, MaximumConcurrency 2, ReportBatchItemFailures"
+    info "Event source mapping ready: batch size 1, ReportBatchItemFailures (concurrency capped by execution environments)"
 }
 
 # ── Publish version ─────────────────────────────────────────────────────────
 publish_version() {
     info "Publishing Lambda version (required by Managed Instances)"
-    local version
-    version=$(aws_cmd lambda publish-version \
-        --function-name "$FUNCTION_NAME" \
-        --publish-to LATEST_PUBLISHED \
-        --query 'Version' \
-        --output text)
+    local version="" output attempt
+    # A just-updated function (and a just-published version) is briefly in a
+    # transient state, where PublishVersion answers ResourceConflictException.
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        if output=$(aws_cmd lambda publish-version \
+            --function-name "$FUNCTION_NAME" \
+            --publish-to LATEST_PUBLISHED \
+            --query 'Version' \
+            --output text 2>&1); then
+            version="$output"
+            break
+        fi
+        case "$output" in
+            *ResourceConflictException*)
+                warn "  publish-version attempt ${attempt} hit a transient state; retrying"
+                sleep 10
+                ;;
+            *)
+                error "$output"
+                exit 1
+                ;;
+        esac
+    done
+    if [[ -z "$version" ]]; then
+        error "Lambda version did not publish after repeated transient-state retries."
+        exit 1
+    fi
     info "Published version: $version"
 }
 
@@ -294,9 +329,12 @@ main() {
     echo ""
     create_or_update_lambda
     echo ""
-    create_event_source_mapping
-    echo ""
+    # Publish before the event source mapping: a Managed Instances function is
+    # ActiveNonInvocable until `$LATEST.PUBLISHED` exists, and
+    # CreateEventSourceMapping rejects a function in that state.
     publish_version
+    echo ""
+    create_event_source_mapping
     echo ""
     # `$LATEST.PUBLISHED` only exists once a version is published, so scaling
     # must follow publish_version (same order as the deploy workflow).

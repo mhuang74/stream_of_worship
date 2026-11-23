@@ -252,9 +252,59 @@ jobs:
         run: |
           aws lambda wait function-updated --function-name sow-glue-worker
 
+      # PublishVersion answers ResourceConflictException while a just-updated
+      # function is transiently unavailable, and on Managed Instances the
+      # version can settle at Failed (for example FunctionError.InitResourceExhausted)
+      # instead of Active. Both are handled: a non-Active version means the
+      # queue accepts jobs that no execution environment can run.
       - name: Publish Glue Lambda version
         run: |
-          aws lambda publish-version --function-name sow-glue-worker --publish-to LATEST_PUBLISHED
+          set -euo pipefail
+          published=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if output="$(aws lambda publish-version --function-name sow-glue-worker \
+                  --publish-to LATEST_PUBLISHED 2>&1)"; then
+              echo "$output"
+              published=true
+              break
+            fi
+            case "$output" in
+              *ResourceConflictException*)
+                echo "publish-version attempt ${attempt} hit a transient state; retrying"
+                sleep 10
+                ;;
+              *)
+                echo "::error::$output"
+                exit 1
+                ;;
+            esac
+          done
+          if [ -z "$published" ]; then
+            echo "::error::Lambda version did not publish after repeated transient-state retries."
+            exit 1
+          fi
+
+      - name: Verify the published Glue version is Active
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            state="$(aws lambda get-function-configuration --function-name sow-glue-worker \
+              --qualifier '$LATEST.PUBLISHED' --query 'State' --output text)"
+            if [ "$state" = "Active" ]; then
+              echo "Verified: \$LATEST.PUBLISHED is Active."
+              exit 0
+            fi
+            if [ "$state" = "Failed" ]; then
+              reason="$(aws lambda get-function-configuration --function-name sow-glue-worker \
+                --qualifier '$LATEST.PUBLISHED' --query 'StateReason' --output text)"
+              echo "::error::\$LATEST.PUBLISHED settled at Failed: ${reason}"
+              exit 1
+            fi
+            echo "version state: ${state} (attempt ${attempt})"
+            sleep 10
+          done
+          echo "::error::\$LATEST.PUBLISHED did not reach Active."
+          exit 1
 
       # Execution-environment limits are not a create/update-configuration field;
       # AWS applies them per qualified ARN. `$LATEST.PUBLISHED` makes every future

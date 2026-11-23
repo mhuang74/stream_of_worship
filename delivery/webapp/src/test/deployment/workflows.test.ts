@@ -287,6 +287,16 @@ describe("Deploy workflow — Glue worker", () => {
     expect(raw).toContain("--publish-to LATEST_PUBLISHED");
   });
 
+  it("verifies the published Glue version reached Active", () => {
+    const verify = glueSteps().find((s) =>
+      JSON.stringify(s).includes("Verify the published Glue version is Active"),
+    );
+    expect(verify).toBeDefined();
+    const raw = JSON.stringify(verify);
+    expect(raw).toContain("$LATEST.PUBLISHED");
+    expect(raw).toContain("State");
+  });
+
   it("applies execution-environment scaling with the separate API", () => {
     const steps = glueSteps();
     const scaling = steps.filter((s) =>
