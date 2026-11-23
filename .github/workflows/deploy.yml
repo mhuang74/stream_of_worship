@@ -254,7 +254,7 @@ jobs:
 
       - name: Publish Glue Lambda version
         run: |
-          aws lambda publish-version --function-name sow-glue-worker
+          aws lambda publish-version --function-name sow-glue-worker --publish-to LATEST_PUBLISHED
 
       # Execution-environment limits are not a create/update-configuration field;
       # AWS applies them per qualified ARN. `$LATEST.PUBLISHED` makes every future

@@ -278,9 +278,13 @@ describe("Deploy workflow — Glue worker", () => {
   });
 
   it("publishes a Glue Lambda version", () => {
-    const raw = JSON.stringify(glueSteps());
-    expect(raw).toContain("aws lambda publish-version");
+    const publish = glueSteps().find((s) =>
+      JSON.stringify(s).includes("aws lambda publish-version"),
+    );
+    expect(publish).toBeDefined();
+    const raw = JSON.stringify(publish);
     expect(raw).toContain("--function-name sow-glue-worker");
+    expect(raw).toContain("--publish-to LATEST_PUBLISHED");
   });
 
   it("applies execution-environment scaling with the separate API", () => {

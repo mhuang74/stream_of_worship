@@ -272,6 +272,7 @@ publish_version() {
     local version
     version=$(aws_cmd lambda publish-version \
         --function-name "$FUNCTION_NAME" \
+        --publish-to LATEST_PUBLISHED \
         --query 'Version' \
         --output text)
     info "Published version: $version"

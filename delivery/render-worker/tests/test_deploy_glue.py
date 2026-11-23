@@ -55,10 +55,18 @@ def test_aws_up_glue_pins_frozen_literals() -> None:
         "--qualifier '$LATEST.PUBLISHED'",
         "--function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2'",
         "publish-version",
+        "--publish-to LATEST_PUBLISHED",
         "GLUE_CAPACITY_PROVIDER_ARN is required",
     ]
     for literal in required:
         assert literal in text, f"aws-up-glue.sh lost required literal: {literal!r}"
+
+
+def test_aws_up_glue_publishes_latest_published_version() -> None:
+    text = read(AWS_UP_GLUE)
+    start = text.index("lambda publish-version")
+    block = text[start:].split("--query", 1)[0]
+    assert "--publish-to LATEST_PUBLISHED" in block
 
 
 def test_aws_up_glue_never_passes_scaling_to_create_or_update() -> None:
