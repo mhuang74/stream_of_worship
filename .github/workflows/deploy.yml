@@ -287,11 +287,21 @@ jobs:
       - name: Verify the published Glue version is Active
         run: |
           set -euo pipefail
+          # State alone is not enough: the published snapshot can be Active while
+          # still carrying the previous timeout, and an unqualified read says 3300
+          # either way. Assert the published Timeout too, or the 1900 s regression
+          # that killed the first paid job walks straight back in.
           for attempt in $(seq 1 60); do
-            state="$(aws lambda get-function-configuration --function-name sow-glue-worker \
-              --qualifier '$LATEST.PUBLISHED' --query 'State' --output text)"
+            config="$(aws lambda get-function-configuration --function-name sow-glue-worker \
+              --qualifier '$LATEST.PUBLISHED' --query '[State,Timeout]' --output text)"
+            state="$(printf '%s' "$config" | awk '{print $1}')"
+            timeout="$(printf '%s' "$config" | awk '{print $2}')"
             if [ "$state" = "Active" ]; then
-              echo "Verified: \$LATEST.PUBLISHED is Active."
+              if [ "$timeout" != "3300" ]; then
+                echo "::error::\$LATEST.PUBLISHED is Active with Timeout=${timeout}; expected 3300 s (the worker's upload+compose reserves)."
+                exit 1
+              fi
+              echo "Verified: \$LATEST.PUBLISHED is Active with a 3300 s timeout."
               exit 0
             fi
             if [ "$state" = "Failed" ]; then
