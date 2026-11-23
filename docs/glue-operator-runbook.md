@@ -79,7 +79,7 @@ Checklist for the inspection:
 - descriptor key and the **A → B** item pair (`from_item_id`, `to_item_id`)
 - current `phase` and whether `active` agrees with it
 - `attempt_id`, `dispatch_state`, `dispatch_attempt`
-- `heartbeat_at` (compare with `OPERATION_BUDGET_SECONDS` = 1900 s)
+- `heartbeat_at` (compare with `OPERATION_BUDGET_SECONDS` = 3300 s)
 - `provider_contacted`, `provider_phase`, `provider_status`
 - paid reservation id/state and the `glue_paid_attempts` row
 - persisted successful upload `elevenlabs_song_id` values
@@ -233,8 +233,8 @@ Created/updated by `delivery/render-worker/deploy/glue-observability.sh`
 |---|---|---|
 | `sow-glue-dlq-arrival` | `AWS/SQS ApproximateNumberOfMessagesVisible` on `sow-glue-jobs-dlq` | A job failed 3 deliveries. Inspect by id (§1); never auto-retry a paid request. |
 | `sow-glue-provider-ambiguous` | `SOW/Glue GlueProviderAmbiguous` (Sum, 5 min) | Ambiguous upload/compose. Treat as §5. |
-| `sow-glue-queue-age` | `AWS/SQS ApproximateAgeOfOldestMessage` on `sow-glue-jobs` (Maximum > 1900 s, 2 periods) | Dispatch/worker starvation. Confirm the queue URL and consumer health, then use §2 where eligible. |
-| `sow-glue-heartbeat-missing` | `AWS/Lambda Duration` on `sow-glue-worker` (Maximum ≥ 1,900,000 ms) | A claimed job reached the 1900 s operation budget without completing. Check the heartbeat and use §2/§3 by durable state. |
+| `sow-glue-queue-age` | `AWS/SQS ApproximateAgeOfOldestMessage` on `sow-glue-jobs` (Maximum > 3300 s, 2 periods) | Dispatch/worker starvation. Confirm the queue URL and consumer health, then use §2 where eligible. |
+| `sow-glue-heartbeat-missing` | `AWS/Lambda Duration` on `sow-glue-worker` (Maximum ≥ 3,300,000 ms) | A claimed job reached the 3300 s operation budget without completing. Check the heartbeat and use §2/§3 by durable state. |
 | `sow-glue-staging-recovery-spike` | `SOW/Glue GlueStagingRecovery` (Sum ≥ 5 per 15 min) | Repeated free recoveries indicate a staging/DB fault, not bad input. Inspect staging/DB errors before retrying. |
 | `sow-glue-paid-failure` metric filter | `SOW/Glue GluePaidFailure` (`glue.job.failed` with `retryKind = "paid"`) | Paid terminal failure; requires the user's explicit new paid attempt. |
 

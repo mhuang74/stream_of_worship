@@ -200,7 +200,7 @@ jobs:
           aws-region: us-west-2
 
       # Standard Lambda caps asynchronous/event-source invocations at 1800 s,
-      # below the 1900 s Glue budget. Fail before touching the function when it
+      # below the 3300 s Glue budget. Fail before touching the function when it
       # is not the documented Managed Instances host.
       - name: Fail fast unless the Glue function runs on Managed Instances
         run: |
@@ -208,11 +208,11 @@ jobs:
           config="$(aws lambda get-function-configuration --function-name sow-glue-worker)"
           capacity_arn="$(printf '%s' "$config" | jq -r '.CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn // empty')"
           timeout="$(printf '%s' "$config" | jq -r '.Timeout')"
-          if [ -z "$capacity_arn" ] || [ "$timeout" != "1900" ]; then
-            echo "::error::sow-glue-worker must run on AWS Lambda Managed Instances with Timeout == 1900; the current function has CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn='${capacity_arn}' and Timeout='${timeout}'. Standard Lambda (1800 s cap) is not eligible. Create it with delivery/render-worker/deploy/aws-up-glue.sh."
+          if [ -z "$capacity_arn" ] || [ "$timeout" != "3300" ]; then
+            echo "::error::sow-glue-worker must run on AWS Lambda Managed Instances with Timeout == 3300; the current function has CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn='${capacity_arn}' and Timeout='${timeout}'. Standard Lambda (1800 s cap) is not eligible. Create it with delivery/render-worker/deploy/aws-up-glue.sh."
             exit 1
           fi
-          echo "Verified: sow-glue-worker runs on Managed Instances with a 1900 s timeout."
+          echo "Verified: sow-glue-worker runs on Managed Instances with a 3300 s timeout."
 
       - name: Update Glue worker image (shared render-worker image)
         env:
@@ -312,7 +312,42 @@ jobs:
       - name: Apply Glue execution-environment scaling
         run: |
           set -euo pipefail
-          aws lambda put-function-scaling-config \
-            --function-name sow-glue-worker \
+          # PutFunctionScalingConfig answers ResourceConflictException while the
+          # version just published is still settling, so retry, then assert the
+          # applied values: a silently defaulted minimum of 3 would keep paid
+          # capacity warm between jobs.
+          applied=""
+          for attempt in $(seq 1 30); do
+            if output="$(aws lambda put-function-scaling-config \
+                  --function-name sow-glue-worker \
+                  --qualifier '$LATEST.PUBLISHED' \
+                  --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' 2>&1)"; then
+              applied=true
+              break
+            fi
+            case "$output" in
+              *ResourceConflictException*)
+                echo "put-function-scaling-config attempt ${attempt} hit a transient state; retrying"
+                sleep 10
+                ;;
+              *)
+                echo "::error::$output"
+                exit 1
+                ;;
+            esac
+          done
+          if [ -z "$applied" ]; then
+            echo "::error::Glue scaling config was not applied after repeated transient-state retries."
+            exit 1
+          fi
+          current="$(aws lambda get-function-scaling-config --function-name sow-glue-worker \
             --qualifier '$LATEST.PUBLISHED' \
-            --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' >/dev/null
+            --query 'AppliedFunctionScalingConfig' --output json)"
+          echo "$current"
+          min="$(printf '%s' "$current" | jq -r '.MinExecutionEnvironments')"
+          max="$(printf '%s' "$current" | jq -r '.MaxExecutionEnvironments')"
+          if [ "$min" != "0" ] || [ "$max" != "2" ]; then
+            echo "::error::Glue scaling is min=${min} max=${max}; expected min=0 max=2."
+            exit 1
+          fi
+          echo "Verified: Glue scaling is min 0 / max 2."

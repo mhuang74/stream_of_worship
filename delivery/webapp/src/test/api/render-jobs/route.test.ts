@@ -790,8 +790,15 @@ describe("POST /api/render-jobs", () => {
       user: { id: 1 },
     } as any);
 
+    // Real shape: Drizzle wraps the pg error, so the constraint name and
+    // SQLSTATE live on `cause` rather than on the outer query message.
     vi.mocked(createRenderJob).mockRejectedValueOnce(
-      new Error("uq_render_jobs_active_per_songset_user constraint violated")
+      Object.assign(new Error('Failed query: insert into "render_jobs" ...'), {
+        cause: Object.assign(
+          new Error('duplicate key value violates unique constraint "uq_render_jobs_active_per_songset_user"'),
+          { code: "23505", constraint: "uq_render_jobs_active_per_songset_user" },
+        ),
+      }),
     );
 
     const request = createMockRequest("http://localhost:3000/api/render-jobs", {
