@@ -816,6 +816,7 @@ export const glueJobRepository: GlueJobRepository = {
       }
       const phase = eligibility.phase;
 
+      // The new delivery must be able to claim the job immediately.
       const [updated] = await tx
         .update(glueJobs)
         .set({
@@ -824,6 +825,7 @@ export const glueJobRepository: GlueJobRepository = {
           attemptId,
           dispatchState: "pending",
           dispatchAttempt: sql`${glueJobs.dispatchAttempt} + 1`,
+          heartbeatAt: null,
           errorCode: null,
           errorDetail: null,
           retryKind: "free",
@@ -834,6 +836,8 @@ export const glueJobRepository: GlueJobRepository = {
           and(
             eq(glueJobs.id, jobId),
             eq(glueJobs.userId, userId),
+            eq(glueJobs.phase, job.phase),
+            eq(glueJobs.attemptId, job.attemptId),
             eq(glueJobs.retryKind, "free")
           )
         )

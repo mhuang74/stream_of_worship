@@ -419,10 +419,10 @@ export const gluePaidAttempts = pgTable(
     userId: bigint("user_id", { mode: "number" })
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // The rolling quota still counts consumed attempts after their job is deleted.
     glueJobId: uuid("glue_job_id")
-      .notNull()
       .unique()
-      .references(() => glueJobs.id, { onDelete: "cascade" }),
+      .references(() => glueJobs.id, { onDelete: "set null" }),
     state: text("state").notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     releasedAt: timestamp("released_at", { withTimezone: true }),

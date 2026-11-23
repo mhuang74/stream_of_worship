@@ -560,12 +560,13 @@ describe("schema: glue_paid_attempts structure", () => {
     );
   });
 
-  it("glue_job_id is unique and cascades from glue_jobs", () => {
+  it("glue_job_id is nullable and unique and clears when the job is deleted", () => {
+    expect(gluePaidAttempts.glueJobId.notNull).toBe(false);
     expect(gluePaidAttempts.glueJobId.isUnique).toBe(true);
     const fk = findFkByColumnName(gluePaidAttempts, "glue_job_id");
     expect(fk).toBeDefined();
     expect(getTableName(fk!.reference().foreignTable)).toBe("glue_jobs");
-    expect(fk!.onDelete).toBe("cascade");
+    expect(fk!.onDelete).toBe("set null");
   });
 
   it("has the quota lookup index", () => {

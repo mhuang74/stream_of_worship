@@ -147,7 +147,7 @@ glue_jobs
 glue_paid_attempts
   id                    uuid PK
   user_id               user FK, NOT NULL
-  glue_job_id           glue_job FK, NOT NULL UNIQUE
+  glue_job_id           glue_job FK, nullable UNIQUE, ON DELETE SET NULL
   state                 text, NOT NULL: reserved | consumed | released
   consumed_at / released_at / created_at
                         timestamptz as applicable
