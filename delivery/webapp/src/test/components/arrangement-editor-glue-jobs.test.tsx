@@ -572,6 +572,36 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     expect(screen.queryByTestId("arrangement-glue-error-detail")).toBeNull();
   });
 
+  it("does not print the error code when the provider detail fell back to it", async () => {
+    installFetch();
+    renderSheet();
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
+    await screen.findByTestId("arrangement-glue-confirm");
+    fireEvent.click(screen.getByTestId("arrangement-glue-confirm-generate"));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    // `_sanitize_detail` persists the error code when the provider body is empty
+    // or unsafe, so that string is not a reason and must not be rendered.
+    FakeEventSource.instances[0].emit(
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "none",
+        errorCode: "GLUE_PROVIDER_PLAN",
+        errorDetail: "GLUE_PROVIDER_PLAN",
+      })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-job-error")).toBeTruthy()
+    );
+    expect(screen.queryByTestId("arrangement-glue-error-detail")).toBeNull();
+  });
+
   it("restarts the status stream after a free retry", async () => {
     const harness = installFetch();
     renderSheet();

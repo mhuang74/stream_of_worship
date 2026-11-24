@@ -1653,7 +1653,14 @@ export function ArrangementEditorSheet({
     isGlueJobFailed &&
     displayGlue?.descriptorKey != null &&
     glueJobStatus?.descriptorKey === displayGlue.descriptorKey;
-  const failedGlueDetail = failedJobIsCurrent ? glueJobStatus?.errorDetail ?? null : null;
+  // The worker falls back to the error code when a provider body is empty or
+  // unsafe to persist, so a detail identical to the code carries no reason.
+  const failedGlueDetail =
+    failedJobIsCurrent &&
+    glueJobStatus?.errorDetail != null &&
+    glueJobStatus.errorDetail !== glueJobStatus.errorCode
+      ? glueJobStatus.errorDetail
+      : null;
   const glueFailureCode =
     glueJobErrorCode ??
     (failedJobIsCurrent ? glueJobStatus?.errorCode ?? null : null);
