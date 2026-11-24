@@ -114,6 +114,13 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
             `${entry.id}:${entry.glue?.state ?? ""}:${entry.glue?.selectedTake?.id ?? ""}`
           ).join(",")}
         </span>
+        <span data-testid="shell-glue-expected">
+          {props.items.map((entry) =>
+            `${entry.id}:${entry.glue?.expectedFromUpdatedAt ?? "-"}:${
+              entry.glue?.expectedToUpdatedAt ?? "-"
+            }`
+          ).join(",")}
+        </span>
         <button
           type="button"
           data-testid="shell-reverse"
@@ -149,6 +156,19 @@ vi.mock("@/components/songset/SongsetEditor", () => ({
           data-testid="shell-update-transition"
           onClick={() => {
             void props.onUpdateTransition(item.id, {
+              gapBeats: 7,
+              crossfadeEnabled: false,
+              crossfadeDurationSeconds: 0,
+              keyShiftSemitones: 0,
+              tempoRatio: 1,
+            });
+          }}
+        />
+        <button
+          type="button"
+          data-testid="shell-update-second-transition"
+          onClick={() => {
+            void props.onUpdateTransition(props.items[1].id, {
               gapBeats: 7,
               crossfadeEnabled: false,
               crossfadeDurationSeconds: 0,
@@ -619,6 +639,80 @@ describe("SongsetEditorClient arrangement save", () => {
     );
     // The save applies its arrangement without reverting the newer transition.
     expect(screen.getByTestId("shell-gap")).toHaveTextContent("7");
+  });
+
+  it("keeps the Junction snapshot current when the saved cut is unchanged", async () => {
+    const data = initialData();
+    const saved = JSON.stringify({
+      version: 1,
+      steps: [{ sectionIndex: 0, label: "Verse", startSeconds: 0, endSeconds: 10 }],
+    });
+    const first = {
+      ...data.items[0], arrangementSteps: saved, glueEnabled: true, glueBeats: 8 as const,
+      glue: readyJunction("item-1", "item-2"),
+    };
+    const second = { ...data.items[0], id: "item-2", position: 1 };
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(init?.method === "PUT"
+        ? jsonResponse({
+            arrangementSteps: saved,
+            updatedAt: "2026-01-02T00:00:00.000Z",
+            glue: {
+              ...readyJunction("item-1", "item-2"),
+              expectedFromUpdatedAt: "2026-01-02T00:00:00.000Z",
+            },
+          })
+        : jsonResponse({}, false))
+    ));
+    render(<SongsetEditorClient songsetId="songset-1" initialData={{
+      ...data, itemCount: 2, durationSeconds: 46, items: [first, second],
+    }} />);
+    await openArrangementSheet();
+    fireEvent.click(screen.getByTestId("arrangement-save"));
+
+    // Saving an unchanged cut still bumps songset_items.updated_at, so the
+    // resolved Junction must adopt the returned timestamp or the next
+    // "Create AI transition" is refused as stale.
+    await waitFor(() =>
+      expect(screen.getByTestId("shell-glue-expected")).toHaveTextContent(
+        "item-1:2026-01-02T00:00:00.000Z:"
+      )
+    );
+    expect(screen.getByTestId("shell-glue")).toHaveTextContent("item-1:ready:take-1");
+  });
+
+  it("keeps the predecessor's snapshot current after a transition edit", async () => {
+    const data = initialData();
+    const first = {
+      ...data.items[0], glueEnabled: true, glueBeats: 8 as const,
+      glue: readyJunction("item-1", "item-2"),
+    };
+    const second = {
+      ...data.items[0], id: "item-2", position: 1, glueEnabled: true, glueBeats: 8 as const,
+      glue: readyJunction("item-2", "item-3"),
+    };
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method !== "PATCH") return Promise.resolve(jsonResponse({}, false));
+      const { itemId } = JSON.parse(String(init.body)) as { itemId: string };
+      return Promise.resolve(jsonResponse({
+        ...data.items[0],
+        id: itemId,
+        updatedAt: "2026-01-02T00:00:00.000Z",
+      }));
+    }));
+    render(<SongsetEditorClient songsetId="songset-1" initialData={{
+      ...data, itemCount: 2, durationSeconds: 46, items: [first, second],
+    }} />);
+
+    fireEvent.click(screen.getByTestId("shell-update-second-transition"));
+
+    // item-2 moved, so its predecessor's A-to-B Junction holds a stale
+    // expectedToUpdatedAt unless the same write repairs it locally.
+    await waitFor(() =>
+      expect(screen.getByTestId("shell-glue-expected")).toHaveTextContent(
+        "item-1:-:2026-01-02T00:00:00.000Z"
+      )
+    );
   });
 
   it("bumps the displayed last-modified timestamp after a successful edit", async () => {

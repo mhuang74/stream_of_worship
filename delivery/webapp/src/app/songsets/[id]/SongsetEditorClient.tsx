@@ -197,8 +197,52 @@ function toSongListItem(item: ApiSongsetItem): SongListItem {
   };
 }
 
+/** Authoritative fields every item write echoes back for this client. */
+interface ItemWriteDetail {
+  updatedAt?: string;
+  glueEnabled?: boolean;
+  glueBeats?: 2 | 4 | 8 | 16;
+  glue?: ResolvedGlueJunction;
+}
+
+/**
+ * Apply one item write's authoritative detail to the current Items.
+ *
+ * Every item write bumps `songset_items.updated_at`, and `createGlueJob`
+ * rejects a request whose snapshot timestamps differ (GLUE_STALE_SNAPSHOT).
+ * The written Item's own Junction is echoed in the response; the predecessor's
+ * incoming Junction is not, but only its `expectedToUpdatedAt` mirrors this
+ * Item's timestamp, so it is patched from the same value. A Junction left
+ * `undefined` by a changed save stays undefined until it re-resolves.
+ */
+function applyItemWriteDetail(
+  items: SongListItem[],
+  itemId: string,
+  detail: ItemWriteDetail | null
+): SongListItem[] {
+  if (!detail) return items;
+  const index = items.findIndex((item) => item.id === itemId);
+  if (index < 0) return items;
+  const updatedAt = detail.updatedAt;
+  return items.map((item, at) => {
+    if (at === index) {
+      return {
+        ...item,
+        ...(updatedAt === undefined ? {} : { updatedAt }),
+        ...(detail.glue === undefined ? {} : { glue: detail.glue }),
+        ...(detail.glueEnabled === undefined ? {} : { glueEnabled: detail.glueEnabled }),
+        ...(detail.glueBeats === undefined ? {} : { glueBeats: detail.glueBeats }),
+      };
+    }
+    if (updatedAt !== undefined && at === index - 1 && item.glue !== undefined) {
+      return { ...item, glue: { ...item.glue, expectedToUpdatedAt: updatedAt } };
+    }
+    return item;
+  });
+}
+
 /** Narrow subset of a saved item detail returned by the arrangement PUT. */
-interface ArrangementDetailFields {
+interface ArrangementDetailFields extends ItemWriteDetail {
   arrangementSteps?: string | null;
   recording?: {
     durationSeconds?: number | null;
@@ -265,6 +309,18 @@ function readArrangementDetail(value: unknown): ArrangementDetailFields | null {
       }
       detail.recording = fields;
     }
+  }
+  if ("updatedAt" in value && typeof value.updatedAt === "string") {
+    detail.updatedAt = value.updatedAt;
+  }
+  if ("glueEnabled" in value && typeof value.glueEnabled === "boolean") {
+    detail.glueEnabled = value.glueEnabled;
+  }
+  if ("glueBeats" in value && [2, 4, 8, 16].includes(value.glueBeats as number)) {
+    detail.glueBeats = value.glueBeats as 2 | 4 | 8 | 16;
+  }
+  if ("glue" in value && typeof value.glue === "object" && value.glue !== null) {
+    detail.glue = value.glue as ResolvedGlueJunction;
   }
   return detail;
 }
@@ -862,18 +918,28 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         throw new Error(t("songsets.error.updateTransitionFailed"));
       }
 
+      // The PATCH bumps updated_at and re-resolves the item's Junction; adopt
+      // both so the next "Create AI transition" carries a matching snapshot.
+      const detail = (await response.json().catch(() => null)) as
+        | ApiSongsetItem
+        | null;
+
       await runItemMutation(async () => {
-        commitItemLayout(itemsRef.current.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                gapBeats: settings.gapBeats,
-                crossfadeEnabled: settings.crossfadeEnabled ? 1 : 0,
-                crossfadeDurationSeconds: settings.crossfadeDurationSeconds,
-                keyShiftSemitones: settings.keyShiftSemitones,
-                tempoRatio: settings.tempoRatio,
-              }
-            : item
+        commitItemLayout(applyItemWriteDetail(
+          itemsRef.current.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  gapBeats: settings.gapBeats,
+                  crossfadeEnabled: settings.crossfadeEnabled ? 1 : 0,
+                  crossfadeDurationSeconds: settings.crossfadeDurationSeconds,
+                  keyShiftSemitones: settings.keyShiftSemitones,
+                  tempoRatio: settings.tempoRatio,
+                }
+              : item
+          ),
+          itemId,
+          detail
         ));
         markStale();
       });
@@ -911,17 +977,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         | ApiSongsetItem
         | null;
       if (detail) {
-        commitItemLayout(itemsRef.current.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                glue: detail.glue,
-                glueEnabled: detail.glueEnabled,
-                glueBeats: detail.glueBeats,
-                updatedAt: detail.updatedAt,
-              }
-            : item
-        ));
+        commitItemLayout(applyItemWriteDetail(itemsRef.current, itemId, detail));
       }
       markStale();
     }),
@@ -1013,7 +1069,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           }
           return updated;
         });
-        commitItemLayout(nextItems);
+        commitItemLayout(applyItemWriteDetail(nextItems, savedItemId, detail));
         markStale();
         if (needsGlueRefresh) await refreshItemLayout();
       });
