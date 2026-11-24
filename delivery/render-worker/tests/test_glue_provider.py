@@ -1267,6 +1267,32 @@ class TestProviderStage:
         assert store.calls == []
         assert recording.calls["recorded"] == []
 
+    def test_upload_rejection_body_with_a_url_never_reaches_a_sink(self, recording):
+        """The whole chain: provider body → typed error → log, cache, terminal detail."""
+        events: list[dict] = []
+        transport = ElevenLabsHttpTransport(
+            "fake-key",
+            pool=_FakePool(
+                _FakeResponse(
+                    status=400,
+                    data=b'{"detail":"copyright claim https://example.com/a?token=x"}',
+                )
+            ),
+        )
+        with pytest.raises(glue_jobs.GlueJobError) as exc_info:
+            _run_stage(
+                recording,
+                transport=transport,
+                log_event=lambda name, **fields: events.append({"event": name, **fields}),
+            )
+        failure = [entry for entry in events if entry["event"] == "glue.provider.failed"]
+        assert len(failure) == 1
+        assert failure[0]["providerDetail"] == "GLUE_COPYRIGHT_REJECTED"
+        assert "example.com" not in json.dumps(events)
+        # The excerpt negative-cache row carries the same safe string.
+        assert recording.calls["rejected"][0]["safe_failure_detail"] == "GLUE_COPYRIGHT_REJECTED"
+        assert exc_info.value.detail == "GLUE_COPYRIGHT_REJECTED"
+
     @pytest.mark.parametrize(
         ("error", "event", "expected"),
         [
