@@ -89,8 +89,7 @@ export const glueBundle = bundle({
       "The AI service did not answer clearly. Try again without new credits.",
     "glue.error.providerEntitlement":
       "The AI service account cannot make this transition.",
-    "glue.error.providerPlan":
-      "The AI service plan cannot make this transition.",
+    "glue.error.providerPlan": "The AI service rejected this transition.",
     "glue.error.copyrightRejected":
       "This recording cannot be used for an AI transition.",
     "glue.error.audioUnavailable":
@@ -190,7 +189,7 @@ export const glueBundle = bundle({
     "glue.error.executionDeadline": "AI 轉場逾時停止，請重試，不會使用新的點數。",
     "glue.error.providerUnknown": "AI 服務沒有明確回應，請重試，不會使用新的點數。",
     "glue.error.providerEntitlement": "AI 服務帳戶目前無法製作這段轉場。",
-    "glue.error.providerPlan": "AI 服務方案目前無法製作這段轉場。",
+    "glue.error.providerPlan": "AI 服務拒絕了這段轉場。",
     "glue.error.copyrightRejected": "這首錄音無法用於 AI 轉場。",
     "glue.error.audioUnavailable": "無法載入 AI 轉場音訊，請再試一次。",
     "glue.job.heading": "AI 轉場",

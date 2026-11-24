@@ -276,6 +276,7 @@ def _run_stage(
     sleep=None,
     excerpts=None,
     tmp_path: Path | None = None,
+    log_event=None,
 ):
     transport = transport or FakeTransport()
     raw_store = raw_store or FakeRawStore()
@@ -298,7 +299,7 @@ def _run_stage(
         a_excerpt=a_excerpt or make("A", seconds=A_SECONDS),
         b_excerpt=b_excerpt or make("B", seconds=B_SECONDS),
         work_dir=work_dir,
-        log_event=lambda *a, **k: None,
+        log_event=log_event or (lambda *a, **k: None),
     )
     return transport, raw_store
 
@@ -523,6 +524,30 @@ class TestElevenLabsHttpTransport:
         with pytest.raises(expected) as exc_info:
             transport.upload(wav)
         assert exc_info.value.provider_status == status
+
+    def test_error_for_response_keeps_the_provider_rejection_sentence(self):
+        exc = glue_provider._error_for_response(
+            422,
+            '{"detail":[{"loc":["body","composition_plan","chunks",0,"duration_ms"],'
+            '"msg":"duration must be at least 3000 ms","type":"value_error"}]}',
+            "compose",
+        )
+        assert isinstance(exc, ProviderPlan)
+        assert exc.provider_status == 422
+        assert exc.safe_detail.startswith("ElevenLabs compose failed with HTTP 422: ")
+        assert "duration must be at least 3000 ms" in exc.safe_detail
+        assert len(exc.safe_detail) <= 200
+
+    def test_error_for_response_keeps_a_non_json_body(self):
+        exc = glue_provider._error_for_response(500, "<html>upstream error</html>", "compose")
+        assert isinstance(exc, ProviderAmbiguous)
+        assert exc.provider_status == 500
+        assert "upstream error" in exc.safe_detail
+
+    def test_error_for_response_with_empty_body_stays_bare(self):
+        exc = glue_provider._error_for_response(422, "", "compose")
+        assert isinstance(exc, ProviderPlan)
+        assert exc.safe_detail == "ElevenLabs compose failed with HTTP 422"
 
     def test_connection_setup_failure_is_not_sent(self, tmp_path):
         wav = tmp_path / "x.wav"
@@ -1241,6 +1266,47 @@ class TestProviderStage:
         assert exc_info.value.retry_kind == "paid"
         assert store.calls == []
         assert recording.calls["recorded"] == []
+
+    @pytest.mark.parametrize(
+        ("error", "event", "expected"),
+        [
+            (
+                ProviderPlan(
+                    "ElevenLabs compose failed with HTTP 422: "
+                    "https://example.com/audio?token=private-value",
+                    provider_status=422,
+                ),
+                "glue.provider.failed",
+                glue_provider.GLUE_PROVIDER_PLAN,
+            ),
+            (
+                ProviderAmbiguous(
+                    "ElevenLabs compose failed with HTTP 500: /tmp/sow/raw.bin",
+                    provider_status=500,
+                ),
+                "glue.provider.ambiguous",
+                glue_provider.GLUE_PROVIDER_UNKNOWN,
+            ),
+        ],
+    )
+    def test_provider_failure_logs_a_sanitized_detail(self, recording, error, event, expected):
+        events: list[dict] = []
+        transport = FakeTransport(compose_error=error)
+        with pytest.raises(glue_jobs.GlueJobError) as exc_info:
+            _run_stage(
+                recording,
+                transport=transport,
+                log_event=lambda name, **fields: events.append({"event": name, **fields}),
+            )
+        failure = [entry for entry in events if entry["event"] == event]
+        assert len(failure) == 1
+        # A URL- or path-bearing sentence never reaches the log; the code stands in.
+        assert failure[0]["providerDetail"] == expected
+        logged = json.dumps(events)
+        assert "example.com" not in logged
+        assert "/tmp/sow" not in logged
+        # The terminal detail the job persists is exactly the logged string.
+        assert exc_info.value.detail == expected
 
     @pytest.mark.parametrize(
         ("error", "code"),

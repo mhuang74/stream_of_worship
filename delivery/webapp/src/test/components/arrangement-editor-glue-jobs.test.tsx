@@ -167,6 +167,7 @@ function jobStatus(overrides: Partial<GlueJobStatus> = {}): GlueJobStatus {
     songsetId: "songset-1",
     fromItemId: "item-1",
     toItemId: "item-2",
+    descriptorKey: "a".repeat(64),
     phase: "queued",
     active: true,
     takeMode: "initial",
@@ -520,16 +521,85 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
         providerContacted: true,
         retryKind: "none",
         errorCode: "GLUE_PROVIDER_PLAN",
+        errorDetail:
+          "ElevenLabs compose failed with HTTP 422: duration must be at least 3000 ms",
       })
     );
 
     await waitFor(() =>
       expect(screen.getByTestId("arrangement-glue-job-error")).toBeTruthy()
     );
+    expect(
+      screen.getByTestId("arrangement-glue-error-detail").textContent
+    ).toBe(
+      "ElevenLabs compose failed with HTTP 422: duration must be at least 3000 ms"
+    );
     expect(screen.queryByText(/new paid request/i)).toBeNull();
     expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
     expect(screen.queryByTestId("arrangement-glue-generate")).toBeNull();
     expect(screen.queryByTestId("arrangement-glue-try-another")).toBeNull();
+  });
+
+  it("hides a non-retryable failure from a different descriptor", async () => {
+    installFetch();
+    renderSheet();
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
+    await screen.findByTestId("arrangement-glue-confirm");
+    fireEvent.click(screen.getByTestId("arrangement-glue-confirm-generate"));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    // Same Junction, but the saved beats changed after the failure: the
+    // persisted reason no longer describes this arrangement.
+    FakeEventSource.instances[0].emit(
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "none",
+        errorCode: "GLUE_PROVIDER_PLAN",
+        errorDetail: "ElevenLabs compose failed with HTTP 422",
+        descriptorKey: "b".repeat(64),
+      })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-generate")).toBeTruthy()
+    );
+    expect(screen.queryByTestId("arrangement-glue-job-error")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-error-detail")).toBeNull();
+  });
+
+  it("does not print the error code when the provider detail fell back to it", async () => {
+    installFetch();
+    renderSheet();
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
+    await screen.findByTestId("arrangement-glue-confirm");
+    fireEvent.click(screen.getByTestId("arrangement-glue-confirm-generate"));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    // `_sanitize_detail` persists the error code when the provider body is empty
+    // or unsafe, so that string is not a reason and must not be rendered.
+    FakeEventSource.instances[0].emit(
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "none",
+        errorCode: "GLUE_PROVIDER_PLAN",
+        errorDetail: "GLUE_PROVIDER_PLAN",
+      })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-job-error")).toBeTruthy()
+    );
+    expect(screen.queryByTestId("arrangement-glue-error-detail")).toBeNull();
   });
 
   it("restarts the status stream after a free retry", async () => {
@@ -635,7 +705,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     );
   });
 
-  it("does not adopt a non-retryable failure and offers Create instead", async () => {
+  it("adopts a non-retryable failure for the current descriptor and keeps its reason", async () => {
     const harness = installFetch([
       jobStatus({
         phase: "failed",
@@ -643,6 +713,39 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
         providerContacted: true,
         retryKind: "none",
         errorCode: "GLUE_PROVIDER_PLAN",
+        errorDetail: "ElevenLabs compose failed with HTTP 422",
+      }),
+    ]);
+    renderSheet([
+      makeItem({ glue: junction({ state: "failed" }) }),
+      successor(),
+    ]);
+
+    await waitFor(() => expect(harness.discoveryCalls).toBeGreaterThanOrEqual(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-job-error")).toBeTruthy()
+    );
+    expect(
+      screen.getByTestId("arrangement-glue-job-error").textContent
+    ).toContain("The AI service rejected this transition.");
+    expect(screen.getByTestId("arrangement-glue-error-detail").textContent).toBe(
+      "ElevenLabs compose failed with HTTP 422"
+    );
+    // An unchanged Junction keeps its reason: no silent duplicate paid request.
+    expect(screen.queryByTestId("arrangement-glue-generate")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
+  });
+
+  it("does not adopt a non-retryable failure from a stale descriptor", async () => {
+    const harness = installFetch([
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "none",
+        errorCode: "GLUE_PROVIDER_PLAN",
+        errorDetail: "ElevenLabs compose failed with HTTP 422",
+        descriptorKey: "b".repeat(64),
       }),
     ]);
     renderSheet([
@@ -655,7 +758,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
       expect(screen.getByTestId("arrangement-glue-generate")).toBeTruthy()
     );
     expect(screen.queryByTestId("arrangement-glue-job")).toBeNull();
-    expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-error-detail")).toBeNull();
     expect(FakeEventSource.instances).toHaveLength(0);
   });
 

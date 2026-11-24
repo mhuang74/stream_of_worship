@@ -35,6 +35,7 @@ import urllib3
 from botocore.exceptions import ClientError
 
 from sow_render_worker.db import get_glue_job, record_glue_raw_response, set_glue_phase
+from sow_render_worker.glue_detail import sanitize_detail
 from sow_render_worker.glue_excerpts import record_rejection, record_uploaded
 
 # ---------------------------------------------------------------------------
@@ -329,10 +330,49 @@ def _response_text(response: Any) -> str:
     return str(data)[:MAX_ERROR_BODY_BYTES]
 
 
+_MAX_PROVIDER_DETAIL_CHARS = 200
+
+
+def _provider_detail(body: str) -> str | None:
+    """The provider's own rejection sentence, bounded for logs and error_detail."""
+    text = " ".join(body.split()) if body else ""
+    if not text:
+        return None
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError):
+        return text[:_MAX_PROVIDER_DETAIL_CHARS] or None
+
+    messages: list[str] = []
+
+    def absorb(value: object) -> None:
+        if isinstance(value, str):
+            if value.strip():
+                messages.append(" ".join(value.split()))
+        elif isinstance(value, dict):
+            for key in ("msg", "message", "code"):
+                absorb(value.get(key))
+            absorb(value.get("detail"))
+        elif isinstance(value, list):
+            for item in value:
+                absorb(item)
+
+    if isinstance(payload, dict):
+        for key in ("detail", "message", "error"):
+            absorb(payload.get(key))
+    else:
+        absorb(payload)
+    joined = "; ".join(dict.fromkeys(messages))
+    return joined[:_MAX_PROVIDER_DETAIL_CHARS] or text[:_MAX_PROVIDER_DETAIL_CHARS]
+
+
 def _error_for_response(status: int, body: str, operation: str) -> GlueProviderError:
     """Map one HTTP response to the spec's typed failure taxonomy."""
     lowered = body.lower()
     message = f"ElevenLabs {operation} failed with HTTP {status}"
+    detail = _provider_detail(body)
+    if detail is not None:
+        message = f"{message}: {detail}"[:400]
     if status in (401, 402, 403) or "missing_permissions" in lowered or "upgrade" in lowered:
         return ProviderEntitlement(message, provider_status=status)
     if "copyright" in lowered:
@@ -816,6 +856,10 @@ def _run_stage(
             )
         except GlueProviderError as exc:
             _record_provider_status(conn, job, "uploading", exc.provider_status, log_event)
+            # One sanitized sentence for every sink: the negative cache, this
+            # log line, and the terminal `glue_jobs.error_detail`. A provider
+            # body carrying a URL, path, or key word falls back to the code.
+            detail = sanitize_detail(exc.safe_detail, fallback=exc.code)
             if isinstance(exc, ProviderCopyright):
                 # A copyright verdict for this exact excerpt is a successful
                 # negative cache entry: the identical audio can never incur
@@ -830,16 +874,17 @@ def _run_stage(
                     canonical_steps_json=excerpt.canonical_steps_json,
                     audio_sha256=_excerpt_sha(spine, excerpt),
                     rejection_code=GLUE_COPYRIGHT_REJECTED,
-                    safe_failure_detail=exc.safe_detail,
+                    safe_failure_detail=detail,
                 )
             log_event(
                 "glue.provider.ambiguous" if exc.retry_kind == "paid" else "glue.provider.failed",
                 level="warning",
                 phase="uploading",
                 providerStatus=exc.provider_status,
+                providerDetail=detail,
                 errorCode=exc.code,
             )
-            raise _glue_job_error(spine, exc.code, exc.retry_kind, exc.safe_detail) from exc
+            raise _glue_job_error(spine, exc.code, exc.retry_kind, detail) from exc
 
         # Persist the provider song id before any compose can reference it.
         record_uploaded(
@@ -893,14 +938,16 @@ def _run_stage(
             )
         except GlueProviderError as exc:
             _record_provider_status(conn, job, "composing", exc.provider_status, log_event)
+            detail = sanitize_detail(exc.safe_detail, fallback=exc.code)
             log_event(
                 "glue.provider.ambiguous" if exc.retry_kind == "paid" else "glue.provider.failed",
                 level="warning",
                 phase="composing",
                 providerStatus=exc.provider_status,
+                providerDetail=detail,
                 errorCode=exc.code,
             )
-            raise _glue_job_error(spine, exc.code, exc.retry_kind, exc.safe_detail) from exc
+            raise _glue_job_error(spine, exc.code, exc.retry_kind, detail) from exc
 
         key = raw_response_key(job)
         # The raw object is a free infrastructure write: bounded retries are

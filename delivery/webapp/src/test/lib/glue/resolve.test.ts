@@ -322,6 +322,20 @@ describe("resolveGlueJunctions", () => {
     expect(junction.activeJob).toBeNull();
   });
 
+  it("ignores a terminal failure whose descriptor no longer matches", () => {
+    const [junction] = resolve([item(), successor()], {
+      jobs: [
+        job({
+          active: false,
+          phase: "failed",
+          descriptorKey: descriptor(8).key,
+        }),
+      ],
+    });
+    expect(junction.state).toBe("needs-generation");
+    expect(junction.descriptorKey).toBe(descriptor(4).key);
+  });
+
   it("marks another Junction's active job as the reason for a needs-generation junction", () => {
     const [first] = resolve([item(), successor({ itemId: "item-b" })], {
       jobs: [job({ fromItemId: "item-b", toItemId: "item-c" })],

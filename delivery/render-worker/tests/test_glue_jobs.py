@@ -11,6 +11,7 @@ import pytest
 from sow_render_worker import glue_jobs
 from sow_render_worker.db import GlueJob
 from sow_render_worker.glue_descriptor import build_descriptor
+from sow_render_worker.glue_detail import sanitize_detail
 from sow_render_worker.glue_excerpts import GlueExcerptTooShort, PreparedExcerpt
 
 JOB_ID = "11111111-2222-3333-4444-555555555555"
@@ -574,12 +575,12 @@ def test_release_unconsumed_reservation_is_guarded(worker):
 
 
 def test_sanitized_detail_strips_paths_and_urls():
-    detail = glue_jobs._sanitize_detail(
+    detail = sanitize_detail(
         "GET https://api.elevenlabs.io/v1/music failed at /tmp/sow/x.wav",
         fallback="Glue worker failed",
     )
     assert detail == "Glue worker failed"
-    assert glue_jobs._sanitize_detail("short safe reason", fallback="x") == "short safe reason"
+    assert sanitize_detail("short safe reason", fallback="x") == "short safe reason"
 
 
 def test_provider_stage_returning_in_flight_phase_is_ambiguous(worker):

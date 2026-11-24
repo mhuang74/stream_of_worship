@@ -53,7 +53,6 @@ import json
 import logging
 import os
 import random
-import re
 import shutil
 import tempfile
 import time
@@ -75,6 +74,7 @@ from sow_render_worker.db import (
     set_glue_phase,
 )
 from sow_render_worker.glue_descriptor import build_descriptor
+from sow_render_worker.glue_detail import sanitize_detail
 from sow_render_worker.glue_excerpts import (
     GlueAudioUnavailable,
     GlueExcerptTooShort,
@@ -118,6 +118,7 @@ _LOG_FIELD_ALLOWLIST = (
     "descriptorKey",
     "phase",
     "providerStatus",
+    "providerDetail",
     "cacheHit",
     "retryCount",
     # Logged on terminal failure so the GluePaidFailure metric filter can match
@@ -132,13 +133,6 @@ _LOG_FIELD_ALLOWLIST = (
     "status",
     "reason",
 )
-
-# Anything that could leak a URL, a filesystem path, a secret or a stack.
-_UNSAFE_DETAIL_PATTERN = re.compile(
-    r"(https?://|/|\\\\|api[_-]?key|secret|token|bearer|password|traceback|\bat\s+\w+\()",
-    re.IGNORECASE,
-)
-_MAX_DETAIL_LENGTH = 200
 
 
 class GlueConfigurationError(RuntimeError):
@@ -196,18 +190,6 @@ def _job_logger(job_id: str, user_id: int) -> Callable[..., None]:
         _log_event(event, level=level, jobId=job_id, userId=user_id, **fields)
 
     return log_event
-
-
-def _sanitize_detail(detail: object, *, fallback: str) -> str:
-    """Collapse a failure detail to a short, leak-free sentence."""
-    if not isinstance(detail, str):
-        return fallback
-    text = " ".join(detail.split())
-    if not text:
-        return fallback
-    if _UNSAFE_DETAIL_PATTERN.search(text):
-        return fallback
-    return text[:_MAX_DETAIL_LENGTH]
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +347,7 @@ def _finish_terminal(
                 retryKind=retry_kind,
             )
             return
+    safe_detail = sanitize_detail(detail, fallback=code or "Glue job stopped")
     try:
         finish_glue_job(
             conn,
@@ -372,7 +355,7 @@ def _finish_terminal(
             job.user_id,
             phase=phase,
             error_code=code,
-            error_detail=_sanitize_detail(detail, fallback=code or "Glue job stopped"),
+            error_detail=safe_detail,
             retry_kind=retry_kind,
         )
     except Exception:
@@ -385,6 +368,7 @@ def _finish_terminal(
         errorCode=code,
         status="finished",
         retryKind=retry_kind,
+        providerDetail=safe_detail,
     )
 
 
