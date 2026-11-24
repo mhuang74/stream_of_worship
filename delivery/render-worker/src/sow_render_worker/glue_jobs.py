@@ -53,7 +53,6 @@ import json
 import logging
 import os
 import random
-import re
 import shutil
 import tempfile
 import time
@@ -75,6 +74,7 @@ from sow_render_worker.db import (
     set_glue_phase,
 )
 from sow_render_worker.glue_descriptor import build_descriptor
+from sow_render_worker.glue_detail import sanitize_detail
 from sow_render_worker.glue_excerpts import (
     GlueAudioUnavailable,
     GlueExcerptTooShort,
@@ -134,13 +134,6 @@ _LOG_FIELD_ALLOWLIST = (
     "reason",
 )
 
-# Anything that could leak a URL, a filesystem path, a secret or a stack.
-_UNSAFE_DETAIL_PATTERN = re.compile(
-    r"(https?://|/|\\\\|api[_-]?key|secret|token|bearer|password|traceback|\bat\s+\w+\()",
-    re.IGNORECASE,
-)
-_MAX_DETAIL_LENGTH = 200
-
 
 class GlueConfigurationError(RuntimeError):
     """Worker configuration needed for a paid Glue stage is absent."""
@@ -197,18 +190,6 @@ def _job_logger(job_id: str, user_id: int) -> Callable[..., None]:
         _log_event(event, level=level, jobId=job_id, userId=user_id, **fields)
 
     return log_event
-
-
-def _sanitize_detail(detail: object, *, fallback: str) -> str:
-    """Collapse a failure detail to a short, leak-free sentence."""
-    if not isinstance(detail, str):
-        return fallback
-    text = " ".join(detail.split())
-    if not text:
-        return fallback
-    if _UNSAFE_DETAIL_PATTERN.search(text):
-        return fallback
-    return text[:_MAX_DETAIL_LENGTH]
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +347,7 @@ def _finish_terminal(
                 retryKind=retry_kind,
             )
             return
-    safe_detail = _sanitize_detail(detail, fallback=code or "Glue job stopped")
+    safe_detail = sanitize_detail(detail, fallback=code or "Glue job stopped")
     try:
         finish_glue_job(
             conn,

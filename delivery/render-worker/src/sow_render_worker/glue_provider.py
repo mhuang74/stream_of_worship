@@ -35,6 +35,7 @@ import urllib3
 from botocore.exceptions import ClientError
 
 from sow_render_worker.db import get_glue_job, record_glue_raw_response, set_glue_phase
+from sow_render_worker.glue_detail import sanitize_detail
 from sow_render_worker.glue_excerpts import record_rejection, record_uploaded
 
 # ---------------------------------------------------------------------------
@@ -855,6 +856,10 @@ def _run_stage(
             )
         except GlueProviderError as exc:
             _record_provider_status(conn, job, "uploading", exc.provider_status, log_event)
+            # One sanitized sentence for every sink: the negative cache, this
+            # log line, and the terminal `glue_jobs.error_detail`. A provider
+            # body carrying a URL, path, or key word falls back to the code.
+            detail = sanitize_detail(exc.safe_detail, fallback=exc.code)
             if isinstance(exc, ProviderCopyright):
                 # A copyright verdict for this exact excerpt is a successful
                 # negative cache entry: the identical audio can never incur
@@ -869,17 +874,17 @@ def _run_stage(
                     canonical_steps_json=excerpt.canonical_steps_json,
                     audio_sha256=_excerpt_sha(spine, excerpt),
                     rejection_code=GLUE_COPYRIGHT_REJECTED,
-                    safe_failure_detail=exc.safe_detail,
+                    safe_failure_detail=detail,
                 )
             log_event(
                 "glue.provider.ambiguous" if exc.retry_kind == "paid" else "glue.provider.failed",
                 level="warning",
                 phase="uploading",
                 providerStatus=exc.provider_status,
-                providerDetail=exc.safe_detail,
+                providerDetail=detail,
                 errorCode=exc.code,
             )
-            raise _glue_job_error(spine, exc.code, exc.retry_kind, exc.safe_detail) from exc
+            raise _glue_job_error(spine, exc.code, exc.retry_kind, detail) from exc
 
         # Persist the provider song id before any compose can reference it.
         record_uploaded(
@@ -933,15 +938,16 @@ def _run_stage(
             )
         except GlueProviderError as exc:
             _record_provider_status(conn, job, "composing", exc.provider_status, log_event)
+            detail = sanitize_detail(exc.safe_detail, fallback=exc.code)
             log_event(
                 "glue.provider.ambiguous" if exc.retry_kind == "paid" else "glue.provider.failed",
                 level="warning",
                 phase="composing",
                 providerStatus=exc.provider_status,
-                providerDetail=exc.safe_detail,
+                providerDetail=detail,
                 errorCode=exc.code,
             )
-            raise _glue_job_error(spine, exc.code, exc.retry_kind, exc.safe_detail) from exc
+            raise _glue_job_error(spine, exc.code, exc.retry_kind, detail) from exc
 
         key = raw_response_key(job)
         # The raw object is a free infrastructure write: bounded retries are
