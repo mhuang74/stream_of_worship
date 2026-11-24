@@ -79,6 +79,7 @@ export interface GlueJobStatus {
   songsetId: string;
   fromItemId: string;
   toItemId: string;
+  descriptorKey: string;
   phase: string;
   active: boolean;
   takeMode: GlueTakeMode;
@@ -128,6 +129,7 @@ export function toGlueJobStatus(
     songsetId: row.songsetId,
     fromItemId: row.fromItemId,
     toItemId: row.toItemId,
+    descriptorKey: row.descriptorKey,
     phase: row.phase,
     active: row.active,
     takeMode: row.takeMode === "new-take" ? "new-take" : "initial",

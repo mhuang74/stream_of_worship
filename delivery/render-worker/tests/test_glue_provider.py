@@ -524,6 +524,30 @@ class TestElevenLabsHttpTransport:
             transport.upload(wav)
         assert exc_info.value.provider_status == status
 
+    def test_error_for_response_keeps_the_provider_rejection_sentence(self):
+        exc = glue_provider._error_for_response(
+            422,
+            '{"detail":[{"loc":["body","composition_plan","chunks",0,"duration_ms"],'
+            '"msg":"duration must be at least 3000 ms","type":"value_error"}]}',
+            "compose",
+        )
+        assert isinstance(exc, ProviderPlan)
+        assert exc.provider_status == 422
+        assert exc.safe_detail.startswith("ElevenLabs compose failed with HTTP 422: ")
+        assert "duration must be at least 3000 ms" in exc.safe_detail
+        assert len(exc.safe_detail) <= 200
+
+    def test_error_for_response_keeps_a_non_json_body(self):
+        exc = glue_provider._error_for_response(500, "<html>upstream error</html>", "compose")
+        assert isinstance(exc, ProviderAmbiguous)
+        assert exc.provider_status == 500
+        assert "upstream error" in exc.safe_detail
+
+    def test_error_for_response_with_empty_body_stays_bare(self):
+        exc = glue_provider._error_for_response(422, "", "compose")
+        assert isinstance(exc, ProviderPlan)
+        assert exc.safe_detail == "ElevenLabs compose failed with HTTP 422"
+
     def test_connection_setup_failure_is_not_sent(self, tmp_path):
         wav = tmp_path / "x.wav"
         wav.write_bytes(b"RIFF")

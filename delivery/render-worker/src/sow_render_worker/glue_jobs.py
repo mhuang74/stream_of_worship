@@ -118,6 +118,7 @@ _LOG_FIELD_ALLOWLIST = (
     "descriptorKey",
     "phase",
     "providerStatus",
+    "providerDetail",
     "cacheHit",
     "retryCount",
     # Logged on terminal failure so the GluePaidFailure metric filter can match
@@ -365,6 +366,7 @@ def _finish_terminal(
                 retryKind=retry_kind,
             )
             return
+    safe_detail = _sanitize_detail(detail, fallback=code or "Glue job stopped")
     try:
         finish_glue_job(
             conn,
@@ -372,7 +374,7 @@ def _finish_terminal(
             job.user_id,
             phase=phase,
             error_code=code,
-            error_detail=_sanitize_detail(detail, fallback=code or "Glue job stopped"),
+            error_detail=safe_detail,
             retry_kind=retry_kind,
         )
     except Exception:
@@ -385,6 +387,7 @@ def _finish_terminal(
         errorCode=code,
         status="finished",
         retryKind=retry_kind,
+        providerDetail=safe_detail,
     )
 
 

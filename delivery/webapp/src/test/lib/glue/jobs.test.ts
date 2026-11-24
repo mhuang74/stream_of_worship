@@ -606,6 +606,7 @@ describe("status serialization", () => {
         "songsetId",
         "fromItemId",
         "toItemId",
+        "descriptorKey",
         "phase",
         "active",
         "takeMode",

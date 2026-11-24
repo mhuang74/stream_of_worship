@@ -394,7 +394,11 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       state = "ready";
     } else if (selectedRow !== null) {
       state = "stale";
-    } else if (latestJob !== null && latestJob.phase === "failed") {
+    } else if (
+      latestJob !== null &&
+      latestJob.phase === "failed" &&
+      latestJob.descriptorKey === derivation.descriptorKey
+    ) {
       state = "failed";
     } else {
       state = "needs-generation";

@@ -26,6 +26,7 @@ export interface GlueJobStatus {
   songsetId: string;
   fromItemId: string;
   toItemId: string;
+  descriptorKey: string;
   phase: string;
   active: boolean;
   takeMode: GlueTakeMode;

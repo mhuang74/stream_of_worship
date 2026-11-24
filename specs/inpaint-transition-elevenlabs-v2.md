@@ -503,7 +503,8 @@ Minimum stable codes and copy intent:
 | `GLUE_ACTIVE_JOB` | Another Junction is already generating; open that job. |
 | `GLUE_DAILY_LIMIT` | Limit reached; show reset time. |
 | `GLUE_DURATION_TOO_LONG` / `GLUE_EXCERPT_TOO_SHORT` | Choose fewer beats / adjust the affected Recording or arrangement. |
-| `GLUE_PROVIDER_ENTITLEMENT` / `GLUE_PROVIDER_PLAN` | Provider account/plan needs attention; no blind retry. |
+| `GLUE_PROVIDER_ENTITLEMENT` | Provider account/plan needs attention; no blind retry. |
+| `GLUE_PROVIDER_PLAN` | The provider rejected this request (413/415/422); show its own bounded safe detail. No blind retry: saving a changed descriptor (beats, arrangement, recording) is the free restart path, and an unchanged Junction keeps the reason. |
 | `GLUE_COPYRIGHT_REJECTED` | This excerpt was rejected and cached; no repeated identical upload. |
 | `GLUE_PROVIDER_UNKNOWN` | Provider outcome unknown; a new attempt may be charged. Include job id. |
 | `GLUE_RETRY_PAID` | Previous paid attempt failed; explicit new attempt may charge. |
