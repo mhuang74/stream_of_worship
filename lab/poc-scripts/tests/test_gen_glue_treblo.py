@@ -306,13 +306,15 @@ def test_generate_cached_resumes_saved_task(tmp_path, monkeypatch: pytest.Monkey
 def test_status_parses_json_string_and_object(monkeypatch: pytest.MonkeyPatch) -> None:
     import requests
 
+    monkeypatch.setenv("TREBLO_API_KEY", "test-key")
+
     class FakeResponse:
         status_code = 200
 
         def __init__(self, body: str) -> None:
             self.text = body
 
-    bodies = iter(['"GENERATING"', '{"status": "SUCCESS"}', 'TRANSCRIBE_STAGE_1', ""])
+    bodies = iter(['"GENERATING"', '{"status": "SUCCESS"}', "TRANSCRIBE_STAGE_1", ""])
 
     def fake_get(*_args, **_kwargs):
         return FakeResponse(next(bodies))
@@ -570,6 +572,8 @@ def test_upload_reuploads_a_stale_id(tmp_path, monkeypatch: pytest.MonkeyPatch, 
 def test_submit_survives_a_renamed_task_id(monkeypatch: pytest.MonkeyPatch) -> None:
     import requests
 
+    monkeypatch.setenv("TREBLO_API_KEY", "test-key")
+
     class FakeResponse:
         status_code = 200
 
@@ -593,3 +597,339 @@ def test_submit_survives_a_renamed_task_id(monkeypatch: pytest.MonkeyPatch) -> N
         glue_mod.treblo_submit({})
     assert "task id" in str(excinfo.value)
     assert "queued" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Upload retries, the content guard, and the rotating proxy pool
+# ---------------------------------------------------------------------------
+
+# The recorded 524 body (Cloudflare edge gave up on the origin) is no longer on disk — the later
+# 422 run overwrote output/treblo-glue/test_arrangement/failure.json. This is the same shape: an
+# HTML error page, not JSON, which is what makes a 524 unparseable as an upload response.
+CLOUDFLARE_524 = (
+    "<!DOCTYPE html>\n<html>\n<head><title>api.treblo.com | 524: A timeout occurred</title></head>\n"
+    "<body><h1>Error 524</h1><p>A timeout occurred</p></body>\n</html>"
+)
+CONTENT_GUARD_422 = '{"detail":"This upload matches existing audio and cannot be used."}'
+
+
+class _Resp:
+    def __init__(self, status_code: int, text: str, content: bytes = b"") -> None:
+        self.status_code, self.text = status_code, text
+        self.content = content
+
+    def json(self):
+        return json.loads(self.text)
+
+
+def test_upload_retries_a_cloudflare_524(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+    answers = [_Resp(524, CLOUDFLARE_524), _Resp(200, '{"audio_upload_id": "up-1"}')]
+    calls: list[tuple] = []
+
+    def post(path, mime, proxies):
+        calls.append((path, mime, proxies))
+        return answers[len(calls) - 1]
+
+    sleeps: list[float] = []
+    result = glue_mod.treblo_post_upload(
+        tmp_path / "montage.wav", tmp_path / "montage.flac", post=post, sleep=sleeps.append
+    )
+    assert result == ("up-1", "wav")
+    assert len(calls) == 2
+    assert sleeps == [glue_mod.UPLOAD_RETRY_SLEEPS[0]]
+
+
+def test_upload_retries_a_connection_error(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import requests
+
+    monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+    calls: list[tuple] = []
+
+    def post(path, mime, proxies):
+        calls.append((path, mime, proxies))
+        if len(calls) == 1:
+            raise requests.exceptions.ConnectionError("boom")
+        return _Resp(200, '{"audio_upload_id": "up-2"}')
+
+    sleeps: list[float] = []
+    result = glue_mod.treblo_post_upload(
+        tmp_path / "montage.wav", tmp_path / "montage.flac", post=post, sleep=sleeps.append
+    )
+    assert result == ("up-2", "wav")
+    assert len(calls) == 2
+    assert sleeps == [glue_mod.UPLOAD_RETRY_SLEEPS[0]]
+
+
+def test_upload_gives_up_after_the_retry_budget(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+    calls: list[tuple] = []
+
+    def post(path, mime, proxies):
+        calls.append((path, mime, proxies))
+        return _Resp(524, CLOUDFLARE_524)
+
+    sleeps: list[float] = []
+    with pytest.raises(glue_mod.ApiFatalError) as excinfo:
+        glue_mod.treblo_post_upload(
+            tmp_path / "montage.wav", tmp_path / "montage.flac", post=post, sleep=sleeps.append
+        )
+    message = str(excinfo.value)
+    assert "after 4 attempts" in message
+    assert "524" in message
+    assert len(sleeps) == 3
+    assert len(calls) == 4
+
+
+def test_content_guard_raises_upload_blocked_without_retrying(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+    calls: list[tuple] = []
+
+    def post(path, mime, proxies):
+        calls.append((path, mime, proxies))
+        return _Resp(422, CONTENT_GUARD_422)
+
+    sleeps: list[float] = []
+    with pytest.raises(glue_mod.UploadBlocked) as excinfo:
+        glue_mod.treblo_post_upload(
+            tmp_path / "montage.wav", tmp_path / "montage.flac", post=post, sleep=sleeps.append
+        )
+    message = str(excinfo.value)
+    assert len(calls) == 1
+    assert sleeps == []
+    assert "audio_upload_id" in message
+    # the "use a different song" verdict belongs to other 422s, not the content guard
+    assert "a different song" not in message
+
+
+def test_upload_does_not_retry_a_bad_key(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+    calls: list[tuple] = []
+
+    def post(path, mime, proxies):
+        calls.append((path, mime, proxies))
+        return _Resp(401, "unauthorized")
+
+    sleeps: list[float] = []
+    with pytest.raises(glue_mod.ApiFatalError) as excinfo:
+        glue_mod.treblo_post_upload(
+            tmp_path / "montage.wav", tmp_path / "montage.flac", post=post, sleep=sleeps.append
+        )
+    assert not isinstance(excinfo.value, glue_mod.UploadBlocked)
+    assert "TREBLO_API_KEY" in str(excinfo.value)
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+def test_upload_re_encodes_once_on_413_then_retries(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+    wav, flac = tmp_path / "montage.wav", tmp_path / "montage.flac"
+    wav.write_bytes(b"wav")
+    answers = [
+        _Resp(413, "too large"),
+        _Resp(524, CLOUDFLARE_524),
+        _Resp(200, '{"audio_upload_id": "up-3"}'),
+    ]
+    calls: list[tuple] = []
+
+    def post(path, mime, proxies):
+        calls.append((path, mime, proxies))
+        return answers[len(calls) - 1]
+
+    runs: list[list[str]] = []
+
+    def fake_run(cmd):
+        runs.append(cmd)
+        flac.write_bytes(b"flac")
+
+    monkeypatch.setattr(glue_mod, "_run", fake_run)
+    sleeps: list[float] = []
+    result = glue_mod.treblo_post_upload(wav, flac, post=post, sleep=sleeps.append)
+    assert result == ("up-3", "flac")
+    assert len(runs) == 1
+    assert len(calls) == 3
+    assert calls[0][0] == wav
+    assert calls[1][0] == flac and calls[2][0] == flac
+    assert calls[1][1] == "audio/flac"
+
+
+def test_upload_attempts_rotate_proxy_ports(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import itertools
+
+    monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://u:p@pool:10001-10002")
+    ports = itertools.cycle(["http://u:p@pool:10001", "http://u:p@pool:10002"])
+    monkeypatch.setattr(glue_mod, "choose_proxy", lambda _pool: next(ports))
+    answers = [_Resp(524, CLOUDFLARE_524), _Resp(200, '{"audio_upload_id": "up-1"}')]
+    seen: list[dict[str, str] | None] = []
+
+    def post(path, mime, proxies):
+        seen.append(proxies)
+        return answers[len(seen) - 1]
+
+    result = glue_mod.treblo_post_upload(
+        tmp_path / "montage.wav", tmp_path / "montage.flac", post=post, sleep=lambda _s: None
+    )
+    assert result == ("up-1", "wav")
+    assert seen[0] == {"http": "http://u:p@pool:10001", "https": "http://u:p@pool:10001"}
+    assert seen[1] == {"http": "http://u:p@pool:10002", "https": "http://u:p@pool:10002"}
+
+
+def test_proxy_is_opt_in_and_never_read_from_the_env_file(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("SOW_YOUTUBE_PROXY", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("SOW_YOUTUBE_PROXY=http://u:p@host:10001-10003\n")
+    glue_mod.load_env_file(env_file)
+    # the variable is not in ENV_KEYS, so a file-only value must never enable the proxy
+    assert "SOW_YOUTUBE_PROXY" not in glue_mod.os.environ
+    assert glue_mod.load_proxy_pool() is None
+    assert glue_mod.request_proxies() is None
+
+    monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://u:p@host:10001-10003")
+    assert glue_mod.load_proxy_pool() == [
+        "http://u:p@host:10001",
+        "http://u:p@host:10002",
+        "http://u:p@host:10003",
+    ]
+
+
+def test_invalid_proxy_range_aborts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://u:secret@host:10010-10001")
+    with pytest.raises(SystemExit) as excinfo:
+        glue_mod.load_proxy_pool()
+    message = str(excinfo.value)
+    assert "SOW_YOUTUBE_PROXY" in message
+    assert "secret" not in message
+
+
+def test_every_api_call_uses_the_pool_but_the_cdn_does_not(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import requests
+
+    monkeypatch.setenv("SOW_YOUTUBE_PROXY", "http://u:p@pool:10001-10003")
+    monkeypatch.setenv("TREBLO_API_KEY", "test-key")
+    monkeypatch.setattr(glue_mod, "choose_proxy", lambda pool: pool[0])
+    expected = {"http": "http://u:p@pool:10001", "https": "http://u:p@pool:10001"}
+    posted: list[dict] = []
+    fetched: list[dict] = []
+
+    def fake_post(*_args, **kwargs):
+        posted.append(kwargs)
+        return _Resp(200, '{"task_id": "t-1"}')
+
+    def fake_get(*args, **kwargs):
+        fetched.append({"url": args[0], **kwargs})
+        if "generations/status" in str(args[0]):
+            return _Resp(200, '"PENDING"')
+        if "generations/t-" in str(args[0]):
+            return _Resp(200, '{"song_paths": ["http://cdn.treblo.com/x.flac"]}')
+        return _Resp(200, '{"ok": true}')
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    assert glue_mod.treblo_submit({}) == "t-1"
+    assert glue_mod.treblo_status("t-1") == "PENDING"
+    assert glue_mod.treblo_task("t-1")["song_paths"] == ["http://cdn.treblo.com/x.flac"]
+    glue_mod.treblo_download("http://cdn.treblo.com/x.flac", tmp_path / "x.bin")
+
+    assert posted[0]["proxies"] == expected
+    assert fetched[0]["proxies"] == expected
+    assert fetched[1]["proxies"] == expected
+    assert "proxies" not in fetched[2], "the CDN download is direct"
+
+
+def test_report_renders_a_blocked_junction() -> None:
+    baseline = {
+        "id": "j1-baseline",
+        "label": "baseline",
+        "summary": "production gap",
+        "status": "ok",
+        "gap_seconds": 3.43839,
+        "crossfade_seconds": 0.0,
+        "seconds": 27.4,
+        "files": {"seam": "junctions/j1/seams/baseline.flac"},
+    }
+    provided_items = [{"title": "A"}, {"title": "B"}]
+    index = {
+        "run": "probe",
+        "songset_id": "ss",
+        "items": provided_items,
+        "beats": [4],
+        "tags": ["worship"],
+        "upload_seconds": 12.0,
+        "credits_spent": 0,
+        "credits_estimate": 100,
+        "junctions": [
+            {
+                "id": "j1",
+                "index": 1,
+                "from": {"title": "A"},
+                "to": {"title": "B"},
+                "tempo_bpm": TEMPO,
+                "beat_seconds": 0.7,
+                "status": "blocked",
+                "blocked_reason": glue_mod.CONTENT_GUARD_MESSAGE.format(body=CONTENT_GUARD_422),
+                "montage": {"seconds": 27.4, "side_seconds": 12.0, "hole_seconds": 3.4},
+                "baseline": baseline,
+                "takes": [],
+            },
+            {
+                "id": "j2",
+                "index": 2,
+                "from": {"title": "B"},
+                "to": {"title": "C"},
+                "tempo_bpm": TEMPO,
+                "beat_seconds": 0.7,
+                "status": "ok",
+                "blocked_reason": None,
+                "montage": {"seconds": 27.4, "side_seconds": 12.0, "hole_seconds": 3.4},
+                "baseline": {**baseline, "id": "j2-baseline"},
+                "takes": [
+                    {
+                        "id": "j2-take1",
+                        "label": "beats-4 take1",
+                        "status": "ok",
+                        "seconds": 3.4,
+                        "files": {"seam": "junctions/j2/glues/beats-4-take1.flac"},
+                    }
+                ],
+            },
+        ],
+    }
+    rendered = report_html(index)
+    assert "blocked:" in rendered
+    assert "content guard" in rendered
+    assert 'data-take-id="j2-take1"' in rendered, "one refused junction must not hide the rest"
+
+
+def test_full_set_is_skipped_when_a_junction_is_blocked() -> None:
+    """A blocked junction has no Glue, and assemble_set needs one per junction."""
+    junctions = [
+        {"index": 1, "status": "blocked"},
+        {"index": 2, "status": "ok"},
+    ]
+    reason = glue_mod.full_set_skip_reason(junctions, [1, 2], 3)
+    assert reason is not None
+    assert "j1" in reason
+    assert "content guard" in reason
+    assert "j2" not in reason
+
+    # both junctions blocked: name both
+    both = glue_mod.full_set_skip_reason(
+        [{"index": 1, "status": "blocked"}, {"index": 2, "status": "blocked"}], [1, 2], 3
+    )
+    assert both is not None and "j1" in both and "j2" in both
+
+    # a user-chosen subset is reported as such, not as a guard refusal
+    subset = glue_mod.full_set_skip_reason([{"index": 1, "status": "ok"}], [1], 3)
+    assert subset is not None and "subset" in subset
+
+    # every junction has a Glue: the full set is built
+    assert glue_mod.full_set_skip_reason([{"index": 1, "status": "ok"}], [1], 2) is None
