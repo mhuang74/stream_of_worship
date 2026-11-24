@@ -14,7 +14,7 @@ script and none available as a fallback (§7).
 
 | call | function | auth | purpose | failure semantics |
 |---|---|---|---|---|
-| `POST /uploads` (multipart, field `file`) | `treblo_post_upload` `:678` | Bearer | turn a montage into an `audio_upload_id` | free; re-encode to FLAC and retry once on 413/415; any other ≥400 is fatal |
+| `POST /uploads` (multipart, field `file`) | `treblo_post_upload` `:733` | Bearer | turn a montage into an `audio_upload_id` | free; re-encode to FLAC once on 413/415; retry connection errors and `RETRYABLE_UPLOAD_STATUSES` (408/429/500/502/503/504/520–524) up to 3 times at 30/60/120 s, then abort; 401/402/422 fatal and unretried |
 | `POST /generations/v2/inpaint` (JSON) | `treblo_submit` `:786` | Bearer + `Content-Type: application/json` | buy one section replacement | 100 credits; 422 uncharged; the id is accepted as `task_id`, `id` or `job_id` |
 | `GET /generations/status/{id}` | `treblo_status` `:820` | Bearer | poll, 5 s interval, 900 s cap (`POLL_INTERVAL_SECONDS`, `POLL_TIMEOUT_SECONDS`) | body is a JSON *string*; empty or unparseable body = still running, never a failed take |
 | `GET /generations/{id}` | `treblo_task` `:846` | Bearer | terminal task payload | non-object or non-JSON body is fatal, not retried |
@@ -42,7 +42,15 @@ sequenceDiagram
 
 `TREBLO_API_KEY` is read from the environment, or filled in by `load_env_file` from
 `ENV_FILE = Path("/opt/sow/.env")` (`:90`) when unset. Every authenticated call sends
-`Authorization: Bearer <key>` (`_api_headers`, `:625`).
+`Authorization: Bearer <key>` (`_api_headers`, `:655`).
+
+Rotating proxy: an `SOW_YOUTUBE_PROXY` in the **environment** — the port-range notation
+`http://user:pass@host:10001-10010`, parsed by
+`stream_of_worship.admin.services.proxy.parse_proxy_pool` via `load_proxy_pool` (`:655`) — routes
+upload, submit, status and task calls through one randomly chosen port per request
+(`request_proxies`, `:667`); the CDN download stays direct. `SOW_YOUTUBE_PROXY` is deliberately
+absent from `ENV_KEYS` (`:145`), so a value that exists only in `/opt/sow/.env` is ignored and the
+run is direct — the script never prints the raw URL, only `redact_proxy_url(...)`.
 
 ## 2. Input given
 
@@ -88,11 +96,22 @@ PCM, and `_upload_is_fresh` (`:721`) treats an entry older than `UPLOAD_TTL_SECO
 credits; the margin exists because ids expire "about 24 hours" after upload.
 
 The content guard: `POST /uploads` answers HTTP 422
-`{"detail":"This upload matches existing audio and cannot be used."}` for audio Treblo already
-holds. `_fatal_from_response` (`:629`) branches on the substring `matches existing audio` and states
-that the recording is blocked and the fix is a different song — never transformed audio, which would
-be evading the filter. Free upload probes over the arranged songsets in the library, each sending the
-exact montage the paid run would send:
+`{"detail":"This upload matches existing audio and cannot be used."}` for audio Treblo will not
+accept as a source. That refusal carries no `audio_upload_id`, and `/v1/uploads` exposes exactly one
+operation (POST — no list, no GET by id), so the montage cannot be submitted by any route: the
+junction is recorded as `blocked` in `index.json` (`junctions[].status`, `blocked_reason`) with a
+`blocked:` note in `report.html`, the rest of the run continues, and no credits are spent. The
+failure is raised as `UploadBlocked` (`:159`) and handled per junction in `_execute_run` (`:2389`);
+the full-set build is skipped with that cause named (`:2604`), because a blocked junction has no
+Glue to assemble. Never resubmit the refused audio through another input (`audio_base64`,
+`audio_url`) or transform it: that is the same audio aimed past a content refusal.
+
+Byte-identity dedupe was settled by a free two-upload probe (2026-11-24, 3 s 220 Hz stereo tone,
+`/tmp/treblo-probe-tone.wav`): the **same bytes were accepted twice**, with two distinct
+`audio_upload_id`s (`fd49ba4b-…`, `3b7b45c2-…`). The guard therefore matches **content, never our own
+upload history**, so a 422 can never mean "the earlier 524 actually landed" — and the 6-of-7 refusal
+rate below, on first uploads, is content matching, exactly as recorded. Free upload probes over the
+arranged songsets in the library, each sending the exact montage the paid run would send:
 
 | songset | j1 | j2 |
 |---|---|---|

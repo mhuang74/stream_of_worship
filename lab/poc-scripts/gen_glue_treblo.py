@@ -55,9 +55,12 @@ without touching Postgres, R2 or the API, so a tag or field error shows up befor
 Tags come from the closed v2 vocabulary in data/treblo-v2-tags.txt and are validated before any
 request: the API rejects anything off-list with a 422 (a rejected request is not charged).
 
-`POST /uploads` refuses audio Treblo already holds ("This upload matches existing audio"): both
-recordings of the default songset are refused today, so that songset cannot be used as an inpaint
-source and the run aborts fatally on the upload — before any credits are spent. Use recordings that
+`POST /uploads` is free and fronts Cloudflare, so a transient edge/origin failure on it (524, the
+other 520–523, 5xx, or no response at all) is retried three times at 30/60/120 s; the bytes are
+cached, so a rerun re-sends exactly them for 0 credits. It also refuses audio Treblo already holds
+("This upload matches existing audio"): that 422 carries no `audio_upload_id` and `/v1/uploads` has
+no way to recover one, so the affected *junction* is recorded as `blocked` and skipped while the
+rest of the run continues — before any credits are spent. Use recordings that
 pass the upload; never transform audio to get past that filter.
 
 Prerequisites: `TREBLO_API_KEY`, `SOW_DATABASE_URL`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`,
@@ -84,6 +87,12 @@ from typing import Any
 
 import numpy as np
 import soundfile as sf
+from stream_of_worship.admin.services.proxy import (
+    ProxyConfigError,
+    choose_proxy,
+    get_proxy_pool,
+    redact_proxy_url,
+)
 
 API = "https://api.treblo.com/v1"
 ENDPOINT = "POST /generations/v2/inpaint"
@@ -106,6 +115,17 @@ SECTION_TOLERANCE_SECONDS = 0.1  # crop length accepted before it counts as geom
 MAX_TAGS = 64
 CREDITS_PER_REQUEST = 100
 UPLOAD_TTL_SECONDS = 20 * 3600.0  # ids expire "about 24 hours" after upload; re-upload with margin
+UPLOAD_RETRY_SLEEPS = (30.0, 60.0, 120.0)  # 4 attempts; transient edge/origin blips only
+# 524 is Cloudflare's origin timeout (observed 2026-11-23); 520-523 are the rest of its 5xx family;
+# 500/502/503/504 are origin/gateway failures; 408/429 are retryable with no side effect.
+RETRYABLE_UPLOAD_STATUSES = frozenset({408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524})
+CONTENT_GUARD_MESSAGE = (
+    "upload refused by the content guard (HTTP 422): {body}\n"
+    "Treblo will not accept this audio as an inpainting source, and the response carries no "
+    "audio_upload_id, so this montage cannot be submitted — /v1/uploads has no list or GET-by-id "
+    "operation to recover one. This junction is skipped and nothing is charged. Do not transform "
+    "the audio to get past the filter."
+)
 POLL_INTERVAL_SECONDS = 5.0
 POLL_TIMEOUT_SECONDS = 900.0
 DEFAULT_PROMPT_STRENGTH = 2.0
@@ -136,6 +156,14 @@ ENV_KEYS = (
 
 class ApiFatalError(RuntimeError):
     """A response that no retry can fix: key, credits, 413, 422, poll timeout."""
+
+
+class UploadBlocked(ApiFatalError):
+    """The content guard refused this montage, so no audio_upload_id exists for it.
+
+    Uploads are free, so this ends the junction, not the run: other junctions of the songset may
+    still be accepted, and only an accepted montage can ever be charged.
+    """
 
 
 class TrebloTaskFailed(RuntimeError):
@@ -626,6 +654,34 @@ def _api_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {os.environ['TREBLO_API_KEY']}"}
 
 
+def load_proxy_pool() -> list[str] | None:
+    """The `SOW_YOUTUBE_PROXY` port-range pool, or None when unset/blank.
+
+    A malformed range is configuration, not an API answer: it aborts before any request, like the
+    script's other CLI validation errors.
+    """
+    try:
+        return get_proxy_pool()
+    except ProxyConfigError as exc:
+        raise SystemExit(f"SOW_YOUTUBE_PROXY is invalid: {exc}") from exc
+
+
+def request_proxies() -> dict[str, str] | None:
+    """One pool URL for this request, or None (then requests' own HTTPS_PROXY applies).
+
+    Random per request, mirroring `RotatingProxyConfig.to_requests_dict` in the admin CLI: a retry
+    exits from a different port, which is the point of the range notation. Deliberately uncached,
+    like `get_proxy_pool`.
+    """
+    pool = load_proxy_pool()
+    if not pool:
+        return None
+    chosen = choose_proxy(pool)
+    # both keys carry the URL because requests routes an https:// target through CONNECT with the
+    # `https` key; leaving it unset would silently bypass the proxy
+    return {"http": chosen, "https": chosen}
+
+
 def _fatal_from_response(status: int, body: str, what: str) -> ApiFatalError:
     if status in (401, 403):
         return ApiFatalError(
@@ -663,7 +719,7 @@ def _fatal_from_response(status: int, body: str, what: str) -> ApiFatalError:
     return ApiFatalError(f"{what} failed HTTP {status}: {body[:800]}")
 
 
-def _post_upload(path: Path, mime: str) -> Any:
+def _post_upload(path: Path, mime: str, proxies: dict[str, str] | None = None) -> Any:
     import requests
 
     with path.open("rb") as handle:
@@ -672,34 +728,84 @@ def _post_upload(path: Path, mime: str) -> Any:
             headers=_api_headers(),
             files={"file": (path.name, handle, mime)},
             timeout=900,
+            proxies=proxies,
         )
 
 
-def treblo_post_upload(wav_path: Path, flac_path: Path) -> tuple[str, str]:
-    """Upload one montage; returns (audio_upload_id, format). Re-encodes on 413/415 once."""
-    resp = _post_upload(wav_path, "audio/wav")
-    used_format = "wav"
-    if resp.status_code in (413, 415):
-        print(f"  upload rejected ({resp.status_code}); retrying as flac", flush=True)
-        flac_path.parent.mkdir(parents=True, exist_ok=True)
-        _run(
-            [
-                "ffmpeg",
-                "-v",
-                "error",
-                "-y",
-                "-i",
-                str(wav_path),
-                "-c:a",
-                "flac",
-                str(flac_path),
-            ]
+def treblo_post_upload(
+    wav_path: Path,
+    flac_path: Path,
+    post: Any = _post_upload,
+    sleep=time.sleep,
+) -> tuple[str, str]:
+    """Upload one montage; returns (audio_upload_id, format).
+
+    A single attempt is not reliable: Cloudflare fronts api.treblo.com and answers 524 when its
+    origin is slower than ~100 s, so the bytes leave but no id comes back (recorded in
+    test_arrangement/failure.json, 2026-11-23). Uploads cost no credits, so exactly the transient
+    edge/origin family is retried, each attempt through the next proxy port; 401/402/413/415/422
+    are answers, never retried.
+    """
+    import requests
+
+    path, mime, used_format = wav_path, "audio/wav", "wav"
+    retries = 0
+    while True:
+        proxies = request_proxies()
+        if proxies:
+            print(
+                f"  upload attempt {retries + 1}/{len(UPLOAD_RETRY_SLEEPS) + 1} via "
+                f"{redact_proxy_url(proxies['https'])}",
+                flush=True,
+            )
+        try:
+            resp = post(path, mime, proxies)
+        except requests.exceptions.RequestException as exc:
+            resp = None
+            problem = f"{type(exc).__name__}: {exc}"
+        else:
+            problem = f"HTTP {resp.status_code}: {resp.text[:400]}"
+        if resp is not None and resp.status_code < 400:
+            return str(resp.json()["audio_upload_id"]), used_format
+        if resp is not None and resp.status_code in (413, 415) and used_format == "wav":
+            print(f"  upload rejected ({resp.status_code}); retrying as flac", flush=True)
+            flac_path.parent.mkdir(parents=True, exist_ok=True)
+            _run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(wav_path),
+                    "-c:a",
+                    "flac",
+                    str(flac_path),
+                ]
+            )
+            path, mime, used_format = flac_path, "audio/flac", "flac"
+            continue
+        if resp is not None and resp.status_code not in RETRYABLE_UPLOAD_STATUSES:
+            if resp.status_code == 422 and "matches existing audio" in resp.text:
+                raise UploadBlocked(CONTENT_GUARD_MESSAGE.format(body=resp.text[:1200]))
+            raise _fatal_from_response(resp.status_code, resp.text, "upload")
+        if retries >= len(UPLOAD_RETRY_SLEEPS):
+            raise ApiFatalError(
+                f"upload failed after {len(UPLOAD_RETRY_SLEEPS) + 1} attempts; last attempt: "
+                f"{problem}\n"
+                "Every attempt hit the same transient edge/origin failure (Cloudflare 524 family, "
+                "5xx, or no response at all), so this is the vendor's upload path, not the audio. "
+                "Nothing was charged — uploads are free — and the bytes are cached at "
+                f"{path}, so a rerun re-sends exactly these bytes for 0 credits."
+            )
+        delay = UPLOAD_RETRY_SLEEPS[retries]
+        retries += 1
+        print(
+            f"  upload attempt failed ({problem}); retrying in {delay:.0f} s "
+            f"(retry {retries}/{len(UPLOAD_RETRY_SLEEPS)})",
+            flush=True,
         )
-        resp = _post_upload(flac_path, "audio/flac")
-        used_format = "flac"
-    if resp.status_code >= 400:
-        raise _fatal_from_response(resp.status_code, resp.text, "upload")
-    return str(resp.json()["audio_upload_id"]), used_format
+        sleep(delay)
 
 
 def load_uploads(out_root: Path) -> dict[str, dict[str, Any]]:
@@ -792,12 +898,21 @@ def treblo_submit(body: dict[str, Any]) -> str:
     """
     import requests
 
-    resp = requests.post(
-        f"{API}/generations/v2/inpaint",
-        headers={**_api_headers(), "Content-Type": "application/json"},
-        json=body,
-        timeout=120,
-    )
+    try:
+        resp = requests.post(
+            f"{API}/generations/v2/inpaint",
+            headers={**_api_headers(), "Content-Type": "application/json"},
+            json=body,
+            timeout=120,
+            proxies=request_proxies(),
+        )
+    except requests.exceptions.RequestException as exc:
+        raise ApiFatalError(
+            "inpaint submit did not complete at the transport layer: "
+            f"{type(exc).__name__}: {exc}\n"
+            "The request may still have been charged — check GET /v1/credits/balance before "
+            "submitting again, and never resubmit a submit whose task id you did not receive."
+        ) from exc
     if resp.status_code >= 400:
         raise _fatal_from_response(resp.status_code, resp.text, "inpaint")
     try:
@@ -825,7 +940,21 @@ def treblo_status(task_id: str) -> str:
     """
     import requests
 
-    resp = requests.get(f"{API}/generations/status/{task_id}", headers=_api_headers(), timeout=120)
+    try:
+        resp = requests.get(
+            f"{API}/generations/status/{task_id}",
+            headers=_api_headers(),
+            timeout=120,
+            proxies=request_proxies(),
+        )
+    except requests.exceptions.RequestException as exc:
+        raise ApiFatalError(
+            f"status poll for task {task_id} failed at the transport layer: "
+            f"{type(exc).__name__}: {exc}\n"
+            "The task id is already recorded in the paid-response cache "
+            f"(`{task_id}.request.json`), so rerunning polls it instead of buying another one."
+        ) from exc
+
     if resp.status_code >= 400:
         raise _fatal_from_response(resp.status_code, resp.text, "status")
     text = resp.text.strip()
@@ -847,15 +976,27 @@ def treblo_task(task_id: str) -> dict[str, Any]:
     """The finished task: `song_paths`, `error_message`, `model_version`."""
     import requests
 
-    resp = requests.get(f"{API}/generations/{task_id}", headers=_api_headers(), timeout=120)
+    try:
+        resp = requests.get(
+            f"{API}/generations/{task_id}",
+            headers=_api_headers(),
+            timeout=120,
+            proxies=request_proxies(),
+        )
+    except requests.exceptions.RequestException as exc:
+        raise ApiFatalError(
+            f"task fetch for task {task_id} failed at the transport layer: "
+            f"{type(exc).__name__}: {exc}\n"
+            "The task was already charged and its id is recorded in the paid-response cache, so "
+            "rerunning resumes it."
+        ) from exc
+
     if resp.status_code >= 400:
         raise _fatal_from_response(resp.status_code, resp.text, "task")
     try:
         payload = resp.json()
     except ValueError as exc:
-        raise ApiFatalError(
-            f"task {task_id} returned a non-JSON body: {resp.text[:400]}"
-        ) from exc
+        raise ApiFatalError(f"task {task_id} returned a non-JSON body: {resp.text[:400]}") from exc
     if not isinstance(payload, dict):
         raise ApiFatalError(
             f"task {task_id} returned a {type(payload).__name__}, expected an object"
@@ -1174,6 +1315,27 @@ def mix_songset(
         for index in range(len(incoming))
     ]
     return np.ascontiguousarray(buffer), records
+
+
+def full_set_skip_reason(
+    junctions: Sequence[dict[str, Any]], selected: Sequence[int], item_count: int
+) -> str | None:
+    """Why the full set cannot be assembled, or None when every junction has a Glue.
+
+    `assemble_set` needs exactly one Glue per junction, so a junction with no Glue — a content-guard
+    refusal, which has no `audio_upload_id` at all — must skip the build instead of shortening the
+    list and failing inside the assembly.
+    """
+    blocked = [entry["index"] for entry in junctions if entry.get("status") == "blocked"]
+    if blocked:
+        return (
+            "junction "
+            + ", ".join(f"j{number}" for number in blocked)
+            + " blocked by the content guard"
+        )
+    if len(selected) != item_count - 1:
+        return "junction subset selected (--junctions)"
+    return None
 
 
 def assemble_set(songs: Sequence[np.ndarray], glues: Sequence[np.ndarray]) -> np.ndarray:
@@ -1607,7 +1769,7 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
         # the prefix is the take's own status: a refused take must not read "check"
         detail += (
             f'<p class="error">{html.escape(str(status))}: '
-            f'{html.escape("; ".join(str(r) for r in reasons))}</p>'
+            f"{html.escape('; '.join(str(r) for r in reasons))}</p>"
         )
     return f"""<article class="card" data-take-id="{html.escape(take_id)}"
   data-label="{html.escape(label)}">
@@ -1661,9 +1823,9 @@ def context_card_html(item: dict[str, Any]) -> str:
     )
     return f"""<article class="card">
   <h3>{html.escape(title)}</h3>
-  <p class="meta">arranged {_num(item.get('arranged_seconds'), 2)} s ·
-  {_num(item.get('tempo_bpm'), 5)} BPM · {html.escape(str(item.get('key')))} ·
-  {_num(item.get('steps'), 0)} steps</p>
+  <p class="meta">arranged {_num(item.get("arranged_seconds"), 2)} s ·
+  {_num(item.get("tempo_bpm"), 5)} BPM · {html.escape(str(item.get("key")))} ·
+  {_num(item.get("steps"), 0)} steps</p>
   <div class="players"><span>Arranged</span>{player}</div>
 </article>"""
 
@@ -1739,6 +1901,11 @@ def report_html(index: dict[str, Any]) -> str:
             f'<h3>Failed takes</h3><div class="grid">{failed_cards}</div>' if failed_cards else ""
         )
         rankable = ok_takes + [baseline]
+        blocked_note = (
+            f'<p class="error">blocked: {html.escape(str(junction.get("blocked_reason")))}</p>'
+            if junction.get("status") == "blocked"
+            else ""
+        )
         sections.append(f"""<section id="junction-j{html.escape(str(number))}">
   <h2>Junction {html.escape(str(number))} —
   {html.escape(str((junction.get("from") or {}).get("title")))} →
@@ -1747,6 +1914,7 @@ def report_html(index: dict[str, Any]) -> str:
   {_num(junction.get("beat_seconds"), 5)} s · baseline {html.escape(baseline_text(baseline))} ·
   montage {_num(montage.get("seconds"), 2)} s ({_num(montage.get("side_seconds"), 2)} s sides,
   hole {_num(montage.get("hole_seconds"))} s)</p>
+  {blocked_note}
   <div class="grid">{cards}</div>
   {failed_block}
   {ranking_table(rankable, False, f"Junction {number} ranking (score desc, unscored last)")}
@@ -2057,15 +2225,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _execute_run(args)
     except ApiFatalError as exc:
         print(f"error: {exc}", flush=True)
-        _write_failure(
-            Path(args.out_root) / args.run_name, args.run_name, args.songset, str(exc)
-        )
+        _write_failure(Path(args.out_root) / args.run_name, args.run_name, args.songset, str(exc))
         return 2
 
 
 def _execute_run(args: argparse.Namespace) -> int:
     load_env_file()
     require_env()
+    pool = load_proxy_pool()
+    if pool:
+        print(
+            f"  proxy pool: {len(pool)} port(s) via "
+            f"{redact_proxy_url(os.environ['SOW_YOUTUBE_PROXY'])}",
+            flush=True,
+        )
+
     tags = list(args.tags)
     validate_tags(tags, load_tag_vocabulary())
     out_root = Path(args.out_root)
@@ -2211,6 +2385,7 @@ def _execute_run(args: argparse.Namespace) -> int:
 
         montages: dict[int, Montage] = {}
         montage_info: dict[int, dict[str, Any]] = {}
+        blocked: str | None = None
         for spec in specs:
             try:
                 montage = build_montage(a_song, b_song, spec, args.upload_seconds)
@@ -2218,12 +2393,6 @@ def _execute_run(args: argparse.Namespace) -> int:
                 raise SystemExit(f"junction j{junction}: {exc}") from exc
             relative = f"junctions/j{junction}/montages/beats-{spec.beats}.flac"
             write_flac(run_dir / relative, montage.samples)
-            upload = treblo_upload(
-                montage.samples,
-                out_root,
-                args.refresh_uploads,
-                f"j{junction} montage beats-{spec.beats} ({montage.seconds:.2f} s)",
-            )
             montages[spec.beats] = montage
             montage_info[spec.beats] = {
                 "file": relative,
@@ -2232,9 +2401,21 @@ def _execute_run(args: argparse.Namespace) -> int:
                 "hole_start_seconds": round(montage.hole_start / SR, 6),
                 "hole_seconds": round((montage.hole_end - montage.hole_start) / SR, 6),
                 "wav_bytes": montage.wav_bytes,
-                "sha256": upload["sha256"],
-                "audio_upload_id": upload["audio_upload_id"],
+                "sha256": None,
+                "audio_upload_id": None,
             }
+            try:
+                upload = treblo_upload(
+                    montage.samples,
+                    out_root,
+                    args.refresh_uploads,
+                    f"j{junction} montage beats-{spec.beats} ({montage.seconds:.2f} s)",
+                )
+            except UploadBlocked as exc:
+                blocked = str(exc)
+                break
+            montage_info[spec.beats]["sha256"] = upload["sha256"]
+            montage_info[spec.beats]["audio_upload_id"] = upload["audio_upload_id"]
 
         entry: dict[str, Any] = {
             "id": f"j{junction}",
@@ -2253,6 +2434,8 @@ def _execute_run(args: argparse.Namespace) -> int:
             },
             "tempo_bpm": b_tempo,
             "beat_seconds": round(beat_seconds(b_tempo), 6),
+            "status": "blocked" if blocked else "ok",
+            "blocked_reason": blocked,
             "montage": montage_info[specs[0].beats],
             "baseline": {
                 "id": f"j{junction}-baseline",
@@ -2269,6 +2452,9 @@ def _execute_run(args: argparse.Namespace) -> int:
             "takes": [],
         }
         index["junctions"].append(entry)
+        if blocked:
+            print(f"  junction j{junction}: blocked — {blocked.splitlines()[0]}", flush=True)
+            continue
         prepared.append(
             {
                 "index": junction,
@@ -2431,9 +2617,8 @@ def _execute_run(args: argparse.Namespace) -> int:
                 take["error"] = str(exc)
                 print(f"  {take_id}: failed — {exc}", flush=True)
 
-    if len(selected) != len(items) - 1:
-        index["full_set"]["skipped"] = "junction subset selected (--junctions)"
-    else:
+    index["full_set"]["skipped"] = full_set_skip_reason(index["junctions"], selected, len(items))
+    if not index["full_set"]["skipped"]:
         for beats in dict.fromkeys(args.beats):
             for take_number in range(args.takes):
                 cache_take = (
@@ -2490,6 +2675,13 @@ def _execute_run(args: argparse.Namespace) -> int:
         f"({', '.join(f'{status} {count}' for status, count in sorted(counts.items())) or 'none'})",
         flush=True,
     )
+    blocked_ids = [entry["id"] for entry in index["junctions"] if entry.get("status") == "blocked"]
+    if blocked_ids:
+        print(
+            f"blocked junctions: {', '.join(blocked_ids)} "
+            "(content guard refused the montage; no credits spent)",
+            flush=True,
+        )
     if index["full_set"]["skipped"]:
         print(f"full set: not built ({index['full_set']['skipped']})", flush=True)
     else:
