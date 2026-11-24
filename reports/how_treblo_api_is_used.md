@@ -106,12 +106,31 @@ the full-set build is skipped with that cause named (`:2604`), because a blocked
 Glue to assemble. Never resubmit the refused audio through another input (`audio_base64`,
 `audio_url`) or transform it: that is the same audio aimed past a content refusal.
 
+Classification boundary: only the upload 422 whose body contains `matches existing audio` is a
+per-junction block. Any *other* upload 422 stays fatal (`_fatal_from_response`, `:690`), because that
+status also covers request-shape errors — a silently absorbed shape error would mark every junction
+blocked and exit 0 with zero takes, hiding a code bug instead of reporting it. A second content 422
+shape (e.g. a copyright flag) has not been observed: every refusal on record carries the
+`matches existing audio` detail above, and the raw body is printed verbatim in `blocked_reason` /
+the fatal message, so a new shape is identifiable the first time it appears and can then be
+classified per junction.
+
 Byte-identity dedupe was settled by a free two-upload probe (2026-11-24, 3 s 220 Hz stereo tone,
 `/tmp/treblo-probe-tone.wav`): the **same bytes were accepted twice**, with two distinct
 `audio_upload_id`s (`fd49ba4b-…`, `3b7b45c2-…`). The guard therefore matches **content, never our own
 upload history**, so a 422 can never mean "the earlier 524 actually landed" — and the 6-of-7 refusal
-rate below, on first uploads, is content matching, exactly as recorded. Free upload probes over the
-arranged songsets in the library, each sending the exact montage the paid run would send:
+rate below, on first uploads, is content matching, exactly as recorded.
+
+Retrying a refusal is not a workaround, and is therefore not implemented (`UploadBlocked` is raised
+on the first 422). Measured 2026-11-24 on the refused montage of `oQLbFBCtkoeWRMewz5cja` j2
+(27.62 s, sha `2072e1274dc76680…`): five consecutive `POST /uploads` of the identical bytes, each
+through a different proxy exit IP (`…:10009`, `:10004`, `:10004`, `:10006`, `:10005`), returned the
+same 422 `{"detail":"This upload matches existing audio and cannot be used."}` every time. The
+verdict is stable within a run, so a refusal ends that junction immediately; it can still differ
+between runs (this songset's j1 was refused in the probe table above and accepted on 2026-11-24 with
+`audio_upload_id dfdf4bfd-…`), which is why the run keeps going and a later run is worth retrying.
+Free upload probes over the arranged songsets in the library, each sending the exact montage the paid
+run would send:
 
 | songset | j1 | j2 |
 |---|---|---|
