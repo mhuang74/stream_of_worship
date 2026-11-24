@@ -14,7 +14,7 @@ import re
 
 # Anything that could leak a URL, a filesystem path, a secret or a stack.
 UNSAFE_DETAIL_PATTERN = re.compile(
-    r"(https?://|/|\\\\|api[_-]?key|secret|token|bearer|password|traceback|\bat\s+\w+\()",
+    r"([/\\]|api[_-]?key|secret|token|bearer|password|traceback|\bat\s+\w+\()",
     re.IGNORECASE,
 )
 

@@ -1267,7 +1267,11 @@ class TestProviderStage:
         assert store.calls == []
         assert recording.calls["recorded"] == []
 
-    def test_upload_rejection_body_with_a_url_never_reaches_a_sink(self, recording):
+    @pytest.mark.parametrize(
+        "unsafe_detail",
+        ["https://example.com/a?token=x", r"C:\Users\operator\audio.wav"],
+    )
+    def test_unsafe_upload_rejection_detail_never_reaches_a_sink(self, recording, unsafe_detail):
         """The whole chain: provider body → typed error → log, cache, terminal detail."""
         events: list[dict] = []
         transport = ElevenLabsHttpTransport(
@@ -1275,7 +1279,7 @@ class TestProviderStage:
             pool=_FakePool(
                 _FakeResponse(
                     status=400,
-                    data=b'{"detail":"copyright claim https://example.com/a?token=x"}',
+                    data=json.dumps({"detail": f"copyright claim {unsafe_detail}"}).encode(),
                 )
             ),
         )
@@ -1288,7 +1292,7 @@ class TestProviderStage:
         failure = [entry for entry in events if entry["event"] == "glue.provider.failed"]
         assert len(failure) == 1
         assert failure[0]["providerDetail"] == "GLUE_COPYRIGHT_REJECTED"
-        assert "example.com" not in json.dumps(events)
+        assert all(unsafe_detail not in str(value) for event in events for value in event.values())
         # The excerpt negative-cache row carries the same safe string.
         assert recording.calls["rejected"][0]["safe_failure_detail"] == "GLUE_COPYRIGHT_REJECTED"
         assert exc_info.value.detail == "GLUE_COPYRIGHT_REJECTED"
