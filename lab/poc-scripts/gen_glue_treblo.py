@@ -125,7 +125,7 @@ CONTENT_GUARD_MESSAGE = (
     "audio_upload_id, so this montage cannot be submitted — /v1/uploads has no list or GET-by-id "
     "operation to recover one. This junction is skipped and nothing is charged. Do not transform "
     "the audio to get past the filter. Retrying the same bytes does not clear it either: measured "
-    "2026-11-24, five consecutive attempts through five different proxy exit IPs were all refused "
+    "2026-11-24, 15 consecutive attempts of identical bytes (proxied and direct) were all refused "
     "with this same detail, so rerunning this montage now is not a workaround."
 )
 POLL_INTERVAL_SECONDS = 5.0

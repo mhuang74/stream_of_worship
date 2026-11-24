@@ -122,15 +122,20 @@ upload history**, so a 422 can never mean "the earlier 524 actually landed" — 
 rate below, on first uploads, is content matching, exactly as recorded.
 
 Retrying a refusal is not a workaround, and is therefore not implemented (`UploadBlocked` is raised
-on the first 422). Measured 2026-11-24 on the refused montage of `oQLbFBCtkoeWRMewz5cja` j2
-(27.62 s, sha `2072e1274dc76680…`): five consecutive `POST /uploads` of the identical bytes, each
-through a different proxy exit IP (`…:10009`, `:10004`, `:10004`, `:10006`, `:10005`), returned the
-same 422 `{"detail":"This upload matches existing audio and cannot be used."}` every time. The
-verdict is stable within a run, so a refusal ends that junction immediately; it can still differ
-between runs (this songset's j1 was refused in the probe table above and accepted on 2026-11-24 with
-`audio_upload_id dfdf4bfd-…`), which is why the run keeps going and a later run is worth retrying.
-Free upload probes over the arranged songsets in the library, each sending the exact montage the paid
-run would send:
+on the first 422). Measured 2026-11-24, 15 consecutive `POST /uploads` of identical bytes, every one
+refused with that same detail:
+
+| montage | path | attempts | result |
+|---|---|---|---|
+| `oQLbFBCtkoeWRMewz5cja` j2 (27.62 s, sha `2072e1274dc76680…`) | through five different proxy exit IPs (`…:10009`, `:10004`, `:10004`, `:10006`, `:10005`) | 5 | 422 ×5 |
+| `i3-Ps8YpofpBmJ8_rNLzN` j1 (26.32 s, sha `a552f58fc906aead…`) | direct, no proxy | 5 | 422 ×5 |
+| `i3-Ps8YpofpBmJ8_rNLzN` j2 (27.62 s, sha `0894067f4d92f5af…`) | direct, no proxy | 5 | 422 ×5 |
+
+The verdict is stable within a run regardless of exit IP, so a refusal ends that junction
+immediately. It can still differ between runs: `oQLbFBCtkoeWRMewz5cja` j1 was refused in the probe
+table below and accepted on 2026-11-24 (`audio_upload_id dfdf4bfd-…`), which is why the run keeps
+going and a later run is worth retrying. Free upload probes over the arranged songsets in the
+library, each sending the exact montage the paid run would send:
 
 | songset | j1 | j2 |
 |---|---|---|
