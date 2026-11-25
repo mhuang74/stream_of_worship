@@ -538,8 +538,11 @@ def finish_contacted(
             log=log,
         ):
             current = db.get_glue_job(conn, job.id, job.user_id)
-            if current is None or not spine._has_durable_provider_success(current):
-                raise OwnershipLost
+            if current is not None and spine._has_durable_provider_success(current):
+                # A lost DB acknowledgement can leave the old heartbeat in memory.
+                # Redelivery claims the stored response before entering free staging.
+                raise RuntimeError("SimDPS response is durable; retry staging delivery")
+            raise OwnershipLost
     except InvalidResult:
         raise spine.GlueJobError(
             spine.GLUE_WORKER_FAILED, "paid", "Runpod audio failed verification"
