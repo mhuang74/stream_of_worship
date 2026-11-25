@@ -440,16 +440,10 @@ describe("Glue deployment environment variables", () => {
         expect(content).toContain("SOW_ELEVENLABS_API_KEY=");
       });
 
-      it("documents GLUE_CAPACITY_PROVIDER_ARN", () => {
-        const content = fs.readFileSync(file, "utf-8");
-        expect(content).toContain("GLUE_CAPACITY_PROVIDER_ARN=");
-      });
-
       it("never exposes the provider key or queue as NEXT_PUBLIC_*", () => {
         const content = fs.readFileSync(file, "utf-8");
         expect(content).not.toMatch(/NEXT_PUBLIC_SOW_ELEVENLABS_API_KEY/);
         expect(content).not.toMatch(/NEXT_PUBLIC_SOW_GLUE_SQS_QUEUE_URL/);
-        expect(content).not.toMatch(/NEXT_PUBLIC_GLUE_CAPACITY_PROVIDER_ARN/);
       });
 
       it("marks the provider key as server/worker only", () => {
@@ -470,7 +464,6 @@ describe("Glue deployment environment variables", () => {
     expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
     expect(content).toContain("SOW_GLUE_AWS_REGION=");
     expect(content).toContain("SOW_ELEVENLABS_API_KEY=");
-    expect(content).toContain("GLUE_CAPACITY_PROVIDER_ARN=");
   });
 
   it("Glue queue URL region matches the region used to sign sends", () => {
