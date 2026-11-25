@@ -1,49 +1,8 @@
-"""Durable Glue (AI transition) job spine for the render worker.
+"""Claim Glue deliveries, authorize provider contact and continue free staging.
 
-One Lambda invocation handles exactly one SQS delivery, so a duplicate
-delivery must never redo work. The exact call order implemented here is:
-
-1. ``claim_glue_job(conn, job_id, user_id)`` — atomic claim. ``(None, _)`` is
-   an unknown owner/job pair; ``claimed_now=False`` means this delivery must
-   read the persisted state instead of running the phase machine again.
-2. Redelivery rules for ``claimed_now=False``: a terminal phase is returned
-   untouched; ``uploading``/``composing`` without a complete durable success
-   record is the *ambiguous provider outcome* (terminal ``failed`` with
-   ``GLUE_PROVIDER_UNKNOWN`` and ``retry_kind="paid"``, no provider call, no
-   refund); ``uploading``/``composing`` with a persisted raw response is left
-   for free staging recovery; any other in-flight phase is left running.
-3. ``mode="staging"`` (retry-processing recovery) and any delivery that finds
-   the persisted phase at ``storing-response``/``staging`` take the free path:
-   verify the persisted raw response metadata, move to ``staging`` and hand
-   off to ``glue_staging.finalize_staging`` (issue #318). It never calls the
-   provider.
-4. ``mode="generate"`` (SQS/default): re-read the Songset Items, rebuild the
-   canonical descriptor from fresh inputs and compare it to the persisted
-   ``descriptor_key``/``descriptor_json`` plus the persisted item timestamps.
-   Stale or cancelled work finishes ``cancelled`` (``GLUE_INPUTS_CHANGED``)
-   without spend.
-5. Resolve the provider stage (injected seam, else
-   ``glue_provider.create_provider_stage``) and require a configured provider
-   key *before* building excerpts. Missing configuration raises
-   ``GlueConfigurationError`` and leaves the job pre-contact.
-6. Build both canonical excerpts with ``prepare_excerpt`` (side A then B) and
-   heartbeat after every stage boundary.
-7. Deadline gate (``GLUE_EXECUTION_DEADLINE``, ``retry_kind="free"``,
-   reservation released) before the first provider request.
-8. ``record_provider_contact(...)`` compare-and-set; ``False`` means
-   cancellation won, so the job finishes ``cancelled`` and no provider call is
-   made. The returned ``True`` consumes the paid reservation.
-9. ``provider_stage(job, conn, *, a_excerpt, b_excerpt, work_dir, log_event)``
-   (issue #317) performs upload/compose/raw persistence and leaves the job in
-   ``storing-response``; issue #318 continues from there into ``staging``.
-
-Errors are mapped to terminal phases with sanitized ``error_detail`` and the
-correct ``retry_kind``: ``free`` for pre-contact infrastructure failures,
-``paid`` for anything after the provider contact compare-and-set. The bounded
-free-retry policy (initial + 3, full jitter in ``[0, 1s]``, ``[0, 2s]``,
-``[0, 4s]``) wraps DB/R2/local-decode operations only and is never applied to a
-provider request. Configuration absence is raised, never turned into a
-pretend success.
+Fresh deliveries rebuild the saved junction before contact. The contact CAS
+consumes the attempt and saves the chosen route. Contacted SimDPS deliveries
+use their stored route to recover the same submission, including after rollback.
 """
 
 from __future__ import annotations
@@ -71,6 +30,7 @@ from sow_render_worker.db import (
     heartbeat_glue_job,
     read_songset_items_for_glue,
     record_provider_contact,
+    refresh_glue_claim,
     set_glue_phase,
 )
 from sow_render_worker.glue_descriptor import build_descriptor
@@ -135,6 +95,11 @@ _LOG_FIELD_ALLOWLIST = (
     "remainingMs",
     "status",
     "reason",
+    "provider",
+    "searchSource",
+    "model_load_seconds",
+    "sampling_seconds",
+    "processing_seconds",
 )
 
 
@@ -163,6 +128,10 @@ class GlueJobError(Exception):
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return f"{self.code} ({self.retry_kind})"
+
+
+class _ClaimLost(Exception):
+    """The claimed delivery no longer owns the job."""
 
 
 class _StaleJunction(Exception):
@@ -292,7 +261,7 @@ def _release_unconsumed_reservation(conn: Any, job: GlueJob) -> bool:
     """
     now = datetime.now(timezone.utc)
     released = False
-    with _atomic(conn):
+    with (_atomic(conn) if conn.autocommit else contextlib.nullcontext()):
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE glue_paid_attempts SET state = %s, released_at = %s "
@@ -327,14 +296,6 @@ def _finish_terminal(
     event: str,
 ) -> None:
     """Finish a job once: terminal phase + cleared active + reservation state."""
-    if release:
-        # A never-consumed reservation is refundable even if a concurrent
-        # cancellation already made the job terminal; the SQL is guarded on
-        # state='reserved', so a consumed slot is never refunded.
-        try:
-            _release_unconsumed_reservation(conn, job)
-        except Exception:
-            logger.exception("Failed to release Glue paid reservation")
     with contextlib.suppress(Exception):
         current = get_glue_job(conn, job.id, job.user_id)
         if current is not None and current.phase in GLUE_TERMINAL_PHASES:
@@ -348,16 +309,22 @@ def _finish_terminal(
             )
             return
     safe_detail = sanitize_detail(detail, fallback=code or "Glue job stopped")
+    guards = {}
+    if release and not job.provider_contacted:
+        guards["expected_contacted"] = False
+        guards["expected_heartbeat"] = job.heartbeat_at
+    if (job.provider_context_json or {}).get("provider") == "simdps" and job.phase == "composing":
+        guards["expected_heartbeat"] = job.heartbeat_at
     try:
-        finish_glue_job(
-            conn,
-            job.id,
-            job.user_id,
-            phase=phase,
-            error_code=code,
-            error_detail=safe_detail,
-            retry_kind=retry_kind,
-        )
+        with _atomic(conn):
+            finished = finish_glue_job(
+                conn, job.id, job.user_id, phase=phase, error_code=code,
+                error_detail=safe_detail, retry_kind=retry_kind, **guards,
+            )
+            if finished is None:
+                return
+            if release:
+                _release_unconsumed_reservation(conn, job)
     except Exception:
         logger.exception("Failed to finish Glue job")
         raise
@@ -441,17 +408,19 @@ def _handle_failure(
 
 
 def _heartbeat(conn: Any, job: GlueJob, log: Callable[..., None], *, stage: str) -> None:
-    """Heartbeat after a stage boundary with the bounded free-retry policy.
-
-    If every retry fails the error propagates to the failure mapper so the job
-    never keeps running without a live heartbeat.
-    """
+    """Renew live ownership after a stage boundary."""
     try:
-        _free_retry(
-            lambda: heartbeat_glue_job(conn, job.id, job.user_id),
-            label=f"heartbeat_{stage}",
-            log=log,
-        )
+        if job.heartbeat_at is None:
+            # Legacy rows and injected runners can reach here without a lease value.
+            _free_retry(
+                lambda: heartbeat_glue_job(conn, job.id, job.user_id),
+                label=f"heartbeat_{stage}", log=log,
+            )
+            return
+        if not _free_retry(lambda: refresh_glue_claim(conn, job), label=f"heartbeat_{stage}", log=log):
+            raise _ClaimLost
+    except _ClaimLost:
+        raise
     except Exception:
         logger.exception("Failed to heartbeat Glue job")
         log("glue.heartbeat.failed", level="warning", phase=stage)
@@ -562,7 +531,10 @@ def _load_provider_stage(*, lambda_context: Any = None) -> Callable[..., None]:
         raise GlueConfigurationError(
             "Glue provider stage is not available in this worker build"
         ) from exc
-    return create_provider_stage(lambda_context=lambda_context)
+    try:
+        return create_provider_stage(lambda_context=lambda_context)
+    except ValueError:
+        raise GlueConfigurationError("Glue storage is not configured") from None
 
 
 def _provider_key_present() -> bool:
@@ -591,18 +563,6 @@ def _load_staging_stage() -> Callable[..., None]:
 
 def _make_work_dir(job: GlueJob) -> Path:
     return Path(tempfile.mkdtemp(prefix=f"sow-glue-{job.id[:8]}-"))
-
-
-def _current_provider_contacted(conn: Any, job: GlueJob) -> bool:
-    """Read the live provider_contacted flag; the claimed row may be stale."""
-    try:
-        current = get_glue_job(conn, job.id, job.user_id)
-    except Exception:
-        logger.exception("Failed to read Glue provider contact state")
-        return bool(job.provider_contacted)
-    if current is None:
-        return bool(job.provider_contacted)
-    return bool(current.provider_contacted)
 
 
 def _has_durable_provider_success(job: GlueJob) -> bool:
@@ -646,6 +606,10 @@ def execute_glue_job(
         return
     if _has_durable_provider_success(job) or mode == "staging":
         _run_staging_mode(conn, job, log, asset_fetcher=asset_fetcher)
+        return
+    route = job.provider_context_json or {}
+    if job.provider_contacted and route.get("provider") == "simdps":
+        _run_contacted_simdps(conn, job, route, lambda_context, asset_fetcher, log)
         return
     if job.phase in _IN_FLIGHT_PROVIDER_PHASES:
         _handle_redelivery(conn, job, log)
@@ -698,6 +662,43 @@ def _handle_redelivery(conn: Any, job: GlueJob, log: Callable[..., None]) -> Non
     log("glue.job.redelivered", phase=job.phase, status="in-progress")
 
 
+def _run_contacted_simdps(conn, job, route, lambda_context, assets, log):
+    from sow_render_worker import glue_runpod
+    from sow_render_worker.r2_client import create_r2_client_from_env
+
+    work_dir = _make_work_dir(job)
+    try:
+        r2 = create_r2_client_from_env(bounded=True)
+        glue_runpod.finish_contacted(conn, job, route, r2, work_dir, lambda_context, log)
+        _after_provider_stage(conn, job, log, work_dir=work_dir, asset_fetcher=assets)
+    except (_ClaimLost, glue_runpod.OwnershipLost):
+        log("glue.runpod.ownership_lost", phase=job.phase)
+    except GlueJobError as exc:
+        _handle_failure(conn, job, exc, contacted=True, log=log)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _revalidate_before_contact(conn, job, log):
+    current = get_glue_job(conn, job.id, job.user_id)
+    if (current is None or current.provider_contacted or not current.active
+            or current.heartbeat_at != job.heartbeat_at):
+        return None
+    try:
+        items = read_songset_items_for_glue(conn, job.songset_id)
+        if _rebuild_junction(items, job).canonical_json != job.descriptor_json:
+            raise _StaleJunction("Descriptor changed during preparation")
+    except _StaleJunction as exc:
+        _finish_stale(conn, job, log, reason=str(exc))
+        return None
+    return current
+
+
+def _record_contact_loss(conn, job, log):
+    current = _revalidate_before_contact(conn, job, log)
+    log("glue.provider.contact.lost", phase=current.phase if current else "inactive-or-stale")
+
+
 def _run_generate_mode(
     conn: Any,
     job: GlueJob,
@@ -707,7 +708,11 @@ def _run_generate_mode(
     provider_stage: Optional[Callable[..., None]],
     asset_fetcher: Any,
 ) -> None:
+    from sow_render_worker import glue_runpod
+
     contacted = False
+    runpod_contact_pending = False
+    mode = "elevenlabs"
     work_dir: Optional[Path] = None
     try:
         items = _free_retry(
@@ -730,14 +735,80 @@ def _run_generate_mode(
             return
         _heartbeat(conn, job, log, stage="validated")
 
+        mode = os.environ.get("SOW_GLUE_PROVIDER", "elevenlabs")
+        if job.provider_contacted or provider_stage is not None:
+            mode = "elevenlabs"
+        if mode not in {"elevenlabs", "simdps"}:
+            raise GlueJobError(GLUE_NOT_CONFIGURED, "free", "Glue provider mode is invalid")
+
+        if mode == "simdps":
+            endpoint, r2 = glue_runpod.check_config()
         stage = _resolve_provider_stage(provider_stage, lambda_context=lambda_context)
+        work_dir = _make_work_dir(job)
+        fallback_reason = None
+        if mode == "simdps":
+            bounded_assets = asset_fetcher or glue_runpod.PreparationAssets(
+                r2, work_dir, lambda_context
+            )
+            local_options = {
+                "local_only": True,
+                "preparation_time": lambda: glue_runpod.preparation_time(lambda_context),
+            }
+            excerpts = []
+            for side in ("A", "B"):
+                excerpt = _prepare_side(
+                    conn, job, inputs, side=side, asset_fetcher=bounded_assets,
+                    work_dir=work_dir, log=log, **local_options,
+                )
+                if excerpt.rejection_code:
+                    raise GlueJobError(excerpt.rejection_code, "none", "Recording was rejected")
+                excerpts.append(excerpt)
+                _heartbeat(conn, job, log, stage=f"local-excerpt-{side.lower()}")
+            audio, fallback_reason = glue_runpod.prepare_audio(
+                job, inputs, *excerpts, r2, work_dir, bounded_assets, lambda_context
+            )
+            if audio is not None:
+                prefix = f"glue-simdps-tmp/{job.user_id}/{job.id}"
+                route, request = glue_runpod.stage_inputs(
+                    r2, endpoint, prefix, audio, check_time=local_options["preparation_time"],
+                )
+                current = _revalidate_before_contact(conn, job, log)
+                if current is None:
+                    return
+                payload = json.dumps(glue_runpod.sign_request(r2, prefix, route, request)).encode()
+                if glue_runpod.remaining(lambda_context) < glue_runpod.API_SECONDS + glue_runpod.OUTCOME_SECONDS:
+                    raise GlueJobError(GLUE_EXECUTION_DEADLINE, "free", "Insufficient time to contact Runpod")
+                deadline = time.monotonic() + glue_runpod.API_SECONDS
+                route["deadline_epoch"] = time.time() + glue_runpod.API_SECONDS
+                runpod_contact_pending = True
+                if not record_provider_contact(
+                    conn, job.id, job.user_id, "compose", route,
+                    claim_heartbeat=job.heartbeat_at, verify_junction=True,
+                ):
+                    _record_contact_loss(conn, job, log)
+                    return
+                contacted = True
+                job = current
+                log("glue.provider.contact.started", provider="simdps", attemptId=job.attempt_id,
+                    searchSource=route["search_source"])
+                current.provider_context_json = route
+                current.provider_contacted = True
+                current.phase = "composing"
+                glue_runpod.finish_contacted(
+                    conn, current, route, r2, work_dir, lambda_context, log,
+                    payload=payload, deadline=deadline,
+                )
+                _after_provider_stage(conn, current, log, work_dir=work_dir, asset_fetcher=asset_fetcher)
+                return
+            log("glue.provider.fallback", provider="elevenlabs", reason=fallback_reason)
+            asset_fetcher = bounded_assets
+
         if asset_fetcher is None:
             asset_fetcher = AssetFetcher()
             initializer = getattr(asset_fetcher, "initialize", None)
             if callable(initializer):
                 initializer()
 
-        work_dir = _make_work_dir(job)
         a_excerpt = _prepare_side(
             conn, job, inputs, side="A", asset_fetcher=asset_fetcher,
             work_dir=work_dir, log=log,
@@ -760,40 +831,26 @@ def _run_generate_mode(
         # consumed and its persisted uploads are reusable. The CAS is a
         # cancellation gate, not a per-delivery token, so re-losing it on a
         # row that is already contacted would wrongly cancel paid work.
-        already_contacted = bool(_current_provider_contacted(conn, job))
-        if already_contacted:
+        if job.provider_contacted:
             contacted = True
-            log(
-                "glue.provider.contact.reused",
-                phase=job.phase,
-                providerStatus=job.provider_status,
-                status="resume",
-            )
-        elif not record_provider_contact(
-            conn, job.id, job.user_id, _FIRST_UPLOAD_PROVIDER_PHASE
-        ):
-            _finish_terminal(
-                conn,
-                job,
-                phase="cancelled",
-                code=None,
-                retry_kind=None,
-                detail=None,
-                release=True,
-                log=log,
-                event="glue.job.cancelled",
-            )
-            return
+            log("glue.provider.contact.reused", phase=job.phase, status="resume")
         else:
+            current = _revalidate_before_contact(conn, job, log)
+            if current is None:
+                return
+            route = {"version": 1, "provider": "elevenlabs", "model": "music_v2_5", "seed": job.seed}
+            if fallback_reason:
+                route["fallback_reason"] = fallback_reason
+            require_deadline(lambda_context, "upload", pending_uploads=pending_uploads)
+            if not record_provider_contact(
+                conn, job.id, job.user_id, _FIRST_UPLOAD_PROVIDER_PHASE, route,
+                claim_heartbeat=job.heartbeat_at, verify_junction=True,
+            ):
+                _record_contact_loss(conn, job, log)
+                return
             contacted = True
-            # Exactly one event per paid attempt: this is the moment the
-            # reservation is consumed and provider_contacted flips true.
-            log(
-                "glue.provider.contact.started",
-                phase=job.phase,
-                attemptId=job.attempt_id,
-                operation="provider",
-            )
+            log("glue.provider.contact.started", phase=job.phase, attemptId=job.attempt_id,
+                operation="provider", provider="elevenlabs")
         _heartbeat(conn, job, log, stage="uploading")
 
         stage(
@@ -812,8 +869,19 @@ def _run_generate_mode(
             asset_fetcher=asset_fetcher,
         )
     except GlueConfigurationError:
-        raise
+        _handle_failure(conn, job, GlueJobError(
+            GLUE_NOT_CONFIGURED, "free", "Glue provider is not configured"
+        ), contacted=contacted, log=log)
+    except (_ClaimLost, glue_runpod.OwnershipLost):
+        log("glue.runpod.ownership_lost", phase=job.phase)
+    except GlueJobError as exc:
+        _handle_failure(conn, job, exc, contacted=contacted, log=log)
     except Exception as exc:
+        if runpod_contact_pending:
+            raise
+        if mode == "simdps" and not isinstance(exc, (GlueAudioUnavailable, GlueExcerptTooShort)):
+            # Provider preparation errors can contain infrastructure request details.
+            exc = GlueJobError(GLUE_WORKER_FAILED, "free", "SimDPS input preparation failed")
         _handle_failure(conn, job, exc, contacted=contacted, log=log)
     finally:
         if work_dir is not None:
@@ -829,6 +897,7 @@ def _prepare_side(
     asset_fetcher: Any,
     work_dir: Path,
     log: Callable[..., None],
+    **options: Any,
 ) -> PreparedExcerpt:
     item = inputs.from_item if side == "A" else inputs.to_item
     steps = inputs.from_steps if side == "A" else inputs.to_steps
@@ -842,6 +911,7 @@ def _prepare_side(
             steps=steps,
             asset_fetcher=asset_fetcher,
             work_dir=work_dir,
+            **options,
         ),
         label=f"prepare_excerpt_{side}",
         log=log,
@@ -869,6 +939,8 @@ def _after_provider_stage(
     try:
         current = get_glue_job(conn, job.id, job.user_id)
     except Exception:
+        if (job.provider_context_json or {}).get("provider") == "simdps":
+            raise
         logger.exception("Failed to read Glue job after the provider stage")
         return
     if current is None:

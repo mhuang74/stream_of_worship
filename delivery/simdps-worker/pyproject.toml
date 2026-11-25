@@ -1,0 +1,22 @@
+[project]
+name = "sow-simdps-worker"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "runpod==1.8.1",
+    "simdps[acestep]",
+    "torch==2.8.0",
+    "urllib3>=2,<3",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+simdps = { git = "https://github.com/s-turland/SimDPSInpainting.git", rev = "f5175f14b3be67e28ffc7c95874265a0390a9ada" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

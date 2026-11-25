@@ -205,8 +205,8 @@ describe("ArrangementEditorSheet AI transition rail", () => {
       expect(onUpdateGlue).toHaveBeenCalledWith("item-1", { glueEnabled: true })
     );
     const quote = await screen.findByTestId("arrangement-glue-quote");
-    expect(quote.textContent).toContain("405 new credits");
-    expect(quote.textContent).toContain("3 of 5 paid AI transitions left today");
+    expect(quote.textContent).not.toContain("credits");
+    expect(quote.textContent).toContain("3 of 5 AI transition attempts remaining");
     expect(quote.textContent).toContain("Resets at");
   });
 
@@ -232,7 +232,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     );
   });
 
-  it("requests the quote without a browser cache so a beat change cannot replay the old credits", async () => {
+  it("requests the quote without a browser cache so a beat change cannot replay the old quote", async () => {
     renderSheet({});
     fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
     await waitFor(() => expect(fetch).toHaveBeenCalled());
@@ -242,7 +242,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     expect(init?.cache).toBe("no-store");
   });
 
-  it("never shows credits computed for a different descriptor", async () => {
+  it("never shows a quote computed for a different descriptor", async () => {
     const staleQuote = { ...QUOTE, descriptorKey: "b".repeat(64) };
     let calls = 0;
     vi.stubGlobal(
@@ -257,7 +257,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     renderSheet({});
     fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
     const quote = await screen.findByTestId("arrangement-glue-quote");
-    expect(quote.textContent).toContain("405 new credits");
+    expect(quote.textContent).not.toContain("credits");
     expect(calls).toBeGreaterThan(1);
   });
 

@@ -132,11 +132,7 @@ export interface ArrangementEditorSheetProps {
 
 /** Server quote shape used by the AI-transition rail. */
 interface GlueQuoteResponse {
-  uncachedSides: { side: "A" | "B"; seconds: number; credits: number }[];
   generationSeconds: number;
-  uploadCredits: number;
-  generationCredits: number;
-  estimatedNewCredits: number;
   quotaLimit: number;
   quotaUsed: number;
   quotaRemaining: number;
@@ -1298,13 +1294,13 @@ export function ArrangementEditorSheet({
       ? `${songsetId}:${item.id}:${nextItem.id}:${savedGlueBeats}`
       : null;
 
-  // The quote endpoint is owner-scoped and computes every credit value; the
-  // rail never computes credits. Each response is stored with the request key
+  // The quote endpoint returns the current quota and duration.
+  // Each response is stored with the request key
   // it answers, so a value for another Junction or beat count is never shown.
   //
   // A read replica can answer a request issued right after the beat PATCH with
   // the row as it was before that write, which describes a different descriptor
-  // and therefore different credits. The response names its `descriptorKey`, so
+  // and therefore different durations. The response names its `descriptorKey`, so
   // a value that does not describe the saved junction is retried briefly and,
   // failing that, never displayed.
   const expectedGlueDescriptorKey = displayGlue?.descriptorKey ?? null;
@@ -1325,8 +1321,8 @@ export function ArrangementEditorSheet({
             if (cancelled) return;
           }
           // The URL is stable across a beat change, so a default-cached GET
-          // answered the next request with the previous beat count's credits.
-          // Quota and credits are per-saved-state facts: always revalidate.
+          // answered the next request with the previous beat count's duration.
+          // Quota and duration are per-saved-state facts: always revalidate.
           const response = await fetch(
             `/api/songsets/${encodeURIComponent(songsetId)}/glue-quote?fromItemId=${encodeURIComponent(item.id)}&takeMode=initial`,
             { signal: controller.signal, cache: "no-store" }
@@ -1485,7 +1481,7 @@ export function ArrangementEditorSheet({
     if (!onUpdateGlue) return;
     try {
       // Re-PATCHing `glueEnabled: true` re-runs the server's free selection
-      // and refreshes the parent's resolved Junction. It never spends credits.
+      // and refreshes the parent's resolved Junction. It uses no attempt.
       await onUpdateGlue(item.id, { glueEnabled: true });
     } catch {
       // Keep the previous selection; the next refresh reconciles it.
@@ -1676,7 +1672,7 @@ export function ArrangementEditorSheet({
   const needsPaidRetry = failedJobIsCurrent && glueJobStatus?.retryKind === "paid";
   // retry_kind="none" means the failure is not retryable in place
   // (entitlement, plan, copyright). Offering a fresh paid request would only
-  // spend credits on the same outcome, so the rail shows the reason alone.
+  // use another attempt for the same outcome, so the rail shows the reason alone.
   const nonRetryableGlueFailure =
     failedJobIsCurrent && glueJobStatus?.retryKind === "none";
   const canGenerateGlue =
@@ -3047,12 +3043,6 @@ export function ArrangementEditorSheet({
                                 data-testid="arrangement-glue-quote"
                               >
                                 <p>
-                                  {t("glue.credits").replace(
-                                    "{credits}",
-                                    String(currentGlueQuote.estimatedNewCredits)
-                                  )}
-                                </p>
-                                <p>
                                   {t("glue.remaining")
                                     .replace(
                                       "{remaining}",
@@ -3220,10 +3210,6 @@ export function ArrangementEditorSheet({
                                         ? "glue.confirm.tryAnotherBody"
                                         : "glue.confirm.body"
                                     )
-                                      .replace(
-                                        "{credits}",
-                                        String(currentGlueQuote.estimatedNewCredits)
-                                      )
                                       .replace(
                                         "{remaining}",
                                         String(currentGlueQuote.quotaRemaining)

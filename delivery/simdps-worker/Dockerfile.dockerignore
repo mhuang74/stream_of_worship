@@ -1,0 +1,12 @@
+**
+!delivery/
+!delivery/simdps-worker/
+!delivery/simdps-worker/Dockerfile
+!delivery/simdps-worker/pyproject.toml
+!delivery/simdps-worker/uv.lock
+!delivery/simdps-worker/bake_weights.py
+!delivery/simdps-worker/handler.py
+!delivery/render-worker/
+!delivery/render-worker/src/
+!delivery/render-worker/src/sow_render_worker/
+!delivery/render-worker/src/sow_render_worker/simdps_audio.py

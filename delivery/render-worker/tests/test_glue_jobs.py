@@ -353,15 +353,13 @@ def test_excerpt_too_short_fails_without_release_after_contact(worker):
 
 
 def test_cancellation_wins_pre_contact_cas(worker):
+    worker.mocks["get_glue_job"].return_value = _make_job(phase="cancelled", active=False)
     worker.mocks["record_provider_contact"].return_value = False
     stage = _FakeProviderStage()
 
     _run(worker, stage)
 
-    kwargs = _finish_kwargs(worker)
-    assert kwargs["phase"] == "cancelled"
-    assert kwargs["error_code"] is None
-    assert kwargs["retry_kind"] is None
+    worker.mocks["finish_glue_job"].assert_not_called()
     assert stage.calls == []
 
 
@@ -402,7 +400,9 @@ def test_happy_path_orders_contact_before_provider_and_heartbeats(worker):
     assert call_args["work_dir"].exists() is False  # cleaned up in finally
     assert callable(call_args["log_event"])
     worker.mocks["record_provider_contact"].assert_called_once_with(
-        worker.conn, JOB_ID, USER_ID, "upload-a"
+        worker.conn, JOB_ID, USER_ID, "upload-a",
+        {"version": 1, "provider": "elevenlabs", "model": "music_v2_5", "seed": worker.job.seed},
+        claim_heartbeat=None, verify_junction=True,
     )
     sides = [c.kwargs["side"] for c in worker.mocks["prepare_excerpt"].call_args_list]
     assert sides == ["A", "B"]
@@ -410,28 +410,27 @@ def test_happy_path_orders_contact_before_provider_and_heartbeats(worker):
     worker.mocks["finish_glue_job"].assert_not_called()
 
 
-def test_missing_provider_key_raises_and_stays_pre_contact(worker, monkeypatch):
+def test_missing_provider_key_finishes_with_free_retry(worker, monkeypatch):
     monkeypatch.delenv("SOW_ELEVENLABS_API_KEY", raising=False)
     monkeypatch.setattr(
         glue_jobs, "_load_provider_stage", lambda **_: (lambda *a, **k: None)
     )
 
-    with pytest.raises(glue_jobs.GlueConfigurationError) as exc_info:
-        _run(worker, None)
+    _run(worker, None)
 
-    assert exc_info.value.code == "GLUE_NOT_CONFIGURED"
-    worker.mocks["finish_glue_job"].assert_not_called()
+    assert _finish_kwargs(worker)["error_code"] == "GLUE_NOT_CONFIGURED"
+    assert _finish_kwargs(worker)["retry_kind"] == "free"
     worker.mocks["record_provider_contact"].assert_not_called()
     worker.mocks["prepare_excerpt"].assert_not_called()
     assert worker.job.provider_contacted is False
 
 
-def test_missing_provider_module_raises_configuration_error(worker, monkeypatch):
+def test_missing_provider_module_records_configuration_error(worker, monkeypatch):
     monkeypatch.setitem(sys.modules, "sow_render_worker.glue_provider", None)
 
-    with pytest.raises(glue_jobs.GlueConfigurationError):
-        _run(worker, None)
+    _run(worker, None)
 
+    assert _finish_kwargs(worker)["error_code"] == "GLUE_NOT_CONFIGURED"
     worker.mocks["record_provider_contact"].assert_not_called()
 
 
@@ -554,7 +553,7 @@ def test_retry_logs_attempt_and_jitter_bounds(worker, monkeypatch, caplog):
     with caplog.at_level(logging.INFO, logger="sow_render_worker.glue_jobs"):
         _run(worker, _FakeProviderStage())
 
-    assert attempts["count"] == 2
+    assert attempts["count"] == 3
     jitter.assert_called_once_with(0, 1.0)
     assert worker.sleeps == [0.25]
     retry_lines = [r for r in caplog.records if "glue.retry" in r.getMessage()]
@@ -618,10 +617,13 @@ def test_provider_stage_returning_in_flight_phase_is_ambiguous(worker):
     def stage_left_composing(job, conn, *, a_excerpt, b_excerpt, work_dir, log_event):
         return None
 
-    worker.mocks["get_glue_job"].return_value = _make_job(
-        phase="composing", provider_contacted=True, paid_reservation_state="consumed"
-    )
+    def contact(*args, **kwargs):
+        worker.mocks["get_glue_job"].return_value = _make_job(
+            phase="composing", provider_contacted=True, paid_reservation_state="consumed"
+        )
+        return True
 
+    worker.mocks["record_provider_contact"].side_effect = contact
     _run(worker, stage_left_composing)
 
     kwargs = _finish_kwargs(worker)
@@ -649,9 +651,7 @@ def test_in_flight_phase_with_durable_response_continues_free_staging(worker, mo
         raw_response_sha256="e" * 64,
         raw_response_bytes=1234,
     )
-    # Contact check and the post-stage read both see the durable in-flight row;
-    # after the phase repair every read sees storing-response.
-    reads = [durable, durable]
+    reads = [worker.job, durable]
 
     def read_job(*args, **kwargs):
         return reads.pop(0) if reads else storing
@@ -707,7 +707,7 @@ def test_provider_stage_continues_into_free_staging(worker, monkeypatch):
         )
 
     monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: fake_staging)
-    worker.mocks["get_glue_job"].return_value = _make_job(
+    storing = _make_job(
         phase="storing-response",
         provider_contacted=True,
         paid_reservation_state="consumed",
@@ -716,6 +716,7 @@ def test_provider_stage_continues_into_free_staging(worker, monkeypatch):
         raw_response_bytes=1234,
     )
 
+    worker.mocks["get_glue_job"].side_effect = [worker.job, storing]
     _run(worker, _FakeProviderStage())
 
     assert len(staging_calls) == 1
@@ -757,6 +758,9 @@ def test_resume_reuses_existing_provider_contact_instead_of_cancelling(worker):
         provider_contacted=True,
         paid_reservation_state="consumed",
     )
+    worker.mocks["claim_glue_job"].return_value = (
+        worker.mocks["get_glue_job"].return_value, True,
+    )
     worker.mocks["record_provider_contact"].return_value = False
     stage = _FakeProviderStage()
 
@@ -767,15 +771,14 @@ def test_resume_reuses_existing_provider_contact_instead_of_cancelling(worker):
     worker.mocks["finish_glue_job"].assert_not_called()
 
 
-def test_pre_contact_cancellation_still_wins_the_cas(worker):
+def test_pre_contact_cas_loser_leaves_the_winner_untouched(worker):
     worker.mocks["get_glue_job"].return_value = _make_job(provider_contacted=False)
     worker.mocks["record_provider_contact"].return_value = False
     stage = _FakeProviderStage()
 
     _run(worker, stage)
 
-    kwargs = _finish_kwargs(worker)
-    assert kwargs["phase"] == "cancelled"
+    worker.mocks["finish_glue_job"].assert_not_called()
     assert stage.calls == []
 
 
@@ -857,3 +860,30 @@ def test_paid_contact_started_not_emitted_for_staging_mode(worker, monkeypatch, 
         _run(worker, mode="staging")
 
     assert _contact_started_events(caplog) == []
+
+
+def test_missing_runpod_configuration_releases_attempt_before_asset_work(worker, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_PROVIDER", "simdps")
+    monkeypatch.setenv("SOW_ELEVENLABS_API_KEY", "fake")
+    monkeypatch.delenv("RUNPOD_ENDPOINT_ID", raising=False)
+    monkeypatch.setattr(glue_jobs, "_load_provider_stage", lambda **_: _FakeProviderStage())
+
+    _run(worker, None)
+
+    assert _finish_kwargs(worker)["error_code"] == "GLUE_NOT_CONFIGURED"
+    assert _finish_kwargs(worker)["retry_kind"] == "free"
+    worker.mocks["prepare_excerpt"].assert_not_called()
+    worker.mocks["record_provider_contact"].assert_not_called()
+
+
+def test_fresh_delivery_does_not_resume_another_workers_runpod_contact(worker):
+    winner = _make_job(phase="composing", provider_contacted=True,
+                       provider_context_json={"provider": "simdps"})
+    worker.mocks["get_glue_job"].side_effect = [worker.job, winner]
+    worker.mocks["record_provider_contact"].return_value = False
+    stage = _FakeProviderStage()
+
+    _run(worker, stage)
+
+    assert stage.calls == []
+    worker.mocks["finish_glue_job"].assert_not_called()

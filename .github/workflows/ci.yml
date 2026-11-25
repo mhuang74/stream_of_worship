@@ -6,6 +6,7 @@ on:
     paths:
       - "delivery/webapp/**"
       - "delivery/render-worker/**"
+      - "delivery/simdps-worker/**"
       - "ops/admin-cli/**"
       - ".github/workflows/ci.yml"
 

@@ -14,7 +14,7 @@ ECR_REPO="${GLUE_ECR_REPO:-sow-render-worker}"
 ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
 ROLE_NAME="${GLUE_ROLE_NAME:-sow-render-worker-role}"
 
-FUNCTION_NAME="sow-glue-worker-standard"
+FUNCTION_NAME="${GLUE_FUNCTION_NAME:-sow-glue-worker-standard}"
 QUEUE_NAME="${GLUE_QUEUE_NAME:-sow-glue-jobs}"
 DLQ_NAME="${QUEUE_NAME}-dlq"
 LOG_GROUP="/aws/lambda/${FUNCTION_NAME}"
@@ -50,6 +50,12 @@ check_prerequisites() {
     if ! aws_cmd sts get-caller-identity &>/dev/null; then
         error "AWS CLI profile '${AWS_PROFILE}' is not configured or credentials are invalid."
         error "Run: aws configure --profile ${AWS_PROFILE}"
+        exit 1
+    fi
+
+    if [[ "$QUEUE_NAME" != sow-glue-jobs && "$FUNCTION_NAME" == sow-glue-worker-standard ]] ||
+       [[ "$QUEUE_NAME" == sow-glue-jobs && "$FUNCTION_NAME" != sow-glue-worker-standard ]]; then
+        error "Set GLUE_QUEUE_NAME and GLUE_FUNCTION_NAME together for isolated staging."
         exit 1
     fi
 
@@ -93,6 +99,16 @@ key = os.environ.get("SOW_ELEVENLABS_API_KEY")
 if key:
     variables["SOW_ELEVENLABS_API_KEY"] = key
 
+mode = os.environ.get("SOW_GLUE_PROVIDER", "elevenlabs")
+if mode not in {"elevenlabs", "simdps"} or not key:
+    raise SystemExit("Set a valid Glue provider and SOW_ELEVENLABS_API_KEY")
+variables["SOW_GLUE_PROVIDER"] = mode
+for name in ("RUNPOD_API_KEY", "RUNPOD_ENDPOINT_ID"):
+    if os.environ.get(name):
+        variables[name] = os.environ[name]
+    elif mode == "simdps":
+        raise SystemExit(f"Missing {name} for SimDPS")
+
 print(json.dumps({"Variables": variables}, separators=(",", ":")))
 PY
 }
@@ -120,12 +136,12 @@ create_sqs_queues() {
         aws_cmd sqs create-queue --queue-name "$QUEUE_NAME" >/dev/null
     fi
 
-    # Keep legacy queue visibility during preflight. Reduce it at cutover.
-    local visibility=1080
+    # Increase visibility before updating the function timeout.
+    local visibility=3600
     if [[ "$QUEUE_NAME" == sow-glue-jobs ]]; then
         visibility=$(aws_cmd sqs get-queue-attributes --queue-url "$QUEUE_URL" \
             --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text)
-        visibility=$((visibility > 1080 ? visibility : 1080))
+        visibility=$((visibility > 3600 ? visibility : 3600))
     fi
     local attributes
     attributes="{\"VisibilityTimeout\":\"${visibility}\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${dlq_arn}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
@@ -136,6 +152,14 @@ create_sqs_queues() {
     for url in "$QUEUE_URL" "$DLQ_URL"; do
         aws_cmd sqs tag-queue --queue-url "$url" --tags project=Glue
     done
+
+    local actual
+    actual=$(aws_cmd sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+        --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text)
+    [[ "$actual" =~ ^[0-9]+$ ]] && ((actual >= 3600)) || {
+        error "Queue visibility must be at least 3600 s."
+        exit 1
+    }
 
     info "SQS ready: visibility ${visibility}s, maxReceiveCount 3"
 }
@@ -167,7 +191,7 @@ create_or_update_lambda() {
 
         aws_cmd lambda update-function-configuration \
             --function-name "$FUNCTION_NAME" \
-            --timeout 180 \
+            --timeout 600 \
             --logging-config LogFormat=JSON,ApplicationLogLevel=INFO,SystemLogLevel=INFO \
             --memory-size 3008 \
             --ephemeral-storage Size=2048 \
@@ -180,7 +204,7 @@ create_or_update_lambda() {
             --package-type Image \
             --code "ImageUri=${GLUE_IMAGE_URI:-${ECR_URI}:latest}" \
             --role "$role_arn" \
-            --timeout 180 \
+            --timeout 600 \
             --logging-config LogFormat=JSON,ApplicationLogLevel=INFO,SystemLogLevel=INFO \
             --memory-size 3008 \
             --ephemeral-storage Size=2048 \
@@ -214,15 +238,25 @@ create_event_source_mapping() {
             --function-response-types ReportBatchItemFailures >/dev/null
     else
         info "Creating event source mapping: $QUEUE_NAME -> $FUNCTION_NAME"
-        aws_cmd lambda create-event-source-mapping \
+        mapping_uuid=$(aws_cmd lambda create-event-source-mapping \
             --function-name "$FUNCTION_NAME" \
             --event-source-arn "$queue_arn" \
             --no-enabled \
             --batch-size 1 \
             --scaling-config MaximumConcurrency=2 \
-            --function-response-types ReportBatchItemFailures >/dev/null
+            --function-response-types ReportBatchItemFailures --query UUID --output text)
     fi
 
+    aws_cmd lambda wait function-updated --function-name "$FUNCTION_NAME"
+    local function_ok mapping_ok
+    function_ok=$(aws_cmd lambda get-function-configuration --function-name "$FUNCTION_NAME" \
+        --query 'Timeout == `600` && MemorySize == `3008` && EphemeralStorage.Size == `2048` && CapacityProviderConfig == null' --output text)
+    mapping_ok=$(aws_cmd lambda get-event-source-mapping --uuid "$mapping_uuid" \
+        --query 'BatchSize == `1` && ScalingConfig.MaximumConcurrency == `2` && contains(FunctionResponseTypes, `"ReportBatchItemFailures"`)' --output text)
+    [[ "$function_ok" == True && "$mapping_ok" == True ]] || {
+        error "Glue worker configuration did not match the required limits."
+        exit 1
+    }
 }
 
 check_prerequisites

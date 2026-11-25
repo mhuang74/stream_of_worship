@@ -116,6 +116,7 @@ function makeRecord(overrides: Partial<GlueJobRecord> = {}): GlueJobRecord {
     providerContacted: false,
     providerPhase: null,
     providerStatus: null,
+    providerContextJson: null,
     retryKind: null,
     resultingTakeId: null,
     activeTakeId: null,

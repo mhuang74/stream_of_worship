@@ -287,10 +287,14 @@ describe("Deploy workflow — Glue worker", () => {
     expect(renderRaw).not.toContain("SOW_ELEVENLABS_API_KEY");
   });
 
-  it("verifies the worker is standard Lambda with a 180-second timeout", () => {
+  it("verifies the 600-second standard worker timeout and the SQS gate", () => {
     const raw = JSON.stringify(glueSteps());
     expect(raw).toContain("--function-name sow-glue-worker-standard");
-    expect(raw).toContain(".Timeout == 180 and .Capacity == null");
+    expect(raw).toContain(".Timeout == 600 and .CapacityProviderConfig == null");
+    expect(raw).toContain("(.VisibilityTimeout | tonumber) >= 3600");
+    expect(raw).toContain(".ScalingConfig.MaximumConcurrency == 2");
+    expect(raw).toContain(".FunctionResponseTypes ==");
+    expect(raw).toContain("ReportBatchItemFailures");
     expect(raw).not.toContain("publish-version");
   });
 

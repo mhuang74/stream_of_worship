@@ -130,3 +130,22 @@ def _resolve_side(side: Mapping[str, Any]) -> dict[str, Any]:
     else:
         steps = [[canonical_six_dp(step[0]), canonical_six_dp(step[1])] for step in raw_steps]
     return {"contentHash": content_hash, "steps": steps}
+
+
+def milliseconds_to_frames(milliseconds: int) -> int:
+    """Map the requested duration to 44.1 kHz PCM frames as in staging."""
+    return int(math.floor((milliseconds / 1000.0) * 44100 + 0.5))
+
+
+def generation_duration_ms(beats: int, to_tempo_bpm: float) -> int:
+    """Glue length in beats of the incoming tempo, floored at the API minimum."""
+    if isinstance(beats, bool) or not isinstance(beats, int) or beats <= 0:
+        raise ValueError(f"Glue beats must be a positive integer; received {beats!r}")
+    if isinstance(to_tempo_bpm, bool) or not isinstance(to_tempo_bpm, (int, float)):
+        raise TypeError("Glue incoming tempo must be numeric")
+    tempo = float(to_tempo_bpm)
+    if tempo <= 0:
+        raise ValueError(f"Glue incoming tempo must be positive; received {to_tempo_bpm!r}")
+    # Half-up milliseconds, matching the repository's canonical rounding (never
+    # Python's half-even round) so the request is deterministic.
+    return int(math.floor(max(3.0, beats * 60.0 / tempo) * 1000 + 0.5))

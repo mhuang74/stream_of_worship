@@ -151,6 +151,7 @@ class GlueJob:
     provider_contacted: bool = False
     provider_phase: Optional[str] = None
     provider_status: Optional[int] = None
+    provider_context_json: Optional[dict[str, Any]] = None
     retry_kind: Optional[str] = None
     resulting_take_id: Optional[str] = None
     active_take_id: Optional[str] = None
@@ -231,6 +232,7 @@ def _row_to_glue_job(row: dict[str, Any]) -> GlueJob:
         provider_contacted=row.get("provider_contacted", False),
         provider_phase=row.get("provider_phase"),
         provider_status=row.get("provider_status"),
+        provider_context_json=row.get("provider_context_json"),
         retry_kind=row.get("retry_kind"),
         resulting_take_id=_uuid_str(row.get("resulting_take_id")),
         active_take_id=_uuid_str(row.get("active_take_id")),
@@ -858,6 +860,22 @@ def heartbeat_glue_job(
     return row is not None
 
 
+def refresh_glue_claim(conn: Any, job: GlueJob) -> bool:
+    """Renew the active claim only while this delivery owns its heartbeat."""
+    now = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE glue_jobs SET heartbeat_at = %s, updated_at = %s "
+            "WHERE id = %s AND user_id = %s AND active AND heartbeat_at = %s "
+            "RETURNING id",
+            (now, now, job.id, job.user_id, job.heartbeat_at),
+        )
+        if cur.fetchone() is None:
+            return False
+    job.heartbeat_at = now
+    return True
+
+
 # Provider phases are stored in provider_phase; the job phase column only
 # accepts the job phase vocabulary, so map to the owning job phase.
 _GLUE_PROVIDER_JOB_PHASE = {
@@ -872,6 +890,10 @@ def record_provider_contact(
     job_id: str,
     user_id: int,
     provider_phase: str,
+    provider_context: dict[str, Any] | None = None,
+    *,
+    claim_heartbeat: datetime | None = None,
+    verify_junction: bool = False,
 ) -> bool:
     """Consume the reservation and record contact in one compare-and-set.
 
@@ -884,6 +906,23 @@ def record_provider_contact(
     if job_phase is None:
         raise ValueError(f"Unknown provider phase: {provider_phase!r}")
 
+    snapshot_guard = """
+        AND EXISTS (
+            SELECT 1
+            FROM songset_items a JOIN songset_items b ON b.songset_id = a.songset_id
+            WHERE a.id = glue_jobs.from_item_id AND b.id = glue_jobs.to_item_id
+            AND a.songset_id = glue_jobs.songset_id
+            AND a.updated_at = glue_jobs.expected_from_updated_at
+            AND b.updated_at = glue_jobs.expected_to_updated_at
+            AND a.position < b.position
+            AND NOT EXISTS (
+                SELECT 1 FROM songset_items between_items
+                WHERE between_items.songset_id = a.songset_id
+                AND between_items.position > a.position AND between_items.position < b.position
+            )
+            FOR SHARE OF a, b
+        )
+    """ if verify_junction else ""
     now = datetime.now(timezone.utc)
     original_autocommit = conn.autocommit
     try:
@@ -892,11 +931,14 @@ def record_provider_contact(
             cur.execute(
                 "UPDATE glue_jobs SET "
                 "provider_contacted = true, paid_reservation_state = %s, "
-                "phase = %s, provider_phase = %s, updated_at = %s "
+                "phase = %s, provider_phase = %s, updated_at = %s, provider_context_json = %s "
                 "WHERE id = %s AND user_id = %s "
-                "AND provider_contacted = false AND phase <> %s AND active "
-                "RETURNING id",
-                ("consumed", job_phase, provider_phase, now, job_id, user_id, "cancelled"),
+                "AND provider_contacted = false AND phase = 'preparing' AND active "
+                "AND (%s::timestamptz IS NULL OR heartbeat_at = %s) "
+                f"{snapshot_guard} RETURNING id",
+                ("consumed", job_phase, provider_phase, now,
+                 psycopg2.extras.Json(provider_context) if provider_context else None,
+                 job_id, user_id, claim_heartbeat, claim_heartbeat),
             )
             row = cur.fetchone()
         if not row:
@@ -914,6 +956,34 @@ def record_provider_contact(
         raise
     finally:
         conn.autocommit = original_autocommit
+    return True
+
+
+def update_runpod_contact(
+    conn: Any, job: GlueJob, route: dict[str, Any], *,
+    raw: tuple[str, str, int] | None = None,
+) -> bool:
+    """Advance a contacted job using the heartbeat as its delivery lease."""
+    now = datetime.now(timezone.utc)
+    sql = "provider_context_json = %s, heartbeat_at = %s, updated_at = %s"
+    params = [psycopg2.extras.Json(route), now, now]
+    if raw is not None:
+        sql += (", phase = 'storing-response', raw_response_r2_key = %s, "
+                "raw_response_sha256 = %s, raw_response_bytes = %s")
+        params.extend(raw)
+    params.extend([job.id, job.user_id, job.heartbeat_at, route["submission_id"]])
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            f"UPDATE glue_jobs SET {sql} WHERE id = %s AND user_id = %s "
+            "AND active AND phase = 'composing' AND provider_contacted "
+            "AND heartbeat_at = %s AND provider_context_json->>'submission_id' = %s "
+            "RETURNING heartbeat_at",
+            params,
+        )
+        row = cur.fetchone()
+    if row is None:
+        return False
+    job.heartbeat_at = row["heartbeat_at"]
     return True
 
 
@@ -1011,6 +1081,8 @@ def finish_glue_job(
     error_detail: Optional[str] = None,
     retry_kind: Optional[str] = None,
     active: bool = False,
+    expected_contacted: bool | None = None,
+    expected_heartbeat: datetime | None = None,
 ) -> Optional[GlueJob]:
     """Set a terminal phase and clear active in one statement."""
     now = datetime.now(timezone.utc)
@@ -1019,7 +1091,9 @@ def finish_glue_job(
             "UPDATE glue_jobs SET "
             "phase = %s, active = %s, error_code = %s, error_detail = %s, "
             "retry_kind = %s, finished_at = %s, updated_at = %s "
-            "WHERE id = %s AND user_id = %s "
+            "WHERE id = %s AND user_id = %s AND active "
+            "AND (%s::boolean IS NULL OR provider_contacted = %s) "
+            "AND (%s::timestamptz IS NULL OR heartbeat_at = %s) "
             "RETURNING *",
             (
                 phase,
@@ -1031,6 +1105,10 @@ def finish_glue_job(
                 now,
                 job_id,
                 user_id,
+                expected_contacted,
+                expected_contacted,
+                expected_heartbeat,
+                expected_heartbeat,
             ),
         )
         row = cur.fetchone()

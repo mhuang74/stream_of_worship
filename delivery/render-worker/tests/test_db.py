@@ -1230,12 +1230,12 @@ class TestRecordProviderContact:
         assert "phase = %s" in job_sql
         assert "provider_phase = %s" in job_sql
         assert "provider_contacted = false" in job_sql
-        assert "phase <> %s" in job_sql
+        assert "phase = 'preparing'" in job_sql
         assert "AND active" in job_sql
         assert job_params[0] == "consumed"
         assert job_params[1] == "composing"
         assert job_params[2] == "compose"
-        assert job_params[-1] == "cancelled"
+        assert job_params[-1] is None
 
         attempt_sql, attempt_params = cursor.execute.call_args_list[1][0]
         assert "UPDATE glue_paid_attempts" in attempt_sql

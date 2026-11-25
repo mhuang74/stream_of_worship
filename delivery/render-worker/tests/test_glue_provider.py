@@ -655,11 +655,11 @@ def test_execute_glue_job_drives_stage_to_storing_response(monkeypatch, tmp_path
         }
     )
     spine_reads: list[str] = []
-    monkeypatch.setattr(
-        glue_jobs,
-        "get_glue_job",
-        lambda conn, job_id, user_id: spine_reads.append(job_id) or post_stage,
-    )
+    def read_job(conn, job_id, user_id):
+        spine_reads.append(job_id)
+        return job if len(spine_reads) == 1 else post_stage
+
+    monkeypatch.setattr(glue_jobs, "get_glue_job", read_job)
     monkeypatch.setattr(
         glue_jobs,
         "finish_glue_job",
@@ -724,7 +724,7 @@ def test_execute_glue_job_drives_stage_to_storing_response(monkeypatch, tmp_path
     assert "storing-response" in phases
     # The spine re-read the persisted row, found the durable response, and
     # stopped at storing-response because staging is absent: never "failed".
-    assert spine_reads, "the spine must re-read the job after the provider stage"
+    assert len(spine_reads) >= 2, "the spine must re-read the job after the provider stage"
     assert finished == []
 
 

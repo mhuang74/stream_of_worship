@@ -359,7 +359,7 @@ describe("ArrangementEditorSheet AI transition take menu", () => {
 });
 
 describe("ArrangementEditorSheet AI transition jobs", () => {
-  it("confirms the exact credits, quota, and reset before starting a paid job", async () => {
+  it("confirms one attempt, quota, and reset before starting a paid job", async () => {
     const harness = installFetch();
     renderSheet();
 
@@ -369,7 +369,8 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
 
     const confirm = await screen.findByTestId("arrangement-glue-confirm");
-    expect(confirm.textContent).toContain("405");
+    expect(confirm.textContent).toContain("uses one AI transition attempt");
+    expect(confirm.textContent).not.toContain("credits");
     expect(confirm.textContent).toContain("3");
     expect(confirm.textContent).toContain("5");
 
@@ -470,7 +471,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     );
   });
 
-  it("offers a free retry without new credits for a definitely-unsent failure", async () => {
+  it("offers a free retry without using another attempt for a definitely-unsent failure", async () => {
     installFetch();
     renderSheet();
     await waitFor(() =>

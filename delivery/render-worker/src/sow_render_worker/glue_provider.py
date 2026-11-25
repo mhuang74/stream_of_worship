@@ -36,6 +36,7 @@ import urllib3
 from botocore.exceptions import ClientError
 
 from sow_render_worker.db import get_glue_job, record_glue_raw_response, set_glue_phase
+from sow_render_worker.glue_descriptor import generation_duration_ms
 from sow_render_worker.glue_detail import sanitize_detail
 from sow_render_worker.glue_excerpts import record_rejection, record_uploaded
 
@@ -408,20 +409,6 @@ def _error_for_response(status: int, body: str, operation: str) -> GlueProviderE
 # ---------------------------------------------------------------------------
 # Compose request
 # ---------------------------------------------------------------------------
-
-
-def generation_duration_ms(beats: int, to_tempo_bpm: float) -> int:
-    """Glue length in beats of the incoming tempo, floored at the API minimum."""
-    if isinstance(beats, bool) or not isinstance(beats, int) or beats <= 0:
-        raise ValueError(f"Glue beats must be a positive integer; received {beats!r}")
-    if isinstance(to_tempo_bpm, bool) or not isinstance(to_tempo_bpm, (int, float)):
-        raise TypeError("Glue incoming tempo must be numeric")
-    tempo = float(to_tempo_bpm)
-    if tempo <= 0:
-        raise ValueError(f"Glue incoming tempo must be positive; received {to_tempo_bpm!r}")
-    # Half-up milliseconds, matching the repository's canonical rounding (never
-    # Python's half-even round) so the request is deterministic.
-    return int(math.floor(max(3.0, beats * 60.0 / tempo) * 1000 + 0.5))
 
 
 def build_compose_request(

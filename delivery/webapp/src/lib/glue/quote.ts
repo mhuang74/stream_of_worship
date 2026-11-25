@@ -73,6 +73,7 @@ export type GlueJunctionDerivation =
 export interface GlueExcerptSideQuote {
   side: "A" | "B";
   seconds: number;
+  /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   credits: number;
 }
 
@@ -84,8 +85,11 @@ export interface GlueBlockedSide {
 export interface GlueQuoteCore {
   uncachedSides: GlueExcerptSideQuote[];
   generationSeconds: number;
+  /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   uploadCredits: number;
+  /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   generationCredits: number;
+  /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   estimatedNewCredits: number;
   blockedSides: GlueBlockedSide[];
 }
