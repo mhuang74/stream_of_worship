@@ -134,7 +134,7 @@ create_sqs_queues() {
         --attributes "$attributes"
 
     for url in "$QUEUE_URL" "$DLQ_URL"; do
-        aws_cmd sqs tag-queue --queue-url "$url" --tags Project=Glue
+        aws_cmd sqs tag-queue --queue-url "$url" --tags project=Glue
     done
 
     info "SQS ready: visibility ${visibility}s, maxReceiveCount 3"
@@ -188,7 +188,7 @@ create_or_update_lambda() {
 
         aws_cmd lambda wait function-active --function-name "$FUNCTION_NAME"
     fi
-    aws_cmd lambda tag-resource --resource "arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${FUNCTION_NAME}" --tags Project=Glue
+    aws_cmd lambda tag-resource --resource "arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${FUNCTION_NAME}" --tags project=Glue
 }
 
 create_event_source_mapping() {
