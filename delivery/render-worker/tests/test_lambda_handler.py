@@ -275,6 +275,22 @@ class TestGlueRouting:
 
     @patch("sow_render_worker.lambda_handler.get_glue_job")
     @patch("sow_render_worker.lambda_handler.execute_glue_job")
+    def test_glue_staging_message_passes_explicit_mode(self, mock_glue, mock_get_job):
+        mock_get_job.return_value.songset_id = "ss_001"
+        record = _make_kind_record("glue.generate")
+        body = json.loads(record["body"])
+        record["body"] = json.dumps({**body, "mode": "staging"})
+        conn = MagicMock()
+        context = MagicMock()
+
+        _process_record(record, MagicMock(), conn, context)
+
+        mock_glue.assert_called_once_with(
+            "job_glue_1", 42, conn, lambda_context=context, mode="staging"
+        )
+
+    @patch("sow_render_worker.lambda_handler.get_glue_job")
+    @patch("sow_render_worker.lambda_handler.execute_glue_job")
     @patch("sow_render_worker.lambda_handler.execute_render_pipeline")
     def test_unknown_kind_errors_visibly(self, mock_pipeline, mock_glue, mock_get_job):
         with pytest.raises(ValueError, match="Unknown SQS message kind"):

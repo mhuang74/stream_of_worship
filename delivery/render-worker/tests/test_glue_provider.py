@@ -160,7 +160,7 @@ class FakeTransport:
         order=None,
     ) -> None:
         self._upload_ids = list(upload_ids)
-        self._chunks = list(chunks)
+        self._chunks = list(chunks) or ([data] if data else [])
         self._upload_errors = list(upload_errors or [])
         self._compose_error = compose_error
         self._compose_chunks = compose_chunks
@@ -437,7 +437,7 @@ class _FakeResponse:
         self.status = status
         self.data = data
         self.headers = {}
-        self._chunks = list(chunks)
+        self._chunks = list(chunks) or ([data] if data else [])
         self._read_error = read_error
         self.released = False
 
@@ -463,20 +463,20 @@ class _FakePool:
 
 
 class TestElevenLabsHttpTransport:
-    def test_timeout_configuration_is_30_900_1800(self):
+    def test_timeout_configuration_is_5_15_90(self):
         pool = _FakePool(_FakeResponse(data=b'{"song_id":"s1"}'))
         transport = ElevenLabsHttpTransport("fake-key", pool=pool)
-        assert transport._timeout(UPLOAD_READ_TIMEOUT_SECONDS).connect_timeout == 30
-        assert transport._timeout(UPLOAD_READ_TIMEOUT_SECONDS).read_timeout == 900
-        assert transport._timeout(COMPOSE_READ_TIMEOUT_SECONDS).read_timeout == 1800
-        assert COMPOSE_READ_TIMEOUT_SECONDS == 1800
-        assert CONNECT_TIMEOUT_SECONDS == 30
+        assert transport._timeout(UPLOAD_READ_TIMEOUT_SECONDS).connect_timeout == 5
+        assert transport._timeout(UPLOAD_READ_TIMEOUT_SECONDS).total == 15
+        assert transport._timeout(COMPOSE_READ_TIMEOUT_SECONDS).total == 90
+        assert COMPOSE_READ_TIMEOUT_SECONDS == 90
+        assert CONNECT_TIMEOUT_SECONDS == 5
 
     def test_caps_timeouts_to_remaining_lambda_budget(self):
-        transport = ElevenLabsHttpTransport("fake-key", lambda_context=_Context(500_000))
+        transport = ElevenLabsHttpTransport("fake-key", lambda_context=_Context(12_000))
         timeout = transport._timeout(COMPOSE_READ_TIMEOUT_SECONDS)
-        assert timeout.connect_timeout <= 30
-        assert timeout.read_timeout <= 470
+        assert timeout.connect_timeout == 5
+        assert timeout.total == 12
 
     def test_upload_sends_wav_and_returns_song_id(self, tmp_path):
         wav = tmp_path / "excerpt-A.wav"
@@ -490,7 +490,7 @@ class TestElevenLabsHttpTransport:
         assert call["headers"]["xi-api-key"] == "fake-key"
         assert call["retries"] is False
         assert b"RIFF" in call["body"]
-        assert call["preload_content"] is True
+        assert call["preload_content"] is False
 
     def test_compose_streams_with_output_format(self):
         pool = _FakePool(_FakeResponse(chunks=[b"abc", b"def", b""]))
@@ -865,18 +865,17 @@ class TestProviderFactory:
 
 class TestTransportTimeoutsUnderContext:
     def test_upload_read_timeout_is_capped_not_extended(self):
-        transport = ElevenLabsHttpTransport("fake-key", lambda_context=_Context(200_000))
+        transport = ElevenLabsHttpTransport("fake-key", lambda_context=_Context(12_000))
         timeout = transport._timeout(UPLOAD_READ_TIMEOUT_SECONDS)
-        # 200 s remaining: connect 30 s, read at most 170 s, never the full 900.
-        assert timeout.connect_timeout == 30
-        assert 0 < timeout.read_timeout <= 170
+        assert timeout.connect_timeout == 5
+        assert timeout.total == 12
 
     def test_no_context_keeps_the_spec_timeouts(self):
         transport = ElevenLabsHttpTransport("fake-key")
         upload = transport._timeout(UPLOAD_READ_TIMEOUT_SECONDS)
         compose = transport._timeout(COMPOSE_READ_TIMEOUT_SECONDS)
-        assert (upload.connect_timeout, upload.read_timeout) == (30, 900)
-        assert (compose.connect_timeout, compose.read_timeout) == (30, 1800)
+        assert (upload.connect_timeout, upload.total) == (5, 15)
+        assert (compose.connect_timeout, compose.total) == (5, 90)
 
     def test_upload_and_compose_pass_their_own_timeout_to_the_pool(self, tmp_path):
         wav = tmp_path / "x.wav"
@@ -884,12 +883,12 @@ class TestTransportTimeoutsUnderContext:
         pool = _FakePool(_FakeResponse(data=b'{"song_id":"s"}'))
         transport = ElevenLabsHttpTransport("fake-key", pool=pool)
         transport.upload(wav)
-        assert pool.calls[-1]["timeout"].read_timeout == 900
+        assert pool.calls[-1]["timeout"].total == 15
 
         stream_pool = _FakePool(_FakeResponse(chunks=[b"a", b""]))
         composer = ElevenLabsHttpTransport("fake-key", pool=stream_pool)
         list(composer.compose({"seed": 1}))
-        assert stream_pool.calls[-1]["timeout"].read_timeout == 1800
+        assert stream_pool.calls[-1]["timeout"].total == 90
 
 
 class TestProviderStage:
@@ -1101,7 +1100,11 @@ class TestProviderStage:
     def test_compose_deadline_requires_full_reserve(self, recording):
         transport = FakeTransport()
         with pytest.raises(glue_jobs.GlueJobError) as exc_info:
-            _run_stage(recording, transport=transport, context=_Context(1_000_000))
+            _run_stage(
+                recording, transport=transport, context=_Context(119_999),
+                a_excerpt=_excerpt("A", seconds=A_SECONDS, song_id="cached-a"),
+                b_excerpt=_excerpt("B", seconds=B_SECONDS, song_id="cached-b"),
+            )
         assert exc_info.value.code == glue_jobs.GLUE_EXECUTION_DEADLINE
         assert exc_info.value.retry_kind == "free"
         assert transport.compose_calls == []
@@ -1113,7 +1116,7 @@ class TestProviderStage:
     def test_upload_deadline_refuses_without_budget(self, recording):
         transport = FakeTransport()
         with pytest.raises(glue_jobs.GlueJobError) as exc_info:
-            _run_stage(recording, transport=transport, context=_Context(500_000))
+            _run_stage(recording, transport=transport, context=_Context(159_999))
         assert exc_info.value.code == glue_jobs.GLUE_EXECUTION_DEADLINE
         assert exc_info.value.retry_kind == "free"
         assert transport.upload_calls == []

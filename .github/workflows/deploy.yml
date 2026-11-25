@@ -181,7 +181,7 @@ jobs:
             --function-name sow-render-worker
 
   deploy-glue-worker:
-    name: Deploy Glue Worker to Lambda (Managed Instances)
+    name: Deploy Glue Worker to Standard Lambda
     needs: [detect-changes, migrate-db, deploy-render-worker]
     if: needs.detect-changes.outputs.render-worker == 'true' && needs.deploy-render-worker.result == 'success'
     runs-on: ubuntu-latest
@@ -199,20 +199,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.SOW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
 
-      # Standard Lambda caps asynchronous/event-source invocations at 1800 s,
-      # below the 3300 s Glue budget. Fail before touching the function when it
-      # is not the documented Managed Instances host.
-      - name: Fail fast unless the Glue function runs on Managed Instances
+      - name: Verify standard Glue Lambda configuration
         run: |
           set -euo pipefail
-          config="$(aws lambda get-function-configuration --function-name sow-glue-worker)"
-          capacity_arn="$(printf '%s' "$config" | jq -r '.CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn // empty')"
-          timeout="$(printf '%s' "$config" | jq -r '.Timeout')"
-          if [ -z "$capacity_arn" ] || [ "$timeout" != "3300" ]; then
-            echo "::error::sow-glue-worker must run on AWS Lambda Managed Instances with Timeout == 3300; the current function has CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn='${capacity_arn}' and Timeout='${timeout}'. Standard Lambda (1800 s cap) is not eligible. Create it with delivery/render-worker/deploy/aws-up-glue.sh."
-            exit 1
-          fi
-          echo "Verified: sow-glue-worker runs on Managed Instances with a 3300 s timeout."
+          aws lambda get-function-configuration --function-name sow-glue-worker-standard \
+            --query '{Timeout: Timeout, Capacity: CapacityProviderConfig}' --output json |
+            jq -e '.Timeout == 180 and .Capacity == null' >/dev/null
 
       - name: Update Glue worker image (shared render-worker image)
         env:
@@ -224,12 +216,12 @@ jobs:
             exit 1
           fi
           aws lambda update-function-code \
-            --function-name sow-glue-worker \
-            --image-uri "$IMAGE_URI"
+            --function-name sow-glue-worker-standard \
+            --image-uri "$IMAGE_URI" >/dev/null
 
       - name: Wait for Glue Lambda image update
         run: |
-          aws lambda wait function-updated --function-name sow-glue-worker
+          aws lambda wait function-updated --function-name sow-glue-worker-standard
 
       # Set the provider key ONLY on the Glue function, merging the existing
       # environment so DB/R2/queue settings survive. Never echo the merged JSON.
@@ -242,122 +234,12 @@ jobs:
             echo "::error::SOW_ELEVENLABS_API_KEY secret is not configured; Glue would fail with GLUE_NOT_CONFIGURED."
             exit 1
           fi
-          config="$(aws lambda get-function-configuration --function-name sow-glue-worker)"
+          config="$(aws lambda get-function-configuration --function-name sow-glue-worker-standard)"
           env_json="$(printf '%s' "$config" | jq -c --arg key "$SOW_ELEVENLABS_API_KEY" '.Environment.Variables // {} | .SOW_ELEVENLABS_API_KEY = $key | {Variables: .}')"
           aws lambda update-function-configuration \
-            --function-name sow-glue-worker \
+            --function-name sow-glue-worker-standard \
             --environment "$env_json" >/dev/null
 
       - name: Wait for Glue Lambda configuration update
         run: |
-          aws lambda wait function-updated --function-name sow-glue-worker
-
-      # PublishVersion answers ResourceConflictException while a just-updated
-      # function is transiently unavailable, and on Managed Instances the
-      # version can settle at Failed (for example FunctionError.InitResourceExhausted)
-      # instead of Active. Both are handled: a non-Active version means the
-      # queue accepts jobs that no execution environment can run.
-      - name: Publish Glue Lambda version
-        run: |
-          set -euo pipefail
-          published=""
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if output="$(aws lambda publish-version --function-name sow-glue-worker \
-                  --publish-to LATEST_PUBLISHED 2>&1)"; then
-              echo "$output"
-              published=true
-              break
-            fi
-            case "$output" in
-              *ResourceConflictException*)
-                echo "publish-version attempt ${attempt} hit a transient state; retrying"
-                sleep 10
-                ;;
-              *)
-                echo "::error::$output"
-                exit 1
-                ;;
-            esac
-          done
-          if [ -z "$published" ]; then
-            echo "::error::Lambda version did not publish after repeated transient-state retries."
-            exit 1
-          fi
-
-      - name: Verify the published Glue version is Active
-        run: |
-          set -euo pipefail
-          # State alone is not enough: the published snapshot can be Active while
-          # still carrying the previous timeout, and an unqualified read says 3300
-          # either way. Assert the published Timeout too, or the 1900 s regression
-          # that killed the first paid job walks straight back in.
-          for attempt in $(seq 1 60); do
-            config="$(aws lambda get-function-configuration --function-name sow-glue-worker \
-              --qualifier '$LATEST.PUBLISHED' --query '[State,Timeout]' --output text)"
-            state="$(printf '%s' "$config" | awk '{print $1}')"
-            timeout="$(printf '%s' "$config" | awk '{print $2}')"
-            if [ "$state" = "Active" ]; then
-              if [ "$timeout" != "3300" ]; then
-                echo "::error::\$LATEST.PUBLISHED is Active with Timeout=${timeout}; expected 3300 s (the worker's upload+compose reserves)."
-                exit 1
-              fi
-              echo "Verified: \$LATEST.PUBLISHED is Active with a 3300 s timeout."
-              exit 0
-            fi
-            if [ "$state" = "Failed" ]; then
-              reason="$(aws lambda get-function-configuration --function-name sow-glue-worker \
-                --qualifier '$LATEST.PUBLISHED' --query 'StateReason' --output text)"
-              echo "::error::\$LATEST.PUBLISHED settled at Failed: ${reason}"
-              exit 1
-            fi
-            echo "version state: ${state} (attempt ${attempt})"
-            sleep 10
-          done
-          echo "::error::\$LATEST.PUBLISHED did not reach Active."
-          exit 1
-
-      # Execution-environment limits are not a create/update-configuration field;
-      # AWS applies them per qualified ARN. `$LATEST.PUBLISHED` makes every future
-      # published version inherit the cap, and min/max must be sent together.
-      - name: Apply Glue execution-environment scaling
-        run: |
-          set -euo pipefail
-          # PutFunctionScalingConfig answers ResourceConflictException while the
-          # version just published is still settling, so retry, then assert the
-          # applied values: a silently defaulted minimum of 3 would keep paid
-          # capacity warm between jobs.
-          applied=""
-          for attempt in $(seq 1 30); do
-            if output="$(aws lambda put-function-scaling-config \
-                  --function-name sow-glue-worker \
-                  --qualifier '$LATEST.PUBLISHED' \
-                  --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' 2>&1)"; then
-              applied=true
-              break
-            fi
-            case "$output" in
-              *ResourceConflictException*)
-                echo "put-function-scaling-config attempt ${attempt} hit a transient state; retrying"
-                sleep 10
-                ;;
-              *)
-                echo "::error::$output"
-                exit 1
-                ;;
-            esac
-          done
-          if [ -z "$applied" ]; then
-            echo "::error::Glue scaling config was not applied after repeated transient-state retries."
-            exit 1
-          fi
-          current="$(aws lambda get-function-scaling-config --function-name sow-glue-worker \
-            --qualifier '$LATEST.PUBLISHED' \
-            --query 'AppliedFunctionScalingConfig' --output json)"
-          echo "$current"
-          min="$(printf '%s' "$current" | jq -r '.MinExecutionEnvironments')"
-          max="$(printf '%s' "$current" | jq -r '.MaxExecutionEnvironments')"
-          if [ "$min" != "0" ] || [ "$max" != "2" ]; then
-            echo "::error::Glue scaling is min=${min} max=${max}; expected min=0 max=2."
-            exit 1
-          fi
-          echo "Verified: Glue scaling is min 0 / max 2."
+          aws lambda wait function-updated --function-name sow-glue-worker-standard

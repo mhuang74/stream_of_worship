@@ -79,7 +79,7 @@ Checklist for the inspection:
 - descriptor key and the **A → B** item pair (`from_item_id`, `to_item_id`)
 - current `phase` and whether `active` agrees with it
 - `attempt_id`, `dispatch_state`, `dispatch_attempt`
-- `heartbeat_at` (compare with `OPERATION_BUDGET_SECONDS` = 3300 s)
+- `heartbeat_at` (check the 210 s claim expiry)
 - `provider_contacted`, `provider_phase`, `provider_status`
 - paid reservation id/state and the `glue_paid_attempts` row
 - persisted successful upload `elevenlabs_song_id` values
@@ -89,7 +89,7 @@ Checklist for the inspection:
 
 ```bash
 aws logs filter-log-events \
-  --log-group-name /aws/lambda/sow-glue-worker \
+  --log-group-name /aws/lambda/sow-glue-worker-standard \
   --filter-pattern '"<glue_jobs.id>"' \
   --limit 100
 ```
@@ -224,59 +224,22 @@ take and no extra provider charge.
 **What the user sees:** terminal jobs stop showing as active; a recovered
 queued job resumes with its real phase rather than a fabricated percent.
 
-## Configuration changes require a republish
+## Standard Lambda operation
 
-The event-source mapping invokes the `$LATEST.PUBLISHED` version, which is a
-configuration snapshot: editing the function's timeout, memory, or environment
-leaves the running version unchanged. After any configuration change:
+1. Deploy with `delivery/render-worker/deploy/aws-up-glue.sh`. It updates the unqualified `sow-glue-worker-standard` function image and configuration (180 s timeout, 3,008 MB, 2,048 MB ephemeral storage) and, when the mapping does not exist yet, creates the production mapping **disabled**. For a preflight queue, set `GLUE_QUEUE_NAME` to a test queue name.
+2. Before enabling a newly created mapping, set the `sow-glue-jobs` visibility timeout to 1,080 seconds and enable mapping `29796477-c0bc-4cb8-b030-e4b3f3d2f8ca`. The script clamps visibility to at least 1,080 seconds and never lowers it.
+3. No version publishing and no scaling config are used. Deploys replace the `$LATEST` image; there is no numbered version to activate, deactivate, or scale.
+4. Roll back by repointing the image only: `aws lambda update-function-code --function-name sow-glue-worker-standard --image-uri <previous ECR tag>`, then `wait function-updated`. Leave queue visibility at 1,080 seconds so the previous image's retries are not cut short.
+5. There is no legacy fallback: no previous function, capacity provider, or scaling config exists to reactivate. Repointing the image is the only rollback.
 
-```bash
-aws lambda update-function-configuration --function-name sow-glue-worker --timeout 3300
-aws lambda publish-version --function-name sow-glue-worker --publish-to LATEST_PUBLISHED
-# wait for State=Active, then re-apply the cap (a new version starts uncapped)
-aws lambda put-function-scaling-config --function-name sow-glue-worker \
-  --qualifier '$LATEST.PUBLISHED' \
-  --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2'
-```
+## Alerts and spend
 
-A plain `publish-version` creates a numbered version that the mapping never
-invokes. `PutFunctionScalingConfig` answers `ResourceConflictException` while
-the new version settles, so retry it.
+Run `deploy/glue-observability.sh` with `GLUE_ALARM_SNS_TOPIC_ARN` for notifications. It keeps 14 days of structured logs and creates `sow-glue-dlq-arrival`, `sow-glue-queue-age`, and `sow-glue-lambda-errors` from native metrics. DLQ arrival does **not** authorize a provider retry.
 
-The timeout must stay above the worker's stage reserves (`990 s` upload +
-`1 890 s` compose). Below that sum every job fails with
-`GLUE_EXECUTION_DEADLINE` after the paid upload has already run.
+Three budgets guard spend, all notifying `mhuang74@gmail.com`:
 
-## Alerts and metrics
+- `Glue EC2 Backstop` — COST, MONTHLY, $1 limit, `Service = Amazon Elastic Compute Cloud - Compute`, alarm above $1 actual. Tag-independent: this account runs no EC2 compute (Glue is standard on-demand Lambda), so any alarm means something is provisioning instances again. It also works when tag ingestion is broken, which is why it is the primary tripwire; it reports the EC2 spend recorded before the cutover until November 2026 rolls over.
+- `Monthly Glue Infrastructure` — COST, MONTHLY, $5 limit, filter `user:project$Glue`, notices above $3 actual or $5 forecast. The `project` cost allocation tag is active, and the Glue function and both queues are tagged `project=Glue`. The key must stay lowercase: cost allocation keys are case-sensitive, so `Project` and `project` are distinct and only the activated key reports spend — the budget reads `$0` if either side drifts.
+- `Daily Budget` — COST, DAILY, $2 limit, whole account, notice above 100%. Recent whole-account days exceed $2, so it alarms continuously; treat it as a coarse ceiling, never as a Glue-specific signal.
 
-Created/updated by `delivery/render-worker/deploy/glue-observability.sh`
-(idempotent; optional SNS via `GLUE_ALARM_SNS_TOPIC_ARN`).
-
-Lambda's JSON log format wraps every record as `{timestamp, level, message}`,
-so the Glue payload is escaped inside `$.message`. The metric filters match
-event tokens through `$.message` (`{ $.message = "*glue.job.claimed*" }`);
-patterns against `$.event` match nothing and leave `SOW/Glue` at zero. A
-reviewer can prove a pattern with `aws logs test-metric-filter` or by replaying
-one event into a scratch log group before trusting an alarm.
-
-| Alarm | Metric | Meaning / first action |
-|---|---|---|
-| `sow-glue-dlq-arrival` | `AWS/SQS ApproximateNumberOfMessagesVisible` on `sow-glue-jobs-dlq` | A job failed 3 deliveries. Inspect by id (§1); never auto-retry a paid request. |
-| `sow-glue-provider-ambiguous` | `SOW/Glue GlueProviderAmbiguous` (Sum, 5 min) | Ambiguous upload/compose. Treat as §5. |
-| `sow-glue-queue-age` | `AWS/SQS ApproximateAgeOfOldestMessage` on `sow-glue-jobs` (Maximum > 3300 s, 2 periods) | Dispatch/worker starvation. Confirm the queue URL and consumer health, then use §2 where eligible. |
-| `sow-glue-heartbeat-missing` | `AWS/Lambda Duration` on `sow-glue-worker` (Maximum ≥ 3,300,000 ms) | A claimed job reached the 3300 s operation budget without completing. Check the heartbeat and use §2/§3 by durable state. |
-| `sow-glue-staging-recovery-spike` | `SOW/Glue GlueStagingRecovery` (Sum ≥ 5 per 15 min) | Repeated free recoveries indicate a staging/DB fault, not bad input. Inspect staging/DB errors before retrying. |
-| `sow-glue-paid-failure` metric filter | `SOW/Glue GluePaidFailure` (`glue.job.failed` with `retryKind = "paid"`) | Paid terminal failure; requires the user's explicit new paid attempt. |
-
-Metric filters also exist for `glue.provider.ambiguous`,
-`glue.heartbeat.failed`, `glue.staging.recovered`, and paid-terminal
-`glue.job.failed` events. Alarm descriptions intentionally omit titles,
-Lyrics, URLs, signed URLs, keys, and provider bodies.
-
-## Escalation
-
-If inspection cannot establish whether a paid request was sent, treat it as
-ambiguous (§5). If the raw response cannot be verified against its checksum,
-treat staging recovery as unavailable and do not compose again. Escalate to the
-provider owner rather than guessing; never start a paid job from an operator
-session.
+Use per-function billed duration, SQS requests, CloudWatch ingestion, transfer, and the Glue R2 prefix to reconcile the first week and billing month. AWS free allowances are account-wide. Retained Glue Takes remain available and accrue storage as the catalog grows.

@@ -46,96 +46,22 @@ def test_scripts_exist() -> None:
     assert RUNBOOK.is_file()
 
 
-def test_function_timeout_covers_both_provider_stage_reserves() -> None:
-    """The deployed timeout must fit the worker's own deadline gates.
-
-    An upload may legitimately consume its whole reserve before compose
-    re-checks its own, so the timeout has to cover the sum. When it did not
-    (1900 s vs 990 + 1890), every production job died at the compose gate
-    after the paid upload had already run.
-    """
+def test_standard_glue_limits_and_disabled_new_mapping() -> None:
     from sow_render_worker import glue_jobs
 
-    script = read(AWS_UP_GLUE)
+    script = read_code(AWS_UP_GLUE)
     timeouts = {int(value) for value in re.findall(r"--timeout (\d+)", script)}
-    assert timeouts == {3300}, timeouts
-    (timeout,) = timeouts
-    reserves = (
-        glue_jobs.UPLOAD_DEADLINE_RESERVE_MS + glue_jobs.COMPOSE_DEADLINE_RESERVE_MS
-    ) // 1000
-    assert timeout >= reserves, f"timeout {timeout}s < upload+compose reserves {reserves}s"
-
-    visibility = int(re.search(r'VisibilityTimeout\\":\\"(\d+)', script).group(1))
-    assert visibility > timeout, "SQS visibility must exceed the function timeout"
-
-
-def test_aws_up_glue_pins_frozen_literals() -> None:
-    text = read(AWS_UP_GLUE)
-    required = [
-        "sow-glue-jobs-dlq",
-        "sow-glue-jobs",
-        "sow-glue-worker",
-        "VisibilityTimeout",
-        "3500",
-        "maxReceiveCount",
-        "3",
-        "--timeout 3300",
-        "--memory-size 3072",
-        "--ephemeral-storage Size=2048",
-        "--batch-size 1",
-        "--function-response-types ReportBatchItemFailures",
-        "--capacity-provider-config",
-        "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN,PerExecutionEnvironmentMaxConcurrency=1}",
-        "put-function-scaling-config",
-        "--qualifier '$LATEST.PUBLISHED'",
-        "--function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2'",
-        "publish-version",
-        "--publish-to LATEST_PUBLISHED",
-        "GLUE_CAPACITY_PROVIDER_ARN is required",
-    ]
-    for literal in required:
-        assert literal in text, f"aws-up-glue.sh lost required literal: {literal!r}"
-
-
-def test_aws_up_glue_publishes_latest_published_version() -> None:
-    text = read(AWS_UP_GLUE)
-    start = text.index("lambda publish-version")
-    block = text[start:].split("--query", 1)[0]
-    assert "--publish-to LATEST_PUBLISHED" in block
-
-
-def test_aws_up_glue_never_passes_scaling_to_create_or_update() -> None:
-    """`FunctionScalingConfig` is not a CreateFunction/UpdateFunctionConfiguration
-    request field; passing it aborts the script under `set -euo pipefail`."""
-    text = read(AWS_UP_GLUE)
-    for command in ("create-function", "update-function-configuration"):
-        start = text.index(f"lambda {command}")
-        block = text[start:].split(">/dev/null", 1)[0]
-        assert "--function-scaling-config" not in block, (
-            f"aws-up-glue.sh passes --function-scaling-config to {command}, which the AWS API rejects"
-        )
-
-
-def test_metric_filters_match_the_lambda_json_log_wrapper() -> None:
-    """Lambda's JSON log format wraps each record as {timestamp, level, message}.
-
-    The payload JSON is therefore escaped inside `$.message`; patterns written
-    against `$.event` matched nothing and left every Glue metric at zero.
-    """
-    text = read_code(OBSERVABILITY)
-    assert "$.event" not in text, "metric filters must match the wrapped payload"
-    assert "$.message" in text
-    # Each documented counter/event must have a filter on its token.
-    for token in (
-        "glue.job.claimed",
-        "glue.response.persisted",
-        "glue.provider.contact.started",
-        "glue.staging.recovered",
-        "glue.provider.ambiguous",
-        "glue.staging.unavailable",
-        "glue.job.redelivered",
+    assert timeouts == {180}
+    assert 180_000 > 2 * glue_jobs.UPLOAD_STAGE_MS + glue_jobs.COMPOSE_DEADLINE_RESERVE_MS
+    assert "visibility=1080" in script
+    for flag in (
+        "--memory-size 3008", "--ephemeral-storage Size=2048", "--batch-size 1",
+        "--function-response-types ReportBatchItemFailures", "--no-enabled",
+        "--scaling-config MaximumConcurrency=2",
     ):
-        assert f"*{token}*" in text, f"metric filter lost its token: {token}"
+        assert flag in script
+    for flag in ("--capacity-provider-config", "publish-version", "ProvisionedPollerConfig"):
+        assert flag not in script
 
 
 def test_paid_failure_log_payload_carries_retry_kind() -> None:
@@ -171,85 +97,6 @@ def test_paid_failure_log_payload_carries_retry_kind() -> None:
     json.loads(payload)
 
 
-def test_published_version_verification_asserts_the_timeout() -> None:
-    """State alone would accept an Active snapshot still carrying 1900 s, which
-    is exactly how the first paid job died; the step must read both values."""
-    workflow = read(DEPLOY_WORKFLOW)
-    start = workflow.index("- name: Verify the published Glue version is Active")
-    step = workflow[start:].split("\n\n      - name:", 1)[0]
-    assert "[State,Timeout]" in step
-    assert '"$timeout" != "3300"' in step
-
-
-def test_glue_scaling_is_retried_and_verified() -> None:
-    """PutFunctionScalingConfig answers ResourceConflictException right after a
-    version publish; both the bootstrap and the workflow must retry it and then
-    assert the applied 0/2 values (a default minimum of 3 keeps paid capacity)."""
-    workflow = read(DEPLOY_WORKFLOW)
-    start = workflow.index("- name: Apply Glue execution-environment scaling")
-    step = workflow[start:].split("\n\n      - name:", 1)[0]
-    assert "ResourceConflictException" in step
-    assert "get-function-scaling-config" in step
-    assert ".MaxExecutionEnvironments" in step
-
-    script = read(AWS_UP_GLUE)
-    fn = script[script.index("apply_scaling_config() {"):].split("\n}", 1)[0]
-    assert "ResourceConflictException" in fn
-    assert "MinExecutionEnvironments=0,MaxExecutionEnvironments=2" in fn
-
-
-def test_aws_up_glue_verifies_the_published_version_is_active() -> None:
-    """PublishVersion succeeds before the version activates; on Managed
-    Instances it can then settle at Failed (InitResourceExhausted), so the
-    bootstrap must poll State and fail on Failed."""
-    text = read(AWS_UP_GLUE)
-    start = text.index("publish_version() {")
-    block = text[start:].split("\n}", 1)[0]
-    assert "--query 'State'" in block
-    assert "Failed" in block
-    assert "StateReason" in block
-
-
-def test_aws_up_glue_publishes_before_mapping_and_scaling() -> None:
-    """A Managed Instances function is ActiveNonInvocable until
-    `$LATEST.PUBLISHED` exists: the scaling qualifier does not resolve before
-    the first published version and CreateEventSourceMapping rejects the
-    function, so a fresh-account run aborts under `set -euo pipefail`."""
-    text = read(AWS_UP_GLUE)
-    main_block = text[text.index("main() {"):]
-    order = [
-        main_block.index("create_or_update_lambda"),
-        main_block.index("publish_version"),
-        main_block.index("create_event_source_mapping"),
-        main_block.index("apply_scaling_config"),
-    ]
-    assert order == sorted(order), "aws-up-glue.sh main() no longer publishes before mapping/scaling"
-
-
-def test_aws_up_glue_never_sets_esm_max_concurrency() -> None:
-    """Managed Instances event source mappings reject ScalingConfig.MaximumConcurrency;
-    the cap comes from the execution-environment limit instead."""
-    text = read_code(AWS_UP_GLUE)
-    assert "--scaling-config MaximumConcurrency" not in text
-    assert "MaxExecutionEnvironments=2" in text
-
-
-def test_aws_up_glue_never_waits_for_function_active_on_create() -> None:
-    """`wait function-active` cannot succeed before `$LATEST.PUBLISHED` exists."""
-    assert "wait function-active" not in read_code(AWS_UP_GLUE)
-
-
-def test_aws_up_glue_fails_fast_before_any_aws_call() -> None:
-    text = read(AWS_UP_GLUE)
-    guard = text.index("GLUE_CAPACITY_PROVIDER_ARN is required")
-    assert guard < text.index("aws_cmd sts get-caller-identity")
-    assert guard < text.index("sqs get-queue-url")
-    assert guard < text.index("lambda create-function")
-
-    guard_block = text[guard : guard + 600]
-    assert "exit 1" in guard_block
-
-
 def test_aws_up_glue_uses_strict_shell_mode() -> None:
     for path in (AWS_UP_GLUE, OBSERVABILITY):
         assert "set -euo pipefail" in read(path)
@@ -272,47 +119,16 @@ def test_deploy_scripts_never_select_the_fake_provider_mode() -> None:
         assert "SOW_GLUE_PROVIDER_MODE" not in read(path)
 
 
-def test_observability_creates_required_filters_and_alarms() -> None:
-    text = read(OBSERVABILITY)
-    required = [
-        "put-metric-filter",
-        "put-metric-alarm",
-        "--treat-missing-data notBreaching",
-        "sow-glue-dlq-arrival",
-        "sow-glue-provider-ambiguous",
-        "sow-glue-queue-age",
-        "sow-glue-heartbeat-missing",
-        "sow-glue-staging-recovery-spike",
-        "glue.provider.ambiguous",
-        "glue.heartbeat.failed",
-        "glue.staging.recovered",
-        "ApproximateNumberOfMessagesVisible",
-        "ApproximateAgeOfOldestMessage",
-        "sow-glue-jobs-dlq",
-        "sow-glue-jobs",
-        # §4.2 counters: paid attempts, failures, redeliveries, cache hits,
-        # cached copyright rejections, raw-response persists, staging faults.
-        "sow-glue-paid-attempt",
-        "GluePaidAttempt",
-        '{ $.message = "*glue.provider.contact.started*" }',
-        "sow-glue-job-claimed",
-        "sow-glue-job-failed",
-        "sow-glue-paid-failure",
-        '*glue.job.failed*',
-        '*\\"retryKind\\": \\"paid\\"*',
-        "sow-glue-redelivery",
-        "glue.job.redelivered",
-        "sow-glue-cache-hit",
-        '{ $.message = "*\\"cacheHit\\": true*" }',
-        "sow-glue-cached-copyright",
-        "GLUE_COPYRIGHT_REJECTED",
-        "sow-glue-response-persisted",
-        "glue.response.persisted",
-        "sow-glue-staging-unavailable",
-        "glue.staging.unavailable",
-    ]
-    for literal in required:
-        assert literal in text, f"glue-observability.sh lost required literal: {literal!r}"
+def test_observability_uses_native_alarms_and_bounded_retention() -> None:
+    text = read_code(OBSERVABILITY)
+    assert "put-metric-filter" not in text
+    for literal in (
+        "put-metric-alarm", "--treat-missing-data notBreaching", "--retention-in-days 14",
+        "sow-glue-dlq-arrival", "sow-glue-queue-age", "sow-glue-lambda-errors",
+        "ApproximateNumberOfMessagesVisible", "ApproximateAgeOfOldestMessage",
+        "Errors AWS/Lambda",
+    ):
+        assert literal in text
 
 
 def test_observability_alarm_dimensions_use_name_value_pairs() -> None:
@@ -327,22 +143,14 @@ def test_observability_alarm_dimensions_use_name_value_pairs() -> None:
         assert literal in text, f"glue-observability.sh lost dimension pair: {literal!r}"
 
 
-def test_deploy_workflow_reuses_the_render_image_and_publishes_a_version() -> None:
-    text = read(DEPLOY_WORKFLOW)
-    required = [
-        "deploy-glue-worker",
-        "needs.deploy-render-worker.outputs.image",
-        "aws lambda update-function-code",
-        "--function-name sow-glue-worker",
-        "aws lambda publish-version",
-        "SOW_ELEVENLABS_API_KEY",
-        "CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn",
-        "Timeout",
-        "3300",
-        "exit 1",
-    ]
-    for literal in required:
-        assert literal in text, f"deploy.yml lost required literal: {literal!r}"
+def test_deploy_workflow_reuses_render_image_on_standard_lambda() -> None:
+    text = read(DEPLOY_WORKFLOW).split("  deploy-glue-worker:", 1)[1]
+    for literal in (
+        "needs.deploy-render-worker.outputs.image", "aws lambda update-function-code",
+        "--function-name sow-glue-worker-standard", ".Timeout == 180 and .Capacity == null",
+    ):
+        assert literal in text
+    assert "publish-version" not in text
 
 
 def test_deploy_workflow_sets_the_key_only_on_the_glue_job_block() -> None:
@@ -362,7 +170,6 @@ def test_env_examples_document_glue_variables_as_server_worker_only() -> None:
         for variable in (
             "SOW_GLUE_SQS_QUEUE_URL=",
             "SOW_ELEVENLABS_API_KEY=",
-            "GLUE_CAPACITY_PROVIDER_ARN=",
         ):
             assert variable in text, f"{path} is missing {variable}"
         assert "NEXT_PUBLIC_SOW_ELEVENLABS_API_KEY" not in text
@@ -375,13 +182,13 @@ def test_worker_readme_documents_all_glue_deployment_facts() -> None:
     required = [
         "sow-glue-jobs",
         "sow-glue-jobs-dlq",
-        "3500",
+        "1080",
         "maxReceiveCount",
         "batch size 1",
         "ReportBatchItemFailures",
         "sow-glue-worker",
-        "3300",
-        "Managed Instances",
+        "180",
+        "standard Lambda",
         "concurrency 2",
         "SOW_ELEVENLABS_API_KEY",
         "Glue function only",
@@ -390,7 +197,6 @@ def test_worker_readme_documents_all_glue_deployment_facts() -> None:
         "paid",
         "GLUE_NOT_CONFIGURED",
         "before any paid reservation or spend",
-        "publish-version",
     ]
     for literal in required:
         assert literal in text, f"render-worker README lost required fact: {literal!r}"
@@ -422,10 +228,7 @@ def test_runbook_covers_inspection_and_all_seven_recovery_classes() -> None:
         "Keep terminal jobs",
         # Alert names from the observability script.
         "sow-glue-dlq-arrival",
-        "sow-glue-provider-ambiguous",
         "sow-glue-queue-age",
-        "sow-glue-heartbeat-missing",
-        "sow-glue-staging-recovery-spike",
     ]
     for literal in required:
         assert literal in text, f"runbook lost required fact: {literal!r}"
