@@ -13,3 +13,4 @@ python-dotenv>=1.0.0
 # wheel that cp313 accepts.
 soundfile==0.12.1
 urllib3>=2.0.0
+modal==1.6.4

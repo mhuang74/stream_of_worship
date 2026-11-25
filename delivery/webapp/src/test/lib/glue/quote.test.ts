@@ -9,6 +9,7 @@ import {
   type GlueJunctionReady,
   type GlueResolverItem,
 } from "@/lib/glue/quote";
+import { buildGlueExcerptKey } from "@/lib/glue/excerpt-key";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -197,5 +198,24 @@ describe("computeGlueQuote", () => {
     expect(core.blockedSides).toEqual([{ side: "A", code: "GLUE_EXCERPT_TOO_SHORT" }]);
     expect(core.uncachedSides).toEqual([{ side: "B", seconds: 12, credits: 180 }]);
     expect(core.uploadCredits).toBe(180);
+  });
+
+  it("allows a GPU quote for a rejected excerpt and still enforces minimum length", () => {
+    const derivation = ready();
+    const rejected = new Set([buildGlueExcerptKey({
+      side: "A", seconds: derivation.fromSide.excerptSeconds,
+      contentHash: derivation.fromSide.contentHash, steps: derivation.fromSide.steps,
+    }).key]);
+    expect(computeGlueQuote(derivation, new Set(), rejected).blockedSides)
+      .toEqual([{ side: "A", code: "GLUE_COPYRIGHT_REJECTED" }]);
+    expect(computeGlueQuote(derivation, new Set(), rejected, true)).toMatchObject({
+      blockedSides: [],
+      uncachedSides: [],
+      estimatedNewCredits: 0,
+    });
+    expect(computeGlueQuote({
+      ...derivation, fromSide: { ...derivation.fromSide, excerptTooShort: true },
+    }, new Set(), rejected, true).blockedSides)
+      .toEqual([{ side: "A", code: "GLUE_EXCERPT_TOO_SHORT" }]);
   });
 });

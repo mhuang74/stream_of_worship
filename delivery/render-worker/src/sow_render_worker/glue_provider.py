@@ -187,12 +187,14 @@ class ElevenLabsHttpTransport:
         *,
         pool: urllib3.PoolManager | None = None,
         lambda_context: Any = None,
+        deadline: Callable[[], float] | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("ElevenLabsHttpTransport requires an API key")
         self._api_key = api_key
         self._pool = pool or urllib3.PoolManager()
         self._lambda_context = lambda_context
+        self._deadline = deadline
 
     # -- timeouts ---------------------------------------------------------
 
@@ -202,9 +204,22 @@ class ElevenLabsHttpTransport:
             seconds = min(seconds, max(0.001, remaining))
         return urllib3.Timeout(total=seconds, connect=min(CONNECT_TIMEOUT_SECONDS, seconds))
 
+    def _request_deadline(self, seconds: float) -> float:
+        deadline = time.monotonic() + seconds
+        return min(deadline, self._deadline()) if self._deadline else deadline
+
+    def _request_timeout(self, deadline: float, default: float) -> urllib3.Timeout:
+        if self._deadline is None:
+            return self._timeout(default)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ProviderNotSent("Provider deadline reached before request")
+        return self._timeout(remaining)
+
     # -- calls ------------------------------------------------------------
 
     def upload(self, wav_path: str | Path) -> str:
+        deadline = self._request_deadline(UPLOAD_READ_TIMEOUT_SECONDS)
         path = Path(wav_path)
         try:
             body = path.read_bytes()
@@ -213,7 +228,6 @@ class ElevenLabsHttpTransport:
         encoded, content_type = urllib3.filepost.encode_multipart_formdata(
             [("file", (path.name, body, "audio/wav"))]
         )
-        deadline = time.monotonic() + UPLOAD_READ_TIMEOUT_SECONDS
         response = self._send(
             "POST",
             UPLOAD_URL,
@@ -223,7 +237,7 @@ class ElevenLabsHttpTransport:
                 "Content-Type": content_type,
                 "Accept": "application/json",
             },
-            timeout=self._timeout(UPLOAD_READ_TIMEOUT_SECONDS),
+            timeout=self._request_timeout(deadline, UPLOAD_READ_TIMEOUT_SECONDS),
             preload_content=False,
         )
         try:
@@ -255,7 +269,7 @@ class ElevenLabsHttpTransport:
             response.release_conn()
 
     def compose(self, request: dict[str, Any]) -> Iterator[bytes]:
-        deadline = time.monotonic() + COMPOSE_READ_TIMEOUT_SECONDS
+        deadline = self._request_deadline(COMPOSE_READ_TIMEOUT_SECONDS)
         body = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         response = self._send(
             "POST",
@@ -266,10 +280,21 @@ class ElevenLabsHttpTransport:
                 "Content-Type": "application/json",
                 "Accept": "application/octet-stream",
             },
-            timeout=self._timeout(COMPOSE_READ_TIMEOUT_SECONDS),
+            timeout=self._request_timeout(deadline, COMPOSE_READ_TIMEOUT_SECONDS),
             preload_content=False,
         )
         if response.status >= 400:
+            if self._deadline:
+                with contextlib.closing(self._iter_response(response, deadline)) as chunks:
+                    data = bytearray()
+                    for chunk in chunks:
+                        data.extend(chunk)
+                        if len(data) >= MAX_ERROR_BODY_BYTES:
+                            break
+                raise _error_for_response(
+                    response.status, bytes(data[:MAX_ERROR_BODY_BYTES]).decode("utf-8", "replace"),
+                    "compose",
+                )
             try:
                 raise _error_for_response(response.status, _response_text(response), "compose")
             finally:
@@ -320,6 +345,7 @@ class ElevenLabsHttpTransport:
                 headers=headers,
                 timeout=timeout,
                 retries=False,
+                redirect=False,
                 preload_content=preload_content,
                 decode_content=False,
             )
@@ -727,6 +753,8 @@ def create_provider_stage(
     sleep: Callable[[float], None] | None = None,
     api_key: str | None = None,
     max_response_bytes: int = MAX_RESPONSE_BYTES,
+    authorize: Callable[[str], None] | None = None,
+    accept: Callable[[Path], None] | None = None,
 ) -> Callable[..., None]:
     """Return the production ``provider_stage`` callable.
 
@@ -764,6 +792,8 @@ def create_provider_stage(
             lambda_context=lambda_context,
             sleep=nap,
             max_response_bytes=max_response_bytes,
+            authorize=authorize,
+            accept=accept,
         )
 
     return provider_stage
@@ -783,6 +813,8 @@ def _run_stage(
     lambda_context: Any,
     sleep: Callable[[float], None],
     max_response_bytes: int,
+    authorize: Callable[[str], None] | None = None,
+    accept: Callable[[Path], None] | None = None,
 ) -> None:
     log_event("glue.provider.stage.started", phase=job.phase, cacheHit=False)
 
@@ -848,11 +880,16 @@ def _run_stage(
 
         # Deadline before the in-flight phase: a refusal here is definitely
         # unsent work and must not be mistaken for an ambiguous upload later.
-        _pre_request_heartbeat(spine, conn, job, log_event, stage=f"upload-{side.lower()}")
-        spine.require_deadline(lambda_context, "upload", pending_uploads=pending_uploads)
-        updated = set_glue_phase(
-            conn, job.id, job.user_id, "uploading", provider_phase=f"upload-{side.lower()}"
-        )
+        operation = f"upload-{side.lower()}"
+        if authorize:
+            authorize(operation)
+            updated = True
+        else:
+            _pre_request_heartbeat(spine, conn, job, log_event, stage=operation)
+            spine.require_deadline(lambda_context, "upload", pending_uploads=pending_uploads)
+            updated = set_glue_phase(
+                conn, job.id, job.user_id, "uploading", provider_phase=operation
+            )
         if updated is None:
             # The job is no longer active: cancellation won before any request.
             # Leave the terminal row untouched and send nothing.
@@ -864,7 +901,7 @@ def _run_stage(
             return
 
         try:
-            song_id = _retry_not_sent(
+            song_id = transport.upload(excerpt.wav_path) if authorize else _retry_not_sent(
                 lambda: _upload_with_budget(
                     spine, lambda_context, transport, excerpt.wav_path, pending_uploads
                 ),
@@ -874,7 +911,8 @@ def _run_stage(
                 retry_allowed=lambda_context is None,
             )
         except GlueProviderError as exc:
-            _record_provider_status(conn, job, "uploading", exc.provider_status, log_event)
+            if not authorize:
+                _record_provider_status(conn, job, "uploading", exc.provider_status, log_event)
             # One sanitized sentence for every sink: the negative cache, this
             # log line, and the terminal `glue_jobs.error_detail`. A provider
             # body carrying a URL, path, or key word falls back to the code.
@@ -939,9 +977,13 @@ def _run_stage(
     # Heartbeat, then the full compose reserve *before* entering the in-flight
     # phase: a refusal here is still definitely-unsent work (free resume) and
     # must not look like an ambiguous compose on redelivery.
-    _pre_request_heartbeat(spine, conn, job, log_event, stage="composing")
-    spine.require_deadline(lambda_context, "compose")
-    updated = set_glue_phase(conn, job.id, job.user_id, "composing", provider_phase="compose")
+    if authorize:
+        authorize("compose")
+        updated = True
+    else:
+        _pre_request_heartbeat(spine, conn, job, log_event, stage="composing")
+        spine.require_deadline(lambda_context, "compose")
+        updated = set_glue_phase(conn, job.id, job.user_id, "composing", provider_phase="compose")
     if updated is None:
         # Cancelled before the compose request was sent: no compose, no rewrite
         # of the already-terminal job.
@@ -957,7 +999,8 @@ def _run_stage(
                 transport.compose(request), work_dir=work_dir, max_bytes=max_response_bytes
             )
         except GlueProviderError as exc:
-            _record_provider_status(conn, job, "composing", exc.provider_status, log_event)
+            if not authorize:
+                _record_provider_status(conn, job, "composing", exc.provider_status, log_event)
             detail = sanitize_detail(exc.safe_detail, fallback=exc.code)
             log_event(
                 "glue.provider.ambiguous" if exc.retry_kind == "paid" else "glue.provider.failed",
@@ -969,6 +1012,9 @@ def _run_stage(
             )
             raise _glue_job_error(spine, exc.code, exc.retry_kind, detail) from exc
 
+        if accept:
+            accept(raw_path)
+            return
         key = raw_response_key(job)
         # The raw object is a free infrastructure write: bounded retries are
         # safe here because the bytes are already ours and the key is

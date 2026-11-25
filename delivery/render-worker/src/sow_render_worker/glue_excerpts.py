@@ -594,6 +594,7 @@ def prepare_excerpt(
     work_dir: str | Path,
     local_only: bool = False,
     preparation_time=None,
+    include_rejected_audio: bool = False,
 ) -> PreparedExcerpt:
     """Build (or reuse) one side's canonical WAV and persist its cache state.
 
@@ -622,7 +623,9 @@ def prepare_excerpt(
             steps=canonical_steps,
         )[1]
         cached = _cached_excerpt(conn, user_id, predicted_key)
-        if cached is not None and (not local_only or cached.rejection_code):
+        if cached is not None and (
+            not local_only or (cached.rejection_code and not include_rejected_audio)
+        ):
             return cached
 
     source = asset_fetcher.download_audio(recording_hash_prefix)
@@ -655,7 +658,7 @@ def prepare_excerpt(
     if logical_key != predicted_key or local_only:
         cached = _cached_excerpt(conn, user_id, logical_key)
         if cached is not None:
-            if not local_only or cached.rejection_code:
+            if not local_only or (cached.rejection_code and not include_rejected_audio):
                 wav_path.unlink(missing_ok=True)
                 return cached
             return replace(cached, wav_path=wav_path, audio_sha256=audio_sha256)

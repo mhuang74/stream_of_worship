@@ -92,6 +92,7 @@ export interface GlueQuoteCore {
   /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   estimatedNewCredits: number;
   blockedSides: GlueBlockedSide[];
+  gpuFallback?: boolean;
 }
 
 export interface GlueQuoteFields extends GlueQuoteCore {
@@ -229,10 +230,12 @@ export function deriveGlueJunction(
 export function computeGlueQuote(
   derivation: GlueJunctionReady,
   cachedExcerptKeys: ReadonlySet<string>,
-  rejectedExcerptKeys: ReadonlySet<string>
+  rejectedExcerptKeys: ReadonlySet<string>,
+  gpuFallback = false
 ): GlueQuoteCore {
   const uncachedSides: GlueExcerptSideQuote[] = [];
   const blockedSides: GlueBlockedSide[] = [];
+  let gpuOnly = false;
 
   const sides: Array<{ side: "A" | "B"; value: GlueJunctionSide }> = [
     { side: "A", value: derivation.fromSide },
@@ -245,12 +248,16 @@ export function computeGlueQuote(
       contentHash: value.contentHash,
       steps: value.steps,
     }).key;
-    if (rejectedExcerptKeys.has(excerptKey)) {
+    if (rejectedExcerptKeys.has(excerptKey) && !gpuFallback) {
       blockedSides.push({ side, code: "GLUE_COPYRIGHT_REJECTED" });
       continue;
     }
     if (value.excerptTooShort) {
       blockedSides.push({ side, code: "GLUE_EXCERPT_TOO_SHORT" });
+      continue;
+    }
+    if (rejectedExcerptKeys.has(excerptKey)) {
+      gpuOnly = true;
       continue;
     }
     if (cachedExcerptKeys.has(excerptKey)) continue;
@@ -261,10 +268,10 @@ export function computeGlueQuote(
     });
   }
 
-  const uploadCredits = uncachedSides.reduce((sum, side) => sum + side.credits, 0);
-  const generationCredits = roundCredits(derivation.generationSeconds);
+  const uploadCredits = gpuOnly ? 0 : uncachedSides.reduce((sum, side) => sum + side.credits, 0);
+  const generationCredits = gpuOnly ? 0 : roundCredits(derivation.generationSeconds);
   return {
-    uncachedSides,
+    uncachedSides: gpuOnly ? [] : uncachedSides,
     generationSeconds: derivation.generationSeconds,
     uploadCredits,
     generationCredits,
@@ -405,7 +412,8 @@ export async function getGlueQuote(args: {
     derivation.fromSide.contentHash,
     derivation.toSide.contentHash,
   ]);
-  const core = computeGlueQuote(derivation, cached, rejected);
+  const gpuFallback = process.env.SOW_GLUE_PROVIDER === "cascade";
+  const core = computeGlueQuote(derivation, cached, rejected, gpuFallback);
   const quota = await readGlueQuota(args.userId);
   return {
     descriptorKey: derivation.descriptorKey,
@@ -414,6 +422,7 @@ export async function getGlueQuote(args: {
     expectedFromUpdatedAt: from.updatedAt,
     expectedToUpdatedAt: to!.updatedAt,
     ...core,
+    ...(gpuFallback ? { gpuFallback } : {}),
     quotaLimit: quota.limit,
     quotaUsed: quota.used,
     quotaRemaining: quota.remaining,

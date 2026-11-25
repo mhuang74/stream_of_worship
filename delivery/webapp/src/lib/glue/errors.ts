@@ -28,6 +28,7 @@ export const GLUE_ERROR_CODES = [
   "GLUE_PROVIDER_PLAN",
   "GLUE_COPYRIGHT_REJECTED",
   "GLUE_AUDIO_UNAVAILABLE",
+  "GLUE_JUNCTION_AUDIO_UNAVAILABLE",
 ] as const;
 
 export type GlueErrorCode = (typeof GLUE_ERROR_CODES)[number];
@@ -65,6 +66,7 @@ const GLUE_ERROR_MESSAGE_KEYS: Record<GlueErrorCode, string> = {
   GLUE_PROVIDER_PLAN: "glue.error.providerPlan",
   GLUE_COPYRIGHT_REJECTED: "glue.error.copyrightRejected",
   GLUE_AUDIO_UNAVAILABLE: "glue.error.audioUnavailable",
+  GLUE_JUNCTION_AUDIO_UNAVAILABLE: "glue.error.junctionAudioUnavailable",
 };
 
 export const GLUE_UNKNOWN_ERROR_MESSAGE_KEY = "glue.error.unknown";
@@ -96,6 +98,7 @@ const GLUE_ERROR_HTTP_STATUS: Record<GlueErrorCode, number> = {
   GLUE_PROVIDER_PLAN: 409,
   GLUE_COPYRIGHT_REJECTED: 422,
   GLUE_AUDIO_UNAVAILABLE: 409,
+  GLUE_JUNCTION_AUDIO_UNAVAILABLE: 422,
 };
 
 export function glueErrorHttpStatus(code: string): number {

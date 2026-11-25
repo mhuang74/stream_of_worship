@@ -405,10 +405,10 @@ reduces render throughput.
 |---|---|
 | Queue | `sow-glue-jobs` |
 | Dead-letter queue | `sow-glue-jobs-dlq` |
-| Visibility timeout | At least 3,600 s |
+| Visibility timeout | At least 4,680 s |
 | Redrive | `maxReceiveCount: 3` |
 | Function | `sow-glue-worker-standard` on standard Lambda |
-| Function timeout | 600 s |
+| Function timeout | 780 s |
 | Event source mapping | batch size 1, `ReportBatchItemFailures`, concurrency 2 |
 
 Run `deploy/aws-up-glue.sh` to provision the standard function and its disabled queue mapping. The [operator runbook](../../docs/glue-operator-runbook.md) covers routine operation and image-only rollback.
@@ -424,11 +424,11 @@ inpainting access, sufficient credits, supported model `music_v2_5`, and
 capacity for concurrency 2. Account entitlement/plan failures are
 non-retryable in place.
 
-Set `SOW_GLUE_PROVIDER=simdps` on the Glue function after the staging
-gates. It also needs `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID`. The default
-`elevenlabs` setting continues to use ElevenLabs for fresh attempts.
-ElevenLabs credentials are required in both modes. The Runpod worker image
-and scratch procedure are described in the [operator runbook](../../docs/glue-operator-runbook.md#runpod-staging-and-rollout).
+The default `SOW_GLUE_PROVIDER=elevenlabs` selects ElevenLabs for fresh jobs.
+Static `simdps` uses RunPod where the Junction is eligible. Set
+`SOW_GLUE_PROVIDER=cascade` on the Glue function and in the webapp server
+environment after staging and operator approval. The cascade requires RunPod
+and Modal credentials on the Glue function. The [operator runbook](../../docs/glue-operator-runbook.md#provider-cascade) covers staging, deployment, and rollback.
 
 Run `deploy/glue-observability.sh` for native CloudWatch alarms and 14-day structured log retention. Set `GLUE_ALARM_SNS_TOPIC_ARN` for notifications.
 

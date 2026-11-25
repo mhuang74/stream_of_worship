@@ -93,9 +93,13 @@ export const glueBundle = bundle({
       "This recording cannot be used for an AI transition.",
     "glue.error.audioUnavailable":
       "The AI transition audio could not be loaded. Try again.",
+    "glue.error.junctionAudioUnavailable":
+      "Audio is unavailable for this junction. Adjust the arrangement or transition length, then try again.",
     "glue.job.heading": "AI transition",
     "glue.job.reference": "Request {id}",
     "glue.job.elapsed": "{seconds} s elapsed",
+    "glue.job.takingLonger":
+      "Generation is taking longer than expected. You can close this editor and come back while it continues.",
     "glue.job.generate": "Create AI transition",
     "glue.job.tryAnother": "Try another",
     "glue.job.cancel": "Cancel",
@@ -190,9 +194,12 @@ export const glueBundle = bundle({
     "glue.error.providerPlan": "AI 服務拒絕了這段轉場。",
     "glue.error.copyrightRejected": "這首錄音無法用於 AI 轉場。",
     "glue.error.audioUnavailable": "無法載入 AI 轉場音訊，請再試一次。",
+    "glue.error.junctionAudioUnavailable":
+      "這個銜接點目前無法產生音訊。請調整編排或轉場長度後再試一次。",
     "glue.job.heading": "AI 轉場",
     "glue.job.reference": "請求 {id}",
     "glue.job.elapsed": "已進行 {seconds} 秒",
+    "glue.job.takingLonger": "產生轉場所需的時間比預期久。你可以先關閉編輯器，稍後再回來查看。",
     "glue.job.generate": "建立 AI 轉場",
     "glue.job.tryAnother": "再試一次",
     "glue.job.cancel": "取消",

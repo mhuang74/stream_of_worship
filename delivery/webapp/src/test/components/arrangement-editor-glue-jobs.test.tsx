@@ -205,7 +205,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response;
 }
 
-function installFetch(initialStatuses: GlueJobStatus[] = []): Harness {
+function installFetch(
+  initialStatuses: GlueJobStatus[] = [],
+  quote = QUOTE as typeof QUOTE & { gpuFallback?: boolean }
+): Harness {
   let activeStatuses = initialStatuses;
   const harness: Harness = {
     createBodies: [],
@@ -222,7 +225,7 @@ function installFetch(initialStatuses: GlueJobStatus[] = []): Harness {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
-      if (url.includes("glue-quote")) return jsonResponse(QUOTE);
+      if (url.includes("glue-quote")) return jsonResponse(quote);
       if (url.includes("?active=1")) {
         harness.discoveryCalls += 1;
         return jsonResponse({
@@ -260,7 +263,7 @@ function installFetch(initialStatuses: GlueJobStatus[] = []): Harness {
   return harness;
 }
 
-function renderSheet(items?: SongListItem[]) {
+function renderSheet(items?: SongListItem[], locale: "en" | "zh-Hant" = "en") {
   const allItems = items ?? [makeItem(), successor()];
   return render(
     <ArrangementEditorSheet
@@ -271,7 +274,8 @@ function renderSheet(items?: SongListItem[]) {
       onSave={vi.fn().mockResolvedValue(undefined)}
       songsetId="songset-1"
       onUpdateGlue={vi.fn().mockResolvedValue(undefined)}
-    />
+    />,
+    locale
   );
 }
 
@@ -359,6 +363,44 @@ describe("ArrangementEditorSheet AI transition take menu", () => {
 });
 
 describe("ArrangementEditorSheet AI transition jobs", () => {
+  it.each([
+    ["en", /You can close this editor/, "Try again with a new paid request"],
+    ["zh-Hant", /你可以先關閉編輯器/, "以新的付費請求重試"],
+  ] as const)("rediscovers a long-running job and its paid retry in %s", async (
+    locale, longer, retry
+  ) => {
+    const harness = installFetch([jobStatus({ elapsedSeconds: 179 })]);
+    const first = renderSheet(undefined, locale);
+    await screen.findByTestId("arrangement-glue-elapsed");
+    expect(screen.queryByTestId("arrangement-glue-taking-longer")).toBeNull();
+    first.unmount();
+
+    harness.setActive([jobStatus({ elapsedSeconds: 180, phase: "composing", providerContacted: true })]);
+    const second = renderSheet(undefined, locale);
+    expect((await screen.findByTestId("arrangement-glue-taking-longer")).textContent).toMatch(longer);
+    second.unmount();
+
+    harness.setActive([jobStatus({
+      active: false, phase: "failed", retryKind: "paid", providerContacted: true,
+      errorCode: "GLUE_WORKER_FAILED",
+    })]);
+    renderSheet(undefined, locale);
+    await screen.findByTestId("arrangement-glue-job-error");
+    expect(screen.getByText(retry)).toBeTruthy();
+    expect(screen.queryByTestId("arrangement-glue-taking-longer")).toBeNull();
+    expect(screen.getByTestId("arrangement-glue-generate")).toBeEnabled();
+  });
+
+  it("allows a new generation after a legacy copyright failure in cascade mode", async () => {
+    installFetch([jobStatus({
+      active: false, phase: "failed", retryKind: "none", errorCode: "GLUE_COPYRIGHT_REJECTED",
+    })], { ...QUOTE, gpuFallback: true });
+    renderSheet();
+    await screen.findByTestId("arrangement-glue-job");
+    expect(await screen.findByTestId("arrangement-glue-generate")).toBeEnabled();
+    expect(screen.queryByTestId("arrangement-glue-job-error")).toBeNull();
+  });
+
   it("confirms one attempt, quota, and reset before starting a paid job", async () => {
     const harness = installFetch();
     renderSheet();
