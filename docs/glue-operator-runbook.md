@@ -230,7 +230,8 @@ queued job resumes with its real phase rather than a fabricated percent.
 2. Run `deploy/aws-up-glue.sh` for the replacement. It creates the new production mapping disabled and preserves the legacy queue visibility. For a preflight queue, set `GLUE_QUEUE_NAME` to a test queue name.
 3. Verify the replacement on the test queue, then disable the legacy mapping and wait for it to reach `Disabled` and for old invocations to finish. Set production queue visibility to 1,080 seconds and enable the new mapping. The Lambda deployment targets the unqualified standard function.
 4. Verify a production delivery, then deactivate the legacy `$LATEST.PUBLISHED` version. Verify the provider's managed EC2 instances terminate. Remove the three retired alarms (`sow-glue-provider-ambiguous`, `sow-glue-heartbeat-missing`, `sow-glue-staging-recovery-spike`) and the legacy Glue log group's `SOW/Glue` metric filters.
-5. To roll back, disable the new mapping first, restore queue visibility to 3,500 seconds, reactivate legacy `$LATEST.PUBLISHED` with min 0 / max 2, and enable its mapping. Keep numbered version `1` deactivated.
+5. Scope the CI policy `lambda-render-worker-deploy` to `sow-glue-worker-standard` for Glue deployment. Use the operator profile for manual Managed Instances rollback.
+6. To roll back, disable the new mapping first, restore queue visibility to 3,500 seconds, reactivate legacy `$LATEST.PUBLISHED` with min 0 / max 2, and enable its mapping. Keep numbered version `1` deactivated.
 
 ## Alerts and spend
 

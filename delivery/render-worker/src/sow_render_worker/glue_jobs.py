@@ -963,7 +963,6 @@ def _run_staging_mode(
     asset_fetcher: Any = None,
 ) -> None:
     """Free staging recovery entry: never calls the provider stage."""
-    contacted = bool(job.provider_contacted)
     try:
         if not _has_durable_provider_success(job):
             _finish_terminal(
@@ -1012,4 +1011,4 @@ def _run_staging_mode(
     except GlueConfigurationError:
         raise
     except Exception as exc:
-        _handle_failure(conn, job, exc, contacted=contacted, log=log)
+        _handle_failure(conn, job, exc, contacted=False, log=log)

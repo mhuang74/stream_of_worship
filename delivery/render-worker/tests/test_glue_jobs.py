@@ -460,6 +460,26 @@ def test_staging_mode_without_raw_metadata_fails_paid(worker):
     worker.mocks["set_glue_phase"].assert_not_called()
 
 
+def test_recovery_with_durable_response_keeps_storage_error_retry_free(worker, monkeypatch):
+    job = _make_job(
+        phase="composing",
+        provider_contacted=True,
+        paid_reservation_state="consumed",
+        raw_response_r2_key="glues/7/jobs/x/response.pcm",
+        raw_response_sha256="e" * 64,
+        raw_response_bytes=1234,
+    )
+    worker.mocks["claim_glue_job"].return_value = (job, True)
+    staging = MagicMock(side_effect=OSError("Storage temporarily unavailable"))
+    monkeypatch.setattr(glue_jobs, "_load_staging_stage", lambda: staging)
+    provider = _FakeProviderStage()
+
+    _run(worker, provider)
+
+    assert _finish_kwargs(worker)["retry_kind"] == "free"
+    assert provider.calls == []
+
+
 def test_staging_mode_runs_staging_stage_and_never_provider(worker, monkeypatch):
     job = _make_job(
         phase="storing-response",
