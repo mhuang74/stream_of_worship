@@ -70,8 +70,11 @@ export interface ResolvedGlueActiveJob {
 export interface ResolvedGlueJunctionQuote {
   uncachedSides: GlueQuoteCore["uncachedSides"];
   generationSeconds: number;
+  /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   uploadCredits: number;
+  /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   generationCredits: number;
+  /** @deprecated Compatibility for deployed bundles. New clients display attempts. */
   estimatedNewCredits: number;
 }
 

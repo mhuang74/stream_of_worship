@@ -37,7 +37,7 @@ from sow_render_worker.db import (
     finish_glue_job_ready,
     get_glue_job,
 )
-from sow_render_worker.glue_descriptor import canonical_six_dp
+from sow_render_worker.glue_descriptor import canonical_six_dp, milliseconds_to_frames
 from sow_render_worker.glue_provider import generation_duration_ms
 
 SAMPLE_RATE = 44_100
@@ -210,11 +210,11 @@ class PreparedTake:
     metrics: dict[str, Any]
 
 
-def decode_stereo_pcm16(raw: bytes) -> np.ndarray:
+def decode_stereo_pcm16(raw: bytes, *, headerless: bool = False) -> np.ndarray:
     """Decode RIFF WAV or raw ``pcm_44100`` into an (N, 2) int16 array."""
     if len(raw) == 0:
         raise StagingGeometryError("The stored provider response is empty")
-    if raw[:4] == b"RIFF":
+    if not headerless and raw[:4] == b"RIFF":
         samples, sample_rate = sf.read(io.BytesIO(raw), dtype="int16", always_2d=True)
         if int(sample_rate) != SAMPLE_RATE:
             raise StagingGeometryError(
@@ -370,6 +370,13 @@ def _wav_bytes(samples: np.ndarray) -> bytes:
     return buffer.getvalue()
 
 
+def validate_generated_level(generated: np.ndarray) -> float:
+    level = _db(_rms(_mono(generated)))
+    if level is None or not np.isfinite(level) or level < MIN_GENERATED_RMS_DBFS:
+        raise _worker_error("The generated AI transition is below the minimum audio level")
+    return level
+
+
 def prepare_staged_take(
     raw: bytes,
     *,
@@ -380,7 +387,8 @@ def prepare_staged_take(
     generation_shortfall_tolerance_seconds: float = MIN_RESPONSE_SHORTFALL_SECONDS,
 ) -> PreparedTake:
     """Decode, measure, trim and render the staged WAV (no DB or R2 writes)."""
-    seam = decode_stereo_pcm16(raw)
+    route = getattr(job, "provider_context_json", None) or {}
+    seam = decode_stereo_pcm16(raw, headerless=route.get("provider") == "simdps")
     from_payload = descriptor.get("from") if isinstance(descriptor, dict) else None
     to_payload = descriptor.get("to") if isinstance(descriptor, dict) else None
     if not isinstance(from_payload, dict) or not isinstance(to_payload, dict):
@@ -405,9 +413,12 @@ def prepare_staged_take(
         generation_ms = generation_duration_ms(int(beats), float(tempo))
     except (TypeError, ValueError) as exc:
         raise _worker_error("The stored descriptor has invalid beats or tempo") from exc
-    requested_generation_samples = _seconds_to_samples(generation_ms / 1000.0)
+    requested_generation_samples = milliseconds_to_frames(generation_ms)
     a_samples = _seconds_to_samples(float(a_seconds))
     b_samples = _seconds_to_samples(float(b_seconds))
+
+    if route.get("provider") == "simdps":
+        a_samples, b_samples = route["a_frames"], route["b_frames"]
 
     total = seam.shape[0]
     expected = a_samples + requested_generation_samples + b_samples
@@ -441,13 +452,7 @@ def prepare_staged_take(
         b_start = glue_start + requested_generation_samples
         speech_b = seam[b_start:]
 
-    generated_mono = _mono(generated)
-    generated_rms = _rms(generated_mono)
-    generated_rms_db = _db(generated_rms)
-    if generated_rms_db is None or generated_rms_db < MIN_GENERATED_RMS_DBFS:
-        raise _worker_error(
-            "The generated AI transition is below the minimum audio level"
-        )
+    generated_rms_db = validate_generated_level(generated)
 
     context = _seconds_to_samples(ENVELOPE_REFERENCE_SECONDS)
     left_width = min(context, glue_start)
@@ -645,6 +650,13 @@ def record_staged_take(
     """
     key = _take_object_key(job)
     metrics = dict(prepared.metrics)
+    route = getattr(job, "provider_context_json", None) or {}
+    metrics.update(provider=route.get("provider", "elevenlabs"),
+                   providerModel=route.get("model", "music_v2_5"))
+    if route.get("provider") == "simdps":
+        metrics.update(upstreamRevision=route["upstream_revision"],
+                       checkpointRevision=route["checkpoint_revision"],
+                       searchSource=route["search_source"])
     metrics["audioSha256"] = wav_sha256
     metrics_json = json.dumps(metrics, ensure_ascii=False, sort_keys=True)
     reasons_json = json.dumps(list(prepared.reasons), ensure_ascii=False)

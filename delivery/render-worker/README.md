@@ -405,10 +405,10 @@ reduces render throughput.
 |---|---|
 | Queue | `sow-glue-jobs` |
 | Dead-letter queue | `sow-glue-jobs-dlq` |
-| Visibility timeout | 1080 s |
+| Visibility timeout | At least 3,600 s |
 | Redrive | `maxReceiveCount: 3` |
 | Function | `sow-glue-worker-standard` on standard Lambda |
-| Function timeout | 180 s |
+| Function timeout | 600 s |
 | Event source mapping | batch size 1, `ReportBatchItemFailures`, concurrency 2 |
 
 Run `deploy/aws-up-glue.sh` to provision the standard function and its disabled queue mapping. The [operator runbook](../../docs/glue-operator-runbook.md) covers routine operation and image-only rollback.
@@ -416,13 +416,19 @@ Run `deploy/aws-up-glue.sh` to provision the standard function and its disabled 
 `SOW_ELEVENLABS_API_KEY` is set on the **Glue function only**. It is never set
 on the render-worker function, never returned to the browser, and never
 `NEXT_PUBLIC_*`. If the key is missing, the job fails with
-`GLUE_NOT_CONFIGURED` before any paid reservation or spend. Creating the key
+`GLUE_NOT_CONFIGURED` before provider contact and releases the attempt. Creating the key
 and making paid calls requires separate authorization (spec §7.3).
 
 Provider account prerequisites: a paid ElevenLabs workspace with Music
 inpainting access, sufficient credits, supported model `music_v2_5`, and
 capacity for concurrency 2. Account entitlement/plan failures are
 non-retryable in place.
+
+Set `SOW_GLUE_PROVIDER=simdps` on the Glue function after the staging
+gates. It also needs `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID`. The default
+`elevenlabs` setting continues to use ElevenLabs for fresh attempts.
+ElevenLabs credentials are required in both modes. The Runpod worker image
+and scratch procedure are described in the [operator runbook](../../docs/glue-operator-runbook.md#runpod-staging-and-rollout).
 
 Run `deploy/glue-observability.sh` for native CloudWatch alarms and 14-day structured log retention. Set `GLUE_ALARM_SNS_TOPIC_ARN` for notifications.
 

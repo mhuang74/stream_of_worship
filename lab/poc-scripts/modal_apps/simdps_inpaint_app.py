@@ -1,62 +1,35 @@
 """Serve the pinned SimDPS-Multi sampler for the Glue POC on Modal."""
 
 from io import BytesIO
-from math import gcd
+from pathlib import Path
+import sys
 from time import perf_counter
 
 import modal
 import numpy as np
 
+SHARED_AUDIO = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "delivery" / "render-worker" / "src" / "sow_render_worker" / "simdps_audio.py"
+)
+if not SHARED_AUDIO.is_file():
+    SHARED_AUDIO = Path("/root/simdps_audio.py")
+sys.path.insert(0, str(SHARED_AUDIO.parent))
+from simdps_audio import CHANNELS, MODEL_ID, SAMPLE_RATE, UPSTREAM_REVISION, extract_fill  # noqa: E402
+
 APP_NAME = "sow-simdps-poc"
-MODEL_ID = "acestep-v15-base"
-UPSTREAM_REVISION = "f5175f14b3be67e28ffc7c95874265a0390a9ada"
 UPSTREAM_REPO = "https://github.com/s-turland/SimDPSInpainting.git"
 MODEL_CACHE = "/models"
-SAMPLE_RATE = 44100
-CHANNELS = 2
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git", "libsndfile1")
     .pip_install("torch==2.8.0", index_url="https://download.pytorch.org/whl/cu128")
     .pip_install(f"simdps[acestep] @ git+{UPSTREAM_REPO}@{UPSTREAM_REVISION}")
+    .add_local_file(SHARED_AUDIO, "/root/simdps_audio.py")
 )
 model_volume = modal.Volume.from_name("sow-simdps-models", create_if_missing=True)
 app = modal.App(APP_NAME)
-
-
-def extract_fill(
-    audio: np.ndarray,
-    model_rate: int,
-    window: tuple[int, int],
-    gap: tuple[int, int],
-    requested_gap: tuple[int, int],
-) -> np.ndarray:
-    """Crop the raw model window in its own coordinates, then resample the fill."""
-    from scipy.signal import resample_poly
-
-    window_start, window_end = window
-    gap_start, gap_end = gap
-    target_frames = requested_gap[1] - requested_gap[0]
-    expected_gap = tuple(round(frame * model_rate / SAMPLE_RATE) for frame in requested_gap)
-    if (
-        audio.shape != (1, CHANNELS, window_end - window_start)
-        or not 0 <= window_start <= gap_start < gap_end <= window_end
-        or gap != expected_gap
-        or target_frames <= 0
-    ):
-        raise ValueError(f"unsupported model window {window} for gap {gap} at {model_rate} Hz")
-
-    fill = audio[0, :, gap_start - window_start : gap_end - window_start].T
-    if not np.isfinite(fill).all():
-        raise ValueError("model fill contains non-finite samples")
-    if model_rate != SAMPLE_RATE:
-        divisor = gcd(SAMPLE_RATE, model_rate)
-        fill = resample_poly(fill, SAMPLE_RATE // divisor, model_rate // divisor, axis=0)
-    # Rounding the two endpoints independently at the model rate can add or drop a frame.
-    if len(fill) < target_frames:
-        fill = np.pad(fill, ((0, target_frames - len(fill)), (0, 0)), mode="edge")
-    return np.ascontiguousarray(fill[:target_frames], dtype=np.float32)
 
 
 def _decode_flac(data: bytes) -> np.ndarray:

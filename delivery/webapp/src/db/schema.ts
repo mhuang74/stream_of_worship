@@ -14,6 +14,7 @@ import {
   primaryKey,
   vector,
   customType,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -382,6 +383,7 @@ export const glueJobs = pgTable(
     providerContacted: boolean("provider_contacted").notNull().default(false),
     providerPhase: text("provider_phase"),
     providerStatus: integer("provider_status"),
+    providerContextJson: jsonb("provider_context_json"),
     retryKind: text("retry_kind"),
     resultingTakeId: uuid("resulting_take_id").references(() => glueTakes.id, {
       onDelete: "set null",

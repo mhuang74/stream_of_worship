@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Configure native alarms for the standard Glue worker.
+# Configure alarms for the standard Glue worker.
 set -euo pipefail
 
 AWS_PROFILE="${AWS_PROFILE:-mhuang74}"
@@ -97,3 +97,13 @@ put_alarm sow-glue-queue-age ApproximateAgeOfOldestMessage AWS/SQS Maximum 60 2 
     GreaterThanThreshold "Name=QueueName,Value=${QUEUE_NAME}" "Check Glue queue backlog."
 put_alarm sow-glue-lambda-errors Errors AWS/Lambda Sum 60 1 0 \
     GreaterThanThreshold "Name=FunctionName,Value=${FUNCTION_NAME}" "Inspect Glue Lambda errors."
+
+
+if [[ "${GLUE_RUNPOD_ALERTS:-0}" == 1 ]]; then
+    aws_cmd logs put-metric-filter --log-group-name "$LOG_GROUP" \
+        --filter-name sow-glue-runpod-rejected \
+        --filter-pattern '%glue\.runpod\.rejected%' \
+        --metric-transformations 'metricName=RunpodRejected,metricNamespace=SOW/Glue,metricValue=1'
+    put_alarm sow-glue-runpod-rejected RunpodRejected SOW/Glue Sum 60 1 0 \
+        GreaterThanThreshold "" "Check Runpod credentials and the request contract."
+fi

@@ -465,6 +465,7 @@ describe("schema: glue_jobs structure", () => {
         "provider_contacted",
         "provider_phase",
         "provider_status",
+        "provider_context_json",
         "retry_kind",
         "resulting_take_id",
         "active_take_id",

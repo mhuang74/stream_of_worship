@@ -32,6 +32,7 @@ class R2Client:
         secret_access_key: str,
         bucket_name: str,
         region: str = "auto",
+        bounded: bool = False,
     ):
         self._bucket_name = bucket_name
         self._client = boto3.client(
@@ -40,7 +41,16 @@ class R2Client:
             region_name=region,
             aws_access_key_id=access_key_id,
             aws_secret_access_key=secret_access_key,
-            config=BotoConfig(signature_version="s3v4"),
+            config=BotoConfig(
+                signature_version="s3v4",
+                **({
+                    "connect_timeout": 3, "read_timeout": 5,
+                    "retries": {"total_max_attempts": 1},
+                    "s3": {"addressing_style": "path"},
+                    "request_checksum_calculation": "when_required",
+                    "response_checksum_validation": "when_required",
+                } if bounded else {}),
+            ),
         )
 
     @property
@@ -92,7 +102,7 @@ class R2Client:
         return self.generate_signed_url(key, "lrc", expires_in_seconds)
 
 
-def create_r2_client_from_env() -> R2Client:
+def create_r2_client_from_env(*, bounded: bool = False) -> R2Client:
     import os
 
     endpoint_url = os.environ.get("SOW_R2_ENDPOINT_URL")
@@ -111,4 +121,5 @@ def create_r2_client_from_env() -> R2Client:
         access_key_id=access_key_id,
         secret_access_key=secret_access_key,
         bucket_name=bucket_name,
+        bounded=bounded,
     )

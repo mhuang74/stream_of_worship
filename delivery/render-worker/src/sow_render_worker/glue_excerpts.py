@@ -19,7 +19,7 @@ import math
 import os
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -158,6 +158,7 @@ def build_excerpt(
     steps: Sequence[Sequence[float]] | None,
     side: str,
     work_dir: str | Path,
+    timeout: float | None = None,
 ) -> tuple[Path, float, str]:
     """Build one canonical WAV and return (path, actual seconds, sha256).
 
@@ -171,7 +172,7 @@ def build_excerpt(
     work_path = Path(work_dir)
     work_path.mkdir(parents=True, exist_ok=True)
 
-    decoded = _decode_to_float32(Path(source_path), work_path)
+    decoded = _decode_to_float32(Path(source_path), work_path, timeout=timeout)
     try:
         with sf.SoundFile(str(decoded)) as source:
             windows = _plan_windows(
@@ -203,7 +204,22 @@ def build_excerpt(
     return target, seconds, hashlib.sha256(wav_bytes).hexdigest()
 
 
-def _decode_to_float32(source: Path, work_dir: Path) -> Path:
+def build_guide(source: Path, steps, work_dir: Path, *, timeout: float) -> np.ndarray:
+    decoded = _decode_to_float32(source, work_dir, timeout=timeout)
+    try:
+        with sf.SoundFile(decoded) as audio:
+            windows = _plan_windows(
+                _validated_steps(steps) if steps is not None else None,
+                frames=len(audio), side="B", target_seconds=18,
+            )
+            return _read_windows(audio, windows)
+    finally:
+        decoded.unlink(missing_ok=True)
+
+
+def _decode_to_float32(
+    source: Path, work_dir: Path, *, timeout: float | None = None
+) -> Path:
     handle = tempfile.NamedTemporaryFile(
         dir=work_dir, prefix="decode-", suffix=".f32.wav", delete=False
     )
@@ -230,8 +246,8 @@ def _decode_to_float32(source: Path, work_dir: Path) -> Path:
         str(decoded),
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True)
-    except (OSError, subprocess.CalledProcessError) as exc:
+        subprocess.run(command, check=True, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         decoded.unlink(missing_ok=True)
         raise GlueAudioUnavailable(f"Failed to decode Recording {source.name}") from exc
     return decoded
@@ -242,6 +258,7 @@ def _plan_windows(
     *,
     frames: int,
     side: str,
+    target_seconds: float = TARGET_EXCERPT_SECONDS,
 ) -> list[tuple[int, int]]:
     """Plan (start frame, frame count) windows in playback order.
 
@@ -265,7 +282,7 @@ def _plan_windows(
         if not spans:
             raise GlueExcerptTooShort("Arrangement selects no audio", side=side)
 
-    budget = _seconds_to_samples(TARGET_EXCERPT_SECONDS)
+    budget = _seconds_to_samples(target_seconds)
     remaining = budget
     windows: list[tuple[int, int]] = []
     if side == "A":
@@ -575,6 +592,8 @@ def prepare_excerpt(
     steps: Sequence[Sequence[float]] | None,
     asset_fetcher: Any,
     work_dir: str | Path,
+    local_only: bool = False,
+    preparation_time=None,
 ) -> PreparedExcerpt:
     """Build (or reuse) one side's canonical WAV and persist its cache state.
 
@@ -603,7 +622,7 @@ def prepare_excerpt(
             steps=canonical_steps,
         )[1]
         cached = _cached_excerpt(conn, user_id, predicted_key)
-        if cached is not None:
+        if cached is not None and (not local_only or cached.rejection_code):
             return cached
 
     source = asset_fetcher.download_audio(recording_hash_prefix)
@@ -617,6 +636,7 @@ def prepare_excerpt(
         steps=canonical_steps,
         side=side,
         work_dir=work_dir,
+        **({"timeout": preparation_time()} if preparation_time else {}),
     )
     # Step bounds are authoritative (canonical 6-dp); frame rounding at the
     # window edge must not fork the logical identity from the webapp's planned
@@ -632,22 +652,25 @@ def prepare_excerpt(
         steps=canonical_steps,
     )[1]
 
-    if logical_key != predicted_key:
+    if logical_key != predicted_key or local_only:
         cached = _cached_excerpt(conn, user_id, logical_key)
         if cached is not None:
-            wav_path.unlink(missing_ok=True)
-            return cached
+            if not local_only or cached.rejection_code:
+                wav_path.unlink(missing_ok=True)
+                return cached
+            return replace(cached, wav_path=wav_path, audio_sha256=audio_sha256)
 
-    record_constructed(
-        conn,
-        user_id,
-        logical_key=logical_key,
-        side=side,
-        seconds=seconds,
-        content_hash=content_hash,
-        canonical_steps_json=steps_json,
-        audio_sha256=audio_sha256,
-    )
+    if not local_only:
+        record_constructed(
+            conn,
+            user_id,
+            logical_key=logical_key,
+            side=side,
+            seconds=seconds,
+            content_hash=content_hash,
+            canonical_steps_json=steps_json,
+            audio_sha256=audio_sha256,
+        )
     return PreparedExcerpt(
         side=side,
         seconds=seconds,

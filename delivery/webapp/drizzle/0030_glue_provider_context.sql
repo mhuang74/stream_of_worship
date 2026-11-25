@@ -1,0 +1,1 @@
+ALTER TABLE "glue_jobs" ADD COLUMN "provider_context_json" jsonb;

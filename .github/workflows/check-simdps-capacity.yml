@@ -1,0 +1,35 @@
+name: Check SimDPS endpoint capacity
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "21 2 * * *"
+
+permissions: {}
+
+jobs:
+  capacity:
+    runs-on: ubuntu-latest
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_MONITOR_API_KEY }}
+      RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+    steps:
+      - name: Verify configured maximum workers
+        run: |
+          set -euo pipefail
+          if [[ -z "$RUNPOD_ENDPOINT_ID" && -z "$RUNPOD_API_KEY" ]]; then
+            echo "Runpod monitoring is disabled until its endpoint and read-only key are configured."
+            exit 0
+          fi
+          if [[ ! "$RUNPOD_ENDPOINT_ID" =~ ^[a-zA-Z0-9_-]+$ || -z "$RUNPOD_API_KEY" ]]; then
+            echo "::error::Set RUNPOD_ENDPOINT_ID and RUNPOD_MONITOR_API_KEY."
+            exit 1
+          fi
+          if ! printf 'header = "Authorization: Bearer %s"\n' "$RUNPOD_API_KEY" |
+            curl --config - --silent --fail --max-time 13 --connect-timeout 3 \
+              --max-filesize 65536 "https://api.runpod.io/v2/serverless/$RUNPOD_ENDPOINT_ID" |
+            jq -e '.workers.max == 2 and .workers.min == 0 and .workers.idleTimeout == 10 and .gpu.count == 1' >/dev/null
+          then
+            echo "::error::Runpod capacity check failed. Verify the endpoint and restore max workers to 2 before accepting SimDPS jobs."
+            exit 1
+          fi

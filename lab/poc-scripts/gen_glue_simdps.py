@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
+import subprocess
+import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from functools import cache
@@ -19,6 +22,7 @@ import soundfile as sf
 
 import gen_glue_elevenlabs as glue
 
+RENDER_WORKER = Path(__file__).resolve().parents[2] / "delivery" / "render-worker"
 DEFAULT_OUT_ROOT = Path(__file__).resolve().parent / "output" / "simdps-glue"
 ENV_KEYS = tuple(key for key in glue.ENV_KEYS if key.startswith("SOW_"))
 
@@ -32,6 +36,9 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--seed-base", type=int, default=0)
     parser.add_argument("--context-seconds", type=float, default=12.0)
     parser.add_argument("--steps", type=int, default=100)
+    parser.add_argument("--provider", choices=("modal", "runpod"), default="modal")
+    parser.add_argument("--production-duration", action="store_true",
+                        help="use the 3 s floor and millisecond rounding from production")
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--run-name", default="run1")
     parser.add_argument("--force", action="store_true", help="allow reuse of an existing run")
@@ -47,17 +54,30 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         parser.error("--context-seconds must specify at least one frame")
     if not 0 <= args.seed_base <= 2**64 - args.takes:
         parser.error("all take seeds must fit in an unsigned 64-bit integer")
+    if args.provider == "runpod" and (
+        args.steps != 100 or args.context_seconds > 12 or args.seed_base + args.takes > 2**63
+    ):
+        parser.error("Runpod v1 requires 100 steps, at most 12 seconds of context, and int63 seeds")
     if Path(args.run_name).name != args.run_name or args.run_name in {"", "..", "cache"}:
         parser.error("--run-name must be a directory name other than cache")
     return args
 
 
 def montage_geometry(
-    a_frames: int, b_frames: int, context_frames: int, beats: int, bpm: float
+    a_frames: int, b_frames: int, context_frames: int, beats: int, bpm: float, *,
+    production_duration: bool = False,
 ) -> tuple[int, int, int]:
     """Return gap start, gap end, and total montage frames, all at 44.1 kHz."""
     left = min(a_frames, context_frames)
-    fill = glue.seconds_to_samples(beats * 60 / bpm)
+    if production_duration:
+        sys.path.insert(0, str(RENDER_WORKER / "src"))
+        try:
+            from sow_render_worker.glue_descriptor import generation_duration_ms, milliseconds_to_frames
+        finally:
+            sys.path.pop(0)
+        fill = milliseconds_to_frames(generation_duration_ms(beats, bpm))
+    else:
+        fill = glue.seconds_to_samples(beats * 60 / bpm)
     return left, left + fill, left + fill + min(b_frames, context_frames)
 
 
@@ -75,7 +95,7 @@ def dry_run(args: argparse.Namespace) -> int:
                 round(b_ms * glue.SR / 1000),
                 context_frames,
                 beats,
-                bpm,
+                bpm, production_duration=args.production_duration,
             )
             print(
                 f"j{junction} · {bpm:g} BPM · {beats} beats · "
@@ -225,6 +245,26 @@ def take_names(args: argparse.Namespace):
             yield beats, number, f"beats-{beats}{suffix}"
 
 
+def runpod_inpaint(montage_path, guide, start, end, seed, beats, bpm, search_source):
+    script = Path(__file__).resolve().with_name("runpod_glue_fixture.py")
+    with TemporaryDirectory() as tmp:
+        guide_path = Path(tmp) / "guide.flac"
+        output = Path(tmp) / "fill.wav"
+        glue.write_flac(guide_path, guide, subtype="PCM_24")
+        command = [
+            "uv", "run", "--project", str(RENDER_WORKER), "python", str(script),
+            str(montage_path), str(guide_path), str(output), str(start), str(end),
+            str(seed), str(beats), str(bpm), search_source,
+        ]
+        env = {key: value for key, value in os.environ.items() if key != "VIRTUAL_ENV"}
+        env["SOW_R2_BUCKET"] = os.environ["SIMDPS_POC_R2_BUCKET"]
+        process = subprocess.run(command, env=env, capture_output=True, text=True, timeout=480)
+        if process.returncode:
+            raise RuntimeError("Runpod fixture failed")
+        staged = output.with_suffix(".staged.wav")
+        return output.read_bytes(), json.loads(process.stdout), staged.read_bytes() if staged.exists() else None
+
+
 def process_junction(
     args: argparse.Namespace,
     run_dir: Path,
@@ -266,7 +306,10 @@ def process_junction(
     context = glue.seconds_to_samples(args.context_seconds)
     glues = {}
     for beats, number, name in take_names(args):
-        start, end, total = montage_geometry(len(a), len(b), context, beats, bpm)
+        start, end, total = montage_geometry(
+            len(a), len(b), context, beats, bpm,
+            production_duration=getattr(args, "production_duration", False),
+        )
         take: dict[str, Any] = {
             "id": f"j{junction}-{name}",
             "label": name,
@@ -294,21 +337,33 @@ def process_junction(
             montage = (run_dir / path).read_bytes()
             started = perf_counter()
             try:
-                data, meta = modal_inpainter().inpaint.remote(
-                    montage,
-                    guide_data,
-                    (start, end),
-                    take["seed"],
-                    args.steps,
-                )
+                production_staged = None
+                if getattr(args, "provider", "modal") == "runpod":
+                    source = (b if guide is None else guide)[:18 * glue.SR]
+                    data, meta, production_staged = runpod_inpaint(
+                        run_dir / path, source, start, end, take["seed"], beats, bpm,
+                        entry["search_source"],
+                    )
+                else:
+                    data, meta = modal_inpainter().inpaint.remote(
+                        montage, guide_data, (start, end), take["seed"], args.steps,
+                    )
             except Exception as exc:
                 raise RuntimeError(f"SimDPS inpaint failed ({type(exc).__name__}): {exc}") from exc
             take["model"] = meta
             take["wall_seconds"] = round(perf_counter() - started, 3)
             take["summary"] = (
-                f"seed {take['seed']} · {args.steps} steps · {meta['sampling_seconds']:.2f} s sampling"
+                f"seed {take['seed']} · {args.steps} steps · {meta.get('sampling_seconds', take['wall_seconds']):.2f} s"
             )
             fill = write_take_audio(run_dir, base, name, data, take, a, b)
+            if production_staged is not None:
+                staged_path = base / "glues" / f"{name}-production.wav"
+                (run_dir / staged_path).write_bytes(production_staged)
+                take["files"]["productionStaged"] = staged_path.as_posix()
+                staged_fill, _ = sf.read(BytesIO(production_staged), dtype="float32", always_2d=True)
+                full_path = base / "full" / f"{name}-production.flac"
+                glue.write_flac(run_dir / full_path, glue.splice(a, staged_fill, b))
+                take["files"]["productionFull"] = full_path.as_posix()
             if take["status"] != "failed":
                 glues[name] = fill
         except (OSError, RuntimeError, ValueError) as exc:
