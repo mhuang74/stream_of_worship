@@ -204,3 +204,31 @@ def test_transient_storage_failure_recovers_same_submission(monkeypatch, tmp_pat
     provider.finish_contacted(None, job, route, None, tmp_path, None, lambda *a, **kwargs: None)
     assert calls == [("POST", "run")]
     assert persisted[-1] == raw
+
+
+def test_lost_promotion_acknowledgement_leaves_sqs_recovery_available(monkeypatch, tmp_path):
+    raw = b"\x11\x01" * 12
+    route = dict(
+        a_frames=2,
+        fill_frames=2,
+        b_frames=2,
+        endpoint_id="endpoint",
+        result_key="key",
+        deadline_epoch=provider.time.time() - 1,
+    )
+    job = SimpleNamespace(id="job", user_id=7)
+    durable = SimpleNamespace(
+        raw_response_r2_key="glues/7/jobs/job/response.pcm",
+        raw_response_sha256="a" * 64,
+        raw_response_bytes=len(raw),
+    )
+
+    monkeypatch.setattr(provider, "wait_for_result", lambda *a, **k: (raw, {}))
+    monkeypatch.setattr(provider, "_verify_result", lambda *args: raw)
+    monkeypatch.setattr(provider.R2RawResponseStore, "__init__", lambda *args: None)
+    monkeypatch.setattr(provider.R2RawResponseStore, "put_if_absent", lambda *args: True)
+    monkeypatch.setattr(provider.db, "update_runpod_contact", lambda *a, raw=None: raw is None)
+    monkeypatch.setattr(provider.db, "get_glue_job", lambda *args: durable)
+
+    with pytest.raises(RuntimeError, match="response is durable; retry staging delivery"):
+        provider.finish_contacted(None, job, route, None, tmp_path, None, lambda *a, **k: None)
