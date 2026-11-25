@@ -1,5 +1,7 @@
 # Glue generation is a durable job, not a synchronous route
 
+ADR 0016 supersedes the provider-routing and ambiguous-redelivery decisions below for cascade jobs.
+
 Glue (the user-facing "AI transition") is a paid ElevenLabs music generation inserted at one Junction. v1 deleted the only copy of a paid result when its inputs changed and generated inside the HTTP request path, so a redeploy, a timeout, or an arrangement edit could throw away money and leave the editor without a recoverable result. v2 replaces that with durable jobs on the render-worker image and a dedicated queue.
 
 The decisions below are binding for the implementation. They supersede v1 for future implementation; the untracked v1 specification stays untouched and is not deleted.

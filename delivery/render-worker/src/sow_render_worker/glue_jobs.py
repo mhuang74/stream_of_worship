@@ -100,6 +100,11 @@ _LOG_FIELD_ALLOWLIST = (
     "model_load_seconds",
     "sampling_seconds",
     "processing_seconds",
+    "queue_seconds",
+    "dispatch_to_processing_seconds",
+    "submissionId",
+    "model",
+    "overlap",
 )
 
 
@@ -313,7 +318,8 @@ def _finish_terminal(
     if release and not job.provider_contacted:
         guards["expected_contacted"] = False
         guards["expected_heartbeat"] = job.heartbeat_at
-    if (job.provider_context_json or {}).get("provider") == "simdps" and job.phase == "composing":
+    if ((job.provider_context_json or {}).get("provider") in {"simdps", "cascade"}
+            and job.phase in _IN_FLIGHT_PROVIDER_PHASES):
         guards["expected_heartbeat"] = job.heartbeat_at
     try:
         with _atomic(conn):
@@ -605,9 +611,14 @@ def execute_glue_job(
         log("glue.job.redelivered", phase=job.phase, status="in-progress")
         return
     if _has_durable_provider_success(job) or mode == "staging":
-        _run_staging_mode(conn, job, log, asset_fetcher=asset_fetcher)
+        _run_staging_mode(
+            conn, job, log, asset_fetcher=asset_fetcher, lambda_context=lambda_context
+        )
         return
     route = job.provider_context_json or {}
+    if route.get("provider") == "cascade" and route.get("version") == 2:
+        _run_cascade(conn, job, lambda_context, asset_fetcher, log, saved_route=route)
+        return
     if job.provider_contacted and route.get("provider") == "simdps":
         _run_contacted_simdps(conn, job, route, lambda_context, asset_fetcher, log)
         return
@@ -679,6 +690,16 @@ def _run_contacted_simdps(conn, job, route, lambda_context, assets, log):
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
+def _run_cascade(conn, job, lambda_context, assets, log, *, saved_route=None):
+    from sow_render_worker import glue_cascade
+
+    work_dir = _make_work_dir(job)
+    try:
+        glue_cascade.execute(conn, job, work_dir, lambda_context, assets, log, saved_route)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 def _revalidate_before_contact(conn, job, log):
     current = get_glue_job(conn, job.id, job.user_id)
     if (current is None or current.provider_contacted or not current.active
@@ -709,6 +730,11 @@ def _run_generate_mode(
     asset_fetcher: Any,
 ) -> None:
     from sow_render_worker import glue_runpod
+
+    if (not job.provider_contacted and provider_stage is None
+            and os.environ.get("SOW_GLUE_PROVIDER") == "cascade"):
+        _run_cascade(conn, job, lambda_context, asset_fetcher, log)
+        return
 
     contacted = False
     runpod_contact_pending = False
@@ -925,6 +951,7 @@ def _after_provider_stage(
     *,
     work_dir: Optional[Path] = None,
     asset_fetcher: Any = None,
+    deadline: float | None = None,
 ) -> None:
     """Boundary after the provider stage: heartbeat, then free staging.
 
@@ -939,7 +966,7 @@ def _after_provider_stage(
     try:
         current = get_glue_job(conn, job.id, job.user_id)
     except Exception:
-        if (job.provider_context_json or {}).get("provider") == "simdps":
+        if (job.provider_context_json or {}).get("provider") in {"simdps", "cascade"}:
             raise
         logger.exception("Failed to read Glue job after the provider stage")
         return
@@ -1004,12 +1031,16 @@ def _after_provider_stage(
             log,
             work_dir=work_dir,
             asset_fetcher=asset_fetcher,
+            **({"deadline": deadline} if deadline is not None else {}),
         )
     except GlueConfigurationError:
         raise
     except Exception as exc:
         # Staging is free recovery: never paid, and a consumed reservation is
         # never refunded by the guarded release path.
+        if (current.provider_context_json or {}).get("provider") == "cascade":
+            exc = GlueJobError(GLUE_WORKER_FAILED, "free")
+            job = current
         _handle_failure(conn, job, exc, contacted=False, log=log)
 
 
@@ -1033,6 +1064,7 @@ def _run_staging_mode(
     log: Callable[..., None],
     *,
     asset_fetcher: Any = None,
+    lambda_context: Any = None,
 ) -> None:
     """Free staging recovery entry: never calls the provider stage."""
     try:
@@ -1076,11 +1108,20 @@ def _run_staging_mode(
 
         work_dir = _make_work_dir(job)
         try:
-            stage(conn, job, log, work_dir=work_dir, asset_fetcher=asset_fetcher)
+            options = {}
+            if (job.provider_context_json or {}).get("provider") == "cascade":
+                from sow_render_worker import glue_runpod
+
+                options["deadline"] = time.monotonic() + min(
+                    glue_runpod.OUTCOME_SECONDS, glue_runpod.remaining(lambda_context)
+                )
+            stage(conn, job, log, work_dir=work_dir, asset_fetcher=asset_fetcher, **options)
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
         log("glue.staging.recovered", phase="staging")
     except GlueConfigurationError:
         raise
     except Exception as exc:
+        if (job.provider_context_json or {}).get("provider") == "cascade":
+            exc = GlueJobError(GLUE_WORKER_FAILED, "free")
         _handle_failure(conn, job, exc, contacted=False, log=log)

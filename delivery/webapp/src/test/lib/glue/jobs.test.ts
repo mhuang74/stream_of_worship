@@ -655,6 +655,16 @@ describe("status serialization", () => {
     ).toBe(0);
   });
 
+  it("counts queueing toward the three-minute message", () => {
+    const job = {
+      createdAt: new Date("2026-11-22T10:00:00Z"),
+      startedAt: new Date("2026-11-22T10:02:50Z"),
+      finishedAt: null,
+    };
+    expect(glueElapsedSeconds(job, new Date("2026-11-22T10:02:59.999Z"))).toBe(179);
+    expect(glueElapsedSeconds(job, new Date("2026-11-22T10:03:00Z"))).toBe(180);
+  });
+
   it("builds discovery payloads with the latest job per Junction", () => {
     const payload = buildActiveGlueJobsPayload(
       [

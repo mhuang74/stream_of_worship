@@ -885,6 +885,25 @@ _GLUE_PROVIDER_JOB_PHASE = {
 }
 
 
+_GLUE_SNAPSHOT_GUARD = """
+    AND EXISTS (
+        SELECT 1
+        FROM songset_items a JOIN songset_items b ON b.songset_id = a.songset_id
+        WHERE a.id = glue_jobs.from_item_id AND b.id = glue_jobs.to_item_id
+        AND a.songset_id = glue_jobs.songset_id
+        AND a.updated_at = glue_jobs.expected_from_updated_at
+        AND b.updated_at = glue_jobs.expected_to_updated_at
+        AND a.position < b.position
+        AND NOT EXISTS (
+            SELECT 1 FROM songset_items between_items
+            WHERE between_items.songset_id = a.songset_id
+            AND between_items.position > a.position AND between_items.position < b.position
+        )
+        FOR SHARE OF a, b
+    )
+"""
+
+
 def record_provider_contact(
     conn: psycopg2.extensions.connection,
     job_id: str,
@@ -906,23 +925,7 @@ def record_provider_contact(
     if job_phase is None:
         raise ValueError(f"Unknown provider phase: {provider_phase!r}")
 
-    snapshot_guard = """
-        AND EXISTS (
-            SELECT 1
-            FROM songset_items a JOIN songset_items b ON b.songset_id = a.songset_id
-            WHERE a.id = glue_jobs.from_item_id AND b.id = glue_jobs.to_item_id
-            AND a.songset_id = glue_jobs.songset_id
-            AND a.updated_at = glue_jobs.expected_from_updated_at
-            AND b.updated_at = glue_jobs.expected_to_updated_at
-            AND a.position < b.position
-            AND NOT EXISTS (
-                SELECT 1 FROM songset_items between_items
-                WHERE between_items.songset_id = a.songset_id
-                AND between_items.position > a.position AND between_items.position < b.position
-            )
-            FOR SHARE OF a, b
-        )
-    """ if verify_junction else ""
+    snapshot_guard = _GLUE_SNAPSHOT_GUARD if verify_junction else ""
     now = datetime.now(timezone.utc)
     original_autocommit = conn.autocommit
     try:
@@ -956,6 +959,36 @@ def record_provider_contact(
         raise
     finally:
         conn.autocommit = original_autocommit
+    return True
+
+
+def update_glue_cascade(conn, job, route, *, submission_phase=None, raw=None):
+    """Persist an attempt or outcome under the current delivery lease."""
+    now = datetime.now(timezone.utc)
+    updates = ["provider_context_json = %s", "heartbeat_at = %s", "updated_at = %s"]
+    params = [psycopg2.extras.Json(route), now, now]
+    if submission_phase:
+        updates.extend(["phase = %s", "provider_phase = %s"])
+        params.extend([_GLUE_PROVIDER_JOB_PHASE[submission_phase], submission_phase])
+    if raw:
+        updates.extend([
+            "phase = 'storing-response'", "raw_response_r2_key = %s",
+            "raw_response_sha256 = %s", "raw_response_bytes = %s",
+        ])
+        params.extend(raw)
+    params.extend([job.id, job.user_id, job.heartbeat_at])
+    guard = _GLUE_SNAPSHOT_GUARD if submission_phase else ""
+    with conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE glue_jobs SET {', '.join(updates)} WHERE id = %s AND user_id = %s "
+            "AND active AND provider_contacted AND phase IN ('uploading', 'composing') "
+            "AND heartbeat_at = %s AND provider_context_json->>'provider' = 'cascade' "
+            f"AND provider_context_json->>'version' = '2' {guard} RETURNING id",
+            params,
+        )
+        if cur.fetchone() is None:
+            return False
+    job.heartbeat_at = now
     return True
 
 

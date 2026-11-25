@@ -77,7 +77,10 @@ One immutable generated-and-staged audio result for a Glue Descriptor, carrying 
 _Avoid_: generation, version, attempt (a job may fail before producing a take)
 
 **Glue Job**:
-The durable, idempotent record of one paid attempt that produces or recovers a Glue Take for a Junction: its reserved quota row, immutable take id/ordinal/seed, provider-contact state, and phase machine (ADR-0014). A Glue Job is idempotent per `clientRequestId` and is the only thing that authorizes a provider request.
+One confirmed request to generate a Glue Take for a saved Junction. A Glue Job has one quota reservation, one seed, and at most one resulting Glue Take.
+
+**Provider Attempt**:
+One service's work toward completing a Glue Job. A Glue Job may have several Provider Attempts and publishes the result of its first verified success.
 _Avoid_: generation, task, request, paid job
 
 **Seam Inpaint**:

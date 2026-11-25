@@ -114,9 +114,8 @@ export function glueElapsedSeconds(
   row: Pick<GlueJobRecord, "createdAt" | "startedAt" | "finishedAt">,
   now: Date
 ): number {
-  const start = row.startedAt ?? row.createdAt;
   const end = row.finishedAt ?? now;
-  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+  return Math.max(0, Math.floor((end.getTime() - row.createdAt.getTime()) / 1000));
 }
 
 export function toGlueJobStatus(

@@ -199,13 +199,39 @@ jobs:
           aws-secret-access-key: ${{ secrets.SOW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
 
+      - name: Raise Glue queue visibility before raising the Lambda timeout
+        run: |
+          set -euo pipefail
+          queue_url="$(aws sqs get-queue-url --queue-name sow-glue-jobs --query QueueUrl --output text)"
+          visibility="$(aws sqs get-queue-attributes --queue-url "$queue_url" \
+            --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text)"
+          [[ "$visibility" =~ ^[0-9]+$ ]]
+          if ((visibility < 4680)); then
+            aws sqs set-queue-attributes --queue-url "$queue_url" \
+              --attributes VisibilityTimeout=4680
+          fi
+          for attempt in {1..15}; do
+            visibility="$(aws sqs get-queue-attributes --queue-url "$queue_url" \
+              --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text)"
+            if ((visibility >= 4680)); then break; fi
+            sleep 5
+          done
+          ((visibility >= 4680))
+          timeout="$(aws lambda get-function-configuration --function-name sow-glue-worker-standard \
+            --query Timeout --output text)"
+          if [[ "$timeout" != 780 ]]; then
+            aws lambda update-function-configuration --function-name sow-glue-worker-standard \
+              --timeout 780 >/dev/null
+            aws lambda wait function-updated --function-name sow-glue-worker-standard
+          fi
+
       - name: Verify standard Glue Lambda configuration
         run: |
           set -euo pipefail
           queue_url="$(aws sqs get-queue-url --queue-name sow-glue-jobs --query QueueUrl --output text)"
           attributes="$(aws sqs get-queue-attributes --queue-url "$queue_url" \
             --attribute-names VisibilityTimeout QueueArn --query Attributes)"
-          jq -e '(.VisibilityTimeout | tonumber) >= 3600' <<<"$attributes" >/dev/null
+          jq -e '(.VisibilityTimeout | tonumber) >= 4680' <<<"$attributes" >/dev/null
           queue_arn="$(jq -r .QueueArn <<<"$attributes")"
           aws lambda list-event-source-mappings --function-name sow-glue-worker-standard \
             --event-source-arn "$queue_arn" --output json |
@@ -213,7 +239,7 @@ jobs:
               .BatchSize == 1 and .ScalingConfig.MaximumConcurrency == 2 and
               .FunctionResponseTypes == ["ReportBatchItemFailures"])' >/dev/null
           aws lambda get-function-configuration --function-name sow-glue-worker-standard --output json |
-            jq -e '.Timeout == 600 and .CapacityProviderConfig == null and
+            jq -e '.Timeout == 780 and .CapacityProviderConfig == null and
               .MemorySize == 3008 and .EphemeralStorage.Size == 2048' >/dev/null
 
       - name: Update Glue worker image (shared render-worker image)
@@ -240,6 +266,8 @@ jobs:
           SOW_ELEVENLABS_API_KEY: ${{ secrets.SOW_ELEVENLABS_API_KEY }}
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
           RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "$SOW_ELEVENLABS_API_KEY" ]; then
@@ -254,9 +282,20 @@ jobs:
             if env.RUNPOD_API_KEY != "" and env.RUNPOD_ENDPOINT_ID != "" then
               .RUNPOD_API_KEY = env.RUNPOD_API_KEY | .RUNPOD_ENDPOINT_ID = env.RUNPOD_ENDPOINT_ID
             else . end |
+            if env.MODAL_TOKEN_ID != "" and env.MODAL_TOKEN_SECRET != "" then
+              .MODAL_TOKEN_ID = env.MODAL_TOKEN_ID | .MODAL_TOKEN_SECRET = env.MODAL_TOKEN_SECRET
+            else . end |
+            ((.SOW_GLUE_ELEVENLABS_SECONDS // "60") | tonumber) as $elevenlabs |
+            ((.SOW_GLUE_MODAL_HEDGE_SECONDS // "180") | tonumber) as $hedge |
+            if $elevenlabs < 1 or $hedge < 1 or
+               $elevenlabs != ($elevenlabs | floor) or $hedge != ($hedge | floor) or
+               $elevenlabs + $hedge + 360 + 60 + 40 > 780
+            then error("Invalid Glue cascade timing") else . end |
             if .SOW_GLUE_PROVIDER == "elevenlabs" or
-               (.SOW_GLUE_PROVIDER == "simdps" and
-                (.RUNPOD_API_KEY | length) > 0 and (.RUNPOD_ENDPOINT_ID | length) > 0)
+               ((.RUNPOD_API_KEY | length) > 0 and (.RUNPOD_ENDPOINT_ID | length) > 0 and
+                 (.SOW_GLUE_PROVIDER == "simdps" or
+                  (.SOW_GLUE_PROVIDER == "cascade" and
+                    (.MODAL_TOKEN_ID | length) > 0 and (.MODAL_TOKEN_SECRET | length) > 0)))
             then {Variables: .} else error("Invalid Glue provider configuration") end
           ' <<<"$config")"
           aws lambda update-function-configuration \

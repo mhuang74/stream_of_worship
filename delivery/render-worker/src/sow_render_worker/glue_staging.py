@@ -20,6 +20,7 @@ import io
 import json
 import math
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -99,13 +100,20 @@ class R2StagingStore:
     accepted only after the stored bytes verify against this run's WAV.
     """
 
-    def __init__(self, r2_client: Any = None) -> None:
+    def __init__(self, r2_client: Any = None, *, deadline: float | None = None) -> None:
         if r2_client is None:
             from sow_render_worker.r2_client import create_r2_client_from_env
 
-            r2_client = create_r2_client_from_env()
+            r2_client = create_r2_client_from_env(bounded=deadline is not None)
         self._client = r2_client.client
         self._bucket_name = r2_client.bucket_name
+        self._deadline = deadline
+
+    def _time_left(self) -> float:
+        remaining = float("inf") if self._deadline is None else self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Glue staging deadline reached")
+        return remaining
 
     def read_raw(self, job: Any) -> bytes:
         """Read the raw response and verify length + sha256 before decoding.
@@ -122,6 +130,7 @@ class R2StagingStore:
                 "The stored provider response is missing its key, checksum, or byte count"
             )
         expected_bytes = int(expected_bytes)
+        self._time_left()
         response = self._client.get_object(Bucket=self._bucket_name, Key=str(key))
         body = response["Body"]
         digest = hashlib.sha256()
@@ -129,6 +138,11 @@ class R2StagingStore:
         total = 0
         try:
             while True:
+                if self._deadline is not None:
+                    if hasattr(body, "set_socket_timeout"):
+                        body.set_socket_timeout(min(5, self._time_left()))
+                    else:
+                        self._time_left()
                 chunk = body.read(64 * 1024)
                 if not chunk:
                     break
@@ -157,6 +171,7 @@ class R2StagingStore:
         """Write the immutable staged WAV, then verify the stored bytes."""
         import botocore.exceptions
 
+        self._time_left()
         try:
             self._client.put_object(
                 Bucket=self._bucket_name,
@@ -176,9 +191,21 @@ class R2StagingStore:
             raise OSError("Staged WAV verification failed after upload")
 
     def _read_object(self, key: str) -> bytes:
+        self._time_left()
         response = self._client.get_object(Bucket=self._bucket_name, Key=key)
         body = response["Body"]
         try:
+            if self._deadline is not None:
+                chunks = []
+                while True:
+                    if hasattr(body, "set_socket_timeout"):
+                        body.set_socket_timeout(min(5, self._time_left()))
+                    else:
+                        self._time_left()
+                    chunk = body.read(64 * 1024)
+                    if not chunk:
+                        return b"".join(chunks)
+                    chunks.append(chunk)
             return body.read()
         finally:
             close = getattr(body, "close", None)
@@ -377,6 +404,15 @@ def validate_generated_level(generated: np.ndarray) -> float:
     return level
 
 
+def _take_provider(job):
+    route = getattr(job, "provider_context_json", None) or {}
+    winner = route.get("winner")
+    if route.get("provider") == "cascade" and winner is not None:
+        backend = winner["backend"]
+        return backend, route["attempts"][backend]
+    return route.get("provider", "elevenlabs"), route
+
+
 def prepare_staged_take(
     raw: bytes,
     *,
@@ -387,8 +423,10 @@ def prepare_staged_take(
     generation_shortfall_tolerance_seconds: float = MIN_RESPONSE_SHORTFALL_SECONDS,
 ) -> PreparedTake:
     """Decode, measure, trim and render the staged WAV (no DB or R2 writes)."""
-    route = getattr(job, "provider_context_json", None) or {}
-    seam = decode_stereo_pcm16(raw, headerless=route.get("provider") == "simdps")
+    backend, route = _take_provider(job)
+    cascade = (getattr(job, "provider_context_json", None) or {}).get("provider") == "cascade"
+    simdps = backend in {"simdps", "modal", "runpod"}
+    seam = decode_stereo_pcm16(raw, headerless=simdps)
     from_payload = descriptor.get("from") if isinstance(descriptor, dict) else None
     to_payload = descriptor.get("to") if isinstance(descriptor, dict) else None
     if not isinstance(from_payload, dict) or not isinstance(to_payload, dict):
@@ -396,12 +434,16 @@ def prepare_staged_take(
 
     from_item = items.get(job.from_item_id) or {}
     to_item = items.get(job.to_item_id) or {}
-    a_seconds = reference.a_seconds or _predicted_side_seconds(
-        from_payload.get("steps"), from_item.get("duration_seconds")
-    )
-    b_seconds = reference.b_seconds or _predicted_side_seconds(
-        to_payload.get("steps"), to_item.get("duration_seconds")
-    )
+    if simdps:
+        a_seconds = route["a_frames"] / SAMPLE_RATE
+        b_seconds = route["b_frames"] / SAMPLE_RATE
+    else:
+        a_seconds = route.get("a_seconds") or reference.a_seconds or _predicted_side_seconds(
+            from_payload.get("steps"), from_item.get("duration_seconds")
+        )
+        b_seconds = route.get("b_seconds") or reference.b_seconds or _predicted_side_seconds(
+            to_payload.get("steps"), to_item.get("duration_seconds")
+        )
     if a_seconds is None or b_seconds is None:
         raise _worker_error(
             "The stored descriptor excerpt geometry is incomplete"
@@ -417,7 +459,7 @@ def prepare_staged_take(
     a_samples = _seconds_to_samples(float(a_seconds))
     b_samples = _seconds_to_samples(float(b_seconds))
 
-    if route.get("provider") == "simdps":
+    if simdps:
         a_samples, b_samples = route["a_frames"], route["b_frames"]
 
     total = seam.shape[0]
@@ -478,14 +520,16 @@ def prepare_staged_take(
                 f"(threshold {ENVELOPE_OK_FLOOR:.2f})"
             )
     edge_samples = min(_seconds_to_samples(EDGE_SECONDS), generated.shape[0])
+    # On redelivery the catalog fetch may be unavailable. Derive cascade WAV
+    # edges from the immutable seam so the same take always has the same bytes.
     edge_a = (
         reference.a[-edge_samples:]
-        if reference.a is not None
+        if reference.a is not None and not cascade
         else _mono(speech_a)[-edge_samples:]
     )
     edge_b = (
         reference.b[:edge_samples]
-        if reference.b is not None
+        if reference.b is not None and not cascade
         else _mono(speech_b_context)[:edge_samples]
     )
     generated_float = _mono(generated) if generated.ndim == 1 else _mono(generated)
@@ -572,11 +616,13 @@ def load_reference_audio(
                 label=f"download_reference_{side.lower()}",
                 log=log,
             )
+            time_left = getattr(asset_fetcher, "time_left", None)
             wav_path, seconds, _ = build_excerpt(
                 source_path=source_path,
                 steps=payload.get("steps"),
                 side=side,
                 work_dir=work_dir,
+                **({"timeout": time_left()} if callable(time_left) else {}),
             )
             samples, sample_rate = sf.read(str(wav_path), dtype="int16", always_2d=True)
             if int(sample_rate) != SAMPLE_RATE:
@@ -650,10 +696,9 @@ def record_staged_take(
     """
     key = _take_object_key(job)
     metrics = dict(prepared.metrics)
-    route = getattr(job, "provider_context_json", None) or {}
-    metrics.update(provider=route.get("provider", "elevenlabs"),
-                   providerModel=route.get("model", "music_v2_5"))
-    if route.get("provider") == "simdps":
+    backend, route = _take_provider(job)
+    metrics.update(provider=backend, providerModel=route.get("model", "music_v2_5"))
+    if backend in {"simdps", "modal", "runpod"}:
         metrics.update(upstreamRevision=route["upstream_revision"],
                        checkpointRevision=route["checkpoint_revision"],
                        searchSource=route["search_source"])
@@ -795,6 +840,7 @@ def finalize_staging(
     work_dir: Optional[Path] = None,
     asset_fetcher: Any = None,
     r2_store: Any = None,
+    deadline: float | None = None,
 ) -> None:
     """Turn a verified raw provider response into one ready take, for free."""
     log("glue.staging.started", phase=_status(job.phase), takeOrdinal=job.take_ordinal)
@@ -811,7 +857,7 @@ def finalize_staging(
             "No verified provider response is persisted; refusing to stage",
         )
 
-    store = r2_store or R2StagingStore()
+    store = r2_store or R2StagingStore(deadline=deadline)
 
     def _read_verified_once() -> bytes:
         try:

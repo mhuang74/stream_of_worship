@@ -141,6 +141,7 @@ interface GlueQuoteResponse {
     side: "A" | "B";
     code: "GLUE_COPYRIGHT_REJECTED" | "GLUE_EXCERPT_TOO_SHORT";
   }[];
+  gpuFallback?: boolean;
 }
 
 const GLUE_BEAT_CHOICES = [2, 4, 8, 16] as const;
@@ -1432,33 +1433,23 @@ export function ArrangementEditorSheet({
   });
   const refreshGlueJob = glueJob.refresh;
 
-  // After a reload the Junction payload only reports *active* jobs, so a
-  // terminal free-retryable job (resume / retry-processing / redispatch) would
-  // lose its free retry. Adopt those, plus a non-retryable failure that still
-  // belongs to the current descriptor: its reason and the provider's own
-  // rejection sentence stay visible instead of vanishing on reload. A
-  // descriptor change is the documented restart path, and an unchanged Junction
-  // keeps its reason. `ready`/`cancelled`/paid jobs are still not adopted.
-  const resolvedGlueState = displayGlue?.state ?? null;
+  // Discover jobs that started or finished while the editor was closed.
   const hasServerActiveGlueJob = displayGlue?.activeJob != null;
+  const selectedGlueTakeId = displayGlue?.selectedTake?.id ?? null;
   useEffect(() => {
-    if (!isOpen || !songsetId || !showGlueRail) return;
+    if (!isOpen || !songsetId || !showGlueRail || !glueEnabled) return;
     if (glueJobId !== null || hasServerActiveGlueJob) return;
-    if (resolvedGlueState !== "failed" && resolvedGlueState !== "needs-generation") {
-      return;
-    }
     let cancelled = false;
     void (async () => {
       const result = await fetchActiveGlueJobs(songsetId);
       if (cancelled || !result.ok) return;
       const latest = result.data?.latestByFromItemId?.[item.id];
-      if (latest === undefined) return;
+      if (latest === undefined || latest.descriptorKey !== displayGlue?.descriptorKey) return;
       if (
-        latest.retryKind === "free" ||
+        latest.active ||
         latest.phase === "dispatch-failed" ||
-        (latest.phase === "failed" &&
-          latest.retryKind === "none" &&
-          latest.descriptorKey === displayGlue?.descriptorKey)
+        latest.phase === "failed" ||
+        (latest.phase === "ready" && latest.resultingTakeId !== selectedGlueTakeId)
       ) {
         setGlueJobId(latest.id);
       }
@@ -1471,8 +1462,9 @@ export function ArrangementEditorSheet({
     songsetId,
     showGlueRail,
     glueJobId,
+    glueEnabled,
     hasServerActiveGlueJob,
-    resolvedGlueState,
+    selectedGlueTakeId,
     item.id,
     displayGlue?.descriptorKey,
   ]);
@@ -1649,17 +1641,21 @@ export function ArrangementEditorSheet({
     isGlueJobFailed &&
     displayGlue?.descriptorKey != null &&
     glueJobStatus?.descriptorKey === displayGlue.descriptorKey;
+  const legacyCopyrightFailure =
+    currentGlueQuote?.gpuFallback === true &&
+    glueJobStatus?.errorCode === "GLUE_COPYRIGHT_REJECTED";
   // The worker falls back to the error code when a provider body is empty or
   // unsafe to persist, so a detail identical to the code carries no reason.
   const failedGlueDetail =
     failedJobIsCurrent &&
+    !legacyCopyrightFailure &&
     glueJobStatus?.errorDetail != null &&
     glueJobStatus.errorDetail !== glueJobStatus.errorCode
       ? glueJobStatus.errorDetail
       : null;
   const glueFailureCode =
     glueJobErrorCode ??
-    (failedJobIsCurrent ? glueJobStatus?.errorCode ?? null : null);
+    (failedJobIsCurrent && !legacyCopyrightFailure ? glueJobStatus?.errorCode ?? null : null);
   // A dispatch failure never reached the worker, so re-enqueueing it is free
   // even though the durable `retry_kind` is unset.
   const dispatchFailed = failedJobIsCurrent && glueJobStatus?.phase === "dispatch-failed";
@@ -1670,11 +1666,8 @@ export function ArrangementEditorSheet({
   const freeRetryUsesProcessing =
     canFreeRetry && !dispatchFailed && glueJobStatus?.providerContacted === true;
   const needsPaidRetry = failedJobIsCurrent && glueJobStatus?.retryKind === "paid";
-  // retry_kind="none" means the failure is not retryable in place
-  // (entitlement, plan, copyright). Offering a fresh paid request would only
-  // use another attempt for the same outcome, so the rail shows the reason alone.
   const nonRetryableGlueFailure =
-    failedJobIsCurrent && glueJobStatus?.retryKind === "none";
+    failedJobIsCurrent && !legacyCopyrightFailure && glueJobStatus?.retryKind === "none";
   const canGenerateGlue =
     glueEnabled &&
     !jobActive &&
@@ -3285,6 +3278,11 @@ export function ArrangementEditorSheet({
                                   "{seconds}",
                                   String(glueJobStatus.elapsedSeconds)
                                 )}
+                              </p>
+                            )}
+                            {jobActive && glueJob.elapsedSeconds >= 180 && (
+                              <p role="status" data-testid="arrangement-glue-taking-longer">
+                                {t("glue.job.takingLonger")}
                               </p>
                             )}
                             {canCancelGlueJob && (

@@ -157,10 +157,11 @@ def download_catalog_audio(r2, key, path, deadline):
 class PreparationAssets:
     """Use the existing excerpt builder with bounded catalog reads."""
 
-    def __init__(self, r2, work_dir, lambda_context):
+    def __init__(self, r2, work_dir, lambda_context, *, time_left=None):
         self.r2 = r2
         self.work_dir = work_dir
         self.lambda_context = lambda_context
+        self.time_left = time_left or (lambda: preparation_time(lambda_context))
 
     def download_audio(self, prefix):
         path = self.work_dir / f"{prefix}.mp3"
@@ -170,7 +171,7 @@ class PreparationAssets:
             self.r2,
             f"{prefix}/audio.mp3",
             path,
-            time.monotonic() + preparation_time(self.lambda_context),
+            time.monotonic() + self.time_left(),
         )
 
 
@@ -183,7 +184,8 @@ def encode_flac(samples, subtype):
     return data
 
 
-def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context):
+def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, time_left=None):
+    time_left = time_left or (lambda: preparation_time(lambda_context))
     a_pcm, b_pcm = (
         sf.read(excerpt.wav_path, dtype="int16", always_2d=True)[0] for excerpt in (a, b)
     )
@@ -200,14 +202,14 @@ def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context):
         r2,
         f"{prefix}/stems/instrumental.flac",
         work_dir / "incoming-stem.flac",
-        time.monotonic() + preparation_time(lambda_context),
+        time.monotonic() + time_left(),
     )
     guide = None
     search_source = "instrumental_stem"
     if stem is not None:
         try:
             guide = build_guide(
-                stem, inputs.to_steps, work_dir, timeout=preparation_time(lambda_context)
+                stem, inputs.to_steps, work_dir, timeout=time_left()
             )
         except GlueExcerptTooShort:
             pass
@@ -218,7 +220,7 @@ def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context):
             raise GlueAudioUnavailable("Incoming recording is unavailable", side="B")
         try:
             guide = build_guide(
-                Path(mix), inputs.to_steps, work_dir, timeout=preparation_time(lambda_context)
+                Path(mix), inputs.to_steps, work_dir, timeout=time_left()
             )
         except GlueExcerptTooShort:
             return None, "insufficient-search-source"

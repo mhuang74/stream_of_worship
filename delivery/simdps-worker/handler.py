@@ -1,10 +1,11 @@
 """Run a single pinned SimDPS-Multi sampler and publish its immutable seam."""
 
 import hashlib
+import json
 import os
 import re
 from io import BytesIO
-from time import monotonic
+from time import monotonic, time
 from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import UUID
 
@@ -202,7 +203,7 @@ def make_handler(inpainter, torch, load_seconds, host, bucket):
         except Exception as exc:
             # SDK reports exceptions to Runpod. Transport exceptions can include signed URLs.
             raise RuntimeError(f"SimDPS job failed ({type(exc).__name__})") from None
-        return {
+        output = {
             "version": 1,
             "submission_id": payload["submission_id"],
             "model_id": MODEL_ID,
@@ -218,13 +219,18 @@ def make_handler(inpainter, torch, load_seconds, host, bucket):
             "fill_frames": fill,
             "b_frames": b,
         }
+        dispatched = payload.get("submitted_epoch")
+        if type(dispatched) in (int, float) and 0 <= time() - dispatched <= 3600:
+            output["dispatch_to_processing_seconds"] = max(
+                0, time() - dispatched - output["processing_seconds"]
+            )
+        print(json.dumps({"event": "glue.sampler.completed", **output}), flush=True)
+        return output
 
     return handler
 
 
-def main():
-    import sys
-
+def load_sampler():
     import torch
     from simdps import Inpainter
     from simdps.priors import ACEStep
@@ -234,18 +240,28 @@ def main():
         model="base", device="cuda:0", dtype=torch.bfloat16, cache_dir=os.environ["HF_HUB_CACHE"]
     )
     inpainter = Inpainter(prior, cache_dir=None)
-    elapsed = monotonic() - started
+    return inpainter, torch, monotonic() - started
+
+
+def configured_handler(inpainter, torch, elapsed):
+    host = os.environ["SIMDPS_R2_HOST"]
+    bucket = os.environ["SIMDPS_R2_BUCKET"]
+    if not re.fullmatch(r"[a-f0-9]{32}\.r2\.cloudflarestorage\.com", host):
+        raise RuntimeError("Invalid SIMDPS_R2_HOST")
+    return make_handler(inpainter, torch, elapsed, host, bucket)
+
+
+def main():
+    import sys
+
+    inpainter, torch, elapsed = load_sampler()
     if sys.argv[1:] == ["--check-model"]:
         print(f"Loaded {MODEL_ID} offline on {torch.cuda.get_device_name()} in {elapsed:.3f}s")
         return
 
     import runpod
 
-    host = os.environ["SIMDPS_R2_HOST"]
-    bucket = os.environ["SIMDPS_R2_BUCKET"]
-    if not re.fullmatch(r"[a-f0-9]{32}\.r2\.cloudflarestorage\.com", host):
-        raise RuntimeError("Invalid SIMDPS_R2_HOST")
-    runpod.serverless.start({"handler": make_handler(inpainter, torch, elapsed, host, bucket)})
+    runpod.serverless.start({"handler": configured_handler(inpainter, torch, elapsed)})
 
 
 if __name__ == "__main__":
