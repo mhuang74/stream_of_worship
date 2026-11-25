@@ -594,9 +594,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/deploy/aws-up-glue.sh": {
-    "mtime": 1795556322.5765715,
-    "seen": 1795557667.9249122,
-    "ast_hash": "3507950e8dd8bee2a4ed68a96b7c612d",
+    "mtime": 1795604617.2915728,
+    "seen": 1795605109.43955,
+    "ast_hash": "221f594d680b3831bd65c332d2525fac",
     "semantic_hash": ""
   },
   "delivery/render-worker/deploy/aws-up.sh": {
@@ -612,9 +612,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/deploy/glue-observability.sh": {
-    "mtime": 1795556322.5765715,
-    "seen": 1795557667.924919,
-    "ast_hash": "e06d2498d3114bc4125c02c617ca87ad",
+    "mtime": 1795604812.0488584,
+    "seen": 1795605109.4398446,
+    "ast_hash": "83fbc550141c9f898d1a717adec5976a",
     "semantic_hash": ""
   },
   "delivery/render-worker/deploy/localstack-up.sh": {
@@ -678,9 +678,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/db.py": {
-    "mtime": 1795556323.00457,
-    "seen": 1795557667.9249434,
-    "ast_hash": "b16e204c034142e85fb92072c9721e56",
+    "mtime": 1795604617.2895727,
+    "seen": 1795605109.441136,
+    "ast_hash": "d44b872fa27b5f478aff066232f320dd",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/frame_renderer.py": {
@@ -690,9 +690,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_descriptor.py": {
-    "mtime": 1795556323.00457,
-    "seen": 1795557667.924948,
-    "ast_hash": "98c3fd8bd5356c164e4562911edec642",
+    "mtime": 1795604687.231082,
+    "seen": 1795605109.441296,
+    "ast_hash": "6645a80d264f72e62ca6cfa2de3ad1f8",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_detail.py": {
@@ -702,33 +702,33 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_excerpts.py": {
-    "mtime": 1795556323.00457,
-    "seen": 1795557667.9249613,
-    "ast_hash": "86afc71886c6500c3ef0ee2d54ae27e2",
+    "mtime": 1795604235.5444012,
+    "seen": 1795605109.4414275,
+    "ast_hash": "ab334fa39b7226ddb21421667e3a0dab",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_jobs.py": {
-    "mtime": 1795556323.00457,
-    "seen": 1795557667.9249635,
-    "ast_hash": "a54c85de9ae402142fea55345c812abb",
+    "mtime": 1795604877.87421,
+    "seen": 1795605109.4414313,
+    "ast_hash": "a4241b62806b825d24ec900202ff68ae",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_provider.py": {
-    "mtime": 1795556323.00557,
-    "seen": 1795557667.9249659,
-    "ast_hash": "74e3e07450bee2d29b8b77c2211d83ff",
+    "mtime": 1795604687.230082,
+    "seen": 1795605109.441435,
+    "ast_hash": "b2641f2e77d0fcc74883a63414ca40e8",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_staging.py": {
-    "mtime": 1795556323.00557,
-    "seen": 1795557667.9249685,
-    "ast_hash": "f5d361451f46728da239b0a7ca8e281d",
+    "mtime": 1795604336.3287878,
+    "seen": 1795605109.4414442,
+    "ast_hash": "16a6114a733979f262927c9b6fef9549",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/lambda_handler.py": {
-    "mtime": 1795556323.00557,
-    "seen": 1795557667.9249709,
-    "ast_hash": "fecd6d24005297b39206aaf179aa720a",
+    "mtime": 1795602814.6235235,
+    "seen": 1795605109.4414477,
+    "ast_hash": "7ac32ba762de93f3330d72dd7f48fff7",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/lrc_parser.py": {
@@ -744,9 +744,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/r2_client.py": {
-    "mtime": 1795556323.0065699,
-    "seen": 1795557667.9249773,
-    "ast_hash": "6287452c98102fa67403362c5ff0a883",
+    "mtime": 1795603816.0111616,
+    "seen": 1795605109.441763,
+    "ast_hash": "0febec3c79907a775fb2334c0092bb27",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/uploader.py": {
@@ -888,9 +888,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/drizzle/meta/_journal.json": {
-    "mtime": 1795556323.03257,
-    "seen": 1795557667.925031,
-    "ast_hash": "88e097dc47f1b8ee5731899913435204",
+    "mtime": 1795604100.8901048,
+    "seen": 1795605109.4439487,
+    "ast_hash": "425e87d7aca9ecbc31e2d268df6b0bdc",
     "semantic_hash": ""
   },
   "delivery/webapp/eslint.config.mjs": {
@@ -1650,9 +1650,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1795556323.0905697,
-    "seen": 1795557667.9258027,
-    "ast_hash": "74c9024057fda8a6cf21fbe4564dcd71",
+    "mtime": 1795604092.297938,
+    "seen": 1795605109.4544659,
+    "ast_hash": "c02308fcc12d38ebf558199c54e4d020",
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/BpmRangeMultiSelect.tsx": {
@@ -1944,9 +1944,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/db/schema.ts": {
-    "mtime": 1795556323.0945697,
-    "seen": 1795557667.9259126,
-    "ast_hash": "6f0c42d91ad6968a891a211595d98dc4",
+    "mtime": 1795604092.294938,
+    "seen": 1795605109.459545,
+    "ast_hash": "9b59eae97311b5e8b2dab40beaf08f3e",
     "semantic_hash": ""
   },
   "delivery/webapp/src/hooks/useAudioPlayer.ts": {
@@ -2298,15 +2298,15 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/glue/quote.ts": {
-    "mtime": 1795556323.0995696,
-    "seen": 1795557667.9260495,
-    "ast_hash": "bac5bea88eece8d52af6079627ff3410",
+    "mtime": 1795604092.2989383,
+    "seen": 1795605109.4647355,
+    "ast_hash": "8d1c901efe5ccc9a6cda555ca47c889a",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/glue/resolve.ts": {
-    "mtime": 1795556323.0995696,
-    "seen": 1795557667.9260519,
-    "ast_hash": "97144eea3b3120135cff9dc77f7c923d",
+    "mtime": 1795604092.2989383,
+    "seen": 1795605109.4647384,
+    "ast_hash": "3da79cbde76708659924f085e4cf1b3b",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/accept-language.ts": {
@@ -2364,9 +2364,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/glue.ts": {
-    "mtime": 1795556323.1005697,
-    "seen": 1795557667.9260743,
-    "ast_hash": "2737047988b603fe11f3353a9959c5f1",
+    "mtime": 1795604812.0448582,
+    "seen": 1795605109.4656785,
+    "ast_hash": "4da66d9b38bc4deb22b84776ec0dbe0c",
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/listen.ts": {
@@ -3090,15 +3090,15 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx": {
-    "mtime": 1795556323.1115696,
-    "seen": 1795557667.9263442,
-    "ast_hash": "e619ac91c196a9203b01ad7f3f0eab9f",
+    "mtime": 1795604092.2999382,
+    "seen": 1795605109.478885,
+    "ast_hash": "dff7bcdb8480f03f9ff28789044bf03d",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/arrangement-editor-glue.test.tsx": {
-    "mtime": 1795556323.1115696,
-    "seen": 1795557667.9263465,
-    "ast_hash": "88aef1bbe43dd4080554636d1802a2f6",
+    "mtime": 1795605001.838784,
+    "seen": 1795605109.4788873,
+    "ast_hash": "31576287cb8b1ccd3da74a4910fad467",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/audio/AudioPlayerBar.test.tsx": {
@@ -3408,15 +3408,15 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/db/schema.test.ts": {
-    "mtime": 1795556323.1175694,
-    "seen": 1795557667.9264657,
-    "ast_hash": "2cee7608a0bda27fe972f30523165a8b",
+    "mtime": 1795604092.2989383,
+    "seen": 1795605109.4833977,
+    "ast_hash": "975806e7b15b782082c087d9e01ef459",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/deployment/deployment.test.ts": {
-    "mtime": 1795556323.1175694,
-    "seen": 1795557667.9264681,
-    "ast_hash": "ab227dc799505943fe32242b9a5f2af3",
+    "mtime": 1795602814.6395235,
+    "seen": 1795605109.4834,
+    "ast_hash": "79bcedcb9c37b3d07ca5841495f5c89a",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/deployment/vercel-glue-routes.test.ts": {
@@ -3426,9 +3426,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/deployment/workflows.test.ts": {
-    "mtime": 1795556323.1175694,
-    "seen": 1795557667.9264727,
-    "ast_hash": "9f6a3af36ec76487d909b474d9e71a16",
+    "mtime": 1795605001.837784,
+    "seen": 1795605109.4834843,
+    "ast_hash": "a896b1dc9b20cc15896df9a57baa3fc0",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/fixtures/arrangements.cross_language.json": {
@@ -3732,9 +3732,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/glue/jobs.test.ts": {
-    "mtime": 1795556323.1235695,
-    "seen": 1795557667.9266412,
-    "ast_hash": "9816776b6baf08763fbcdf91915af45b",
+    "mtime": 1795604092.2989383,
+    "seen": 1795605109.4881873,
+    "ast_hash": "b1b3cd7d29d03c0a2638185b257a0017",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/glue/quota.test.ts": {
@@ -4356,9 +4356,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/gen_glue_simdps.py": {
-    "mtime": 1795571577.4890873,
-    "seen": 1795571688.6810637,
-    "ast_hash": "b93d525a37f0b12581848fa097c0093b",
+    "mtime": 1795604687.231082,
+    "seen": 1795605109.4963763,
+    "ast_hash": "66141322e87038280a71821637d0c175",
     "semantic_hash": ""
   },
   "lab/poc-scripts/gen_glue_treblo.py": {
@@ -4476,9 +4476,9 @@
     "semantic_hash": ""
   },
   "lab/poc-scripts/modal_apps/simdps_inpaint_app.py": {
-    "mtime": 1795557441.02637,
-    "seen": 1795557667.927269,
-    "ast_hash": "9d49b7a805adb9f6ea580a10ff9554f0",
+    "mtime": 1795604617.2925727,
+    "seen": 1795605109.4976995,
+    "ast_hash": "1fa7b29f1fb98bf68799b42a92f2df9c",
     "semantic_hash": ""
   },
   "lab/poc-scripts/poc_analysis.py": {
@@ -6048,15 +6048,15 @@
     "semantic_hash": ""
   },
   ".github/workflows/ci.yml": {
-    "mtime": 1795556322.5615716,
-    "seen": 1795557667.9281225,
-    "ast_hash": "40752cd8d5d595913a18fbbe145b8684",
+    "mtime": 1795604917.8174067,
+    "seen": 1795605109.5204184,
+    "ast_hash": "0e9216279e51d30bebba31c610a58771",
     "semantic_hash": ""
   },
   ".github/workflows/deploy.yml": {
-    "mtime": 1795556322.5625715,
-    "seen": 1795557667.9281244,
-    "ast_hash": "ee613f1363cf4fc93fa17f828a32b181",
+    "mtime": 1795604144.3549087,
+    "seen": 1795605109.5204208,
+    "ast_hash": "e45b063a691db61390a6e16ba9bf2860",
     "semantic_hash": ""
   },
   "CONTEXT.md": {
@@ -6120,9 +6120,9 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/README.md": {
-    "mtime": 1795556322.5755715,
-    "seen": 1795557667.928145,
-    "ast_hash": "2126db13c558a1adae378f79b2827bdc",
+    "mtime": 1795604687.2320821,
+    "seen": 1795605109.5210092,
+    "ast_hash": "d55c16a8f6fa84e3f7a14d66130f55ae",
     "semantic_hash": ""
   },
   "delivery/render-worker/deploy/DEPLOY-DEV.md": {
@@ -6471,6 +6471,54 @@
     "mtime": 1795556323.0825696,
     "seen": 1795557667.928251,
     "ast_hash": "80eecebbb41d09455891fd7bd38c8acd",
+    "semantic_hash": ""
+  },
+  "delivery/render-worker/src/sow_render_worker/glue_runpod.py": {
+    "mtime": 1795604957.31559,
+    "seen": 1795605109.44144,
+    "ast_hash": "1a584bb99f53a3e10d4005bfb846597d",
+    "semantic_hash": ""
+  },
+  "delivery/render-worker/src/sow_render_worker/simdps_audio.py": {
+    "mtime": 1795604618.0325785,
+    "seen": 1795605109.4417672,
+    "ast_hash": "e66d0427941e174577e64dec77153499",
+    "semantic_hash": ""
+  },
+  "delivery/simdps-worker/bake_weights.py": {
+    "mtime": 1795604043.320936,
+    "seen": 1795605109.442131,
+    "ast_hash": "56f4e59ed1d541f5ca5d5b27d16741a1",
+    "semantic_hash": ""
+  },
+  "delivery/simdps-worker/handler.py": {
+    "mtime": 1795604618.0355785,
+    "seen": 1795605109.442135,
+    "ast_hash": "797b22313e866bc2778e331983cc1c17",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/drizzle/meta/0030_snapshot.json": {
+    "mtime": 1795604100.8901048,
+    "seen": 1795605109.4439456,
+    "ast_hash": "10cb46248bf200ed751909a9b5dcd4ea",
+    "semantic_hash": ""
+  },
+  "lab/poc-scripts/runpod_glue_fixture.py": {
+    "mtime": 1795604618.0325785,
+    "seen": 1795605109.4979548,
+    "ast_hash": "4f8d96feb3acf16fe99c115b7369836b",
+    "semantic_hash": ""
+  },
+  ".github/workflows/build-simdps-worker.yml": {
+    "mtime": 1795605082.610106,
+    "seen": 1795605109.5204132,
+    "ast_hash": "743b826b3a01ecbaa7037f388f2d0a03",
+    "semantic_hash": ""
+  },
+  ".github/workflows/check-simdps-capacity.yml": {
+    "mtime": 1795604465.0982332,
+    "seen": 1795605109.5204155,
+    "ast_hash": "487d46ee86be02f442a6abadb00fb4f9",
     "semantic_hash": ""
   }
 }
