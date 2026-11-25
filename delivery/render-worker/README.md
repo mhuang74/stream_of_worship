@@ -411,7 +411,7 @@ reduces render throughput.
 | Function timeout | 180 s |
 | Event source mapping | batch size 1, `ReportBatchItemFailures`, concurrency 2 |
 
-Run `deploy/aws-up-glue.sh` to provision the standard function and its disabled queue mapping. The [operator runbook](../../docs/glue-operator-runbook.md) covers preflight, cutover, and rollback.
+Run `deploy/aws-up-glue.sh` to provision the standard function and its disabled queue mapping. The [operator runbook](../../docs/glue-operator-runbook.md) covers routine operation and image-only rollback.
 
 `SOW_ELEVENLABS_API_KEY` is set on the **Glue function only**. It is never set
 on the render-worker function, never returned to the browser, and never
@@ -434,14 +434,13 @@ The Lambda execution role needs:
 - `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on `sow-glue-jobs`
 - `s3:GetObject`, `s3:PutObject`, `s3:HeadObject`, `s3:DeleteObject` on the R2 bucket (if using IAM-compatible endpoint)
 - `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` for pulling the container image
-- `logs:CreateLogStream`, `logs:PutLogEvents` on the `sow-glue-worker` log group
+- `logs:CreateLogStream`, `logs:PutLogEvents` on the `/aws/lambda/sow-glue-worker-standard` log group
 
 The deploying principal (local admin profile or the GitHub deploy role) needs,
 in addition to the above:
 
 - `lambda:GetFunctionConfiguration`, `lambda:GetFunction`, `lambda:ListFunctions`
 - `lambda:CreateFunction`, `lambda:UpdateFunctionCode`, `lambda:UpdateFunctionConfiguration`
-- `lambda:PublishVersion`, `lambda:PutFunctionScalingConfig`
 - `lambda:ListEventSourceMappings`, `lambda:CreateEventSourceMapping`, `lambda:UpdateEventSourceMapping`
 - `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`
   on `sow-glue-jobs` and `sow-glue-jobs-dlq`

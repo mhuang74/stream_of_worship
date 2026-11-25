@@ -224,14 +224,13 @@ take and no extra provider charge.
 **What the user sees:** terminal jobs stop showing as active; a recovered
 queued job resumes with its real phase rather than a fabricated percent.
 
-## Standard Lambda rollout
+## Standard Lambda operation
 
-1. Confirm numbered version `1` has no aliases, event source mappings, or callers. Deactivate it with `put-function-scaling-config --qualifier 1 --function-scaling-config MinExecutionEnvironments=0,MaxExecutionEnvironments=0`.
-2. Run `deploy/aws-up-glue.sh` for the replacement. It creates the new production mapping disabled and preserves the legacy queue visibility. For a preflight queue, set `GLUE_QUEUE_NAME` to a test queue name.
-3. Verify the replacement on the test queue, then disable the legacy mapping and wait for it to reach `Disabled` and for old invocations to finish. Set production queue visibility to 1,080 seconds and enable the new mapping. The Lambda deployment targets the unqualified standard function.
-4. Verify a production delivery, then deactivate the legacy `$LATEST.PUBLISHED` version. Verify the provider's managed EC2 instances terminate. Remove the three retired alarms (`sow-glue-provider-ambiguous`, `sow-glue-heartbeat-missing`, `sow-glue-staging-recovery-spike`) and the legacy Glue log group's `SOW/Glue` metric filters.
-5. Scope the CI policy `lambda-render-worker-deploy` to `sow-glue-worker-standard` for Glue deployment. Use the operator profile for manual Managed Instances rollback.
-6. To roll back, disable the new mapping first, restore queue visibility to 3,500 seconds, reactivate legacy `$LATEST.PUBLISHED` with min 0 / max 2, and enable its mapping. Keep numbered version `1` deactivated.
+1. Deploy with `delivery/render-worker/deploy/aws-up-glue.sh`. It updates the unqualified `sow-glue-worker-standard` function image and configuration (180 s timeout, 3,008 MB, 2,048 MB ephemeral storage) and, when the mapping does not exist yet, creates the production mapping **disabled**. For a preflight queue, set `GLUE_QUEUE_NAME` to a test queue name.
+2. Before enabling a newly created mapping, set the `sow-glue-jobs` visibility timeout to 1,080 seconds and enable mapping `29796477-c0bc-4cb8-b030-e4b3f3d2f8ca`. The script clamps visibility to at least 1,080 seconds and never lowers it.
+3. No version publishing and no scaling config are used. Deploys replace the `$LATEST` image; there is no numbered version to activate, deactivate, or scale.
+4. Roll back by repointing the image only: `aws lambda update-function-code --function-name sow-glue-worker-standard --image-uri <previous ECR tag>`, then `wait function-updated`. Leave queue visibility at 1,080 seconds so the previous image's retries are not cut short.
+5. There is no legacy fallback: no previous function, capacity provider, or scaling config exists to reactivate. Repointing the image is the only rollback.
 
 ## Alerts and spend
 
