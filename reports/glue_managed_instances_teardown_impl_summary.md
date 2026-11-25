@@ -3,9 +3,11 @@
 **November 25, 2026.** The Glue worker moved to standard Lambda in
 `us-west-2`, but deactivating the old Managed Instances resources did not
 remove them. Every legacy object still existed: a single publish or scaling
-call could have restarted the EC2 provisioning that cost **$24.51** across
-Nov 23–24. This change deletes those resources, removes the repo instructions
-that could recreate them, and puts guards in place that do not depend on tags.
+call could have restarted the EC2 provisioning that cost **$24.51 of EC2
+compute across Nov 23–24, plus $3.68 in Managed Instances management hours**
+($28.19 total). This change deletes those resources, removes the repo
+instructions that could recreate them, and puts guards in place that do not
+depend on tags.
 
 ## What was deleted
 
@@ -68,8 +70,8 @@ now confirmed and the three native alarms deliver to the operator address.
 
 The Glue budget still reads `$0.00`: Billing attributes tagged cost only after
 the `project` key was activated, so Glue spend appears from the next
-cost-and-usage refresh. The `$24.51` from Nov 23–24 accrued under the retired
-capital key and cannot appear retroactively.
+cost-and-usage refresh. The Nov 23–24 charges accrued under the retired capital
+key and cannot appear retroactively.
 
 ## Repo changes
 
@@ -89,6 +91,8 @@ capacity provider. `reports/` keeps the earlier summary as a historical record.
 - `cd delivery/render-worker && uv run --extra dev pytest tests/test_deploy_glue.py` — 14 passed; the runbook and README doc gates still hold.
 - `bash -n delivery/render-worker/deploy/aws-up-glue.sh` — clean.
 - `aws lambda list-capacity-providers` → `[]`; only `29796477-…` maps `sow-glue-jobs`; `sow-glue-worker-standard` configuration unchanged; `sow-glue-jobs` visibility `1080`; the three Glue alarms are `OK`.
+- Post-merge Deploy run `45530599889` on merge commit `90d2045b` succeeded, including the Glue job's steps: standard-config guard (`Timeout 180`, no capacity provider config), shared image update, and provider-key update. The function reports `LastModified 2026-11-25T02:11:45Z` and its tags remain `project=Glue`.
+- `pnpm vitest run src/test/deployment/deployment.test.ts` in `delivery/webapp` — 83 passed after the obsolete `GLUE_CAPACITY_PROVIDER_ARN` assertions were removed; CI's `Webapp Lint & Test` then passed on the merged commit.
 
 See [ADR 0015](../docs/adr/0015-standard-lambda-for-glue.md) and the
 [Glue operator runbook](../docs/glue-operator-runbook.md) for ongoing
