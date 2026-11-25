@@ -1,16 +1,123 @@
 import importlib.util
 import json
+import sys
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import unquote, urlsplit
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from sow_render_worker import glue_runpod as provider
 from sow_render_worker import simdps_audio
 from sow_render_worker.glue_jobs import GlueJobError
 from sow_render_worker.r2_client import R2Client
+
+
+@pytest.mark.parametrize("status_result", ["matching", "wrong-submission", "unavailable"])
+def test_poc_fixture_recovers_audio_when_status_follows_r2(
+    tmp_path, monkeypatch, capsys, status_result
+):
+    path = Path(__file__).resolve().parents[3] / "lab/poc-scripts/runpod_glue_fixture.py"
+    spec = importlib.util.spec_from_file_location("runpod_fixture", path)
+    fixture = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixture)
+
+    rate = simdps_audio.SAMPLE_RATE
+    a_frames, fill_frames, b_frames = 6 * rate, 3 * rate, 6 * rate
+    end = a_frames + fill_frames
+    montage = np.zeros((end + b_frames, 2), dtype="<i2")
+    montage[:a_frames] = 1024
+    montage[end:] = 2048
+    montage_path = tmp_path / "montage.flac"
+    guide_path = tmp_path / "guide.flac"
+    raw_path = tmp_path / "fill.wav"
+    sf.write(montage_path, montage, rate)
+    sf.write(guide_path, montage[end:], rate, subtype="PCM_24")
+    monkeypatch.setattr(sys, "argv", [
+        str(path), str(montage_path), str(guide_path), str(raw_path),
+        str(a_frames), str(end), "0", "4", "86.13281", "incoming_mix",
+    ])
+    monkeypatch.setenv("RUNPOD_API_KEY", "private-key")
+    monkeypatch.setenv("SOW_R2_BUCKET", "catalog")
+    monkeypatch.setenv("SIMDPS_POC_R2_BUCKET", "scratch")
+    r2 = R2Client("https://fake.r2.cloudflarestorage.com", "fake", "fake", "scratch", bounded=True)
+    objects = {}
+
+    def check_config():
+        assert fixture.os.environ["SOW_R2_BUCKET"] == "scratch"
+        return "endpoint", r2
+
+    def put_object(*, Bucket, Key, Body, IfNoneMatch, **_):
+        assert Bucket == "scratch" and IfNoneMatch == "*"
+        assert Key.startswith("glue-simdps-tmp/poc/")
+        objects[Key] = (Body, {})
+
+    def get_object(*, Bucket, Key):
+        assert Bucket == "scratch"
+        data, metadata = objects[Key]
+        return {"ContentLength": len(data), "Body": BytesIO(data), "Metadata": metadata}
+
+    monkeypatch.setattr(fixture, "check_config", check_config)
+    monkeypatch.setattr(r2.client, "put_object", put_object)
+    monkeypatch.setattr(r2.client, "get_object", get_object)
+    calls = []
+    submission = None
+
+    def call(self, method, operation, deadline, payload=None):
+        nonlocal submission
+        assert 0 < deadline - fixture.time.monotonic() <= (13 if method == "POST" else 10)
+        calls.append((method, operation))
+        if method == "POST":
+            request = json.loads(payload)["input"]
+            submission = request["submission_id"]
+            metadata = {
+                key.removeprefix("x-amz-meta-"): value
+                for key, value in request["result_headers"].items()
+                if key.startswith("x-amz-meta-")
+            }
+            result_key = unquote(urlsplit(request["result_url"]).path.removeprefix("/scratch/"))
+            result = montage.copy()
+            result[a_frames:end] = 4096
+            objects[result_key] = (result.tobytes(), metadata)
+            return 200, {"id": "job"}
+        if calls.count(("GET", "status/job")) == 1:
+            return 200, {"status": "IN_PROGRESS"}
+        if status_result == "unavailable":
+            raise OSError("https://signed-r2.invalid?X-Amz-Signature=secret")
+        return 200, {
+            "id": "job",
+            "status": "COMPLETED",
+            "output": {
+                "submission_id": submission if status_result == "matching" else "someone-else",
+                "gpu": "NVIDIA L4",
+                "sampling_seconds": 11,
+                "model_load_seconds": 3,
+                "processing_seconds": 12,
+                "untrusted_field": "private-key",
+            },
+        }
+
+    monkeypatch.setattr(provider.RunpodAPI, "call", call)
+    fixture.main()
+    output = capsys.readouterr()
+    diagnostics = json.loads(output.out)
+    assert "private-key" not in output.out and "https://" not in output.err
+    assert calls == [("POST", "run"), ("GET", "status/job"), ("GET", "status/job")]
+    assert sf.info(raw_path).subtype == "FLOAT"
+    np.testing.assert_array_equal(sf.read(raw_path, always_2d=True)[0], np.full((fill_frames, 2), 0.125))
+    staged = sf.info(raw_path.with_suffix(".staged.wav"))
+    assert (staged.frames, staged.channels, staged.samplerate) == (132300, 2, rate)
+    assert "staging_status" in diagnostics
+    if status_result == "matching":
+        assert diagnostics["gpu"] == "NVIDIA L4"
+        assert diagnostics["sampling_seconds"] == 11
+        assert diagnostics["model_load_seconds"] == 3
+        assert diagnostics["processing_seconds"] == 12
+    else:
+        assert set(diagnostics) == {"staging_status"}
 
 
 @pytest.fixture

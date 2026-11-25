@@ -1665,6 +1665,12 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
         players.append(
             ("<span>Full pair</span>", _audio(str(files["full"]), "full", preload="none"))
         )
+    if files.get("productionStaged"):
+        players.append(("<span>Production-staged fill</span>",
+                        _audio(str(files["productionStaged"]), "productionStaged")))
+    if files.get("productionFull"):
+        players.append(("<span>Full pair with production-staged fill</span>",
+                        _audio(str(files["productionFull"]), "productionFull", preload="none")))
     body = (
         "".join(f"{tag}{audio}" for tag, audio in players)
         if players
