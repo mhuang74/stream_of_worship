@@ -277,55 +277,6 @@ describe("Deploy workflow — Glue worker", () => {
     expect(raw).toContain("--image-uri \\\"$IMAGE_URI\\\"");
   });
 
-  it("publishes a Glue Lambda version", () => {
-    const publish = glueSteps().find((s) =>
-      JSON.stringify(s).includes("aws lambda publish-version"),
-    );
-    expect(publish).toBeDefined();
-    const raw = JSON.stringify(publish);
-    expect(raw).toContain("--function-name sow-glue-worker");
-    expect(raw).toContain("--publish-to LATEST_PUBLISHED");
-  });
-
-  it("verifies the published Glue version reached Active", () => {
-    // Match on content, not the step name: renaming the step must not silently
-    // disarm the guard.
-    const verify = glueSteps().find((s) => {
-      const raw = JSON.stringify(s);
-      return (
-        raw.includes("get-function-configuration") &&
-        raw.includes("$LATEST.PUBLISHED") &&
-        raw.includes("State") &&
-        raw.includes("Failed")
-      );
-    });
-    expect(verify).toBeDefined();
-    // State alone accepts an Active snapshot on the old 1900 s timeout.
-    const run = String((verify as { run?: unknown }).run ?? "");
-    expect(run).toContain("[State,Timeout]");
-    expect(run).toContain('$timeout" != "3300');
-  });
-
-  it("applies execution-environment scaling with the separate API", () => {
-    const steps = glueSteps();
-    const scaling = steps.filter((s) =>
-      JSON.stringify(s).includes("--function-scaling-config"),
-    );
-    // FunctionScalingConfig is not a CreateFunction/UpdateFunctionConfiguration
-    // request field, so exactly one step may carry it and it must be the
-    // PutFunctionScalingConfig call.
-    expect(scaling).toHaveLength(1);
-    const script = JSON.stringify(scaling[0]);
-    expect(script).toContain("aws lambda put-function-scaling-config");
-    expect(script).toContain("--qualifier '$LATEST.PUBLISHED'");
-    expect(script).toContain("MinExecutionEnvironments=0,MaxExecutionEnvironments=2");
-    // PutFunctionScalingConfig conflicts while the new version settles; retry it
-    // and assert the applied values instead of trusting the response code.
-    expect(script).toContain("ResourceConflictException");
-    expect(script).toContain("get-function-scaling-config");
-    expect(script).toContain("AppliedFunctionScalingConfig");
-  });
-
   it("sets SOW_ELEVENLABS_API_KEY only on the Glue function", () => {
     const workflow = loadWorkflow(DEPLOY_WORKFLOW_PATH);
     const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
@@ -336,20 +287,11 @@ describe("Deploy workflow — Glue worker", () => {
     expect(renderRaw).not.toContain("SOW_ELEVENLABS_API_KEY");
   });
 
-  it("fails fast unless the Glue function uses Managed Instances and Timeout 3300", () => {
-    const steps = glueSteps();
-    const check = steps.find((s) => {
-      const run = typeof s.run === "string" ? s.run : "";
-      return run.includes("get-function-configuration") && run.includes("sow-glue-worker");
-    });
-    expect(check).toBeDefined();
-    const run = check!.run as string;
-    expect(run).toContain(
-      "CapacityProviderConfig.LambdaManagedInstancesCapacityProviderConfig.CapacityProviderArn",
-    );
-    expect(run).toContain("Timeout");
-    expect(run).toContain("3300");
-    expect(run).toContain("exit 1");
+  it("verifies the worker is standard Lambda with a 180-second timeout", () => {
+    const raw = JSON.stringify(glueSteps());
+    expect(raw).toContain("--function-name sow-glue-worker-standard");
+    expect(raw).toContain(".Timeout == 180 and .Capacity == null");
+    expect(raw).not.toContain("publish-version");
   });
 
   it("does not rebuild or push an image for the Glue function", () => {

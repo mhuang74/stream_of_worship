@@ -115,7 +115,7 @@ GLUE_STAGING_PHASES = ("storing-response", "staging")
 # work. Only an absent or stale heartbeat makes a non-queued active job
 # claimable again; the phase itself is preserved so execute_glue_job can apply
 # the ambiguous-redelivery rule instead of calling the provider.
-GLUE_CLAIM_STALE_SECONDS = 120
+GLUE_CLAIM_STALE_SECONDS = 210
 
 
 def _uuid_str(value: Any) -> Optional[str]:

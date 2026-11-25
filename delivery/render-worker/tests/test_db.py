@@ -1029,7 +1029,7 @@ class TestGlueConstants:
         assert GLUE_TERMINAL_PHASES == ("ready", "failed", "cancelled", "dispatch-failed")
 
     def test_claim_stale_threshold(self):
-        assert GLUE_CLAIM_STALE_SECONDS == 120
+        assert GLUE_CLAIM_STALE_SECONDS == 210
 
 
 class TestGlueDataclasses:

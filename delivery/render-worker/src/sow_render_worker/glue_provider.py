@@ -21,6 +21,7 @@ seed/beats/incoming tempo, so a short side changes both its reference range and
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
@@ -47,9 +48,9 @@ UPLOAD_URL = "https://api.elevenlabs.io/v1/music/upload"
 COMPOSE_URL = "https://api.elevenlabs.io/v1/music"
 COMPOSE_OUTPUT_FORMAT = "pcm_44100"
 
-CONNECT_TIMEOUT_SECONDS = 30.0
-UPLOAD_READ_TIMEOUT_SECONDS = 900.0
-COMPOSE_READ_TIMEOUT_SECONDS = 1800.0
+CONNECT_TIMEOUT_SECONDS = 5.0
+UPLOAD_READ_TIMEOUT_SECONDS = 15.0
+COMPOSE_READ_TIMEOUT_SECONDS = 90.0
 
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_GENERATION_MS = 120_000
@@ -194,15 +195,11 @@ class ElevenLabsHttpTransport:
 
     # -- timeouts ---------------------------------------------------------
 
-    def _timeout(self, read_seconds: float) -> urllib3.Timeout:
-        """Connect 30 s and the spec read timeout, capped to remaining budget."""
-        connect = CONNECT_TIMEOUT_SECONDS
-        read = read_seconds
+    def _timeout(self, seconds: float) -> urllib3.Timeout:
         remaining = _remaining_seconds(self._lambda_context)
         if remaining is not None:
-            connect = min(connect, remaining)
-            read = min(read, max(0.001, remaining - connect))
-        return urllib3.Timeout(connect=connect, read=read)
+            seconds = min(seconds, max(0.001, remaining))
+        return urllib3.Timeout(total=seconds, connect=min(CONNECT_TIMEOUT_SECONDS, seconds))
 
     # -- calls ------------------------------------------------------------
 
@@ -215,6 +212,7 @@ class ElevenLabsHttpTransport:
         encoded, content_type = urllib3.filepost.encode_multipart_formdata(
             [("file", (path.name, body, "audio/wav"))]
         )
+        deadline = time.monotonic() + UPLOAD_READ_TIMEOUT_SECONDS
         response = self._send(
             "POST",
             UPLOAD_URL,
@@ -225,13 +223,23 @@ class ElevenLabsHttpTransport:
                 "Accept": "application/json",
             },
             timeout=self._timeout(UPLOAD_READ_TIMEOUT_SECONDS),
-            preload_content=True,
+            preload_content=False,
         )
         try:
+            with contextlib.closing(self._iter_response(response, deadline)) as chunks:
+                data = bytearray()
+                for chunk in chunks:
+                    data.extend(chunk)
+                    if len(data) > MAX_ERROR_BODY_BYTES:
+                        if response.status >= 400:
+                            break
+                        raise ProviderAmbiguous("Upload response exceeded its size limit")
             if response.status >= 400:
-                raise _error_for_response(response.status, _response_text(response), "upload")
+                raise _error_for_response(
+                    response.status, bytes(data[:MAX_ERROR_BODY_BYTES]).decode("utf-8", "replace"), "upload"
+                )
             try:
-                payload = json.loads(response.data.decode("utf-8"))
+                payload = json.loads(data.decode("utf-8"))
             except (AttributeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise ProviderAmbiguous(
                     "Upload response was not JSON", provider_status=response.status
@@ -246,6 +254,7 @@ class ElevenLabsHttpTransport:
             response.release_conn()
 
     def compose(self, request: dict[str, Any]) -> Iterator[bytes]:
+        deadline = time.monotonic() + COMPOSE_READ_TIMEOUT_SECONDS
         body = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         response = self._send(
             "POST",
@@ -264,20 +273,31 @@ class ElevenLabsHttpTransport:
                 raise _error_for_response(response.status, _response_text(response), "compose")
             finally:
                 response.release_conn()
-        return self._iter_response(response)
+        return self._iter_response(response, deadline)
 
-    def _iter_response(self, response: Any) -> Iterator[bytes]:
+    def _iter_response(self, response: Any, deadline: float) -> Iterator[bytes]:
         try:
             while True:
                 try:
-                    chunk = response.read(CHUNK_SIZE)
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise ProviderAmbiguous("Provider response exceeded its deadline")
+                    sock = getattr(getattr(response, "connection", None), "sock", None)
+                    if sock is not None:
+                        sock.settimeout(remaining)
+                    read = getattr(response, "read1", response.read)
+                    chunk = read(CHUNK_SIZE)
                 except urllib3.exceptions.HTTPError as exc:
-                    raise ProviderAmbiguous("Compose read failed") from exc
+                    raise ProviderAmbiguous("Provider response read failed") from exc
                 except OSError as exc:
-                    raise ProviderAmbiguous("Compose connection dropped") from exc
+                    raise ProviderAmbiguous("Provider response connection dropped") from exc
                 if not chunk:
                     return
                 yield chunk
+        except BaseException:
+            if hasattr(response, "close"):
+                response.close()
+            raise
         finally:
             response.release_conn()
 
@@ -658,12 +678,18 @@ def _pre_request_heartbeat(
         ) from exc
 
 
+def _upload_with_budget(spine, context, transport, path, pending_uploads):
+    spine.require_deadline(context, "upload", pending_uploads=pending_uploads)
+    return transport.upload(path)
+
+
 def _retry_not_sent(
     operation: Callable[[], Any],
     *,
     label: str,
     log_event: Callable[..., None],
     sleep: Callable[[float], None],
+    retry_allowed: bool = True,
 ) -> Any:
     """Bounded retries for a request that provably never left the process."""
     attempt = 0
@@ -671,7 +697,7 @@ def _retry_not_sent(
         try:
             return operation()
         except ProviderNotSent as exc:
-            if attempt >= len(PROVIDER_NOT_SENT_RETRY_CAPS_SECONDS):
+            if not retry_allowed or attempt >= len(PROVIDER_NOT_SENT_RETRY_CAPS_SECONDS):
                 raise
             cap = PROVIDER_NOT_SENT_RETRY_CAPS_SECONDS[attempt]
             delay = random.uniform(0, cap)
@@ -797,6 +823,9 @@ def _run_stage(
         )
 
     song_ids: dict[str, str] = {}
+    pending_uploads = sum(
+        not excerpt.elevenlabs_song_id for excerpt in (a_excerpt, b_excerpt)
+    )
     for excerpt in (a_excerpt, b_excerpt):
         side = excerpt.side
         if excerpt.rejection_code == GLUE_COPYRIGHT_REJECTED:
@@ -833,7 +862,7 @@ def _run_stage(
         # Deadline before the in-flight phase: a refusal here is definitely
         # unsent work and must not be mistaken for an ambiguous upload later.
         _pre_request_heartbeat(spine, conn, job, log_event, stage=f"upload-{side.lower()}")
-        spine.require_deadline(lambda_context, "upload")
+        spine.require_deadline(lambda_context, "upload", pending_uploads=pending_uploads)
         updated = set_glue_phase(
             conn, job.id, job.user_id, "uploading", provider_phase=f"upload-{side.lower()}"
         )
@@ -849,10 +878,13 @@ def _run_stage(
 
         try:
             song_id = _retry_not_sent(
-                lambda: transport.upload(excerpt.wav_path),
+                lambda: _upload_with_budget(
+                    spine, lambda_context, transport, excerpt.wav_path, pending_uploads
+                ),
                 label=f"upload_{side}",
                 log_event=log_event,
                 sleep=sleep,
+                retry_allowed=lambda_context is None,
             )
         except GlueProviderError as exc:
             _record_provider_status(conn, job, "uploading", exc.provider_status, log_event)
@@ -899,6 +931,7 @@ def _run_stage(
             elevenlabs_song_id=song_id,
         )
         song_ids[side] = song_id
+        pending_uploads -= 1
         log_event(
             "glue.provider.upload.succeeded",
             phase="uploading",

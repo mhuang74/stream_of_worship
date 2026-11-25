@@ -102,7 +102,13 @@ def _process_record(record: dict, config, conn, context) -> None:
             return
 
         start = time.monotonic()
-        execute_glue_job(job_id, user_id, conn, lambda_context=context)
+        mode = record_data.get("mode")
+        if mode is None:
+            execute_glue_job(job_id, user_id, conn, lambda_context=context)
+        elif mode == "staging":
+            execute_glue_job(job_id, user_id, conn, lambda_context=context, mode=mode)
+        else:
+            raise ValueError("Unknown Glue delivery mode")
         duration = time.monotonic() - start
 
         logger.info(

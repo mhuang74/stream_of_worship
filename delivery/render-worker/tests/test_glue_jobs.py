@@ -237,13 +237,13 @@ def test_duplicate_delivery_after_terminal_does_nothing(worker):
     assert stage.calls == []
 
 
-def test_duplicate_delivery_during_composing_is_unknown_paid(worker):
+def test_stale_claim_during_composing_is_unknown_paid(worker):
     job = _make_job(
         phase="composing",
         provider_contacted=True,
         paid_reservation_state="consumed",
     )
-    worker.mocks["claim_glue_job"].return_value = (job, False)
+    worker.mocks["claim_glue_job"].return_value = (job, True)
     worker.mocks["get_glue_job"].return_value = job
     stage = _FakeProviderStage()
 
@@ -256,6 +256,15 @@ def test_duplicate_delivery_during_composing_is_unknown_paid(worker):
     assert stage.calls == []
     worker.mocks["record_provider_contact"].assert_not_called()
     assert "glue_paid_attempts" not in _executed_sql(worker.cursor)
+
+
+def test_fresh_duplicate_during_composing_leaves_job_running(worker):
+    job = _make_job(phase="composing", provider_contacted=True)
+    worker.mocks["claim_glue_job"].return_value = (job, False)
+    stage = _FakeProviderStage()
+    _run(worker, stage)
+    worker.mocks["finish_glue_job"].assert_not_called()
+    assert stage.calls == []
 
 
 def test_stale_reclaim_of_uploading_phase_is_unknown_paid(worker):
@@ -359,7 +368,7 @@ def test_cancellation_wins_pre_contact_cas(worker):
 def test_deadline_gate_refuses_to_start(worker):
     stage = _FakeProviderStage()
 
-    _run(worker, stage, context=_Context(900_000))
+    _run(worker, stage, context=_Context(100_000))
 
     kwargs = _finish_kwargs(worker)
     assert kwargs["phase"] == "failed"
@@ -767,10 +776,10 @@ def test_stage_returning_on_cancelled_job_is_not_a_failure(worker):
 
 def test_compose_deadline_uses_compose_reserve():
     with pytest.raises(glue_jobs.GlueJobError) as exc_info:
-        glue_jobs.require_deadline(_Context(1_000_000), "compose")
+        glue_jobs.require_deadline(_Context(119_999), "compose")
     assert exc_info.value.code == glue_jobs.GLUE_EXECUTION_DEADLINE
     assert exc_info.value.retry_kind == "free"
-    assert glue_jobs.require_deadline(_Context(1_900_000), "compose") == 1_900_000
+    assert glue_jobs.require_deadline(_Context(120_000), "compose") == 120_000
     assert glue_jobs.require_deadline(None, "compose") is None
     with pytest.raises(ValueError, match="stage"):
         glue_jobs.require_deadline(_Context(1), "persist")

@@ -98,8 +98,11 @@ _IN_FLIGHT_PROVIDER_PHASES = frozenset({"uploading", "composing"})
 _FIRST_UPLOAD_PROVIDER_PHASE = "upload-a"
 
 # Spec §2.5 provider deadline reserves: connect + read + persistence margin.
-UPLOAD_DEADLINE_RESERVE_MS = 990_000
-COMPOSE_DEADLINE_RESERVE_MS = 1_890_000
+UPLOAD_STAGE_MS = 20_000
+COMPOSE_REQUEST_MS = 90_000
+RESPONSE_PERSISTENCE_MS = 20_000
+OUTCOME_RESERVE_MS = 10_000
+COMPOSE_DEADLINE_RESERVE_MS = COMPOSE_REQUEST_MS + RESPONSE_PERSISTENCE_MS + OUTCOME_RESERVE_MS
 
 # Free infrastructure retries: initial attempt + one per entry, full jitter.
 FREE_RETRY_DELAY_CAPS_SECONDS = (1.0, 2.0, 4.0)
@@ -210,17 +213,14 @@ def _remaining_ms(lambda_context: Any) -> Optional[int]:
         return None
 
 
-def require_deadline(lambda_context: Any, stage: str) -> Optional[int]:
-    """Gate a provider stage on its full reserve; None means skipped locally.
-
-    ``stage`` is ``"upload"`` (990 s) or ``"compose"`` (1890 s). Issues #317
-    re-checks the compose reserve immediately before compose.
-    """
-    reserve = {
-        "upload": UPLOAD_DEADLINE_RESERVE_MS,
-        "compose": COMPOSE_DEADLINE_RESERVE_MS,
-    }.get(stage)
-    if reserve is None:
+def require_deadline(
+    lambda_context: Any, stage: str, *, pending_uploads: int = 1
+) -> Optional[int]:
+    """Leave enough time for the remaining paid work and its durable outcome."""
+    reserve = COMPOSE_DEADLINE_RESERVE_MS
+    if stage == "upload":
+        reserve += pending_uploads * UPLOAD_STAGE_MS
+    elif stage != "compose":
         raise ValueError(f"Unknown Glue provider stage: {stage!r}")
     remaining = _remaining_ms(lambda_context)
     if remaining is None:
@@ -641,25 +641,15 @@ def execute_glue_job(
     if job.phase in GLUE_TERMINAL_PHASES:
         log("glue.job.redelivered", phase=job.phase, status="terminal")
         return
-    # claim_glue_job preserves an in-flight provider phase for a stale
-    # heartbeat; that is the ambiguous-redelivery case, never a resume.
+    if not claimed_now:
+        log("glue.job.redelivered", phase=job.phase, status="in-progress")
+        return
+    if _has_durable_provider_success(job) or mode == "staging":
+        _run_staging_mode(conn, job, log, asset_fetcher=asset_fetcher)
+        return
     if job.phase in _IN_FLIGHT_PROVIDER_PHASES:
         _handle_redelivery(conn, job, log)
         return
-    if job.phase in ("storing-response", "staging"):
-        # A durable post-provider phase is free staging recovery, never a
-        # second provider request (issue #318 fills the staging body).
-        _run_staging_mode(conn, job, log, asset_fetcher=asset_fetcher)
-        return
-    if not claimed_now:
-        # An explicit retry-processing delivery may run free staging recovery
-        # even when another delivery set the phase milliseconds ago; it never
-        # calls the provider and #318's staging transaction is idempotent.
-        if mode == "staging" and job.phase in ("storing-response", "staging"):
-            log("glue.job.redelivered", phase=job.phase, status="explicit-staging")
-        else:
-            log("glue.job.redelivered", phase=job.phase, status="in-progress")
-            return
 
     log(
         "glue.job.claimed",
@@ -669,9 +659,6 @@ def execute_glue_job(
         descriptorKey=job.descriptor_key,
         attemptId=job.attempt_id,
     )
-    if mode == "staging":
-        _run_staging_mode(conn, job, log, asset_fetcher=asset_fetcher)
-        return
     _run_generate_mode(
         conn,
         job,
@@ -762,7 +749,10 @@ def _run_generate_mode(
         )
         _heartbeat(conn, job, log, stage="excerpt-b")
 
-        require_deadline(lambda_context, "upload")
+        pending_uploads = sum(
+            not excerpt.elevenlabs_song_id for excerpt in (a_excerpt, b_excerpt)
+        )
+        require_deadline(lambda_context, "upload", pending_uploads=pending_uploads)
         _heartbeat(conn, job, log, stage="deadline-gate")
 
         # A resumed job (free retry of a definitely-unsent failure) already won

@@ -1,21 +1,5 @@
 #!/usr/bin/env bash
-# Create or update the dedicated Glue (AI transition) worker:
-#
-#   * SQS dead-letter queue  sow-glue-jobs-dlq
-#   * SQS queue              sow-glue-jobs (visibility 3500 s, redrive 3)
-#   * Lambda function        sow-glue-worker on AWS Lambda Managed Instances
-#                            running the shared sow-render-worker image
-#   * SQS event source map   batch size 1, ReportBatchItemFailures
-#   * published Lambda version
-#   * scaling config         min 0 / max 2 execution environments on $LATEST.PUBLISHED
-#                            (set after the version is published)
-#
-# Managed Instances are required: standard Lambda caps asynchronous invocations
-# at 1800 s, while a Glue job needs 3300 s. The capacity provider ARN is an
-# operator-supplied input and must already exist in the account.
-#
-# This script never prints secrets: provider keys and the merged environment
-# JSON are passed directly to the AWS CLI and never echoed.
+# Bootstrap standard Lambda. New event source mappings start disabled.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,31 +14,12 @@ ECR_REPO="${GLUE_ECR_REPO:-sow-render-worker}"
 ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
 ROLE_NAME="${GLUE_ROLE_NAME:-sow-render-worker-role}"
 
-FUNCTION_NAME="sow-glue-worker"
-QUEUE_NAME="sow-glue-jobs"
-DLQ_NAME="sow-glue-jobs-dlq"
+FUNCTION_NAME="sow-glue-worker-standard"
+QUEUE_NAME="${GLUE_QUEUE_NAME:-sow-glue-jobs}"
+DLQ_NAME="${QUEUE_NAME}-dlq"
 LOG_GROUP="/aws/lambda/${FUNCTION_NAME}"
 QUEUE_URL="https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/${QUEUE_NAME}"
 DLQ_URL="https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/${DLQ_NAME}"
-
-# Glue limits (spec §2.4 / §2.5): visibility > function timeout; provider
-# concurrency 2 independent of render render throughput. These values are
-# intentionally inline in the CLI calls below so deployment tests pin the
-# exact flags the platform requires: 3500 s visibility, maxReceiveCount 3,
-# 3300 s timeout, 3072 MB memory, 2048 MB ephemeral storage, 2 environments.
-#
-# 3300 s must cover both provider stage reserves: an upload may consume its
-# whole 990 s before compose re-checks its own 1890 s
-# (sow_render_worker.glue_jobs), so anything below 2880 s fails every job at
-# the compose gate. tests/test_deploy_glue.py pins that inequality.
-#
-# PerExecutionEnvironmentMaxConcurrency=1: Managed Instances default to 24
-# concurrent invocations per execution environment, which splits the 3 GB
-# environment across 24 initializations and fails init with
-# FunctionError.InitResourceExhausted. A Glue job is memory-heavy Python and
-# writes into /tmp, so one job per environment is the correct isolation; the
-# provider's 2-way concurrency comes from two environments, not from
-# co-tenancy.
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -64,15 +29,6 @@ NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-
-# ── Fail fast: Managed Instances capacity provider ─────────────────────────
-# Must run before any `aws` call so an unset value never creates a queue or a
-# standard-Lambda function that would silently time out at 1800 s.
-if [[ -z "${GLUE_CAPACITY_PROVIDER_ARN:-}" ]]; then
-    error "GLUE_CAPACITY_PROVIDER_ARN is required: sow-glue-worker must run on AWS Lambda Managed Instances (standard Lambda caps asynchronous invocations at 1800 s, below the 3300 s Glue timeout)."
-    error "Set GLUE_CAPACITY_PROVIDER_ARN to the ARN of the Lambda Managed Instances capacity provider for this account/region."
-    exit 1
-fi
 
 aws_cmd() {
     aws --profile "$AWS_PROFILE" --region "$AWS_REGION" "$@"
@@ -164,18 +120,27 @@ create_sqs_queues() {
         aws_cmd sqs create-queue --queue-name "$QUEUE_NAME" >/dev/null
     fi
 
-    # VisibilityTimeout must exceed the 3300 s function timeout so a slow job
-    # is never redelivered while it is still running.
+    # Keep legacy queue visibility during preflight. Reduce it at cutover.
+    local visibility=1080
+    if [[ "$QUEUE_NAME" == sow-glue-jobs ]]; then
+        visibility=$(aws_cmd sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+            --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text)
+        visibility=$((visibility > 1080 ? visibility : 1080))
+    fi
     local attributes
-    attributes="{\"VisibilityTimeout\":\"3500\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${dlq_arn}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
+    attributes="{\"VisibilityTimeout\":\"${visibility}\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${dlq_arn}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
     aws_cmd sqs set-queue-attributes \
         --queue-url "$QUEUE_URL" \
         --attributes "$attributes"
 
-    info "SQS ready: visibility 3500s, maxReceiveCount 3"
+    for url in "$QUEUE_URL" "$DLQ_URL"; do
+        aws_cmd sqs tag-queue --queue-url "$url" --tags Project=Glue
+    done
+
+    info "SQS ready: visibility ${visibility}s, maxReceiveCount 3"
 }
 
-# ── Lambda function (Managed Instances) ────────────────────────────────────
+# ── Standard Lambda function ────────────────────────────────────
 lambda_exists() {
     aws_cmd lambda get-function-configuration --function-name "$FUNCTION_NAME" &>/dev/null
 }
@@ -197,81 +162,35 @@ create_or_update_lambda() {
         info "Updating existing Lambda function: $FUNCTION_NAME"
         aws_cmd lambda update-function-code \
             --function-name "$FUNCTION_NAME" \
-            --image-uri "${ECR_URI}:latest" >/dev/null
+            --image-uri "${GLUE_IMAGE_URI:-${ECR_URI}:latest}" >/dev/null
         wait_for_lambda_updated
 
         aws_cmd lambda update-function-configuration \
             --function-name "$FUNCTION_NAME" \
-            --timeout 3300 \
-            --memory-size 3072 \
+            --timeout 180 \
+            --logging-config LogFormat=JSON,ApplicationLogLevel=INFO,SystemLogLevel=INFO \
+            --memory-size 3008 \
             --ephemeral-storage Size=2048 \
-            --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN,PerExecutionEnvironmentMaxConcurrency=1}" \
             --environment "$env_vars" >/dev/null
         wait_for_lambda_updated
     else
-        info "Creating Lambda function: $FUNCTION_NAME (Managed Instances)"
+        info "Creating Lambda function: $FUNCTION_NAME"
         aws_cmd lambda create-function \
             --function-name "$FUNCTION_NAME" \
             --package-type Image \
-            --code "ImageUri=${ECR_URI}:latest" \
+            --code "ImageUri=${GLUE_IMAGE_URI:-${ECR_URI}:latest}" \
             --role "$role_arn" \
-            --timeout 3300 \
-            --memory-size 3072 \
+            --timeout 180 \
+            --logging-config LogFormat=JSON,ApplicationLogLevel=INFO,SystemLogLevel=INFO \
+            --memory-size 3008 \
             --ephemeral-storage Size=2048 \
-            --capacity-provider-config "LambdaManagedInstancesCapacityProviderConfig={CapacityProviderArn=$GLUE_CAPACITY_PROVIDER_ARN,PerExecutionEnvironmentMaxConcurrency=1}" \
             --environment "$env_vars" >/dev/null
 
-        # No Active-state waiter here: a Managed Instances function has no
-        # execution environment until a version is published, and unqualified
-        # invocation resolves to `$LATEST.PUBLISHED`. It reports
-        # ActiveNonInvocable until publish_version runs, so such a waiter can
-        # never succeed and used to abort the bootstrap before the mapping,
-        # the version, and the scaling config existed.
-        wait_for_lambda_updated
+        aws_cmd lambda wait function-active --function-name "$FUNCTION_NAME"
     fi
+    aws_cmd lambda tag-resource --resource "arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${FUNCTION_NAME}" --tags Project=Glue
 }
 
-# ── Execution-environment scaling ──────────────────────────────────────────
-# Scaling limits are not a CreateFunction/UpdateFunctionConfiguration request
-# field: AWS applies them per qualified ARN through PutFunctionScalingConfig.
-# `$LATEST.PUBLISHED` makes every future published version inherit the cap; the
-# minimum/maximum pair must be sent together (an omitted value resets to the
-# default minimum of 3), so the minimum is pinned to 0 (scale to zero between
-# jobs) with the maximum at the spec's 2 provider concurrency.
-apply_scaling_config() {
-    info "Setting execution environments: min 0, max 2"
-    # PutFunctionScalingConfig answers ResourceConflictException while the version
-    # just published is still settling, so retry before failing.
-    local attempt output
-    for attempt in $(seq 1 30); do
-        if output=$(aws_cmd lambda put-function-scaling-config \
-            --function-name "$FUNCTION_NAME" \
-            --qualifier '$LATEST.PUBLISHED' \
-            --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2' 2>&1); then
-            return 0
-        fi
-        case "$output" in
-            *ResourceConflictException*)
-                warn "  scaling config attempt ${attempt} hit a transient state; retrying"
-                sleep 10
-                ;;
-            *)
-                error "$output"
-                exit 1
-                ;;
-        esac
-    done
-    error "Scaling config was not applied after repeated transient-state retries."
-    exit 1
-}
-
-# ── Event source mapping ───────────────────────────────────────────────────
-# Managed Instances event source mappings reject `ScalingConfig.MaximumConcurrency`
-# ("Elevator function ESM does not support maximum concurrency feature"). The
-# provider's 2-way concurrency therefore comes from the execution-environment
-# cap (max 2 environments x PerExecutionEnvironmentMaxConcurrency=1), not from
-# the mapping. ProvisionedPollerConfig.MaximumPollers is the odd alternative and
-# bills poller-hours, so it is deliberately not used.
 create_event_source_mapping() {
     local queue_arn
     queue_arn=$(aws_cmd sqs get-queue-attributes \
@@ -284,121 +203,30 @@ create_event_source_mapping() {
     mapping_uuid=$(aws_cmd lambda list-event-source-mappings \
         --function-name "$FUNCTION_NAME" \
         --query "EventSourceMappings[?EventSourceArn=='${queue_arn}'].UUID | [0]" \
-        --output text 2>/dev/null || true)
+        --output text)
 
     if [[ -n "$mapping_uuid" && "$mapping_uuid" != "None" ]]; then
         info "Updating event source mapping: $mapping_uuid"
         aws_cmd lambda update-event-source-mapping \
             --uuid "$mapping_uuid" \
             --batch-size 1 \
+            --scaling-config MaximumConcurrency=2 \
             --function-response-types ReportBatchItemFailures >/dev/null
     else
         info "Creating event source mapping: $QUEUE_NAME -> $FUNCTION_NAME"
         aws_cmd lambda create-event-source-mapping \
             --function-name "$FUNCTION_NAME" \
             --event-source-arn "$queue_arn" \
+            --no-enabled \
             --batch-size 1 \
+            --scaling-config MaximumConcurrency=2 \
             --function-response-types ReportBatchItemFailures >/dev/null
     fi
 
-    info "Event source mapping ready: batch size 1, ReportBatchItemFailures (concurrency capped by execution environments)"
 }
 
-# ── Publish version ─────────────────────────────────────────────────────────
-publish_version() {
-    info "Publishing Lambda version (required by Managed Instances)"
-    local version="" output attempt
-    # A just-updated function (and a just-published version) is briefly in a
-    # transient state, where PublishVersion answers ResourceConflictException.
-    for attempt in 1 2 3 4 5 6 7 8 9 10; do
-        if output=$(aws_cmd lambda publish-version \
-            --function-name "$FUNCTION_NAME" \
-            --publish-to LATEST_PUBLISHED \
-            --query 'Version' \
-            --output text 2>&1); then
-            version="$output"
-            break
-        fi
-        case "$output" in
-            *ResourceConflictException*)
-                warn "  publish-version attempt ${attempt} hit a transient state; retrying"
-                sleep 10
-                ;;
-            *)
-                error "$output"
-                exit 1
-                ;;
-        esac
-    done
-    if [[ -z "$version" ]]; then
-        error "Lambda version did not publish after repeated transient-state retries."
-        exit 1
-    fi
-    info "Published version: $version"
-
-    # PublishVersion succeeds as soon as the version is requested; on Managed
-    # Instances it can then settle at Failed (for example
-    # FunctionError.InitResourceExhausted) while the queue happily accepts jobs.
-    # Wait for Active so a broken version fails the bootstrap, not a user's run.
-    local state reason
-    for attempt in $(seq 1 60); do
-        state=$(aws_cmd lambda get-function-configuration \
-            --function-name "$FUNCTION_NAME" \
-            --qualifier "$version" \
-            --query 'State' \
-            --output text)
-        case "$state" in
-            Active)
-                info "  Version $version is Active"
-                return 0
-                ;;
-            Failed)
-                reason=$(aws_cmd lambda get-function-configuration \
-                    --function-name "$FUNCTION_NAME" \
-                    --qualifier "$version" \
-                    --query 'StateReason' \
-                    --output text)
-                error "Version $version settled at Failed: $reason"
-                exit 1
-                ;;
-        esac
-        sleep 10
-    done
-    error "Version $version did not reach Active."
-    exit 1
-}
-
-# ── Main ───────────────────────────────────────────────────────────────────
-main() {
-    echo "========================================="
-    echo " AWS Glue Worker Setup (Managed Instances)"
-    echo " Profile: $AWS_PROFILE"
-    echo " Region:  $AWS_REGION"
-    echo " Function: $FUNCTION_NAME"
-    echo "========================================="
-    echo ""
-
-    check_prerequisites
-    echo ""
-    create_sqs_queues
-    echo ""
-    create_or_update_lambda
-    echo ""
-    # Publish before the event source mapping: a Managed Instances function is
-    # ActiveNonInvocable until `$LATEST.PUBLISHED` exists, and
-    # CreateEventSourceMapping rejects a function in that state.
-    publish_version
-    echo ""
-    create_event_source_mapping
-    echo ""
-    # `$LATEST.PUBLISHED` only exists once a version is published, so scaling
-    # must follow publish_version (same order as the deploy workflow).
-    apply_scaling_config
-    echo ""
-    info "Glue worker ready."
-    echo "Queue URL: $QUEUE_URL"
-    echo "Function:  $FUNCTION_NAME"
-    echo "Log group: $LOG_GROUP"
-}
-
-main "$@"
+check_prerequisites
+create_sqs_queues
+create_or_update_lambda
+create_event_source_mapping
+info "$FUNCTION_NAME ready. New queue mappings are disabled."

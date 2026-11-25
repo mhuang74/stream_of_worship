@@ -79,7 +79,7 @@ Checklist for the inspection:
 - descriptor key and the **A → B** item pair (`from_item_id`, `to_item_id`)
 - current `phase` and whether `active` agrees with it
 - `attempt_id`, `dispatch_state`, `dispatch_attempt`
-- `heartbeat_at` (compare with `OPERATION_BUDGET_SECONDS` = 3300 s)
+- `heartbeat_at` (check the 210 s claim expiry)
 - `provider_contacted`, `provider_phase`, `provider_status`
 - paid reservation id/state and the `glue_paid_attempts` row
 - persisted successful upload `elevenlabs_song_id` values
@@ -89,7 +89,7 @@ Checklist for the inspection:
 
 ```bash
 aws logs filter-log-events \
-  --log-group-name /aws/lambda/sow-glue-worker \
+  --log-group-name /aws/lambda/sow-glue-worker-standard \
   --filter-pattern '"<glue_jobs.id>"' \
   --limit 100
 ```
@@ -224,59 +224,16 @@ take and no extra provider charge.
 **What the user sees:** terminal jobs stop showing as active; a recovered
 queued job resumes with its real phase rather than a fabricated percent.
 
-## Configuration changes require a republish
+## Standard Lambda rollout
 
-The event-source mapping invokes the `$LATEST.PUBLISHED` version, which is a
-configuration snapshot: editing the function's timeout, memory, or environment
-leaves the running version unchanged. After any configuration change:
+1. Confirm numbered version `1` has no aliases, event source mappings, or callers. Deactivate it with `put-function-scaling-config --qualifier 1 --function-scaling-config MinExecutionEnvironments=0,MaxExecutionEnvironments=0`.
+2. Run `deploy/aws-up-glue.sh` for the replacement. It creates the new production mapping disabled and preserves the legacy queue visibility. For a preflight queue, set `GLUE_QUEUE_NAME` to a test queue name.
+3. Verify the replacement on the test queue, then disable the legacy mapping and wait for it to reach `Disabled` and for old invocations to finish. Set production queue visibility to 1,080 seconds and enable the new mapping. The Lambda deployment targets the unqualified standard function.
+4. Verify a production delivery, then deactivate the legacy `$LATEST.PUBLISHED` version. Verify the provider's managed EC2 instances terminate. Remove the three retired alarms (`sow-glue-provider-ambiguous`, `sow-glue-heartbeat-missing`, `sow-glue-staging-recovery-spike`) and the legacy Glue log group's `SOW/Glue` metric filters.
+5. To roll back, disable the new mapping first, restore queue visibility to 3,500 seconds, reactivate legacy `$LATEST.PUBLISHED` with min 0 / max 2, and enable its mapping. Keep numbered version `1` deactivated.
 
-```bash
-aws lambda update-function-configuration --function-name sow-glue-worker --timeout 3300
-aws lambda publish-version --function-name sow-glue-worker --publish-to LATEST_PUBLISHED
-# wait for State=Active, then re-apply the cap (a new version starts uncapped)
-aws lambda put-function-scaling-config --function-name sow-glue-worker \
-  --qualifier '$LATEST.PUBLISHED' \
-  --function-scaling-config 'MinExecutionEnvironments=0,MaxExecutionEnvironments=2'
-```
+## Alerts and spend
 
-A plain `publish-version` creates a numbered version that the mapping never
-invokes. `PutFunctionScalingConfig` answers `ResourceConflictException` while
-the new version settles, so retry it.
+Run `deploy/glue-observability.sh` with `GLUE_ALARM_SNS_TOPIC_ARN` for notifications. It keeps 14 days of structured logs and creates `sow-glue-dlq-arrival`, `sow-glue-queue-age`, and `sow-glue-lambda-errors` from native metrics. DLQ arrival does **not** authorize a provider retry.
 
-The timeout must stay above the worker's stage reserves (`990 s` upload +
-`1 890 s` compose). Below that sum every job fails with
-`GLUE_EXECUTION_DEADLINE` after the paid upload has already run.
-
-## Alerts and metrics
-
-Created/updated by `delivery/render-worker/deploy/glue-observability.sh`
-(idempotent; optional SNS via `GLUE_ALARM_SNS_TOPIC_ARN`).
-
-Lambda's JSON log format wraps every record as `{timestamp, level, message}`,
-so the Glue payload is escaped inside `$.message`. The metric filters match
-event tokens through `$.message` (`{ $.message = "*glue.job.claimed*" }`);
-patterns against `$.event` match nothing and leave `SOW/Glue` at zero. A
-reviewer can prove a pattern with `aws logs test-metric-filter` or by replaying
-one event into a scratch log group before trusting an alarm.
-
-| Alarm | Metric | Meaning / first action |
-|---|---|---|
-| `sow-glue-dlq-arrival` | `AWS/SQS ApproximateNumberOfMessagesVisible` on `sow-glue-jobs-dlq` | A job failed 3 deliveries. Inspect by id (§1); never auto-retry a paid request. |
-| `sow-glue-provider-ambiguous` | `SOW/Glue GlueProviderAmbiguous` (Sum, 5 min) | Ambiguous upload/compose. Treat as §5. |
-| `sow-glue-queue-age` | `AWS/SQS ApproximateAgeOfOldestMessage` on `sow-glue-jobs` (Maximum > 3300 s, 2 periods) | Dispatch/worker starvation. Confirm the queue URL and consumer health, then use §2 where eligible. |
-| `sow-glue-heartbeat-missing` | `AWS/Lambda Duration` on `sow-glue-worker` (Maximum ≥ 3,300,000 ms) | A claimed job reached the 3300 s operation budget without completing. Check the heartbeat and use §2/§3 by durable state. |
-| `sow-glue-staging-recovery-spike` | `SOW/Glue GlueStagingRecovery` (Sum ≥ 5 per 15 min) | Repeated free recoveries indicate a staging/DB fault, not bad input. Inspect staging/DB errors before retrying. |
-| `sow-glue-paid-failure` metric filter | `SOW/Glue GluePaidFailure` (`glue.job.failed` with `retryKind = "paid"`) | Paid terminal failure; requires the user's explicit new paid attempt. |
-
-Metric filters also exist for `glue.provider.ambiguous`,
-`glue.heartbeat.failed`, `glue.staging.recovered`, and paid-terminal
-`glue.job.failed` events. Alarm descriptions intentionally omit titles,
-Lyrics, URLs, signed URLs, keys, and provider bodies.
-
-## Escalation
-
-If inspection cannot establish whether a paid request was sent, treat it as
-ambiguous (§5). If the raw response cannot be verified against its checksum,
-treat staging recovery as unavailable and do not compose again. Escalate to the
-provider owner rather than guessing; never start a paid job from an operator
-session.
+The `Monthly Glue Infrastructure` AWS Budget uses the `Project=Glue` cost allocation tag, with notices above $3 actual or $5 forecast. Activate the `Project` tag in Billing once AWS lists it. Use per-function billed duration, SQS requests, CloudWatch ingestion, transfer, and the Glue R2 prefix to reconcile the first week and billing month. AWS free allowances are account-wide. Retained Glue Takes remain available and accrue storage as the catalog grows.
