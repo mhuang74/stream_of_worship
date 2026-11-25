@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -23,8 +24,22 @@ import soundfile as sf
 import gen_glue_elevenlabs as glue
 
 RENDER_WORKER = Path(__file__).resolve().parents[2] / "delivery" / "render-worker"
+sys.path.insert(0, str(RENDER_WORKER / "src"))
+try:
+    from sow_render_worker.glue_descriptor import generation_duration_ms, milliseconds_to_frames
+    from sow_render_worker.simdps_audio import (
+        MODEL_ID,
+        UPSTREAM_REVISION,
+        latent_window,
+        search_candidates,
+    )
+finally:
+    sys.path.pop(0)
+
 DEFAULT_OUT_ROOT = Path(__file__).resolve().parent / "output" / "simdps-glue"
 ENV_KEYS = tuple(key for key in glue.ENV_KEYS if key.startswith("SOW_"))
+RUNPOD_ENV_KEYS = ("RUNPOD_ENDPOINT_ID", "RUNPOD_API_KEY", "SIMDPS_POC_R2_BUCKET")
+RUNPOD_GUIDE_FRAMES = 18 * glue.SR
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -70,11 +85,6 @@ def montage_geometry(
     """Return gap start, gap end, and total montage frames, all at 44.1 kHz."""
     left = min(a_frames, context_frames)
     if production_duration:
-        sys.path.insert(0, str(RENDER_WORKER / "src"))
-        try:
-            from sow_render_worker.glue_descriptor import generation_duration_ms, milliseconds_to_frames
-        finally:
-            sys.path.pop(0)
         fill = milliseconds_to_frames(generation_duration_ms(beats, bpm))
     else:
         fill = glue.seconds_to_samples(beats * 60 / bpm)
@@ -85,7 +95,9 @@ def dry_run(args: argparse.Namespace) -> int:
     items = glue.DRY_RUN_ITEMS[: args.dry_run_items]
     selected = glue.junction_indices(len(items), args.junctions)
     context_frames = glue.seconds_to_samples(args.context_seconds)
-    print(f"Dry run · Songset {args.songset} · {len(items)} simulated songs · {glue.SR} Hz")
+    mode = "production" if args.production_duration else "beat-exact"
+    print(f"Dry run · {args.provider} · {mode} duration · Songset {args.songset} · "
+          f"{len(items)} simulated songs · {glue.SR} Hz")
     for junction in selected:
         a_ms, _ = items[junction - 1]
         b_ms, bpm = items[junction]
@@ -106,7 +118,9 @@ def dry_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def arrange_guide(item: glue.SongsetItem, out_root: Path, r2) -> np.ndarray | None:
+def arrange_guide(
+    item: glue.SongsetItem, out_root: Path, r2, *, cap_frames: int | None = None
+) -> np.ndarray | None:
     from botocore.exceptions import ClientError
 
     key = f"{item.hash_prefix}/stems/instrumental.flac"
@@ -129,7 +143,20 @@ def arrange_guide(item: glue.SongsetItem, out_root: Path, r2) -> np.ndarray | No
             pending = Path(staging) / decoded.name
             samples = glue.decode_audio(source, pending, codec="pcm_s24le")
             pending.replace(decoded)
-    return glue.arranged_audio(samples, item.steps, f"instrumental guide for {item.title}")
+    if cap_frames is None:
+        return glue.arranged_audio(samples, item.steps, f"instrumental guide for {item.title}")
+    segments = []
+    remaining = cap_frames
+    for step in item.steps:
+        start = max(0, glue.seconds_to_samples(float(step["startSeconds"])))
+        end = min(len(samples), glue.seconds_to_samples(float(step["endSeconds"])))
+        if end > start:
+            segment = samples[start : min(end, start + remaining)]
+            segments.append(segment)
+            remaining -= len(segment)
+            if not remaining:
+                break
+    return np.concatenate(segments, axis=0) if segments else samples[:0]
 
 
 @cache
@@ -189,7 +216,7 @@ def write_take_audio(
             glue.CHANNELS,
             take["target_frames"],
         ):
-            raise ValueError("Modal returned audio outside the expected float WAV geometry")
+            raise ValueError("SimDPS returned audio outside the expected float WAV geometry")
         raw = wav.read(dtype="float32", always_2d=True)
     raw_path = base / "glues" / f"{name}-raw.wav"
     (run_dir / raw_path).parent.mkdir(parents=True, exist_ok=True)
@@ -257,12 +284,76 @@ def runpod_inpaint(montage_path, guide, start, end, seed, beats, bpm, search_sou
             str(seed), str(beats), str(bpm), search_source,
         ]
         env = {key: value for key, value in os.environ.items() if key != "VIRTUAL_ENV"}
-        env["SOW_R2_BUCKET"] = os.environ["SIMDPS_POC_R2_BUCKET"]
-        process = subprocess.run(command, env=env, capture_output=True, text=True, timeout=480)
+        try:
+            process = subprocess.run(command, env=env, capture_output=True, text=True, timeout=480)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("RunPod fixture timed out. Check the test endpoint and scratch R2.") from None
+        except OSError:
+            raise RuntimeError("Could not start the RunPod fixture with uv.") from None
         if process.returncode:
-            raise RuntimeError("Runpod fixture failed")
+            errors = {
+                20: "RunPod fixture configuration is invalid. Check the endpoint and scratch R2.",
+                21: "Could not stage RunPod inputs. Check write access to the scratch R2 bucket.",
+                22: "RunPod rejected the request. Check the endpoint ID, API key, and worker setup.",
+                23: "RunPod finished without verified audio. Check the worker logs and scratch R2.",
+                24: "RunPod audio failed verification. Check the worker image and R2 result.",
+                25: "RunPod production staging failed. Check the fill and reference audio.",
+            }
+            raise RuntimeError(errors.get(
+                process.returncode, "RunPod fixture failed to start or return a result. "
+                "Check the render-worker environment."
+            ))
         staged = output.with_suffix(".staged.wav")
-        return output.read_bytes(), json.loads(process.stdout), staged.read_bytes() if staged.exists() else None
+        try:
+            meta = json.loads(process.stdout)
+            if not isinstance(meta, dict):
+                raise ValueError("expected a metadata object")
+            return (
+                output.read_bytes(),
+                meta,
+                staged.read_bytes() if staged.is_file() else None,
+            )
+        except (OSError, ValueError):
+            raise RuntimeError("Could not read the RunPod fixture output.") from None
+
+
+def runpod_guide(guide, incoming, start, end, total):
+    if not 0 < start < end < total:
+        raise ValueError("RunPod requires a fill with context on both sides.")
+    window = latent_window(start, end - start, total - end)
+    if guide is not None and search_candidates(len(guide), window):
+        return "instrumental_stem", guide
+    source = incoming[:RUNPOD_GUIDE_FRAMES]
+    if not search_candidates(len(source), window):
+        raise ValueError("Neither the instrumental stem nor the incoming mix is long enough "
+                         "for the SimDPS search window.")
+    return "incoming_mix", source
+
+
+def model_summary(take: dict[str, Any], meta: dict[str, Any]) -> str:
+    gpu = meta.get("gpu")
+    take["gpu_check"] = (
+        "unverified" if not gpu else "pass" if gpu == "NVIDIA L4" else "fail"
+    )
+    device = gpu or "GPU unverified"
+    if take["gpu_check"] == "fail":
+        device += " (expected NVIDIA L4)"
+    parts = [
+        f"seed {take['seed']}",
+        f"{take['steps']} steps",
+        device,
+        f"{take['wall_seconds']:.2f} s wall",
+    ]
+    for key, label in (
+        ("sampling_seconds", "sampling"),
+        ("processing_seconds", "processing"),
+        ("model_load_seconds", "model load"),
+    ):
+        if key in meta:
+            parts.append(f"{meta[key]:.2f} s {label}")
+    source = take["search_source"].replace("_", " ")
+    parts.append(f"{source} · {take['guide_frames']:,} guide frames")
+    return " · ".join(parts)
 
 
 def process_junction(
@@ -280,11 +371,17 @@ def process_junction(
 
     base = Path("junctions") / f"j{junction}"
     entry["baseline"] = write_pair_baseline(run_dir, base, junction, a, b, item, bpm)
+    runpod = args.provider == "runpod"
+    guide = None
     guide_error = None
     guide_data = b""
     try:
-        guide = arrange_guide(item, args.out_root, r2)
-        if guide is None:
+        guide = arrange_guide(
+            item, args.out_root, r2, cap_frames=RUNPOD_GUIDE_FRAMES if runpod else None
+        )
+        if runpod:
+            entry["input_summary"] = "RunPod searches up to 18 arranged seconds per take"
+        elif guide is None:
             guide_data = (run_dir / entry["to"]["file"]).read_bytes()
             entry["search_source"] = "incoming_mix"
             entry["input_summary"] = (
@@ -299,7 +396,11 @@ def process_junction(
             entry["guide_frames"] = len(guide)
             entry["input_summary"] = f"instrumental search source {len(guide) / glue.SR:.2f} s"
     except (BotoCoreError, ClientError, OSError, RuntimeError, ValueError) as exc:
-        guide_error = str(exc)
+        denied = isinstance(exc, ClientError) and exc.response.get("Error", {}).get("Code") == "AccessDenied"
+        guide_error = (
+            "Instrumental stem access denied (AccessDenied). Check catalog R2 permissions."
+            if denied else "Could not read the instrumental stem. Check catalog R2 and audio decoding."
+        )
         entry["error"] = guide_error
         entry["input_summary"] = "instrumental guide unavailable"
 
@@ -308,7 +409,7 @@ def process_junction(
     for beats, number, name in take_names(args):
         start, end, total = montage_geometry(
             len(a), len(b), context, beats, bpm,
-            production_duration=getattr(args, "production_duration", False),
+            production_duration=args.production_duration,
         )
         take: dict[str, Any] = {
             "id": f"j{junction}-{name}",
@@ -327,40 +428,51 @@ def process_junction(
         }
         entry["takes"].append(take)
         try:
+            if guide_error is not None:
+                raise RuntimeError(guide_error)
+            if runpod:
+                search_source, source = runpod_guide(guide, b, start, end, total)
+                guide_frames = len(source)
+            else:
+                search_source = entry["search_source"]
+                guide_frames = len(b) if guide is None else len(guide)
+            take.update(search_source=search_source, guide_frames=guide_frames)
             path = base / "montages" / f"beats-{beats}.flac"
             if number == 1:
                 silence = np.zeros((end - start, glue.CHANNELS), dtype=np.float32)
                 glue.write_flac(run_dir / path, glue.splice(a[-start:], silence, b[: total - end]))
             take["files"]["montage"] = path.as_posix()
-            if guide_error is not None:
-                raise RuntimeError(guide_error)
-            montage = (run_dir / path).read_bytes()
             started = perf_counter()
-            try:
-                production_staged = None
-                if getattr(args, "provider", "modal") == "runpod":
-                    source = (b if guide is None else guide)[:18 * glue.SR]
-                    data, meta, production_staged = runpod_inpaint(
-                        run_dir / path, source, start, end, take["seed"], beats, bpm,
-                        entry["search_source"],
-                    )
-                else:
+            production_staged = None
+            if runpod:
+                data, meta, production_staged = runpod_inpaint(
+                    run_dir / path, source, start, end, take["seed"], beats, bpm, search_source,
+                )
+            else:
+                montage = (run_dir / path).read_bytes()
+                try:
                     data, meta = modal_inpainter().inpaint.remote(
                         montage, guide_data, (start, end), take["seed"], args.steps,
                     )
-            except Exception as exc:
-                raise RuntimeError(f"SimDPS inpaint failed ({type(exc).__name__}): {exc}") from exc
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Modal inpaint failed ({type(exc).__name__}). "
+                        "Check the Modal profile, deployed app, and app logs."
+                    ) from None
             take["model"] = meta
             take["wall_seconds"] = round(perf_counter() - started, 3)
-            take["summary"] = (
-                f"seed {take['seed']} · {args.steps} steps · {meta.get('sampling_seconds', take['wall_seconds']):.2f} s"
-            )
+            take["summary"] = model_summary(take, meta)
             fill = write_take_audio(run_dir, base, name, data, take, a, b)
             if production_staged is not None:
+                with sf.SoundFile(BytesIO(production_staged)) as wav:
+                    if (wav.samplerate, wav.channels, len(wav)) != (
+                        glue.SR, glue.CHANNELS, take["target_frames"],
+                    ):
+                        raise ValueError("RunPod returned invalid production-staged audio geometry")
+                    staged_fill = wav.read(dtype="float32", always_2d=True)
                 staged_path = base / "glues" / f"{name}-production.wav"
                 (run_dir / staged_path).write_bytes(production_staged)
                 take["files"]["productionStaged"] = staged_path.as_posix()
-                staged_fill, _ = sf.read(BytesIO(production_staged), dtype="float32", always_2d=True)
                 full_path = base / "full" / f"{name}-production.flac"
                 glue.write_flac(run_dir / full_path, glue.splice(a, staged_fill, b))
                 take["files"]["productionFull"] = full_path.as_posix()
@@ -406,21 +518,43 @@ def build_full_set(
         full_set["takes"].append(entry)
 
 
-def execute_run(args: argparse.Namespace) -> int:
-    import psycopg
-    from stream_of_worship.admin.services.r2 import R2Client
-    from modal_apps.simdps_inpaint_app import MODEL_ID, UPSTREAM_REVISION
+def load_configuration(provider: str) -> None:
+    keys = ENV_KEYS + RUNPOD_ENV_KEYS if provider == "runpod" else ENV_KEYS
+    glue.load_env_file(keys=keys)
+    glue.require_env(keys)
+    if provider == "runpod":
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", os.environ["RUNPOD_ENDPOINT_ID"]):
+            raise SystemExit("RUNPOD_ENDPOINT_ID must be a RunPod endpoint ID.")
+        if not os.environ["RUNPOD_API_KEY"].strip():
+            raise SystemExit("RUNPOD_API_KEY must be set to the test endpoint API key.")
+        scratch = os.environ["SIMDPS_POC_R2_BUCKET"]
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", scratch):
+            raise SystemExit("SIMDPS_POC_R2_BUCKET must be a valid R2 bucket name.")
+        if scratch == os.environ["SOW_R2_BUCKET"].strip().lower():
+            raise SystemExit("SIMDPS_POC_R2_BUCKET must differ from the SOW_R2_BUCKET catalog.")
 
-    glue.load_env_file(keys=ENV_KEYS)
-    glue.require_env(ENV_KEYS)
+
+def execute_run(args: argparse.Namespace) -> int:
+    load_configuration(args.provider)
+
+    import psycopg
+    from botocore.exceptions import BotoCoreError, ClientError
+    from stream_of_worship.admin.services.r2 import R2Client
+
     run_dir = args.out_root / args.run_name
     glue._prepare_run_dir(run_dir, args.force)
-    r2 = R2Client(
-        bucket=os.environ["SOW_R2_BUCKET"], endpoint_url=os.environ["SOW_R2_ENDPOINT_URL"]
-    )
+    try:
+        r2 = R2Client(
+            bucket=os.environ["SOW_R2_BUCKET"], endpoint_url=os.environ["SOW_R2_ENDPOINT_URL"]
+        )
+    except (BotoCoreError, ClientError, ValueError, RuntimeError):
+        raise SystemExit("Could not configure catalog R2. Check the SOW_R2 settings.") from None
     print(f"Songset {args.songset} → {run_dir}", flush=True)
-    with psycopg.connect(os.environ["SOW_DATABASE_URL"]) as conn:
-        items, recordings = glue.fetch_songset(conn, args.songset)
+    try:
+        with psycopg.connect(os.environ["SOW_DATABASE_URL"]) as conn:
+            items, recordings = glue.fetch_songset(conn, args.songset)
+    except psycopg.Error:
+        raise SystemExit("Could not read the songset from Postgres. Check SOW_DATABASE_URL.") from None
     selected = glue.junction_indices(len(items), args.junctions)
 
     songs, tempos, contexts = [], [], []
@@ -430,7 +564,12 @@ def execute_run(args: argparse.Namespace) -> int:
             not rec.tempo_bpm or not math.isfinite(rec.tempo_bpm) or rec.tempo_bpm < 0
         ):
             raise ValueError(f"recording {item.hash_prefix} has no usable tempo")
-        source = glue.ensure_source_audio(item.hash_prefix, args.out_root, lambda: r2)
+        try:
+            source = glue.ensure_source_audio(item.hash_prefix, args.out_root, lambda: r2)
+        except (BotoCoreError, ClientError, OSError, RuntimeError, ValueError):
+            raise SystemExit(
+                f"Could not load catalog audio for song {position}. Check R2 access and FFmpeg."
+            ) from None
         arranged = glue.arranged_audio(source, item.steps, f"item {position} ({item.title})")
         path = Path("context") / f"song-{position:02d}-{item.hash_prefix[:8]}.flac"
         glue.write_flac(run_dir / path, arranged)
@@ -463,16 +602,21 @@ def execute_run(args: argparse.Namespace) -> int:
         },
         "takes": [],
     }
+    duration_mode = "production" if args.production_duration else "beat-exact"
     index = {
         "version": 1,
         "run": args.run_name,
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "songset_id": args.songset,
         "review": "simdps-glue",
+        "provider": args.provider,
+        "duration_mode": duration_mode,
         "report_title": "SimDPS Glue POC",
         "report_heading": "SimDPS Glue",
         "report_summary": (
-            f"SimDPS-Multi · {args.context_seconds:g} s context per side · {args.steps} steps · "
+            f"SimDPS-Multi · {'RunPod' if args.provider == 'runpod' else 'Modal'} · "
+            f"{duration_mode} duration · {args.context_seconds:g} s context per side · "
+            f"{args.steps} steps · "
             "Listen to the raw fill and mark vocals heard if you hear singing."
         ),
         "model_id": MODEL_ID,

@@ -11,7 +11,7 @@ These scripts replace exactly one region of a rendered Songset with generated au
 | `gen_gap_fill_sa3.py` | the same gap, with onset-based `trim`/`grid` timing correction | `sa3-small-music` (Modal) | `audio_inpaint` | `--out` (e.g. `output/audio-inpaint/run3`) |
 | `gen_glue_elevenlabs.py` | the junction Glue between adjacent songs | ElevenLabs music API | `elevenlabs_glue` | `--out-root` (default `output/elevenlabs-glue`) |
 | `gen_glue_treblo.py` | the junction Glue between adjacent songs | Treblo `POST /generations/v2/inpaint` | `glue_treblo` | `--out-root` (default `output/treblo-glue`) |
-| `gen_glue_simdps.py` | the junction Glue between adjacent songs | SimDPS-Multi with ACE-Step 1.5 base (Modal L4) | `audio_inpaint` | `--out-root` (default `output/simdps-glue`) |
+| `gen_glue_simdps.py` | the junction Glue between adjacent songs | SimDPS-Multi with ACE-Step 1.5 base (Modal L4 or RunPod L4) | `audio_inpaint` | `--out-root` (default `output/simdps-glue`) |
 
 ## Naming convention
 
@@ -351,9 +351,13 @@ Listening works the same way as the ElevenLabs page above — serve the run dire
 
 ## gen_glue_simdps.py — Glue guided by the incoming instrumental stem
 
-The CLI loads a 2–5 song Songset from Postgres and reads the original mixes from R2. The montage contains the outgoing arrangement's last 12 seconds, silence for the requested beats, and the incoming arrangement's first 12 seconds. SimDPS-Multi searches the incoming instrumental stem after applying all of its Arrangement Steps in playback order. When R2 confirms the stem is missing, the CLI uses the full incoming arrangement as the search source. That mix can contain vocals.
+The CLI loads a 2–5 song Songset from Postgres and reads the original mixes from R2. The montage contains the outgoing arrangement's last 12 seconds, silence for the requested beats, and the incoming arrangement's first 12 seconds. Each invocation selects one backend. Modal searches the full arranged instrumental stem and uses the full incoming arrangement when the stem is missing. RunPod searches the first 18 arranged seconds of the stem, or of the incoming mix when the stem is missing or too short. The incoming mix can contain vocals. RunPod checks the model window and guide length before submitting each take.
 
-The Modal app uses Python 3.11, an L4, and the ACE-Step 1.5 base prior. The first invocation downloads the model weights to the `sow-simdps-models` Modal volume. The pinned SimDPS sampler uses a 15-second model window around the gap and requires context beyond the latent mask on both sides. A take that exceeds the model window is marked failed. The app crops the generated window using SimDPS's returned gap coordinates and returns an exact-length 44.1 kHz stereo float WAV. [Pinned SimDPS API](https://github.com/s-turland/SimDPSInpainting/blob/f5175f14b3be67e28ffc7c95874265a0390a9ada/simdps/inpainter.py)
+Both backends produce an exact-length 44.1 kHz stereo float WAV. The pinned SimDPS sampler uses a 15-second model window around the gap and requires context beyond the latent mask on both sides. The Modal app uses Python 3.11, an L4, and the ACE-Step 1.5 base prior. Its first invocation downloads the model weights to the `sow-simdps-models` Modal volume. [Pinned SimDPS API](https://github.com/s-turland/SimDPSInpainting/blob/f5175f14b3be67e28ffc7c95874265a0390a9ada/simdps/inpainter.py)
+
+Set `SOW_DATABASE_URL`, `SOW_R2_BUCKET`, `SOW_R2_ENDPOINT_URL`, `SOW_R2_ACCESS_KEY_ID` and `SOW_R2_SECRET_ACCESS_KEY` in the shell or `/opt/sow/.env`. The shell takes precedence. Modal also needs an authenticated profile or Modal token and the deployed `sow-simdps-poc` app.
+
+For RunPod, set `RUNPOD_ENDPOINT_ID`, `RUNPOD_API_KEY` and `SIMDPS_POC_R2_BUCKET` in the same environment or file. Use the isolated L4 test endpoint with the pinned SimDPS worker image. Its `SIMDPS_R2_HOST` and `SIMDPS_R2_BUCKET` must point to the scratch R2 host and bucket. The scratch bucket must differ from the catalog bucket and allow the configured credentials to stage inputs and read verified results. The fixture writes under `glue-simdps-tmp/poc/`, covered by the scratch bucket's one-day lifecycle rule. [RunPod endpoint and scratch setup](../../docs/glue-operator-runbook.md#runpod-staging-and-rollout)
 
 ```bash
 uv run --project lab/poc-scripts --python 3.11 --extra audio_inpaint \
@@ -363,7 +367,14 @@ uv run --project lab/poc-scripts --python 3.11 --extra audio_inpaint \
   python lab/poc-scripts/gen_glue_simdps.py --dry-run --dry-run-items 5
 
 uv run --project lab/poc-scripts --python 3.11 --extra audio_inpaint \
-  python lab/poc-scripts/gen_glue_simdps.py --junctions 1
+  python lab/poc-scripts/gen_glue_simdps.py --provider modal --production-duration \
+    --songset hbWfCccGxN_JLQGBEqmdu --junctions 1 --beats 4 --takes 1 --seed-base 0 \
+    --steps 100 --run-name modal-l4-production
+
+uv run --project lab/poc-scripts --python 3.11 --extra audio_inpaint \
+  python lab/poc-scripts/gen_glue_simdps.py --provider runpod --production-duration \
+    --songset hbWfCccGxN_JLQGBEqmdu --junctions 1 --beats 4 --takes 1 --seed-base 0 \
+    --steps 100 --run-name runpod-l4-production
 ```
 
 | Flag | Default |
@@ -375,15 +386,19 @@ uv run --project lab/poc-scripts --python 3.11 --extra audio_inpaint \
 | `--seed-base` | `0`, incremented for each take at a junction |
 | `--context-seconds` | `12` seconds per side, capped at the duration of each arrangement |
 | `--steps` | `100` sampler steps |
+| `--provider` | `modal`. RunPod uses 100 steps, up to 12 seconds of context per side, and nonnegative signed 64-bit seeds. |
+| `--production-duration` | Off. Uses a minimum gap of 3 seconds and production millisecond rounding when enabled. |
 | `--out-root` | `lab/poc-scripts/output/simdps-glue` |
 | `--run-name` | `run1` |
 | `--force` | Allow reuse of an existing run directory and replace overlapping artifacts. The report and index list the current run's artifacts. |
 
-`context/` contains the original arranged mixes. Each `junctions/jN/` has montages, raw float WAV fills, staged FLAC fills, seam excerpts, and complete pair splices alongside the production gap or crossfade baseline. Junctions with a stem also have an arranged guide. The staged gain and fades apply to the fill only. `full-set/` contains the production baseline and an assembled version for each beat count and take with a usable fill at every junction. Both `index.json` and `report.html` show which search source each junction used. Stem access or decoding errors and other take failures are recorded in both files. Successful artifacts and baselines remain available, and the CLI exits with status `2` if any take fails.
+`context/` contains the original arranged mixes. Each `junctions/jN/` has montages, raw float WAV fills, staged FLAC fills, seam excerpts, and complete pair splices alongside the production gap or crossfade baseline. The staged gain and fades apply to the fill only. RunPod also writes a production-staged WAV and its full pair when the fill matches the production duration. `full-set/` contains the production baseline and an assembled version for each beat count and take with a usable fill at every junction.
+
+Both `index.json` and `report.html` show the backend, duration mode, guide source and length per submitted take, reported GPU, and available timing measurements. Only a reported **NVIDIA L4** passes the GPU check. A verified fill remains playable with **GPU unverified** when the worker status lacks device metadata. Take failures are recorded in both files and the CLI exits with status `2` if any take fails. Dry runs work offline without credentials.
 
 ```bash
 python -m http.server 8092 --bind 127.0.0.1 \
-  --directory lab/poc-scripts/output/simdps-glue/run1
+  --directory lab/poc-scripts/output/simdps-glue/modal-l4-production
 ```
 
 Open `http://127.0.0.1:8092/report.html`. Compare the baseline against the generated seam and full pair. Listen to the raw fill in isolation before marking **vocals heard**. ACE-Step is unconditional and can generate vocals even when the search source is instrumental. Scores, notes, and checkbox state are stored in the browser and can be exported as JSON.
@@ -393,3 +408,8 @@ Open `http://127.0.0.1:8092/report.html`. Compare the baseline against the gener
 Junction 1 of `hbWfCccGxN_JLQGBEqmdu` used four beats at 86.13281 BPM, seed 0 and 100 steps on an NVIDIA L4. SimDPS sampled for 29.655 seconds and returned exactly 122,880 stereo frames at 44.1 kHz. The generated pair and full-set FLACs both matched the two arranged context files sample for sample. The raw and staged fills played in Chrome.
 
 Automated vocal checks were inconclusive. YAMNet gave singing a score below 0.001 in every window of both fills. Essentia's voice/instrumental classifier gave voice scores of 0.514 for the raw fill and 0.370 for the staged fill. Audible vocals still need a human listening verdict. [YAMNet](https://www.tensorflow.org/hub/tutorials/yamnet) · [Essentia classifier](https://essentia.upf.edu/models/classifiers/voice_instrumental/)
+
+### Production-duration verification
+
+- Modal reported an NVIDIA L4 and returned exactly 132,300 stereo frames at 44.1 kHz for the same take with `--production-duration`. Sampling took 28.75 seconds. Both song sides matched the arranged context files in the full pair and the full set.
+- The RunPod live attempt stopped at preflight because `RUNPOD_ENDPOINT_ID`, `RUNPOD_API_KEY`, and `SIMDPS_POC_R2_BUCKET` were absent. Offline tests exercised signed R2 transport, result verification, status recovery, and production staging with simulated endpoint and storage responses.
