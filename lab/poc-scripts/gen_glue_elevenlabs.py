@@ -150,7 +150,7 @@ class SeamDecodeError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-def load_env_file(path: Path = ENV_FILE) -> None:
+def load_env_file(path: Path = ENV_FILE, *, keys: Sequence[str] = ENV_KEYS) -> None:
     """Fill missing environment variables from `path`; never print a value."""
     if not path.is_file():
         return
@@ -164,13 +164,13 @@ def load_env_file(path: Path = ENV_FILE) -> None:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        if not key or key not in ENV_KEYS:
+        if not key or key not in keys:
             continue
         os.environ.setdefault(key, value.strip().strip("'\""))
 
 
-def require_env() -> None:
-    missing = [name for name in ENV_KEYS if not os.environ.get(name)]
+def require_env(keys: Sequence[str] = ENV_KEYS) -> None:
+    missing = [name for name in keys if not os.environ.get(name)]
     if missing:
         raise SystemExit(
             "missing environment variables: "
@@ -196,8 +196,8 @@ def _run(cmd: list[str]) -> None:
         raise RuntimeError(f"command failed: {' '.join(cmd)}\n{proc.stderr[-2000:]}")
 
 
-def decode_audio(src: Path, dest_wav: Path) -> np.ndarray:
-    """Decode any ffmpeg-readable file to 44.1 kHz stereo PCM16, return float32 samples."""
+def decode_audio(src: Path, dest_wav: Path, *, codec: str = "pcm_s16le") -> np.ndarray:
+    """Decode any ffmpeg-readable file to 44.1 kHz stereo PCM, return float32 samples."""
     dest_wav.parent.mkdir(parents=True, exist_ok=True)
     _run(
         [
@@ -212,7 +212,7 @@ def decode_audio(src: Path, dest_wav: Path) -> np.ndarray:
             "-ac",
             str(CHANNELS),
             "-c:a",
-            "pcm_s16le",
+            codec,
             str(dest_wav),
         ]
     )
@@ -228,9 +228,9 @@ def read_wav(path: Path) -> np.ndarray:
     return np.ascontiguousarray(samples, dtype=np.float32)
 
 
-def write_flac(path: Path, samples: np.ndarray) -> None:
+def write_flac(path: Path, samples: np.ndarray, *, subtype: str = "PCM_16") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(path), samples, SR, format="FLAC", subtype="PCM_16")
+    sf.write(str(path), samples, SR, format="FLAC", subtype=subtype)
 
 
 def write_wav_pcm16(path: Path, samples: np.ndarray) -> None:
@@ -1422,8 +1422,10 @@ button { font: inherit; padding: 4px 10px; }
 JS = """
 (function () {
   var RUN = document.body.dataset.run || 'run';
-  var SCORE_KEY = 'sow.elevenlabs-glue:' + RUN + ':scores';
-  var LAST_KEY = 'sow.elevenlabs-glue:' + RUN + ':lastPlayed';
+  var PREFIX = document.body.dataset.review ? 'sow.' + document.body.dataset.review + ':' : 'sow.elevenlabs-glue:';
+  var KEY = PREFIX + RUN;
+  var SCORE_KEY = KEY + ':scores';
+  var LAST_KEY = KEY + ':lastPlayed';
   var scores = {};
   var lastPlayed = null;
 
@@ -1655,6 +1657,8 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
         players.append(
             ("<span>Generation (raw)</span>", _audio(str(files["generation"]), "generation"))
         )
+    if files.get("montage"):
+        players.append(("<span>Input montage</span>", _audio(str(files["montage"]), "montage")))
     if files.get("seam"):
         players.append(("<span>Seam excerpt</span>", _audio(str(files["seam"]), "seam")))
     if files.get("full"):
@@ -1669,7 +1673,9 @@ def card_html(take: dict[str, Any], baseline: bool = False) -> str:
     status = take.get("status")
     error = take.get("error")
     reasons = take.get("reasons") or []
-    metrics_line = baseline_text(take) if is_baseline else metric_text(take)
+    metrics_line = baseline_text(take) if is_baseline else take.get("metric_summary")
+    if metrics_line is None:
+        metrics_line = metric_text(take)
     detail = f'<p class="error">failed: {html.escape(str(error))}</p>' if error else ""
     if reasons and not error:
         detail += f'<p class="error">check: {html.escape("; ".join(str(r) for r in reasons))}</p>'
@@ -1767,6 +1773,9 @@ def report_html(index: dict[str, Any]) -> str:
     junctions = index.get("junctions") or []
     full_set = index.get("full_set") or {}
     condition = index.get("condition") or {}
+    title = index.get("report_title", "ElevenLabs Glue POC")
+    heading = index.get("report_heading", "ElevenLabs instrumental Glue")
+    review = index.get("review", "")
     beats_text = ", ".join(str(beats) for beats in index.get("beats") or [])
     items_text = " · ".join(
         f"{item.get('title')} (arranged {_num(item.get('arranged_seconds'), 2)} s, "
@@ -1786,6 +1795,14 @@ def report_html(index: dict[str, Any]) -> str:
     full_section = (
         f'<section><h2>Full set</h2>{full_note}<div class="grid">{full_cards}</div></section>'
     )
+    summary = index.get("report_summary")
+    if summary is None:
+        summary = (
+            f"output {index.get('output_format')} · input {index.get('input')} · "
+            f"conditioning {condition.get('mode')} / {condition.get('strength')} / "
+            f"{_num(condition.get('seconds'), 1)} s · est. "
+            f"{_num(index.get('credits_estimate'), 0)} credits"
+        )
 
     sections: list[str] = []
     for junction in junctions:
@@ -1799,6 +1816,14 @@ def report_html(index: dict[str, Any]) -> str:
         uploads = junction.get("uploads") or {}
         upload_a = (uploads.get("a") or {}).get("seconds")
         upload_b = (uploads.get("b") or {}).get("seconds")
+        input_summary = junction.get("input_summary")
+        if input_summary is None:
+            input_summary = f"upload A {_num(upload_a, 2)} s / B {_num(upload_b, 2)} s"
+        guide = junction.get("guide")
+        guide_player = (
+            f'<div class="players"><span>Instrumental guide</span>'
+            f'{_audio(guide, "guide", preload="none")}</div>' if guide else ""
+        )
         cards = card_html(baseline, baseline=True) + "".join(card_html(take) for take in ok_takes)
         failed_cards = "".join(card_html(take) for take in failed_takes)
         failed_block = (
@@ -1811,7 +1836,8 @@ def report_html(index: dict[str, Any]) -> str:
   {html.escape(str((junction.get('to') or {}).get('title')))}</h2>
   <p class="meta">incoming tempo {_num(junction.get('tempo_bpm'), 5)} BPM · beat
   {_num(junction.get('beat_seconds'), 5)} s · baseline {html.escape(baseline_text(baseline))} ·
-  upload A {_num(upload_a, 2)} s / B {_num(upload_b, 2)} s</p>
+  {html.escape(input_summary)}</p>
+  {guide_player}
   <div class="grid">{cards}</div>
   {failed_block}
   {ranking_table(rankable, False, f"Junction {number} ranking (score desc, unscored last)")}
@@ -1823,19 +1849,16 @@ def report_html(index: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ElevenLabs Glue POC — {html.escape(run)}</title>
+<title>{html.escape(title)} — {html.escape(run)}</title>
 <style>{CSS}</style>
 </head>
-<body data-run="{html.escape(run)}">
-  <h1>ElevenLabs instrumental Glue — {html.escape(run)}</h1>
+<body data-run="{html.escape(run)}" data-review="{html.escape(review)}">
+  <h1>{html.escape(heading)} — {html.escape(run)}</h1>
   <p class="sub">songset {html.escape(str(index.get('songset_id')))} ·
   {html.escape(items_text)}</p>
   <p class="sub">{len(items)} songs · {len(junctions)} junction(s) · beats
   {html.escape(beats_text)} · model {html.escape(str(index.get('model_id')))} ·
-  output {html.escape(str(index.get('output_format')))} · input
-  {html.escape(str(index.get('input')))} · conditioning {html.escape(str(condition.get('mode')))}
-  / {html.escape(str(condition.get('strength')))} / {_num(condition.get('seconds'), 1)} s ·
-  est. {_num(index.get('credits_estimate'), 0)} credits · baseline mix is raw PCM (no loudnorm)</p>
+  {html.escape(summary)} · baseline mix is raw PCM (no loudnorm)</p>
   <div id="last-played">Last played: —</div>
   <div class="toolbar">
     <button id="export-scores" type="button">Export scores</button>
